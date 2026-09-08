@@ -91,6 +91,7 @@ import type {
   PatientAdmissionClearanceReader,
   PatientCaregiverReader,
   PatientCoverageReader,
+  PatientHopeAdmissionPrefillReader,
   PatientIntakeResolver,
   PatientMutator,
   PatientPrivacyFlagReader,
@@ -154,6 +155,7 @@ export type SeamName =
   | "CredentialReader" // M17 — a membership's active clinical-license/certification rows as-of a date (§1.1 D8, GAP-093)
   | "ElevatedApprovalReader" // M2 — does a membership hold a named per-tenant approval authority (GAP-043)
   | "PatientReader" // M5 — patient identity/demographics reads (§4.8; M29 cascade)
+  | "PatientHopeAdmissionPrefillReader" // M5 — narrow demographic/identifier snapshot for M10 HOPE Admission prefill
   | "PatientIntakeResolver" // M5 — referral-intake patient match/confirm/create orchestration
   | "PatientAdmissionClearanceReader" // M5 — high-level privacy clearance for admission activation
   | "PatientCoverageReader" // M5 — §3.4 coverage list; M23/M24 resolve which payer a claim bills
@@ -745,6 +747,7 @@ export interface SeamContracts {
   CredentialReader: CredentialReader;
   ElevatedApprovalReader: ElevatedApprovalReader;
   PatientReader: PatientReader;
+  PatientHopeAdmissionPrefillReader: PatientHopeAdmissionPrefillReader;
   PatientIntakeResolver: PatientIntakeResolver;
   PatientAdmissionClearanceReader: PatientAdmissionClearanceReader;
   PatientCoverageReader: PatientCoverageReader;

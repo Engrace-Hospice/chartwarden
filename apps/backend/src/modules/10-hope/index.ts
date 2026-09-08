@@ -31,6 +31,21 @@ export function mountHopeRoutes(
 
 export { type HopeWriteOutboxPort, createDbHopeBackend } from "./hope-route-service-db";
 export {
+  type HopeAdmissionPrefillResult,
+  type HopeAdmissionPrefillService,
+  type HopePrefillAnswer,
+  buildHopeAdmissionPrefillAnswers,
+  createHopeAdmissionPrefillService,
+  isHopeCoverageInForceOn,
+  mapHopeCoverageKind,
+  mapHopeEthnicityCodes,
+  mapHopePreferredLanguage,
+  mapHopeRaceCodes,
+  mapHopeResidenceSite,
+  mapHopeSexAssignedAtBirth,
+  shouldApplyHopeAdmissionPrefill,
+} from "./hope-admission-prefill-service";
+export {
   type HopeAnswerPatchAction,
   type HopeAnswerPatchChange,
   type HopeAnswerPatchResult,
@@ -46,9 +61,53 @@ export {
   HopeProtectedItemWriteError,
   type HopeWorkspaceItem,
   type HopeWorkspaceSection,
+  HopeItemNotApplicableError,
   createHopeAssessmentAnswerService,
   normalizeHopeAnswerValue,
 } from "./hope-answer-service";
+export {
+  type HopeAnswerMap,
+  type HopeAnswerSnapshot,
+  type HopeApplicabilityEngine,
+  type HopeApplicabilityItemResult,
+  type HopeApplicabilityReason,
+  type HopeApplicabilityResult,
+  type HopeApplicabilityRule,
+  HopeApplicabilityRuleCycleError,
+  HopeApplicabilitySpecUnsupportedError,
+  type HopeApplicabilityState,
+  assertAcyclicApplicabilityRules,
+} from "./spec/applicability";
+export { createHopeApplicabilityEngine } from "./spec/applicability-registry";
+export {
+  type HopeFindingKind,
+  type HopeRuleFinding,
+  type HopeValidationAssessment,
+  type HopeValidationContext,
+  type HopeValidationEngine,
+  type HopeValidationItem,
+  type HopeValidationMode,
+  type HopeValidationResult,
+  type HopeValidationRule,
+  type HopeValidationSeverity,
+  HopeValidationSpecUnsupportedError,
+} from "./spec/validation";
+export { createHopeValidationEngine } from "./spec/validation-registry";
+export {
+  HOPE_V1_00_1_APPLICABILITY_RULES,
+  createHopeV1_00_1ApplicabilityEngine,
+} from "./spec/v1_00_1/applicability";
+export {
+  HOPE_V1_00_1_VALIDATION_RULES,
+  createHopeV1_00_1ValidationEngine,
+} from "./spec/v1_00_1/validation";
+export {
+  type HopeValidationFindingView,
+  type HopeValidationRunView,
+  type HopeValidationService,
+  HopeValidationFindingSitingError,
+  createHopeValidationService,
+} from "./hope-validation-service";
 export {
   type HopeIsc,
   type HopeSpecRegistry,

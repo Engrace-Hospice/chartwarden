@@ -3,6 +3,13 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { HopeIsc } from "./hope-spec-registry";
+import {
+  type HopeAnswerMap,
+  type HopeApplicabilityItemResult,
+  type HopeApplicabilityReason,
+  type HopeApplicabilityState,
+} from "./spec/applicability";
+import { createHopeApplicabilityEngine } from "./spec/applicability-registry";
 
 type AssessmentRow = typeof schema.hopeAssessments.$inferSelect;
 type SpecItemRow = typeof schema.hopeSpecItems.$inferSelect;
@@ -20,6 +27,8 @@ export interface HopeAssessmentItemState {
   readonly source: AnswerRow["source"] | null;
   readonly answeredAt: string | null;
   readonly answeredByMembershipId: string | null;
+  readonly applicability: HopeApplicabilityState;
+  readonly skipReason: HopeApplicabilityReason | null;
 }
 
 export interface HopeWorkspaceItem extends HopeAssessmentItemState {
@@ -47,6 +56,15 @@ export interface HopeAssessmentWorkspace {
     readonly version: number;
   };
   readonly sections: readonly HopeWorkspaceSection[];
+  readonly progress: {
+    readonly active: number;
+    readonly applicable: number;
+    readonly notApplicable: number;
+    readonly pending: number;
+    readonly answered: number;
+    readonly skipped: number;
+    readonly unanswered: number;
+  };
 }
 
 export interface HopeAnswerPatchChange {
@@ -100,6 +118,19 @@ export class HopeProtectedItemWriteError extends ForbiddenError {
   }
 }
 
+export class HopeItemNotApplicableError extends ValidationError {
+  constructor(itemCode: string, applicability: HopeApplicabilityState, reason?: HopeApplicabilityReason) {
+    super("HOPE item is not currently applicable", [
+      {
+        field: itemCode,
+        code: applicability === "pending" ? "HOPE_ITEM_APPLICABILITY_PENDING" : "HOPE_ITEM_NOT_APPLICABLE",
+        message: `${itemCode} is ${applicability}${reason?.ruleId ? ` by ${reason.ruleId}` : ""}`,
+      },
+    ]);
+    this.name = "HopeItemNotApplicableError";
+  }
+}
+
 export class HopeDuplicateAnswerChangeError extends ValidationError {
   constructor(itemCode: string) {
     super("Duplicate HOPE answer changes are not allowed", [
@@ -116,7 +147,7 @@ export class HopeAssessmentSpecMissingError extends ConflictError {
   }
 }
 
-const PROTECTED_PUBLIC_ITEMS = new Set(["A0050", "A0250", "Z0350", "Z0500B"]);
+const PROTECTED_PUBLIC_ITEMS = new Set(["A0050", "A0220", "A0250", "Z0350", "Z0500B"]);
 const DATE_TYPE_HINTS = ["date", "dt", "dte"];
 const NUMERIC_TYPE_HINTS = ["int", "num", "dec", "numeric", "integer", "decimal"];
 
@@ -146,6 +177,13 @@ export function normalizeHopeAnswerValue(input: {
   if (inputValue == null) {
     throw new HopeInvalidAnswerValueError(item.itemCode, "answered values cannot be null");
   }
+  const hasDatePlaceholder = options.some((option) => option.valueCode === "YYYYMMDD");
+  if (hasDatePlaceholder || isDateCode(item)) {
+    if (typeof inputValue !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(inputValue)) {
+      throw new HopeInvalidAnswerValueError(item.itemCode, "date values must be YYYY-MM-DD");
+    }
+    return inputValue;
+  }
   if (options.length > 0) {
     if (typeof inputValue !== "string") {
       throw new HopeInvalidAnswerValueError(item.itemCode, "coded HOPE values must be strings");
@@ -159,12 +197,6 @@ export function normalizeHopeAnswerValue(input: {
     return inputValue;
   }
   const type = item.cmsItemTypeCode.toLowerCase();
-  if (isDateCode(item)) {
-    if (typeof inputValue !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(inputValue)) {
-      throw new HopeInvalidAnswerValueError(item.itemCode, "date values must be YYYY-MM-DD");
-    }
-    return inputValue;
-  }
   if (NUMERIC_TYPE_HINTS.some((hint) => type.includes(hint))) {
     if (typeof inputValue !== "number" || !Number.isFinite(inputValue)) {
       throw new HopeInvalidAnswerValueError(item.itemCode, "numeric values must be finite numbers");
@@ -177,7 +209,17 @@ export function normalizeHopeAnswerValue(input: {
   return inputValue;
 }
 
-function stateOf(itemCode: string, active: boolean, answer: AnswerRow | undefined): HopeAssessmentItemState {
+const DEFAULT_APPLICABILITY: HopeApplicabilityItemResult = {
+  active: true,
+  applicability: "applicable",
+};
+
+function stateOf(
+  itemCode: string,
+  active: boolean,
+  answer: AnswerRow | undefined,
+  applicability: HopeApplicabilityItemResult = DEFAULT_APPLICABILITY,
+): HopeAssessmentItemState {
   return {
     itemCode,
     active,
@@ -186,6 +228,43 @@ function stateOf(itemCode: string, active: boolean, answer: AnswerRow | undefine
     source: answer?.source ?? null,
     answeredAt: asDate(answer?.answeredAt ?? null),
     answeredByMembershipId: answer?.answeredByMembershipId ?? null,
+    applicability: applicability.applicability,
+    skipReason: applicability.reason ?? null,
+  };
+}
+
+function answerMapByCode(input: {
+  readonly itemsById: ReadonlyMap<string, SpecItemRow>;
+  readonly answersByItem: ReadonlyMap<string, AnswerRow>;
+}): Map<string, { state: "answered" | "skipped"; value: unknown | null }> {
+  const out = new Map<string, { state: "answered" | "skipped"; value: unknown | null }>();
+  for (const [itemId, answer] of input.answersByItem) {
+    const item = input.itemsById.get(itemId);
+    if (item) out.set(item.itemCode, { state: answer.state, value: answer.value as unknown | null });
+  }
+  return out;
+}
+
+const J2051_ITEM_CODES = ["J2051A", "J2051B", "J2051C", "J2051D", "J2051E", "J2051F", "J2051G", "J2051H"];
+const J2051_SEVERITY_RANK: Record<string, number> = { "0": 0, "1": 1, "2": 2, "3": 3, "9": 0 };
+const J2051_SEVERITY_BY_RANK = ["none", "mild", "moderate", "severe"] as const;
+
+function j2051Projection(answers: HopeAnswerMap): { triggerKnown: boolean; triggerFired: boolean; maxSeverity: "none" | "mild" | "moderate" | "severe" } {
+  const symptomImpactCompleted = answers.get("J2050A");
+  if (symptomImpactCompleted?.state === "answered" && symptomImpactCompleted.value === "0") {
+    return { triggerKnown: true, triggerFired: false, maxSeverity: "none" };
+  }
+  const values = J2051_ITEM_CODES.map((itemCode) => {
+    const answer = answers.get(itemCode);
+    return answer?.state === "answered" && typeof answer.value === "string" ? answer.value : null;
+  });
+  const rank = Math.max(...values.map((value) => (value ? J2051_SEVERITY_RANK[value] ?? 0 : 0)));
+  const anyTrigger = values.some((value) => value === "2" || value === "3");
+  const allKnownFalse = values.every((value) => value === "0" || value === "1" || value === "9");
+  return {
+    triggerKnown: anyTrigger || allKnownFalse,
+    triggerFired: anyTrigger,
+    maxSeverity: J2051_SEVERITY_BY_RANK[rank] ?? "none",
   };
 }
 
@@ -304,13 +383,31 @@ export function createHopeAssessmentAnswerService(db: DbClient): HopeAssessmentA
         const t = tx as unknown as DbClient;
         const loaded = await loadModernAssessment(t, organizationId, assessmentId);
         const items = await activeItems(t, loaded.assessment.specVersionId!, loaded.isc);
+        const itemsById = new Map(items.map((item) => [item.id, item]));
         const optionsByItem = await optionsForItems(t, items.map((item) => item.id));
         const answersByItem = await answersForAssessment(t, assessmentId);
+        const applicability = createHopeApplicabilityEngine(loaded.specCode).evaluate({
+          isc: loaded.isc,
+          activeItemCodes: items.map((item) => item.itemCode),
+          answers: answerMapByCode({ itemsById, answersByItem }),
+        });
         const sections = new Map<string, { label: string; items: HopeWorkspaceItem[] }>();
+        const progress = { active: items.length, applicable: 0, notApplicable: 0, pending: 0, answered: 0, skipped: 0, unanswered: 0 };
         for (const item of items) {
           const code = normalizeSectionLabel(item);
           const options = optionsByItem.get(item.id) ?? [];
-          const base = stateOf(item.itemCode, true, answersByItem.get(item.id));
+          const base = stateOf(
+            item.itemCode,
+            true,
+            answersByItem.get(item.id),
+            applicability.items.get(item.itemCode),
+          );
+          if (base.applicability === "applicable") progress.applicable += 1;
+          if (base.applicability === "not_applicable") progress.notApplicable += 1;
+          if (base.applicability === "pending") progress.pending += 1;
+          if (base.state === "answered") progress.answered += 1;
+          if (base.state === "skipped") progress.skipped += 1;
+          if (base.state === "unanswered") progress.unanswered += 1;
           const section = sections.get(code) ?? { label: code, items: [] };
           section.items.push({
             ...base,
@@ -341,6 +438,7 @@ export function createHopeAssessmentAnswerService(db: DbClient): HopeAssessmentA
             label: section.label,
             items: section.items,
           })),
+          progress,
         };
       });
     },
@@ -363,19 +461,111 @@ export function createHopeAssessmentAnswerService(db: DbClient): HopeAssessmentA
         if (assessment.status !== "draft") throw new HopeAssessmentImmutableError(assessmentId, assessment.status);
         if (assessment.version !== input.ifVersion) throw new HopeAnswerVersionConflictError(assessmentId);
         const now = new Date();
-        const affectedItems: SpecItemRow[] = [];
+        const items = await activeItems(t, assessment.specVersionId!, loaded.isc);
+        const itemsByCode = new Map(items.map((item) => [item.itemCode, item]));
+        const itemsById = new Map(items.map((item) => [item.id, item]));
+        const currentAnswersByItem = await answersForAssessment(t, assessmentId);
+        const proposedAnswers = answerMapByCode({ itemsById, answersByItem: currentAnswersByItem });
+        const touched = new Set<string>();
 
         for (const change of input.changes) {
-          const item = await requireWritableItem(t, assessment, loaded.isc, change.itemCode, true);
-          affectedItems.push(item);
+          const item = itemsByCode.get(change.itemCode);
+          if (PROTECTED_PUBLIC_ITEMS.has(change.itemCode)) throw new HopeProtectedItemWriteError(change.itemCode);
+          if (!item) {
+            await requireWritableItem(t, assessment, loaded.isc, change.itemCode, true);
+            throw new NotFoundError("HOPE spec item", change.itemCode);
+          }
+          touched.add(change.itemCode);
           if (change.action === "clear") {
+            proposedAnswers.delete(change.itemCode);
+            continue;
+          }
+          const options = await optionList(t, item.id);
+          const value = normalizeHopeAnswerValue({ item, options, inputValue: change.value });
+          proposedAnswers.set(change.itemCode, { state: "answered", value });
+        }
+
+        const engine = createHopeApplicabilityEngine(loaded.specCode);
+        const applicability = engine.evaluate({
+          isc: loaded.isc,
+          activeItemCodes: items.map((item) => item.itemCode),
+          answers: proposedAnswers,
+        });
+
+        for (const change of input.changes) {
+          if (change.action !== "set") continue;
+          const itemState = applicability.items.get(change.itemCode);
+          if (!itemState || itemState.applicability !== "applicable") {
+            throw new HopeItemNotApplicableError(
+              change.itemCode,
+              itemState?.applicability ?? "not_applicable",
+              itemState?.reason,
+            );
+          }
+        }
+
+        const reconciledAnswers = new Map(proposedAnswers);
+        for (const [itemCode, itemState] of applicability.items) {
+          if (itemState.applicability === "applicable") {
+            const proposed = reconciledAnswers.get(itemCode);
+            if (proposed?.state === "skipped") {
+              reconciledAnswers.delete(itemCode);
+              touched.add(itemCode);
+            }
+            continue;
+          }
+          if (itemState.applicability === "not_applicable") {
+            reconciledAnswers.set(itemCode, { state: "skipped", value: null });
+            touched.add(itemCode);
+            continue;
+          }
+          if (reconciledAnswers.has(itemCode)) {
+            reconciledAnswers.delete(itemCode);
+            touched.add(itemCode);
+          }
+        }
+
+        for (const itemCode of touched) {
+          const item = itemsByCode.get(itemCode);
+          if (!item) continue;
+          const answer = reconciledAnswers.get(itemCode);
+          if (!answer) {
             await t
               .delete(ANS)
               .where(and(eq(ANS.hopeAssessmentId, assessmentId), eq(ANS.specItemId, item.id)));
             continue;
           }
-          const options = await optionList(t, item.id);
-          const value = normalizeHopeAnswerValue({ item, options, inputValue: change.value });
+          if (answer.state === "skipped") {
+            const reason = applicability.items.get(itemCode)?.reason;
+            await t
+              .insert(ANS)
+              .values({
+                organizationId,
+                providerEntityId: assessment.providerEntityId,
+                locationId: assessment.locationId,
+                hopeAssessmentId: assessmentId,
+                specVersionId: assessment.specVersionId!,
+                specItemId: item.id,
+                state: "skipped",
+                value: null,
+                source: "derived",
+                sourceReference: reason ? { reason: "skip_pattern", ...reason } : { reason: "skip_pattern" },
+                answeredAt: now,
+              })
+              .onConflictDoUpdate({
+                target: [ANS.hopeAssessmentId, ANS.specItemId],
+                set: {
+                  state: "skipped",
+                  value: null,
+                  source: "derived",
+                  sourceReference: reason ? { reason: "skip_pattern", ...reason } : { reason: "skip_pattern" },
+                  answeredAt: now,
+                  answeredByMembershipId: null,
+                  updatedAt: now,
+                },
+              });
+            continue;
+          }
           await t
             .insert(ANS)
             .values({
@@ -386,7 +576,7 @@ export function createHopeAssessmentAnswerService(db: DbClient): HopeAssessmentA
               specVersionId: assessment.specVersionId!,
               specItemId: item.id,
               state: "answered",
-              value,
+              value: answer.value,
               source: "user",
               answeredAt: now,
               answeredByMembershipId: membershipId,
@@ -395,8 +585,9 @@ export function createHopeAssessmentAnswerService(db: DbClient): HopeAssessmentA
               target: [ANS.hopeAssessmentId, ANS.specItemId],
               set: {
                 state: "answered",
-                value,
+                value: answer.value,
                 source: "user",
+                sourceReference: null,
                 answeredAt: now,
                 answeredByMembershipId: membershipId,
                 updatedAt: now,
@@ -404,9 +595,21 @@ export function createHopeAssessmentAnswerService(db: DbClient): HopeAssessmentA
             });
         }
 
+        const projection = [...touched].some((itemCode) => itemCode === "J2050A" || J2051_ITEM_CODES.includes(itemCode))
+          ? j2051Projection(reconciledAnswers)
+          : null;
+        const assessmentUpdate =
+          projection?.triggerKnown
+            ? {
+                version: sql`${A.version} + 1`,
+                updatedAt: now,
+                j2051TriggerFired: projection.triggerFired,
+                j2051MaxSeverity: projection.maxSeverity,
+              }
+            : { version: sql`${A.version} + 1`, updatedAt: now };
         const [updated] = await t
           .update(A)
-          .set({ version: sql`${A.version} + 1`, updatedAt: now })
+          .set(assessmentUpdate)
           .where(and(eq(A.id, assessmentId), eq(A.organizationId, organizationId), eq(A.version, input.ifVersion)))
           .returning({ version: A.version });
         if (!updated) throw new HopeAnswerVersionConflictError(assessmentId);
@@ -415,7 +618,13 @@ export function createHopeAssessmentAnswerService(db: DbClient): HopeAssessmentA
         return {
           assessmentId,
           version: updated.version,
-          answers: affectedItems.map((item) => stateOf(item.itemCode, true, answersByItem.get(item.id))),
+          answers: [...touched].flatMap((itemCode) => {
+            const item = itemsByCode.get(itemCode);
+            if (!item) return [];
+            return [
+              stateOf(item.itemCode, true, answersByItem.get(item.id), applicability.items.get(item.itemCode)),
+            ];
+          }),
         };
       });
     },
@@ -454,11 +663,20 @@ export function createHopeAssessmentAnswerService(db: DbClient): HopeAssessmentA
             state: "skipped",
             value: null,
             source: "derived",
+            sourceReference: { reason: "skip_pattern", ruleId: "internal" },
             answeredAt: now,
           })
           .onConflictDoUpdate({
             target: [ANS.hopeAssessmentId, ANS.specItemId],
-            set: { state: "skipped", value: null, source: "derived", answeredAt: now, updatedAt: now },
+            set: {
+              state: "skipped",
+              value: null,
+              source: "derived",
+              sourceReference: { reason: "skip_pattern", ruleId: "internal" },
+              answeredAt: now,
+              answeredByMembershipId: null,
+              updatedAt: now,
+            },
           })
           .returning();
         await t

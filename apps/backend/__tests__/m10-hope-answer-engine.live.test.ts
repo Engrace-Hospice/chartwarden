@@ -137,10 +137,18 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
     const a = await draft();
     const res = await answers.patchAnswers(ORG, membershipId, a.id, {
       ifVersion: a.version,
-      changes: [{ itemCode: "J2051A", action: "set", value: "2" }],
+      changes: [
+        { itemCode: "J2050A", action: "set", value: "1" },
+        { itemCode: "J2051A", action: "set", value: "2" },
+      ],
     });
     expect(res.version).toBe(a.version + 1);
-    expect(res.answers[0]).toMatchObject({ itemCode: "J2051A", state: "answered", value: "2", source: "user" });
+    expect(res.answers.find((x) => x.itemCode === "J2051A")).toMatchObject({
+      itemCode: "J2051A",
+      state: "answered",
+      value: "2",
+      source: "user",
+    });
     expect(await dbAnswer(a.id, "J2051A")).toMatchObject({
       state: "answered",
       value: "2",
@@ -197,13 +205,20 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
     const a = await draft();
     const first = await answers.patchAnswers(ORG, membershipId, a.id, {
       ifVersion: a.version,
-      changes: [{ itemCode: "J2051A", action: "set", value: "2" }],
+      changes: [
+        { itemCode: "J2050A", action: "set", value: "1" },
+        { itemCode: "J2051A", action: "set", value: "2" },
+      ],
     });
     const cleared = await answers.patchAnswers(ORG, membershipId, a.id, {
       ifVersion: first.version,
       changes: [{ itemCode: "J2051A", action: "clear" }],
     });
-    expect(cleared.answers[0]).toMatchObject({ itemCode: "J2051A", state: "unanswered", value: null });
+    expect(cleared.answers.find((x) => x.itemCode === "J2051A")).toMatchObject({
+      itemCode: "J2051A",
+      state: "unanswered",
+      value: null,
+    });
     expect(await dbAnswer(a.id, "J2051A")).toBeNull();
   });
 
@@ -273,11 +288,170 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
     const a = await draft();
     const patched = await answers.patchAnswers(ORG, membershipId, a.id, {
       ifVersion: a.version,
-      changes: [{ itemCode: "J2051A", action: "set", value: "3" }],
+      changes: [
+        { itemCode: "J2050A", action: "set", value: "1" },
+        { itemCode: "J2051A", action: "set", value: "3" },
+      ],
     });
     expect(patched.version).toBe(a.version + 1);
     const signed = await svc.signTimepoint(ORG, membershipId, a.id);
     expect(signed.j2051MaxSeverity).toBe("severe");
     expect(signed.j2051TriggerFired).toBe(true);
+  });
+
+  it("reconciles Section F skip branches and discards stale downstream dates", async () => {
+    const a = await draft();
+    const skipped = await answers.patchAnswers(ORG, membershipId, a.id, {
+      ifVersion: a.version,
+      changes: [{ itemCode: "F2000A", action: "set", value: "0" }],
+    });
+    expect(skipped.answers.find((x) => x.itemCode === "F2000B")).toMatchObject({
+      state: "skipped",
+      value: null,
+      applicability: "not_applicable",
+    });
+
+    const reopened = await answers.patchAnswers(ORG, membershipId, a.id, {
+      ifVersion: skipped.version,
+      changes: [{ itemCode: "F2000A", action: "set", value: "1" }],
+    });
+    expect(reopened.answers.find((x) => x.itemCode === "F2000B")).toMatchObject({
+      state: "unanswered",
+      applicability: "applicable",
+    });
+
+    const withDate = await answers.patchAnswers(ORG, membershipId, a.id, {
+      ifVersion: reopened.version,
+      changes: [{ itemCode: "F2000B", action: "set", value: "2025-10-15" }],
+    });
+    expect(withDate.answers.find((x) => x.itemCode === "F2000B")).toMatchObject({ state: "answered", value: "2025-10-15" });
+
+    await answers.patchAnswers(ORG, membershipId, a.id, {
+      ifVersion: withDate.version,
+      changes: [{ itemCode: "F2000A", action: "set", value: "0" }],
+    });
+    expect(await dbAnswer(a.id, "F2000B")).toMatchObject({ state: "skipped", value: null });
+  });
+
+  it("clears stale downstream answers when a parent becomes pending", async () => {
+    const a = await draft();
+    const opened = await answers.patchAnswers(ORG, membershipId, a.id, {
+      ifVersion: a.version,
+      changes: [{ itemCode: "F2100A", action: "set", value: "1" }],
+    });
+    const dated = await answers.patchAnswers(ORG, membershipId, a.id, {
+      ifVersion: opened.version,
+      changes: [{ itemCode: "F2100B", action: "set", value: "2025-10-15" }],
+    });
+    const pending = await answers.patchAnswers(ORG, membershipId, a.id, {
+      ifVersion: dated.version,
+      changes: [{ itemCode: "F2100A", action: "clear" }],
+    });
+    expect(pending.answers.find((x) => x.itemCode === "F2100B")).toMatchObject({
+      state: "unanswered",
+      applicability: "pending",
+    });
+    expect(await dbAnswer(a.id, "F2100B")).toBeNull();
+  });
+
+  it("rejects direct writes to not-applicable or pending descendants", async () => {
+    const a = await draft();
+    const closed = await answers.patchAnswers(ORG, membershipId, a.id, {
+      ifVersion: a.version,
+      changes: [{ itemCode: "F2200A", action: "set", value: "0" }],
+    });
+    await expect(
+      answers.patchAnswers(ORG, membershipId, a.id, {
+        ifVersion: closed.version,
+        changes: [{ itemCode: "F2200B", action: "set", value: "2025-10-15" }],
+      }),
+    ).rejects.toThrow(/not currently applicable|not_applicable/i);
+
+    const b = await draft();
+    await expect(
+      answers.patchAnswers(ORG, membershipId, b.id, {
+        ifVersion: b.version,
+        changes: [{ itemCode: "F3000B", action: "set", value: "2025-10-15" }],
+      }),
+    ).rejects.toThrow(/pending|not currently applicable/i);
+  });
+
+  it("reconciles J2051 false and true trigger branches", async () => {
+    const falseDraft = await draft();
+    const falseResult = await answers.patchAnswers(ORG, membershipId, falseDraft.id, {
+      ifVersion: falseDraft.version,
+      changes: [
+        { itemCode: "J2050A", action: "set", value: "1" },
+        ...["A", "B", "C", "D", "E", "F", "G", "H"].map((suffix) => ({
+          itemCode: `J2051${suffix}`,
+          action: "set" as const,
+          value: "9",
+        })),
+      ],
+    });
+    expect(falseResult.answers.find((x) => x.itemCode === "J2052A")).toMatchObject({
+      state: "skipped",
+      applicability: "not_applicable",
+    });
+
+    const trueDraft = await draft();
+    const trueResult = await answers.patchAnswers(ORG, membershipId, trueDraft.id, {
+      ifVersion: trueDraft.version,
+      changes: [
+        { itemCode: "J2050A", action: "set", value: "1" },
+        { itemCode: "J2051A", action: "set", value: "2" },
+      ],
+    });
+    expect(trueResult.answers.find((x) => x.itemCode === "J2052A")).toMatchObject({
+      state: "unanswered",
+      applicability: "applicable",
+    });
+    const refreshed = await svc.getAssessment(ORG, trueDraft.id);
+    expect(refreshed.j2051TriggerFired).toBe(true);
+    expect(refreshed.j2051MaxSeverity).toBe("moderate");
+  });
+
+  it("evaluates multiple opioid parent changes from the final patched answer set", async () => {
+    const a = await draft();
+    const result = await answers.patchAnswers(ORG, membershipId, a.id, {
+      ifVersion: a.version,
+      changes: [
+        { itemCode: "N0500A", action: "set", value: "0" },
+        { itemCode: "N0510A", action: "set", value: "1" },
+      ],
+    });
+    expect(result.answers.find((x) => x.itemCode === "N0520A")).toMatchObject({
+      state: "unanswered",
+      applicability: "applicable",
+    });
+  });
+
+  it("materializes validation findings by stable fingerprint and resolves absent findings", async () => {
+    const a = await draft();
+    const invalid = await answers.patchAnswers(ORG, membershipId, a.id, {
+      ifVersion: a.version,
+      changes: [
+        { itemCode: "M1190", action: "set", value: "1" },
+        { itemCode: "M1195A", action: "set", value: "1" },
+        { itemCode: "M1195Z", action: "set", value: "1" },
+      ],
+    });
+    const first = await svc.getValidation(ORG, a.id, { mode: "final" });
+    expect(first.findings.find((finding) => finding.ruleId === "-3094")).toMatchObject({
+      fingerprint: "-3094:M1195Z",
+      resolved: false,
+    });
+
+    await answers.patchAnswers(ORG, membershipId, a.id, {
+      ifVersion: invalid.version,
+      changes: [{ itemCode: "M1195Z", action: "clear" }],
+    });
+    const second = await svc.getValidation(ORG, a.id, { mode: "final" });
+    expect(second.findings.some((finding) => finding.fingerprint === "-3094:M1195Z")).toBe(false);
+    const { rows } = await admin.query<{ resolved: boolean }>(
+      "SELECT resolved FROM hope_validation_finding WHERE hope_assessment_id=$1 AND fingerprint='-3094:M1195Z'",
+      [a.id],
+    );
+    expect(rows).toEqual([{ resolved: true }]);
   });
 });

@@ -190,6 +190,36 @@ export interface PatientReader {
   findById(input: { organizationId: string; id: string }): Promise<PatientIdentity | null>;
 }
 
+export interface PatientHopeAdmissionPrefillFacts {
+  readonly patientId: string;
+  readonly organizationId: string;
+  readonly legalFirstName: string;
+  readonly legalMiddleName: string | null;
+  readonly legalLastName: string;
+  readonly legalNameSuffix: string | null;
+  readonly dob: string;
+  readonly sexAssignedAtBirth: string;
+  readonly raceCodes: readonly string[];
+  readonly ethnicityCodes: readonly string[];
+  readonly preferredLanguageCode: string | null;
+  readonly identifiers: readonly {
+    readonly kind: PatientIdentifierKind;
+    readonly value: string | null;
+    readonly effectiveFrom: string;
+    readonly effectiveTo: string | null;
+  }[];
+}
+
+/** M5 narrow read seam for M10 HOPE Admission prefill. It deliberately exposes plaintext only for
+ * identifier kinds that M5 already treats as plaintext-readable through normal routes; SSN/state id
+ * remain last4/encrypted outside this contract. */
+export interface PatientHopeAdmissionPrefillReader {
+  factsForHopeAdmissionPrefill(input: {
+    readonly organizationId: string;
+    readonly patientId: string;
+  }): Promise<PatientHopeAdmissionPrefillFacts | null>;
+}
+
 export interface PatientIntakeCandidate {
   readonly patientId: string;
   readonly confidence: "deterministic" | "probable";
@@ -399,6 +429,7 @@ export interface PatientResidenceSnapshot {
   readonly kind: PatientAddressKind;
   /** M40 Facility id, set only when `kind === "facility"`. */
   readonly facilityId: string | null;
+  readonly postalCode: string | null;
 }
 
 export interface PatientAddressReader {

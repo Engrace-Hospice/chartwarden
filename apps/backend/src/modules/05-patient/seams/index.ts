@@ -2,6 +2,7 @@ import type { DbClient } from "@wardenx/db";
 import type {
   PatientAddressReader,
   PatientCoverageReader,
+  PatientHopeAdmissionPrefillReader,
   PatientMutator,
   PatientPrivacyFlagReader,
   PatientReader,
@@ -14,6 +15,7 @@ import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { buildPatientAddressReader } from "../address-reader";
 import { buildPatientAdmissionClearanceReader } from "../admission-clearance-reader";
 import { buildPatientCoverageReader } from "../coverage-reader";
+import { buildPatientHopeAdmissionPrefillReader } from "../hope-admission-prefill-reader";
 import { buildPatientPrivacyFlagReader } from "../privacy-flag-reader";
 import { type CareTeamSeamDeps, registerCareTeamSeam } from "./care-team-provider";
 import { type CaseloadSeamDeps, registerCaseloadSeam } from "./caseload-provider";
@@ -93,6 +95,8 @@ export function registerPatientSeams(deps: PatientSeamDeps = {}): void {
   // present: without one there is no coverage data to project, and the deny-stub's loud failure is the
   // honest answer (an empty coverage list would read as "this patient has no insurance").
   if (deps.db) registerSeam("PatientCoverageReader", buildPatientCoverageReader(deps.db));
+  if (deps.db)
+    registerSeam("PatientHopeAdmissionPrefillReader", buildPatientHopeAdmissionPrefillReader(deps.db));
   // TASK-015/ARCH-018 — the M31 two-party-recording-consent residence-state read. Same posture as
   // PatientCoverageReader: registered only with a db present, since there is no address data to read
   // without one and the deny-stub's loud failure is honest (the ABAC predicate already fails closed
@@ -123,6 +127,10 @@ export function getPatientReader(): PatientReader {
 /** Typed resolver for M5's §3.4 PatientCoverageReader seam (the billing payer-resolution read). */
 export function getPatientCoverageReader(): PatientCoverageReader {
   return getSeam("PatientCoverageReader");
+}
+
+export function getPatientHopeAdmissionPrefillReader(): PatientHopeAdmissionPrefillReader {
+  return getSeam("PatientHopeAdmissionPrefillReader");
 }
 
 /** Typed resolver for M5's PatientAddressReader seam (the M31 two-party-recording-consent read). */

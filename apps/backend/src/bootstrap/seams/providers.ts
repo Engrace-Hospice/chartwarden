@@ -93,6 +93,7 @@ import type {
   PatientCaregiverReader,
   PatientCounterProvider,
   PatientCoverageReader,
+  PatientHopeAdmissionPrefillReader,
   PatientMutator,
   PatientPrivacyFlagReader,
   PatientReader,
@@ -196,6 +197,12 @@ export const patientReaderDenyStub: PatientReader = {
   },
   findById() {
     throw new NotImplementedError("PatientReader");
+  },
+};
+
+export const patientHopeAdmissionPrefillReaderDenyStub: PatientHopeAdmissionPrefillReader = {
+  factsForHopeAdmissionPrefill() {
+    throw new NotImplementedError("PatientHopeAdmissionPrefillReader");
   },
 };
 

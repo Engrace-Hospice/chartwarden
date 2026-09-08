@@ -2345,7 +2345,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           organizationId: string,
           patientId: string,
           asOfDate: string,
-        ): Promise<{ kind: PlaceOfServiceResidenceKind; facilityId: string | null } | null>;
+        ): Promise<{ kind: PlaceOfServiceResidenceKind; facilityId: string | null; postalCode: string | null } | null>;
       };
       return reader.residenceAt(organizationId, patientId, asOfDate);
     },

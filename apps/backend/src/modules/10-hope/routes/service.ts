@@ -34,6 +34,9 @@ import type {
   HopeAnswerPatchResult,
   HopeAssessmentWorkspace,
 } from "../hope-answer-service";
+import type { HopeValidationRunView } from "../hope-validation-service";
+
+export type { HopeValidationFindingView, HopeValidationRunView } from "../hope-validation-service";
 
 // ── §2.4 outbox events the service records (the relay wraps them in the M1 envelope) ───────────────────
 export interface RecordedHopeEvent {
@@ -237,10 +240,8 @@ export interface HopeRouteService extends HopeAbacResolver {
   getValidation(
     organizationId: string,
     id: string,
-  ): Promise<{
-    assessmentId: string;
-    findings: ReadonlyArray<{ ruleId: string; severity: string; message: string }>;
-  }>;
+    options?: { readonly mode?: "draft" | "final"; readonly submissionDate?: string },
+  ): Promise<HopeValidationRunView>;
   listSubmissions(
     organizationId: string,
     providerEntityId?: string,
@@ -794,6 +795,15 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
           version: r.version,
         },
         sections: [],
+        progress: {
+          active: 0,
+          applicable: 0,
+          notApplicable: 0,
+          pending: 0,
+          answered: 0,
+          skipped: 0,
+          unanswered: 0,
+        },
       };
     },
 
@@ -817,6 +827,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
             source: null,
             answeredAt: null,
             answeredByMembershipId: null,
+            applicability: "applicable" as const,
+            skipReason: null,
           };
         }
         require_(change.value != null, "M10_INVALID_ANSWER", `${change.itemCode} answered values cannot be null.`);
@@ -836,6 +848,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
           source: "user" as const,
           answeredAt,
           answeredByMembershipId: userId,
+          applicability: "applicable" as const,
+          skipReason: null,
         };
       });
       canonicalAnswers.set(id, byItem);
@@ -1002,11 +1016,11 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     async getSfv(organizationId, id) {
       return viewF(findSfv(organizationId, id));
     },
-    async getValidation(organizationId, id) {
+    async getValidation(organizationId, id, options) {
       findA(organizationId, id);
       // The pre-submission validation engine (M10-T04) binds over the per-section payload at assemble time;
       // the on-demand route returns the row's stored findings (none in the in-mem slice).
-      return { assessmentId: id, findings: [] };
+      return { assessmentId: id, mode: options?.mode ?? "final", evaluatedAt: now(), findings: [] };
     },
 
     async listSubmissions(organizationId, providerEntityId) {

@@ -1456,6 +1456,7 @@ import {
   SubmissionListQuerySchema as M10SubmissionListQuerySchema,
   SummaryPdfSchema as M10SummaryPdfSchema,
   UpdateDraftSchema as M10UpdateDraftSchema,
+  ValidationQuerySchema as M10ValidationQuerySchema,
 } from "../../apps/backend/src/modules/10-hope/routes/hope-typebox";
 import {
   CompleteOrderRequest as M11CompleteOrderRequest,
@@ -6225,6 +6226,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/hope/assessments/:id/validation": {
     summary: "On-demand pre-submission validation findings for one row",
+    query: M10ValidationQuerySchema,
     response: M10HopeValidationResponseSchema,
   },
   "GET /api/v1/hope/sfv": {

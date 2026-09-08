@@ -108,6 +108,7 @@ import {
   medicationOrderProviderDenyStub,
   messagingProviderDenyStub,
   metricsProviderDenyStub,
+  patientHopeAdmissionPrefillReaderDenyStub,
   mileagePayrollReaderDenyStub,
   mswRiskFactorReaderDenyStub,
   narrativeEnhancementProviderDenyStub,
@@ -199,6 +200,12 @@ export const REQUIRED_SEAMS = [
     denyStub: elevatedApprovalReaderDenyStub,
   },
   { key: "PatientReader", ownerModule: 5, phi: true, denyStub: patientReaderDenyStub },
+  {
+    key: "PatientHopeAdmissionPrefillReader",
+    ownerModule: 5,
+    phi: true,
+    denyStub: patientHopeAdmissionPrefillReaderDenyStub,
+  },
   // M5 (§3.4) — the coverage list M23/M24 resolve a claim's billed payer from. PHI: carries the
   // member/subscriber id, so it is boot-validated and fail-closed like the other M5 reads.
   {

@@ -36,12 +36,14 @@ import { and, desc, eq, inArray } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
 import { createHopeAssessmentAnswerService } from "./hope-answer-service";
+import { createHopeAdmissionPrefillService } from "./hope-admission-prefill-service";
 import {
   createHopeAssessmentAnswerWriter,
   initializeHopeCorrection,
   initializeNewHopeRecord,
 } from "./hope-record-initializer";
 import { createHopeSpecRegistry } from "./hope-spec-registry";
+import { createHopeValidationService } from "./hope-validation-service";
 import type {
   CorrectTimepointArgs,
   HopeAssessmentView,
@@ -202,6 +204,8 @@ export function createDbHopeBackend(
   outbox: HopeWriteOutboxPort = NOOP_OUTBOX,
 ): HopeRouteService {
   const answerService = createHopeAssessmentAnswerService(db);
+  const validationService = createHopeValidationService(db);
+  const admissionPrefillService = createHopeAdmissionPrefillService();
   /** Emit one `m10.hope.*` event on the caller's tx (validated + persisted by the bound publisher). */
   async function emit(
     tx: unknown,
@@ -278,18 +282,21 @@ export function createDbHopeBackend(
     assessmentId: string,
   ): Promise<J2051SymptomReading[] | null> {
     const rows = await tx
-      .select({ itemCode: ITEM.itemCode, value: ANSWER.value })
+      .select({ itemCode: ITEM.itemCode, state: ANSWER.state, value: ANSWER.value })
       .from(ANSWER)
       .innerJoin(ITEM, eq(ITEM.id, ANSWER.specItemId))
       .where(
         and(
           eq(ANSWER.hopeAssessmentId, assessmentId),
-          eq(ANSWER.state, "answered"),
-          inArray(ITEM.itemCode, J2051_ITEM_CODES),
+          inArray(ITEM.itemCode, ["J2050A", ...J2051_ITEM_CODES]),
         ),
       );
     if (rows.length === 0) return null;
+    if (rows.some((row) => row.itemCode === "J2050A" && row.state === "answered" && row.value === "0")) {
+      return [];
+    }
     return rows.flatMap((row) => {
+      if (row.itemCode === "J2050A" || row.state !== "answered") return [];
       const value = typeof row.value === "string" ? row.value : null;
       const severity = value ? J2051_VALUE_TO_SEVERITY[value] : null;
       return severity ? [{ symptomCode: row.itemCode, severity }] : [];
@@ -373,28 +380,12 @@ export function createDbHopeBackend(
     },
 
     // ── Pre-submission validation findings (§3.3 hope_validation_finding) ───────────────────────────
-    async getValidation(organizationId, id) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [a] = (await tx
-          .select({ id: ASSESS.id })
-          .from(ASSESS)
-          .where(eq(ASSESS.id, id))
-          .limit(1)) as {
-          id: string;
-        }[];
-        if (!a) throw new NotFoundError(`HOPE assessment ${id} not found`);
-        const rows = await tx
-          .select({ ruleId: FINDING.ruleId, severity: FINDING.severity, message: FINDING.message })
-          .from(FINDING)
-          .where(eq(FINDING.hopeAssessmentId, id));
-        return {
-          assessmentId: id,
-          findings: rows.map((f) => ({
-            ruleId: f.ruleId,
-            severity: String(f.severity),
-            message: f.message,
-          })),
-        };
+    async getValidation(organizationId, id, options) {
+      return validationService.validateAssessment({
+        organizationId,
+        assessmentId: id,
+        mode: options?.mode ?? "final",
+        submissionDate: options?.submissionDate,
       });
     },
 
@@ -574,11 +565,19 @@ export function createDbHopeBackend(
 
     // ── Record a draft timepoint (§2.2.1 — linked to its open schedule if one exists) ───────────────
     async recordTimepoint(organizationId, userId, admissionId, args: RecordTimepointArgs) {
-      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const view = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
+        const admissionSummary =
+          args.rfaKind === "01_admission"
+            ? await getSeam("AdmissionStatusReader").getAdmissionSummary(organizationId, admissionId)
+            : null;
+        if (admissionSummary && admissionSummary.organizationId !== organizationId) {
+          throw new NotFoundError(`Admission ${admissionId} not found`);
+        }
+        const regulatoryTargetDate = admissionSummary?.admissionAt ?? args.targetDate;
         const init = await initializeNewHopeRecord(createHopeSpecRegistry(t), {
           rfaKind: args.rfaKind,
-          targetDate: args.targetDate,
+          targetDate: regulatoryTargetDate,
         });
         // Link the draft to the open schedule for (admission, rfa) so the sign trigger can close it.
         const [sched] = (await t
@@ -598,7 +597,7 @@ export function createDbHopeBackend(
         };
         if (sched) {
           capture = assertCaptureAllowed(
-            args.targetDate,
+            regulatoryTargetDate,
             {
               windowOpensAt: sched.windowOpensAt.toISOString(),
               windowClosesAt: sched.windowClosesAt.toISOString(),
@@ -615,7 +614,7 @@ export function createDbHopeBackend(
             .insert(ASSESS)
             .values({
               organizationId,
-              patientId: sched?.patientId ?? admissionId,
+              patientId: admissionSummary?.patientId ?? sched?.patientId ?? admissionId,
               admissionId,
               scheduleId: sched?.id ?? null,
               rfaKind: args.rfaKind,
@@ -623,8 +622,10 @@ export function createDbHopeBackend(
               isc: init.isc,
               status: "draft",
               data: args.data,
+              providerEntityId: admissionSummary?.providerEntityId ?? null,
+              locationId: admissionSummary?.locationId ?? null,
               dischargeReason: args.dischargeReason as AssessmentRow["dischargeReason"],
-              targetDate: new Date(args.targetDate),
+              targetDate: new Date(regulatoryTargetDate),
               sourceEncounterId: args.sourceEncounterId ?? null,
               wasLate: capture.wasLate,
               lateCompletionReasonCode: capture.lateReasonCode,
@@ -641,8 +642,19 @@ export function createDbHopeBackend(
           specVersionId: init.specVersionId,
           controlAnswers: init.controlAnswers,
         });
+        await admissionPrefillService.prefillAdmission({
+          tx: t,
+          organizationId,
+          assessment: row,
+          specVersionCode: init.specVersionCode,
+          admissionDate: regulatoryTargetDate.slice(0, 10),
+        });
         return toAssessmentView(row);
       });
+      if (view.rfaKind === "01_admission" && view.regulatory.isc === "HA") {
+        await validationService.validateAssessment({ organizationId, assessmentId: view.id, mode: "draft" });
+      }
+      return view;
     },
 
     // ── Record an RFA-04 SFV completion (§2.2.3) ─────────────────────────────────────────────────────

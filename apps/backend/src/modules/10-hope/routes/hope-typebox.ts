@@ -20,6 +20,7 @@ import type {
   HopeScheduleView as ServiceScheduleView,
   HopeSfvView as ServiceSfvView,
   HopeSubmissionView as ServiceSubmissionView,
+  HopeValidationRunView as ServiceValidationRunView,
   HopeWorkflowStateView as ServiceWorkflowStateView,
 } from "./service";
 
@@ -161,6 +162,10 @@ export const SubmissionListQuerySchema = Type.Object({
 export const DashboardQuerySchema = Type.Object({
   providerEntityId: Type.Optional(Type.String({ maxLength: 64 })),
 });
+export const ValidationQuerySchema = Type.Object({
+  mode: Type.Optional(Type.Union([Type.Literal("draft"), Type.Literal("final")])),
+  submissionDate: Type.Optional(Type.String({ format: "date-time" })),
+});
 
 // ── §4.2 RESPONSE DTOs (F0 enrichment) ─────────────────────────────────────────────────────────────
 // The read + write routes returned typed service view shapes (`HopeAssessmentView` / `HopeScheduleView` /
@@ -235,6 +240,19 @@ const ANSWER_STATE = Type.Union([
   Type.Literal("answered"),
   Type.Literal("skipped"),
 ]);
+const APPLICABILITY_STATE = Type.Union([
+  Type.Literal("applicable"),
+  Type.Literal("not_applicable"),
+  Type.Literal("pending"),
+]);
+const SkipReasonSchema = Type.Union([
+  Type.Object({
+    ruleId: Type.String(),
+    cmsRuleId: Type.Optional(Type.String()),
+    dependsOn: Type.Array(Type.String()),
+  }),
+  Type.Null(),
+]);
 const HopeItemStateSchema = Type.Object({
   itemCode: Type.String(),
   active: Type.Boolean(),
@@ -243,6 +261,8 @@ const HopeItemStateSchema = Type.Object({
   source: Type.Union([ANSWER_SOURCE, Type.Null()]),
   answeredAt: NullableString(),
   answeredByMembershipId: NullableString(),
+  applicability: APPLICABILITY_STATE,
+  skipReason: SkipReasonSchema,
 });
 const HopeWorkspaceItemSchema = Type.Composite([
   HopeItemStateSchema,
@@ -277,6 +297,15 @@ export const HopeAssessmentWorkspaceResponseSchema = Type.Object({
       items: Type.Array(HopeWorkspaceItemSchema),
     }),
   ),
+  progress: Type.Object({
+    active: Type.Integer(),
+    applicable: Type.Integer(),
+    notApplicable: Type.Integer(),
+    pending: Type.Integer(),
+    answered: Type.Integer(),
+    skipped: Type.Integer(),
+    unanswered: Type.Integer(),
+  }),
 });
 export const HopeAnswerPatchResponseSchema = Type.Object({
   assessmentId: Type.String(),
@@ -458,11 +487,21 @@ export const HopeSummaryRequestedResponseSchema = Type.Object({
 /** Route 14 — on-demand pre-submission validation findings for one row. */
 export const HopeValidationResponseSchema = Type.Object({
   assessmentId: Type.String(),
+  mode: Type.Union([Type.Literal("draft"), Type.Literal("final")]),
+  evaluatedAt: Type.String(),
   findings: Type.Array(
     Type.Object({
       ruleId: Type.String(),
-      severity: Type.String(),
+      severity: Type.Union([Type.Literal("error"), Type.Literal("warning")]),
+      findingKind: NullableString(),
+      section: Type.String(),
+      itemCode: NullableString(),
       message: Type.String(),
+      details: Type.Record(Type.String(), Type.Unknown()),
+      fingerprint: NullableString(),
+      evaluatedAt: Type.String(),
+      resolved: Type.Boolean(),
+      resolvedAt: NullableString(),
     }),
   ),
 });
@@ -491,6 +530,7 @@ type _WorkflowState = Conforms<
   Static<typeof HopeWorkflowStateResponseSchema>,
   ServiceWorkflowStateView
 >;
+type _Validation = Conforms<Static<typeof HopeValidationResponseSchema>, ServiceValidationRunView>;
 type _ScheduleList = Conforms<
   Static<typeof HopeScheduleListResponseSchema>,
   { readonly schedules: readonly ServiceScheduleView[] }

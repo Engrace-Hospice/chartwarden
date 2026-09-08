@@ -48,6 +48,7 @@ import {
   SubmissionParamsSchema,
   SummaryPdfSchema,
   UpdateDraftSchema,
+  ValidationQuerySchema,
   parse,
 } from "./hope-typebox";
 import type { HopeRouteService } from "./service";
@@ -412,7 +413,11 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
-      return service.getValidation(organizationId, id);
+      const query = parse(ValidationQuerySchema, request.query);
+      return service.getValidation(organizationId, id, {
+        mode: query.mode,
+        submissionDate: query.submissionDate,
+      });
     },
   );
 
