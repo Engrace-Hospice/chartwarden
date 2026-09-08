@@ -83,7 +83,7 @@ export interface SfvCompletionPlan {
 
 /**
  * §2.2.3 — complete an SFV with the signed RFA-04 row that addressed it. Guards (in §4.4 order):
- *   - SFV must not already be `completed`            → 409 `M10_SFV_ALREADY_COMPLETED`
+ *   - SFV must not already be `completed`/`withdrawn` → 409
  *   - capture is not past `due_at` (+grace) unless an admin override is supplied → 409 `M10_SFV_PAST_DUE`
  * `overdue` and `missed` SFVs may still be completed (the obligation persists; lateness is recorded), but
  * a `missed`/past-due completion needs the admin override flag — the surveyor sees both the miss and the
@@ -100,6 +100,11 @@ export function planSfvCompletion(
     "M10_SFV_ALREADY_COMPLETED",
     `Symptom-follow-up-visit ${target.id} is already completed.`,
   );
+  require_(
+    target.status !== "withdrawn",
+    "M10_SFV_WITHDRAWN",
+    `Symptom-follow-up-visit ${target.id} was withdrawn because the J2051 trigger no longer applies.`,
+  );
   const pastDue = Date.parse(completedAt) > Date.parse(target.dueAt);
   require_(
     !pastDue || options.adminOverride === true,
@@ -114,8 +119,8 @@ export function planSfvCompletion(
  *   open|overdue, `asOf` > due_at + {@link SFV_MISSED_AFTER_DAYS} → `missed` (terminal; fires `sfv_missed`)
  *   open,         `asOf` > due_at                                → `overdue`
  *   otherwise no change.
- * Returns the SAME status when no transition applies (the cron only writes on change). `completed` and
- * `missed` are terminal and pass through unchanged.
+ * Returns the SAME status when no transition applies (the cron only writes on change). `completed`,
+ * `withdrawn`, and `missed` are terminal and pass through unchanged.
  */
 export function decideSfvWatchdogStatus(input: {
   readonly current: HopeSfvStatus;
@@ -123,7 +128,8 @@ export function decideSfvWatchdogStatus(input: {
   readonly asOfInstant: IsoInstant;
   readonly timeZone: string;
 }): HopeSfvStatus {
-  if (input.current === "completed" || input.current === "missed") return input.current;
+  if (input.current === "completed" || input.current === "withdrawn" || input.current === "missed")
+    return input.current;
   const asOf = Date.parse(input.asOfInstant);
   const missedAt = Date.parse(
     endOfOrgDayInstant(

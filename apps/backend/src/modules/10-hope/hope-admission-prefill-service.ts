@@ -169,13 +169,13 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
   const OPTION = schema.hopeSpecItemOptions;
   const ANSWER = schema.hopeAssessmentAnswers;
 
-  async function specItems(tx: DbClient, specVersionId: string, itemCodes: readonly string[]) {
+  async function specItems(tx: DbClient, specVersionId: string, isc: HopeIsc, itemCodes: readonly string[]) {
     if (itemCodes.length === 0) return new Map<string, SpecItemRow>();
     const rows = await tx
       .select({ item: ITEM })
       .from(ITEM)
       .innerJoin(ISC, eq(ISC.specItemId, ITEM.id))
-      .where(and(eq(ITEM.specVersionId, specVersionId), inArray(ITEM.itemCode, [...itemCodes]), eq(ISC.isc, "HA"), eq(ISC.active, true)));
+      .where(and(eq(ITEM.specVersionId, specVersionId), inArray(ITEM.itemCode, [...itemCodes]), eq(ISC.isc, isc), eq(ISC.active, true)));
     return new Map(rows.map((row) => [row.item.itemCode, row.item]));
   }
 
@@ -247,7 +247,7 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
 
   return {
     async prefillAdmission({ tx, organizationId, assessment, specVersionCode, admissionDate }) {
-      if (assessment.rfaKind !== "01_admission" || assessment.isc !== "HA" || assessment.status !== "draft") {
+      if (!assessment.specVersionId || !assessment.isc || assessment.status !== "draft") {
         return { assessmentId: assessment.id, prefilledItemCodes: [] };
       }
       const patientReader = getSeam("PatientHopeAdmissionPrefillReader") as PatientHopeAdmissionPrefillReader;
@@ -264,7 +264,7 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
         residenceSite: mapHopeResidenceSite(residence?.kind, residence?.facilityId),
         coverages,
       });
-      const items = await specItems(tx, assessment.specVersionId!, answers.map((answer) => answer.itemCode));
+      const items = await specItems(tx, assessment.specVersionId, assessment.isc as HopeIsc, answers.map((answer) => answer.itemCode));
       const existing = await answersByItem(tx, assessment.id, [...items.values()]);
       const written: string[] = [];
       for (const answer of answers) {

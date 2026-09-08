@@ -34,8 +34,11 @@ import type {
   HopeAnswerPatchResult,
   HopeAssessmentWorkspace,
 } from "../hope-answer-service";
+import type { HopeReviewReadModel } from "../hope-readiness-service";
 import type { HopeValidationRunView } from "../hope-validation-service";
 
+export type { HopeReviewReadModel } from "../hope-readiness-service";
+export type { HopeAnswerPatchResult, HopeAssessmentWorkspace } from "../hope-answer-service";
 export type { HopeValidationFindingView, HopeValidationRunView } from "../hope-validation-service";
 
 // ── §2.4 outbox events the service records (the relay wraps them in the M1 envelope) ───────────────────
@@ -178,11 +181,36 @@ export interface RecordSfvArgs {
   readonly data: Record<string, unknown>;
   readonly adminOverride?: boolean;
 }
+export interface SignTimepointArgs {
+  readonly ifVersion?: number;
+}
+export interface SetHuvCompletionDateArgs {
+  readonly ifVersion: number;
+  readonly z0350: string;
+}
+export interface HopeSignResult {
+  readonly assessmentId: string;
+  readonly status: "signed";
+  readonly version: number;
+  readonly signedAt: string;
+  readonly signedByMembershipId: string;
+  readonly z0500b: string;
+  readonly validation: {
+    readonly errorCount: number;
+    readonly warningCount: number;
+    readonly hasBlockingErrors: boolean;
+  };
+}
 export interface CorrectTimepointArgs {
   readonly correctionReason: string;
   readonly targetDate: string;
   readonly authorDiscipline: string;
   readonly data: Record<string, unknown>;
+  readonly ifVersion?: number;
+}
+export interface InactivateTimepointArgs {
+  readonly reason: string;
+  readonly ifVersion?: number;
 }
 
 /** The §4.1 route service contract (the routes compose over it; the in-mem slice + the prod Drizzle
@@ -212,18 +240,36 @@ export interface HopeRouteService extends HopeAbacResolver {
     data: Record<string, unknown>,
   ): Promise<HopeAssessmentView>;
   getAssessmentWorkspace(organizationId: string, id: string): Promise<HopeAssessmentWorkspace>;
+  getAssessmentReview(organizationId: string, id: string): Promise<HopeReviewReadModel>;
   patchAssessmentAnswers(
     organizationId: string,
     userId: string,
     id: string,
     input: { readonly ifVersion: number; readonly changes: readonly HopeAnswerPatchChange[] },
   ): Promise<HopeAnswerPatchResult>;
-  signTimepoint(organizationId: string, userId: string, id: string): Promise<HopeAssessmentView>;
+  setHuvCompletionDate(
+    organizationId: string,
+    userId: string,
+    id: string,
+    input: SetHuvCompletionDateArgs,
+  ): Promise<HopeAnswerPatchResult>;
+  signTimepoint(
+    organizationId: string,
+    userId: string,
+    id: string,
+    args?: SignTimepointArgs,
+  ): Promise<HopeSignResult>;
   correctTimepoint(
     organizationId: string,
     userId: string,
     id: string,
     args: CorrectTimepointArgs,
+  ): Promise<HopeAssessmentView>;
+  inactivateTimepoint(
+    organizationId: string,
+    userId: string,
+    id: string,
+    args: InactivateTimepointArgs,
   ): Promise<HopeAssessmentView>;
   getAssessment(organizationId: string, id: string): Promise<HopeAssessmentView>;
   listPatientAssessments(
@@ -540,7 +586,13 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       {
         state: "answered" | "skipped";
         value: unknown | null;
-        source: "user" | "derived";
+        source:
+          | "user"
+          | "patient_prefill"
+          | "admission_prefill"
+          | "derived"
+          | "imported"
+          | "correction_copy";
         answeredAt: string | null;
         answeredByMembershipId: string | null;
       }
@@ -804,19 +856,121 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
           skipped: 0,
           unanswered: 0,
         },
+        huv:
+          r.regulatory.isc === "HUV"
+            ? {
+                scheduleId:
+                  [...schedules.values()].find(
+                    (s) =>
+                      s.organizationId === organizationId &&
+                      s.admissionId === r.admissionId &&
+                      s.rfaKind === r.rfaKind,
+                  )?.id ?? null,
+                scheduleStatus:
+                  [...schedules.values()].find(
+                    (s) =>
+                      s.organizationId === organizationId &&
+                      s.admissionId === r.admissionId &&
+                      s.rfaKind === r.rfaKind,
+                  )?.status ?? null,
+                windowStart:
+                  [...schedules.values()].find(
+                    (s) =>
+                      s.organizationId === organizationId &&
+                      s.admissionId === r.admissionId &&
+                      s.rfaKind === r.rfaKind,
+                  )?.windowOpensAt ?? null,
+                windowEnd:
+                  [...schedules.values()].find(
+                    (s) =>
+                      s.organizationId === organizationId &&
+                      s.admissionId === r.admissionId &&
+                      s.rfaKind === r.rfaKind,
+                  )?.windowClosesAt ?? null,
+                lateDeadline:
+                  [...schedules.values()].find(
+                    (s) =>
+                      s.organizationId === organizationId &&
+                      s.admissionId === r.admissionId &&
+                      s.rfaKind === r.rfaKind,
+                  )?.lateDeadlineAt ?? null,
+                timingState: r.status === "signed" ? "completed" : "unknown",
+                z0350: (canonicalAnswers.get(id)?.get("Z0350")?.value as string | undefined) ?? null,
+              }
+            : null,
+      };
+    },
+
+    async getAssessmentReview(organizationId, id) {
+      const r = findA(organizationId, id);
+      const answers = canonicalAnswers.get(id) ?? new Map();
+      return {
+        assessmentId: id,
+        version: r.version,
+        specVersion: r.regulatory.specVersionId ?? "in-memory",
+        isc: (r.regulatory.isc ?? "HA") as never,
+        status: r.status,
+        signedAt: r.signedAt,
+        signedByMembershipId: r.signedBy,
+        z0350: (answers.get("Z0350")?.value as string | undefined) ?? null,
+        z0500b: (answers.get("Z0500B")?.value as string | undefined) ?? null,
+        sections: [],
+        progress: {
+          active: 0,
+          applicable: 0,
+          answered: answers.size,
+          skipped: 0,
+          pending: 0,
+          unanswered: 0,
+        },
+        validation: { errorCount: 0, warningCount: 0, hasBlockingErrors: false, findings: [] },
+        sfv: { required: r.j2051TriggerFired },
+        readiness: { readyToSign: r.status === "draft", blockers: [] },
       };
     },
 
     async patchAssessmentAnswers(organizationId, userId, id, input) {
       const r = findA(organizationId, id);
-      require_(r.status === "draft", "M10_ASSESSMENT_IMMUTABLE", `Assessment ${id} is not a draft.`);
-      require_(r.version === input.ifVersion, "M10_VERSION_CONFLICT", `Assessment ${id} version is stale.`);
+      require_(
+        r.status === "draft",
+        "M10_ASSESSMENT_IMMUTABLE",
+        `Assessment ${id} is not a draft.`,
+      );
+      require_(
+        r.version === input.ifVersion,
+        "M10_VERSION_CONFLICT",
+        `Assessment ${id} version is stale.`,
+      );
       const seen = new Set<string>();
       const byItem = canonicalAnswers.get(id) ?? new Map();
       const answers = input.changes.map((change) => {
-        require_(!seen.has(change.itemCode), "M10_DUPLICATE_ANSWER", `${change.itemCode} appears more than once.`);
+        require_(
+          !seen.has(change.itemCode),
+          "M10_DUPLICATE_ANSWER",
+          `${change.itemCode} appears more than once.`,
+        );
         seen.add(change.itemCode);
-        require_(!["A0050", "A0250", "Z0350", "Z0500B"].includes(change.itemCode), "M10_PROTECTED_ANSWER", `${change.itemCode} is workflow-controlled.`);
+        require_(
+          ![
+            "A0050",
+            "A0250",
+            "J2052A",
+            "J2052B",
+            "J2052C",
+            "J2053A",
+            "J2053B",
+            "J2053C",
+            "J2053D",
+            "J2053E",
+            "J2053F",
+            "J2053G",
+            "J2053H",
+            "Z0350",
+            "Z0500B",
+          ].includes(change.itemCode),
+          "M10_PROTECTED_ANSWER",
+          `${change.itemCode} is workflow-controlled.`,
+        );
         if (change.action === "clear") {
           byItem.delete(change.itemCode);
           return {
@@ -831,7 +985,11 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
             skipReason: null,
           };
         }
-        require_(change.value != null, "M10_INVALID_ANSWER", `${change.itemCode} answered values cannot be null.`);
+        require_(
+          change.value != null,
+          "M10_INVALID_ANSWER",
+          `${change.itemCode} answered values cannot be null.`,
+        );
         const answeredAt = now();
         byItem.set(change.itemCode, {
           state: "answered",
@@ -857,15 +1015,78 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       return { assessmentId: id, version: r.version, answers };
     },
 
-    async signTimepoint(organizationId, userId, id) {
+    async setHuvCompletionDate(organizationId, userId, id, input) {
+      const r = findA(organizationId, id);
+      require_(
+        r.status === "draft",
+        "M10_ASSESSMENT_IMMUTABLE",
+        `Assessment ${id} is not a draft.`,
+      );
+      require_(
+        r.rfaKind === "02_huv1" || r.rfaKind === "03_huv2",
+        "M10_TIMEPOINT_NOT_OPEN",
+        `Assessment ${id} is not a HUV record.`,
+      );
+      require_(
+        r.version === input.ifVersion,
+        "M10_VERSION_CONFLICT",
+        `Assessment ${id} version is stale.`,
+      );
+      const answeredAt = now();
+      const byItem = canonicalAnswers.get(id) ?? new Map();
+      byItem.set("Z0350", {
+        state: "answered",
+        value: input.z0350,
+        source: "derived",
+        answeredAt,
+        answeredByMembershipId: userId,
+      });
+      canonicalAnswers.set(id, byItem);
+      r.targetDate = input.z0350;
+      r.version += 1;
+      return {
+        assessmentId: id,
+        version: r.version,
+        answers: [
+          {
+            itemCode: "Z0350",
+            active: true,
+            state: "answered",
+            value: input.z0350,
+            source: "derived",
+            answeredAt,
+            answeredByMembershipId: userId,
+            applicability: "applicable",
+            skipReason: null,
+          },
+        ],
+      };
+    },
+
+    async signTimepoint(organizationId, userId, id, args) {
       const r = findA(organizationId, id);
       require_(
         r.status === "draft",
         "M10_CORRECTION_TARGET_NOT_SIGNED",
         `Assessment ${id} is not a draft and cannot be signed.`,
       );
+      require_(
+        args?.ifVersion == null || r.version === args.ifVersion,
+        "M10_VERSION_CONFLICT",
+        `Assessment ${id} version is stale.`,
+      );
       const at = now();
+      const z0500b = at.slice(0, 10);
       const verdict = evaluateJ2051Trigger({ entries: j2051EntriesOf(r.data) }); // D4 — server-authoritative
+      const byItem = canonicalAnswers.get(id) ?? new Map();
+      byItem.set("Z0500B", {
+        state: "answered",
+        value: z0500b,
+        source: "derived",
+        answeredAt: at,
+        answeredByMembershipId: null,
+      });
+      canonicalAnswers.set(id, byItem);
       r.status = "signed";
       r.signedAt = at;
       r.signedBy = userId;
@@ -873,6 +1094,13 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       r.j2051TriggerFired = verdict.triggerFired;
       r.snapshot = await snapshotFor(r.patientId); // D8 / §7.13
       r.version += 1;
+      if (r.correctsAssessmentId) {
+        const original = assessments.get(r.correctsAssessmentId);
+        if (original?.organizationId === organizationId && original.status === "signed") {
+          original.status = "superseded";
+          original.supersededByAssessmentId = id;
+        }
+      }
       // Complete the matching schedule (idempotent — only an open schedule transitions).
       const sched = [...schedules.values()].find(
         (s) =>
@@ -939,7 +1167,15 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
           `${sfvId}:created`,
         );
       }
-      return viewA(r);
+      return {
+        assessmentId: id,
+        status: "signed",
+        version: r.version,
+        signedAt: at,
+        signedByMembershipId: userId,
+        z0500b,
+        validation: { errorCount: 0, warningCount: 0, hasBlockingErrors: false },
+      };
     },
 
     async correctTimepoint(organizationId, userId, id, args) {
@@ -954,6 +1190,18 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         "M10_CORRECTION_TARGET_SUPERSEDED",
         `Assessment ${id} is already superseded; correct the latest instead.`,
       );
+      require_(
+        args.ifVersion == null || original.version === args.ifVersion,
+        "M10_VERSION_CONFLICT",
+        `Assessment ${id} version is stale.`,
+      );
+      require_(
+        ![...assessments.values()].some(
+          (a) => a.correctsAssessmentId === id && a.status === "draft",
+        ),
+        "M10_VERSION_CONFLICT",
+        `Assessment ${id} already has a pending regulatory operation.`,
+      );
       const at = now();
       const correctionId = nextId();
       const correction: AssessmentRecord = {
@@ -962,14 +1210,14 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         patientId: original.patientId,
         admissionId: original.admissionId,
         rfaKind: original.rfaKind,
-        status: "signed",
-        targetDate: args.targetDate,
+        status: "draft",
+        targetDate: original.targetDate,
         authorDiscipline: args.authorDiscipline,
         j2051MaxSeverity: original.j2051MaxSeverity,
         j2051TriggerFired: original.j2051TriggerFired,
         wasLate: original.wasLate,
-        signedAt: at,
-        signedBy: userId,
+        signedAt: null,
+        signedBy: null,
         correctsAssessmentId: id,
         supersededByAssessmentId: null,
         snapshot: original.snapshot,
@@ -978,14 +1226,149 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         data: args.data,
       };
       assessments.set(correctionId, correction);
-      original.status = "superseded";
-      original.supersededByAssessmentId = correctionId;
+      const originalAnswers = canonicalAnswers.get(id);
+      if (originalAnswers) {
+        const correctionAnswers = new Map<
+          string,
+          {
+            state: "answered" | "skipped";
+            value: unknown | null;
+            source:
+              | "user"
+              | "patient_prefill"
+              | "admission_prefill"
+              | "derived"
+              | "imported"
+              | "correction_copy";
+            answeredAt: string | null;
+            answeredByMembershipId: string | null;
+          }
+        >();
+        for (const [itemCode, answer] of originalAnswers) {
+          if (itemCode === "A0050" || itemCode === "A0250" || itemCode === "Z0500B") continue;
+          correctionAnswers.set(itemCode, {
+            ...answer,
+            source: "correction_copy",
+            answeredAt: at,
+            answeredByMembershipId: null,
+          });
+        }
+        canonicalAnswers.set(correctionId, correctionAnswers);
+      }
+      const correctionAnswers = canonicalAnswers.get(correctionId) ?? new Map();
+      correctionAnswers.set("A0050", {
+        state: "answered",
+        value: "2",
+        source: "derived",
+        answeredAt: at,
+        answeredByMembershipId: null,
+      });
+      correctionAnswers.set("A0250", {
+        state: "answered",
+        value:
+          original.rfaKind === "02_huv1"
+            ? "2"
+            : original.rfaKind === "03_huv2"
+              ? "3"
+              : original.rfaKind === "05_discharge"
+                ? "9"
+                : "1",
+        source: "derived",
+        answeredAt: at,
+        answeredByMembershipId: null,
+      });
+      canonicalAnswers.set(correctionId, correctionAnswers);
       emit(
         "m10.hope.correction_submitted",
         { correctionAssessmentId: correctionId, originalAssessmentId: id },
         `${correctionId}:submitted`,
       );
       return viewA(correction);
+    },
+
+    async inactivateTimepoint(organizationId, userId, id, args) {
+      const original = findA(organizationId, id);
+      require_(
+        original.status === "signed",
+        "M10_CORRECTION_TARGET_NOT_SIGNED",
+        `Assessment ${id} must be signed to inactivate.`,
+      );
+      require_(
+        original.supersededByAssessmentId == null,
+        "M10_CORRECTION_TARGET_SUPERSEDED",
+        `Assessment ${id} is already superseded; target the current record instead.`,
+      );
+      require_(
+        args.ifVersion == null || original.version === args.ifVersion,
+        "M10_VERSION_CONFLICT",
+        `Assessment ${id} version is stale.`,
+      );
+      require_(
+        ![...assessments.values()].some(
+          (a) => a.correctsAssessmentId === id && a.status === "draft",
+        ),
+        "M10_VERSION_CONFLICT",
+        `Assessment ${id} already has a pending regulatory operation.`,
+      );
+      const at = now();
+      const inactivationId = nextId();
+      const inactivation: AssessmentRecord = {
+        ...original,
+        id: inactivationId,
+        status: "draft",
+        signedAt: null,
+        signedBy: null,
+        correctsAssessmentId: id,
+        supersededByAssessmentId: null,
+        regulatory: { specVersionId: original.regulatory.specVersionId, isc: "XX" },
+        version: 1,
+        data: { inactivationReason: args.reason },
+      };
+      assessments.set(inactivationId, inactivation);
+      const byItem = new Map<
+        string,
+        {
+          state: "answered" | "skipped";
+          value: unknown | null;
+          source:
+            | "user"
+            | "patient_prefill"
+            | "admission_prefill"
+            | "derived"
+            | "imported"
+            | "correction_copy";
+          answeredAt: string | null;
+          answeredByMembershipId: string | null;
+        }
+      >();
+      byItem.set("A0050", {
+        state: "answered",
+        value: "3",
+        source: "derived",
+        answeredAt: at,
+        answeredByMembershipId: null,
+      });
+      byItem.set("A0250", {
+        state: "answered",
+        value:
+          original.rfaKind === "02_huv1"
+            ? "2"
+            : original.rfaKind === "03_huv2"
+              ? "3"
+              : original.rfaKind === "05_discharge"
+                ? "9"
+                : "1",
+        source: "derived",
+        answeredAt: at,
+        answeredByMembershipId: null,
+      });
+      canonicalAnswers.set(inactivationId, byItem);
+      emit(
+        "m10.hope.inactivation_created",
+        { inactivationAssessmentId: inactivationId, targetAssessmentId: id, createdBy: userId },
+        `${inactivationId}:inactivation_created`,
+      );
+      return viewA(inactivation);
     },
 
     async getAssessment(organizationId, id) {

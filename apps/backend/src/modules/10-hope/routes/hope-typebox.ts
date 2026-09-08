@@ -14,11 +14,13 @@ import { HOPE_RFA_KINDS } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
 import type {
   HopeAnswerPatchResult as ServiceAnswerPatchResult,
-  HopeAssessmentWorkspace as ServiceAssessmentWorkspace,
   HopeAssessmentView as ServiceAssessmentView,
+  HopeAssessmentWorkspace as ServiceAssessmentWorkspace,
   HopeComplianceView as ServiceComplianceView,
+  HopeReviewReadModel as ServiceReviewReadModel,
   HopeScheduleView as ServiceScheduleView,
   HopeSfvView as ServiceSfvView,
+  HopeSignResult as ServiceSignResult,
   HopeSubmissionView as ServiceSubmissionView,
   HopeValidationRunView as ServiceValidationRunView,
   HopeWorkflowStateView as ServiceWorkflowStateView,
@@ -131,12 +133,24 @@ export const PatchAnswersSchema = Type.Object({
     { minItems: 1, maxItems: 32 },
   ),
 });
-export const SignTimepointSchema = Type.Object({ attestationConfirmed: Type.Literal(true) });
+export const SignTimepointSchema = Type.Object({
+  ifVersion: Type.Integer({ minimum: 1 }),
+  attestationConfirmed: Type.Optional(Type.Literal(true)),
+});
+export const SetHuvCompletionDateSchema = Type.Object({
+  ifVersion: Type.Integer({ minimum: 1 }),
+  z0350: Type.String({ pattern: "^\\d{4}-\\d{2}-\\d{2}$" }),
+});
 export const CorrectTimepointSchema = Type.Object({
   correctionReason: Type.String({ minLength: 1, maxLength: 2000 }),
+  ifVersion: Type.Optional(Type.Integer({ minimum: 1 })),
   targetDate: Type.String({ format: "date-time" }),
   authorDiscipline: AUTHOR_DISCIPLINE,
   data: HopeData,
+});
+export const InactivateTimepointSchema = Type.Object({
+  reason: Type.String({ minLength: 1, maxLength: 2000 }),
+  ifVersion: Type.Optional(Type.Integer({ minimum: 1 })),
 });
 export const SummaryPdfSchema = Type.Object({});
 export const RetrySubmissionSchema = Type.Object({});
@@ -175,7 +189,7 @@ export const ValidationQuerySchema = Type.Object({
 // or renamed breaks `bun run build` rather than silently drifting from the client.
 const ASSESSMENT_STATUS = lit(["draft", "signed", "superseded"] as const);
 const SCHEDULE_STATUS = lit(["open", "completed", "expired", "skipped"] as const);
-const SFV_STATUS = lit(["open", "completed", "overdue", "missed"] as const);
+const SFV_STATUS = lit(["open", "completed", "overdue", "missed", "withdrawn"] as const);
 const SUBMISSION_STATUS = lit([
   "queued",
   "in_flight",
@@ -223,7 +237,13 @@ export const HopeAssessmentResponseSchema = Type.Object({
   ]),
   regulatory: Type.Object({
     specVersionId: NullableString(),
-    isc: Type.Union([Type.Literal("HA"), Type.Literal("HUV"), Type.Literal("HD"), Type.Literal("XX"), Type.Null()]),
+    isc: Type.Union([
+      Type.Literal("HA"),
+      Type.Literal("HUV"),
+      Type.Literal("HD"),
+      Type.Literal("XX"),
+      Type.Null(),
+    ]),
   }),
   version: Type.Integer(),
 });
@@ -269,6 +289,7 @@ const HopeWorkspaceItemSchema = Type.Composite([
   Type.Object({
     label: Type.String(),
     section: Type.String(),
+    group: NullableString(),
     kind: Type.Literal("assessment"),
     options: Type.Array(
       Type.Object({
@@ -285,7 +306,12 @@ export const HopeAssessmentWorkspaceResponseSchema = Type.Object({
     status: ASSESSMENT_STATUS,
     rfaKind: RFA_KIND,
     targetDate: Type.String(),
-    isc: Type.Union([Type.Literal("HA"), Type.Literal("HUV"), Type.Literal("HD"), Type.Literal("XX")]),
+    isc: Type.Union([
+      Type.Literal("HA"),
+      Type.Literal("HUV"),
+      Type.Literal("HD"),
+      Type.Literal("XX"),
+    ]),
     specVersionId: Type.String(),
     specVersion: Type.String(),
     version: Type.Integer(),
@@ -306,11 +332,115 @@ export const HopeAssessmentWorkspaceResponseSchema = Type.Object({
     skipped: Type.Integer(),
     unanswered: Type.Integer(),
   }),
+  huv: Type.Union([
+    Type.Object({
+      scheduleId: NullableString(),
+      scheduleStatus: NullableString(),
+      windowStart: NullableString(),
+      windowEnd: NullableString(),
+      lateDeadline: NullableString(),
+      timingState: Type.Union([
+        Type.Literal("upcoming"),
+        Type.Literal("within_window"),
+        Type.Literal("due_soon"),
+        Type.Literal("late"),
+        Type.Literal("completed"),
+        Type.Literal("unknown"),
+      ]),
+      z0350: NullableString(),
+    }),
+    Type.Null(),
+  ]),
+});
+const HopeReviewSectionSchema = Type.Object({
+  code: Type.String(),
+  active: Type.Integer(),
+  applicable: Type.Integer(),
+  answered: Type.Integer(),
+  skipped: Type.Integer(),
+  pending: Type.Integer(),
+  unanswered: Type.Integer(),
+  errors: Type.Integer(),
+  warnings: Type.Integer(),
+  state: Type.Union([
+    Type.Literal("complete"),
+    Type.Literal("needs_attention"),
+    Type.Literal("blocked"),
+  ]),
+});
+const HopeReadinessBlockerSchema = Type.Object({
+  code: Type.String(),
+  section: Type.Optional(Type.String()),
+  itemCode: Type.Optional(Type.String()),
+  ruleId: Type.Optional(Type.String()),
+  message: Type.String(),
+});
+export const HopeAssessmentReviewResponseSchema = Type.Object({
+  assessmentId: Type.String(),
+  version: Type.Integer(),
+  specVersion: Type.String(),
+  isc: Type.Union([
+    Type.Literal("HA"),
+    Type.Literal("HUV"),
+    Type.Literal("HD"),
+    Type.Literal("XX"),
+  ]),
+  status: ASSESSMENT_STATUS,
+  signedAt: NullableString(),
+  signedByMembershipId: NullableString(),
+  z0350: NullableString(),
+  z0500b: NullableString(),
+  sections: Type.Array(HopeReviewSectionSchema),
+  progress: Type.Object({
+    active: Type.Integer(),
+    applicable: Type.Integer(),
+    answered: Type.Integer(),
+    skipped: Type.Integer(),
+    pending: Type.Integer(),
+    unanswered: Type.Integer(),
+  }),
+  validation: Type.Object({
+    errorCount: Type.Integer(),
+    warningCount: Type.Integer(),
+    hasBlockingErrors: Type.Boolean(),
+    findings: Type.Array(
+      Type.Object({
+        ruleId: Type.String(),
+        severity: Type.Union([Type.Literal("error"), Type.Literal("warning")]),
+        section: Type.String(),
+        itemCode: NullableString(),
+        message: Type.String(),
+      }),
+    ),
+  }),
+  sfv: Type.Object({
+    required: Type.Union([Type.Boolean(), Type.Null()]),
+    status: Type.Optional(Type.String()),
+    dueAt: Type.Optional(Type.String()),
+    completedAt: Type.Optional(NullableString()),
+  }),
+  readiness: Type.Object({
+    readyToSign: Type.Boolean(),
+    blockers: Type.Array(HopeReadinessBlockerSchema),
+  }),
 });
 export const HopeAnswerPatchResponseSchema = Type.Object({
   assessmentId: Type.String(),
   version: Type.Integer(),
   answers: Type.Array(HopeItemStateSchema),
+});
+export const HopeSignResponseSchema = Type.Object({
+  assessmentId: Type.String(),
+  status: Type.Literal("signed"),
+  version: Type.Integer(),
+  signedAt: Type.String(),
+  signedByMembershipId: Type.String(),
+  z0500b: Type.String(),
+  validation: Type.Object({
+    errorCount: Type.Integer(),
+    warningCount: Type.Integer(),
+    hasBlockingErrors: Type.Boolean(),
+  }),
 });
 /** One HOPE timepoint-schedule view (window + late-deadline + provenance). */
 export const HopeScheduleResponseSchema = Type.Object({
@@ -518,10 +648,12 @@ type _Workspace = Conforms<
   Static<typeof HopeAssessmentWorkspaceResponseSchema>,
   ServiceAssessmentWorkspace
 >;
+type _Review = Conforms<Static<typeof HopeAssessmentReviewResponseSchema>, ServiceReviewReadModel>;
 type _AnswerPatch = Conforms<
   Static<typeof HopeAnswerPatchResponseSchema>,
   ServiceAnswerPatchResult
 >;
+type _Sign = Conforms<Static<typeof HopeSignResponseSchema>, ServiceSignResult>;
 type _Schedule = Conforms<Static<typeof HopeScheduleResponseSchema>, ServiceScheduleView>;
 type _Sfv = Conforms<Static<typeof HopeSfvResponseSchema>, ServiceSfvView>;
 type _Submission = Conforms<Static<typeof HopeSubmissionResponseSchema>, ServiceSubmissionView>;
@@ -550,13 +682,6 @@ type _SubmissionList = Conforms<
 type _SummaryRequested = Conforms<
   Static<typeof HopeSummaryRequestedResponseSchema>,
   { assessmentId: string; requested: true }
->;
-type _Validation = Conforms<
-  Static<typeof HopeValidationResponseSchema>,
-  {
-    assessmentId: string;
-    findings: ReadonlyArray<{ ruleId: string; severity: string; message: string }>;
-  }
 >;
 type _Regenerate = Conforms<
   Static<typeof HopeRegenerateResponseSchema>,

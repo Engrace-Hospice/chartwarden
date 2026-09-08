@@ -349,6 +349,15 @@ const recordConsistencyRule: HopeValidationRule = {
       ctx.assessment.rfaKind === "05_discharge" ? { isc: "HD", a0250: "9" } :
       null;
     const out: HopeRuleFinding[] = [];
+    if (a0050 === "3") {
+      if (ctx.assessment.isc !== "XX" || !ctx.assessment.correctsAssessmentId) {
+        out.push(finding({ ruleId: "WX-HOPE-RECORD-003", severity: "error", findingKind: "record_consistency", itemCode: "A0050", section: "A", message: "HOPE inactivation records must use ISC XX and target a signed source record.", details: { correctsAssessmentId: ctx.assessment.correctsAssessmentId, isc: ctx.assessment.isc, a0050 } }));
+      }
+      if (expected && a0250 !== expected.a0250) {
+        out.push(finding({ ruleId: "WX-HOPE-RECORD-001", severity: "error", findingKind: "record_consistency", itemCode: "A0250", section: "A", message: "HOPE inactivation reason does not match the M10 workflow kind being inactivated.", details: { rfaKind: ctx.assessment.rfaKind, isc: ctx.assessment.isc, a0250, expected } }));
+      }
+      return out;
+    }
     if (expected && (ctx.assessment.isc !== expected.isc || a0250 !== expected.a0250)) {
       out.push(finding({ ruleId: "WX-HOPE-RECORD-001", severity: "error", findingKind: "record_consistency", itemCode: "A0250", section: "A", message: "HOPE record identity does not match the M10 workflow kind.", details: { rfaKind: ctx.assessment.rfaKind, isc: ctx.assessment.isc, a0250, expected } }));
     }

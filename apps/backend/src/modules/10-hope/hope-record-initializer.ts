@@ -91,6 +91,21 @@ export async function initializeHopeCorrection(
   return buildInitialization(registry, version.id, version.code, original.rfaKind, "modify");
 }
 
+export async function initializeHopeInactivation(
+  registry: HopeSpecRegistry,
+  original: {
+    readonly id: string;
+    readonly rfaKind: HopeRfaKind;
+    readonly specVersionId: string | null;
+  },
+): Promise<HopeRecordInitialization> {
+  if (!original.specVersionId) {
+    throw new HopeAssessmentSpecNotInitializedError(original.id);
+  }
+  const version = await registry.requireVersion(original.specVersionId);
+  return buildInitialization(registry, version.id, version.code, original.rfaKind, "inactivate");
+}
+
 export interface HopeAssessmentAnswerWriter {
   writeDerivedControlAnswers(
     tx: DbClient,

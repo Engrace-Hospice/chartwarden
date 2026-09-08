@@ -1,38 +1,44 @@
 import {
   EmptyState,
-  Glyph,
-  GuardChip,
-  LeftNavRail,
   LoadingSpinner,
   PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
   ageYears,
-  cardSurface,
-  ghostBorder,
   t,
   useApiClient,
 } from "@wardenx/ui";
-// apps/web/src/modules/10-hope — HOPE assessment detail (M10 §5.1/§5.2, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Patient Workspace + Documentation Workspace."
-// Matched to the P1 Pencil frame (wardenx-P1-clinical.pen `KQ8kz`): a Patient Workspace (banner) over a
-// timepoint rail | the selected timepoint's SECTION list | a right rail (validation & triggers + iQIES
-// submission), with a sticky footer (submission guard + actions). Reads GET /hope/assessments/:id (+ its
-// /validation, the patient summary, and the patient's HOPE timeline for the rail). The server is
-// authoritative for status / J2051 / validation (ADR-0030). Honest gap: the per-section completion the
-// frame shows isn't exposed — the section `data` is opaque server-side except Section J (J2051). So the
-// section list is a faithful scaffold with J2051 real and the rest '—' (never fabricated completeness).
-import { useCallback, useEffect, useState } from "react";
+// Phase 4 Admission HOPE workspace. The backend owns CMS spec, applicability, validation, SFV,
+// readiness, and signing; this screen renders that state and sends canonical set/clear answer patches.
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ASSESSMENT_TONE, J2051_TONE, SEVERITY_TONE, rfaLabel, stateLabel } from "./hope-status";
+import { ASSESSMENT_TONE, rfaLabel, stateLabel } from "./hope-status";
+
+type AnswerValue = string | number | boolean;
+type AnswerSource =
+  | "user"
+  | "patient_prefill"
+  | "admission_prefill"
+  | "derived"
+  | "imported"
+  | "correction_copy";
+type Applicability = "applicable" | "not_applicable" | "pending";
+type ItemState = "unanswered" | "answered" | "skipped";
+type SectionId = "A" | "F" | "I" | "J" | "M" | "N" | "Review";
+type HopeApiResult<T = unknown> = Promise<{ data?: T; error?: unknown; response?: Response }>;
+interface HopeApiCompat {
+  GET(path: string, init?: unknown): HopeApiResult;
+  PATCH(path: string, init?: unknown): HopeApiResult;
+  POST(path: string, init?: unknown): HopeApiResult;
+}
 
 interface AssessmentDetail {
   id: string;
   admissionId?: string;
   patientId: string;
   rfaKind: string;
-  status: string;
+  status: "draft" | "signed" | "superseded";
   targetDate: string;
   authorDiscipline: string;
   j2051MaxSeverity: string | null;
@@ -43,18 +49,120 @@ interface AssessmentDetail {
   correctsAssessmentId: string | null;
   supersededByAssessmentId: string | null;
   snapshot: Record<string, number | null> | null;
+  regulatory?: { specVersionId: string | null; isc: "HA" | "HUV" | "HD" | "XX" | null };
+  version: number;
 }
-interface TimepointRow {
-  id: string;
-  rfaKind: string;
-  status: string;
-  targetDate: string;
+
+interface WorkspaceItem {
+  itemCode: string;
+  label: string;
+  section: string;
+  group: string | null;
+  kind: "assessment";
+  active: boolean;
+  state: ItemState;
+  value: AnswerValue | null;
+  source: AnswerSource | null;
+  answeredAt: string | null;
+  answeredByMembershipId: string | null;
+  applicability: Applicability;
+  skipReason: { ruleId: string; cmsRuleId?: string; dependsOn: string[] } | null;
+  options: { valueCode: string; label: string; sortOrder: number }[];
 }
-interface Finding {
-  ruleId: string;
-  severity: string;
-  message: string;
+
+interface WorkspaceSection {
+  code: string;
+  label: string;
+  items: WorkspaceItem[];
 }
+
+interface Workspace {
+  assessment: {
+    id: string;
+    status: AssessmentDetail["status"];
+    rfaKind: string;
+    targetDate: string;
+    isc: "HA" | "HUV" | "HD" | "XX";
+    specVersionId: string;
+    specVersion: string;
+    version: number;
+  };
+  sections: WorkspaceSection[];
+  progress: {
+    active: number;
+    applicable: number;
+    notApplicable: number;
+    pending: number;
+    answered: number;
+    skipped: number;
+    unanswered: number;
+  };
+  huv: {
+    scheduleId: string | null;
+    scheduleStatus: string | null;
+    windowStart: string | null;
+    windowEnd: string | null;
+    lateDeadline: string | null;
+    timingState: "upcoming" | "within_window" | "due_soon" | "late" | "completed" | "unknown";
+    z0350: string | null;
+  } | null;
+}
+
+interface ReviewModel {
+  assessmentId: string;
+  version: number;
+  specVersion: string;
+  isc: "HA" | "HUV" | "HD" | "XX";
+  status: AssessmentDetail["status"];
+  signedAt: string | null;
+  signedByMembershipId: string | null;
+  z0350: string | null;
+  z0500b: string | null;
+  sections: {
+    code: string;
+    active: number;
+    applicable: number;
+    answered: number;
+    skipped: number;
+    pending: number;
+    unanswered: number;
+    errors: number;
+    warnings: number;
+    state: "complete" | "needs_attention" | "blocked";
+  }[];
+  progress: {
+    active: number;
+    applicable: number;
+    answered: number;
+    skipped: number;
+    pending: number;
+    unanswered: number;
+  };
+  validation: {
+    errorCount: number;
+    warningCount: number;
+    hasBlockingErrors: boolean;
+    findings: {
+      ruleId: string;
+      severity: "error" | "warning";
+      section: string;
+      itemCode: string | null;
+      message: string;
+    }[];
+  };
+  sfv: { required: boolean | null; status?: string; dueAt?: string; completedAt?: string | null };
+  readiness: {
+    readyToSign: boolean;
+    blockers: {
+      code: string;
+      section?: string;
+      itemCode?: string;
+      ruleId?: string;
+      message: string;
+    }[];
+  };
+}
+
 interface PatientSummary {
   mrn: string;
   lastName: string;
@@ -63,91 +171,350 @@ interface PatientSummary {
   status: string;
 }
 
-// The HOPE section list the documentation frame lays out. Only Section J (J2051 symptom impact) is
-// exposed on the read; the rest are carried opaquely server-side, so their cell renders '—'.
-const SECTIONS: { code: string; label: string; j2051?: boolean }[] = [
-  { code: "A", label: "Administrative" },
-  { code: "B", label: "Health conditions" },
-  { code: "J", label: "Symptom impact (J2051)", j2051: true },
-  { code: "M", label: "Medications" },
-  { code: "N", label: "Care preferences" },
+interface TimepointRow {
+  id: string;
+  rfaKind: string;
+  status: string;
+  targetDate: string;
+}
+
+const SECTION_ORDER: { id: SectionId; label: string; helper: string }[] = [
+  {
+    id: "A",
+    label: "Administrative",
+    helper: "Confirm chart-prefilled identity, admission, payer, language, and residence details.",
+  },
+  {
+    id: "F",
+    label: "Preferences & Goals",
+    helper:
+      "Document focused conversations about CPR, treatment, hospitalization, and spiritual concerns.",
+  },
+  {
+    id: "I",
+    label: "Diagnoses",
+    helper:
+      "Select the HOPE diagnosis category and condition indicators from the official item set.",
+  },
+  {
+    id: "J",
+    label: "Health Conditions",
+    helper:
+      "Work through current status, pain, breathing, symptom impact, and any SFV follow-up state.",
+  },
+  {
+    id: "M",
+    label: "Skin Conditions",
+    helper: "Record skin screening results and related interventions.",
+  },
+  {
+    id: "N",
+    label: "Medications",
+    helper: "Document scheduled opioid, PRN opioid, and bowel regimen items.",
+  },
+  {
+    id: "Review",
+    label: "Review",
+    helper: "Check completion, blockers, warnings, SFV state, and signature readiness.",
+  },
+];
+
+const PROTECTED_ITEMS = new Set([
+  "A0050",
+  "A0220",
+  "A0250",
+  "A0270",
+  "J2052A",
+  "J2052B",
+  "J2052C",
+  "J2053A",
+  "J2053B",
+  "J2053C",
+  "J2053D",
+  "J2053E",
+  "J2053F",
+  "J2053G",
+  "J2053H",
+  "Z0350",
+  "Z0500B",
+]);
+
+const SECTION_A_GROUPS: { label: string; match: (item: WorkspaceItem) => boolean }[] = [
+  { label: "Provider Information", match: (i) => i.itemCode.startsWith("A0100") },
+  {
+    label: "Admission Information",
+    match: (i) =>
+      ["A0205", "A0210", "A0215", "A0220", "A0250", "A0270"].some((p) => i.itemCode.startsWith(p)),
+  },
+  {
+    label: "Patient Identity",
+    match: (i) =>
+      ["A0500", "A0600", "A0700", "A0800", "A0900"].some((p) => i.itemCode.startsWith(p)),
+  },
+  {
+    label: "Demographics",
+    match: (i) => ["A1005", "A1010", "A1110", "A1250"].some((p) => i.itemCode.startsWith(p)),
+  },
+  { label: "Payer / Coverage", match: (i) => i.itemCode.startsWith("A1400") },
+  {
+    label: "Living Situation",
+    match: (i) => ["A1805", "A1905", "A1910"].some((p) => i.itemCode.startsWith(p)),
+  },
+];
+
+const F_GROUPS = [
+  { label: "CPR", codes: ["F2000A", "F2000B"] },
+  { label: "Other Life-Sustaining Treatments", codes: ["F2100A", "F2100B"] },
+  { label: "Hospitalization", codes: ["F2200A", "F2200B"] },
+  { label: "Spiritual / Existential Concerns", codes: ["F3000A", "F3000B"] },
+];
+
+const J_GROUPS = [
+  "Current status",
+  "Pain",
+  "Shortness of breath",
+  "Symptom impact",
+  "Symptom Follow-Up Visit",
 ];
 
 export function HopeAssessmentDetail(): JSX.Element {
   const client = useApiClient();
+  const api = useMemo(() => client as unknown as HopeApiCompat, [client]);
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
-  const [row, setRow] = useState<AssessmentDetail | null>(null);
-  const [findings, setFindings] = useState<Finding[]>([]);
+  const [assessment, setAssessment] = useState<AssessmentDetail | null>(null);
+  const [workspace, setWorkspace] = useState<Workspace | null>(null);
+  const [review, setReview] = useState<ReviewModel | null>(null);
   const [timeline, setTimeline] = useState<TimepointRow[]>([]);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
+  const [activeSection, setActiveSection] = useState<SectionId>("A");
+  const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "failed" | "conflict">("idle");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [actionError, setActionError] = useState<string | null>(null);
+  const [signOpen, setSignOpen] = useState(false);
+  const [inactivationOpen, setInactivationOpen] = useState(false);
+  const [inactivating, setInactivating] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const [completionDateSaving, setCompletionDateSaving] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     setError(null);
-    const [a, v] = await Promise.all([
-      client.GET("/api/v1/hope/assessments/{id}", { params: { path: { id } } }),
-      client.GET("/api/v1/hope/assessments/{id}/validation", { params: { path: { id } } }),
+    const [a, w, r] = await Promise.all([
+      api.GET("/api/v1/hope/assessments/{id}", { params: { path: { id } } }),
+      api.GET("/api/v1/hope/assessments/{id}/workspace", { params: { path: { id } } }),
+      api.GET("/api/v1/hope/assessments/{id}/review", { params: { path: { id } } }),
     ]);
     if (a.error || !a.data) {
-      setError("Could not load the HOPE assessment.");
+      setError("Could not load this HOPE assessment.");
       setLoading(false);
       return;
     }
-    const detail = a.data as AssessmentDetail;
-    setRow(detail);
-    setFindings((v.data?.findings ?? []) as Finding[]);
-    // The timepoint rail + banner need the patient; fetch by the assessment's patientId.
+    const nextAssessment = a.data as unknown as AssessmentDetail;
+    setAssessment(nextAssessment);
+    setWorkspace(w.error || !w.data ? null : (w.data as unknown as Workspace));
+    setReview(r.error || !r.data ? null : (r.data as unknown as ReviewModel));
     const [tl, pat] = await Promise.all([
-      client.GET("/api/v1/patients/{patientId}/hope/assessments", {
-        params: { path: { patientId: detail.patientId } },
+      api.GET("/api/v1/patients/{patientId}/hope/assessments", {
+        params: { path: { patientId: nextAssessment.patientId } },
       }),
-      client.GET("/api/v1/patients/{id}", { params: { path: { id: detail.patientId } } }),
+      api.GET("/api/v1/patients/{id}", { params: { path: { id: nextAssessment.patientId } } }),
     ]);
-    setTimeline((tl.data?.assessments ?? []) as TimepointRow[]);
-    if (pat.data) setPatient(pat.data as PatientSummary);
+    setTimeline((tl.data as { assessments?: TimepointRow[] } | undefined)?.assessments ?? []);
+    if (pat.data) setPatient(pat.data as unknown as PatientSummary);
     setLoading(false);
-  }, [client, id]);
+  }, [api, id]);
+
+  const refreshWorkspaceOnly = useCallback(async () => {
+    if (!id) return;
+    const [w, r, a] = await Promise.all([
+      api.GET("/api/v1/hope/assessments/{id}/workspace", { params: { path: { id } } }),
+      api.GET("/api/v1/hope/assessments/{id}/review", { params: { path: { id } } }),
+      api.GET("/api/v1/hope/assessments/{id}", { params: { path: { id } } }),
+    ]);
+    if (w.data) setWorkspace(w.data as unknown as Workspace);
+    if (r.data) setReview(r.data as unknown as ReviewModel);
+    if (a.data) setAssessment(a.data as unknown as AssessmentDetail);
+  }, [api, id]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  const signDraft = useCallback(async () => {
-    if (!id) return;
-    setBusy(true);
-    setActionError(null);
-    const { error: err } = await client.POST("/api/v1/hope/assessments/{id}/sign", {
+  useEffect(() => {
+    if (!workspace) return;
+    const visible = visibleSectionOrder(workspace);
+    if (!visible.some((section) => section.id === activeSection)) {
+      setActiveSection(visible[0]?.id ?? "Review");
+    }
+  }, [activeSection, workspace]);
+
+  const findingsByItem = useMemo(() => {
+    const map = new Map<string, ReviewModel["validation"]["findings"]>();
+    for (const finding of review?.validation.findings ?? []) {
+      if (!finding.itemCode) continue;
+      map.set(finding.itemCode, [...(map.get(finding.itemCode) ?? []), finding]);
+    }
+    return map;
+  }, [review]);
+
+  const saveAnswer = useCallback(
+    async (item: WorkspaceItem, value: AnswerValue | null) => {
+      if (!id || !workspace || assessment?.status !== "draft" || PROTECTED_ITEMS.has(item.itemCode))
+        return;
+      setSaving("saving");
+      setFieldErrors((prev) => {
+        const { [item.itemCode]: _old, ...rest } = prev;
+        return rest;
+      });
+      const change =
+        value === null || value === ""
+          ? { itemCode: item.itemCode, action: "clear" as const }
+          : { itemCode: item.itemCode, action: "set" as const, value };
+      const res = await api.PATCH("/api/v1/hope/assessments/{id}/answers", {
+        params: { path: { id } },
+        body: { ifVersion: workspace.assessment.version, changes: [change] },
+      });
+      if (res.error || !res.data) {
+        const message = String((res.error as { message?: unknown })?.message ?? "");
+        const conflict = /version|conflict|stale/i.test(message);
+        setSaving(conflict ? "conflict" : "failed");
+        setFieldErrors((prev) => ({
+          ...prev,
+          [item.itemCode]: conflict
+            ? "This assessment changed elsewhere. Reload the latest version before continuing."
+            : "This answer was not saved. Check the value and try again.",
+        }));
+        return;
+      }
+      setSaving("saved");
+      await refreshWorkspaceOnly();
+    },
+    [api, assessment?.status, id, refreshWorkspaceOnly, workspace],
+  );
+
+  const sign = useCallback(async () => {
+    if (!id || !workspace) return;
+    setSigning(true);
+    const res = await api.POST("/api/v1/hope/assessments/{id}/sign", {
       params: { path: { id } },
-      body: { attestationConfirmed: true },
+      body: { ifVersion: workspace.assessment.version },
     });
-    setBusy(false);
-    if (err) {
-      setActionError("Could not sign this HOPE assessment. Check permissions and validation.");
+    setSigning(false);
+    if (res.error) {
+      setSignOpen(false);
+      await refreshWorkspaceOnly();
+      setActiveSection("Review");
       return;
     }
+    setSignOpen(false);
     await load();
-  }, [client, id, load]);
+    setActiveSection("Review");
+  }, [api, id, load, refreshWorkspaceOnly, workspace]);
+
+  const setHuvCompletionDate = useCallback(
+    async (z0350: string) => {
+      if (!id || !workspace || assessment?.status !== "draft") return;
+      setCompletionDateSaving(true);
+      const res = await api.PATCH("/api/v1/hope/assessments/{id}/huv/completion-date", {
+        params: { path: { id } },
+        body: { ifVersion: workspace.assessment.version, z0350 },
+      });
+      setCompletionDateSaving(false);
+      if (res.error) {
+        setSaving("failed");
+        return;
+      }
+      setSaving("saved");
+      await refreshWorkspaceOnly();
+    },
+    [api, assessment?.status, id, refreshWorkspaceOnly, workspace],
+  );
+
+  const createCorrection = useCallback(async () => {
+    if (!id || !assessment) return;
+    const reason = window.prompt(
+      "Briefly describe why this completed HOPE record needs a correction.",
+    );
+    if (!reason?.trim()) return;
+    const res = await api.POST("/api/v1/hope/assessments/{id}/correct", {
+      params: { path: { id } },
+      body: {
+        correctionReason: reason.trim(),
+        ifVersion: assessment.version,
+        targetDate: assessment.targetDate,
+        authorDiscipline: disciplineForCorrection(assessment.authorDiscipline),
+        data: {},
+      },
+    });
+    const correctionId = (res.data as { id?: string } | undefined)?.id;
+    if (correctionId) navigate(`/hope/assessments/${correctionId}`);
+  }, [api, assessment, id, navigate]);
+
+  const createInactivation = useCallback(
+    async (reason: string) => {
+      if (!id || !assessment) return;
+      setInactivating(true);
+      const res = await api.POST("/api/v1/hope/assessments/{id}/inactivations", {
+        params: { path: { id } },
+        body: { reason: reason.trim(), ifVersion: assessment.version },
+      });
+      setInactivating(false);
+      if (res.error || !res.data) {
+        setSaving("failed");
+        return;
+      }
+      setInactivationOpen(false);
+      const inactivationId = (res.data as { id?: string } | undefined)?.id;
+      if (inactivationId) navigate(`/hope/assessments/${inactivationId}`);
+    },
+    [api, assessment, id, navigate],
+  );
 
   if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading || !row) return <LoadingSpinner />;
+  if (loading || !assessment) return <LoadingSpinner label="Loading HOPE workspace..." />;
+  const workspaceRfa =
+    assessment.rfaKind === "01_admission" ||
+    assessment.rfaKind === "02_huv1" ||
+    assessment.rfaKind === "03_huv2" ||
+    assessment.rfaKind === "05_discharge";
+  if (!workspaceRfa) {
+    return (
+      <LegacyTimepointView
+        assessment={assessment}
+        patient={patient}
+        timeline={timeline}
+        onSign={() => setSignOpen(true)}
+      />
+    );
+  }
+  if (!workspace)
+    return (
+      <EmptyState
+        title="Workspace unavailable"
+        description="The CMS item workspace could not be loaded for this assessment."
+      />
+    );
 
-  const errorCount = findings.filter((f) => f.severity === "error").length;
-  const snapshotEntries = row.snapshot ? Object.entries(row.snapshot) : [];
-  const orderedTimeline = [...timeline].sort((a, b) => a.targetDate.localeCompare(b.targetDate));
-
+  const completed = assessment.status === "signed";
+  const sections = sectionsFromWorkspace(workspace);
+  const visibleSections = visibleSectionOrder(workspace);
+  const current = activeSection === "Review" ? null : (sections.get(activeSection) ?? null);
+  const status = derivedStatus(assessment, review, workspace);
+  const recordLabel = rfaLabel(assessment.rfaKind);
+  const canInactivate =
+    completed &&
+    !assessment.supersededByAssessmentId &&
+    workspace.assessment.isc !== "XX";
   const banner = patient ? (
     <PatientBanner
       name={`${patient.firstName} ${patient.lastName}`}
-      meta={`DOB ${patient.dob}${ageYears(patient.dob) != null ? ` · ${ageYears(patient.dob)}y` : ""}`}
+      meta={`DOB ${formatDate(patient.dob)}${ageYears(patient.dob) != null ? ` · ${ageYears(patient.dob)}y` : ""} · Target ${formatDate(assessment.targetDate)}`}
       chips={
         <>
-          <MonoChip>{patient.mrn}</MonoChip>
+          <MonoChip>{maskIdentifier(patient.mrn)}</MonoChip>
           <StatusPill
             label={stateLabel(patient.status)}
             tone={ASSESSMENT_TONE[patient.status] ?? "neutral"}
@@ -156,390 +523,1556 @@ export function HopeAssessmentDetail(): JSX.Element {
       }
     />
   ) : (
-    <PatientBanner name="HOPE Assessment" />
+    <PatientBanner name={recordLabel} meta={`Target ${formatDate(assessment.targetDate)}`} />
   );
 
   return (
     <PatientWorkspaceLayout banner={banner}>
-      <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-        <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-          {/* Timepoint rail */}
-          <LeftNavRail ariaLabel="HOPE timepoints">
-            <span style={railHead}>Timepoints</span>
-            <ul
-              style={{
-                listStyle: "none",
-                margin: 0,
-                padding: 0,
-                display: "flex",
-                flexDirection: "column",
-                gap: "0.125rem",
-              }}
-            >
-              {orderedTimeline.map((tp) => {
-                const current = tp.id === row.id;
-                const inner = (
-                  <>
-                    <span style={{ fontWeight: current ? 600 : 500 }}>{rfaLabel(tp.rfaKind)}</span>
-                    <span style={tpDate} className="tabular-nums">
-                      {tp.targetDate.slice(0, 10)}
-                    </span>
-                  </>
-                );
-                return (
-                  <li key={tp.id}>
-                    {current ? (
-                      <span style={{ ...tpItem, ...tpItemActive }} aria-current="page">
-                        {inner}
-                      </span>
-                    ) : (
-                      <Link to={`/hope/assessments/${tp.id}`} style={tpItem}>
-                        {inner}
-                      </Link>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          </LeftNavRail>
-
-          {/* Center — timepoint header + section list */}
-          <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "1rem",
-              }}
-            >
-              <h1
-                style={{
-                  margin: 0,
-                  fontFamily: t.fontDisplay,
-                  fontWeight: 500,
-                  fontSize: "1.375rem",
-                  color: t.onSurface,
-                }}
-              >
-                HOPE — {rfaLabel(row.rfaKind)} timepoint
-              </h1>
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-                <StatusPill
-                  label={stateLabel(row.status)}
-                  tone={ASSESSMENT_TONE[row.status] ?? "neutral"}
-                />
-                {row.wasLate ? <StatusPill label="Late" tone="warning" /> : null}
-              </span>
-            </div>
-            <p style={meta}>
-              {stateLabel(row.authorDiscipline)} · target{" "}
-              <span className="tabular-nums">{row.targetDate.slice(0, 10)}</span>
-              {row.signedAt
-                ? ` · signed ${row.signedAt.slice(0, 10)}${row.signedBy ? ` · ${row.signedBy}` : ""}`
-                : " · unsigned"}
-            </p>
-
-            <section style={{ ...cardSurface, padding: "0.5rem 1.25rem", marginTop: "1rem" }}>
-              {SECTIONS.map((s, i) => {
-                const j2051Done = s.j2051 && row.j2051MaxSeverity != null;
-                return (
-                  <div
-                    key={s.code}
-                    style={{ ...sectionRow, borderTop: i === 0 ? "none" : ghostBorder }}
-                  >
-                    <span style={{ flex: 1, color: t.onSurface }}>
-                      <span style={{ fontWeight: 600 }}>Section {s.code}</span> — {s.label}
-                    </span>
-                    {s.j2051 ? (
-                      <span
-                        style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}
-                      >
-                        <StatusPill
-                          label={stateLabel(row.j2051MaxSeverity ?? "none")}
-                          tone={J2051_TONE[row.j2051MaxSeverity ?? "none"] ?? "neutral"}
-                        />
-                        {row.j2051TriggerFired ? (
-                          <StatusPill label="SFV" tone="warning" glyph="alert" />
-                        ) : null}
-                        <StatusPill
-                          label={j2051Done ? "Recorded" : "Pending"}
-                          tone={j2051Done ? "success" : "neutral"}
-                        />
-                      </span>
-                    ) : (
-                      <span style={{ color: t.muted, fontSize: "0.78rem" }}>
-                        completion not exposed —
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-            </section>
-
-            {snapshotEntries.length > 0 ? (
-              <section style={{ marginTop: "1.25rem" }}>
-                <h2 style={sectionTitle}>Clinical context snapshot (D8)</h2>
-                <div
-                  style={{
-                    ...cardSurface,
-                    padding: "1rem 1.25rem",
-                    display: "flex",
-                    gap: "1.5rem",
-                    flexWrap: "wrap",
-                  }}
-                >
-                  {snapshotEntries.map(([k, v]) => (
-                    <div
-                      key={k}
-                      style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}
-                    >
-                      <span style={vitalLabel}>{k}</span>
-                      <span
-                        className="tabular-nums"
-                        style={{ fontSize: "1.1rem", color: v == null ? t.muted : t.onSurface }}
-                      >
-                        {v ?? "—"}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </div>
-
-          {/* Right rail — validation & triggers + iQIES submission */}
-          <aside style={rightRail}>
-            <div style={{ ...cardSurface, padding: "1.125rem" }}>
-              <h2 style={railTitle}>Validation &amp; triggers</h2>
-              {errorCount > 0 ? (
-                <GuardChip
-                  tone="error"
-                  reason={`${errorCount} validation error${errorCount === 1 ? "" : "s"} block submission`}
-                />
+      <div style={shell}>
+        <header style={topBar}>
+          <div>
+            <div style={eyebrow}>Admission HOPE</div>
+            <h1 style={title}>
+              {completed ? `Completed ${recordLabel}` : `${recordLabel} Workspace`}
+            </h1>
+            <div style={metaLine}>
+              <span>CMS {workspace.assessment.specVersion}</span>
+              <span>ISC {workspace.assessment.isc}</span>
+              <span>Target {formatDate(assessment.targetDate)}</span>
+              {assessment.correctsAssessmentId ? (
+                <span>{workspace.assessment.isc === "XX" ? "Inactivation draft" : "Correction draft"}</span>
               ) : null}
-              {findings.length === 0 ? (
-                <p style={meta}>No findings.</p>
-              ) : (
-                <ul
-                  style={{
-                    listStyle: "none",
-                    margin: "0.5rem 0 0",
-                    padding: 0,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: "0.5rem",
-                  }}
-                >
-                  {findings.map((f) => (
-                    <li
-                      key={f.ruleId}
-                      style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}
-                    >
-                      <StatusPill
-                        label={stateLabel(f.severity)}
-                        tone={SEVERITY_TONE[f.severity] ?? "neutral"}
-                      />
-                      <span style={{ fontSize: "0.8rem", color: t.onSurface }}>{f.message}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
             </div>
-            <div style={{ ...cardSurface, padding: "1.125rem" }}>
-              <h2 style={railTitle}>iQIES submission</h2>
-              <p style={meta}>
-                The submission record (export → timecheck → accepted/rejected) is tracked in the
-                HOPE submission worklist; this assessment reaches it once signed and validation is
-                clean.
-              </p>
-            </div>
-          </aside>
-        </div>
-
-        {/* Sticky footer — submission guard + actions */}
-        <div style={footer}>
-          {errorCount > 0 ? (
-            <span style={guardChip}>
-              <Glyph name="lock" size={14} /> {errorCount} error{errorCount === 1 ? "" : "s"} block
-              iQIES submission
-            </span>
-          ) : row.status !== "signed" ? (
-            <span style={guardChip}>
-              <Glyph name="lock" size={14} /> Sign to enable submission
-            </span>
-          ) : (
-            <span style={{ flex: 0 }} />
-          )}
-          <span style={{ flex: 1 }} />
-          <button type="button" onClick={() => navigate("/hope/submissions")} style={ghostBtn}>
-            Submission worklist
-          </button>
-          {row.admissionId ? (
+          </div>
+          <div style={topActions}>
+            <StatusPill label={status.label} tone={status.tone} />
+            <SaveState state={saving} />
             <button
               type="button"
-              onClick={() => navigate(`/admissions/${row.admissionId}/hope`)}
-              style={ghostBtn}
+              style={secondaryButton}
+              onClick={() => setActiveSection("Review")}
             >
-              Admission HOPE
+              Review
             </button>
-          ) : null}
-          {row.status === "draft" ? (
-            <>
-              {actionError ? (
-                <span role="alert" aria-live="assertive" style={actionErrorStyle}>
-                  {actionError}
-                </span>
-              ) : null}
+            {completed ? (
+              <>
+                <button
+                  type="button"
+                  style={secondaryButton}
+                  onClick={() => setInactivationOpen(true)}
+                  disabled={!canInactivate}
+                >
+                  Inactivate
+                </button>
+                <button type="button" style={primaryButton} onClick={() => void createCorrection()}>
+                  Create correction
+                </button>
+              </>
+            ) : review?.readiness.readyToSign ? (
+              <button type="button" style={primaryButton} onClick={() => setSignOpen(true)}>
+                Sign & complete
+              </button>
+            ) : (
               <button
                 type="button"
-                onClick={() => void signDraft()}
-                style={busy ? disabledBtn : primaryBtn}
-                disabled={busy}
+                style={primaryButton}
+                onClick={() => setActiveSection("Review")}
               >
-                {busy ? "Signing..." : "Sign Assessment"}
+                Review issues
               </button>
-            </>
-          ) : null}
+            )}
+          </div>
+        </header>
+
+        {completed ? <CompletedSummary assessment={assessment} review={review} /> : null}
+        {workspace.huv ? <HuvTimingBanner workspace={workspace} review={review} /> : null}
+        {saving === "conflict" ? <ConflictBanner onReload={() => void load()} /> : null}
+
+        <div className="wx-hope-admission-grid" style={workspaceGrid}>
+          <aside
+            className="wx-hope-admission-rail"
+            style={rail}
+            aria-label={`${recordLabel} sections`}
+          >
+            <select
+              className="wx-hope-admission-section-select"
+              aria-label="HOPE section"
+              value={activeSection}
+              onChange={(event) => setActiveSection(event.target.value as SectionId)}
+              style={mobileSectionSelect}
+            >
+              {visibleSections.map((section) => (
+                <option key={section.id} value={section.id}>
+                  {section.label}
+                </option>
+              ))}
+            </select>
+            <nav className="wx-hope-admission-section-nav" style={sectionNav}>
+              {visibleSections.map((section) => {
+                const state = sectionState(section.id, review, workspace);
+                const active = activeSection === section.id;
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    style={{ ...sectionButton, ...(active ? sectionButtonActive : null) }}
+                    onClick={() => setActiveSection(section.id)}
+                    title={state.detail}
+                  >
+                    <span style={stateDot(state.kind)} aria-hidden="true" />
+                    <span>
+                      <strong>
+                        {section.id === "Review" ? "Review" : `${section.id} ${section.label}`}
+                      </strong>
+                      <small style={sectionMeta}>{state.label}</small>
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
+          </aside>
+
+          <main style={mainPanel}>
+            {activeSection === "Review" ? (
+              <ReviewPanel
+                assessment={assessment}
+                review={review}
+                workspace={workspace}
+                onGoTo={setActiveSection}
+                visibleSections={visibleSections}
+                onSetCompletionDate={(value) => void setHuvCompletionDate(value)}
+                completionDateSaving={completionDateSaving}
+                onSign={() => setSignOpen(true)}
+                onCorrection={() => void createCorrection()}
+              />
+            ) : current ? (
+              <SectionPanel
+                sectionId={activeSection}
+                section={current}
+                readonly={completed}
+                findingsByItem={findingsByItem}
+                fieldErrors={fieldErrors}
+                onSave={saveAnswer}
+              />
+            ) : (
+              <EmptyState
+                title="No active section items"
+                description="The imported CMS specification did not return active assessment items for this section."
+              />
+            )}
+            <BottomNav active={activeSection} sections={visibleSections} onChange={setActiveSection} />
+          </main>
+        </div>
+      </div>
+      {signOpen ? (
+        <SignDialog
+          review={review}
+          title={`Complete ${recordLabel}`}
+          signing={signing}
+          onCancel={() => setSignOpen(false)}
+          onSign={() => void sign()}
+        />
+      ) : null}
+      {inactivationOpen ? (
+        <InactivationDialog
+          busy={inactivating}
+          recordLabel={recordLabel}
+          onCancel={() => setInactivationOpen(false)}
+          onSubmit={(reason) => void createInactivation(reason)}
+        />
+      ) : null}
+    </PatientWorkspaceLayout>
+  );
+}
+
+function SectionPanel(props: {
+  sectionId: Exclude<SectionId, "Review">;
+  section: WorkspaceSection;
+  readonly: boolean;
+  findingsByItem: Map<string, ReviewModel["validation"]["findings"]>;
+  fieldErrors: Record<string, string>;
+  onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
+}): JSX.Element {
+  const config = SECTION_ORDER.find((s) => s.id === props.sectionId)!;
+  return (
+    <section>
+      <SectionHeader code={props.sectionId} title={config.label} helper={config.helper} />
+      {props.sectionId === "A" ? (
+        <GroupedItems groups={groupSectionA(props.section.items)} {...props} />
+      ) : props.sectionId === "F" ? (
+        <GroupedItems
+          groups={groupByCodes(props.section.items, F_GROUPS)}
+          conversational
+          {...props}
+        />
+      ) : props.sectionId === "I" ? (
+        <DiagnosisSection {...props} />
+      ) : props.sectionId === "J" ? (
+        <SectionJ {...props} />
+      ) : props.sectionId === "M" ? (
+        <GroupedItems
+          groups={groupGeneric(props.section.items, [
+            "Skin condition screening",
+            "Conditions identified",
+            "Treatments / interventions",
+          ])}
+          {...props}
+        />
+      ) : (
+        <GroupedItems
+          groups={groupGeneric(props.section.items, [
+            "Scheduled opioid",
+            "PRN opioid",
+            "Bowel regimen",
+          ])}
+          {...props}
+        />
+      )}
+    </section>
+  );
+}
+
+function GroupedItems(props: {
+  groups: { label: string; items: WorkspaceItem[] }[];
+  readonly: boolean;
+  findingsByItem: Map<string, ReviewModel["validation"]["findings"]>;
+  fieldErrors: Record<string, string>;
+  onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
+  conversational?: boolean;
+}): JSX.Element {
+  return (
+    <div style={groupStack}>
+      {props.groups.map((group) => (
+        <section key={group.label} style={questionGroup}>
+          <h3 style={groupTitle}>{group.label}</h3>
+          <div style={props.conversational ? cardGrid : questionList}>
+            {group.items.map((item) => (
+              <QuestionRenderer
+                key={item.itemCode}
+                item={item}
+                readonly={props.readonly}
+                findings={props.findingsByItem.get(item.itemCode) ?? []}
+                fieldError={props.fieldErrors[item.itemCode]}
+                onSave={props.onSave}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function DiagnosisSection(props: Parameters<typeof SectionPanel>[0]): JSX.Element {
+  const principal = props.section.items.filter((i) => i.itemCode === "I0010");
+  const others = props.section.items.filter((i) => i.itemCode !== "I0010");
+  return (
+    <div style={groupStack}>
+      <section style={questionGroup}>
+        <h3 style={groupTitle}>Principal Diagnosis Category</h3>
+        <p style={muted}>
+          Use the chart diagnosis as context only. The HOPE category remains a clinician-selected
+          answer.
+        </p>
+        {principal.map((item) => (
+          <QuestionRenderer
+            key={item.itemCode}
+            item={item}
+            readonly={props.readonly}
+            findings={props.findingsByItem.get(item.itemCode) ?? []}
+            fieldError={props.fieldErrors[item.itemCode]}
+            onSave={props.onSave}
+          />
+        ))}
+      </section>
+      <section style={questionGroup}>
+        <h3 style={groupTitle}>Other Conditions</h3>
+        <div style={twoColumn}>
+          {others.map((item) => (
+            <QuestionRenderer
+              key={item.itemCode}
+              item={item}
+              readonly={props.readonly}
+              findings={props.findingsByItem.get(item.itemCode) ?? []}
+              fieldError={props.fieldErrors[item.itemCode]}
+              onSave={props.onSave}
+              compact
+            />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function SectionJ(props: Parameters<typeof SectionPanel>[0]): JSX.Element {
+  const groups = J_GROUPS.map((label) => ({
+    label,
+    items: props.section.items.filter(
+      (item) => (item.group ?? groupJItem(item.itemCode)) === label,
+    ),
+  })).filter((group) => group.items.length > 0);
+  const grouped = new Set(groups.flatMap((group) => group.items.map((item) => item.itemCode)));
+  const leftover = props.section.items.filter((item) => !grouped.has(item.itemCode));
+  if (leftover.length) groups.push({ label: "Other Health Conditions", items: leftover });
+  return (
+    <GroupedItems
+      groups={groups}
+      readonly={props.readonly}
+      findingsByItem={props.findingsByItem}
+      fieldErrors={props.fieldErrors}
+      onSave={props.onSave}
+    />
+  );
+}
+
+function QuestionRenderer(props: {
+  item: WorkspaceItem;
+  readonly: boolean;
+  findings: ReviewModel["validation"]["findings"];
+  fieldError?: string;
+  onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
+  compact?: boolean;
+}): JSX.Element {
+  const { item } = props;
+  if (item.applicability === "not_applicable") {
+    return (
+      <div style={skippedRow}>
+        <span>{item.label}</span>
+        <StatusPill label="Skipped" tone="neutral" />
+      </div>
+    );
+  }
+  if (item.applicability === "pending") {
+    return (
+      <div style={pendingRow}>
+        <strong>{item.label}</strong>
+        <span>Complete the previous question before this item can be answered.</span>
+      </div>
+    );
+  }
+  const readonly = props.readonly || PROTECTED_ITEMS.has(item.itemCode);
+  const inputId = `hope-${item.itemCode}`;
+  const errorId = `${inputId}-error`;
+  const hintId = `${inputId}-hint`;
+  const messages = [
+    ...props.findings.map((f) => f.message),
+    ...(props.fieldError ? [props.fieldError] : []),
+  ];
+  return (
+    <div style={props.compact ? compactQuestion : questionCard}>
+      <div style={questionHead}>
+        <label htmlFor={inputId} style={questionLabel}>
+          {item.label}
+        </label>
+        <span style={codePill}>{item.itemCode}</span>
+      </div>
+      <div id={hintId} style={hintLine}>
+        <SourceBadge source={item.source} />
+        {readonly ? <span>Workflow controlled</span> : null}
+      </div>
+      <AnswerControl
+        item={item}
+        inputId={inputId}
+        readonly={readonly}
+        describedBy={`${hintId}${messages.length ? ` ${errorId}` : ""}`}
+        onSave={props.onSave}
+      />
+      {messages.length ? (
+        <div
+          id={errorId}
+          style={props.findings.some((f) => f.severity === "warning") ? warningText : errorText}
+        >
+          {messages.map((message) => (
+            <div key={message}>{message}</div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function AnswerControl(props: {
+  item: WorkspaceItem;
+  inputId: string;
+  readonly: boolean;
+  describedBy: string;
+  onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
+}): JSX.Element {
+  const value = props.item.value == null ? "" : String(props.item.value);
+  const dateLike = /date|dt|dte/i.test(props.item.label) || /date/i.test(props.item.itemCode);
+  if (props.item.options.length > 0 && props.item.options.length <= 6) {
+    return (
+      <fieldset style={radioSet} aria-describedby={props.describedBy} disabled={props.readonly}>
+        <legend style={srOnly}>{props.item.label}</legend>
+        {props.item.options.map((option) => (
+          <label
+            key={option.valueCode}
+            style={{ ...radioChoice, ...(value === option.valueCode ? radioChoiceSelected : null) }}
+          >
+            <input
+              type="radio"
+              name={props.item.itemCode}
+              value={option.valueCode}
+              checked={value === option.valueCode}
+              onChange={() => void props.onSave(props.item, option.valueCode)}
+            />
+            <span>{option.label}</span>
+          </label>
+        ))}
+      </fieldset>
+    );
+  }
+  if (props.item.options.length > 0) {
+    return (
+      <select
+        id={props.inputId}
+        value={value}
+        disabled={props.readonly}
+        aria-describedby={props.describedBy}
+        style={inputStyle}
+        onChange={(event) => void props.onSave(props.item, event.target.value || null)}
+      >
+        <option value="">Select...</option>
+        {props.item.options.map((option) => (
+          <option key={option.valueCode} value={option.valueCode}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+  return (
+    <input
+      id={props.inputId}
+      type={dateLike ? "date" : "text"}
+      defaultValue={value}
+      readOnly={props.readonly}
+      aria-describedby={props.describedBy}
+      style={inputStyle}
+      onBlur={(event) => {
+        if (event.currentTarget.value !== value)
+          void props.onSave(props.item, event.currentTarget.value || null);
+      }}
+    />
+  );
+}
+
+function ReviewPanel(props: {
+  assessment: AssessmentDetail;
+  review: ReviewModel | null;
+  workspace: Workspace;
+  visibleSections: { id: SectionId; label: string; helper: string }[];
+  onGoTo: (section: SectionId) => void;
+  onSetCompletionDate: (z0350: string) => void;
+  completionDateSaving: boolean;
+  onSign: () => void;
+  onCorrection: () => void;
+}): JSX.Element {
+  const completed = props.assessment.status === "signed";
+  const isHuv = props.workspace.assessment.isc === "HUV";
+  return (
+    <section>
+      <SectionHeader
+        code="Review"
+        title={completed ? "Completed Record" : "Review & Sign"}
+        helper={`Use backend readiness to decide whether this ${rfaLabel(props.assessment.rfaKind)} can be completed.`}
+      />
+      <div style={reviewHero}>
+        <div>
+          <h3 style={groupTitle}>
+            {props.review?.readiness.readyToSign
+              ? "Ready to complete"
+              : completed
+                ? `${rfaLabel(props.assessment.rfaKind)} completed`
+                : "Before signature"}
+          </h3>
+          <p style={muted}>
+            {props.review?.readiness.readyToSign
+              ? `All blocking checks passed. ${props.review.validation.warningCount} non-blocking warning${props.review.validation.warningCount === 1 ? "" : "s"} remain.`
+              : completed
+                ? "This assessment is read-only. Create a correction to make regulated changes."
+                : "Resolve backend blockers, then return here to sign."}
+          </p>
+        </div>
+        <div style={progressRing} aria-label="Completion progress">
+          {props.workspace.progress.active
+            ? Math.round(
+                ((props.workspace.progress.answered + props.workspace.progress.skipped) /
+                  props.workspace.progress.active) *
+                  100,
+              )
+            : 0}
+          %
+        </div>
+      </div>
+      {isHuv ? (
+        <HuvCompletionDateControl
+          review={props.review}
+          workspace={props.workspace}
+          readonly={completed}
+          saving={props.completionDateSaving}
+          onSave={props.onSetCompletionDate}
+        />
+      ) : null}
+      <div style={reviewGrid}>
+        {props.visibleSections.filter((s) => s.id !== "Review").map((section) => {
+          const state = sectionState(section.id, props.review, props.workspace);
+          return (
+            <button
+              key={section.id}
+              type="button"
+              style={reviewRow}
+              onClick={() => props.onGoTo(section.id)}
+            >
+              <span>
+                {section.id} {section.label}
+              </span>
+              <span style={reviewStateText}>{state.detail}</span>
+            </button>
+          );
+        })}
+      </div>
+      <IssueList review={props.review} onGoTo={props.onGoTo} />
+      {props.workspace.assessment.isc === "HA" || props.workspace.assessment.isc === "HUV" ? (
+        <SfvSummary review={props.review} />
+      ) : null}
+      <div style={actionRow}>
+        {completed ? (
+          <button type="button" style={primaryButton} onClick={props.onCorrection}>
+            Create correction
+          </button>
+        ) : (
           <button
             type="button"
-            onClick={() => navigate(`/patients/${row.patientId}/hope`)}
-            style={primaryBtn}
+            style={primaryButton}
+            disabled={!props.review?.readiness.readyToSign}
+            onClick={props.onSign}
           >
-            HOPE timeline
+            Sign & complete
           </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function IssueList({
+  review,
+  onGoTo,
+}: { review: ReviewModel | null; onGoTo: (section: SectionId) => void }): JSX.Element {
+  const rows = [
+    ...(review?.readiness.blockers ?? []).map((b) => ({
+      section: b.section ?? "Review",
+      itemCode: b.itemCode ?? null,
+      severity: "error" as const,
+      message: b.message,
+      key: `${b.code}:${b.itemCode ?? b.section}`,
+    })),
+    ...(review?.validation.findings ?? []).map((f) => ({
+      ...f,
+      key: `${f.ruleId}:${f.itemCode ?? f.section}`,
+    })),
+  ];
+  if (!rows.length)
+    return <div style={successBox}>No blocking issues from the backend review.</div>;
+  return (
+    <section style={questionGroup}>
+      <h3 style={groupTitle}>Issues</h3>
+      <div style={questionList}>
+        {rows.map((row) => (
+          <button
+            key={row.key}
+            type="button"
+            style={issueRow(row.severity)}
+            onClick={() => onGoTo(asSection(row.section))}
+          >
+            <span>
+              <strong>{row.itemCode ?? row.section}</strong> — {row.message}
+            </span>
+            <span>{row.severity === "warning" ? "Warning" : "Go to question"}</span>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SfvSummary({ review }: { review: ReviewModel | null }): JSX.Element {
+  const sfv = review?.sfv;
+  const label =
+    sfv?.required == null
+      ? "Pending determination"
+      : !sfv.required
+        ? "Not required"
+        : sfv.status === "completed"
+          ? "Completed"
+          : sfv.status === "overdue"
+            ? "Required - overdue"
+            : sfv.status
+              ? `Required - ${stateLabel(sfv.status)}`
+              : "Required";
+  return (
+    <section style={questionGroup}>
+      <h3 style={groupTitle}>Symptom Follow-Up Visit</h3>
+      <div style={sfvBox}>
+        <StatusPill
+          label={label}
+          tone={sfv?.status === "overdue" ? "critical" : sfv?.required ? "warning" : "neutral"}
+        />
+        {sfv?.dueAt ? <span>Due {formatDate(sfv.dueAt)}</span> : null}
+        {sfv?.completedAt ? <span>Completed {formatDate(sfv.completedAt)}</span> : null}
+      </div>
+    </section>
+  );
+}
+
+function HuvTimingBanner({
+  workspace,
+  review,
+}: { workspace: Workspace; review: ReviewModel | null }): JSX.Element | null {
+  if (!workspace.huv) return null;
+  const stateLabelByCode: Record<NonNullable<Workspace["huv"]>["timingState"], string> = {
+    upcoming: "Upcoming",
+    within_window: "Within window",
+    due_soon: "Due soon",
+    late: "Late",
+    completed: "Completed",
+    unknown: "Schedule pending",
+  };
+  const warning = review?.validation.findings.find((finding) => finding.ruleId === "-3110");
+  return (
+    <section style={timingBanner}>
+      <div>
+        <strong>{stateLabelByCode[workspace.huv.timingState]}</strong>
+        <span style={muted}>
+          Recommended completion window {formatDate(workspace.huv.windowStart)} -{" "}
+          {formatDate(workspace.huv.windowEnd)}
+        </span>
+      </div>
+      <div style={timingBannerMeta}>
+        <StatusPill
+          label={workspace.huv.scheduleStatus ? stateLabel(workspace.huv.scheduleStatus) : "No schedule"}
+          tone={workspace.huv.timingState === "late" ? "warning" : "neutral"}
+        />
+        {workspace.huv.z0350 ? <span>Z0350 {formatDate(workspace.huv.z0350)}</span> : null}
+        {warning ? <span style={warningText}>CMS warning -3110</span> : null}
+      </div>
+    </section>
+  );
+}
+
+function HuvCompletionDateControl(props: {
+  review: ReviewModel | null;
+  workspace: Workspace;
+  readonly: boolean;
+  saving: boolean;
+  onSave: (z0350: string) => void;
+}): JSX.Element {
+  const value = props.review?.z0350 ?? props.workspace.huv?.z0350 ?? "";
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+  return (
+    <section style={questionGroup}>
+      <h3 style={groupTitle}>Assessment Completion Date</h3>
+      <div style={questionCard}>
+        <div style={questionHead}>
+          <label htmlFor="hope-z0350-controlled" style={questionLabel}>
+            Assessment completed on
+          </label>
+          <span style={codePill}>CMS Z0350</span>
+        </div>
+        <div style={hintLine}>
+          <SourceBadge source="derived" />
+          <span>Workflow controlled</span>
+        </div>
+        <div style={inlineEditor}>
+          <input
+            id="hope-z0350-controlled"
+            type="date"
+            value={draft}
+            readOnly={props.readonly}
+            style={inputStyle}
+            onChange={(event) => setDraft(event.currentTarget.value)}
+          />
+          <button
+            type="button"
+            style={secondaryButton}
+            disabled={props.readonly || props.saving || !draft || draft === value}
+            onClick={() => props.onSave(draft)}
+          >
+            {props.saving ? "Saving..." : "Confirm date"}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SignDialog(props: {
+  review: ReviewModel | null;
+  title: string;
+  signing: boolean;
+  onCancel: () => void;
+  onSign: () => void;
+}): JSX.Element {
+  return (
+    <div style={modalBackdrop} role="presentation">
+      <dialog style={modal} open aria-modal="true" aria-labelledby="hope-sign-title">
+        <h2 id="hope-sign-title" style={modalTitle}>
+          {props.title}
+        </h2>
+        <p style={muted}>
+          By signing, you confirm this HOPE record is complete. After signing, it becomes read-only.
+        </p>
+        <div style={modalStats}>
+          <span>Warnings: {props.review?.validation.warningCount ?? 0}</span>
+          <span>Errors: {props.review?.validation.errorCount ?? 0}</span>
+        </div>
+        <div style={actionRow}>
+          <button type="button" style={secondaryButton} onClick={props.onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            style={primaryButton}
+            disabled={props.signing || !props.review?.readiness.readyToSign}
+            onClick={props.onSign}
+          >
+            {props.signing ? "Signing..." : "Sign & complete"}
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function InactivationDialog(props: {
+  busy: boolean;
+  recordLabel: string;
+  onCancel: () => void;
+  onSubmit: (reason: string) => void;
+}): JSX.Element {
+  const [reason, setReason] = useState("");
+  const trimmed = reason.trim();
+  return (
+    <div style={modalBackdrop} role="presentation">
+      <dialog style={modal} open aria-modal="true" aria-labelledby="hope-inactivation-title">
+        <h2 id="hope-inactivation-title" style={modalTitle}>
+          Inactivate {props.recordLabel}
+        </h2>
+        <p style={muted}>
+          This creates a CMS inactivation draft for the selected signed record. The original remains
+          current until the inactivation draft is signed.
+        </p>
+        <label style={fieldLabel}>
+          Reason
+          <textarea
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+            rows={4}
+            maxLength={2000}
+            style={textareaField}
+            autoFocus
+          />
+        </label>
+        <div style={actionRow}>
+          <button type="button" style={secondaryButton} onClick={props.onCancel}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            style={dangerButton}
+            disabled={props.busy || trimmed.length === 0}
+            onClick={() => props.onSubmit(trimmed)}
+          >
+            {props.busy ? "Creating..." : "Create inactivation"}
+          </button>
+        </div>
+      </dialog>
+    </div>
+  );
+}
+
+function CompletedSummary({
+  assessment,
+  review,
+}: { assessment: AssessmentDetail; review: ReviewModel | null }): JSX.Element {
+  return (
+    <div style={completedBox}>
+      <span aria-hidden="true">✓</span>
+      <span>
+        Completed {formatDate(assessment.signedAt)} · Signed by{" "}
+        {assessment.signedBy ?? review?.signedByMembershipId ?? "recorded signer"} · Z0500B{" "}
+        {formatDate(review?.z0500b ?? assessment.signedAt)}
+      </span>
+    </div>
+  );
+}
+
+function disciplineForCorrection(value: string): "RN" | "NP" | "MD" {
+  return value === "NP" || value === "MD" ? value : "RN";
+}
+
+function BottomNav({
+  active,
+  sections,
+  onChange,
+}: {
+  active: SectionId;
+  sections: { id: SectionId; label: string; helper: string }[];
+  onChange: (id: SectionId) => void;
+}): JSX.Element {
+  const index = sections.findIndex((section) => section.id === active);
+  const previous = sections[Math.max(0, index - 1)] ?? sections[0]!;
+  const next =
+    sections[Math.min(sections.length - 1, index + 1)] ??
+    sections[sections.length - 1]!;
+  return (
+    <div style={bottomNav}>
+      <button
+        type="button"
+        style={secondaryButton}
+        disabled={index <= 0}
+        onClick={() => onChange(previous.id)}
+      >
+        Previous
+      </button>
+      <span style={muted}>Answers save automatically.</span>
+      <button
+        type="button"
+        style={secondaryButton}
+        disabled={index >= sections.length - 1}
+        onClick={() => onChange(next.id)}
+      >
+        Next
+      </button>
+    </div>
+  );
+}
+
+function LegacyTimepointView({
+  assessment,
+  patient,
+  timeline,
+  onSign,
+}: {
+  assessment: AssessmentDetail;
+  patient: PatientSummary | null;
+  timeline: TimepointRow[];
+  onSign: () => void;
+}): JSX.Element {
+  return (
+    <PatientWorkspaceLayout
+      banner={
+        <PatientBanner
+          name={patient ? `${patient.firstName} ${patient.lastName}` : "HOPE Assessment"}
+        />
+      }
+    >
+      <div style={shell}>
+        <header style={topBar}>
+          <div>
+            <div style={eyebrow}>HOPE Timepoint</div>
+            <h1 style={title}>{rfaLabel(assessment.rfaKind)}</h1>
+            <p style={muted}>
+              HUV and Discharge capture keep their existing workflow until their UI phase.
+            </p>
+          </div>
+          {assessment.status === "draft" ? (
+            <button type="button" style={primaryButton} onClick={onSign}>
+              Sign
+            </button>
+          ) : (
+            <StatusPill label={stateLabel(assessment.status)} tone="neutral" />
+          )}
+        </header>
+        <div style={questionGroup}>
+          <h3 style={groupTitle}>Timeline</h3>
+          {timeline.map((tp) => (
+            <Link key={tp.id} to={`/hope/assessments/${tp.id}`} style={legacyLink}>
+              {rfaLabel(tp.rfaKind)} · {formatDate(tp.targetDate)}
+            </Link>
+          ))}
         </div>
       </div>
     </PatientWorkspaceLayout>
   );
 }
 
-function MonoChip({ children }: { children: ReactNode }): JSX.Element {
+function SectionHeader({
+  code,
+  title,
+  helper,
+}: { code: string; title: string; helper: string }): JSX.Element {
   return (
-    <span
-      style={{
-        fontFamily: t.fontMono,
-        fontSize: "0.78rem",
-        color: t.onSurfaceVariant,
-        background: t.surfaceContainer,
-        borderRadius: "9999px",
-        padding: "0.15rem 0.55rem",
-      }}
-    >
-      {children}
-    </span>
+    <div style={sectionHeader}>
+      <span style={sectionCode}>{code}</span>
+      <div>
+        <h2 style={sectionTitle}>{title}</h2>
+        <p style={muted}>{helper}</p>
+      </div>
+    </div>
   );
 }
 
-const railHead: CSSProperties = {
-  fontSize: "0.6875rem",
-  fontWeight: 600,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
-  color: t.muted,
-  padding: "0 0.5rem 0.5rem",
-};
-const tpItem: CSSProperties = {
+function SourceBadge({ source }: { source: AnswerSource | null }): JSX.Element | null {
+  if (!source || source === "user") return null;
+  const label: Record<Exclude<AnswerSource, "user">, string> = {
+    patient_prefill: "From patient chart",
+    admission_prefill: "From admission",
+    derived: "Workflow controlled",
+    imported: "Imported",
+    correction_copy: "Copied from original",
+  };
+  return <span style={sourceBadge}>{label[source]}</span>;
+}
+
+function SaveState({
+  state,
+}: { state: "idle" | "saving" | "saved" | "failed" | "conflict" }): JSX.Element {
+  const label =
+    state === "saving"
+      ? "Saving..."
+      : state === "saved"
+        ? "Saved"
+        : state === "failed"
+          ? "Save failed"
+          : state === "conflict"
+            ? "Reload needed"
+            : "Auto-save";
+  return <span style={saveState(state)}>{label}</span>;
+}
+
+function ConflictBanner({ onReload }: { onReload: () => void }): JSX.Element {
+  return (
+    <div style={conflictBanner}>
+      <span>This assessment changed elsewhere. Reload the latest version before continuing.</span>
+      <button type="button" style={secondaryButton} onClick={onReload}>
+        Reload assessment
+      </button>
+    </div>
+  );
+}
+
+function sectionsFromWorkspace(
+  workspace: Workspace,
+): Map<Exclude<SectionId, "Review">, WorkspaceSection> {
+  const map = new Map<Exclude<SectionId, "Review">, WorkspaceSection>();
+  for (const section of workspace.sections) {
+    const id = asSection(section.code);
+    if (id !== "Review") map.set(id, section);
+  }
+  return map;
+}
+
+function visibleSectionOrder(workspace: Workspace): { id: SectionId; label: string; helper: string }[] {
+  const activeCodes = new Set(workspace.sections.map((section) => section.code));
+  const visible = SECTION_ORDER.filter(
+    (section) => section.id === "Review" || activeCodes.has(section.id),
+  );
+  return visible.length ? visible : SECTION_ORDER.filter((section) => section.id === "Review");
+}
+
+function sectionState(
+  section: SectionId,
+  review: ReviewModel | null,
+  workspace: Workspace,
+): { kind: "complete" | "progress" | "attention" | "empty"; label: string; detail: string } {
+  if (section === "Review") {
+    if (review?.readiness.readyToSign)
+      return { kind: "complete", label: "Ready", detail: "Ready to sign" };
+    if ((review?.readiness.blockers.length ?? 0) > 0)
+      return {
+        kind: "attention",
+        label: "Needs attention",
+        detail: `${review?.readiness.blockers.length ?? 0} blocker(s)`,
+      };
+    return { kind: "progress", label: "Review", detail: "Review readiness" };
+  }
+  const sec = review?.sections.find((s) => s.code === section);
+  if (sec) {
+    if (sec.state === "complete")
+      return { kind: "complete", label: "Complete", detail: "Complete" };
+    if (sec.errors || sec.pending || sec.unanswered)
+      return {
+        kind: "attention",
+        label: "Needs attention",
+        detail: `${sec.unanswered} unanswered · ${sec.errors} errors`,
+      };
+    if (sec.warnings)
+      return { kind: "attention", label: "Warnings", detail: `${sec.warnings} warnings` };
+    return {
+      kind: "progress",
+      label: "In progress",
+      detail: `${sec.answered}/${sec.active} answered`,
+    };
+  }
+  const raw = workspace.sections.find((s) => s.code === section);
+  const answered = raw?.items.filter((i) => i.state !== "unanswered").length ?? 0;
+  if (!raw || raw.items.length === 0)
+    return { kind: "empty", label: "Not started", detail: "No active items" };
+  if (answered === 0)
+    return { kind: "empty", label: "Not started", detail: `${raw.items.length} items` };
+  if (answered === raw.items.length)
+    return { kind: "complete", label: "Complete", detail: "Complete" };
+  return {
+    kind: "progress",
+    label: "In progress",
+    detail: `${answered}/${raw.items.length} answered`,
+  };
+}
+
+function derivedStatus(
+  assessment: AssessmentDetail,
+  review: ReviewModel | null,
+  workspace: Workspace,
+): { label: string; tone: "neutral" | "progress" | "warning" | "critical" | "success" } {
+  if (assessment.status === "signed") return { label: "Completed", tone: "success" };
+  if (review?.readiness.readyToSign) return { label: "Ready to sign", tone: "success" };
+  if ((review?.validation.errorCount ?? 0) > 0 || (review?.readiness.blockers.length ?? 0) > 0)
+    return { label: "Needs attention", tone: "critical" };
+  if (workspace.progress.answered > 0 || workspace.progress.skipped > 0)
+    return { label: "In progress", tone: "progress" };
+  return { label: "Not started", tone: "neutral" };
+}
+
+function groupSectionA(items: WorkspaceItem[]): { label: string; items: WorkspaceItem[] }[] {
+  const used = new Set<string>();
+  const groups = SECTION_A_GROUPS.map((group) => {
+    const rows = items.filter((item) => group.match(item));
+    for (const item of rows) used.add(item.itemCode);
+    return { label: group.label, items: rows };
+  }).filter((group) => group.items.length > 0);
+  const other = items.filter((item) => !used.has(item.itemCode));
+  if (other.length) groups.push({ label: "Other Administrative Items", items: other });
+  return groups;
+}
+
+function groupByCodes(
+  items: WorkspaceItem[],
+  groups: { label: string; codes: string[] }[],
+): { label: string; items: WorkspaceItem[] }[] {
+  const used = new Set<string>();
+  const out = groups
+    .map((group) => {
+      const rows = items.filter((item) => group.codes.includes(item.itemCode));
+      for (const item of rows) used.add(item.itemCode);
+      return { label: group.label, items: rows };
+    })
+    .filter((group) => group.items.length > 0);
+  const other = items.filter((item) => !used.has(item.itemCode));
+  if (other.length) out.push({ label: "Other", items: other });
+  return out;
+}
+
+function groupGeneric(
+  items: WorkspaceItem[],
+  labels: string[],
+): { label: string; items: WorkspaceItem[] }[] {
+  const size = Math.max(1, Math.ceil(items.length / labels.length));
+  return labels
+    .map((label, index) => ({ label, items: items.slice(index * size, (index + 1) * size) }))
+    .filter((group) => group.items.length);
+}
+
+function groupJItem(itemCode: string): string {
+  if (itemCode === "J0050") return "Current status";
+  if (itemCode.startsWith("J09")) return "Pain";
+  if (itemCode.startsWith("J203") || itemCode.startsWith("J204")) return "Shortness of breath";
+  if (itemCode.startsWith("J2050") || itemCode.startsWith("J2051")) return "Symptom impact";
+  if (itemCode.startsWith("J2052") || itemCode.startsWith("J2053"))
+    return "Symptom Follow-Up Visit";
+  return "Other Health Conditions";
+}
+
+function asSection(value: string): SectionId {
+  return SECTION_ORDER.some((section) => section.id === value) ? (value as SectionId) : "Review";
+}
+
+function formatDate(value: string | null | undefined): string {
+  if (!value) return "Not recorded";
+  const date = value.slice(0, 10);
+  const [year, month, day] = date.split("-").map(Number);
+  if (!year || !month || !day) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+function maskIdentifier(value: string | null | undefined): string {
+  if (!value) return "MRN not recorded";
+  return value.length <= 4 ? value : `MRN ...${value.slice(-4)}`;
+}
+
+function stateDot(kind: "complete" | "progress" | "attention" | "empty"): CSSProperties {
+  const colors = {
+    complete: t.success,
+    progress: t.primary,
+    attention: t.error,
+    empty: t.outlineVariant,
+  };
+  return {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+    background: colors[kind],
+    flex: "0 0 auto",
+    marginTop: 4,
+  };
+}
+
+function saveState(state: string): CSSProperties {
+  return {
+    color:
+      state === "failed" || state === "conflict"
+        ? t.error
+        : state === "saving"
+          ? t.primary
+          : t.muted,
+    fontSize: "0.8rem",
+    fontWeight: 600,
+  };
+}
+
+function issueRow(severity: "error" | "warning"): CSSProperties {
+  return {
+    ...reviewRow,
+    border: `1px solid ${severity === "warning" ? t.warning : t.error}`,
+    background: severity === "warning" ? "#fff8e5" : "#fff3f3",
+  };
+}
+
+const shell: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: "0.1rem",
-  padding: "0.5rem 0.625rem",
-  borderRadius: "0.5rem",
-  textDecoration: "none",
-  color: t.onSurfaceVariant,
-  fontSize: "0.8125rem",
+  minHeight: 0,
+  height: "100%",
+  background: t.surface,
 };
-const tpItemActive: CSSProperties = { background: t.primaryTint, color: t.primary };
-const tpDate: CSSProperties = { fontSize: "0.72rem", color: t.muted };
-const rightRail: CSSProperties = {
-  width: "19rem",
-  flexShrink: 0,
-  overflow: "auto",
-  padding: "1.5rem",
-  background: t.surfaceLow,
+const topBar: CSSProperties = {
+  position: "sticky",
+  top: 0,
+  zIndex: 2,
   display: "flex",
-  flexDirection: "column",
+  alignItems: "center",
+  justifyContent: "space-between",
   gap: "1rem",
+  padding: "1rem 1.25rem",
+  borderBottom: `1px solid ${t.outlineVariant}`,
+  background: t.surface,
 };
-const railTitle: CSSProperties = {
-  margin: "0 0 0.625rem",
+const title: CSSProperties = {
+  margin: 0,
   fontFamily: t.fontDisplay,
-  fontWeight: 500,
-  fontSize: "1rem",
+  fontSize: "1.35rem",
+  fontWeight: 600,
   color: t.onSurface,
 };
-const sectionTitle: CSSProperties = {
-  fontSize: "0.6875rem",
-  fontWeight: 600,
-  letterSpacing: "0.06em",
-  textTransform: "uppercase",
+const eyebrow: CSSProperties = {
   color: t.muted,
-  margin: "0 0 0.5rem",
+  fontSize: "0.75rem",
+  fontWeight: 700,
+  textTransform: "uppercase",
+  letterSpacing: 0,
 };
-const sectionRow: CSSProperties = {
+const metaLine: CSSProperties = {
+  display: "flex",
+  gap: "0.75rem",
+  flexWrap: "wrap",
+  color: t.muted,
+  fontSize: "0.85rem",
+  marginTop: "0.25rem",
+};
+const topActions: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.65rem",
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
+};
+const workspaceGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "240px minmax(0, 1fr)",
+  minHeight: 0,
+  flex: 1,
+};
+const rail: CSSProperties = {
+  borderRight: `1px solid ${t.outlineVariant}`,
+  padding: "1rem",
+  overflow: "auto",
+};
+const sectionNav: CSSProperties = { display: "flex", flexDirection: "column", gap: "0.35rem" };
+const sectionButton: CSSProperties = {
+  display: "flex",
+  gap: "0.75rem",
+  alignItems: "flex-start",
+  textAlign: "left",
+  border: "1px solid transparent",
+  borderRadius: 8,
+  padding: "0.7rem",
+  background: "transparent",
+  color: t.onSurface,
+  cursor: "pointer",
+};
+const sectionButtonActive: CSSProperties = {
+  background: t.surfaceLow,
+  border: `1px solid ${t.outlineVariant}`,
+};
+const sectionMeta: CSSProperties = {
+  display: "block",
+  color: t.muted,
+  fontWeight: 500,
+  marginTop: 2,
+};
+const mainPanel: CSSProperties = { overflow: "auto", padding: "1.5rem", minWidth: 0 };
+const sectionHeader: CSSProperties = {
+  display: "flex",
+  gap: "0.8rem",
+  alignItems: "flex-start",
+  marginBottom: "1rem",
+};
+const sectionCode: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 36,
+  height: 36,
+  borderRadius: 8,
+  background: t.surfaceLow,
+  color: t.onSurface,
+  fontWeight: 800,
+};
+const sectionTitle: CSSProperties = {
+  margin: 0,
+  fontFamily: t.fontDisplay,
+  fontSize: "1.25rem",
+  fontWeight: 600,
+};
+const muted: CSSProperties = { margin: 0, color: t.muted, fontSize: "0.9rem", lineHeight: 1.45 };
+const groupStack: CSSProperties = { display: "flex", flexDirection: "column", gap: "1rem" };
+const questionGroup: CSSProperties = {
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  padding: "1rem",
+  background: t.surface,
+};
+const groupTitle: CSSProperties = {
+  margin: "0 0 0.65rem",
+  fontSize: "1rem",
+  fontWeight: 700,
+  color: t.onSurface,
+};
+const questionList: CSSProperties = { display: "flex", flexDirection: "column", gap: "0.75rem" };
+const cardGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+  gap: "0.75rem",
+};
+const twoColumn: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+  gap: "0.75rem",
+};
+const questionCard: CSSProperties = {
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  padding: "0.9rem",
+  background: t.surfaceLow,
+};
+const compactQuestion: CSSProperties = { ...questionCard, padding: "0.75rem" };
+const questionHead: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+  alignItems: "flex-start",
+};
+const questionLabel: CSSProperties = { fontWeight: 650, color: t.onSurface, lineHeight: 1.35 };
+const codePill: CSSProperties = {
+  fontSize: "0.72rem",
+  color: t.muted,
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 6,
+  padding: "0.1rem 0.3rem",
+  whiteSpace: "nowrap",
+};
+const hintLine: CSSProperties = {
+  display: "flex",
+  gap: "0.5rem",
+  alignItems: "center",
+  minHeight: 20,
+  margin: "0.35rem 0",
+  color: t.muted,
+  fontSize: "0.78rem",
+};
+const sourceBadge: CSSProperties = {
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 999,
+  padding: "0.1rem 0.45rem",
+  background: t.surface,
+  color: t.muted,
+};
+const inputStyle: CSSProperties = {
+  width: "100%",
+  border: `1px solid ${t.outline}`,
+  borderRadius: 8,
+  padding: "0.55rem 0.65rem",
+  font: "inherit",
+  background: t.surface,
+};
+const radioSet: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "0.45rem",
+  padding: 0,
+  margin: 0,
+  border: 0,
+};
+const radioChoice: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.35rem",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  padding: "0.45rem 0.55rem",
+  background: t.surface,
+  cursor: "pointer",
+};
+const radioChoiceSelected: CSSProperties = {
+  border: `1px solid ${t.primary}`,
+  background: "#eef6ff",
+};
+const errorText: CSSProperties = {
+  marginTop: "0.45rem",
+  color: t.error,
+  fontSize: "0.82rem",
+  lineHeight: 1.35,
+};
+const warningText: CSSProperties = {
+  marginTop: "0.45rem",
+  color: t.warning,
+  fontSize: "0.82rem",
+  lineHeight: 1.35,
+};
+const skippedRow: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "1rem",
+  alignItems: "center",
+  padding: "0.65rem 0.75rem",
+  borderRadius: 8,
+  background: t.surfaceLow,
+  color: t.muted,
+};
+const pendingRow: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.2rem",
+  padding: "0.65rem 0.75rem",
+  borderRadius: 8,
+  border: `1px dashed ${t.outline}`,
+  color: t.muted,
+};
+const reviewHero: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: "1rem",
+  alignItems: "center",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  padding: "1rem",
+  marginBottom: "1rem",
+  background: t.surfaceLow,
+};
+const progressRing: CSSProperties = {
+  width: 76,
+  height: 76,
+  borderRadius: 999,
+  display: "grid",
+  placeItems: "center",
+  border: `6px solid ${t.primary}`,
+  fontWeight: 800,
+  color: t.onSurface,
+};
+const reviewGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+  gap: "0.6rem",
+  marginBottom: "1rem",
+};
+const timingBanner: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+  border: `1px solid ${t.outlineVariant}`,
+  background: t.surfaceLow,
+  borderRadius: 8,
+  padding: "0.85rem 1rem",
+  marginBottom: "1rem",
+};
+const timingBannerMeta: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  gap: "0.75rem",
+  flexWrap: "wrap",
+};
+const reviewRow: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "0.75rem",
+  textAlign: "left",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  padding: "0.75rem",
+  background: t.surface,
+  color: t.onSurface,
+  cursor: "pointer",
+};
+const reviewStateText: CSSProperties = { color: t.muted, fontSize: "0.82rem" };
+const sfvBox: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.75rem",
-  padding: "0.75rem 0",
-  fontSize: "0.85rem",
-};
-const vitalLabel: CSSProperties = {
-  fontSize: "0.68rem",
-  fontWeight: 600,
-  letterSpacing: "0.04em",
-  textTransform: "uppercase",
+  flexWrap: "wrap",
   color: t.muted,
 };
-const footer: CSSProperties = {
+const successBox: CSSProperties = {
+  border: `1px solid ${t.success}`,
+  borderRadius: 8,
+  padding: "0.85rem",
+  color: t.success,
+  background: "#eefaf2",
+  marginBottom: "1rem",
+};
+const completedBox: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  gap: "0.625rem",
-  padding: "0.875rem 1.5rem",
-  borderTop: ghostBorder,
-  background: t.surfaceLowest,
-  flexShrink: 0,
+  gap: "0.6rem",
+  padding: "0.75rem 1.25rem",
+  borderBottom: `1px solid ${t.outlineVariant}`,
+  color: t.success,
+  background: "#eefaf2",
 };
-const guardChip: CSSProperties = {
-  display: "inline-flex",
+const conflictBanner: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
   alignItems: "center",
-  gap: "0.4rem",
-  fontSize: "0.78rem",
-  fontWeight: 600,
-  color: t.warning,
-  background: "color-mix(in srgb, var(--color-warning) 14%, transparent)",
-  borderRadius: "9999px",
-  padding: "0.3rem 0.7rem",
-};
-const ghostBtn: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "0.45rem 0.9rem",
-  borderRadius: "9999px",
-  background: t.surfaceContainer,
+  gap: "1rem",
+  padding: "0.75rem 1.25rem",
+  borderBottom: `1px solid ${t.warning}`,
   color: t.onSurface,
-  fontSize: "0.8125rem",
-  fontWeight: 600,
-  border: "none",
-  cursor: "pointer",
+  background: "#fff8e5",
 };
-const primaryBtn: CSSProperties = {
-  padding: "0.45rem 1rem",
-  borderRadius: "9999px",
+const bottomNav: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "1rem",
+  marginTop: "1.25rem",
+  paddingTop: "1rem",
+  borderTop: `1px solid ${t.outlineVariant}`,
+};
+const actionRow: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "0.75rem",
+  marginTop: "1rem",
+};
+const inlineEditor: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.75rem",
+  flexWrap: "wrap",
+};
+const primaryButton: CSSProperties = {
+  border: 0,
+  borderRadius: 8,
+  padding: "0.6rem 0.85rem",
   background: t.primary,
   color: t.onPrimary,
-  fontSize: "0.8125rem",
-  fontWeight: 600,
-  border: "none",
+  fontWeight: 700,
   cursor: "pointer",
 };
-const disabledBtn: CSSProperties = { ...primaryBtn, opacity: 0.55, cursor: "not-allowed" };
-const actionErrorStyle: CSSProperties = {
-  color: t.error,
-  fontSize: "0.78rem",
-  fontWeight: 600,
+const secondaryButton: CSSProperties = {
+  border: `1px solid ${t.outline}`,
+  borderRadius: 8,
+  padding: "0.55rem 0.8rem",
+  background: t.surface,
+  color: t.onSurface,
+  fontWeight: 650,
+  cursor: "pointer",
 };
-const meta: CSSProperties = {
-  fontSize: "0.78rem",
-  color: t.onSurfaceVariant,
-  margin: "0.25rem 0 0",
+const dangerButton: CSSProperties = {
+  border: 0,
+  borderRadius: 8,
+  padding: "0.6rem 0.85rem",
+  background: t.error,
+  color: "#fff",
+  fontWeight: 700,
+  cursor: "pointer",
+};
+const fieldLabel: CSSProperties = {
+  display: "grid",
+  gap: "0.45rem",
+  marginTop: "1rem",
+  fontWeight: 700,
+  color: t.onSurface,
+};
+const textareaField: CSSProperties = {
+  ...inputStyle,
+  minHeight: "7rem",
+  resize: "vertical",
+};
+const modalBackdrop: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  background: "rgba(15, 23, 42, 0.45)",
+  display: "grid",
+  placeItems: "center",
+  zIndex: 20,
+  padding: "1rem",
+};
+const modal: CSSProperties = {
+  width: "min(440px, 100%)",
+  borderRadius: 8,
+  background: t.surface,
+  padding: "1.25rem",
+  boxShadow: "0 20px 60px rgba(15, 23, 42, 0.28)",
+};
+const modalTitle: CSSProperties = {
+  margin: "0 0 0.5rem",
+  fontFamily: t.fontDisplay,
+  fontSize: "1.2rem",
+};
+const modalStats: CSSProperties = {
+  display: "flex",
+  gap: "0.75rem",
+  color: t.muted,
+  marginTop: "1rem",
+};
+const mobileSectionSelect: CSSProperties = {
+  display: "none",
+  width: "100%",
+  marginBottom: "0.75rem",
+  ...inputStyle,
+};
+const legacyLink: CSSProperties = { display: "block", padding: "0.5rem 0", color: t.primary };
+const MonoChip = ({ children }: { children: ReactNode }): JSX.Element => (
+  <span style={{ fontFamily: t.fontMono, fontSize: "0.8rem" }}>{children}</span>
+);
+const srOnly: CSSProperties = {
+  position: "absolute",
+  width: 1,
+  height: 1,
+  padding: 0,
+  margin: -1,
+  overflow: "hidden",
+  clip: "rect(0, 0, 0, 0)",
+  whiteSpace: "nowrap",
+  border: 0,
 };

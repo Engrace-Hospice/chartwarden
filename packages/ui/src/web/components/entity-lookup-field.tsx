@@ -75,7 +75,7 @@ export function EntityLookupField({
   const display = open
     ? query
     : value
-      ? (valueLabel ?? (selectedValue === value ? selectedLabel : null) ?? value)
+      ? ((selectedValue === value ? selectedLabel : null) ?? valueLabel ?? value)
       : "";
 
   const load = useCallback(
@@ -154,6 +154,8 @@ export function EntityLookupField({
       <span style={shellStyle}>
         <input
           id={inputId}
+          type="search"
+          role="combobox"
           aria-expanded={open}
           aria-controls={listId}
           aria-invalid={Boolean(error) || undefined}

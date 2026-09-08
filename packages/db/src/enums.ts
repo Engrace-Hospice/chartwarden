@@ -1289,8 +1289,14 @@ export const hopeScheduleStatus = pgEnum("hope_schedule_status", [
   "skipped",
 ]);
 
-/** `hope_sfv_status` — the §2.2.3 Symptom-Follow-Up-Visit lifecycle (open → completed/overdue → missed). */
-export const hopeSfvStatus = pgEnum("hope_sfv_status", ["open", "completed", "overdue", "missed"]);
+/** `hope_sfv_status` — the §2.2.3 Symptom-Follow-Up-Visit lifecycle (open → completed/overdue → missed/withdrawn). */
+export const hopeSfvStatus = pgEnum("hope_sfv_status", [
+  "open",
+  "completed",
+  "overdue",
+  "missed",
+  "withdrawn",
+]);
 
 /** `hope_submission_status` — the §2.2.4 iQIES submission-batch lifecycle. */
 export const hopeSubmissionStatus = pgEnum("hope_submission_status", [

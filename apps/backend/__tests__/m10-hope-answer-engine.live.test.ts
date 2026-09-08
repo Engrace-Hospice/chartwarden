@@ -38,7 +38,9 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
 
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (strip) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- vector stripped");
@@ -190,13 +192,17 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
 
   it("rejects inactive and protected public writes", async () => {
     const a = await draft();
-    await expect(
-      answers.setSkipped(ORG, a.id, "Z0350"),
-    ).rejects.toThrow(/workflow|inactive/i);
+    await expect(answers.setSkipped(ORG, a.id, "Z0350")).rejects.toThrow(/workflow|inactive/i);
     await expect(
       answers.patchAnswers(ORG, membershipId, a.id, {
         ifVersion: a.version,
         changes: [{ itemCode: "A0050", action: "set", value: "2" }],
+      }),
+    ).rejects.toThrow(/workflow-controlled/);
+    await expect(
+      answers.patchAnswers(ORG, membershipId, a.id, {
+        ifVersion: a.version,
+        changes: [{ itemCode: "Z0500B", action: "set", value: "2025-10-15" }],
       }),
     ).rejects.toThrow(/workflow-controlled/);
   });
@@ -324,7 +330,10 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
       ifVersion: reopened.version,
       changes: [{ itemCode: "F2000B", action: "set", value: "2025-10-15" }],
     });
-    expect(withDate.answers.find((x) => x.itemCode === "F2000B")).toMatchObject({ state: "answered", value: "2025-10-15" });
+    expect(withDate.answers.find((x) => x.itemCode === "F2000B")).toMatchObject({
+      state: "answered",
+      value: "2025-10-15",
+    });
 
     await answers.patchAnswers(ORG, membershipId, a.id, {
       ifVersion: withDate.version,
@@ -399,6 +408,7 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
       ifVersion: trueDraft.version,
       changes: [
         { itemCode: "J2050A", action: "set", value: "1" },
+        { itemCode: "J2050B", action: "set", value: "2025-10-02" },
         { itemCode: "J2051A", action: "set", value: "2" },
       ],
     });
@@ -409,6 +419,17 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
     const refreshed = await svc.getAssessment(ORG, trueDraft.id);
     expect(refreshed.j2051TriggerFired).toBe(true);
     expect(refreshed.j2051MaxSeverity).toBe("moderate");
+    const { sfvs } = await svc.listSfv(ORG, "open");
+    const sfv = sfvs.find((row) => row.triggeringAssessmentId === trueDraft.id);
+    expect(sfv).toBeDefined();
+    expect(sfv?.dueAt).toBe("2025-10-04T23:59:59.999Z");
+
+    await answers.patchAnswers(ORG, membershipId, trueDraft.id, {
+      ifVersion: trueResult.version,
+      changes: [{ itemCode: "J2051A", action: "set", value: "1" }],
+    });
+    const withdrawn = await svc.getSfv(ORG, sfv!.id);
+    expect(withdrawn.status).toBe("withdrawn");
   });
 
   it("evaluates multiple opioid parent changes from the final patched answer set", async () => {

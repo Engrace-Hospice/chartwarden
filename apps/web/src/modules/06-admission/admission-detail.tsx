@@ -1270,7 +1270,6 @@ export function AdmissionDetail(): JSX.Element {
                 label="Hospice provider"
                 value={providerEntityId}
                 onChange={setProviderEntityId}
-                valueLabel={providerEntityId ? "Selected provider" : undefined}
                 required
               />
               <ServiceLocationBlock
@@ -1515,7 +1514,6 @@ export function AdmissionDetail(): JSX.Element {
                 label="Elected hospice provider"
                 value={electedProviderEntityId}
                 onChange={(value) => setElectedProviderEntityId(value)}
-                valueLabel={electedProviderEntityId ? "Selected provider" : undefined}
                 required
               />
               <MdmEntityLookupField
@@ -1523,7 +1521,6 @@ export function AdmissionDetail(): JSX.Element {
                 label="Elected attending physician"
                 value={electedAttendingPhysicianId}
                 onChange={(value) => setElectedAttendingPhysicianId(value)}
-                valueLabel={electedAttendingPhysicianId ? "Selected physician" : undefined}
                 clearable
               />
               <label style={checkboxLabelStyle}>

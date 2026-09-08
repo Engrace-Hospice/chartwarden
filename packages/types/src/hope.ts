@@ -49,7 +49,7 @@ export type HopeAssessmentStatus = "draft" | "signed" | "superseded";
 export type HopeScheduleStatus = "open" | "completed" | "expired" | "skipped";
 
 /** The §2.2.3 Symptom-Follow-Up-Visit lifecycle (mirrors `hope_sfv_status`). */
-export type HopeSfvStatus = "open" | "completed" | "overdue" | "missed";
+export type HopeSfvStatus = "open" | "completed" | "overdue" | "missed" | "withdrawn";
 
 /** The §2.2.4 iQIES submission-batch lifecycle (mirrors `hope_submission_status`). */
 export type HopeSubmissionStatus =

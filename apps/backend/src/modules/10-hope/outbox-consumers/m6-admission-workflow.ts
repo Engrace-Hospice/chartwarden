@@ -8,6 +8,7 @@ import {
 } from "@wardenx/hope";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { AdmissionStatusReader, LocalDate } from "@wardenx/types";
+import { and, eq, gt, inArray, isNull } from "drizzle-orm";
 
 const SCHED = schema.hopeTimepointSchedules;
 
@@ -125,6 +126,23 @@ export function buildM10AdmissionWorkflowConsumer(deps: {
                 ];
           if (event.eventType === "m6.admission.discharged") {
             stringOf(payload, "reason");
+            const dischargeDate = localDateOf(stringOf(payload, "dischargeDate"), "dischargeDate");
+            await t
+              .update(SCHED)
+              .set({
+                status: "skipped",
+                skipReasonCode: "discharged_before_huv_window",
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  inArray(SCHED.rfaKind, ["02_huv1", "03_huv2"]),
+                  gt(SCHED.windowOpensAt, new Date(`${dischargeDate}T23:59:59.999Z`)),
+                  eq(SCHED.admissionId, admissionId),
+                  eq(SCHED.status, "open"),
+                  isNull(SCHED.completedByAssessmentId),
+                ),
+              );
           }
 
           for (const descriptor of descriptors) {

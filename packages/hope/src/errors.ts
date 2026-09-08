@@ -29,6 +29,13 @@ export const M10_ERROR_STATUS = {
   M10_SFV_NO_TRIGGER: 409,
   M10_SFV_ALREADY_COMPLETED: 409,
   M10_SFV_PAST_DUE: 409,
+  M10_SFV_WITHDRAWN: 409,
+  // §4.4 — canonical answer engine / draft mutation.
+  M10_ASSESSMENT_IMMUTABLE: 409,
+  M10_VERSION_CONFLICT: 409,
+  M10_DUPLICATE_ANSWER: 400,
+  M10_PROTECTED_ANSWER: 403,
+  M10_INVALID_ANSWER: 400,
   // §4.4 — correction-chain integrity (D7; the append-only correction RFA path, M10 later tasks).
   M10_CORRECTION_TARGET_NOT_SIGNED: 409,
   M10_CORRECTION_TARGET_SUPERSEDED: 409,

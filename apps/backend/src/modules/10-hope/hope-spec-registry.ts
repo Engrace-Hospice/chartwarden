@@ -96,7 +96,7 @@ export function createHopeSpecRegistry(db: DbClient): HopeSpecRegistry {
       if (rows.length > 1) {
         throw new HopeSpecVersionOverlapError(date);
       }
-      return rows[0];
+      return rows[0]!;
     },
 
     async getItem(versionId, itemCode) {

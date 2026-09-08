@@ -55,7 +55,7 @@ export type FixedHopeWorkflowStatus =
   | "skipped";
 
 export type HopeFixedAttentionKind = "01_admission" | "02_huv1" | "03_huv2" | "05_discharge";
-export type HopeSfvAttentionStatus = "open" | "overdue" | "missed" | "completed";
+export type HopeSfvAttentionStatus = "open" | "overdue" | "missed" | "completed" | "withdrawn";
 
 const FIXED_ACTIONS: Record<HopeFixedAttentionKind, HopeAttentionAction> = {
   "01_admission": "COMPLETE_ADMISSION_RFA",
@@ -164,6 +164,7 @@ export function evaluateSfvAttention(input: {
   const policy = input.policy ?? DEFAULT_HOPE_ATTENTION_POLICY;
   switch (input.status) {
     case "completed":
+    case "withdrawn":
       return NONE;
     case "missed":
       return {

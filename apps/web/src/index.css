@@ -806,6 +806,26 @@
     }
   }
 
+  .wx-hope-admission-section-select {
+    display: none !important;
+  }
+
+  @media (max-width: 820px) {
+    .wx-hope-admission-grid {
+      grid-template-columns: 1fr !important;
+    }
+    .wx-hope-admission-rail {
+      border-right: 0 !important;
+      border-bottom: 1px solid var(--color-outline-variant);
+    }
+    .wx-hope-admission-section-select {
+      display: block !important;
+    }
+    .wx-hope-admission-section-nav {
+      display: none !important;
+    }
+  }
+
   /* ---- Light polish on regions/patterns (these already have inline structure) ---- */
   .wx-auth-brand {
     font-family: var(--font-display);

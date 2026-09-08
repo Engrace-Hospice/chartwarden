@@ -20,30 +20,32 @@ import { type DbClient, schema } from "@wardenx/db";
 // here (§7.13: no external dependency blocks the write path); (3) provider/location siting is null; the
 // SFV `alert_cadence` is a minimal default until the alert planner is threaded. A correction REUSES the
 // original's `target_date` (the composite self-FK `(corrects_assessment_id, target_date) → (id,
-// target_date)` demands it); the DB supersede trigger flips the original.
-import {
-  type J2051SymptomReading,
-  assertCaptureAllowed,
-  evaluateJ2051Trigger,
-  planSfvCompletion,
-  planSfvCreation,
-  require_,
-} from "@wardenx/hope";
+// target_date)` demands it); the DB supersede trigger flips the original only when the correction signs.
+import { assertCaptureAllowed, planSfvCompletion, require_ } from "@wardenx/hope";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { HopeRfaKind, J2051Severity, LatestAssessment, ScaleType } from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
+import type { HopeRfaKind, LatestAssessment, ScaleType } from "@wardenx/types";
+import { ConflictError, NotFoundError, ValidationError } from "@wardenx/types";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
-import { createHopeAssessmentAnswerService } from "./hope-answer-service";
 import { createHopeAdmissionPrefillService } from "./hope-admission-prefill-service";
+import { createHopeAssessmentAnswerService } from "./hope-answer-service";
+import { createHopeDischargePrefillService } from "./hope-discharge-prefill-service";
+import {
+  HopeAssessmentNotReadyToSignError,
+  createHopeAssessmentReadinessService,
+} from "./hope-readiness-service";
 import {
   createHopeAssessmentAnswerWriter,
   initializeHopeCorrection,
+  initializeHopeInactivation,
   initializeNewHopeRecord,
 } from "./hope-record-initializer";
 import { createHopeSpecRegistry } from "./hope-spec-registry";
-import { createHopeValidationService } from "./hope-validation-service";
+import {
+  HopeValidationFindingSitingError,
+  createHopeValidationService,
+} from "./hope-validation-service";
 import type {
   CorrectTimepointArgs,
   HopeAssessmentView,
@@ -51,6 +53,7 @@ import type {
   HopeRouteService,
   HopeScheduleView,
   HopeSfvView,
+  HopeSignResult,
   HopeSubmissionView,
   HopeWorkflowStateView,
   RecordSfvArgs,
@@ -66,6 +69,7 @@ const FINDING = schema.hopeValidationFindings;
 const ANSWER = schema.hopeAssessmentAnswers;
 const ITEM = schema.hopeSpecItems;
 const answerWriter = createHopeAssessmentAnswerWriter();
+const dischargePrefillService = createHopeDischargePrefillService();
 
 type ScheduleRow = typeof SCHED.$inferSelect;
 type AssessmentRow = typeof ASSESS.$inferSelect;
@@ -108,31 +112,6 @@ const D8_SNAPSHOT_SCALES = ["pps", "esas_r"] as const;
 
 /** The §D8 rule id + message the compensating warning finding carries (spec §D8 / M10 §7.13). */
 const D8_MISSING_PPS_RULE = "D8_CLINICAL_CONTEXT_PPS_MISSING";
-
-/** The §D8 scales snapshotted at HOPE sign — skipped in the DB backend (M9 seam not threaded; §7.13). */
-const j2051EntriesOf = (data: Record<string, unknown>): J2051SymptomReading[] => {
-  const j = (data as { J?: { J2051?: { entries?: unknown } } }).J?.J2051?.entries;
-  if (!Array.isArray(j)) return [];
-  return j.flatMap((e) =>
-    e && typeof e === "object" && typeof (e as { severity?: unknown }).severity === "string"
-      ? [
-          {
-            symptomCode: String((e as { symptomCode?: unknown }).symptomCode ?? "other"),
-            severity: (e as { severity: J2051Severity }).severity,
-          },
-        ]
-      : [],
-  );
-};
-
-const J2051_ITEM_CODES = ["J2051A", "J2051B", "J2051C", "J2051D", "J2051E", "J2051F", "J2051G", "J2051H"];
-const J2051_VALUE_TO_SEVERITY: Record<string, J2051Severity | null> = {
-  "0": "none",
-  "1": "mild",
-  "2": "moderate",
-  "3": "severe",
-  "9": null,
-};
 
 // `hope_assessment` carries no author_discipline / version column (the correction chain is append-only;
 // the discipline is a request-time attribute, not persisted). Reads project the stable view defaults.
@@ -205,6 +184,7 @@ export function createDbHopeBackend(
 ): HopeRouteService {
   const answerService = createHopeAssessmentAnswerService(db);
   const validationService = createHopeValidationService(db);
+  const readinessService = createHopeAssessmentReadinessService(db);
   const admissionPrefillService = createHopeAdmissionPrefillService();
   /** Emit one `m10.hope.*` event on the caller's tx (validated + persisted by the bound publisher). */
   async function emit(
@@ -277,30 +257,125 @@ export function createDbHopeBackend(
     }
   }
 
-  async function canonicalJ2051Entries(
+  async function writeDraftSfvCompletionAnswers(
     tx: DbClient,
-    assessmentId: string,
-  ): Promise<J2051SymptomReading[] | null> {
+    organizationId: string,
+    triggeringAssessmentId: string,
+    completedDate: string,
+    at: Date,
+  ): Promise<void> {
+    const [assessment] = (await tx
+      .select()
+      .from(ASSESS)
+      .where(and(eq(ASSESS.id, triggeringAssessmentId), eq(ASSESS.organizationId, organizationId)))
+      .limit(1)) as AssessmentRow[];
+    if (
+      !assessment ||
+      assessment.status !== "draft" ||
+      !assessment.specVersionId ||
+      !assessment.isc
+    )
+      return;
     const rows = await tx
-      .select({ itemCode: ITEM.itemCode, state: ANSWER.state, value: ANSWER.value })
-      .from(ANSWER)
-      .innerJoin(ITEM, eq(ITEM.id, ANSWER.specItemId))
+      .select({ item: ITEM })
+      .from(ITEM)
+      .innerJoin(schema.hopeSpecItemIsc, eq(schema.hopeSpecItemIsc.specItemId, ITEM.id))
       .where(
         and(
-          eq(ANSWER.hopeAssessmentId, assessmentId),
-          inArray(ITEM.itemCode, ["J2050A", ...J2051_ITEM_CODES]),
+          eq(ITEM.specVersionId, assessment.specVersionId),
+          inArray(ITEM.itemCode, ["J2052A", "J2052B"]),
+          eq(schema.hopeSpecItemIsc.isc, assessment.isc),
+          eq(schema.hopeSpecItemIsc.active, true),
         ),
       );
-    if (rows.length === 0) return null;
-    if (rows.some((row) => row.itemCode === "J2050A" && row.state === "answered" && row.value === "0")) {
-      return [];
+    const byCode = new Map(rows.map((row) => [row.item.itemCode, row.item]));
+    for (const [itemCode, value] of [
+      ["J2052A", "1"],
+      ["J2052B", completedDate],
+    ] as const) {
+      const item = byCode.get(itemCode);
+      if (!item) continue;
+      await tx
+        .insert(ANSWER)
+        .values({
+          organizationId,
+          providerEntityId: assessment.providerEntityId,
+          locationId: assessment.locationId,
+          hopeAssessmentId: assessment.id,
+          specVersionId: assessment.specVersionId,
+          specItemId: item.id,
+          state: "answered",
+          value,
+          source: "derived",
+          sourceReference: { reason: "sfv_completion_workflow" },
+          answeredAt: at,
+          updatedAt: at,
+        })
+        .onConflictDoUpdate({
+          target: [ANSWER.hopeAssessmentId, ANSWER.specItemId],
+          set: {
+            state: "answered",
+            value,
+            source: "derived",
+            sourceReference: { reason: "sfv_completion_workflow" },
+            answeredAt: at,
+            answeredByMembershipId: null,
+            updatedAt: at,
+          },
+        });
     }
-    return rows.flatMap((row) => {
-      if (row.itemCode === "J2050A" || row.state !== "answered") return [];
-      const value = typeof row.value === "string" ? row.value : null;
-      const severity = value ? J2051_VALUE_TO_SEVERITY[value] : null;
-      return severity ? [{ symptomCode: row.itemCode, severity }] : [];
-    });
+  }
+
+  async function writeZ0500B(
+    tx: DbClient,
+    assessment: AssessmentRow,
+    organizationId: string,
+    z0500b: string,
+    at: Date,
+  ): Promise<void> {
+    if (!assessment.specVersionId || !assessment.isc) return;
+    const [row] = await tx
+      .select({ item: ITEM })
+      .from(ITEM)
+      .innerJoin(schema.hopeSpecItemIsc, eq(schema.hopeSpecItemIsc.specItemId, ITEM.id))
+      .where(
+        and(
+          eq(ITEM.specVersionId, assessment.specVersionId),
+          eq(ITEM.itemCode, "Z0500B"),
+          eq(schema.hopeSpecItemIsc.isc, assessment.isc),
+          eq(schema.hopeSpecItemIsc.active, true),
+        ),
+      )
+      .limit(1);
+    if (!row) throw new ConflictError("Z0500B is not active for this HOPE assessment ISC");
+    await tx
+      .insert(ANSWER)
+      .values({
+        organizationId,
+        providerEntityId: assessment.providerEntityId,
+        locationId: assessment.locationId,
+        hopeAssessmentId: assessment.id,
+        specVersionId: assessment.specVersionId,
+        specItemId: row.item.id,
+        state: "answered",
+        value: z0500b,
+        source: "derived",
+        sourceReference: { reason: "record_completion_signature" },
+        answeredAt: at,
+        updatedAt: at,
+      })
+      .onConflictDoUpdate({
+        target: [ANSWER.hopeAssessmentId, ANSWER.specItemId],
+        set: {
+          state: "answered",
+          value: z0500b,
+          source: "derived",
+          sourceReference: { reason: "record_completion_signature" },
+          answeredAt: at,
+          answeredByMembershipId: null,
+          updatedAt: at,
+        },
+      });
   }
 
   async function loadA(t: DbClient, id: string): Promise<AssessmentRow> {
@@ -311,6 +386,109 @@ export function createDbHopeBackend(
       .limit(1)) as AssessmentRow[];
     if (!r) throw new NotFoundError(`HOPE assessment ${id} not found`);
     return r;
+  }
+
+  async function pendingLineageOperation(t: DbClient, sourceId: string): Promise<AssessmentRow | null> {
+    const [row] = (await t
+      .select()
+      .from(ASSESS)
+      .where(and(eq(ASSESS.correctsAssessmentId, sourceId), eq(ASSESS.status, "draft")))
+      .limit(1)) as AssessmentRow[];
+    return row ?? null;
+  }
+
+  async function assertNoPendingLineageOperation(t: DbClient, sourceId: string): Promise<void> {
+    const pending = await pendingLineageOperation(t, sourceId);
+    if (pending) {
+      throw new ConflictError(
+        `HOPE assessment ${sourceId} already has a pending regulatory operation (${pending.id})`,
+      );
+    }
+  }
+
+  async function answerValueMap(t: DbClient, assessmentId: string): Promise<Map<string, unknown>> {
+    const rows = await t
+      .select({ itemCode: ITEM.itemCode, answer: ANSWER })
+      .from(ANSWER)
+      .innerJoin(ITEM, eq(ITEM.id, ANSWER.specItemId))
+      .where(eq(ANSWER.hopeAssessmentId, assessmentId));
+    return new Map(rows.map((row) => [row.itemCode, row.answer.value as unknown]));
+  }
+
+  async function assertCorrectionHasSubstantiveChange(t: DbClient, correction: AssessmentRow) {
+    if (!correction.correctsAssessmentId || correction.isc === "XX") return;
+    const [original] = (await t
+      .select()
+      .from(ASSESS)
+      .where(eq(ASSESS.id, correction.correctsAssessmentId))
+      .limit(1)) as AssessmentRow[];
+    if (!original) throw new ConflictError("Correction source assessment is missing");
+    if (original.status !== "signed") {
+      throw new ConflictError("Correction source is no longer the current signed record");
+    }
+    const originalAnswers = await answerValueMap(t, original.id);
+    const correctionAnswers = await answerValueMap(t, correction.id);
+    const ignored = new Set(["A0050", "A0250", "Z0500B"]);
+    const itemCodes = new Set([...originalAnswers.keys(), ...correctionAnswers.keys()]);
+    for (const itemCode of itemCodes) {
+      if (ignored.has(itemCode)) continue;
+      if (JSON.stringify(originalAnswers.get(itemCode) ?? null) !== JSON.stringify(correctionAnswers.get(itemCode) ?? null)) {
+        return;
+      }
+    }
+    throw new ValidationError("No substantive HOPE correction changes have been made", [
+      {
+        field: "assessment",
+        code: "NO_REGULATORY_CHANGES",
+        message: "No changes have been made to this correction.",
+      },
+    ]);
+  }
+
+  async function copyActiveAnswersForIsc(input: {
+    readonly tx: DbClient;
+    readonly organizationId: string;
+    readonly source: AssessmentRow;
+    readonly target: AssessmentRow;
+    readonly isc: "HA" | "HUV" | "HD" | "XX";
+    readonly at: Date;
+  }) {
+    const active = await input.tx
+      .select({ item: ITEM })
+      .from(ITEM)
+      .innerJoin(schema.hopeSpecItemIsc, eq(schema.hopeSpecItemIsc.specItemId, ITEM.id))
+      .where(
+        and(
+          eq(ITEM.specVersionId, input.target.specVersionId!),
+          eq(schema.hopeSpecItemIsc.isc, input.isc),
+          eq(schema.hopeSpecItemIsc.active, true),
+        ),
+      );
+    const activeIds = new Set(active.map((row) => row.item.id));
+    const sourceAnswers = await input.tx
+      .select({ answer: ANSWER, itemCode: ITEM.itemCode })
+      .from(ANSWER)
+      .innerJoin(ITEM, eq(ITEM.id, ANSWER.specItemId))
+      .where(eq(ANSWER.hopeAssessmentId, input.source.id));
+    for (const row of sourceAnswers) {
+      if (!activeIds.has(row.answer.specItemId)) continue;
+      if (row.itemCode === "A0050" || row.itemCode === "A0250" || row.itemCode === "Z0500B")
+        continue;
+      await input.tx.insert(ANSWER).values({
+        organizationId: input.organizationId,
+        providerEntityId: input.target.providerEntityId,
+        locationId: input.target.locationId,
+        hopeAssessmentId: input.target.id,
+        specVersionId: input.target.specVersionId!,
+        specItemId: row.answer.specItemId,
+        state: row.answer.state,
+        value: row.answer.value,
+        source: "correction_copy",
+        sourceReference: { originalAssessmentId: input.source.id },
+        answeredAt: input.at,
+        answeredByMembershipId: null,
+      });
+    }
   }
 
   return {
@@ -568,13 +746,24 @@ export function createDbHopeBackend(
       const view = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const admissionSummary =
-          args.rfaKind === "01_admission"
-            ? await getSeam("AdmissionStatusReader").getAdmissionSummary(organizationId, admissionId)
+          args.rfaKind === "01_admission" ||
+          args.rfaKind === "02_huv1" ||
+          args.rfaKind === "03_huv2" ||
+          args.rfaKind === "05_discharge"
+            ? await getSeam("AdmissionStatusReader").getAdmissionSummary(
+                organizationId,
+                admissionId,
+              )
             : null;
         if (admissionSummary && admissionSummary.organizationId !== organizationId) {
           throw new NotFoundError(`Admission ${admissionId} not found`);
         }
-        const regulatoryTargetDate = admissionSummary?.admissionAt ?? args.targetDate;
+        const regulatoryTargetDate =
+          args.rfaKind === "01_admission"
+            ? (admissionSummary?.admissionAt ?? args.targetDate)
+            : args.rfaKind === "05_discharge"
+              ? (admissionSummary?.dischargedAt ?? args.targetDate)
+            : args.targetDate;
         const init = await initializeNewHopeRecord(createHopeSpecRegistry(t), {
           rfaKind: args.rfaKind,
           targetDate: regulatoryTargetDate,
@@ -591,6 +780,25 @@ export function createDbHopeBackend(
             ),
           )
           .limit(1)) as ScheduleRow[];
+        if (
+          args.rfaKind === "02_huv1" ||
+          args.rfaKind === "03_huv2" ||
+          args.rfaKind === "05_discharge"
+        ) {
+          const [existingDraft] = (await t
+            .select()
+            .from(ASSESS)
+            .where(
+              and(
+                eq(ASSESS.admissionId, admissionId),
+                eq(ASSESS.rfaKind, args.rfaKind),
+                eq(ASSESS.status, "draft"),
+              ),
+            )
+            .orderBy(desc(ASSESS.createdAt))
+            .limit(1)) as AssessmentRow[];
+          if (existingDraft) return toAssessmentView(existingDraft);
+        }
         let capture: { wasLate: boolean; lateReasonCode: string | null } = {
           wasLate: false,
           lateReasonCode: null,
@@ -642,17 +850,42 @@ export function createDbHopeBackend(
           specVersionId: init.specVersionId,
           controlAnswers: init.controlAnswers,
         });
-        await admissionPrefillService.prefillAdmission({
-          tx: t,
-          organizationId,
-          assessment: row,
-          specVersionCode: init.specVersionCode,
-          admissionDate: regulatoryTargetDate.slice(0, 10),
-        });
+        if (
+          row.rfaKind === "01_admission" ||
+          row.rfaKind === "02_huv1" ||
+          row.rfaKind === "03_huv2" ||
+          row.rfaKind === "05_discharge"
+        ) {
+          await admissionPrefillService.prefillAdmission({
+            tx: t,
+            organizationId,
+            assessment: row,
+            specVersionCode: init.specVersionCode,
+            admissionDate: (admissionSummary?.admissionAt ?? regulatoryTargetDate).slice(0, 10),
+          });
+        }
+        if (row.rfaKind === "05_discharge") {
+          await dischargePrefillService.prefillDischarge({
+            tx: t,
+            organizationId,
+            assessment: row,
+            dischargeDate: regulatoryTargetDate.slice(0, 10),
+            dischargeReason: args.dischargeReason ?? null,
+          });
+        }
         return toAssessmentView(row);
       });
-      if (view.rfaKind === "01_admission" && view.regulatory.isc === "HA") {
-        await validationService.validateAssessment({ organizationId, assessmentId: view.id, mode: "draft" });
+      if (
+        (view.rfaKind === "01_admission" && view.regulatory.isc === "HA") ||
+        ((view.rfaKind === "02_huv1" || view.rfaKind === "03_huv2") &&
+          view.regulatory.isc === "HUV") ||
+        (view.rfaKind === "05_discharge" && view.regulatory.isc === "HD")
+      ) {
+        await validationService.validateAssessment({
+          organizationId,
+          assessmentId: view.id,
+          mode: "draft",
+        });
       }
       return view;
     },
@@ -706,6 +939,13 @@ export function createDbHopeBackend(
             updatedAt: at,
           })
           .where(eq(SFV.id, sfv.id));
+        await writeDraftSfvCompletionAnswers(
+          t,
+          organizationId,
+          sfv.triggeringAssessmentId,
+          args.targetDate.slice(0, 10),
+          at,
+        );
         await emit(t, organizationId, "m10.hope.sfv_completed", "symptom_follow_up_visit", sfv.id, {
           sfvId: sfv.id,
           completingAssessmentId: row.id,
@@ -739,12 +979,71 @@ export function createDbHopeBackend(
       return answerService.getWorkspace(organizationId, id);
     },
 
-    async patchAssessmentAnswers(organizationId, userId, id, input) {
-      return answerService.patchAnswers(organizationId, userId, id, input);
+    async getAssessmentReview(organizationId, id) {
+      return readinessService.getReview({ organizationId, assessmentId: id });
     },
 
-    // ── Sign a draft (§2.2.2 — server-authoritative J2051 verdict; triggers close the schedule + open the SFV) ─
-    async signTimepoint(organizationId, userId, id) {
+    async patchAssessmentAnswers(organizationId, userId, id, input) {
+      const result = await answerService.patchAnswers(organizationId, userId, id, input);
+      try {
+        await validationService.validateAssessment({
+          organizationId,
+          assessmentId: id,
+          mode: "draft",
+        });
+      } catch (error) {
+        if (!(error instanceof HopeValidationFindingSitingError)) throw error;
+      }
+      return result;
+    },
+
+    async setHuvCompletionDate(organizationId, userId, id, input) {
+      const result = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadA(t, id);
+        if ((r.rfaKind !== "02_huv1" && r.rfaKind !== "03_huv2") || r.isc !== "HUV") {
+          throw new ConflictError(`HOPE assessment ${id} is not a HUV record`);
+        }
+        require_(r.status === "draft", "M10_ASSESSMENT_IMMUTABLE", `Assessment ${id} is not a draft.`);
+        if (r.version !== input.ifVersion) {
+          throw new ConflictError(`HOPE assessment ${id} version is stale; reload and retry`);
+        }
+        const at = new Date();
+        const answer = await answerService.setWorkflowAnswer(t, {
+          organizationId,
+          membershipId: userId,
+          assessment: r,
+          itemCode: "Z0350",
+          value: input.z0350,
+          sourceReference: { reason: "huv_completion_date_workflow" },
+          at,
+        });
+        const [updated] = (await t
+          .update(ASSESS)
+          .set({
+            targetDate: new Date(`${input.z0350}T00:00:00.000Z`),
+            version: r.version + 1,
+            updatedAt: at,
+          })
+          .where(and(eq(ASSESS.id, id), eq(ASSESS.organizationId, organizationId), eq(ASSESS.version, input.ifVersion)))
+          .returning({ version: ASSESS.version })) as { version: number }[];
+        if (!updated) throw new ConflictError(`HOPE assessment ${id} version is stale; reload and retry`);
+        return { assessmentId: id, version: updated.version, answers: [answer] };
+      });
+      try {
+        await validationService.validateAssessment({
+          organizationId,
+          assessmentId: id,
+          mode: "draft",
+        });
+      } catch (error) {
+        if (!(error instanceof HopeValidationFindingSitingError)) throw error;
+      }
+      return result;
+    },
+
+    // ── Sign a draft (§2.2.2 / Phase 3C — final validation + Z0500B candidate, then immutable) ─
+    async signTimepoint(organizationId, userId, id, args): Promise<HopeSignResult> {
       // GAP-019 — the D8 clinical-context snapshot and the siting the compensating finding needs both
       // come from OTHER modules' seams, each of which opens its own tenant context. They are resolved
       // here, before the write transaction, and the assessment is re-read inside it so the draft guard
@@ -763,16 +1062,37 @@ export function createDbHopeBackend(
 
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const r = await loadA(t, id);
+        const [loaded] = await t
+          .select({ assessment: ASSESS, specCode: schema.hopeSpecVersions.code })
+          .from(ASSESS)
+          .innerJoin(schema.hopeSpecVersions, eq(schema.hopeSpecVersions.id, ASSESS.specVersionId))
+          .where(and(eq(ASSESS.id, id), eq(ASSESS.organizationId, organizationId)))
+          .limit(1);
+        if (!loaded) throw new NotFoundError(`HOPE assessment ${id} not found`);
+        const r = loaded.assessment as AssessmentRow;
         require_(
           r.status === "draft",
           "M10_CORRECTION_TARGET_NOT_SIGNED",
           `Assessment ${id} is not a draft and cannot be signed.`,
         );
+        const expectedVersion = args?.ifVersion ?? r.version;
+        if (r.version !== expectedVersion) {
+          throw new ConflictError(`HOPE assessment ${id} version is stale; reload and retry`);
+        }
+        if (!r.specVersionId || !r.isc) {
+          throw new ConflictError(`HOPE assessment ${id} has no frozen spec version / ISC`);
+        }
+        await assertCorrectionHasSubstantiveChange(t, r);
         const at = new Date();
-        const canonicalJ2051 =
-          (await canonicalJ2051Entries(t, id)) ?? j2051EntriesOf(r.data as Record<string, unknown>);
-        const verdict = evaluateJ2051Trigger({ entries: canonicalJ2051 }); // D4
+        const z0500b = at.toISOString().slice(0, 10);
+        const review = await readinessService.evaluateCandidateInTx(t, {
+          assessment: r,
+          specVersionCode: loaded.specCode,
+          isc: r.isc as "HA" | "HUV" | "HD" | "XX",
+          candidateZ0500B: z0500b,
+        });
+        if (!review.readiness.readyToSign) throw new HopeAssessmentNotReadyToSignError(review);
+        await writeZ0500B(t, r, organizationId, z0500b, at);
         // The AFTER-UPDATE `trg_hope_schedule_mark_completed` closes the linked open schedule on draft→signed.
         const signed = firstOrThrow(
           await t
@@ -785,12 +1105,18 @@ export function createDbHopeBackend(
               // not answer at all; a resolved snapshot with a null PPS is still recorded, because
               // "we looked and there was none" is a different fact from "we never looked".
               clinicalContextSnapshot: snapshot,
-              j2051MaxSeverity: verdict.maxSeverity ?? "none",
-              j2051TriggerFired: verdict.triggerFired,
+              j2051MaxSeverity: r.j2051MaxSeverity,
+              j2051TriggerFired: r.j2051TriggerFired,
               version: r.version + 1,
               updatedAt: at,
             })
-            .where(eq(ASSESS.id, id))
+            .where(
+              and(
+                eq(ASSESS.id, id),
+                eq(ASSESS.organizationId, organizationId),
+                eq(ASSESS.version, expectedVersion),
+              ),
+            )
             .returning(),
           "signTimepoint matched no row",
         );
@@ -825,52 +1151,26 @@ export function createDbHopeBackend(
           rfaKind: r.rfaKind,
           signedAt: at.toISOString(),
           signedBy: userId,
-          j2051TriggerFired: verdict.triggerFired,
+          j2051TriggerFired: signed.j2051TriggerFired,
           wasLate: r.wasLate,
         });
-        if (verdict.triggerFired) {
-          // D4 — exactly one SFV per source timepoint; due_at anchored to the ASSESSMENT date, never
-          // the signature (ADR-0018 D1 — a late signing must not extend the federal window).
-          const descriptor = planSfvCreation({
-            triggeringAssessmentId: id,
-            assessmentDate: r.targetDate.toISOString(),
-            signedAt: at.toISOString(),
-            timeZone: "UTC",
-          });
-          const sfv = firstOrThrow(
-            await t
-              .insert(SFV)
-              .values({
-                organizationId,
-                patientId: r.patientId,
-                admissionId: r.admissionId,
-                triggeringAssessmentId: id,
-                status: "open",
-                triggeredAt: new Date(descriptor.triggeredAt),
-                dueAt: new Date(descriptor.dueAt),
-                alertCadence: {}, // minimal default until the §4.9 alert planner is threaded
-              })
-              .returning({ id: SFV.id }),
-            "symptom_follow_up_visit insert returned no row",
-          );
-          await emit(t, organizationId, "m10.hope.j2051_trigger_fired", "hope_assessment", id, {
-            assessmentId: id,
-            sfvId: sfv.id,
-            maxSeverity: verdict.maxSeverity ?? "none",
-            triggeredAt: descriptor.triggeredAt,
-            dueAt: descriptor.dueAt,
-          });
-          await emit(t, organizationId, "m10.hope.sfv_created", "symptom_follow_up_visit", sfv.id, {
-            sfvId: sfv.id,
-            triggeringAssessmentId: id,
-            dueAt: descriptor.dueAt,
-          });
-        }
-        return toAssessmentView(signed);
+        return {
+          assessmentId: signed.id,
+          status: "signed",
+          version: signed.version,
+          signedAt: at.toISOString(),
+          signedByMembershipId: userId,
+          z0500b,
+          validation: {
+            errorCount: review.validation.errorCount,
+            warningCount: review.validation.warningCount,
+            hasBlockingErrors: review.validation.hasBlockingErrors,
+          },
+        };
       });
     },
 
-    // ── Correct a signed timepoint (§2.4 / D7 — append-only; the DB supersede trigger flips the original) ─
+    // ── Correct a signed timepoint (§2.4 / D7 — append-only; signing supersedes the original) ─
     async correctTimepoint(organizationId, userId, id, args: CorrectTimepointArgs) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
@@ -885,6 +1185,10 @@ export function createDbHopeBackend(
           "M10_CORRECTION_TARGET_SUPERSEDED",
           `Assessment ${id} is already superseded; correct the latest instead.`,
         );
+        if (args.ifVersion != null && original.version !== args.ifVersion) {
+          throw new ConflictError(`HOPE assessment ${id} version is stale; reload and retry`);
+        }
+        await assertNoPendingLineageOperation(t, id);
         const at = new Date();
         const init = await initializeHopeCorrection(createHopeSpecRegistry(t), {
           id: original.id,
@@ -901,7 +1205,7 @@ export function createDbHopeBackend(
               rfaKind: original.rfaKind,
               specVersionId: init.specVersionId,
               isc: init.isc,
-              status: "signed",
+              status: "draft",
               data: args.data,
               // The composite self-FK forces the correction to REUSE the original's target_date.
               targetDate: original.targetDate,
@@ -909,10 +1213,12 @@ export function createDbHopeBackend(
               j2051TriggerFired: original.j2051TriggerFired,
               wasLate: original.wasLate,
               clinicalContextSnapshot: original.clinicalContextSnapshot,
-              signedAt: at,
-              signedByMembershipId: userId,
+              providerEntityId: original.providerEntityId,
+              locationId: original.locationId,
+              signedAt: null,
+              signedByMembershipId: null,
               createdByMembershipId: userId,
-              correctsAssessmentId: id, // the AFTER-INSERT supersede trigger flips the original
+              correctsAssessmentId: id,
             })
             .returning(),
           "hope_assessment (correction) insert returned no row",
@@ -924,6 +1230,14 @@ export function createDbHopeBackend(
           hopeAssessmentId: correction.id,
           specVersionId: init.specVersionId,
           controlAnswers: init.controlAnswers,
+        });
+        await copyActiveAnswersForIsc({
+          tx: t,
+          organizationId,
+          source: original,
+          target: correction,
+          isc: init.isc,
+          at,
         });
         await emit(
           t,
@@ -937,6 +1251,84 @@ export function createDbHopeBackend(
           },
         );
         return toAssessmentView(correction);
+      });
+    },
+
+    async inactivateTimepoint(organizationId, userId, id, args) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const original = await loadA(t, id);
+        require_(
+          original.status === "signed",
+          "M10_CORRECTION_TARGET_NOT_SIGNED",
+          `Assessment ${id} must be signed to inactivate.`,
+        );
+        require_(
+          original.supersededById == null,
+          "M10_CORRECTION_TARGET_SUPERSEDED",
+          `Assessment ${id} is already superseded; target the current record instead.`,
+        );
+        if (original.isc === "XX") {
+          throw new ConflictError(`HOPE assessment ${id} is already an inactivation record`);
+        }
+        if (args.ifVersion != null && original.version !== args.ifVersion) {
+          throw new ConflictError(`HOPE assessment ${id} version is stale; reload and retry`);
+        }
+        await assertNoPendingLineageOperation(t, id);
+        const at = new Date();
+        const init = await initializeHopeInactivation(createHopeSpecRegistry(t), {
+          id: original.id,
+          rfaKind: original.rfaKind as HopeRfaKind,
+          specVersionId: original.specVersionId,
+        });
+        const inactivation = firstOrThrow(
+          await t
+            .insert(ASSESS)
+            .values({
+              organizationId,
+              patientId: original.patientId,
+              admissionId: original.admissionId,
+              rfaKind: original.rfaKind,
+              specVersionId: init.specVersionId,
+              isc: "XX",
+              status: "draft",
+              data: { inactivationReason: args.reason },
+              targetDate: original.targetDate,
+              providerEntityId: original.providerEntityId,
+              locationId: original.locationId,
+              signedAt: null,
+              signedByMembershipId: null,
+              createdByMembershipId: userId,
+              correctsAssessmentId: id,
+            })
+            .returning(),
+          "hope_assessment (inactivation) insert returned no row",
+        );
+        await answerWriter.writeDerivedControlAnswers(t, {
+          organizationId,
+          providerEntityId: inactivation.providerEntityId,
+          locationId: inactivation.locationId,
+          hopeAssessmentId: inactivation.id,
+          specVersionId: init.specVersionId,
+          controlAnswers: init.controlAnswers,
+        });
+        await copyActiveAnswersForIsc({
+          tx: t,
+          organizationId,
+          source: original,
+          target: inactivation,
+          isc: "XX",
+          at,
+        });
+        await emit(
+          t,
+          organizationId,
+          "m10.hope.inactivation_created",
+          "hope_assessment",
+          inactivation.id,
+          { inactivationAssessmentId: inactivation.id, targetAssessmentId: id },
+        );
+        return toAssessmentView(inactivation);
       });
     },
 

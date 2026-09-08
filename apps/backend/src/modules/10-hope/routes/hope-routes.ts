@@ -30,16 +30,20 @@ import {
   CorrectTimepointSchema,
   DashboardQuerySchema,
   HopeAnswerPatchResponseSchema,
+  HopeAssessmentReviewResponseSchema,
   HopeAssessmentWorkspaceResponseSchema,
+  HopeSignResponseSchema,
   HopeWorkflowStateResponseSchema,
-  PatientParamsSchema,
+  InactivateTimepointSchema,
   PatchAnswersSchema,
+  PatientParamsSchema,
   RecordSfvSchema,
   RecordTimepointSchema,
   RegenerateSchedulesSchema,
   RetrySubmissionSchema,
   ScheduleListQuerySchema,
   ScheduleParamsSchema,
+  SetHuvCompletionDateSchema,
   SfvParamsSchema,
   SfvWorklistQuerySchema,
   SignTimepointSchema,
@@ -277,12 +281,15 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
-      parse(SignTimepointSchema, request.body);
-      return service.signTimepoint(organizationId, userId, id);
+      const body = parse(SignTimepointSchema, request.body);
+      return parse(
+        HopeSignResponseSchema,
+        await service.signTimepoint(organizationId, userId, id, body),
+      );
     },
   );
 
-  // 8 — insert a correction RFA (original superseded); original-signer or clinical-lead (§4.7).
+  // 8 — insert a correction draft; original-signer or clinical-lead (§4.7).
   app.post(
     "/api/v1/hope/assessments/:id/correct",
     { preHandler: [CORRECT, SCOPE("hope.timepoint.correct"), ABAC_CORRECT] },
@@ -292,10 +299,23 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const body = parse(CorrectTimepointSchema, request.body);
       const res = await service.correctTimepoint(organizationId, userId, id, {
         correctionReason: body.correctionReason,
+        ifVersion: body.ifVersion,
         targetDate: body.targetDate,
         authorDiscipline: body.authorDiscipline,
         data: body.data,
       });
+      return reply.code(201).send(res);
+    },
+  );
+
+  app.post(
+    "/api/v1/hope/assessments/:id/inactivations",
+    { preHandler: [CORRECT, SCOPE("hope.timepoint.correct"), ABAC_CORRECT] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      const body = parse(InactivateTimepointSchema, request.body);
+      const res = await service.inactivateTimepoint(organizationId, userId, id, body);
       return reply.code(201).send(res);
     },
   );
@@ -324,11 +344,31 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(AssessmentParamsSchema, request.params);
-      return parse(HopeAssessmentWorkspaceResponseSchema, await service.getAssessmentWorkspace(organizationId, id));
+      return parse(
+        HopeAssessmentWorkspaceResponseSchema,
+        await service.getAssessmentWorkspace(organizationId, id),
+      );
     },
   );
 
-  // 9C — canonical answer patch. Public API supports only set/clear; skipped remains internal.
+  // 9C — final-review/readiness model. Read-only; opening review never mutates answers/signature state.
+  app.get(
+    "/api/v1/hope/assessments/:id/review",
+    {
+      preHandler: [READ_TIMEPOINT, SCOPE("hope.timepoint.read")],
+      config: { auditRead: { resourceKind: "hope_assessment_review", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      return parse(
+        HopeAssessmentReviewResponseSchema,
+        await service.getAssessmentReview(organizationId, id),
+      );
+    },
+  );
+
+  // 9D — canonical answer patch. Public API supports only set/clear; skipped remains internal.
   app.patch(
     "/api/v1/hope/assessments/:id/answers",
     { preHandler: [WRITE, SCOPE("hope.timepoint.write")] },
@@ -339,6 +379,22 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       return parse(
         HopeAnswerPatchResponseSchema,
         await service.patchAssessmentAnswers(organizationId, userId, id, body),
+      );
+    },
+  );
+
+  // 9E — HUV workflow-controlled Z0350 capture. This writes the canonical answer row, but keeps
+  // Z0350 out of the unrestricted public answer PATCH surface.
+  app.patch(
+    "/api/v1/hope/assessments/:id/huv/completion-date",
+    { preHandler: [WRITE, SCOPE("hope.timepoint.write")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(AssessmentParamsSchema, request.params);
+      const body = parse(SetHuvCompletionDateSchema, request.body);
+      return parse(
+        HopeAnswerPatchResponseSchema,
+        await service.setHuvCompletionDate(organizationId, userId, id, body),
       );
     },
   );

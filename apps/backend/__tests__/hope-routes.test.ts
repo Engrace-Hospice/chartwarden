@@ -322,13 +322,13 @@ describe("M10-T06 — D4 J2051 trigger + SFV creation + §2.4 outbox", () => {
       method: "POST",
       url: `/api/v1/hope/assessments/${draftId}/sign`,
       headers: RN,
-      payload: { attestationConfirmed: true },
+      payload: { ifVersion: rec.json().version, attestationConfirmed: true },
     });
     expect(signed.statusCode).toBe(200);
     const body = signed.json();
     expect(body.status).toBe("signed");
-    expect(body.j2051TriggerFired).toBe(true);
-    expect(body.j2051MaxSeverity).toBe("moderate");
+    expect(body.z0500b).toBe(NOW.slice(0, 10));
+    expect(body.signedByMembershipId).toBe("rn_1");
 
     const events = backend.drainEvents().map((e) => e.eventName);
     expect(events).toContain("m10.hope.timepoint_signed");
@@ -366,9 +366,9 @@ describe("M10-T06 — D4 J2051 trigger + SFV creation + §2.4 outbox", () => {
       method: "POST",
       url: `/api/v1/hope/assessments/${draftId}/sign`,
       headers: RN,
-      payload: { attestationConfirmed: true },
+      payload: { ifVersion: rec.json().version, attestationConfirmed: true },
     });
-    expect(signed.json().j2051TriggerFired).toBe(false);
+    expect(signed.json().status).toBe("signed");
     expect(backend.drainEvents().map((e) => e.eventName)).not.toContain("m10.hope.sfv_created");
     await app.close();
   });

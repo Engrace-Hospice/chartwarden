@@ -1192,10 +1192,10 @@ import {
   OnboardingTaskListResponseSchema as M34OnboardingTaskListResponseSchema,
   OnboardingTaskViewSchema as M34OnboardingTaskViewSchema,
   RevokeConsentGrantRequest as M34RevokeConsentGrantRequest,
+  TenantExportJobListResponseSchema as M34ScopedTenantExportJobListResponseSchema,
   SupportConsentGrantListResponseSchema as M34SupportConsentGrantListResponseSchema,
   SupportConsentGrantViewSchema as M34SupportConsentGrantViewSchema,
   BaaRecordViewSchema as M34TenantBaaRecordViewSchema,
-  TenantExportJobListResponseSchema as M34TenantExportJobListResponseSchema,
   TenantExportJobViewSchema as M34TenantExportJobViewSchema,
   TenantExportListQuerySchema as M34TenantExportListQuerySchema,
   TenantExportRequest as M34TenantExportRequest,
@@ -1432,6 +1432,7 @@ import {
   HopeAnswerPatchResponseSchema as M10HopeAnswerPatchResponseSchema,
   HopeAssessmentListResponseSchema as M10HopeAssessmentListResponseSchema,
   HopeAssessmentResponseSchema as M10HopeAssessmentResponseSchema,
+  HopeAssessmentReviewResponseSchema as M10HopeAssessmentReviewResponseSchema,
   HopeAssessmentWorkspaceResponseSchema as M10HopeAssessmentWorkspaceResponseSchema,
   HopeComplianceResponseSchema as M10HopeComplianceResponseSchema,
   HopeRegenerateResponseSchema as M10HopeRegenerateResponseSchema,
@@ -1439,11 +1440,13 @@ import {
   HopeScheduleResponseSchema as M10HopeScheduleResponseSchema,
   HopeSfvListResponseSchema as M10HopeSfvListResponseSchema,
   HopeSfvResponseSchema as M10HopeSfvResponseSchema,
+  HopeSignResponseSchema as M10HopeSignResponseSchema,
   HopeSubmissionListResponseSchema as M10HopeSubmissionListResponseSchema,
   HopeSubmissionResponseSchema as M10HopeSubmissionResponseSchema,
   HopeSummaryRequestedResponseSchema as M10HopeSummaryRequestedResponseSchema,
   HopeValidationResponseSchema as M10HopeValidationResponseSchema,
   HopeWorkflowStateResponseSchema as M10HopeWorkflowStateResponseSchema,
+  InactivateTimepointSchema as M10InactivateTimepointSchema,
   PatchAnswersSchema as M10PatchAnswersSchema,
   RecordSfvSchema as M10RecordSfvSchema,
   RecordTimepointSchema as M10RecordTimepointSchema,
@@ -1671,8 +1674,8 @@ import {
 } from "../../apps/backend/src/modules/18-evv/routes/evv-typebox";
 import {
   AbandonReviewRequest as M22AbandonReviewRequest,
-  AddTagRequest as M22AddTagRequest,
   AbortVerifiedUploadResponse as M22AbortVerifiedUploadResponse,
+  AddTagRequest as M22AddTagRequest,
   BulkApproveRequest as M22BulkApproveRequest,
   ClassificationListResponseSchema as M22ClassificationListResponseSchema,
   ClassificationQuerySchema as M22ClassificationQuerySchema,
@@ -6193,13 +6196,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M10HopeAssessmentResponseSchema,
   },
   "POST /api/v1/hope/assessments/:id/sign": {
-    summary: "Sign a draft (runs the D4 J2051 trigger; snapshots PPS/ESAS-r)",
+    summary: "Final-validate and sign a draft HOPE assessment",
     body: M10SignTimepointSchema,
-    response: M10HopeAssessmentResponseSchema,
+    response: M10HopeSignResponseSchema,
   },
   "POST /api/v1/hope/assessments/:id/correct": {
-    summary: "Insert a correction RFA (supersedes the original)",
+    summary: "Create a correction draft for a signed HOPE assessment",
     body: M10CorrectTimepointSchema,
+    response: M10HopeAssessmentResponseSchema,
+  },
+  "POST /api/v1/hope/assessments/:id/inactivations": {
+    summary: "Create an inactivation draft for a signed HOPE assessment",
+    body: M10InactivateTimepointSchema,
     response: M10HopeAssessmentResponseSchema,
   },
   "GET /api/v1/hope/assessments/:id": {
@@ -6209,6 +6217,10 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/hope/assessments/:id/workspace": {
     summary: "Canonical HOPE assessment workspace from frozen spec and current answers",
     response: M10HopeAssessmentWorkspaceResponseSchema,
+  },
+  "GET /api/v1/hope/assessments/:id/review": {
+    summary: "HOPE final-review readiness model",
+    response: M10HopeAssessmentReviewResponseSchema,
   },
   "PATCH /api/v1/hope/assessments/:id/answers": {
     summary: "Patch canonical HOPE item answers on a draft assessment",
@@ -7110,7 +7122,8 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M22PatchDocumentRequest,
   },
   "POST /api/v1/documents/:id/links": {
-    summary: "Attach an existing document to a patient and/or admission without creating a new version",
+    summary:
+      "Attach an existing document to a patient and/or admission without creating a new version",
     body: M22LinkDocumentRequest,
     response: M22DocumentViewSchema,
   },
@@ -9385,7 +9398,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/tenant/tenant-export-jobs": {
     summary: "The tenant's export queue (filtered, cursor-paginated)",
     query: M34TenantExportListQuerySchema,
-    response: M34TenantExportJobListResponseSchema,
+    response: M34ScopedTenantExportJobListResponseSchema,
   },
   "GET /api/v1/tenant/tenant-export-jobs/:id/download": {
     summary: "Mint a 24h presigned tenant-export URL (SEC-052; step-up)",

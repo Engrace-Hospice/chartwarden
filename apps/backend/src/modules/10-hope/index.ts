@@ -102,6 +102,23 @@ export {
   createHopeV1_00_1ValidationEngine,
 } from "./spec/v1_00_1/validation";
 export {
+  type HopeReadinessBlocker,
+  type HopeReviewReadModel,
+  type HopeSectionReview,
+  type HopeAssessmentReadinessService,
+  HopeAssessmentNotReadyToSignError,
+  createHopeAssessmentReadinessService,
+} from "./hope-readiness-service";
+export {
+  type HopeJ2051TriggerState,
+  type HopeSfvReconciliationResult,
+  type HopeSfvService,
+  HOPE_J2051_ITEM_CODES,
+  createHopeSfvService,
+  deriveHopeJ2051TriggerState,
+  hopeSfvDueAtFromJ2050B,
+} from "./hope-sfv-service";
+export {
   type HopeValidationFindingView,
   type HopeValidationRunView,
   type HopeValidationService,
@@ -184,6 +201,8 @@ export {
   type RecordSfvArgs,
   type RecordTimepointArgs,
   type RecordedHopeEvent,
+  type SignTimepointArgs,
+  type HopeSignResult,
   buildWorkflowState,
   createInMemoryHopeBackend,
 } from "./routes/service";
