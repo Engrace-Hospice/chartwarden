@@ -1300,18 +1300,27 @@ export const hopeSfvStatus = pgEnum("hope_sfv_status", [
 
 /** `hope_submission_status` — the §2.2.4 iQIES submission-batch lifecycle. */
 export const hopeSubmissionStatus = pgEnum("hope_submission_status", [
+  "ready",
   "queued",
+  "packaged",
+  "exported",
   "in_flight",
+  "submitted_pending_result",
   "accepted",
   "rejected",
   "partially_accepted",
+  "accepted_with_warnings",
+  "file_error",
 ]);
 
 /** `hope_submission_item_status` — the per-assessment outcome within a submission batch. */
 export const hopeSubmissionItemStatus = pgEnum("hope_submission_item_status", [
   "accepted",
+  "accepted_with_warnings",
   "rejected",
   "pending",
+  "blocked",
+  "unmatched",
 ]);
 
 /** `hope_validation_severity` — a §3 `hope_validation_finding`'s blocking class (error vs warning). */

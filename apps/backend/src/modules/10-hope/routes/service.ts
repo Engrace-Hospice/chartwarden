@@ -27,7 +27,7 @@ import type {
   LatestAssessmentProvider,
   ScaleType,
 } from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
+import { ConflictError, NotFoundError } from "@wardenx/types";
 import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "../abac-predicates";
 import type {
   HopeAnswerPatchChange,
@@ -97,11 +97,19 @@ export interface HopeSubmissionView {
   readonly providerEntityId: string;
   readonly submissionPeriod: string;
   readonly status: HopeSubmissionStatus;
+  readonly transportMode?: string;
+  readonly validationProfile?: string | null;
+  readonly packageFilename?: string | null;
+  readonly packageSha256?: string | null;
+  readonly packageSizeBytes?: number | null;
   readonly itemCount: number;
   readonly acceptedCount: number;
   readonly rejectedCount: number;
   readonly transmittedAt: string | null;
+  readonly exportedAt?: string | null;
+  readonly submittedAt?: string | null;
   readonly acceptedAt: string | null;
+  readonly iqiesSubmissionReference?: string | null;
 }
 export interface HopeComplianceView {
   readonly providerEntityId: string | null;
@@ -295,6 +303,22 @@ export interface HopeRouteService extends HopeAbacResolver {
   getSubmission(organizationId: string, id: string): Promise<HopeSubmissionView>;
   retrySubmission(organizationId: string, id: string): Promise<HopeSubmissionView>;
   assembleSubmission(organizationId: string, providerEntityId: string): Promise<HopeSubmissionView>;
+  downloadSubmissionPackage(
+    organizationId: string,
+    id: string,
+  ): Promise<{ filename: string; contentType: string; bytes: Buffer }>;
+  markSubmissionUploaded(
+    organizationId: string,
+    userId: string,
+    id: string,
+    args: { submittedAt?: string; iqiesSubmissionReference?: string | null },
+  ): Promise<HopeSubmissionView>;
+  importSubmissionResult(
+    organizationId: string,
+    userId: string,
+    id: string,
+    args: { reportReference?: string | null; results: readonly Record<string, unknown>[] },
+  ): Promise<HopeSubmissionView>;
   complianceDashboard(
     organizationId: string,
     providerEntityId?: string,
@@ -325,6 +349,7 @@ interface SfvRecord extends Mutable<HopeSfvView> {
 }
 interface SubmissionRecord extends Mutable<HopeSubmissionView> {
   organizationId: string;
+  packageContentBase64?: string;
 }
 
 export interface HopeRouteSeed {
@@ -433,6 +458,10 @@ export function buildWorkflowState(input: {
   for (const a of [...input.assessments].sort((a, b) => b.targetDate.localeCompare(a.targetDate))) {
     if (a.status === "signed" && !signedByRfa.has(a.rfaKind)) signedByRfa.set(a.rfaKind, a);
   }
+  const draftByRfa = new Map<HopeRfaKind, HopeAssessmentView>();
+  for (const a of [...input.assessments].sort((a, b) => b.targetDate.localeCompare(a.targetDate))) {
+    if (a.status === "draft" && !draftByRfa.has(a.rfaKind)) draftByRfa.set(a.rfaKind, a);
+  }
   const schedulesByKind = new Map<HopeRfaKind, HopeScheduleView>();
   for (const s of [...input.schedules].sort((a, b) =>
     a.windowOpensAt.localeCompare(b.windowOpensAt),
@@ -447,6 +476,7 @@ export function buildWorkflowState(input: {
         : undefined) ??
       signedByRfa.get(kind) ??
       null;
+    const draft = draftByRfa.get(kind) ?? null;
     const status = completed ? "completed" : statusForSchedule(schedule, kind, input.nowIso);
     return {
       kind,
@@ -456,7 +486,7 @@ export function buildWorkflowState(input: {
       windowEnd: schedule?.windowClosesAt ?? null,
       lateDeadline: schedule?.lateDeadlineAt ?? null,
       completedAt: completed?.signedAt ?? null,
-      assessmentId: completed?.id ?? null,
+      assessmentId: completed?.id ?? draft?.id ?? null,
       attention: evaluateFixedHopeAttention({
         kind,
         workflowStatus: status,
@@ -647,7 +677,15 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       acceptedCount: 0,
       rejectedCount: 0,
       transmittedAt: null,
+      exportedAt: null,
+      submittedAt: null,
       acceptedAt: null,
+      transportMode: "manual_iqies_upload",
+      validationProfile: null,
+      packageFilename: null,
+      packageSha256: null,
+      packageSizeBytes: null,
+      iqiesSubmissionReference: null,
       ...s,
     } as SubmissionRecord);
 
@@ -1433,26 +1471,82 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       return viewSub(r);
     },
     async assembleSubmission(organizationId, providerEntityId) {
+      const ready = [...assessments.values()].filter(
+        (a) =>
+          a.organizationId === organizationId &&
+          a.status === "signed" &&
+          a.regulatory.specVersionId &&
+          !a.supersededByAssessmentId,
+      );
+      if (ready.length === 0) {
+        throw new ConflictError("No signed HOPE assessments are eligible for iQIES package generation.");
+      }
       const id = nextId();
+      const content = Buffer.from(`HOPE manual_iqies_upload package ${id}\n${ready.map((a) => a.id).join("\n")}\n`, "utf8");
       const rec: SubmissionRecord = {
         id,
         organizationId,
         providerEntityId,
         submissionPeriod: now().slice(0, 7),
-        status: "queued",
-        itemCount: 0,
+        status: "packaged",
+        transportMode: "manual_iqies_upload",
+        validationProfile: "HOPE-1.00.1-ERRATA-1.00.3",
+        packageFilename: `HOPE_${providerEntityId}_${id}.zip`,
+        packageSha256: "in-memory",
+        packageSizeBytes: content.length,
+        packageContentBase64: content.toString("base64"),
+        itemCount: ready.length,
         acceptedCount: 0,
         rejectedCount: 0,
         transmittedAt: null,
+        exportedAt: null,
+        submittedAt: null,
         acceptedAt: null,
+        iqiesSubmissionReference: null,
       };
       submissions.set(id, rec);
       emit(
         "m10.hope.submission_queued",
-        { submissionId: id, providerEntityId, itemCount: 0 },
+        { submissionId: id, providerEntityId, itemCount: ready.length, transportMode: "manual_iqies_upload" },
         `${id}:queued`,
       );
       return viewSub(rec);
+    },
+    async downloadSubmissionPackage(organizationId, id) {
+      const r = findSub(organizationId, id);
+      const bytes = Buffer.from(r.packageContentBase64 ?? "", "base64");
+      if (bytes.length === 0) throw new ConflictError(`Submission ${id} has no package.`);
+      r.status = "exported";
+      r.exportedAt = now();
+      return {
+        filename: r.packageFilename ?? `${id}.zip`,
+        contentType: "application/zip",
+        bytes,
+      };
+    },
+    async markSubmissionUploaded(organizationId, userId, id, args) {
+      const r = findSub(organizationId, id);
+      if (r.status !== "packaged" && r.status !== "exported") {
+        throw new ConflictError(`Submission ${id} must be packaged/exported before it can be marked uploaded.`);
+      }
+      const at = args.submittedAt ?? now();
+      r.status = "submitted_pending_result";
+      r.transmittedAt = at;
+      r.submittedAt = at;
+      r.iqiesSubmissionReference = args.iqiesSubmissionReference ?? null;
+      emit("m10.hope.submission_transmitted", { submissionId: id, submittedAt: at, submittedBy: userId }, `${id}:manual-uploaded`);
+      return viewSub(r);
+    },
+    async importSubmissionResult(organizationId, userId, id, args) {
+      const r = findSub(organizationId, id);
+      const rejected = args.results.filter((raw) => String(raw.status ?? raw.result ?? raw.outcome ?? raw.severity ?? "").toLowerCase().includes("reject") || String(raw.severity ?? "").toLowerCase() === "fatal").length;
+      const warnings = args.results.filter((raw) => String(raw.status ?? raw.result ?? raw.outcome ?? raw.severity ?? "").toLowerCase().includes("warning")).length;
+      r.rejectedCount = rejected;
+      r.acceptedCount = Math.max(0, r.itemCount - rejected);
+      r.status = rejected > 0 && r.acceptedCount > 0 ? "partially_accepted" : rejected > 0 ? "rejected" : warnings > 0 ? "accepted_with_warnings" : "accepted";
+      r.acceptedAt = rejected === 0 ? now() : null;
+      emit(rejected > 0 ? "m10.hope.submission_rejected" : "m10.hope.submission_accepted", { submissionId: id, importedBy: userId }, `${id}:result-imported`);
+      return viewSub(r);
     },
     async complianceDashboard(organizationId, providerEntityId) {
       const scoped = [...schedules.values()].filter((s) => s.organizationId === organizationId);

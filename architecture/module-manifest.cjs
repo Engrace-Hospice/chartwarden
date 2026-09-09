@@ -420,6 +420,7 @@ exports.MODULES = [
       "hope_validation_finding",
       "hope_submission",
       "hope_submission_item",
+      "hope_submission_result_event",
     ],
   },
   {

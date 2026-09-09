@@ -32,7 +32,8 @@ function headerAuth(request: FastifyRequest): void {
   const org = request.headers["x-test-org"];
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
-  request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  request.context.roles =
+    typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
 }
 
 const ORG = "org_a";
@@ -78,7 +79,11 @@ const PERMISSION_SEED = [
   },
   {
     userId: "md_1",
-    permissions: ["f2f.attest", "discharge.for_cause", "discharge.cosign_for_cause"],
+    permissions: [
+      "f2f.attest",
+      "discharge.for_cause",
+      "discharge.cosign_for_cause",
+    ],
   },
   { userId: "co_1", permissions: ["compliance.read", "compliance.override"] },
 ];
@@ -160,7 +165,12 @@ function makeServer(
         orgId: org,
         userId: s.userId,
         grants: [
-          { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: s.permissions },
+          {
+            roleKey: "seed",
+            enabled: true,
+            expiresAt: null,
+            permissionKeys: s.permissions,
+          },
         ],
       })),
     ),
@@ -177,10 +187,14 @@ function makeServer(
     resolver: backend.resolver,
     isInCaseload: options.isInCaseload ?? (async () => true),
   });
-  for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
+  for (const [name, fn] of Object.entries(predicates))
+    registry.register(name, fn);
   registerAbacRegistry(registry);
 
-  const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
+  const app = buildServer({
+    authenticate: headerAuth,
+    security: { rateLimitEnabled: false },
+  });
   registerAdmissionRoutes(app, { service: backend.service });
   return { app, backend };
 }
@@ -190,12 +204,36 @@ const INTAKE = {
   "x-test-org": ORG,
   "x-test-roles": "intake_coordinator",
 };
-const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "clinical_rn" };
-const RN_AS_NP = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "np" };
-const MD = { "x-test-user": "md_1", "x-test-org": ORG, "x-test-roles": "medical_director" };
-const MD_NO_ROLE = { "x-test-user": "md_1", "x-test-org": ORG, "x-test-roles": "clinical_admin" };
-const CO = { "x-test-user": "co_1", "x-test-org": ORG, "x-test-roles": "compliance_officer" };
-const CO_NO_ROLE = { "x-test-user": "co_1", "x-test-org": ORG, "x-test-roles": "clinical_admin" };
+const RN = {
+  "x-test-user": "rn_1",
+  "x-test-org": ORG,
+  "x-test-roles": "clinical_rn",
+};
+const RN_AS_NP = {
+  "x-test-user": "rn_1",
+  "x-test-org": ORG,
+  "x-test-roles": "np",
+};
+const MD = {
+  "x-test-user": "md_1",
+  "x-test-org": ORG,
+  "x-test-roles": "medical_director",
+};
+const MD_NO_ROLE = {
+  "x-test-user": "md_1",
+  "x-test-org": ORG,
+  "x-test-roles": "clinical_admin",
+};
+const CO = {
+  "x-test-user": "co_1",
+  "x-test-org": ORG,
+  "x-test-roles": "compliance_officer",
+};
+const CO_NO_ROLE = {
+  "x-test-user": "co_1",
+  "x-test-org": ORG,
+  "x-test-roles": "clinical_admin",
+};
 
 beforeEach(() => {
   resetAuthorizationContract();
@@ -272,7 +310,10 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
 
   it("requires a session (401) when unauthenticated", async () => {
     const { app } = makeServer();
-    const res = await app.inject({ method: "GET", url: `/api/v1/admissions/${ADMISSION}` });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${ADMISSION}`,
+    });
     expect(res.statusCode).toBe(401);
     await app.close();
   });
@@ -325,7 +366,9 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     expect(body.admission?.id).toBe(ADMISSION);
     expect(Array.isArray(body.periods)).toBe(true);
     // The seeded admission has an open compliance window → it surfaces on the aggregate.
-    expect(body.complianceWindows.some((w: { id: string }) => w.id === WINDOW)).toBe(true);
+    expect(
+      body.complianceWindows.some((w: { id: string }) => w.id === WINDOW),
+    ).toBe(true);
     await app.close();
   });
 
@@ -387,6 +430,33 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
         admissionAt: "2026-06-20T00:00:00.000Z",
         providerEntityId: PROVIDER_ENTITY,
         locationId: LOCATION,
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+
+    const detail = await app.inject({
+      method: "GET",
+      url: `/api/v1/admissions/${ADMISSION}`,
+      headers: INTAKE,
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      providerEntityId: PROVIDER_ENTITY,
+      locationId: LOCATION,
+    });
+    await app.close();
+  });
+
+  it("PATCH /admissions/:id derives the provider location when the UI saves admission details", async () => {
+    const { app } = makeServer();
+    const updated = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/admissions/${ADMISSION}`,
+      headers: INTAKE,
+      payload: {
+        ifVersion: 1,
+        admissionAt: "2026-06-20T00:00:00.000Z",
+        providerEntityId: PROVIDER_ENTITY,
       },
     });
     expect(updated.statusCode).toBe(200);
@@ -497,7 +567,11 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       method: "POST",
       url: `/api/v1/discharges/${DISCHARGE}/cosign-for-cause`,
       headers: MD_NO_ROLE,
-      payload: { cosignerName: "Dr. House", cosignerNpi: "1234567893", ifVersion: 1 },
+      payload: {
+        cosignerName: "Dr. House",
+        cosignerNpi: "1234567893",
+        ifVersion: 1,
+      },
     });
     expect(noRole.statusCode).toBe(403);
     await denied.app.close();
@@ -507,7 +581,11 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       method: "POST",
       url: `/api/v1/discharges/${DISCHARGE}/cosign-for-cause`,
       headers: MD,
-      payload: { cosignerName: "Dr. House", cosignerNpi: "1234567893", ifVersion: 1 },
+      payload: {
+        cosignerName: "Dr. House",
+        cosignerNpi: "1234567893",
+        ifVersion: 1,
+      },
     });
     expect(ok.statusCode).toBe(200);
     expect(ok.json().state).toBe("completed");

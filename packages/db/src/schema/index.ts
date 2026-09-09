@@ -293,6 +293,7 @@ export * from "./hope/symptom-follow-up-visits";
 export * from "./hope/hope-validation-findings";
 export * from "./hope/hope-submissions";
 export * from "./hope/hope-submission-items";
+export * from "./hope/hope-submission-result-events";
 
 // ---------------------------------------------------------------------------
 // Module 11 — Orders (M11-T02)

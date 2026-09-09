@@ -68,12 +68,16 @@ const {
 /** The package-kernel Drizzle handle (a `withOrgContext` tx satisfies it structurally). */
 type BillingDb = repositories.BillingDb;
 
+const M23_CRON_LOCK_DURATION_MS = 10 * 60_000;
+
 /**
  * The `claim_acknowledgment` insert shape — DERIVED from the repo's own `append` param (rather than importing
  * the M1-owned db schema leaf) so this module takes no schema-leaf import at all (the M23 import boundary +
  * the table-ownership check's import-token false-positive both stay satisfied).
  */
-type NewClaimAck = Parameters<InstanceType<typeof ClaimAcknowledgmentRepository>["append"]>[0];
+type NewClaimAck = Parameters<
+  InstanceType<typeof ClaimAcknowledgmentRepository>["append"]
+>[0];
 
 // ── the fail-closed unbound-port thunk (the M27 `unboundWorkerPort` precedent) ────────────────────────────
 
@@ -179,9 +183,10 @@ export interface X12ClientPort {
     readonly notrId: string;
     readonly notrControlNumber: string;
   }): Promise<{ readonly x12: string; readonly correlationId: string }>;
-  parse999(input: { readonly macJurisdiction: string; readonly rawFileUri: string }): Promise<
-    readonly Parsed999[]
-  >;
+  parse999(input: {
+    readonly macJurisdiction: string;
+    readonly rawFileUri: string;
+  }): Promise<readonly Parsed999[]>;
   parse277ca(input: {
     readonly macJurisdiction: string;
     readonly rawFileUri: string;
@@ -219,10 +224,17 @@ export interface MacPortalPort {
     readonly kind: "claim_837i" | "noe" | "notr";
     readonly x12: string;
     readonly controlNumber: string;
-  }): Promise<{ readonly accepted: boolean; readonly generatedFileUri: string }>;
+  }): Promise<{
+    readonly accepted: boolean;
+    readonly generatedFileUri: string;
+  }>;
   /** List pending 999 ack files for a MAC jurisdiction (the cron poller's source). */
-  pullPending999(macJurisdiction: string): Promise<readonly { readonly rawFileUri: string }[]>;
-  pullPending277ca(macJurisdiction: string): Promise<readonly { readonly rawFileUri: string }[]>;
+  pullPending999(
+    macJurisdiction: string,
+  ): Promise<readonly { readonly rawFileUri: string }[]>;
+  pullPending277ca(
+    macJurisdiction: string,
+  ): Promise<readonly { readonly rawFileUri: string }[]>;
   /** HEAD on the portal-status-page; `true` when up (the §4.8 mac-portal.health probe). */
   probeHealth(macJurisdiction: string): Promise<boolean>;
 }
@@ -312,7 +324,11 @@ export interface MacJurisdictionListPort {
 export function buildM23SubmissionQueuePort(connection: ConnectionOptions): {
   readonly port: {
     enqueue(
-      queueName: "claim.submit" | "claim.submit.retry" | "noe.submit" | "notr.submit",
+      queueName:
+        | "claim.submit"
+        | "claim.submit.retry"
+        | "noe.submit"
+        | "notr.submit",
       jobId: string,
       payload: Record<string, unknown>,
     ): Promise<void>;
@@ -481,7 +497,9 @@ function validationRunnerOf(deps: M23WorkerDeps): ClaimValidationRunnerPort {
   );
 }
 
-function revalidationTargetsOf(deps: M23WorkerDeps): RevalidationTargetResolverPort {
+function revalidationTargetsOf(
+  deps: M23WorkerDeps,
+): RevalidationTargetResolverPort {
   return (
     deps.revalidationTargets ?? {
       resolve: () =>
@@ -532,10 +550,15 @@ function jurisdictionsOf(deps: M23WorkerDeps): MacJurisdictionListPort {
 // ── shared helpers ──────────────────────────────────────────────────────────────────────────────────────
 
 /** Drive the pure §2.2 claim reducer for a worker-side transition; returns the next state or throws on illegal. */
-function nextClaimState(from: ClaimState, event: ClaimTransitionEvent): ClaimState {
+function nextClaimState(
+  from: ClaimState,
+  event: ClaimTransitionEvent,
+): ClaimState {
   const result = reduceClaim(from, event);
   if (result.error) {
-    throw new Error(`illegal claim transition ${from} --${event}--> (${result.error})`);
+    throw new Error(
+      `illegal claim transition ${from} --${event}--> (${result.error})`,
+    );
   }
   return result.state;
 }
@@ -547,16 +570,22 @@ function nextClaimState(from: ClaimState, event: ClaimTransitionEvent): ClaimSta
  * module, and the guard the pure reducer enforces on `submit` needs this recomputed HERE too, at the
  * moment the worker is about to actually transition READY → SUBMITTED (not just at enqueue time).
  */
-async function unresolvedBlockingFailuresForClaim(tx: BillingDb, claimId: string): Promise<number> {
+async function unresolvedBlockingFailuresForClaim(
+  tx: BillingDb,
+  claimId: string,
+): Promise<number> {
   const run = await new ValidationRunRepository(tx).findLatestForClaim(claimId);
   if (!run) return Number.POSITIVE_INFINITY; // never validated → cannot be READY-clean
-  const failures = await new ValidationResultRepository(tx).listFailuresForRun(run.id);
+  const failures = await new ValidationResultRepository(tx).listFailuresForRun(
+    run.id,
+  );
   if (failures.length === 0) return 0;
   const overrides = await new ValidationOverrideRepository(tx).listByResultIds(
     failures.map((f) => f.id),
   );
   const overridden = new Set(overrides.map((o) => o.resultId));
-  return failures.filter((f) => f.severity === "error" && !overridden.has(f.id)).length;
+  return failures.filter((f) => f.severity === "error" && !overridden.has(f.id))
+    .length;
 }
 
 /**
@@ -574,15 +603,22 @@ async function preflightClaimSubmit(
   tx: BillingDb,
   claim: repositories.ClaimRecord,
 ): Promise<{ readonly to: ClaimState } | { readonly error: string }> {
-  const unresolvedBlockingFailures = await unresolvedBlockingFailuresForClaim(tx, claim.id);
-  const result = reduceClaim(claim.state, "submit", { unresolvedBlockingFailures });
+  const unresolvedBlockingFailures = await unresolvedBlockingFailuresForClaim(
+    tx,
+    claim.id,
+  );
+  const result = reduceClaim(claim.state, "submit", {
+    unresolvedBlockingFailures,
+  });
   return result.error ? { error: result.error } : { to: result.state };
 }
 
 /** Whole-day count from `now` to a `yyyy-mm-dd` window target (negative when past). */
 function daysToTarget(targetDate: string, now: Date): number {
   const target = new Date(`${targetDate}T00:00:00.000Z`).getTime();
-  const today = new Date(`${now.toISOString().slice(0, 10)}T00:00:00.000Z`).getTime();
+  const today = new Date(
+    `${now.toISOString().slice(0, 10)}T00:00:00.000Z`,
+  ).getTime();
   return Math.round((target - today) / (24 * 60 * 60 * 1000));
 }
 
@@ -634,8 +670,14 @@ export async function runClaimSubmit(
     return;
   }
 
-  let generated: { readonly x12: string; readonly correlationId: string } | null = null;
-  let uploaded: { readonly accepted: boolean; readonly generatedFileUri: string } | null = null;
+  let generated: {
+    readonly x12: string;
+    readonly correlationId: string;
+  } | null = null;
+  let uploaded: {
+    readonly accepted: boolean;
+    readonly generatedFileUri: string;
+  } | null = null;
   try {
     generated = await x12Of(deps).generate837i({
       organizationId: job.organizationId,
@@ -708,9 +750,15 @@ export async function runClaimSubmit(
     workerCorrelationId: generated.correlationId,
   });
 
-  const result = await claims.transitionToState(job.claimId, claim.version, preflight.to);
+  const result = await claims.transitionToState(
+    job.claimId,
+    claim.version,
+    preflight.to,
+  );
   if (!result.ok)
-    throw new Error(`claim ${job.claimId} version conflict on submit (${result.currentVersion})`);
+    throw new Error(
+      `claim ${job.claimId} version conflict on submit (${result.currentVersion})`,
+    );
 
   await outbox.publish(tx, {
     eventName: "m23.claim.submitted",
@@ -752,7 +800,9 @@ export async function runClaimSubmitRetry(
     priorSubmission.claimId !== job.claimId ||
     priorSubmission.attemptIndex !== job.attemptIndex
   ) {
-    throw new Error(`claim submission ${job.submissionId} does not match the retry request`);
+    throw new Error(
+      `claim submission ${job.submissionId} does not match the retry request`,
+    );
   }
 
   if (attemptIndex >= M23_QUEUE_PARAMS.claimSubmitRetry.attempts) {
@@ -772,7 +822,11 @@ export async function runClaimSubmitRetry(
       alertCode: "m23.claim.submission_stalled",
       severity: "critical",
       organizationId: job.organizationId,
-      payload: { claimId: job.claimId, submissionId: job.submissionId, attemptIndex },
+      payload: {
+        claimId: job.claimId,
+        submissionId: job.submissionId,
+        attemptIndex,
+      },
     });
     return;
   }
@@ -812,9 +866,13 @@ export async function runClaimSubmitRetry(
     return;
   }
 
-  const parsedControlNumber = parseControlNumber(priorSubmission.claimControlNumber);
+  const parsedControlNumber = parseControlNumber(
+    priorSubmission.claimControlNumber,
+  );
   if (!parsedControlNumber) {
-    throw new Error(`claim submission ${job.submissionId} has an invalid control number`);
+    throw new Error(
+      `claim submission ${job.submissionId} has an invalid control number`,
+    );
   }
   const claimControlNumber = deriveControlNumber({
     ccn: parsedControlNumber.ccn,
@@ -823,8 +881,14 @@ export async function runClaimSubmitRetry(
     attemptIndex,
   });
 
-  let generated: { readonly x12: string; readonly correlationId: string } | null = null;
-  let uploaded: { readonly accepted: boolean; readonly generatedFileUri: string } | null = null;
+  let generated: {
+    readonly x12: string;
+    readonly correlationId: string;
+  } | null = null;
+  let uploaded: {
+    readonly accepted: boolean;
+    readonly generatedFileUri: string;
+  } | null = null;
   let failureReason: string | null = null;
   try {
     generated = await x12Of(deps).generate837i({
@@ -839,7 +903,8 @@ export async function runClaimSubmitRetry(
       x12: generated.x12,
       controlNumber: claimControlNumber,
     });
-    if (!uploaded.accepted) failureReason = "MAC portal rejected the retry upload";
+    if (!uploaded.accepted)
+      failureReason = "MAC portal rejected the retry upload";
   } catch (err) {
     failureReason = err instanceof Error ? err.message : String(err);
   }
@@ -851,7 +916,11 @@ export async function runClaimSubmitRetry(
     claimId: job.claimId,
     claimControlNumber,
     attemptIndex,
-    outcome: failureReason ? (generated ? "failed_portal" : "failed_worker") : "submitted",
+    outcome: failureReason
+      ? generated
+        ? "failed_portal"
+        : "failed_worker"
+      : "submitted",
     outcomeReason: failureReason,
     generatedFileUri: uploaded?.generatedFileUri ?? null,
     submittedAt: failureReason ? null : now,
@@ -874,8 +943,13 @@ export async function runClaimSubmitRetry(
     return;
   }
 
-  const result = await claims.transitionToState(job.claimId, claim.version, preflight.to);
-  if (!result.ok) throw new Error(`claim ${job.claimId} version conflict on retry submit`);
+  const result = await claims.transitionToState(
+    job.claimId,
+    claim.version,
+    preflight.to,
+  );
+  if (!result.ok)
+    throw new Error(`claim ${job.claimId} version conflict on retry submit`);
   await outbox.publish(tx, {
     eventName: "m23.claim.submitted",
     organizationId: job.organizationId,
@@ -896,7 +970,11 @@ export async function runClaimSubmitRetry(
  * MAC portal, append the `claim_submission` (kind='noe') row, drive the §2.2 NOE READY → SUBMITTED transition
  * (pure `noeMachine.reduce`, version-checked), and emit `m23.noe.submitted`.
  */
-async function runNoeSubmit(tx: BillingDb, deps: M23WorkerDeps, job: NoeSubmitJob): Promise<void> {
+async function runNoeSubmit(
+  tx: BillingDb,
+  deps: M23WorkerDeps,
+  job: NoeSubmitJob,
+): Promise<void> {
   const outbox = outboxOf(deps);
   const noes = new NoeRepository(tx);
   const submissions = new ClaimSubmissionRepository(tx);
@@ -933,18 +1011,30 @@ async function runNoeSubmit(tx: BillingDb, deps: M23WorkerDeps, job: NoeSubmitJo
 
   const next = noeMachine.reduce(noe.state, "submit");
   if (next.error)
-    throw new Error(`illegal NOE transition ${noe.state} --submit--> (${next.error})`);
-  const result = await noes.transitionToState(job.noeId, noe.version, next.state as NoticeState, {
-    latestSubmissionId: submission.id,
-  });
-  if (!result.ok) throw new Error(`noe ${job.noeId} version conflict on submit`);
+    throw new Error(
+      `illegal NOE transition ${noe.state} --submit--> (${next.error})`,
+    );
+  const result = await noes.transitionToState(
+    job.noeId,
+    noe.version,
+    next.state as NoticeState,
+    {
+      latestSubmissionId: submission.id,
+    },
+  );
+  if (!result.ok)
+    throw new Error(`noe ${job.noeId} version conflict on submit`);
 
   await outbox.publish(tx, {
     eventName: "m23.noe.submitted",
     organizationId: job.organizationId,
     aggregateKind: "noe",
     aggregateId: job.noeId,
-    payload: { noeId: job.noeId, submissionId: submission.id, submittedAt: now.toISOString() },
+    payload: {
+      noeId: job.noeId,
+      submissionId: submission.id,
+      submittedAt: now.toISOString(),
+    },
   });
 }
 
@@ -986,11 +1076,14 @@ async function runNotrSubmit(
     submittedAt: uploaded.accepted ? now : null,
     workerCorrelationId: generated.correlationId,
   });
-  if (!uploaded.accepted) throw new Error("MAC portal rejected the NOTR upload");
+  if (!uploaded.accepted)
+    throw new Error("MAC portal rejected the NOTR upload");
 
   const next = notrMachine.reduce(notr.state, "submit");
   if (next.error)
-    throw new Error(`illegal NOTR transition ${notr.state} --submit--> (${next.error})`);
+    throw new Error(
+      `illegal NOTR transition ${notr.state} --submit--> (${next.error})`,
+    );
   const result = await notrs.transitionToState(
     job.notrId,
     notr.version,
@@ -999,14 +1092,19 @@ async function runNotrSubmit(
       latestSubmissionId: submission.id,
     },
   );
-  if (!result.ok) throw new Error(`notr ${job.notrId} version conflict on submit`);
+  if (!result.ok)
+    throw new Error(`notr ${job.notrId} version conflict on submit`);
 
   await outbox.publish(tx, {
     eventName: "m23.notr.submitted",
     organizationId: job.organizationId,
     aggregateKind: "notr",
     aggregateId: job.notrId,
-    payload: { notrId: job.notrId, submissionId: submission.id, submittedAt: now.toISOString() },
+    payload: {
+      notrId: job.notrId,
+      submissionId: submission.id,
+      submittedAt: now.toISOString(),
+    },
   });
 }
 
@@ -1105,14 +1203,19 @@ async function runRevalidateConsumer(
 
   for (const { claimId } of targets) {
     const claim = await claims.findById(claimId);
-    if (!claim || (claim.state !== "validating" && claim.state !== "ready")) continue;
+    if (!claim || (claim.state !== "validating" && claim.state !== "ready"))
+      continue;
     const validationRunId = `${job.eventId}:${claimId}`; // deterministic per (event, claim) — idempotent
-    await enqueue.enqueue("validation-run", `${job.organizationId}:${claimId}:${job.eventId}`, {
-      organizationId: job.organizationId,
-      claimId,
-      validationRunId,
-      trigger: "re_validation_after_correction",
-    });
+    await enqueue.enqueue(
+      "validation-run",
+      `${job.organizationId}:${claimId}:${job.eventId}`,
+      {
+        organizationId: job.organizationId,
+        claimId,
+        validationRunId,
+        trigger: "re_validation_after_correction",
+      },
+    );
   }
 }
 
@@ -1132,11 +1235,17 @@ async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
   for (const { macJurisdiction } of jurisdictions) {
     const files = await portal.pullPending999(macJurisdiction);
     for (const file of files) {
-      const parsed = await x12.parse999({ macJurisdiction, rawFileUri: file.rawFileUri });
+      const parsed = await x12.parse999({
+        macJurisdiction,
+        rawFileUri: file.rawFileUri,
+      });
       for (const result of parsed) {
         await withOrgContext(
           deps.db,
-          { organizationId: result.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+          {
+            organizationId: result.organizationId,
+            userId: M23_WORKER_SYSTEM_USER_ID,
+          },
           async (txAny) => {
             const tx = txAny as unknown as BillingDb;
             const acks = new ClaimAcknowledgmentRepository(tx);
@@ -1146,10 +1255,14 @@ async function runAckPull999(deps: M23WorkerDeps): Promise<void> {
               submissionId: result.submissionId,
               claimId: result.claimId,
               kind: "ack_999",
-              macJurisdiction: macJurisdiction as NewClaimAck["macJurisdiction"],
+              macJurisdiction:
+                macJurisdiction as NewClaimAck["macJurisdiction"],
               ackFileUri: result.ackFileUri,
               ackReceivedAt: (deps.now ?? (() => new Date()))(),
-              parsedPayload: { accepted: result.accepted, reasonCodes: result.reasonCodes },
+              parsedPayload: {
+                accepted: result.accepted,
+                reasonCodes: result.reasonCodes,
+              },
               outcomeStatus: result.accepted ? "accepted" : "rejected",
             });
             const claim = await claims.findById(result.claimId);
@@ -1189,11 +1302,17 @@ async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
   for (const { macJurisdiction } of jurisdictions) {
     const files = await portal.pullPending277ca(macJurisdiction);
     for (const file of files) {
-      const parsed = await x12.parse277ca({ macJurisdiction, rawFileUri: file.rawFileUri });
+      const parsed = await x12.parse277ca({
+        macJurisdiction,
+        rawFileUri: file.rawFileUri,
+      });
       for (const result of parsed) {
         await withOrgContext(
           deps.db,
-          { organizationId: result.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+          {
+            organizationId: result.organizationId,
+            userId: M23_WORKER_SYSTEM_USER_ID,
+          },
           async (txAny) => {
             const tx = txAny as unknown as BillingDb;
             const acks = new ClaimAcknowledgmentRepository(tx);
@@ -1203,7 +1322,8 @@ async function runAckPull277ca(deps: M23WorkerDeps): Promise<void> {
               submissionId: result.submissionId,
               claimId: result.claimId,
               kind: "ack_277ca",
-              macJurisdiction: macJurisdiction as NewClaimAck["macJurisdiction"],
+              macJurisdiction:
+                macJurisdiction as NewClaimAck["macJurisdiction"],
               ackFileUri: result.ackFileUri,
               ackReceivedAt: (deps.now ?? (() => new Date()))(),
               parsedPayload: {
@@ -1269,7 +1389,10 @@ async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
         const tx = txAny as unknown as BillingDb;
         const noes = new NoeRepository(tx);
         const outbox = outboxOf(deps);
-        const candidates = await noes.listWindowWatchCandidates(organizationId, asOf);
+        const candidates = await noes.listWindowWatchCandidates(
+          organizationId,
+          asOf,
+        );
         for (const noe of candidates) {
           const days = daysToTarget(noe.windowTargetAt, now);
           if (days < 0) {
@@ -1303,13 +1426,21 @@ async function runNoeWindowWatch(deps: M23WorkerDeps): Promise<void> {
               organizationId,
               aggregateKind: "noe",
               aggregateId: noe.id,
-              payload: { noeId: noe.id, admissionId: noe.admissionId, daysToTarget: days },
+              payload: {
+                noeId: noe.id,
+                admissionId: noe.admissionId,
+                daysToTarget: days,
+              },
             });
             await alertsOf(deps).dispatch({
               alertCode: "m23.noe.window_warning",
               severity: "warn",
               organizationId,
-              payload: { noeId: noe.id, admissionId: noe.admissionId, daysToTarget: days },
+              payload: {
+                noeId: noe.id,
+                admissionId: noe.admissionId,
+                daysToTarget: days,
+              },
             });
           }
         }
@@ -1332,7 +1463,10 @@ async function runNotrWindowWatch(deps: M23WorkerDeps): Promise<void> {
         const tx = txAny as unknown as BillingDb;
         const notrs = new NotrRepository(tx);
         const outbox = outboxOf(deps);
-        const candidates = await notrs.listWindowWatchCandidates(organizationId, asOf);
+        const candidates = await notrs.listWindowWatchCandidates(
+          organizationId,
+          asOf,
+        );
         for (const notr of candidates) {
           const days = daysToTarget(notr.windowTargetAt, now);
           if (days < 0) {
@@ -1477,7 +1611,10 @@ export function registerM23Workers(deps: M23WorkerDeps): Worker[] {
         }
         return withOrgContext(
           deps.db,
-          { organizationId: data.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+          {
+            organizationId: data.organizationId,
+            userId: M23_WORKER_SYSTEM_USER_ID,
+          },
           (tx) => run(tx as unknown as BillingDb, deps, data),
         );
       },
@@ -1539,26 +1676,46 @@ export function registerM23LaunchWorkers(deps: M23WorkerDeps): Worker[] {
       queue,
       async (job) => {
         const data = job.data as D;
-        if (!data.organizationId) throw new Error(`M23 ${queue} organizationId missing`);
+        if (!data.organizationId)
+          throw new Error(`M23 ${queue} organizationId missing`);
         await withOrgContext(
           deps.db,
-          { organizationId: data.organizationId, userId: M23_WORKER_SYSTEM_USER_ID },
+          {
+            organizationId: data.organizationId,
+            userId: M23_WORKER_SYSTEM_USER_ID,
+          },
           (tx) => run(tx as unknown as BillingDb, deps, data),
         );
       },
       { connection: deps.connection, concurrency },
     );
   const cron = (queue: string, run: () => Promise<void>) =>
-    new Worker(queue, async () => run(), { connection: deps.connection, concurrency: 1 });
+    new Worker(queue, async () => run(), {
+      connection: deps.connection,
+      concurrency: 1,
+      lockDuration: M23_CRON_LOCK_DURATION_MS,
+    });
   return [
-    orgWorker(M23_QUEUES.claimSubmit, M23_QUEUE_PARAMS.claimSubmit.concurrency, runClaimSubmit),
+    orgWorker(
+      M23_QUEUES.claimSubmit,
+      M23_QUEUE_PARAMS.claimSubmit.concurrency,
+      runClaimSubmit,
+    ),
     orgWorker(
       M23_QUEUES.claimSubmitRetry,
       M23_QUEUE_PARAMS.claimSubmitRetry.concurrency,
       runClaimSubmitRetry,
     ),
-    orgWorker(M23_QUEUES.noeSubmit, M23_QUEUE_PARAMS.noeSubmit.concurrency, runNoeSubmit),
-    orgWorker(M23_QUEUES.notrSubmit, M23_QUEUE_PARAMS.notrSubmit.concurrency, runNotrSubmit),
+    orgWorker(
+      M23_QUEUES.noeSubmit,
+      M23_QUEUE_PARAMS.noeSubmit.concurrency,
+      runNoeSubmit,
+    ),
+    orgWorker(
+      M23_QUEUES.notrSubmit,
+      M23_QUEUE_PARAMS.notrSubmit.concurrency,
+      runNotrSubmit,
+    ),
     cron(M23_CRON_QUEUES.ackPull999, () => runAckPull999(deps)),
     cron(M23_CRON_QUEUES.ackPull277ca, () => runAckPull277ca(deps)),
   ];
@@ -1573,29 +1730,47 @@ export function registerM23LaunchWorkers(deps: M23WorkerDeps): Worker[] {
 export function registerM23CronWorkers(deps: M23WorkerDeps): Worker[] {
   const { connection } = deps;
   const portalBreaker = new Map<string, boolean>();
-  const cron = (queue: string, concurrency: number, run: () => Promise<void>): Worker =>
-    new Worker(queue, async () => run(), { connection, concurrency });
+  const cron = (
+    queue: string,
+    concurrency: number,
+    run: () => Promise<void>,
+  ): Worker =>
+    new Worker(queue, async () => run(), {
+      connection,
+      concurrency,
+      lockDuration: M23_CRON_LOCK_DURATION_MS,
+    });
 
   return [
-    cron(M23_CRON_QUEUES.ackPull999, M23_QUEUE_PARAMS.ackPull999.concurrency, () =>
-      runAckPull999(deps),
+    cron(
+      M23_CRON_QUEUES.ackPull999,
+      M23_QUEUE_PARAMS.ackPull999.concurrency,
+      () => runAckPull999(deps),
     ),
-    cron(M23_CRON_QUEUES.ackPull277ca, M23_QUEUE_PARAMS.ackPull277ca.concurrency, () =>
-      runAckPull277ca(deps),
+    cron(
+      M23_CRON_QUEUES.ackPull277ca,
+      M23_QUEUE_PARAMS.ackPull277ca.concurrency,
+      () => runAckPull277ca(deps),
     ),
-    cron(M23_CRON_QUEUES.noeWindowWatch, M23_QUEUE_PARAMS.noeWindowWatch.concurrency, () =>
-      runNoeWindowWatch(deps),
+    cron(
+      M23_CRON_QUEUES.noeWindowWatch,
+      M23_QUEUE_PARAMS.noeWindowWatch.concurrency,
+      () => runNoeWindowWatch(deps),
     ),
-    cron(M23_CRON_QUEUES.notrWindowWatch, M23_QUEUE_PARAMS.notrWindowWatch.concurrency, () =>
-      runNotrWindowWatch(deps),
+    cron(
+      M23_CRON_QUEUES.notrWindowWatch,
+      M23_QUEUE_PARAMS.notrWindowWatch.concurrency,
+      () => runNotrWindowWatch(deps),
     ),
     cron(
       M23_CRON_QUEUES.eligibilityStaleWatch,
       M23_QUEUE_PARAMS.eligibilityStaleWatch.concurrency,
       () => runEligibilityStaleWatch(deps),
     ),
-    cron(M23_CRON_QUEUES.macPortalHealth, M23_QUEUE_PARAMS.macPortalHealth.concurrency, () =>
-      runMacPortalHealth(deps, portalBreaker),
+    cron(
+      M23_CRON_QUEUES.macPortalHealth,
+      M23_QUEUE_PARAMS.macPortalHealth.concurrency,
+      () => runMacPortalHealth(deps, portalBreaker),
     ),
   ];
 }
@@ -1606,34 +1781,98 @@ export function registerM23CronWorkers(deps: M23WorkerDeps): Worker[] {
  * `scheduleM27Jobs`: one `Queue` per cron, `add('scheduled', {}, { repeat: { pattern } })`. Each tick is consumed
  * by the matching `registerM23CronWorkers` worker. Nothing runs at import.
  */
-export async function scheduleM23Jobs(connection: ConnectionOptions): Promise<Queue[]> {
-  const schedules: readonly [M23CronQueueName, string][] = [
-    [M23_CRON_QUEUES.ackPull999, M23_JOB_SCHEDULES.ackPull999],
-    [M23_CRON_QUEUES.ackPull277ca, M23_JOB_SCHEDULES.ackPull277ca],
-    [M23_CRON_QUEUES.noeWindowWatch, M23_JOB_SCHEDULES.noeWindowWatch],
-    [M23_CRON_QUEUES.notrWindowWatch, M23_JOB_SCHEDULES.notrWindowWatch],
-    [M23_CRON_QUEUES.eligibilityStaleWatch, M23_JOB_SCHEDULES.eligibilityStaleWatch],
-    [M23_CRON_QUEUES.macPortalHealth, M23_JOB_SCHEDULES.macPortalHealth],
+export async function scheduleM23Jobs(
+  connection: ConnectionOptions,
+): Promise<Queue[]> {
+  const schedules: readonly [
+    M23CronQueueName,
+    string,
+    (typeof M23_QUEUE_PARAMS)[keyof typeof M23_QUEUE_PARAMS],
+  ][] = [
+    [
+      M23_CRON_QUEUES.ackPull999,
+      M23_JOB_SCHEDULES.ackPull999,
+      M23_QUEUE_PARAMS.ackPull999,
+    ],
+    [
+      M23_CRON_QUEUES.ackPull277ca,
+      M23_JOB_SCHEDULES.ackPull277ca,
+      M23_QUEUE_PARAMS.ackPull277ca,
+    ],
+    [
+      M23_CRON_QUEUES.noeWindowWatch,
+      M23_JOB_SCHEDULES.noeWindowWatch,
+      M23_QUEUE_PARAMS.noeWindowWatch,
+    ],
+    [
+      M23_CRON_QUEUES.notrWindowWatch,
+      M23_JOB_SCHEDULES.notrWindowWatch,
+      M23_QUEUE_PARAMS.notrWindowWatch,
+    ],
+    [
+      M23_CRON_QUEUES.eligibilityStaleWatch,
+      M23_JOB_SCHEDULES.eligibilityStaleWatch,
+      M23_QUEUE_PARAMS.eligibilityStaleWatch,
+    ],
+    [
+      M23_CRON_QUEUES.macPortalHealth,
+      M23_JOB_SCHEDULES.macPortalHealth,
+      M23_QUEUE_PARAMS.macPortalHealth,
+    ],
   ];
   const queues: Queue[] = [];
-  for (const [name, pattern] of schedules) {
+  for (const [name, pattern, params] of schedules) {
     const queue = new Queue(name, { connection });
-    await queue.add("scheduled", {}, { repeat: { pattern }, removeOnComplete: true });
+    await queue.add(
+      "scheduled",
+      {},
+      {
+        repeat: { pattern },
+        attempts: params.attempts,
+        backoff: params.backoff,
+        removeOnComplete: { count: 500 },
+        removeOnFail: false,
+      },
+    );
     queues.push(queue);
   }
   return queues;
 }
 
 /** Schedule only the launch acknowledgment reconciliation ticks. */
-export async function scheduleM23LaunchJobs(connection: ConnectionOptions): Promise<Queue[]> {
-  const schedules: readonly [M23CronQueueName, string][] = [
-    [M23_CRON_QUEUES.ackPull999, M23_JOB_SCHEDULES.ackPull999],
-    [M23_CRON_QUEUES.ackPull277ca, M23_JOB_SCHEDULES.ackPull277ca],
+export async function scheduleM23LaunchJobs(
+  connection: ConnectionOptions,
+): Promise<Queue[]> {
+  const schedules: readonly [
+    M23CronQueueName,
+    string,
+    (typeof M23_QUEUE_PARAMS)[keyof typeof M23_QUEUE_PARAMS],
+  ][] = [
+    [
+      M23_CRON_QUEUES.ackPull999,
+      M23_JOB_SCHEDULES.ackPull999,
+      M23_QUEUE_PARAMS.ackPull999,
+    ],
+    [
+      M23_CRON_QUEUES.ackPull277ca,
+      M23_JOB_SCHEDULES.ackPull277ca,
+      M23_QUEUE_PARAMS.ackPull277ca,
+    ],
   ];
   return Promise.all(
-    schedules.map(async ([name, pattern]) => {
+    schedules.map(async ([name, pattern, params]) => {
       const queue = new Queue(name, { connection });
-      await queue.add("scheduled", {}, { repeat: { pattern }, removeOnComplete: true });
+      await queue.add(
+        "scheduled",
+        {},
+        {
+          repeat: { pattern },
+          attempts: params.attempts,
+          backoff: params.backoff,
+          removeOnComplete: { count: 500 },
+          removeOnFail: false,
+        },
+      );
       return queue;
     }),
   );

@@ -1446,7 +1446,9 @@ import {
   HopeSummaryRequestedResponseSchema as M10HopeSummaryRequestedResponseSchema,
   HopeValidationResponseSchema as M10HopeValidationResponseSchema,
   HopeWorkflowStateResponseSchema as M10HopeWorkflowStateResponseSchema,
+  ImportSubmissionResultSchema as M10ImportSubmissionResultSchema,
   InactivateTimepointSchema as M10InactivateTimepointSchema,
+  MarkSubmissionUploadedSchema as M10MarkSubmissionUploadedSchema,
   PatchAnswersSchema as M10PatchAnswersSchema,
   RecordSfvSchema as M10RecordSfvSchema,
   RecordTimepointSchema as M10RecordTimepointSchema,
@@ -6259,6 +6261,19 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/hope/submissions/:id/retry": {
     summary: "Retry a rejected submission (re-validates, re-assembles)",
     body: M10RetrySubmissionSchema,
+    response: M10HopeSubmissionResponseSchema,
+  },
+  "GET /api/v1/hope/submissions/:id/package": {
+    summary: "Download the generated manual iQIES ZIP package",
+  },
+  "POST /api/v1/hope/submissions/:id/mark-uploaded": {
+    summary: "Mark a generated HOPE package as manually uploaded to iQIES",
+    body: M10MarkSubmissionUploadedSchema,
+    response: M10HopeSubmissionResponseSchema,
+  },
+  "POST /api/v1/hope/submissions/:id/results": {
+    summary: "Import structured iQIES Final Validation Report results",
+    body: M10ImportSubmissionResultSchema,
     response: M10HopeSubmissionResponseSchema,
   },
   "POST /api/v1/hope/submissions/assemble": {

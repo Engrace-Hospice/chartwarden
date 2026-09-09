@@ -137,6 +137,7 @@ function renderOverview(client: ApiClient): void {
             path="/admissions/:admissionId/hope/timepoints/:kind"
             element={<LocationProbe />}
           />
+          <Route path="/hope/assessments/:id" element={<LocationProbe />} />
           <Route path="/admissions/:admissionId/hope/sfv/:sfvId" element={<LocationProbe />} />
           <Route path="/patients/:patientId/assessments" element={<LocationProbe />} />
         </Routes>
@@ -209,6 +210,31 @@ describe("Admission HOPE overview", () => {
     expect(screen.getByText("1 workflow issue")).toBeTruthy();
     expect(screen.getByText("Overdue/missed")).toBeTruthy();
     expect(screen.getAllByText("0").length).toBeGreaterThan(0);
+  });
+
+  it("opens an existing draft instead of offering to create another timepoint draft", async () => {
+    renderOverview(
+      clientFor(
+        workflow({
+          admissionAssessment: {
+            kind: "01_admission",
+            status: "open",
+            scheduleId: "sched-adm",
+            windowStart: "2026-08-27T00:00:00.000Z",
+            windowEnd: "2026-08-31T23:59:59.999Z",
+            lateDeadline: "2026-09-07T23:59:59.999Z",
+            completedAt: null,
+            assessmentId: "draft-adm",
+            attention: { state: "none", severity: "none", action: "NONE", message: null, deadline: null },
+          },
+        }),
+      ),
+    );
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "HOPE" })).toBeTruthy());
+    expect(screen.getByText("Draft in progress")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Continue draft" }));
+    expect(screen.getByLabelText("location").textContent).toBe("/hope/assessments/draft-adm");
   });
 
   it("navigates to a contextual HUV workflow without requiring raw RFA selection", async () => {

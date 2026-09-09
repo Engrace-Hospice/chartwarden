@@ -157,6 +157,29 @@ export const RetrySubmissionSchema = Type.Object({});
 export const AssembleSubmissionSchema = Type.Object({
   providerEntityId: Type.String({ minLength: 1, maxLength: 64 }),
 });
+export const MarkSubmissionUploadedSchema = Type.Object({
+  submittedAt: Type.Optional(Type.String({ format: "date-time" })),
+  iqiesSubmissionReference: Type.Optional(Type.Union([Type.String({ maxLength: 200 }), Type.Null()])),
+});
+export const ImportSubmissionResultSchema = Type.Object({
+  reportReference: Type.Optional(Type.Union([Type.String({ maxLength: 500 }), Type.Null()])),
+  results: Type.Array(
+    Type.Object(
+      {
+        assessmentId: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
+        status: Type.Optional(Type.String()),
+        result: Type.Optional(Type.String()),
+        outcome: Type.Optional(Type.String()),
+        severity: Type.Optional(Type.String()),
+        code: Type.Optional(Type.String()),
+        itemCode: Type.Optional(Type.String()),
+        message: Type.Optional(Type.String()),
+        iqiesRecordId: Type.Optional(Type.String()),
+      },
+      { additionalProperties: true },
+    ),
+  ),
+});
 export const RegenerateSchedulesSchema = Type.Object({
   admissionId: Type.String({ minLength: 1, maxLength: 64 }),
 });
@@ -191,11 +214,17 @@ const ASSESSMENT_STATUS = lit(["draft", "signed", "superseded"] as const);
 const SCHEDULE_STATUS = lit(["open", "completed", "expired", "skipped"] as const);
 const SFV_STATUS = lit(["open", "completed", "overdue", "missed", "withdrawn"] as const);
 const SUBMISSION_STATUS = lit([
+  "ready",
   "queued",
+  "packaged",
+  "exported",
   "in_flight",
+  "submitted_pending_result",
   "accepted",
   "rejected",
   "partially_accepted",
+  "accepted_with_warnings",
+  "file_error",
 ] as const);
 const SCHEDULE_GENERATED_BY = lit([
   "auto_admission",
@@ -291,6 +320,8 @@ const HopeWorkspaceItemSchema = Type.Composite([
     section: Type.String(),
     group: NullableString(),
     kind: Type.Literal("assessment"),
+    cmsItemTypeCode: Type.String(),
+    maxLength: Type.Union([Type.Integer(), Type.Null()]),
     options: Type.Array(
       Type.Object({
         valueCode: Type.String(),
@@ -471,11 +502,19 @@ export const HopeSubmissionResponseSchema = Type.Object({
   providerEntityId: Type.String(),
   submissionPeriod: Type.String(),
   status: SUBMISSION_STATUS,
+  transportMode: Type.Optional(Type.String()),
+  validationProfile: Type.Optional(NullableString()),
+  packageFilename: Type.Optional(NullableString()),
+  packageSha256: Type.Optional(NullableString()),
+  packageSizeBytes: Type.Optional(Type.Union([Type.Integer(), Type.Null()])),
   itemCount: Type.Integer(),
   acceptedCount: Type.Integer(),
   rejectedCount: Type.Integer(),
   transmittedAt: NullableString(),
+  exportedAt: Type.Optional(NullableString()),
+  submittedAt: Type.Optional(NullableString()),
   acceptedAt: NullableString(),
+  iqiesSubmissionReference: Type.Optional(NullableString()),
 });
 /** Org-level HQRP compliance posture (on-time + acceptance rates). */
 export const HopeComplianceResponseSchema = Type.Object({

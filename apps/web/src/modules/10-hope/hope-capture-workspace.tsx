@@ -240,7 +240,8 @@ function HopeCaptureWorkspace({
             onClick={() => navigate(`/hope/assessments/${item.assessmentId}`)}
             style={primaryBtn}
           >
-            <Glyph name="file-text" size={14} /> View completed assessment
+            <Glyph name="file-text" size={14} />{" "}
+            {item.status === "completed" ? "View completed assessment" : "Continue draft"}
           </button>
         ) : !canSubmit ? (
           <output style={noticeBox}>

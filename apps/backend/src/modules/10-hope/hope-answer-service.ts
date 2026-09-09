@@ -41,6 +41,8 @@ export interface HopeWorkspaceItem extends HopeAssessmentItemState {
   readonly section: string;
   readonly group: string | null;
   readonly kind: "assessment";
+  readonly cmsItemTypeCode: string;
+  readonly maxLength: number | null;
   readonly options: readonly { valueCode: string; label: string; sortOrder: number }[];
 }
 
@@ -203,6 +205,13 @@ const PROTECTED_PUBLIC_ITEMS = new Set([
 const J2051_TRIGGER_INPUT_ITEMS = new Set<string>(["J2050A", "J2050B", ...HOPE_J2051_ITEM_CODES]);
 const DATE_TYPE_HINTS = ["date", "dt", "dte"];
 const NUMERIC_TYPE_HINTS = ["int", "num", "dec", "numeric", "integer", "decimal"];
+const DATE_FORMAT_PLACEHOLDERS = new Set(["YYYYMMDD", "YYYYMM", "YYYY"]);
+const RFA_REASON_VALUES: Partial<Record<AssessmentRow["rfaKind"], string>> = {
+  "01_admission": "1",
+  "02_huv1": "2",
+  "03_huv2": "3",
+  "05_discharge": "9",
+};
 
 function asDate(value: Date | null): string | null {
   return value ? value.toISOString() : null;
@@ -210,11 +219,7 @@ function asDate(value: Date | null): string | null {
 
 function isDateCode(item: SpecItemRow): boolean {
   const type = item.cmsItemTypeCode.toLowerCase();
-  const code = item.itemCode.toUpperCase();
-  return (
-    DATE_TYPE_HINTS.some((hint) => type.includes(hint)) ||
-    (/[A-Z]\d{4}[A-Z]?$/.test(code) && code.endsWith("0"))
-  );
+  return DATE_TYPE_HINTS.some((hint) => type.includes(hint));
 }
 
 function normalizeSectionLabel(item: SpecItemRow): string {
@@ -231,6 +236,21 @@ function workspaceGroupForItem(itemCode: string): string | null {
   return null;
 }
 
+function workflowControlAnswers(assessment: AssessmentRow):
+  | readonly [
+      { readonly itemCode: "A0050"; readonly value: string },
+      { readonly itemCode: "A0250"; readonly value: string },
+    ]
+  | null {
+  const a0250 = RFA_REASON_VALUES[assessment.rfaKind];
+  if (!a0250) return null;
+  const a0050 = assessment.isc === "XX" ? "3" : assessment.correctsAssessmentId ? "2" : "1";
+  return [
+    { itemCode: "A0050", value: a0050 },
+    { itemCode: "A0250", value: a0250 },
+  ];
+}
+
 export function normalizeHopeAnswerValue(input: {
   readonly item: SpecItemRow;
   readonly options: readonly OptionRow[];
@@ -242,8 +262,34 @@ export function normalizeHopeAnswerValue(input: {
   }
   const hasDatePlaceholder = options.some((option) => option.valueCode === "YYYYMMDD");
   if (hasDatePlaceholder || isDateCode(item)) {
-    if (typeof inputValue !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(inputValue)) {
+    if (typeof inputValue !== "string") {
       throw new HopeInvalidAnswerValueError(item.itemCode, "date values must be YYYY-MM-DD");
+    }
+    if (DATE_FORMAT_PLACEHOLDERS.has(inputValue)) return inputValue;
+    if (/^\d{8}$/.test(inputValue)) {
+      return `${inputValue.slice(0, 4)}-${inputValue.slice(4, 6)}-${inputValue.slice(6, 8)}`;
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(inputValue)) {
+      throw new HopeInvalidAnswerValueError(item.itemCode, "date values must be YYYY-MM-DD");
+    }
+    return inputValue;
+  }
+  const acceptsFreeText = options.some((option) => option.valueCode === "Text");
+  if (acceptsFreeText) {
+    if (typeof inputValue !== "string") {
+      throw new HopeInvalidAnswerValueError(item.itemCode, "text HOPE values must be strings");
+    }
+    if (inputValue === "^") {
+      throw new HopeInvalidAnswerValueError(
+        item.itemCode,
+        "CMS ^ is represented as skipped + null, not as a normal answer value",
+      );
+    }
+    if (item.fixedRecordLength && inputValue.length > item.fixedRecordLength) {
+      throw new HopeInvalidAnswerValueError(
+        item.itemCode,
+        `text values must not exceed ${item.fixedRecordLength} characters`,
+      );
     }
     return inputValue;
   }
@@ -428,6 +474,48 @@ export function createHopeAssessmentAnswerService(db: DbClient): HopeAssessmentA
     return new Map(rows.map((answer) => [answer.specItemId, answer]));
   }
 
+  async function reconcileWorkflowControlAnswers(
+    tx: DbClient,
+    assessment: AssessmentRow,
+    itemsByCode: ReadonlyMap<string, SpecItemRow>,
+  ) {
+    if (assessment.status !== "draft" || !assessment.specVersionId) return;
+    const controls = workflowControlAnswers(assessment);
+    if (!controls) return;
+    const now = new Date();
+    for (const control of controls) {
+      const item = itemsByCode.get(control.itemCode);
+      if (!item) continue;
+      await tx
+        .insert(ANS)
+        .values({
+          organizationId: assessment.organizationId,
+          providerEntityId: assessment.providerEntityId,
+          locationId: assessment.locationId,
+          hopeAssessmentId: assessment.id,
+          specVersionId: assessment.specVersionId,
+          specItemId: item.id,
+          state: "answered",
+          value: control.value,
+          source: "derived",
+          sourceReference: { reason: "workflow_control_reconciled" },
+          answeredAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [ANS.hopeAssessmentId, ANS.specItemId],
+          set: {
+            state: "answered",
+            value: control.value,
+            source: "derived",
+            sourceReference: { reason: "workflow_control_reconciled" },
+            answeredAt: now,
+            answeredByMembershipId: null,
+            updatedAt: now,
+          },
+        });
+    }
+  }
+
   async function requireWritableItem(
     tx: DbClient,
     assessment: AssessmentRow,
@@ -578,6 +666,8 @@ export function createHopeAssessmentAnswerService(db: DbClient): HopeAssessmentA
         const t = tx as unknown as DbClient;
         const loaded = await loadModernAssessment(t, organizationId, assessmentId);
         const items = await activeItems(t, loaded.assessment.specVersionId!, loaded.isc);
+        const itemsByCode = new Map(items.map((item) => [item.itemCode, item]));
+        await reconcileWorkflowControlAnswers(t, loaded.assessment, itemsByCode);
         const itemsById = new Map(items.map((item) => [item.id, item]));
         const optionsByItem = await optionsForItems(
           t,
@@ -621,6 +711,8 @@ export function createHopeAssessmentAnswerService(db: DbClient): HopeAssessmentA
             section: code,
             group: workspaceGroupForItem(item.itemCode),
             kind: "assessment",
+            cmsItemTypeCode: item.cmsItemTypeCode,
+            maxLength: item.fixedRecordLength,
             options: options.map((option) => ({
               valueCode: option.valueCode,
               label: option.label,

@@ -6,7 +6,7 @@
 // submission at a time (idempotency, partial unique index). RLS + grants + the M4 write-audit trigger
 // (iqies_validation_result denylisted, §8.1) land in the RLS migration.
 import { sql } from "drizzle-orm";
-import { index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { hopeSubmissionItemStatus } from "../../enums";
 import { organizations } from "../organizations";
 import { hopeSubmissions } from "./hope-submissions";
@@ -23,14 +23,24 @@ export const hopeSubmissionItems = pgTable(
       .references(() => hopeSubmissions.id, { onDelete: "restrict" }),
     hopeAssessmentId: uuid("hope_assessment_id").notNull(), // M10 hope_assessment (logical; parent partitioned)
     itemStatus: hopeSubmissionItemStatus("item_status").notNull().default("pending"),
+    operation: text("operation"),
+    specVersionId: uuid("spec_version_id"),
+    assessmentVersion: text("assessment_version"),
+    validationProfile: text("validation_profile"),
+    xmlFilename: text("xml_filename"),
+    xmlStorageUri: text("xml_storage_uri"),
+    xmlSha256: text("xml_sha256"),
+    xmlSizeBytes: integer("xml_size_bytes"),
     iqiesRecordId: text("iqies_record_id"),
     iqiesValidationResult: jsonb("iqies_validation_result"),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     bySubmission: index("idx_hope_sub_item_submission").on(t.hopeSubmissionId, t.itemStatus),
     byAssessment: index("idx_hope_sub_item_assessment").on(t.hopeAssessmentId),
+    byResult: index("idx_hope_sub_item_result").on(t.organizationId, t.itemStatus, t.updatedAt),
     // Idempotency: an assessment can appear in only one pending submission at a time.
     uniqueAssessmentActive: uniqueIndex("uniq_hope_sub_item_assessment_active")
       .on(t.hopeAssessmentId)

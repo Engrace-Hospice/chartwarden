@@ -61,11 +61,17 @@ export const ATTENTION_TONE: Record<string, StatusTone> = {
 
 // HopeSubmissionStatus = queued | in_flight | accepted | rejected | partially_accepted.
 export const SUBMISSION_TONE: Record<string, StatusTone> = {
+  ready: "progress",
   queued: "progress",
+  packaged: "progress",
+  exported: "progress",
   in_flight: "progress",
+  submitted_pending_result: "warning",
   accepted: "success",
+  accepted_with_warnings: "warning",
   rejected: "error",
   partially_accepted: "warning",
+  file_error: "error",
 };
 
 // HopeValidationSeverity = error | warning.

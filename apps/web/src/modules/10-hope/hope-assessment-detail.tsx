@@ -10,7 +10,7 @@ import {
 } from "@wardenx/ui";
 // Phase 4 Admission HOPE workspace. The backend owns CMS spec, applicability, validation, SFV,
 // readiness, and signing; this screen renders that state and sends canonical set/clear answer patches.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ASSESSMENT_TONE, rfaLabel, stateLabel } from "./hope-status";
@@ -26,7 +26,11 @@ type AnswerSource =
 type Applicability = "applicable" | "not_applicable" | "pending";
 type ItemState = "unanswered" | "answered" | "skipped";
 type SectionId = "A" | "F" | "I" | "J" | "M" | "N" | "Review";
-type HopeApiResult<T = unknown> = Promise<{ data?: T; error?: unknown; response?: Response }>;
+type HopeApiResult<T = unknown> = Promise<{
+  data?: T;
+  error?: unknown;
+  response?: Response;
+}>;
 interface HopeApiCompat {
   GET(path: string, init?: unknown): HopeApiResult;
   PATCH(path: string, init?: unknown): HopeApiResult;
@@ -49,7 +53,10 @@ interface AssessmentDetail {
   correctsAssessmentId: string | null;
   supersededByAssessmentId: string | null;
   snapshot: Record<string, number | null> | null;
-  regulatory?: { specVersionId: string | null; isc: "HA" | "HUV" | "HD" | "XX" | null };
+  regulatory?: {
+    specVersionId: string | null;
+    isc: "HA" | "HUV" | "HD" | "XX" | null;
+  };
   version: number;
 }
 
@@ -59,6 +66,8 @@ interface WorkspaceItem {
   section: string;
   group: string | null;
   kind: "assessment";
+  cmsItemTypeCode?: string;
+  maxLength?: number | null;
   active: boolean;
   state: ItemState;
   value: AnswerValue | null;
@@ -66,7 +75,11 @@ interface WorkspaceItem {
   answeredAt: string | null;
   answeredByMembershipId: string | null;
   applicability: Applicability;
-  skipReason: { ruleId: string; cmsRuleId?: string; dependsOn: string[] } | null;
+  skipReason: {
+    ruleId: string;
+    cmsRuleId?: string;
+    dependsOn: string[];
+  } | null;
   options: { valueCode: string; label: string; sortOrder: number }[];
 }
 
@@ -103,7 +116,13 @@ interface Workspace {
     windowStart: string | null;
     windowEnd: string | null;
     lateDeadline: string | null;
-    timingState: "upcoming" | "within_window" | "due_soon" | "late" | "completed" | "unknown";
+    timingState:
+      | "upcoming"
+      | "within_window"
+      | "due_soon"
+      | "late"
+      | "completed"
+      | "unknown";
     z0350: string | null;
   } | null;
 }
@@ -150,7 +169,12 @@ interface ReviewModel {
       message: string;
     }[];
   };
-  sfv: { required: boolean | null; status?: string; dueAt?: string; completedAt?: string | null };
+  sfv: {
+    required: boolean | null;
+    status?: string;
+    dueAt?: string;
+    completedAt?: string | null;
+  };
   readiness: {
     readyToSign: boolean;
     blockers: {
@@ -182,7 +206,8 @@ const SECTION_ORDER: { id: SectionId; label: string; helper: string }[] = [
   {
     id: "A",
     label: "Administrative",
-    helper: "Confirm chart-prefilled identity, admission, payer, language, and residence details.",
+    helper:
+      "Confirm chart-prefilled identity, admission, payer, language, and residence details.",
   },
   {
     id: "F",
@@ -215,7 +240,8 @@ const SECTION_ORDER: { id: SectionId; label: string; helper: string }[] = [
   {
     id: "Review",
     label: "Review",
-    helper: "Check completion, blockers, warnings, SFV state, and signature readiness.",
+    helper:
+      "Check completion, blockers, warnings, SFV state, and signature readiness.",
   },
 ];
 
@@ -239,26 +265,40 @@ const PROTECTED_ITEMS = new Set([
   "Z0500B",
 ]);
 
-const SECTION_A_GROUPS: { label: string; match: (item: WorkspaceItem) => boolean }[] = [
-  { label: "Provider Information", match: (i) => i.itemCode.startsWith("A0100") },
+const SECTION_A_GROUPS: {
+  label: string;
+  match: (item: WorkspaceItem) => boolean;
+}[] = [
+  {
+    label: "Provider Information",
+    match: (i) => i.itemCode.startsWith("A0100"),
+  },
   {
     label: "Admission Information",
     match: (i) =>
-      ["A0205", "A0210", "A0215", "A0220", "A0250", "A0270"].some((p) => i.itemCode.startsWith(p)),
+      ["A0205", "A0210", "A0215", "A0220", "A0250", "A0270"].some((p) =>
+        i.itemCode.startsWith(p),
+      ),
   },
   {
     label: "Patient Identity",
     match: (i) =>
-      ["A0500", "A0600", "A0700", "A0800", "A0900"].some((p) => i.itemCode.startsWith(p)),
+      ["A0500", "A0600", "A0700", "A0800", "A0900"].some((p) =>
+        i.itemCode.startsWith(p),
+      ),
   },
   {
     label: "Demographics",
-    match: (i) => ["A1005", "A1010", "A1110", "A1250"].some((p) => i.itemCode.startsWith(p)),
+    match: (i) =>
+      ["A1005", "A1010", "A1110", "A1250"].some((p) =>
+        i.itemCode.startsWith(p),
+      ),
   },
   { label: "Payer / Coverage", match: (i) => i.itemCode.startsWith("A1400") },
   {
     label: "Living Situation",
-    match: (i) => ["A1805", "A1905", "A1910"].some((p) => i.itemCode.startsWith(p)),
+    match: (i) =>
+      ["A1805", "A1905", "A1910"].some((p) => i.itemCode.startsWith(p)),
   },
 ];
 
@@ -288,13 +328,21 @@ export function HopeAssessmentDetail(): JSX.Element {
   const [timeline, setTimeline] = useState<TimepointRow[]>([]);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("A");
-  const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "failed" | "conflict">("idle");
+  const [saving, setSaving] = useState<
+    "idle" | "saving" | "saved" | "failed" | "conflict"
+  >("idle");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [signOpen, setSignOpen] = useState(false);
   const [inactivationOpen, setInactivationOpen] = useState(false);
   const [inactivating, setInactivating] = useState(false);
+  const latestVersionRef = useRef<number | null>(null);
+  const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+
+  useEffect(() => {
+    if (workspace) latestVersionRef.current = workspace.assessment.version;
+  }, [workspace]);
   const [signing, setSigning] = useState(false);
   const [completionDateSaving, setCompletionDateSaving] = useState(false);
 
@@ -304,8 +352,12 @@ export function HopeAssessmentDetail(): JSX.Element {
     setError(null);
     const [a, w, r] = await Promise.all([
       api.GET("/api/v1/hope/assessments/{id}", { params: { path: { id } } }),
-      api.GET("/api/v1/hope/assessments/{id}/workspace", { params: { path: { id } } }),
-      api.GET("/api/v1/hope/assessments/{id}/review", { params: { path: { id } } }),
+      api.GET("/api/v1/hope/assessments/{id}/workspace", {
+        params: { path: { id } },
+      }),
+      api.GET("/api/v1/hope/assessments/{id}/review", {
+        params: { path: { id } },
+      }),
     ]);
     if (a.error || !a.data) {
       setError("Could not load this HOPE assessment.");
@@ -320,9 +372,14 @@ export function HopeAssessmentDetail(): JSX.Element {
       api.GET("/api/v1/patients/{patientId}/hope/assessments", {
         params: { path: { patientId: nextAssessment.patientId } },
       }),
-      api.GET("/api/v1/patients/{id}", { params: { path: { id: nextAssessment.patientId } } }),
+      api.GET("/api/v1/patients/{id}", {
+        params: { path: { id: nextAssessment.patientId } },
+      }),
     ]);
-    setTimeline((tl.data as { assessments?: TimepointRow[] } | undefined)?.assessments ?? []);
+    setTimeline(
+      (tl.data as { assessments?: TimepointRow[] } | undefined)?.assessments ??
+        [],
+    );
     if (pat.data) setPatient(pat.data as unknown as PatientSummary);
     setLoading(false);
   }, [api, id]);
@@ -330,8 +387,12 @@ export function HopeAssessmentDetail(): JSX.Element {
   const refreshWorkspaceOnly = useCallback(async () => {
     if (!id) return;
     const [w, r, a] = await Promise.all([
-      api.GET("/api/v1/hope/assessments/{id}/workspace", { params: { path: { id } } }),
-      api.GET("/api/v1/hope/assessments/{id}/review", { params: { path: { id } } }),
+      api.GET("/api/v1/hope/assessments/{id}/workspace", {
+        params: { path: { id } },
+      }),
+      api.GET("/api/v1/hope/assessments/{id}/review", {
+        params: { path: { id } },
+      }),
       api.GET("/api/v1/hope/assessments/{id}", { params: { path: { id } } }),
     ]);
     if (w.data) setWorkspace(w.data as unknown as Workspace);
@@ -355,30 +416,41 @@ export function HopeAssessmentDetail(): JSX.Element {
     const map = new Map<string, ReviewModel["validation"]["findings"]>();
     for (const finding of review?.validation.findings ?? []) {
       if (!finding.itemCode) continue;
-      map.set(finding.itemCode, [...(map.get(finding.itemCode) ?? []), finding]);
+      map.set(finding.itemCode, [
+        ...(map.get(finding.itemCode) ?? []),
+        finding,
+      ]);
     }
     return map;
   }, [review]);
 
   const saveAnswer = useCallback(
     async (item: WorkspaceItem, value: AnswerValue | null) => {
-      if (!id || !workspace || assessment?.status !== "draft" || PROTECTED_ITEMS.has(item.itemCode))
+      if (
+        !id ||
+        !workspace ||
+        assessment?.status !== "draft" ||
+        PROTECTED_ITEMS.has(item.itemCode)
+      )
         return;
+      const run = async () => {
       setSaving("saving");
       setFieldErrors((prev) => {
         const { [item.itemCode]: _old, ...rest } = prev;
         return rest;
       });
       const change =
-        value === null || value === ""
+        value === null || value === "" || value === "^"
           ? { itemCode: item.itemCode, action: "clear" as const }
           : { itemCode: item.itemCode, action: "set" as const, value };
       const res = await api.PATCH("/api/v1/hope/assessments/{id}/answers", {
         params: { path: { id } },
-        body: { ifVersion: workspace.assessment.version, changes: [change] },
+        body: { ifVersion: latestVersionRef.current ?? workspace.assessment.version, changes: [change] },
       });
       if (res.error || !res.data) {
-        const message = String((res.error as { message?: unknown })?.message ?? "");
+        const message = String(
+          (res.error as { message?: unknown })?.message ?? "",
+        );
         const conflict = /version|conflict|stale/i.test(message);
         setSaving(conflict ? "conflict" : "failed");
         setFieldErrors((prev) => ({
@@ -389,8 +461,13 @@ export function HopeAssessmentDetail(): JSX.Element {
         }));
         return;
       }
+      latestVersionRef.current = (res.data as { version?: number }).version ?? latestVersionRef.current;
       setSaving("saved");
       await refreshWorkspaceOnly();
+      };
+      const next = saveQueueRef.current.then(run, run);
+      saveQueueRef.current = next.catch(() => undefined);
+      await next;
     },
     [api, assessment?.status, id, refreshWorkspaceOnly, workspace],
   );
@@ -418,10 +495,13 @@ export function HopeAssessmentDetail(): JSX.Element {
     async (z0350: string) => {
       if (!id || !workspace || assessment?.status !== "draft") return;
       setCompletionDateSaving(true);
-      const res = await api.PATCH("/api/v1/hope/assessments/{id}/huv/completion-date", {
-        params: { path: { id } },
-        body: { ifVersion: workspace.assessment.version, z0350 },
-      });
+      const res = await api.PATCH(
+        "/api/v1/hope/assessments/{id}/huv/completion-date",
+        {
+          params: { path: { id } },
+          body: { ifVersion: workspace.assessment.version, z0350 },
+        },
+      );
       setCompletionDateSaving(false);
       if (res.error) {
         setSaving("failed");
@@ -457,10 +537,13 @@ export function HopeAssessmentDetail(): JSX.Element {
     async (reason: string) => {
       if (!id || !assessment) return;
       setInactivating(true);
-      const res = await api.POST("/api/v1/hope/assessments/{id}/inactivations", {
-        params: { path: { id } },
-        body: { reason: reason.trim(), ifVersion: assessment.version },
-      });
+      const res = await api.POST(
+        "/api/v1/hope/assessments/{id}/inactivations",
+        {
+          params: { path: { id } },
+          body: { reason: reason.trim(), ifVersion: assessment.version },
+        },
+      );
       setInactivating(false);
       if (res.error || !res.data) {
         setSaving("failed");
@@ -474,7 +557,8 @@ export function HopeAssessmentDetail(): JSX.Element {
   );
 
   if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading || !assessment) return <LoadingSpinner label="Loading HOPE workspace..." />;
+  if (loading || !assessment)
+    return <LoadingSpinner label="Loading HOPE workspace..." />;
   const workspaceRfa =
     assessment.rfaKind === "01_admission" ||
     assessment.rfaKind === "02_huv1" ||
@@ -501,7 +585,8 @@ export function HopeAssessmentDetail(): JSX.Element {
   const completed = assessment.status === "signed";
   const sections = sectionsFromWorkspace(workspace);
   const visibleSections = visibleSectionOrder(workspace);
-  const current = activeSection === "Review" ? null : (sections.get(activeSection) ?? null);
+  const current =
+    activeSection === "Review" ? null : (sections.get(activeSection) ?? null);
   const status = derivedStatus(assessment, review, workspace);
   const recordLabel = rfaLabel(assessment.rfaKind);
   const canInactivate =
@@ -523,7 +608,10 @@ export function HopeAssessmentDetail(): JSX.Element {
       }
     />
   ) : (
-    <PatientBanner name={recordLabel} meta={`Target ${formatDate(assessment.targetDate)}`} />
+    <PatientBanner
+      name={recordLabel}
+      meta={`Target ${formatDate(assessment.targetDate)}`}
+    />
   );
 
   return (
@@ -533,14 +621,20 @@ export function HopeAssessmentDetail(): JSX.Element {
           <div>
             <div style={eyebrow}>Admission HOPE</div>
             <h1 style={title}>
-              {completed ? `Completed ${recordLabel}` : `${recordLabel} Workspace`}
+              {completed
+                ? `Completed ${recordLabel}`
+                : `${recordLabel} Workspace`}
             </h1>
             <div style={metaLine}>
               <span>CMS {workspace.assessment.specVersion}</span>
               <span>ISC {workspace.assessment.isc}</span>
               <span>Target {formatDate(assessment.targetDate)}</span>
               {assessment.correctsAssessmentId ? (
-                <span>{workspace.assessment.isc === "XX" ? "Inactivation draft" : "Correction draft"}</span>
+                <span>
+                  {workspace.assessment.isc === "XX"
+                    ? "Inactivation draft"
+                    : "Correction draft"}
+                </span>
               ) : null}
             </div>
           </div>
@@ -564,12 +658,20 @@ export function HopeAssessmentDetail(): JSX.Element {
                 >
                   Inactivate
                 </button>
-                <button type="button" style={primaryButton} onClick={() => void createCorrection()}>
+                <button
+                  type="button"
+                  style={primaryButton}
+                  onClick={() => void createCorrection()}
+                >
                   Create correction
                 </button>
               </>
             ) : review?.readiness.readyToSign ? (
-              <button type="button" style={primaryButton} onClick={() => setSignOpen(true)}>
+              <button
+                type="button"
+                style={primaryButton}
+                onClick={() => setSignOpen(true)}
+              >
                 Sign & complete
               </button>
             ) : (
@@ -584,9 +686,15 @@ export function HopeAssessmentDetail(): JSX.Element {
           </div>
         </header>
 
-        {completed ? <CompletedSummary assessment={assessment} review={review} /> : null}
-        {workspace.huv ? <HuvTimingBanner workspace={workspace} review={review} /> : null}
-        {saving === "conflict" ? <ConflictBanner onReload={() => void load()} /> : null}
+        {completed ? (
+          <CompletedSummary assessment={assessment} review={review} />
+        ) : null}
+        {workspace.huv ? (
+          <HuvTimingBanner workspace={workspace} review={review} />
+        ) : null}
+        {saving === "conflict" ? (
+          <ConflictBanner onReload={() => void load()} />
+        ) : null}
 
         <div className="wx-hope-admission-grid" style={workspaceGrid}>
           <aside
@@ -598,7 +706,9 @@ export function HopeAssessmentDetail(): JSX.Element {
               className="wx-hope-admission-section-select"
               aria-label="HOPE section"
               value={activeSection}
-              onChange={(event) => setActiveSection(event.target.value as SectionId)}
+              onChange={(event) =>
+                setActiveSection(event.target.value as SectionId)
+              }
               style={mobileSectionSelect}
             >
               {visibleSections.map((section) => (
@@ -615,14 +725,19 @@ export function HopeAssessmentDetail(): JSX.Element {
                   <button
                     key={section.id}
                     type="button"
-                    style={{ ...sectionButton, ...(active ? sectionButtonActive : null) }}
+                    style={{
+                      ...sectionButton,
+                      ...(active ? sectionButtonActive : null),
+                    }}
                     onClick={() => setActiveSection(section.id)}
                     title={state.detail}
                   >
                     <span style={stateDot(state.kind)} aria-hidden="true" />
                     <span>
                       <strong>
-                        {section.id === "Review" ? "Review" : `${section.id} ${section.label}`}
+                        {section.id === "Review"
+                          ? "Review"
+                          : `${section.id} ${section.label}`}
                       </strong>
                       <small style={sectionMeta}>{state.label}</small>
                     </span>
@@ -640,7 +755,9 @@ export function HopeAssessmentDetail(): JSX.Element {
                 workspace={workspace}
                 onGoTo={setActiveSection}
                 visibleSections={visibleSections}
-                onSetCompletionDate={(value) => void setHuvCompletionDate(value)}
+                onSetCompletionDate={(value) =>
+                  void setHuvCompletionDate(value)
+                }
                 completionDateSaving={completionDateSaving}
                 onSign={() => setSignOpen(true)}
                 onCorrection={() => void createCorrection()}
@@ -660,7 +777,11 @@ export function HopeAssessmentDetail(): JSX.Element {
                 description="The imported CMS specification did not return active assessment items for this section."
               />
             )}
-            <BottomNav active={activeSection} sections={visibleSections} onChange={setActiveSection} />
+            <BottomNav
+              active={activeSection}
+              sections={visibleSections}
+              onChange={setActiveSection}
+            />
           </main>
         </div>
       </div>
@@ -696,7 +817,11 @@ function SectionPanel(props: {
   const config = SECTION_ORDER.find((s) => s.id === props.sectionId)!;
   return (
     <section>
-      <SectionHeader code={props.sectionId} title={config.label} helper={config.helper} />
+      <SectionHeader
+        code={props.sectionId}
+        title={config.label}
+        helper={config.helper}
+      />
       {props.sectionId === "A" ? (
         <GroupedItems groups={groupSectionA(props.section.items)} {...props} />
       ) : props.sectionId === "F" ? (
@@ -763,7 +888,9 @@ function GroupedItems(props: {
   );
 }
 
-function DiagnosisSection(props: Parameters<typeof SectionPanel>[0]): JSX.Element {
+function DiagnosisSection(
+  props: Parameters<typeof SectionPanel>[0],
+): JSX.Element {
   const principal = props.section.items.filter((i) => i.itemCode === "I0010");
   const others = props.section.items.filter((i) => i.itemCode !== "I0010");
   return (
@@ -771,8 +898,8 @@ function DiagnosisSection(props: Parameters<typeof SectionPanel>[0]): JSX.Elemen
       <section style={questionGroup}>
         <h3 style={groupTitle}>Principal Diagnosis Category</h3>
         <p style={muted}>
-          Use the chart diagnosis as context only. The HOPE category remains a clinician-selected
-          answer.
+          Use the chart diagnosis as context only. The HOPE category remains a
+          clinician-selected answer.
         </p>
         {principal.map((item) => (
           <QuestionRenderer
@@ -812,9 +939,14 @@ function SectionJ(props: Parameters<typeof SectionPanel>[0]): JSX.Element {
       (item) => (item.group ?? groupJItem(item.itemCode)) === label,
     ),
   })).filter((group) => group.items.length > 0);
-  const grouped = new Set(groups.flatMap((group) => group.items.map((item) => item.itemCode)));
-  const leftover = props.section.items.filter((item) => !grouped.has(item.itemCode));
-  if (leftover.length) groups.push({ label: "Other Health Conditions", items: leftover });
+  const grouped = new Set(
+    groups.flatMap((group) => group.items.map((item) => item.itemCode)),
+  );
+  const leftover = props.section.items.filter(
+    (item) => !grouped.has(item.itemCode),
+  );
+  if (leftover.length)
+    groups.push({ label: "Other Health Conditions", items: leftover });
   return (
     <GroupedItems
       groups={groups}
@@ -847,7 +979,8 @@ function QuestionRenderer(props: {
     return (
       <div style={pendingRow}>
         <strong>{item.label}</strong>
-        <span>Complete the previous question before this item can be answered.</span>
+        <span>{pendingApplicabilityMessage(item)}</span>
+        <small style={pendingMeta}>{pendingApplicabilityDetail(item)}</small>
       </div>
     );
   }
@@ -869,7 +1002,7 @@ function QuestionRenderer(props: {
       </div>
       <div id={hintId} style={hintLine}>
         <SourceBadge source={item.source} />
-        {readonly ? <span>Workflow controlled</span> : null}
+        {readonly ? <span>{workflowControlledMessage(item)}</span> : null}
       </div>
       <AnswerControl
         item={item}
@@ -881,7 +1014,11 @@ function QuestionRenderer(props: {
       {messages.length ? (
         <div
           id={errorId}
-          style={props.findings.some((f) => f.severity === "warning") ? warningText : errorText}
+          style={
+            props.findings.some((f) => f.severity === "warning")
+              ? warningText
+              : errorText
+          }
         >
           {messages.map((message) => (
             <div key={message}>{message}</div>
@@ -900,15 +1037,57 @@ function AnswerControl(props: {
   onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
 }): JSX.Element {
   const value = props.item.value == null ? "" : String(props.item.value);
-  const dateLike = /date|dt|dte/i.test(props.item.label) || /date/i.test(props.item.itemCode);
-  if (props.item.options.length > 0 && props.item.options.length <= 6) {
+  const dateLike = /date|dt|dte/i.test(props.item.cmsItemTypeCode ?? props.item.label);
+  if (dateLike) {
     return (
-      <fieldset style={radioSet} aria-describedby={props.describedBy} disabled={props.readonly}>
+      <input
+        id={props.inputId}
+        type="date"
+        defaultValue={/^\d{4}-\d{2}-\d{2}$/.test(value) ? value : ""}
+        readOnly={props.readonly}
+        aria-describedby={props.describedBy}
+        style={inputStyle}
+        onBlur={(event) => {
+          if (event.currentTarget.value !== value)
+            void props.onSave(props.item, event.currentTarget.value || null);
+        }}
+      />
+    );
+  }
+  const displayOptions = answerOptionsForControl(props.item);
+  if (isTextItem(props.item)) {
+    return (
+      <input
+        id={props.inputId}
+        type="text"
+        defaultValue={value === "Text" ? "" : value}
+        maxLength={props.item.maxLength ?? undefined}
+        placeholder={textPlaceholder(props.item)}
+        readOnly={props.readonly}
+        aria-describedby={props.describedBy}
+        style={inputStyle}
+        onBlur={(event) => {
+          if (event.currentTarget.value !== value)
+            void props.onSave(props.item, event.currentTarget.value || null);
+        }}
+      />
+    );
+  }
+  if (displayOptions.length > 0 && displayOptions.length <= 6) {
+    return (
+      <fieldset
+        style={radioSet}
+        aria-describedby={props.describedBy}
+        disabled={props.readonly}
+      >
         <legend style={srOnly}>{props.item.label}</legend>
-        {props.item.options.map((option) => (
+        {displayOptions.map((option) => (
           <label
             key={option.valueCode}
-            style={{ ...radioChoice, ...(value === option.valueCode ? radioChoiceSelected : null) }}
+            style={{
+              ...radioChoice,
+              ...(value === option.valueCode ? radioChoiceSelected : null),
+            }}
           >
             <input
               type="radio"
@@ -923,7 +1102,7 @@ function AnswerControl(props: {
       </fieldset>
     );
   }
-  if (props.item.options.length > 0) {
+  if (displayOptions.length > 0) {
     return (
       <select
         id={props.inputId}
@@ -931,10 +1110,12 @@ function AnswerControl(props: {
         disabled={props.readonly}
         aria-describedby={props.describedBy}
         style={inputStyle}
-        onChange={(event) => void props.onSave(props.item, event.target.value || null)}
+        onChange={(event) =>
+          void props.onSave(props.item, event.target.value || null)
+        }
       >
         <option value="">Select...</option>
-        {props.item.options.map((option) => (
+        {displayOptions.map((option) => (
           <option key={option.valueCode} value={option.valueCode}>
             {option.label}
           </option>
@@ -945,7 +1126,7 @@ function AnswerControl(props: {
   return (
     <input
       id={props.inputId}
-      type={dateLike ? "date" : "text"}
+      type="text"
       defaultValue={value}
       readOnly={props.readonly}
       aria-describedby={props.describedBy}
@@ -956,6 +1137,25 @@ function AnswerControl(props: {
       }}
     />
   );
+}
+
+function isTextItem(item: WorkspaceItem): boolean {
+  return (
+    /text/i.test(item.cmsItemTypeCode ?? "") ||
+    item.options.some((option) => option.valueCode === "Text")
+  );
+}
+
+function answerOptionsForControl(item: WorkspaceItem): WorkspaceItem["options"] {
+  return item.options.filter(
+    (option) => option.valueCode !== "Text" && !/^YYYY(MM(DD)?)?$/.test(option.valueCode),
+  );
+}
+
+function textPlaceholder(item: WorkspaceItem): string | undefined {
+  if (item.itemCode === "A0500B") return "Middle initial";
+  if (item.itemCode === "A0500D") return "Suffix";
+  return item.maxLength ? `Up to ${item.maxLength} characters` : undefined;
 }
 
 function ReviewPanel(props: {
@@ -998,7 +1198,8 @@ function ReviewPanel(props: {
         <div style={progressRing} aria-label="Completion progress">
           {props.workspace.progress.active
             ? Math.round(
-                ((props.workspace.progress.answered + props.workspace.progress.skipped) /
+                ((props.workspace.progress.answered +
+                  props.workspace.progress.skipped) /
                   props.workspace.progress.active) *
                   100,
               )
@@ -1016,30 +1217,41 @@ function ReviewPanel(props: {
         />
       ) : null}
       <div style={reviewGrid}>
-        {props.visibleSections.filter((s) => s.id !== "Review").map((section) => {
-          const state = sectionState(section.id, props.review, props.workspace);
-          return (
-            <button
-              key={section.id}
-              type="button"
-              style={reviewRow}
-              onClick={() => props.onGoTo(section.id)}
-            >
-              <span>
-                {section.id} {section.label}
-              </span>
-              <span style={reviewStateText}>{state.detail}</span>
-            </button>
-          );
-        })}
+        {props.visibleSections
+          .filter((s) => s.id !== "Review")
+          .map((section) => {
+            const state = sectionState(
+              section.id,
+              props.review,
+              props.workspace,
+            );
+            return (
+              <button
+                key={section.id}
+                type="button"
+                style={reviewRow}
+                onClick={() => props.onGoTo(section.id)}
+              >
+                <span>
+                  {section.id} {section.label}
+                </span>
+                <span style={reviewStateText}>{state.detail}</span>
+              </button>
+            );
+          })}
       </div>
       <IssueList review={props.review} onGoTo={props.onGoTo} />
-      {props.workspace.assessment.isc === "HA" || props.workspace.assessment.isc === "HUV" ? (
+      {props.workspace.assessment.isc === "HA" ||
+      props.workspace.assessment.isc === "HUV" ? (
         <SfvSummary review={props.review} />
       ) : null}
       <div style={actionRow}>
         {completed ? (
-          <button type="button" style={primaryButton} onClick={props.onCorrection}>
+          <button
+            type="button"
+            style={primaryButton}
+            onClick={props.onCorrection}
+          >
             Create correction
           </button>
         ) : (
@@ -1060,7 +1272,10 @@ function ReviewPanel(props: {
 function IssueList({
   review,
   onGoTo,
-}: { review: ReviewModel | null; onGoTo: (section: SectionId) => void }): JSX.Element {
+}: {
+  review: ReviewModel | null;
+  onGoTo: (section: SectionId) => void;
+}): JSX.Element {
   const rows = [
     ...(review?.readiness.blockers ?? []).map((b) => ({
       section: b.section ?? "Review",
@@ -1075,7 +1290,9 @@ function IssueList({
     })),
   ];
   if (!rows.length)
-    return <div style={successBox}>No blocking issues from the backend review.</div>;
+    return (
+      <div style={successBox}>No blocking issues from the backend review.</div>
+    );
   return (
     <section style={questionGroup}>
       <h3 style={groupTitle}>Issues</h3>
@@ -1090,7 +1307,9 @@ function IssueList({
             <span>
               <strong>{row.itemCode ?? row.section}</strong> — {row.message}
             </span>
-            <span>{row.severity === "warning" ? "Warning" : "Go to question"}</span>
+            <span>
+              {row.severity === "warning" ? "Warning" : "Go to question"}
+            </span>
           </button>
         ))}
       </div>
@@ -1118,10 +1337,18 @@ function SfvSummary({ review }: { review: ReviewModel | null }): JSX.Element {
       <div style={sfvBox}>
         <StatusPill
           label={label}
-          tone={sfv?.status === "overdue" ? "critical" : sfv?.required ? "warning" : "neutral"}
+          tone={
+            sfv?.status === "overdue"
+              ? "critical"
+              : sfv?.required
+                ? "warning"
+                : "neutral"
+          }
         />
         {sfv?.dueAt ? <span>Due {formatDate(sfv.dueAt)}</span> : null}
-        {sfv?.completedAt ? <span>Completed {formatDate(sfv.completedAt)}</span> : null}
+        {sfv?.completedAt ? (
+          <span>Completed {formatDate(sfv.completedAt)}</span>
+        ) : null}
       </div>
     </section>
   );
@@ -1130,9 +1357,15 @@ function SfvSummary({ review }: { review: ReviewModel | null }): JSX.Element {
 function HuvTimingBanner({
   workspace,
   review,
-}: { workspace: Workspace; review: ReviewModel | null }): JSX.Element | null {
+}: {
+  workspace: Workspace;
+  review: ReviewModel | null;
+}): JSX.Element | null {
   if (!workspace.huv) return null;
-  const stateLabelByCode: Record<NonNullable<Workspace["huv"]>["timingState"], string> = {
+  const stateLabelByCode: Record<
+    NonNullable<Workspace["huv"]>["timingState"],
+    string
+  > = {
     upcoming: "Upcoming",
     within_window: "Within window",
     due_soon: "Due soon",
@@ -1140,22 +1373,30 @@ function HuvTimingBanner({
     completed: "Completed",
     unknown: "Schedule pending",
   };
-  const warning = review?.validation.findings.find((finding) => finding.ruleId === "-3110");
+  const warning = review?.validation.findings.find(
+    (finding) => finding.ruleId === "-3110",
+  );
   return (
     <section style={timingBanner}>
       <div>
         <strong>{stateLabelByCode[workspace.huv.timingState]}</strong>
         <span style={muted}>
-          Recommended completion window {formatDate(workspace.huv.windowStart)} -{" "}
-          {formatDate(workspace.huv.windowEnd)}
+          Recommended completion window {formatDate(workspace.huv.windowStart)}{" "}
+          - {formatDate(workspace.huv.windowEnd)}
         </span>
       </div>
       <div style={timingBannerMeta}>
         <StatusPill
-          label={workspace.huv.scheduleStatus ? stateLabel(workspace.huv.scheduleStatus) : "No schedule"}
+          label={
+            workspace.huv.scheduleStatus
+              ? stateLabel(workspace.huv.scheduleStatus)
+              : "No schedule"
+          }
           tone={workspace.huv.timingState === "late" ? "warning" : "neutral"}
         />
-        {workspace.huv.z0350 ? <span>Z0350 {formatDate(workspace.huv.z0350)}</span> : null}
+        {workspace.huv.z0350 ? (
+          <span>Z0350 {formatDate(workspace.huv.z0350)}</span>
+        ) : null}
         {warning ? <span style={warningText}>CMS warning -3110</span> : null}
       </div>
     </section>
@@ -1184,7 +1425,7 @@ function HuvCompletionDateControl(props: {
         </div>
         <div style={hintLine}>
           <SourceBadge source="derived" />
-          <span>Workflow controlled</span>
+          <span>Set by the HUV completion workflow.</span>
         </div>
         <div style={inlineEditor}>
           <input
@@ -1198,7 +1439,9 @@ function HuvCompletionDateControl(props: {
           <button
             type="button"
             style={secondaryButton}
-            disabled={props.readonly || props.saving || !draft || draft === value}
+            disabled={
+              props.readonly || props.saving || !draft || draft === value
+            }
             onClick={() => props.onSave(draft)}
           >
             {props.saving ? "Saving..." : "Confirm date"}
@@ -1218,19 +1461,29 @@ function SignDialog(props: {
 }): JSX.Element {
   return (
     <div style={modalBackdrop} role="presentation">
-      <dialog style={modal} open aria-modal="true" aria-labelledby="hope-sign-title">
+      <dialog
+        style={modal}
+        open
+        aria-modal="true"
+        aria-labelledby="hope-sign-title"
+      >
         <h2 id="hope-sign-title" style={modalTitle}>
           {props.title}
         </h2>
         <p style={muted}>
-          By signing, you confirm this HOPE record is complete. After signing, it becomes read-only.
+          By signing, you confirm this HOPE record is complete. After signing,
+          it becomes read-only.
         </p>
         <div style={modalStats}>
           <span>Warnings: {props.review?.validation.warningCount ?? 0}</span>
           <span>Errors: {props.review?.validation.errorCount ?? 0}</span>
         </div>
         <div style={actionRow}>
-          <button type="button" style={secondaryButton} onClick={props.onCancel}>
+          <button
+            type="button"
+            style={secondaryButton}
+            onClick={props.onCancel}
+          >
             Cancel
           </button>
           <button
@@ -1257,13 +1510,18 @@ function InactivationDialog(props: {
   const trimmed = reason.trim();
   return (
     <div style={modalBackdrop} role="presentation">
-      <dialog style={modal} open aria-modal="true" aria-labelledby="hope-inactivation-title">
+      <dialog
+        style={modal}
+        open
+        aria-modal="true"
+        aria-labelledby="hope-inactivation-title"
+      >
         <h2 id="hope-inactivation-title" style={modalTitle}>
           Inactivate {props.recordLabel}
         </h2>
         <p style={muted}>
-          This creates a CMS inactivation draft for the selected signed record. The original remains
-          current until the inactivation draft is signed.
+          This creates a CMS inactivation draft for the selected signed record.
+          The original remains current until the inactivation draft is signed.
         </p>
         <label style={fieldLabel}>
           Reason
@@ -1277,7 +1535,11 @@ function InactivationDialog(props: {
           />
         </label>
         <div style={actionRow}>
-          <button type="button" style={secondaryButton} onClick={props.onCancel}>
+          <button
+            type="button"
+            style={secondaryButton}
+            onClick={props.onCancel}
+          >
             Cancel
           </button>
           <button
@@ -1297,14 +1559,19 @@ function InactivationDialog(props: {
 function CompletedSummary({
   assessment,
   review,
-}: { assessment: AssessmentDetail; review: ReviewModel | null }): JSX.Element {
+}: {
+  assessment: AssessmentDetail;
+  review: ReviewModel | null;
+}): JSX.Element {
   return (
     <div style={completedBox}>
       <span aria-hidden="true">✓</span>
       <span>
         Completed {formatDate(assessment.signedAt)} · Signed by{" "}
-        {assessment.signedBy ?? review?.signedByMembershipId ?? "recorded signer"} · Z0500B{" "}
-        {formatDate(review?.z0500b ?? assessment.signedAt)}
+        {assessment.signedBy ??
+          review?.signedByMembershipId ??
+          "recorded signer"}{" "}
+        · Z0500B {formatDate(review?.z0500b ?? assessment.signedAt)}
       </span>
     </div>
   );
@@ -1366,7 +1633,11 @@ function LegacyTimepointView({
     <PatientWorkspaceLayout
       banner={
         <PatientBanner
-          name={patient ? `${patient.firstName} ${patient.lastName}` : "HOPE Assessment"}
+          name={
+            patient
+              ? `${patient.firstName} ${patient.lastName}`
+              : "HOPE Assessment"
+          }
         />
       }
     >
@@ -1376,7 +1647,8 @@ function LegacyTimepointView({
             <div style={eyebrow}>HOPE Timepoint</div>
             <h1 style={title}>{rfaLabel(assessment.rfaKind)}</h1>
             <p style={muted}>
-              HUV and Discharge capture keep their existing workflow until their UI phase.
+              HUV and Discharge capture keep their existing workflow until their
+              UI phase.
             </p>
           </div>
           {assessment.status === "draft" ? (
@@ -1390,7 +1662,11 @@ function LegacyTimepointView({
         <div style={questionGroup}>
           <h3 style={groupTitle}>Timeline</h3>
           {timeline.map((tp) => (
-            <Link key={tp.id} to={`/hope/assessments/${tp.id}`} style={legacyLink}>
+            <Link
+              key={tp.id}
+              to={`/hope/assessments/${tp.id}`}
+              style={legacyLink}
+            >
               {rfaLabel(tp.rfaKind)} · {formatDate(tp.targetDate)}
             </Link>
           ))}
@@ -1404,7 +1680,11 @@ function SectionHeader({
   code,
   title,
   helper,
-}: { code: string; title: string; helper: string }): JSX.Element {
+}: {
+  code: string;
+  title: string;
+  helper: string;
+}): JSX.Element {
   return (
     <div style={sectionHeader}>
       <span style={sectionCode}>{code}</span>
@@ -1416,7 +1696,11 @@ function SectionHeader({
   );
 }
 
-function SourceBadge({ source }: { source: AnswerSource | null }): JSX.Element | null {
+function SourceBadge({
+  source,
+}: {
+  source: AnswerSource | null;
+}): JSX.Element | null {
   if (!source || source === "user") return null;
   const label: Record<Exclude<AnswerSource, "user">, string> = {
     patient_prefill: "From patient chart",
@@ -1428,9 +1712,55 @@ function SourceBadge({ source }: { source: AnswerSource | null }): JSX.Element |
   return <span style={sourceBadge}>{label[source]}</span>;
 }
 
+function workflowControlledMessage(item: WorkspaceItem): string {
+  if (item.itemCode === "A0050") {
+    return "Set automatically from whether this is a new record, correction, or inactivation.";
+  }
+  if (item.itemCode === "A0220") {
+    return "Set automatically from the assessment target date.";
+  }
+  if (item.itemCode === "A0250") {
+    return "Set automatically from the selected HOPE timepoint.";
+  }
+  if (item.itemCode === "A0270") {
+    return "Set automatically when this record corrects or inactivates a previous HOPE record.";
+  }
+  if (item.itemCode.startsWith("J2052") || item.itemCode.startsWith("J2053")) {
+    return "Set by the Symptom Follow-Up Visit workflow.";
+  }
+  if (item.itemCode === "Z0500B") {
+    return "Set automatically when the assessment is signed.";
+  }
+  return "Set by workflow.";
+}
+
+function pendingApplicabilityMessage(item: WorkspaceItem): string {
+  const dependsOn = item.skipReason?.dependsOn ?? [];
+  const dependency = dependsOn.length === 1 ? dependsOn[0] : null;
+  if (dependency) {
+    return `Answer ${dependency} first. This item opens only when that response makes it required.`;
+  }
+  if (dependsOn.length > 1) {
+    return `Answer ${dependsOn.join(", ")} first. This item opens only when those responses make it required.`;
+  }
+  return "This item is conditionally required and will open when the related answer is saved.";
+}
+
+function pendingApplicabilityDetail(item: WorkspaceItem): string {
+  if (item.skipReason?.cmsRuleId) {
+    return `CMS rule ${item.skipReason.cmsRuleId}`;
+  }
+  if (item.skipReason?.ruleId) {
+    return item.skipReason.ruleId;
+  }
+  return "Conditional HOPE item";
+}
+
 function SaveState({
   state,
-}: { state: "idle" | "saving" | "saved" | "failed" | "conflict" }): JSX.Element {
+}: {
+  state: "idle" | "saving" | "saved" | "failed" | "conflict";
+}): JSX.Element {
   const label =
     state === "saving"
       ? "Saving..."
@@ -1447,7 +1777,10 @@ function SaveState({
 function ConflictBanner({ onReload }: { onReload: () => void }): JSX.Element {
   return (
     <div style={conflictBanner}>
-      <span>This assessment changed elsewhere. Reload the latest version before continuing.</span>
+      <span>
+        This assessment changed elsewhere. Reload the latest version before
+        continuing.
+      </span>
       <button type="button" style={secondaryButton} onClick={onReload}>
         Reload assessment
       </button>
@@ -1466,19 +1799,29 @@ function sectionsFromWorkspace(
   return map;
 }
 
-function visibleSectionOrder(workspace: Workspace): { id: SectionId; label: string; helper: string }[] {
-  const activeCodes = new Set(workspace.sections.map((section) => section.code));
+function visibleSectionOrder(
+  workspace: Workspace,
+): { id: SectionId; label: string; helper: string }[] {
+  const activeCodes = new Set(
+    workspace.sections.map((section) => section.code),
+  );
   const visible = SECTION_ORDER.filter(
     (section) => section.id === "Review" || activeCodes.has(section.id),
   );
-  return visible.length ? visible : SECTION_ORDER.filter((section) => section.id === "Review");
+  return visible.length
+    ? visible
+    : SECTION_ORDER.filter((section) => section.id === "Review");
 }
 
 function sectionState(
   section: SectionId,
   review: ReviewModel | null,
   workspace: Workspace,
-): { kind: "complete" | "progress" | "attention" | "empty"; label: string; detail: string } {
+): {
+  kind: "complete" | "progress" | "attention" | "empty";
+  label: string;
+  detail: string;
+} {
   if (section === "Review") {
     if (review?.readiness.readyToSign)
       return { kind: "complete", label: "Ready", detail: "Ready to sign" };
@@ -1501,7 +1844,11 @@ function sectionState(
         detail: `${sec.unanswered} unanswered · ${sec.errors} errors`,
       };
     if (sec.warnings)
-      return { kind: "attention", label: "Warnings", detail: `${sec.warnings} warnings` };
+      return {
+        kind: "attention",
+        label: "Warnings",
+        detail: `${sec.warnings} warnings`,
+      };
     return {
       kind: "progress",
       label: "In progress",
@@ -1509,11 +1856,16 @@ function sectionState(
     };
   }
   const raw = workspace.sections.find((s) => s.code === section);
-  const answered = raw?.items.filter((i) => i.state !== "unanswered").length ?? 0;
+  const answered =
+    raw?.items.filter((i) => i.state !== "unanswered").length ?? 0;
   if (!raw || raw.items.length === 0)
     return { kind: "empty", label: "Not started", detail: "No active items" };
   if (answered === 0)
-    return { kind: "empty", label: "Not started", detail: `${raw.items.length} items` };
+    return {
+      kind: "empty",
+      label: "Not started",
+      detail: `${raw.items.length} items`,
+    };
   if (answered === raw.items.length)
     return { kind: "complete", label: "Complete", detail: "Complete" };
   return {
@@ -1527,17 +1879,27 @@ function derivedStatus(
   assessment: AssessmentDetail,
   review: ReviewModel | null,
   workspace: Workspace,
-): { label: string; tone: "neutral" | "progress" | "warning" | "critical" | "success" } {
-  if (assessment.status === "signed") return { label: "Completed", tone: "success" };
-  if (review?.readiness.readyToSign) return { label: "Ready to sign", tone: "success" };
-  if ((review?.validation.errorCount ?? 0) > 0 || (review?.readiness.blockers.length ?? 0) > 0)
+): {
+  label: string;
+  tone: "neutral" | "progress" | "warning" | "critical" | "success";
+} {
+  if (assessment.status === "signed")
+    return { label: "Completed", tone: "success" };
+  if (review?.readiness.readyToSign)
+    return { label: "Ready to sign", tone: "success" };
+  if (
+    (review?.validation.errorCount ?? 0) > 0 ||
+    (review?.readiness.blockers.length ?? 0) > 0
+  )
     return { label: "Needs attention", tone: "critical" };
   if (workspace.progress.answered > 0 || workspace.progress.skipped > 0)
     return { label: "In progress", tone: "progress" };
   return { label: "Not started", tone: "neutral" };
 }
 
-function groupSectionA(items: WorkspaceItem[]): { label: string; items: WorkspaceItem[] }[] {
+function groupSectionA(
+  items: WorkspaceItem[],
+): { label: string; items: WorkspaceItem[] }[] {
   const used = new Set<string>();
   const groups = SECTION_A_GROUPS.map((group) => {
     const rows = items.filter((item) => group.match(item));
@@ -1545,7 +1907,8 @@ function groupSectionA(items: WorkspaceItem[]): { label: string; items: Workspac
     return { label: group.label, items: rows };
   }).filter((group) => group.items.length > 0);
   const other = items.filter((item) => !used.has(item.itemCode));
-  if (other.length) groups.push({ label: "Other Administrative Items", items: other });
+  if (other.length)
+    groups.push({ label: "Other Administrative Items", items: other });
   return groups;
 }
 
@@ -1572,22 +1935,29 @@ function groupGeneric(
 ): { label: string; items: WorkspaceItem[] }[] {
   const size = Math.max(1, Math.ceil(items.length / labels.length));
   return labels
-    .map((label, index) => ({ label, items: items.slice(index * size, (index + 1) * size) }))
+    .map((label, index) => ({
+      label,
+      items: items.slice(index * size, (index + 1) * size),
+    }))
     .filter((group) => group.items.length);
 }
 
 function groupJItem(itemCode: string): string {
   if (itemCode === "J0050") return "Current status";
   if (itemCode.startsWith("J09")) return "Pain";
-  if (itemCode.startsWith("J203") || itemCode.startsWith("J204")) return "Shortness of breath";
-  if (itemCode.startsWith("J2050") || itemCode.startsWith("J2051")) return "Symptom impact";
+  if (itemCode.startsWith("J203") || itemCode.startsWith("J204"))
+    return "Shortness of breath";
+  if (itemCode.startsWith("J2050") || itemCode.startsWith("J2051"))
+    return "Symptom impact";
   if (itemCode.startsWith("J2052") || itemCode.startsWith("J2053"))
     return "Symptom Follow-Up Visit";
   return "Other Health Conditions";
 }
 
 function asSection(value: string): SectionId {
-  return SECTION_ORDER.some((section) => section.id === value) ? (value as SectionId) : "Review";
+  return SECTION_ORDER.some((section) => section.id === value)
+    ? (value as SectionId)
+    : "Review";
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -1607,7 +1977,9 @@ function maskIdentifier(value: string | null | undefined): string {
   return value.length <= 4 ? value : `MRN ...${value.slice(-4)}`;
 }
 
-function stateDot(kind: "complete" | "progress" | "attention" | "empty"): CSSProperties {
+function stateDot(
+  kind: "complete" | "progress" | "attention" | "empty",
+): CSSProperties {
   const colors = {
     complete: t.success,
     progress: t.primary,
@@ -1704,7 +2076,11 @@ const rail: CSSProperties = {
   padding: "1rem",
   overflow: "auto",
 };
-const sectionNav: CSSProperties = { display: "flex", flexDirection: "column", gap: "0.35rem" };
+const sectionNav: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.35rem",
+};
 const sectionButton: CSSProperties = {
   display: "flex",
   gap: "0.75rem",
@@ -1727,7 +2103,11 @@ const sectionMeta: CSSProperties = {
   fontWeight: 500,
   marginTop: 2,
 };
-const mainPanel: CSSProperties = { overflow: "auto", padding: "1.5rem", minWidth: 0 };
+const mainPanel: CSSProperties = {
+  overflow: "auto",
+  padding: "1.5rem",
+  minWidth: 0,
+};
 const sectionHeader: CSSProperties = {
   display: "flex",
   gap: "0.8rem",
@@ -1751,8 +2131,17 @@ const sectionTitle: CSSProperties = {
   fontSize: "1.25rem",
   fontWeight: 600,
 };
-const muted: CSSProperties = { margin: 0, color: t.muted, fontSize: "0.9rem", lineHeight: 1.45 };
-const groupStack: CSSProperties = { display: "flex", flexDirection: "column", gap: "1rem" };
+const muted: CSSProperties = {
+  margin: 0,
+  color: t.muted,
+  fontSize: "0.9rem",
+  lineHeight: 1.45,
+};
+const groupStack: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+};
 const questionGroup: CSSProperties = {
   border: `1px solid ${t.outlineVariant}`,
   borderRadius: 8,
@@ -1765,7 +2154,11 @@ const groupTitle: CSSProperties = {
   fontWeight: 700,
   color: t.onSurface,
 };
-const questionList: CSSProperties = { display: "flex", flexDirection: "column", gap: "0.75rem" };
+const questionList: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+};
 const cardGrid: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
@@ -1789,7 +2182,11 @@ const questionHead: CSSProperties = {
   gap: "0.75rem",
   alignItems: "flex-start",
 };
-const questionLabel: CSSProperties = { fontWeight: 650, color: t.onSurface, lineHeight: 1.35 };
+const questionLabel: CSSProperties = {
+  fontWeight: 650,
+  color: t.onSurface,
+  lineHeight: 1.35,
+};
 const codePill: CSSProperties = {
   fontSize: "0.72rem",
   color: t.muted,
@@ -1874,6 +2271,11 @@ const pendingRow: CSSProperties = {
   borderRadius: 8,
   border: `1px dashed ${t.outline}`,
   color: t.muted,
+};
+const pendingMeta: CSSProperties = {
+  color: t.muted,
+  fontSize: "0.78rem",
+  fontWeight: 600,
 };
 const reviewHero: CSSProperties = {
   display: "flex",
@@ -2061,7 +2463,11 @@ const mobileSectionSelect: CSSProperties = {
   marginBottom: "0.75rem",
   ...inputStyle,
 };
-const legacyLink: CSSProperties = { display: "block", padding: "0.5rem 0", color: t.primary };
+const legacyLink: CSSProperties = {
+  display: "block",
+  padding: "0.5rem 0",
+  color: t.primary,
+};
 const MonoChip = ({ children }: { children: ReactNode }): JSX.Element => (
   <span style={{ fontFamily: t.fontMono, fontSize: "0.8rem" }}>{children}</span>
 );

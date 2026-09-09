@@ -25,6 +25,21 @@ export const hopeSubmissions = pgTable(
     submissionPeriod: text("submission_period").notNull(), // e.g. "2026-Q2" or "2026-06"
     status: hopeSubmissionStatus("status").notNull().default("queued"),
     iqiesBatchId: text("iqies_batch_id"), // iQIES-assigned, nullable until in_flight
+    transportMode: text("transport_mode").notNull().default("manual_iqies_upload"),
+    validationProfile: text("validation_profile"),
+    packageFilename: text("package_filename"),
+    packageStorageUri: text("package_storage_uri"),
+    packageSha256: text("package_sha256"),
+    packageSizeBytes: integer("package_size_bytes"),
+    exportedAt: timestamp("exported_at", { withTimezone: true }),
+    exportedByMembershipId: uuid("exported_by_membership_id"),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    submittedByMembershipId: uuid("submitted_by_membership_id"),
+    iqiesSubmissionReference: text("iqies_submission_reference"),
+    resultImportedAt: timestamp("result_imported_at", { withTimezone: true }),
+    resultImportedByMembershipId: uuid("result_imported_by_membership_id"),
+    resultReportHash: text("result_report_hash"),
+    fileLevelResult: jsonb("file_level_result"),
     // NOT NULL relaxed in mig 0130 (M10L): a `queued` submission has no envelope yet — the transmit
     // worker (§4.10) populates the URI + digest at assembly/transmit time.
     envelopeStorageUri: text("envelope_storage_uri"), // MinIO encrypted-at-rest (null until transmit)

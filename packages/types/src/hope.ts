@@ -53,14 +53,26 @@ export type HopeSfvStatus = "open" | "completed" | "overdue" | "missed" | "withd
 
 /** The §2.2.4 iQIES submission-batch lifecycle (mirrors `hope_submission_status`). */
 export type HopeSubmissionStatus =
+  | "ready"
   | "queued"
+  | "packaged"
+  | "exported"
   | "in_flight"
+  | "submitted_pending_result"
   | "accepted"
   | "rejected"
-  | "partially_accepted";
+  | "partially_accepted"
+  | "accepted_with_warnings"
+  | "file_error";
 
 /** The per-assessment outcome within a submission batch (mirrors `hope_submission_item_status`). */
-export type HopeSubmissionItemStatus = "accepted" | "rejected" | "pending";
+export type HopeSubmissionItemStatus =
+  | "accepted"
+  | "accepted_with_warnings"
+  | "rejected"
+  | "pending"
+  | "blocked"
+  | "unmatched";
 
 /** A `hope_validation_finding`'s blocking class (mirrors `hope_validation_severity`). */
 export type HopeValidationSeverity = "error" | "warning";

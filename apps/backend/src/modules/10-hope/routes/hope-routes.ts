@@ -34,7 +34,9 @@ import {
   HopeAssessmentWorkspaceResponseSchema,
   HopeSignResponseSchema,
   HopeWorkflowStateResponseSchema,
+  ImportSubmissionResultSchema,
   InactivateTimepointSchema,
+  MarkSubmissionUploadedSchema,
   PatchAnswersSchema,
   PatientParamsSchema,
   RecordSfvSchema,
@@ -526,6 +528,45 @@ export function registerHopeRoutes(app: FastifyInstance, deps: HopeRouteDeps): v
       const body = parse(AssembleSubmissionSchema, request.body);
       const res = await service.assembleSubmission(organizationId, body.providerEntityId);
       return reply.code(201).send(res);
+    },
+  );
+
+  app.get(
+    "/api/v1/hope/submissions/:id/package",
+    {
+      preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")],
+      config: { auditRead: { resourceKind: "hope_submission", resourceIdParam: "id" } },
+    },
+    async (request, reply) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(SubmissionParamsSchema, request.params);
+      const pkg = await service.downloadSubmissionPackage(organizationId, id);
+      return reply
+        .header("content-type", pkg.contentType)
+        .header("content-disposition", `attachment; filename="${pkg.filename}"`)
+        .send(pkg.bytes);
+    },
+  );
+
+  app.post(
+    "/api/v1/hope/submissions/:id/mark-uploaded",
+    { preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(SubmissionParamsSchema, request.params);
+      const body = parse(MarkSubmissionUploadedSchema, request.body);
+      return service.markSubmissionUploaded(organizationId, userId, id, body);
+    },
+  );
+
+  app.post(
+    "/api/v1/hope/submissions/:id/results",
+    { preHandler: [SUBMISSION_MANAGE, SCOPE_SUBMISSION("hope.submission.manage")] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(SubmissionParamsSchema, request.params);
+      const body = parse(ImportSubmissionResultSchema, request.body);
+      return service.importSubmissionResult(organizationId, userId, id, body);
     },
   );
 

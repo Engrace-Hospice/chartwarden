@@ -211,9 +211,9 @@ export function AdmissionHopeOverview(): JSX.Element {
               key={item.kind}
               item={item}
               onAction={() => {
-                if (item.assessmentId && item.status === "completed")
-                  navigate(`/hope/assessments/${item.assessmentId}`);
-                else navigate(`/admissions/${state.admissionId}/hope/timepoints/${item.kind}`);
+                if (item.assessmentId) navigate(`/hope/assessments/${item.assessmentId}`);
+                else
+                  navigate(`/admissions/${state.admissionId}/hope/timepoints/${item.kind}`);
               }}
             />
           ))}
@@ -286,8 +286,13 @@ function HopeTimepointCard({
   const labels = FIXED_LABELS[item.kind];
   const attention = attentionOf(item.attention);
   const actionAllowed =
-    item.status === "open" || item.status === "late" || item.status === "completed";
-  const actionLabel = item.status === "completed" ? "View Assessment" : labels.action;
+    item.status === "open" ||
+    item.status === "late" ||
+    item.status === "completed" ||
+    !!item.assessmentId;
+  const hasDraft = !!item.assessmentId && item.status !== "completed";
+  const actionLabel =
+    item.status === "completed" ? "View Assessment" : hasDraft ? "Continue draft" : labels.action;
   return (
     <article style={workflowCard}>
       <div style={sectionHeader}>
@@ -319,6 +324,8 @@ function HopeTimepointCard({
               ? attentionGuidance(item)
               : item.completedAt
                 ? `Completed ${fmtDate(item.completedAt)}`
+                : hasDraft
+                  ? "Draft in progress"
                 : guidanceFor(item)
           }
         />
