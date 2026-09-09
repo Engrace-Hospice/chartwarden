@@ -29,17 +29,24 @@ export interface HopeJ2051TriggerState {
 const J2051_SEVERITY_RANK: Record<string, number> = { "0": 0, "1": 1, "2": 2, "3": 3, "9": 0 };
 const J2051_SEVERITY_BY_RANK = ["none", "mild", "moderate", "severe"] as const;
 
-function answeredString(answer: CanonicalAnswer | undefined): string | null {
-  return answer?.state === "answered" && typeof answer.value === "string" ? answer.value : null;
+export function canonicalAnsweredString(answer: CanonicalAnswer | undefined): string | null {
+  if (answer?.state !== "answered") return null;
+  if (typeof answer.value === "string") return answer.value;
+  if (typeof answer.value === "number" && Number.isFinite(answer.value)) {
+    return String(answer.value);
+  }
+  return null;
 }
 
 export function deriveHopeJ2051TriggerState(answers: CanonicalAnswerMap): HopeJ2051TriggerState {
-  const symptomImpactPerformed = answeredString(answers.get("J2050A"));
-  const symptomImpactDate = answeredString(answers.get("J2050B"));
+  const symptomImpactPerformed = canonicalAnsweredString(answers.get("J2050A"));
+  const symptomImpactDate = canonicalAnsweredString(answers.get("J2050B"));
   if (symptomImpactPerformed === "0") {
     return { state: "false", triggerFired: false, maxSeverity: "none", symptomImpactDate };
   }
-  const values = HOPE_J2051_ITEM_CODES.map((itemCode) => answeredString(answers.get(itemCode)));
+  const values = HOPE_J2051_ITEM_CODES.map((itemCode) =>
+    canonicalAnsweredString(answers.get(itemCode)),
+  );
   const rank = Math.max(...values.map((value) => (value ? (J2051_SEVERITY_RANK[value] ?? 0) : 0)));
   const triggerFired = values.some((value) => value === "2" || value === "3");
   if (triggerFired) {

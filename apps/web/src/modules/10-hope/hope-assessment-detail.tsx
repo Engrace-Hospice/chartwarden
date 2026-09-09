@@ -317,6 +317,48 @@ const J_GROUPS = [
   "Symptom Follow-Up Visit",
 ];
 
+const payerGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+  gap: "0.65rem",
+};
+
+const payerChoice: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "auto minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: "0.65rem",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  padding: "0.75rem",
+  background: t.surface,
+  cursor: "pointer",
+};
+
+const payerChoiceSelected: CSSProperties = {
+  border: `1px solid ${t.primary}`,
+  background: "#eef6ff",
+};
+
+const payerSource: CSSProperties = {
+  display: "block",
+  marginTop: 2,
+  color: t.muted,
+  fontSize: "0.75rem",
+};
+
+const controlledValue: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: "0.75rem",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  padding: "0.65rem 0.75rem",
+  background: t.surface,
+  color: t.onSurface,
+};
+
 export function HopeAssessmentDetail(): JSX.Element {
   const client = useApiClient();
   const api = useMemo(() => client as unknown as HopeApiCompat, [client]);
@@ -328,6 +370,7 @@ export function HopeAssessmentDetail(): JSX.Element {
   const [timeline, setTimeline] = useState<TimepointRow[]>([]);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("A");
+  const [sfvOpen, setSfvOpen] = useState(false);
   const [saving, setSaving] = useState<
     "idle" | "saving" | "saved" | "failed" | "conflict"
   >("idle");
@@ -339,10 +382,40 @@ export function HopeAssessmentDetail(): JSX.Element {
   const [inactivating, setInactivating] = useState(false);
   const latestVersionRef = useRef<number | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const [pendingItemFocus, setPendingItemFocus] = useState<string | null>(null);
 
   useEffect(() => {
     if (workspace) latestVersionRef.current = workspace.assessment.version;
   }, [workspace]);
+
+  useEffect(() => {
+    if (!pendingItemFocus) {
+      return;
+    }
+
+    const timeout = window.setTimeout(() => {
+      const element = document.getElementById(`hope-item-${pendingItemFocus}`);
+
+      if (!element) {
+        return;
+      }
+
+      element.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+
+      if (element instanceof HTMLElement) {
+        element.focus({
+          preventScroll: true,
+        });
+      }
+
+      setPendingItemFocus(null);
+    }, 50);
+
+    return () => window.clearTimeout(timeout);
+  }, [activeSection, pendingItemFocus]);
   const [signing, setSigning] = useState(false);
   const [completionDateSaving, setCompletionDateSaving] = useState(false);
 
@@ -383,6 +456,17 @@ export function HopeAssessmentDetail(): JSX.Element {
     if (pat.data) setPatient(pat.data as unknown as PatientSummary);
     setLoading(false);
   }, [api, id]);
+
+  const goToIssue = useCallback(
+    (section: SectionId, itemCode?: string | null) => {
+      setActiveSection(section);
+
+      if (itemCode) {
+        setPendingItemFocus(itemCode);
+      }
+    },
+    [],
+  );
 
   const refreshWorkspaceOnly = useCallback(async () => {
     if (!id) return;
@@ -434,36 +518,41 @@ export function HopeAssessmentDetail(): JSX.Element {
       )
         return;
       const run = async () => {
-      setSaving("saving");
-      setFieldErrors((prev) => {
-        const { [item.itemCode]: _old, ...rest } = prev;
-        return rest;
-      });
-      const change =
-        value === null || value === "" || value === "^"
-          ? { itemCode: item.itemCode, action: "clear" as const }
-          : { itemCode: item.itemCode, action: "set" as const, value };
-      const res = await api.PATCH("/api/v1/hope/assessments/{id}/answers", {
-        params: { path: { id } },
-        body: { ifVersion: latestVersionRef.current ?? workspace.assessment.version, changes: [change] },
-      });
-      if (res.error || !res.data) {
-        const message = String(
-          (res.error as { message?: unknown })?.message ?? "",
-        );
-        const conflict = /version|conflict|stale/i.test(message);
-        setSaving(conflict ? "conflict" : "failed");
-        setFieldErrors((prev) => ({
-          ...prev,
-          [item.itemCode]: conflict
-            ? "This assessment changed elsewhere. Reload the latest version before continuing."
-            : "This answer was not saved. Check the value and try again.",
-        }));
-        return;
-      }
-      latestVersionRef.current = (res.data as { version?: number }).version ?? latestVersionRef.current;
-      setSaving("saved");
-      await refreshWorkspaceOnly();
+        setSaving("saving");
+        setFieldErrors((prev) => {
+          const { [item.itemCode]: _old, ...rest } = prev;
+          return rest;
+        });
+        const change =
+          value === null || value === "" || value === "^"
+            ? { itemCode: item.itemCode, action: "clear" as const }
+            : { itemCode: item.itemCode, action: "set" as const, value };
+        const res = await api.PATCH("/api/v1/hope/assessments/{id}/answers", {
+          params: { path: { id } },
+          body: {
+            ifVersion: latestVersionRef.current ?? workspace.assessment.version,
+            changes: [change],
+          },
+        });
+        if (res.error || !res.data) {
+          const message = String(
+            (res.error as { message?: unknown })?.message ?? "",
+          );
+          const conflict = /version|conflict|stale/i.test(message);
+          setSaving(conflict ? "conflict" : "failed");
+          setFieldErrors((prev) => ({
+            ...prev,
+            [item.itemCode]: conflict
+              ? "This assessment changed elsewhere. Reload the latest version before continuing."
+              : "This answer was not saved. Check the value and try again.",
+          }));
+          return;
+        }
+        latestVersionRef.current =
+          (res.data as { version?: number }).version ??
+          latestVersionRef.current;
+        setSaving("saved");
+        await refreshWorkspaceOnly();
       };
       const next = saveQueueRef.current.then(run, run);
       saveQueueRef.current = next.catch(() => undefined);
@@ -753,7 +842,7 @@ export function HopeAssessmentDetail(): JSX.Element {
                 assessment={assessment}
                 review={review}
                 workspace={workspace}
-                onGoTo={setActiveSection}
+                onGoTo={goToIssue}
                 visibleSections={visibleSections}
                 onSetCompletionDate={(value) =>
                   void setHuvCompletionDate(value)
@@ -770,6 +859,7 @@ export function HopeAssessmentDetail(): JSX.Element {
                 findingsByItem={findingsByItem}
                 fieldErrors={fieldErrors}
                 onSave={saveAnswer}
+                onCompleteSfv={() => setSfvOpen(true)}
               />
             ) : (
               <EmptyState
@@ -802,7 +892,303 @@ export function HopeAssessmentDetail(): JSX.Element {
           onSubmit={(reason) => void createInactivation(reason)}
         />
       ) : null}
+      {sfvOpen ? (
+        <CompleteSfvDialog
+          assessment={assessment}
+          api={api}
+          onCancel={() => setSfvOpen(false)}
+          onCompleted={async () => {
+            setSfvOpen(false);
+
+            await refreshWorkspaceOnly();
+          }}
+        />
+      ) : null}
     </PatientWorkspaceLayout>
+  );
+}
+
+function CompleteSfvDialog({
+  assessment,
+  api,
+  onCancel,
+  onCompleted,
+}: {
+  assessment: AssessmentDetail;
+  api: HopeApiCompat;
+  onCancel: () => void;
+  onCompleted: () => Promise<void>;
+}): JSX.Element {
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+
+  const [discipline, setDiscipline] = useState<"RN" | "NP">("RN");
+
+  const [answers, setAnswers] = useState<Record<string, string>>({});
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const codes = [
+    "J2053A",
+    "J2053B",
+    "J2053C",
+    "J2053D",
+    "J2053E",
+    "J2053F",
+    "J2053G",
+    "J2053H",
+  ];
+
+  const completedCount = codes.filter((code) => Boolean(answers[code])).length;
+
+  const canSubmit =
+    Boolean(assessment.admissionId) &&
+    date !== "" &&
+    completedCount === codes.length;
+
+  async function submit() {
+    if (!assessment.admissionId || !canSubmit || saving) {
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+
+    const res = await api.POST("/api/v1/admissions/{admissionId}/hope/sfv", {
+      params: {
+        path: {
+          admissionId: assessment.admissionId,
+        },
+      },
+      body: {
+        triggeringAssessmentId: assessment.id,
+        targetDate: `${date}T12:00:00.000Z`,
+        authorDiscipline: discipline,
+        data: {
+          J: {
+            J2053: answers,
+          },
+        },
+      },
+    });
+
+    setSaving(false);
+
+    if (res.error) {
+      setError(
+        "The SFV could not be completed. Review the information and try again.",
+      );
+      return;
+    }
+
+    await onCompleted();
+  }
+
+  return (
+    <div
+      style={sfvModalBackdrop}
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onCancel();
+        }
+      }}
+    >
+      <dialog
+        open
+        style={sfvModal}
+        aria-modal="true"
+        aria-labelledby="sfv-dialog-title"
+      >
+        <header style={sfvModalHeader}>
+          <div style={sfvModalHeaderText}>
+            <div style={sfvModalEyebrow}>Symptom Follow-Up Visit</div>
+
+            <h2 id="sfv-dialog-title" style={sfvModalTitle}>
+              Complete SFV
+            </h2>
+
+            <p style={sfvModalDescription}>
+              Record the visit details and complete the symptom impact
+              reassessment.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            aria-label="Close"
+            style={sfvCloseButton}
+            disabled={saving}
+            onClick={onCancel}
+          >
+            ×
+          </button>
+        </header>
+
+        <div style={sfvModalBody}>
+          <section style={sfvSection}>
+            <div style={sfvSectionHeader}>
+              <div>
+                <h3 style={sfvSectionTitle}>Visit details</h3>
+
+                <p style={sfvSectionDescription}>
+                  Confirm when the SFV was completed and by which discipline.
+                </p>
+              </div>
+            </div>
+
+            <div style={sfvDetailsGrid}>
+              <label style={sfvField}>
+                <span style={sfvFieldLabel}>SFV date</span>
+
+                <input
+                  type="date"
+                  value={date}
+                  style={sfvInput}
+                  disabled={saving}
+                  onChange={(event) => setDate(event.target.value)}
+                />
+              </label>
+
+              <label style={sfvField}>
+                <span style={sfvFieldLabel}>Author discipline</span>
+
+                <select
+                  value={discipline}
+                  style={sfvInput}
+                  disabled={saving}
+                  onChange={(event) =>
+                    setDiscipline(event.target.value as "RN" | "NP")
+                  }
+                >
+                  <option value="RN">Registered Nurse (RN)</option>
+
+                  <option value="NP">Nurse Practitioner (NP)</option>
+                </select>
+              </label>
+            </div>
+          </section>
+
+          <section style={sfvSection}>
+            <div style={sfvSectionHeader}>
+              <div>
+                <h3 style={sfvSectionTitle}>Symptom impact reassessment</h3>
+
+                <p style={sfvSectionDescription}>
+                  Complete each required J2053 item based on the follow-up
+                  visit.
+                </p>
+              </div>
+
+              <span style={sfvProgressBadge}>
+                {completedCount}/{codes.length} completed
+              </span>
+            </div>
+
+            <div style={sfvProgressTrack}>
+              <div
+                style={{
+                  ...sfvProgressValue,
+                  width: `${(completedCount / codes.length) * 100}%`,
+                }}
+              />
+            </div>
+
+            <div style={sfvAnswersGrid}>
+              {codes.map((code, index) => {
+                const value = answers[code] ?? "";
+
+                return (
+                  <label
+                    key={code}
+                    style={{
+                      ...sfvAnswerCard,
+                      ...(value ? sfvAnswerCardComplete : null),
+                    }}
+                  >
+                    <div style={sfvAnswerCardHeader}>
+                      <span style={sfvAnswerNumber}>{index + 1}</span>
+
+                      <div>
+                        <strong style={sfvAnswerTitle}>{code}</strong>
+
+                        <span style={sfvAnswerHint}>Symptom impact</span>
+                      </div>
+                    </div>
+
+                    <select
+                      value={value}
+                      style={sfvInput}
+                      disabled={saving}
+                      onChange={(event) =>
+                        setAnswers((previous) => ({
+                          ...previous,
+                          [code]: event.target.value,
+                        }))
+                      }
+                    >
+                      <option value="">Select severity...</option>
+
+                      <option value="0">None</option>
+
+                      <option value="1">Mild</option>
+
+                      <option value="2">Moderate</option>
+
+                      <option value="3">Severe</option>
+                    </select>
+                  </label>
+                );
+              })}
+            </div>
+          </section>
+
+          {error ? (
+            <div style={sfvErrorBox} role="alert">
+              <strong>Unable to complete SFV</strong>
+
+              <span>{error}</span>
+            </div>
+          ) : null}
+        </div>
+
+        <footer style={sfvModalFooter}>
+          <div style={sfvFooterStatus}>
+            {completedCount === codes.length ? (
+              <span style={sfvReadyText}>✓ Reassessment complete</span>
+            ) : (
+              <span style={sfvPendingText}>
+                Complete all {codes.length - completedCount} remaining item
+                {codes.length - completedCount === 1 ? "" : "s"}.
+              </span>
+            )}
+          </div>
+
+          <div style={sfvFooterActions}>
+            <button
+              type="button"
+              style={secondaryButton}
+              disabled={saving}
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+
+            <button
+              type="button"
+              style={{
+                ...primaryButton,
+                ...(!canSubmit ? sfvDisabledButton : null),
+              }}
+              disabled={saving || !canSubmit}
+              onClick={() => void submit()}
+            >
+              {saving ? "Completing..." : "Complete SFV"}
+            </button>
+          </div>
+        </footer>
+      </dialog>
+    </div>
   );
 }
 
@@ -813,6 +1199,7 @@ function SectionPanel(props: {
   findingsByItem: Map<string, ReviewModel["validation"]["findings"]>;
   fieldErrors: Record<string, string>;
   onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
+  onCompleteSfv?: () => void;
 }): JSX.Element {
   const config = SECTION_ORDER.find((s) => s.id === props.sectionId)!;
   return (
@@ -857,21 +1244,86 @@ function SectionPanel(props: {
   );
 }
 
-function GroupedItems(props: {
-  groups: { label: string; items: WorkspaceItem[] }[];
+function PayerCoverageGroup(props: {
+  items: WorkspaceItem[];
   readonly: boolean;
   findingsByItem: Map<string, ReviewModel["validation"]["findings"]>;
   fieldErrors: Record<string, string>;
   onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
-  conversational?: boolean;
 }): JSX.Element {
   return (
-    <div style={groupStack}>
-      {props.groups.map((group) => (
-        <section key={group.label} style={questionGroup}>
-          <h3 style={groupTitle}>{group.label}</h3>
-          <div style={props.conversational ? cardGrid : questionList}>
-            {group.items.map((item) => (
+    <div id="hope-item-A1400" tabIndex={-1} style={payerGrid}>
+      {props.items.map((item) => {
+        const selected = String(item.value ?? "") === "1";
+
+        return (
+          <label
+            key={item.itemCode}
+            style={{
+              ...payerChoice,
+              ...(selected ? payerChoiceSelected : null),
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={selected}
+              disabled={props.readonly}
+              onChange={(event) => {
+                void props.onSave(
+                  item,
+                  event.currentTarget.checked ? "1" : "0",
+                );
+              }}
+            />
+
+            <span>
+              <strong>{item.label}</strong>
+
+              {item.source && item.source !== "user" ? (
+                <small style={payerSource}>
+                  {item.source === "patient_prefill"
+                    ? "From patient coverage"
+                    : item.source === "admission_prefill"
+                      ? "From admission"
+                      : "Prefilled"}
+                </small>
+              ) : null}
+            </span>
+
+            <span style={codePill}>{item.itemCode}</span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+function DemographicsGroup(props: {
+  items: WorkspaceItem[];
+  readonly: boolean;
+  findingsByItem: Map<string, ReviewModel["validation"]["findings"]>;
+  fieldErrors: Record<string, string>;
+  onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
+}): JSX.Element {
+  const ethnicity = props.items.filter((item) =>
+    item.itemCode.startsWith("A1005"),
+  );
+
+  const race = props.items.filter((item) => item.itemCode.startsWith("A1010"));
+
+  const other = props.items.filter(
+    (item) =>
+      !item.itemCode.startsWith("A1005") && !item.itemCode.startsWith("A1010"),
+  );
+
+  return (
+    <div style={questionList}>
+      {ethnicity.length > 0 ? (
+        <section id="hope-item-A1005" tabIndex={-1} style={questionGroup}>
+          <h4 style={groupTitle}>Ethnicity</h4>
+
+          <div style={questionList}>
+            {ethnicity.map((item) => (
               <QuestionRenderer
                 key={item.itemCode}
                 item={item}
@@ -882,6 +1334,100 @@ function GroupedItems(props: {
               />
             ))}
           </div>
+        </section>
+      ) : null}
+
+      {race.length > 0 ? (
+        <section id="hope-item-A1010" tabIndex={-1} style={questionGroup}>
+          <h4 style={groupTitle}>Race</h4>
+
+          <div style={questionList}>
+            {race.map((item) => (
+              <QuestionRenderer
+                key={item.itemCode}
+                item={item}
+                readonly={props.readonly}
+                findings={props.findingsByItem.get(item.itemCode) ?? []}
+                fieldError={props.fieldErrors[item.itemCode]}
+                onSave={props.onSave}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {other.map((item) => (
+        <QuestionRenderer
+          key={item.itemCode}
+          item={item}
+          readonly={props.readonly}
+          findings={props.findingsByItem.get(item.itemCode) ?? []}
+          fieldError={props.fieldErrors[item.itemCode]}
+          onSave={props.onSave}
+        />
+      ))}
+    </div>
+  );
+}
+
+function GroupedItems(props: {
+  groups: {
+    label: string;
+    items: WorkspaceItem[];
+  }[];
+  readonly: boolean;
+  findingsByItem: Map<string, ReviewModel["validation"]["findings"]>;
+  fieldErrors: Record<string, string>;
+  onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
+  conversational?: boolean;
+}): JSX.Element {
+  return (
+    <div style={groupStack}>
+      {props.groups.map((group) => (
+        <section
+          key={group.label}
+          id={
+            group.label === "Demographics"
+              ? "hope-group-demographics"
+              : group.label === "Payer / Coverage"
+                ? "hope-item-A1400"
+                : undefined
+          }
+          tabIndex={-1}
+          style={questionGroup}
+        >
+          <h3 style={groupTitle}>{group.label}</h3>
+
+          {group.label === "Payer / Coverage" ? (
+            <PayerCoverageGroup
+              items={group.items}
+              readonly={props.readonly}
+              findingsByItem={props.findingsByItem}
+              fieldErrors={props.fieldErrors}
+              onSave={props.onSave}
+            />
+          ) : group.label === "Demographics" ? (
+            <DemographicsGroup
+              items={group.items}
+              readonly={props.readonly}
+              findingsByItem={props.findingsByItem}
+              fieldErrors={props.fieldErrors}
+              onSave={props.onSave}
+            />
+          ) : (
+            <div style={props.conversational ? cardGrid : questionList}>
+              {group.items.map((item) => (
+                <QuestionRenderer
+                  key={item.itemCode}
+                  item={item}
+                  readonly={props.readonly}
+                  findings={props.findingsByItem.get(item.itemCode) ?? []}
+                  fieldError={props.fieldErrors[item.itemCode]}
+                  onSave={props.onSave}
+                />
+              ))}
+            </div>
+          )}
         </section>
       ))}
     </div>
@@ -932,29 +1478,126 @@ function DiagnosisSection(
   );
 }
 
+function SfvWorkflowSection({
+  items,
+  readonly,
+  onComplete,
+}: {
+  items: WorkspaceItem[];
+  readonly: boolean;
+  onComplete?: () => void;
+}): JSX.Element {
+  const j2052a = items.find((item) => item.itemCode === "J2052A");
+
+  const completed = String(j2052a?.value ?? "") === "1";
+
+  const required = j2052a?.applicability === "applicable";
+
+  return (
+    <section id="hope-item-J2052A" tabIndex={-1} style={questionGroup}>
+      <h3 style={groupTitle}>Symptom Follow-Up Visit</h3>
+
+      <div style={questionCard}>
+        <div style={questionHead}>
+          <div>
+            <strong>
+              {completed
+                ? "SFV completed"
+                : required
+                  ? "SFV required"
+                  : "SFV status"}
+            </strong>
+
+            <p style={muted}>
+              {completed
+                ? "The follow-up visit has been recorded by the SFV workflow."
+                : required
+                  ? "A moderate or severe symptom impact requires a follow-up visit."
+                  : "The need for a follow-up visit is determined from the symptom impact assessment."}
+            </p>
+          </div>
+
+          <StatusPill
+            label={completed ? "Completed" : required ? "Required" : "Pending"}
+            tone={completed ? "success" : required ? "warning" : "neutral"}
+          />
+        </div>
+
+        {!readonly && required && !completed ? (
+          <div style={actionRow}>
+            <button type="button" style={primaryButton} onClick={onComplete}>
+              Complete SFV
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {completed ? (
+        <div
+          style={{
+            ...muted,
+            marginTop: "0.75rem",
+          }}
+        >
+          J2052 and J2053 are workflow-controlled and were populated from the
+          completed SFV.
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function SectionJ(props: Parameters<typeof SectionPanel>[0]): JSX.Element {
-  const groups = J_GROUPS.map((label) => ({
-    label,
-    items: props.section.items.filter(
-      (item) => (item.group ?? groupJItem(item.itemCode)) === label,
-    ),
-  })).filter((group) => group.items.length > 0);
+  const sfvItems = props.section.items.filter(
+    (item) =>
+      item.itemCode.startsWith("J2052") || item.itemCode.startsWith("J2053"),
+  );
+
+  const regularItems = props.section.items.filter(
+    (item) =>
+      !item.itemCode.startsWith("J2052") && !item.itemCode.startsWith("J2053"),
+  );
+
+  const groups = J_GROUPS.filter((label) => label !== "Symptom Follow-Up Visit")
+    .map((label) => ({
+      label,
+      items: regularItems.filter(
+        (item) => (item.group ?? groupJItem(item.itemCode)) === label,
+      ),
+    }))
+    .filter((group) => group.items.length > 0);
+
   const grouped = new Set(
     groups.flatMap((group) => group.items.map((item) => item.itemCode)),
   );
-  const leftover = props.section.items.filter(
-    (item) => !grouped.has(item.itemCode),
-  );
-  if (leftover.length)
-    groups.push({ label: "Other Health Conditions", items: leftover });
+
+  const leftover = regularItems.filter((item) => !grouped.has(item.itemCode));
+
+  if (leftover.length) {
+    groups.push({
+      label: "Other Health Conditions",
+      items: leftover,
+    });
+  }
+
   return (
-    <GroupedItems
-      groups={groups}
-      readonly={props.readonly}
-      findingsByItem={props.findingsByItem}
-      fieldErrors={props.fieldErrors}
-      onSave={props.onSave}
-    />
+    <div style={groupStack}>
+      <GroupedItems
+        groups={groups}
+        readonly={props.readonly}
+        findingsByItem={props.findingsByItem}
+        fieldErrors={props.fieldErrors}
+        onSave={props.onSave}
+      />
+
+      {sfvItems.length > 0 ? (
+        <SfvWorkflowSection
+          items={sfvItems}
+          readonly={props.readonly}
+          onComplete={props.onCompleteSfv}
+        />
+      ) : null}
+    </div>
   );
 }
 
@@ -969,7 +1612,7 @@ function QuestionRenderer(props: {
   const { item } = props;
   if (item.applicability === "not_applicable") {
     return (
-      <div style={skippedRow}>
+      <div id={`hope-item-${item.itemCode}`} tabIndex={-1} style={skippedRow}>
         <span>{item.label}</span>
         <StatusPill label="Skipped" tone="neutral" />
       </div>
@@ -977,14 +1620,19 @@ function QuestionRenderer(props: {
   }
   if (item.applicability === "pending") {
     return (
-      <div style={pendingRow}>
+      <div id={`hope-item-${item.itemCode}`} tabIndex={-1} style={pendingRow}>
         <strong>{item.label}</strong>
         <span>{pendingApplicabilityMessage(item)}</span>
         <small style={pendingMeta}>{pendingApplicabilityDetail(item)}</small>
       </div>
     );
   }
-  const readonly = props.readonly || PROTECTED_ITEMS.has(item.itemCode);
+
+  const workflowControlled = PROTECTED_ITEMS.has(item.itemCode);
+
+  const readonly = props.readonly || workflowControlled;
+
+  // const readonly = props.readonly || PROTECTED_ITEMS.has(item.itemCode);
   const inputId = `hope-${item.itemCode}`;
   const errorId = `${inputId}-error`;
   const hintId = `${inputId}-hint`;
@@ -993,7 +1641,11 @@ function QuestionRenderer(props: {
     ...(props.fieldError ? [props.fieldError] : []),
   ];
   return (
-    <div style={props.compact ? compactQuestion : questionCard}>
+    <div
+      id={`hope-item-${item.itemCode}`}
+      tabIndex={-1}
+      style={props.compact ? compactQuestion : questionCard}
+    >
       <div style={questionHead}>
         <label htmlFor={inputId} style={questionLabel}>
           {item.label}
@@ -1004,13 +1656,17 @@ function QuestionRenderer(props: {
         <SourceBadge source={item.source} />
         {readonly ? <span>{workflowControlledMessage(item)}</span> : null}
       </div>
-      <AnswerControl
-        item={item}
-        inputId={inputId}
-        readonly={readonly}
-        describedBy={`${hintId}${messages.length ? ` ${errorId}` : ""}`}
-        onSave={props.onSave}
-      />
+      {workflowControlled ? (
+        <WorkflowControlledValue item={item} />
+      ) : (
+        <AnswerControl
+          item={item}
+          inputId={inputId}
+          readonly={readonly}
+          describedBy={`${hintId}${messages.length ? ` ${errorId}` : ""}`}
+          onSave={props.onSave}
+        />
+      )}
       {messages.length ? (
         <div
           id={errorId}
@@ -1029,6 +1685,26 @@ function QuestionRenderer(props: {
   );
 }
 
+function WorkflowControlledValue({
+  item,
+}: {
+  item: WorkspaceItem;
+}): JSX.Element {
+  const current = String(item.value ?? "");
+
+  const option = item.options.find(
+    (candidate) => candidate.valueCode === current,
+  );
+
+  return (
+    <div style={controlledValue}>
+      <span>{option?.label || current || "Not available"}</span>
+
+      <span style={sourceBadge}>Workflow controlled</span>
+    </div>
+  );
+}
+
 function AnswerControl(props: {
   item: WorkspaceItem;
   inputId: string;
@@ -1037,7 +1713,9 @@ function AnswerControl(props: {
   onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
 }): JSX.Element {
   const value = props.item.value == null ? "" : String(props.item.value);
-  const dateLike = /date|dt|dte/i.test(props.item.cmsItemTypeCode ?? props.item.label);
+  const dateLike = /date|dt|dte/i.test(
+    props.item.cmsItemTypeCode ?? props.item.label,
+  );
   if (dateLike) {
     return (
       <input
@@ -1146,9 +1824,12 @@ function isTextItem(item: WorkspaceItem): boolean {
   );
 }
 
-function answerOptionsForControl(item: WorkspaceItem): WorkspaceItem["options"] {
+function answerOptionsForControl(
+  item: WorkspaceItem,
+): WorkspaceItem["options"] {
   return item.options.filter(
-    (option) => option.valueCode !== "Text" && !/^YYYY(MM(DD)?)?$/.test(option.valueCode),
+    (option) =>
+      option.valueCode !== "Text" && !/^YYYY(MM(DD)?)?$/.test(option.valueCode),
   );
 }
 
@@ -1274,39 +1955,65 @@ function IssueList({
   onGoTo,
 }: {
   review: ReviewModel | null;
-  onGoTo: (section: SectionId) => void;
+  onGoTo: (section: SectionId, itemCode?: string | null) => void;
 }): JSX.Element {
-  const rows = [
+  const candidates = [
     ...(review?.readiness.blockers ?? []).map((b) => ({
       section: b.section ?? "Review",
       itemCode: b.itemCode ?? null,
       severity: "error" as const,
       message: b.message,
-      key: `${b.code}:${b.itemCode ?? b.section}`,
+      ruleId: b.ruleId ?? b.code,
     })),
+
     ...(review?.validation.findings ?? []).map((f) => ({
-      ...f,
-      key: `${f.ruleId}:${f.itemCode ?? f.section}`,
+      section: f.section,
+      itemCode: f.itemCode ?? null,
+      severity: f.severity,
+      message: f.message,
+      ruleId: f.ruleId,
     })),
   ];
-  if (!rows.length)
+
+  const seen = new Set<string>();
+
+  const rows = candidates.filter((row) => {
+    const key = [row.ruleId, row.section, row.itemCode ?? "", row.message].join(
+      ":",
+    );
+
+    if (seen.has(key)) {
+      return false;
+    }
+
+    seen.add(key);
+    return true;
+  });
+
+  if (!rows.length) {
     return (
       <div style={successBox}>No blocking issues from the backend review.</div>
     );
+  }
+
   return (
     <section style={questionGroup}>
       <h3 style={groupTitle}>Issues</h3>
+
       <div style={questionList}>
         {rows.map((row) => (
           <button
-            key={row.key}
+            key={[row.ruleId, row.itemCode, row.message].join(":")}
             type="button"
             style={issueRow(row.severity)}
-            onClick={() => onGoTo(asSection(row.section))}
+            onClick={() => onGoTo(asSection(row.section), row.itemCode)}
           >
             <span>
-              <strong>{row.itemCode ?? row.section}</strong> — {row.message}
+              <strong>{row.itemCode ?? row.section}</strong>
+              {" — "}
+              {row.message}
             </span>
+
             <span>
               {row.severity === "warning" ? "Warning" : "Go to question"}
             </span>
@@ -2481,4 +3188,284 @@ const srOnly: CSSProperties = {
   clip: "rect(0, 0, 0, 0)",
   whiteSpace: "nowrap",
   border: 0,
+};
+
+const sfvModalBackdrop: CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 50,
+  display: "grid",
+  placeItems: "center",
+  padding: "1rem",
+  background: "rgba(15, 23, 42, 0.52)",
+  backdropFilter: "blur(2px)",
+};
+
+const sfvModal: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  width: "min(760px, calc(100vw - 2rem))",
+  maxWidth: "760px",
+  maxHeight: "min(860px, calc(100vh - 2rem))",
+  margin: 0,
+  padding: 0,
+  overflow: "hidden",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 12,
+  background: t.surface,
+  color: t.onSurface,
+  boxShadow: "0 24px 70px rgba(15, 23, 42, 0.28)",
+};
+
+const sfvModalHeader: CSSProperties = {
+  flex: "0 0 auto",
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "1rem",
+  padding: "1.25rem 1.35rem 1rem",
+  borderBottom: `1px solid ${t.outlineVariant}`,
+  background: t.surface,
+};
+
+const sfvModalHeaderText: CSSProperties = {
+  minWidth: 0,
+};
+
+const sfvModalEyebrow: CSSProperties = {
+  marginBottom: "0.2rem",
+  color: t.primary,
+  fontSize: "0.72rem",
+  fontWeight: 800,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+};
+
+const sfvModalTitle: CSSProperties = {
+  margin: 0,
+  color: t.onSurface,
+  fontFamily: t.fontDisplay,
+  fontSize: "1.3rem",
+  fontWeight: 700,
+};
+
+const sfvModalDescription: CSSProperties = {
+  margin: "0.3rem 0 0",
+  color: t.muted,
+  fontSize: "0.88rem",
+  lineHeight: 1.45,
+};
+
+const sfvCloseButton: CSSProperties = {
+  display: "grid",
+  flex: "0 0 auto",
+  width: 34,
+  height: 34,
+  placeItems: "center",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  background: t.surface,
+  color: t.muted,
+  fontSize: "1.35rem",
+  lineHeight: 1,
+  cursor: "pointer",
+};
+
+const sfvModalBody: CSSProperties = {
+  flex: "1 1 auto",
+  minHeight: 0,
+  overflowY: "auto",
+  overscrollBehavior: "contain",
+  padding: "1rem 1.35rem 1.25rem",
+};
+
+const sfvSection: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.9rem",
+  padding: "1rem",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 10,
+  background: t.surfaceLow,
+  marginBottom: "1rem",
+};
+
+const sfvSectionHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "1rem",
+};
+
+const sfvSectionTitle: CSSProperties = {
+  margin: 0,
+  color: t.onSurface,
+  fontSize: "0.98rem",
+  fontWeight: 750,
+};
+
+const sfvSectionDescription: CSSProperties = {
+  margin: "0.2rem 0 0",
+  color: t.muted,
+  fontSize: "0.82rem",
+  lineHeight: 1.4,
+};
+
+const sfvDetailsGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "0.85rem",
+};
+
+const sfvField: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.4rem",
+};
+
+const sfvFieldLabel: CSSProperties = {
+  color: t.onSurface,
+  fontSize: "0.8rem",
+  fontWeight: 700,
+};
+
+const sfvInput: CSSProperties = {
+  width: "100%",
+  minHeight: 42,
+  boxSizing: "border-box",
+  border: `1px solid ${t.outline}`,
+  borderRadius: 8,
+  padding: "0.55rem 0.65rem",
+  background: t.surface,
+  color: t.onSurface,
+  font: "inherit",
+};
+
+const sfvProgressBadge: CSSProperties = {
+  flex: "0 0 auto",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 999,
+  padding: "0.2rem 0.55rem",
+  background: t.surface,
+  color: t.muted,
+  fontSize: "0.75rem",
+  fontWeight: 700,
+  whiteSpace: "nowrap",
+};
+
+const sfvProgressTrack: CSSProperties = {
+  width: "100%",
+  height: 5,
+  overflow: "hidden",
+  borderRadius: 999,
+  background: t.outlineVariant,
+};
+
+const sfvProgressValue: CSSProperties = {
+  height: "100%",
+  borderRadius: 999,
+  background: t.primary,
+  transition: "width 180ms ease",
+};
+
+const sfvAnswersGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+  gap: "0.7rem",
+};
+
+const sfvAnswerCard: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.65rem",
+  padding: "0.75rem",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 9,
+  background: t.surface,
+};
+
+const sfvAnswerCardComplete: CSSProperties = {
+  border: `1px solid ${t.primary}`,
+};
+
+const sfvAnswerCardHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.6rem",
+};
+
+const sfvAnswerNumber: CSSProperties = {
+  display: "grid",
+  flex: "0 0 auto",
+  width: 28,
+  height: 28,
+  placeItems: "center",
+  borderRadius: 7,
+  background: t.surfaceLow,
+  color: t.muted,
+  fontSize: "0.75rem",
+  fontWeight: 800,
+};
+
+const sfvAnswerTitle: CSSProperties = {
+  display: "block",
+  color: t.onSurface,
+  fontSize: "0.83rem",
+};
+
+const sfvAnswerHint: CSSProperties = {
+  display: "block",
+  marginTop: 1,
+  color: t.muted,
+  fontSize: "0.72rem",
+};
+
+const sfvErrorBox: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.2rem",
+  padding: "0.75rem 0.85rem",
+  border: `1px solid ${t.error}`,
+  borderRadius: 8,
+  background: "#fff3f3",
+  color: t.error,
+  fontSize: "0.82rem",
+};
+
+const sfvModalFooter: CSSProperties = {
+  flex: "0 0 auto",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+  padding: "0.85rem 1.35rem",
+  borderTop: `1px solid ${t.outlineVariant}`,
+  background: t.surface,
+};
+
+const sfvFooterStatus: CSSProperties = {
+  minWidth: 0,
+  fontSize: "0.8rem",
+};
+
+const sfvReadyText: CSSProperties = {
+  color: t.success,
+  fontWeight: 700,
+};
+
+const sfvPendingText: CSSProperties = {
+  color: t.muted,
+};
+
+const sfvFooterActions: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  gap: "0.65rem",
+  flex: "0 0 auto",
+};
+
+const sfvDisabledButton: CSSProperties = {
+  opacity: 0.5,
+  cursor: "not-allowed",
 };

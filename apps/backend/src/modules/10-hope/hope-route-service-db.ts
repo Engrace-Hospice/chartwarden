@@ -89,6 +89,60 @@ type SfvRow = typeof SFV.$inferSelect;
 type SubmissionRow = typeof SUB.$inferSelect;
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
+const HOPE_J2053_ITEM_CODES = [
+  "J2053A",
+  "J2053B",
+  "J2053C",
+  "J2053D",
+  "J2053E",
+  "J2053F",
+  "J2053G",
+  "J2053H",
+] as const;
+
+export interface CompletedSfvRegulatoryAnswerPlan {
+  readonly answered: ReadonlyMap<string, string>;
+  readonly skipped: ReadonlySet<string>;
+}
+
+export function buildCompletedSfvRegulatoryAnswerPlan(
+  completedDate: string,
+  sfvData: Record<string, unknown>,
+): CompletedSfvRegulatoryAnswerPlan | null {
+  const sectionJ =
+    sfvData.J && typeof sfvData.J === "object" && !Array.isArray(sfvData.J)
+      ? (sfvData.J as Record<string, unknown>)
+      : null;
+  const j2053 =
+    sectionJ?.J2053 &&
+    typeof sectionJ.J2053 === "object" &&
+    !Array.isArray(sectionJ.J2053)
+      ? (sectionJ.J2053 as Record<string, unknown>)
+      : null;
+
+  if (!j2053) return null;
+
+  const answered = new Map<string, string>([
+    ["J2052A", "1"],
+    ["J2052B", completedDate],
+  ]);
+
+  for (const itemCode of HOPE_J2053_ITEM_CODES) {
+    const value = j2053[itemCode];
+    if (typeof value === "string" && value.trim() !== "") {
+      answered.set(itemCode, value);
+    } else if (typeof value === "number" && Number.isFinite(value)) {
+      answered.set(itemCode, String(value));
+    } else {
+      return null;
+    }
+  }
+
+  return {
+    answered,
+    skipped: new Set(["J2052C"]),
+  };
+}
 
 /** The transactional-outbox port (§2.4): the bound publisher validates every emit against the boot
  * catalog and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests
@@ -132,7 +186,9 @@ const OFFICIAL_RFA_KINDS = [
   "05_discharge",
 ] as const satisfies readonly HopeRfaKind[];
 
-function isOfficialRfaKind(rfaKind: string): rfaKind is (typeof OFFICIAL_RFA_KINDS)[number] {
+function isOfficialRfaKind(
+  rfaKind: string,
+): rfaKind is (typeof OFFICIAL_RFA_KINDS)[number] {
   return (OFFICIAL_RFA_KINDS as readonly string[]).includes(rfaKind);
 }
 
@@ -311,6 +367,7 @@ export function createDbHopeBackend(
     organizationId: string,
     triggeringAssessmentId: string,
     completedDate: string,
+    sfvData: Record<string, unknown>,
     at: Date,
   ): Promise<void> {
     const [assessment] = (await tx
@@ -323,13 +380,21 @@ export function createDbHopeBackend(
         ),
       )
       .limit(1)) as AssessmentRow[];
+
     if (
       !assessment ||
       assessment.status !== "draft" ||
       !assessment.specVersionId ||
       !assessment.isc
-    )
+    ) {
       return;
+    }
+
+    const plan = buildCompletedSfvRegulatoryAnswerPlan(completedDate, sfvData);
+    if (!plan) return;
+
+    const requestedCodes = ["J2052A", "J2052B", "J2052C", ...HOPE_J2053_ITEM_CODES];
+
     const rows = await tx
       .select({ item: ITEM })
       .from(ITEM)
@@ -340,18 +405,19 @@ export function createDbHopeBackend(
       .where(
         and(
           eq(ITEM.specVersionId, assessment.specVersionId),
-          inArray(ITEM.itemCode, ["J2052A", "J2052B"]),
+          inArray(ITEM.itemCode, requestedCodes),
           eq(schema.hopeSpecItemIsc.isc, assessment.isc),
           eq(schema.hopeSpecItemIsc.active, true),
         ),
       );
+
     const byCode = new Map(rows.map((row) => [row.item.itemCode, row.item]));
-    for (const [itemCode, value] of [
-      ["J2052A", "1"],
-      ["J2052B", completedDate],
-    ] as const) {
+
+    for (const [itemCode, value] of plan.answered) {
       const item = byCode.get(itemCode);
+
       if (!item) continue;
+
       await tx
         .insert(ANSWER)
         .values({
@@ -364,8 +430,12 @@ export function createDbHopeBackend(
           state: "answered",
           value,
           source: "derived",
-          sourceReference: { reason: "sfv_completion_workflow" },
+          sourceReference: {
+            reason: "completed_sfv_regulatory_reconciliation",
+            sfvWorkflow: "completed_operational_sfv",
+          },
           answeredAt: at,
+          answeredByMembershipId: null,
           updatedAt: at,
         })
         .onConflictDoUpdate({
@@ -374,13 +444,132 @@ export function createDbHopeBackend(
             state: "answered",
             value,
             source: "derived",
-            sourceReference: { reason: "sfv_completion_workflow" },
+            sourceReference: {
+              reason: "completed_sfv_regulatory_reconciliation",
+              sfvWorkflow: "completed_operational_sfv",
+            },
             answeredAt: at,
             answeredByMembershipId: null,
             updatedAt: at,
           },
         });
     }
+
+    const j2052c = byCode.get("J2052C");
+
+    if (j2052c) {
+      await tx
+        .insert(ANSWER)
+        .values({
+          organizationId,
+          providerEntityId: assessment.providerEntityId,
+          locationId: assessment.locationId,
+          hopeAssessmentId: assessment.id,
+          specVersionId: assessment.specVersionId,
+          specItemId: j2052c.id,
+          state: "skipped",
+          value: null,
+          source: "derived",
+          sourceReference: {
+            reason: "completed_sfv_regulatory_reconciliation",
+            sfvWorkflow: "completed_operational_sfv",
+            ruleId: "hope-v1.00.1-j2052-reason",
+            cmsRuleId: "-3106",
+            dependsOn: ["J2052A"],
+          },
+          answeredAt: at,
+          answeredByMembershipId: null,
+          updatedAt: at,
+        })
+        .onConflictDoUpdate({
+          target: [ANSWER.hopeAssessmentId, ANSWER.specItemId],
+          set: {
+            state: "skipped",
+            value: null,
+            source: "derived",
+            sourceReference: {
+              reason: "completed_sfv_regulatory_reconciliation",
+              sfvWorkflow: "completed_operational_sfv",
+              ruleId: "hope-v1.00.1-j2052-reason",
+              cmsRuleId: "-3106",
+              dependsOn: ["J2052A"],
+            },
+            answeredAt: at,
+            answeredByMembershipId: null,
+            updatedAt: at,
+          },
+        });
+    }
+  }
+
+  async function reconcileCompletedSfvRegulatoryAnswers(
+    tx: DbClient,
+    organizationId: string,
+    triggeringAssessmentId: string,
+    at: Date = new Date(),
+  ): Promise<{ repaired: boolean; reason?: string }> {
+    const [sfv] = (await tx
+      .select()
+      .from(SFV)
+      .where(
+        and(
+          eq(SFV.organizationId, organizationId),
+          eq(SFV.triggeringAssessmentId, triggeringAssessmentId),
+        ),
+      )
+      .limit(1)) as SfvRow[];
+
+    if (
+      !sfv ||
+      sfv.status !== "completed" ||
+      !sfv.completedAt ||
+      !sfv.completingAssessmentId
+    ) {
+      return { repaired: false, reason: "sfv_not_completed" };
+    }
+
+    const [completion] = (await tx
+      .select()
+      .from(ASSESS)
+      .where(
+        and(
+          eq(ASSESS.organizationId, organizationId),
+          eq(ASSESS.id, sfv.completingAssessmentId),
+        ),
+      )
+      .limit(1)) as AssessmentRow[];
+
+    if (
+      !completion ||
+      completion.rfaKind !== "04_sfv" ||
+      completion.status !== "signed"
+    ) {
+      return { repaired: false, reason: "completion_assessment_not_signed_sfv" };
+    }
+
+    const completionData =
+      completion.data &&
+      typeof completion.data === "object" &&
+      !Array.isArray(completion.data)
+        ? (completion.data as Record<string, unknown>)
+        : null;
+    if (!completionData) return { repaired: false, reason: "missing_sfv_data" };
+    const plan = buildCompletedSfvRegulatoryAnswerPlan(
+      completion.targetDate.toISOString().slice(0, 10),
+      completionData,
+    );
+    if (!plan) return { repaired: false, reason: "missing_j2053" };
+
+    await writeDraftSfvCompletionAnswers(
+      tx,
+      organizationId,
+      triggeringAssessmentId,
+      completion.targetDate.toISOString().slice(0, 10),
+      completionData,
+      at,
+    );
+
+    return { repaired: true };
   }
 
   async function writeZ0500B(
@@ -1222,6 +1411,7 @@ export function createDbHopeBackend(
           organizationId,
           sfv.triggeringAssessmentId,
           args.targetDate.slice(0, 10),
+          args.data,
           at,
         );
         await emit(
@@ -1264,15 +1454,21 @@ export function createDbHopeBackend(
 
     async getAssessmentWorkspace(organizationId, id) {
       await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id),
+        ensureDraftSpecInitialized(
+          tx as unknown as DbClient,
+          organizationId,
+          id,
+        ),
       );
       return answerService.getWorkspace(organizationId, id);
     },
 
     async getAssessmentReview(organizationId, id) {
-      await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id),
-      );
+      await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        await ensureDraftSpecInitialized(t, organizationId, id);
+        await reconcileCompletedSfvRegulatoryAnswers(t, organizationId, id);
+      });
       return readinessService.getReview({ organizationId, assessmentId: id });
     },
 
@@ -1383,7 +1579,11 @@ export function createDbHopeBackend(
         db,
         { organizationId, userId: "" },
         async (tx) =>
-          ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id),
+          ensureDraftSpecInitialized(
+            tx as unknown as DbClient,
+            organizationId,
+            id,
+          ),
       );
       const snapshot =
         pre.status === "draft" ? await d8Snapshot(pre.patientId) : null;

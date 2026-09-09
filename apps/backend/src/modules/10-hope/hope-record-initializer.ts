@@ -163,3 +163,32 @@ export function createHopeAssessmentAnswerWriter(): HopeAssessmentAnswerWriter {
     },
   };
 }
+
+export function deriveHopeWorkflowControlAnswers(input: {
+  readonly rfaKind: HopeRfaKind;
+  readonly isc: HopeIsc | null;
+  readonly correctsAssessmentId: string | null;
+}): readonly {
+  itemCode: "A0050" | "A0250";
+  value: string;
+}[] {
+  const mapped = officialMappingFor(input.rfaKind);
+
+  const a0050 =
+    input.isc === "XX"
+      ? "3"
+      : input.correctsAssessmentId
+        ? "2"
+        : "1";
+
+  return [
+    {
+      itemCode: "A0050",
+      value: a0050,
+    },
+    {
+      itemCode: "A0250",
+      value: mapped.a0250,
+    },
+  ];
+}

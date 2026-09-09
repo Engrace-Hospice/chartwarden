@@ -113,11 +113,23 @@ function dateOrder(ctx: HopeValidationContext, earlierCode: string, laterCode: s
   ];
 }
 
+const WORKFLOW_COMPLETION_ITEMS = new Set([
+  "Z0500B",
+]);
+
 const requirednessRule: HopeValidationRule = {
   id: "hope-v1.00.1-final-requiredness",
   evaluate(ctx) {
     if (ctx.mode !== "final") return [];
-    return activeAssessmentItems(ctx).flatMap((itemCode) => required(ctx, itemCode));
+
+    return activeAssessmentItems(ctx)
+      .filter(
+        (itemCode) =>
+          !WORKFLOW_COMPLETION_ITEMS.has(itemCode),
+      )
+      .flatMap((itemCode) =>
+        required(ctx, itemCode),
+      );
   },
 };
 

@@ -60,18 +60,56 @@ const J2051Entry = Type.Object({
   severity: J2051_SEVERITY,
   otherSymptomLabel: Type.Optional(Type.String({ maxLength: 100 })),
 });
+const J2053Answer = Type.Union([
+  Type.String({
+    minLength: 1,
+    maxLength: 16,
+  }),
+  Type.Number(),
+]);
+
+const J2053Data = Type.Object(
+  {
+    J2053A: Type.Optional(J2053Answer),
+    J2053B: Type.Optional(J2053Answer),
+    J2053C: Type.Optional(J2053Answer),
+    J2053D: Type.Optional(J2053Answer),
+    J2053E: Type.Optional(J2053Answer),
+    J2053F: Type.Optional(J2053Answer),
+    J2053G: Type.Optional(J2053Answer),
+    J2053H: Type.Optional(J2053Answer),
+  },
+  {
+    additionalProperties: false,
+  },
+);
 /** The per-section `data` payload. Section J's J2051 entries are typed (the trigger reads them); other
  * sections are carried opaquely and narrowed by the server-side per-section validators (§4.3). */
 const HopeData = Type.Object(
   {
     J: Type.Optional(
       Type.Object(
-        { J2051: Type.Optional(Type.Object({ entries: Type.Array(J2051Entry, { maxItems: 8 }) })) },
-        { additionalProperties: true },
+        {
+          J2051: Type.Optional(
+            Type.Object({
+              entries: Type.Array(
+                J2051Entry,
+                {
+                  maxItems: 8,
+                },
+              ),
+            }),
+          ),
+        },
+        {
+          additionalProperties: true,
+        },
       ),
     ),
   },
-  { additionalProperties: true },
+  {
+    additionalProperties: true,
+  },
 );
 
 // ── Path params ───────────────────────────────────────────────────────────────────────────────────────

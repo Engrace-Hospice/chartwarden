@@ -4,7 +4,7 @@ import {
   hopeSfvDueAtFromJ2050B,
 } from "../src/modules/10-hope/hope-sfv-service";
 
-function answers(values: Record<string, string>) {
+function answers(values: Record<string, string | number>) {
   return new Map(
     Object.entries(values).map(([itemCode, value]) => [
       itemCode,
@@ -24,6 +24,22 @@ describe("HOPE SFV canonical J2051 trigger", () => {
       symptomImpactDate: "2025-10-01",
     });
     expect(deriveHopeJ2051TriggerState(answers({ J2050A: "1", J2051H: "3" }))).toMatchObject({
+      state: "true",
+      triggerFired: true,
+      maxSeverity: "severe",
+    });
+  });
+
+  it("treats numeric moderate or severe J2051 values as definitive SFV triggers", () => {
+    expect(
+      deriveHopeJ2051TriggerState(answers({ J2050A: 1, J2050B: "2026-09-09", J2051A: 2 })),
+    ).toMatchObject({
+      state: "true",
+      triggerFired: true,
+      maxSeverity: "moderate",
+      symptomImpactDate: "2026-09-09",
+    });
+    expect(deriveHopeJ2051TriggerState(answers({ J2050A: 1, J2051H: 3 }))).toMatchObject({
       state: "true",
       triggerFired: true,
       maxSeverity: "severe",

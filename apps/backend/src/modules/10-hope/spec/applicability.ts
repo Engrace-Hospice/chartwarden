@@ -1,6 +1,9 @@
 import type { HopeIsc } from "../hope-spec-registry";
 
-export type HopeApplicabilityState = "applicable" | "not_applicable" | "pending";
+export type HopeApplicabilityState =
+  | "applicable"
+  | "not_applicable"
+  | "pending";
 
 export interface HopeAnswerSnapshot {
   readonly state: "answered" | "skipped";
@@ -46,35 +49,69 @@ export interface HopeApplicabilityEngine {
 
 export class HopeApplicabilitySpecUnsupportedError extends Error {
   constructor(readonly specVersionCode: string) {
-    super(`HOPE applicability rules are not registered for spec version ${specVersionCode}`);
+    super(
+      `HOPE applicability rules are not registered for spec version ${specVersionCode}`,
+    );
     this.name = "HopeApplicabilitySpecUnsupportedError";
   }
 }
 
 export class HopeApplicabilityRuleCycleError extends Error {
   constructor(readonly ruleIds: readonly string[]) {
-    super(`HOPE applicability rule graph contains an unsupported cycle: ${ruleIds.join(" -> ")}`);
+    super(
+      `HOPE applicability rule graph contains an unsupported cycle: ${ruleIds.join(" -> ")}`,
+    );
     this.name = "HopeApplicabilityRuleCycleError";
   }
 }
 
-export function answerValue(answers: HopeAnswerMap, itemCode: string): string | null {
+export function answerValue(
+  answers: HopeAnswerMap,
+  itemCode: string,
+): string | null {
   const answer = answers.get(itemCode);
-  return answer?.state === "answered" && typeof answer.value === "string" ? answer.value : null;
+
+  if (!answer || answer.state !== "answered") {
+    return null;
+  }
+
+  if (typeof answer.value === "string") {
+    return answer.value;
+  }
+
+  // Defensive compatibility for legacy/imported
+  // records that stored CMS option codes
+  // as numbers.
+  if (typeof answer.value === "number" && Number.isFinite(answer.value)) {
+    return String(answer.value);
+  }
+
+  if (typeof answer.value === "boolean") {
+    return answer.value ? "1" : "0";
+  }
+
+  return null;
 }
 
-export function createRule(input: Omit<HopeApplicabilityRule, "evaluate"> & {
-  readonly evaluate: (answers: HopeAnswerMap) => Record<string, HopeApplicabilityState>;
-}): HopeApplicabilityRule {
+export function createRule(
+  input: Omit<HopeApplicabilityRule, "evaluate"> & {
+    readonly evaluate: (
+      answers: HopeAnswerMap,
+    ) => Record<string, HopeApplicabilityState>;
+  },
+): HopeApplicabilityRule {
   return {
     ...input,
     evaluate: (answers) => new Map(Object.entries(input.evaluate(answers))),
   };
 }
 
-export function assertAcyclicApplicabilityRules(rules: readonly HopeApplicabilityRule[]): void {
+export function assertAcyclicApplicabilityRules(
+  rules: readonly HopeApplicabilityRule[],
+): void {
   const byOutput = new Map<string, string>();
-  for (const rule of rules) for (const output of rule.affects) byOutput.set(output, rule.id);
+  for (const rule of rules)
+    for (const output of rule.affects) byOutput.set(output, rule.id);
   const edges = new Map<string, string[]>();
   for (const rule of rules) {
     edges.set(
@@ -89,7 +126,8 @@ export function assertAcyclicApplicabilityRules(rules: readonly HopeApplicabilit
   const visited = new Set<string>();
   const visit = (ruleId: string, path: string[]) => {
     if (visited.has(ruleId)) return;
-    if (visiting.has(ruleId)) throw new HopeApplicabilityRuleCycleError([...path, ruleId]);
+    if (visiting.has(ruleId))
+      throw new HopeApplicabilityRuleCycleError([...path, ruleId]);
     visiting.add(ruleId);
     for (const next of edges.get(ruleId) ?? []) visit(next, [...path, ruleId]);
     visiting.delete(ruleId);
@@ -106,7 +144,8 @@ export function evaluateRules(input: {
 }): HopeApplicabilityResult {
   const active = new Set(input.activeItemCodes);
   const states = new Map<string, HopeApplicabilityItemResult>();
-  for (const itemCode of active) states.set(itemCode, { active: true, applicability: "applicable" });
+  for (const itemCode of active)
+    states.set(itemCode, { active: true, applicability: "applicable" });
 
   for (const rule of input.rules) {
     const evaluated = rule.evaluate(input.answers);
@@ -114,10 +153,17 @@ export function evaluateRules(input: {
       if (!active.has(itemCode)) continue;
       const previous = states.get(itemCode);
       const reason: HopeApplicabilityReason = rule.cmsRuleId
-        ? { ruleId: rule.id, cmsRuleId: rule.cmsRuleId, dependsOn: rule.dependsOn }
+        ? {
+            ruleId: rule.id,
+            cmsRuleId: rule.cmsRuleId,
+            dependsOn: rule.dependsOn,
+          }
         : { ruleId: rule.id, dependsOn: rule.dependsOn };
       if (!previous || previous.applicability === "not_applicable") continue;
-      if (applicability === "not_applicable" || previous.applicability !== "pending") {
+      if (
+        applicability === "not_applicable" ||
+        previous.applicability !== "pending"
+      ) {
         states.set(itemCode, { active: true, applicability, reason });
       }
     }
