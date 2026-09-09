@@ -70,6 +70,8 @@ interface AdmissionDetailView extends SummaryRow {
   serviceAddressSnapshot?: AddressView | null;
   hospicePhysicianId?: string | null;
   hospicePhysician?: PhysicianSummary | null;
+  primaryDiagnosisIcd10?: string | null;
+  referringDxText?: string | null;
   activationGate: { ready: boolean; missing: string[] };
   readiness?: AdmissionReadiness;
 }
@@ -257,6 +259,7 @@ export function AdmissionDetail(): JSX.Element {
     "patient",
   );
   const [ctiDiagnosisIcd10, setCtiDiagnosisIcd10] = useState("");
+  const [ctiSecondaryDiagnoses, setCtiSecondaryDiagnoses] = useState("");
   const [ctiPrognosis, setCtiPrognosis] = useState(
     "Life expectancy is six months or less if the illness runs its normal course.",
   );
@@ -279,6 +282,8 @@ export function AdmissionDetail(): JSX.Element {
     setAdmissionDate(toDateInput(detail.admissionAt));
     setProviderEntityId(detail.providerEntityId ?? "");
     setHospicePhysicianId(detail.hospicePhysicianId ?? "");
+    setPrimaryDiagnosisIcd10(detail.primaryDiagnosisIcd10 ?? "");
+    setCtiDiagnosisIcd10(detail.primaryDiagnosisIcd10 ?? "");
     const [p, w, r, h, ec, patientResult, addressResult] = await Promise.all([
       client.GET("/api/v1/admissions/{id}/election-periods", {
         params: { path: { id } },
@@ -750,6 +755,7 @@ export function AdmissionDetail(): JSX.Element {
       body: {
         hospiceMedicalDirectorId: selectedPhysicianId,
         terminalDiagnosisIcd10: ctiDiagnosisIcd10.trim().toUpperCase(),
+        secondaryDiagnoses: normalizeSecondaryDiagnoses(ctiSecondaryDiagnoses),
         prognosisStatement: ctiPrognosis.trim(),
         narrative: ctiNarrative.trim(),
         clinicalFindings: {},
@@ -769,6 +775,7 @@ export function AdmissionDetail(): JSX.Element {
     admission,
     hospicePhysicianId,
     ctiDiagnosisIcd10,
+    ctiSecondaryDiagnoses,
     ctiPrognosis,
     ctiNarrative,
     client,
@@ -1611,6 +1618,12 @@ export function AdmissionDetail(): JSX.Element {
                 Create the CTI with the selected Hospice Physician, terminal diagnosis, prognosis,
                 and clinical narrative. Signature is a separate governed action.
               </span>
+              {admission!.primaryDiagnosisIcd10 || admission!.referringDxText ? (
+                <span style={hintTextStyle}>
+                  Diagnosis was prefilled from the referral/admission when available; edit it here
+                  if the CTI needs a different value.
+                </span>
+              ) : null}
               <Field
                 label="Certifying Hospice Physician"
                 value={physicianLabel(admission!.hospicePhysician, admission!.hospicePhysicianId)}
@@ -1624,6 +1637,17 @@ export function AdmissionDetail(): JSX.Element {
                 onChange={(ev) => setCtiDiagnosisIcd10(ev.target.value)}
                 style={inputStyle}
                 placeholder="C00.0"
+              />
+              <label htmlFor="cti-secondary-diagnoses" style={fieldLabel}>
+                Secondary diagnoses
+              </label>
+              <textarea
+                id="cti-secondary-diagnoses"
+                value={ctiSecondaryDiagnoses}
+                onChange={(ev) => setCtiSecondaryDiagnoses(ev.target.value)}
+                style={textareaStyle}
+                rows={4}
+                placeholder="One diagnosis per line, e.g. I50.9 Congestive heart failure"
               />
               <label htmlFor="cti-prognosis" style={fieldLabel}>
                 Prognosis statement
@@ -1666,8 +1690,15 @@ export function AdmissionDetail(): JSX.Element {
                 Capture the CTI signature for the Hospice Physician selected in Admission Details.
               </span>
               <Field
-                label="Signing physician"
-                value={physicianLabel(admission!.hospicePhysician, admission!.hospicePhysicianId)}
+                label="Physician name"
+                value={
+                  admission!.hospicePhysician?.displayName ??
+                  physicianLabel(admission!.hospicePhysician, admission!.hospicePhysicianId)
+                }
+              />
+              <Field
+                label="NPI"
+                value={admission!.hospicePhysician?.npi ?? "NPI not on file"}
               />
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>
@@ -2739,6 +2770,13 @@ function physicianLabel(physician: PhysicianSummary | null | undefined, fallback
     return physician.npi ? `${physician.displayName} · NPI ${physician.npi}` : physician.displayName;
   }
   return fallbackId ? `Physician ${fallbackId.slice(0, 8)}` : "Not selected";
+}
+
+function normalizeSecondaryDiagnoses(value: string): string[] {
+  return value
+    .split(/\r?\n|;/)
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 function AdmissionPatientLink({

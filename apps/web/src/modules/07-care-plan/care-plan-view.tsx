@@ -493,15 +493,15 @@ function WorkflowGuide({
     heading = "Care Plan is read-only";
     description = "This admission is discharged. Historical Care Plan content remains available.";
   } else if (inReview) {
-    heading = missingSignatures > 0 ? "Collect required signatures" : "Review version in progress";
+    heading = missingSignatures > 0 ? "Hospice physician review pending" : "Review version in progress";
     description =
       missingSignatures > 0
-        ? `${missingSignatures} required signer slot${missingSignatures === 1 ? "" : "s"} remain before this version can become the active Care Plan.`
+        ? `${missingSignatures} required signer slot${missingSignatures === 1 ? "" : "s"} remain before this version can become the active Care Plan. The hospice physician reviews the frozen candidate before signing.`
         : "The candidate version is frozen while it is in review.";
     action =
       canSign && readiness?.canSign ? (
         <button type="button" style={primaryBtn} disabled={busy} onClick={onSign}>
-          Review & sign
+          Physician review & sign
         </button>
       ) : (
         <button type="button" style={primaryBtn} onClick={onOpenRevision}>
@@ -523,11 +523,12 @@ function WorkflowGuide({
         </button>
       );
   } else if (hasOpenDraft && readiness?.canFinalize) {
-    heading = "Care Plan is ready for review";
-    description = "Clinical content passes the current readiness checks. Review it before requesting signatures.";
+    heading = "Care Plan is ready for manager review";
+    description =
+      "The care-plan manager can review this draft, freeze the candidate version, and send it to the hospice physician for review and signature.";
     action = canFinalize ? (
       <button type="button" style={primaryBtn} disabled={busy} onClick={onFinalize}>
-        Review & send for signatures
+        Send to hospice physician
       </button>
     ) : (
       <button type="button" style={primaryBtn} onClick={onOpenRevision}>
@@ -611,7 +612,7 @@ function WorkflowGuide({
 }
 
 function WorkflowSteps({ current }: { current: 0 | 1 | 2 | 3 }): JSX.Element {
-  const steps = ["Build plan", "Review", "Signatures", "Active"] as const;
+  const steps = ["Build plan", "Manager review", "Physician signature", "Active"] as const;
   return (
     <ol style={stepper} aria-label="Care Plan workflow">
       {steps.map((label, index) => {
@@ -913,11 +914,11 @@ function RevisionPanel({
           <div style={sectionHeader}>
             <div>
               <h3 style={smallTitle}>
-                {readiness?.canFinalize ? "Ready for review" : "Before you can send this version"}
+                {readiness?.canFinalize ? "Ready for manager review" : "Before you can send this version"}
               </h3>
               <p style={muted}>
                 {readiness?.canFinalize
-                  ? "The current draft passes readiness checks."
+                  ? "The current draft passes readiness checks. Sending it freezes the candidate version for hospice physician review and signature."
                   : "Resolve the remaining requirements, then review the candidate version."}
               </p>
             </div>
@@ -929,7 +930,7 @@ function RevisionPanel({
                 disabled={!readiness?.canFinalize || busy}
                 onClick={() => void onFinalize(version)}
               >
-                Review & send for signatures
+                Send to hospice physician
               </button>
             ) : null}
           </div>
@@ -956,9 +957,10 @@ function RevisionPanel({
         <section style={subPanel}>
           <div style={sectionHeader}>
             <div>
-              <h3 style={smallTitle}>Signatures</h3>
+              <h3 style={smallTitle}>Hospice physician review & signature</h3>
               <p style={muted}>
-                Candidate content is frozen. Return to draft only when clinical edits are required.
+                Candidate content is frozen after care-plan manager review. Return to draft only
+                when clinical edits are required before physician signature.
               </p>
             </div>
             <div style={actionsRow}>
@@ -969,7 +971,7 @@ function RevisionPanel({
               ) : null}
               {canSign && readiness?.canSign ? (
                 <button type="button" style={primaryBtn} onClick={() => onSign(version)}>
-                  Sign version
+                  Review & sign
                 </button>
               ) : null}
             </div>
@@ -1152,13 +1154,33 @@ function SignaturePanel({
       {readiness?.signatures.missing.length ? (
         <p style={muted}>
           Missing:{" "}
-          {readiness.signatures.missing.map((s) => `${cap(s.role)} (${s.count})`).join(", ")}
+          {readiness.signatures.missing.map((s) => `${roleLabel(s.role)} (${s.count})`).join(", ")}
         </p>
       ) : (
         <p style={muted}>No missing signatures reported by the backend.</p>
       )}
     </div>
   );
+}
+
+function roleSatisfiesSlot(slotRole: string, signerRole: string): boolean {
+  return slotRole.split("|").includes(signerRole);
+}
+
+function roleLabel(role: string): string {
+  return role.split("|").map(cap).join(" or ");
+}
+
+function preferredSigningRole(slotRole: string): string {
+  return slotRole.split("|").find((role) => role === "hospice_physician") ?? slotRole.split("|")[0] ?? "";
+}
+
+function signingRoleOptions(slots: SignerSlot[]): { value: string; label: string }[] {
+  const roles = new Set<string>();
+  for (const slot of slots) {
+    for (const role of slot.role.split("|")) roles.add(role);
+  }
+  return [...roles].map((role) => ({ value: role, label: roleLabel(role) }));
 }
 
 function SignatureList({
@@ -1171,11 +1193,11 @@ function SignatureList({
   return (
     <div style={lineWrap}>
       {slots.map((slot) => {
-        const count = signatures.filter((s) => s.signerRole === slot.role).length;
+        const count = signatures.filter((s) => roleSatisfiesSlot(slot.role, s.signerRole)).length;
         return (
           <span key={slot.role} style={signatureChip}>
             <Glyph name={count >= slot.count ? "check-circle" : "clock"} size={14} />
-            {cap(slot.role)} · {count} of {slot.count}
+            {roleLabel(slot.role)} · {count} of {slot.count}
           </span>
         );
       })}
@@ -1442,13 +1464,19 @@ function ProblemForm({
       <TextField label="ICD-10 code" value={icd10Code} onChange={setIcd10Code} />
       <TextField label="SNOMED code" value={snomedCode} onChange={setSnomedCode} />
       {!state.problem ? (
-        <label style={checkRow}>
+        <label
+          style={checkRow}
+          title="Substance Use Disorder-related: marks care-plan content connected to alcohol or drug use disorder history, assessment, treatment, or disclosure-sensitive services."
+        >
           <input
             type="checkbox"
             checked={sudRelated}
             onChange={(e) => setSudRelated(e.target.checked)}
+            aria-describedby="sud-related-definition"
           />{" "}
-          SUD-related
+          <span id="sud-related-definition">
+            SUD-related
+          </span>
         </label>
       ) : null}
       <button type="submit" style={primaryBtn} disabled={busy || !description.trim()}>
@@ -1665,10 +1693,11 @@ function SignForm({
   const client = useApiClient();
   const openSlot = state.version.requiredSignerSet.find(
     (slot) =>
-      state.version.signatures.filter((s) => s.signerRole === slot.role).length < slot.count,
+      state.version.signatures.filter((s) => roleSatisfiesSlot(slot.role, s.signerRole)).length <
+      slot.count,
   );
   const [role, setRole] = useState(
-    openSlot?.role ?? state.version.requiredSignerSet[0]?.role ?? "",
+    preferredSigningRole(openSlot?.role ?? state.version.requiredSignerSet[0]?.role ?? ""),
   );
   const [understanding, setUnderstanding] = useState("");
   return (
@@ -1698,7 +1727,7 @@ function SignForm({
         label="Signing role"
         value={role}
         onChange={setRole}
-        options={state.version.requiredSignerSet.map((s) => s.role)}
+        options={signingRoleOptions(state.version.requiredSignerSet)}
       />
       <TextArea
         label="Patient/family understanding note"
@@ -1710,7 +1739,7 @@ function SignForm({
         step-up freshness.
       </Notice>
       <button type="submit" style={primaryBtn} disabled={busy || !role}>
-        {busy ? "Signing..." : "Sign version"}
+        {busy ? "Signing..." : "Sign care plan"}
       </button>
     </form>
   );

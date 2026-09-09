@@ -903,6 +903,7 @@ export function registerAdmissionRoutes(
           hospiceMedicalDirectorId: body.hospiceMedicalDirectorId,
           attendingPhysicianId: body.attendingPhysicianId,
           terminalDiagnosisIcd10: body.terminalDiagnosisIcd10,
+          secondaryDiagnoses: body.secondaryDiagnoses,
           prognosisStatement: body.prognosisStatement,
           narrative: body.narrative,
           clinicalFindings: body.clinicalFindings,

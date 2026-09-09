@@ -657,6 +657,34 @@ export function EncounterRead(): JSX.Element {
     );
   }
 
+  async function createCarePlanFromEncounter(): Promise<void> {
+    if (!encounter) return;
+
+    setBusy(true);
+    setActionError(null);
+    setNotice(null);
+
+    const res = await post("/api/v1/patients/{patientId}/care-plan", {
+      params: {
+        path: {
+          patientId: encounter.patientId,
+        },
+      },
+      body: {
+        admissionId: encounter.admissionId,
+      },
+    });
+
+    setBusy(false);
+
+    if (res.error) {
+      setActionError(errorMessage(res.error, "The Care Plan could not be created from this encounter."));
+      return;
+    }
+
+    navigate(`/patients/${encounter.patientId}/care-plan`);
+  }
+
   async function finalizeEncounter(): Promise<void> {
     if (!encounterId) return;
 
@@ -1190,6 +1218,17 @@ export function EncounterRead(): JSX.Element {
                     Restricted content omitted
                   </span>
                 ) : null}
+
+                {e.status === "draft" && !carePlan ? (
+                  <button
+                    type="button"
+                    onClick={() => void createCarePlanFromEncounter()}
+                    disabled={busy}
+                    style={secondaryBtn}
+                  >
+                    Create care plan
+                  </button>
+                ) : null}
               </div>
 
               <div style={sectionExplanation}>
@@ -1197,7 +1236,8 @@ export function EncounterRead(): JSX.Element {
 
                 <span>
                   These links document what part of the active Care Plan was addressed during this
-                  visit. They do not create or modify the Care Plan itself.
+                  visit. If the patient does not have a Care Plan yet, create it from this encounter
+                  using the current patient and admission context.
                 </span>
               </div>
 

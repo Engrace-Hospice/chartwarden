@@ -282,6 +282,7 @@ export const CtiDraftSchema = Type.Object({
   hospiceMedicalDirectorId: Uuid(),
   attendingPhysicianId: Type.Optional(Uuid()),
   terminalDiagnosisIcd10: Icd10(),
+  secondaryDiagnoses: Type.Optional(Type.Array(Type.String({ minLength: 1, maxLength: 300 }))),
   prognosisStatement: Type.String({ minLength: 1, maxLength: 200 }),
   narrative: Type.String({ minLength: 1, maxLength: 4000 }),
   clinicalFindings: Type.Object({}, { additionalProperties: true }),

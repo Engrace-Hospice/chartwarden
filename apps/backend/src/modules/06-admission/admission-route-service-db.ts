@@ -1449,8 +1449,11 @@ export function createDbAdmissionRouteService(
             serviceAddressPostalCode: ADM.serviceAddressPostalCode,
             serviceAddressCountry: ADM.serviceAddressCountry,
             hospicePhysicianId: ADM.hospicePhysicianId,
+            primaryDiagnosisIcd10: REF.icd10TerminalPrimary,
+            referringDxText: REF.referringDxText,
           })
           .from(ADM)
+          .leftJoin(REF, eq(REF.id, ADM.referralId))
           .where(eq(ADM.id, id))
           .limit(1);
         if (!adm) return null;
@@ -1495,6 +1498,8 @@ export function createDbAdmissionRouteService(
                 npi: physician.canonical.identifierValue ?? null,
               }
             : null,
+          primaryDiagnosisIcd10: adm.primaryDiagnosisIcd10 ?? null,
+          referringDxText: adm.referringDxText ?? null,
           activationGate,
           readiness: readiness ?? undefined,
         };
@@ -3723,6 +3728,7 @@ export function createDbAdmissionRouteService(
               hospiceMdId: adm.hospicePhysicianId,
               attendingMdId: null,
               terminalDiagnosisIcd10: input.terminalDiagnosisIcd10,
+              relatedConditionsIcd10: [...(input.secondaryDiagnoses ?? [])],
               narrative: input.narrative,
             })
             .returning({

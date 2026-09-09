@@ -386,6 +386,7 @@ export interface CtiDraftInput {
   readonly hospiceMedicalDirectorId: string;
   readonly attendingPhysicianId?: string;
   readonly terminalDiagnosisIcd10: string;
+  readonly secondaryDiagnoses?: readonly string[];
   readonly prognosisStatement: string;
   readonly narrative: string;
   readonly clinicalFindings: Record<string, unknown>;
@@ -504,6 +505,8 @@ export interface AdmissionDetail extends SummaryRow {
     readonly displayName: string;
     readonly npi?: string | null;
   } | null;
+  readonly primaryDiagnosisIcd10?: string | null;
+  readonly referringDxText?: string | null;
   readonly activationGate: ActivationGate;
   readonly readiness?: AdmissionReadinessResult;
 }
@@ -985,6 +988,7 @@ interface Rec {
   hospiceMedicalDirectorId?: string;
   attendingPhysicianId?: string | null;
   terminalDiagnosisIcd10?: string;
+  secondaryDiagnoses?: readonly string[];
   scheduledClinicianId?: string;
   // intake/wizard linkage (§7.1/§7.2) — referral idempotency + the period-1 activation bundle
   externalReferralId?: string;
@@ -1790,6 +1794,8 @@ export function createInMemoryAdmissionBackend(
             activatedAt: rec.state === "active" ? now().toISOString() : null,
             providerEntityId: rec.providerEntityId ?? null,
             locationId: rec.locationId ?? null,
+            primaryDiagnosisIcd10: rec.primaryDiagnosisIcd10 ?? null,
+            referringDxText: rec.referringDxText ?? null,
             activationGate: gateFor(rec),
             readiness: readinessFor(rec),
           }
@@ -2151,6 +2157,7 @@ export function createInMemoryAdmissionBackend(
         hospiceMedicalDirectorId: input.hospiceMedicalDirectorId,
         attendingPhysicianId: input.attendingPhysicianId ?? null,
         terminalDiagnosisIcd10: input.terminalDiagnosisIcd10,
+        secondaryDiagnoses: input.secondaryDiagnoses ?? [],
         narrative: input.narrative,
         // §7.3 — carry the period sequence + start date so the recert sign can advance the period
         // (W-CTI-03) and mark-late can compute the D4 written-cert deadline off the period start.
