@@ -75,6 +75,11 @@ const DISCIPLINES = [
   "dietitian",
 ] as const;
 
+interface TerminologyConcept {
+  code: string;
+  display?: string;
+}
+
 function hasPerm(perms: string[] | undefined, key: string): boolean {
   return perms?.includes(key) ?? false;
 }
@@ -192,7 +197,9 @@ export function CarePlanView(): JSX.Element {
           params: { path: { planId: plan.id } },
           body: { kind },
         } as never),
-      kind === "idg_review" ? "Review draft opened." : "Revision draft opened.",
+      kind === "idg_review"
+        ? "Review draft opened."
+        : "Condition-change revision opened.",
     );
     setTab("revision");
   }
@@ -549,19 +556,20 @@ function WorkflowGuide({
   } else if (!openVersion && activeVersion) {
     heading = "Care Plan is active";
     description = review?.nextReviewDueAt
-      ? `No immediate action is required. Next review: ${formatDate(review.nextReviewDueAt)}.`
-      : "No immediate action is required.";
+      ? `When the patient's condition changes, open a new revision before editing the plan. Next review: ${formatDate(review.nextReviewDueAt)}.`
+      : "When the patient's condition changes, open a new revision before editing the plan.";
     action = canAuthor ? (
       <button type="button" style={ghostBtn} onClick={onStartRevision}>
-        Start revision
+        Document condition change
       </button>
     ) : null;
   } else if (!openVersion && canAuthor) {
     heading = "Start the Care Plan";
-    description = "Open a revision to begin authoring the clinical Care Plan.";
+    description =
+      "Open the initial draft to begin authoring the clinical Care Plan. Important changes will be captured through future versions.";
     action = (
       <button type="button" style={primaryBtn} onClick={onStartRevision}>
-        Start revision
+        Start initial draft
       </button>
     );
   }
@@ -690,7 +698,9 @@ function ClinicalContent({
 
       {readonly ? (
         <Notice tone="info">
-          This view is read-only while a version is in review or the admission is discharged.
+          This view is read-only while there is no open revision, while a version is in review, or
+          when the admission is discharged. Open a revision to update the plan after a meaningful
+          patient-condition change.
         </Notice>
       ) : null}
 
@@ -862,12 +872,15 @@ function RevisionPanel({
         <div style={emptyRevision}>
           <div>
             <h2 style={sectionTitle}>Revision & Review</h2>
-            <p style={muted}>There is no open draft or review version.</p>
+            <p style={muted}>
+              There is no open draft or review version. Open a revision when the patient's condition,
+              goals, interventions, frequency, or discipline needs to change.
+            </p>
           </div>
           <div style={actionsRow}>
             {canAuthor ? (
               <button type="button" style={ghostBtn} onClick={onStartRevision}>
-                Start revision
+                Document condition change
               </button>
             ) : null}
             {canAuthor && review?.canStartReview ? (
@@ -1043,7 +1056,10 @@ function HistoryPanel({
     <section style={panel}>
       <div>
         <h2 style={sectionTitle}>Version history</h2>
-        <p style={muted}>Inspect signed, superseded, draft, and review versions without changing the active plan.</p>
+        <p style={muted}>
+          Inspect each signed, superseded, draft, and review version without changing the active
+          plan. Signed versions preserve the clinical snapshot that was reviewed and signed.
+        </p>
       </div>
       <div style={historyGrid}>
         <div style={{ display: "flex", flexDirection: "column", gap: t.space2 }}>
@@ -1420,7 +1436,77 @@ function ProblemForm({
   const [source, setSource] = useState(state.problem?.source ?? "clinical");
   const [icd10Code, setIcd10Code] = useState(state.problem?.icd10Code ?? "");
   const [snomedCode, setSnomedCode] = useState(state.problem?.snomedCode ?? "");
+  const [snomedSuggestions, setSnomedSuggestions] = useState<TerminologyConcept[]>([]);
+  const [terminologyStatus, setTerminologyStatus] = useState<"idle" | "loading" | "empty" | "error">(
+    "idle",
+  );
   const [sudRelated, setSudRelated] = useState(state.problem?.sudRelated ?? false);
+
+  useEffect(() => {
+    const code = icd10Code.trim().toUpperCase();
+    if (code.length < 3) {
+      setSnomedSuggestions([]);
+      setTerminologyStatus("idle");
+      return;
+    }
+
+    let cancelled = false;
+    setTerminologyStatus("loading");
+
+    async function loadSnomedSuggestions(): Promise<void> {
+      try {
+        const lookup = await client.GET("/api/v1/terminology/{system}/{code}", {
+          params: {
+            path: {
+              system: "icd10cm",
+              code,
+            },
+          },
+        } as never);
+
+        const concept = lookup.data as TerminologyConcept | undefined;
+        const query = concept?.display?.trim() || description.trim() || code;
+        const search = await client.GET("/api/v1/terminology/{system}/search", {
+          params: {
+            path: {
+              system: "snomed",
+            },
+            query: {
+              q: query,
+              mode: "fuzzy",
+              limit: 5,
+            },
+          },
+        } as never);
+
+        if (cancelled) return;
+        if (search.error) {
+          setSnomedSuggestions([]);
+          setTerminologyStatus("error");
+          return;
+        }
+
+        const results =
+          ((search.data as { results?: TerminologyConcept[] } | undefined)?.results ?? []).filter(
+            (item) => item.code,
+          );
+        setSnomedSuggestions(results);
+        setTerminologyStatus(results.length ? "idle" : "empty");
+      } catch {
+        if (!cancelled) {
+          setSnomedSuggestions([]);
+          setTerminologyStatus("error");
+        }
+      }
+    }
+
+    const timer = window.setTimeout(() => void loadSnomedSuggestions(), 350);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [client, description, icd10Code]);
+
   return (
     <form
       style={form}
@@ -1461,8 +1547,17 @@ function ProblemForm({
       {!state.problem ? (
         <Select label="Source" value={source} onChange={setSource} options={PROBLEM_SOURCES} />
       ) : null}
-      <TextField label="ICD-10 code" value={icd10Code} onChange={setIcd10Code} />
+      <TextField
+        label="ICD-10 code"
+        value={icd10Code}
+        onChange={(value) => setIcd10Code(value.toUpperCase())}
+      />
       <TextField label="SNOMED code" value={snomedCode} onChange={setSnomedCode} />
+      <SnomedSuggestionList
+        status={terminologyStatus}
+        suggestions={snomedSuggestions}
+        onSelect={(code) => setSnomedCode(code)}
+      />
       {!state.problem ? (
         <label
           style={checkRow}
@@ -1483,6 +1578,58 @@ function ProblemForm({
         {busy ? "Saving..." : "Save problem"}
       </button>
     </form>
+  );
+}
+
+function SnomedSuggestionList({
+  status,
+  suggestions,
+  onSelect,
+}: {
+  status: "idle" | "loading" | "empty" | "error";
+  suggestions: TerminologyConcept[];
+  onSelect: (code: string) => void;
+}): JSX.Element | null {
+  if (status === "idle" && suggestions.length === 0) return null;
+
+  if (status === "loading") {
+    return <p style={muted}>Looking for SNOMED suggestions...</p>;
+  }
+
+  if (status === "error") {
+    return (
+      <p style={muted}>
+        SNOMED suggestions are unavailable. You can enter the SNOMED code manually.
+      </p>
+    );
+  }
+
+  if (status === "empty") {
+    return (
+      <p style={muted}>
+        No SNOMED match was found for this ICD-10 code. You can enter the SNOMED code manually.
+      </p>
+    );
+  }
+
+  return (
+    <div style={suggestionPanel}>
+      <span style={fieldLabel}>SNOMED suggestions</span>
+      <div style={lineWrap}>
+        {suggestions.map((suggestion) => (
+          <button
+            key={suggestion.code}
+            type="button"
+            style={suggestionBtn}
+            onClick={() => onSelect(suggestion.code)}
+            title={suggestion.display}
+          >
+            <span>{suggestion.code}</span>
+            {suggestion.display ? <small style={suggestionText}>{suggestion.display}</small> : null}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -2313,6 +2460,36 @@ const lineWrap: CSSProperties = {
   gap: t.space2,
   flexWrap: "wrap",
   alignItems: "center",
+};
+const suggestionPanel: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: t.space2,
+  padding: t.space3,
+  border: ghostBorder,
+  borderRadius: t.radiusMd,
+  background: t.surfaceContainer,
+};
+const suggestionBtn: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: t.space2,
+  maxWidth: "100%",
+  padding: "0.42rem 0.65rem",
+  border: ghostBorder,
+  borderRadius: t.radiusSm,
+  background: t.surface,
+  color: t.onSurface,
+  cursor: "pointer",
+  fontWeight: 650,
+  fontSize: "0.78rem",
+};
+const suggestionText: CSSProperties = {
+  color: t.onSurfaceVariant,
+  fontWeight: 500,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
 };
 const menuWrap: CSSProperties = { position: "relative" };
 const menuButton: CSSProperties = {
