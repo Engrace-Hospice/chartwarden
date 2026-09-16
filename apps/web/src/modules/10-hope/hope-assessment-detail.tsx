@@ -332,12 +332,14 @@ const payerChoice: CSSProperties = {
   borderRadius: 8,
   padding: "0.75rem",
   background: t.surface,
+  color: t.onSurface,
   cursor: "pointer",
 };
 
 const payerChoiceSelected: CSSProperties = {
   border: `1px solid ${t.primary}`,
-  background: "#eef6ff",
+  background: t.primaryTint,
+  color: t.primary,
 };
 
 const payerSource: CSSProperties = {
@@ -2717,10 +2719,12 @@ function saveState(state: string): CSSProperties {
 }
 
 function issueRow(severity: "error" | "warning"): CSSProperties {
+  const tone = severity === "warning" ? t.warning : t.error;
   return {
     ...reviewRow,
-    border: `1px solid ${severity === "warning" ? t.warning : t.error}`,
-    background: severity === "warning" ? "#fff8e5" : "#fff3f3",
+    border: `1px solid ${tone}`,
+    background: `color-mix(in srgb, ${tone} 12%, ${t.surfaceLowest})`,
+    color: t.onSurface,
   };
 }
 
@@ -2942,11 +2946,13 @@ const radioChoice: CSSProperties = {
   borderRadius: 8,
   padding: "0.45rem 0.55rem",
   background: t.surface,
+  color: t.onSurface,
   cursor: "pointer",
 };
 const radioChoiceSelected: CSSProperties = {
   border: `1px solid ${t.primary}`,
-  background: "#eef6ff",
+  background: t.primaryTint,
+  color: t.primary,
 };
 const errorText: CSSProperties = {
   marginTop: "0.45rem",
