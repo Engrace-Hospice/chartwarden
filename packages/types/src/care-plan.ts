@@ -133,6 +133,8 @@ export const M7_EVENT_NAMES = [
   "m7.care_plan.created",
   "m7.care_plan.version_drafted",
   "m7.care_plan.version_signed",
+  "m7.care_plan.idg_proposal_created",
+  "m7.care_plan.idg_proposal_applied",
   "m7.care_plan.review_due",
   "m7.care_plan.review_overdue",
   "m7.care_plan.initial_overdue",

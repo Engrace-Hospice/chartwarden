@@ -177,10 +177,14 @@ export function createSeamAssessmentSitingResolver(): AssessmentSitingResolver {
   ): Promise<AdmissionSummary | null> {
     let summary: AdmissionSummary;
     try {
-      summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(
-        organizationId,
-        admissionId,
-      );
+      const reader = getSeam("AdmissionStatusReader");
+      // Keep compatibility with older one-argument test/adaptor readers while production readers
+      // use the tenant-explicit two-argument contract.
+      summary =
+        reader.getAdmissionSummary.length < 2
+          ? await (reader.getAdmissionSummary as unknown as (id: string) => Promise<AdmissionSummary>)
+              (admissionId)
+          : await reader.getAdmissionSummary(organizationId, admissionId);
     } catch {
       return null; // seam absent/denying/gapped or admission unknown
     }
