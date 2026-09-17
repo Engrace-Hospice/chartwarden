@@ -21,9 +21,29 @@ access to `/opt/wardenx` and permission to run the narrowly required Docker Comp
 use a root SSH account or disable host-key checking.
 
 The server must already contain `compose.yml` and a mode-`0600` `.env.production` copied from the
-production template. The workflow uploads `deploy.sh` for every release, pulls the SHA-pinned images,
-runs strict schema-only migrations and runtime-role provisioning, recreates `api`, `worker`, and `web`,
-then requires `http://127.0.0.1:3000/ready` to pass. If an image pull, provisioning, or readiness check
+production template. To automate that first-time setup, copy this repository (or just
+`deploy/production`) to the VPS and run:
+
+```sh
+sudo DEPLOY_DIR=/opt/wardenx ./deploy/production/bootstrap-vps.sh
+```
+
+Override domains when needed:
+
+```sh
+sudo FRONTEND_DOMAIN=app.example.com BACKEND_DOMAIN=api.example.com STORAGE_DOMAIN=storage.example.com \
+  DEPLOY_DIR=/opt/wardenx ./deploy/production/bootstrap-vps.sh
+```
+
+The bootstrap keeps an existing `.env.production`, installs the storage Nginx vhost when Nginx is
+present, starts MinIO, and verifies `http://127.0.0.1:9000/minio/health/ready`. After DNS points
+`STORAGE_DOMAIN` to the VPS, issue TLS for that host with Certbot or the server's normal reverse-proxy
+TLS automation. The application reads the public S3 origin from `STORAGE_PUBLIC_ORIGIN`; if it is
+missing or unreachable, `/ready` will fail and document uploads will show storage unavailable.
+
+The workflow uploads `deploy.sh` for every release, pulls the SHA-pinned images, runs strict
+schema-only migrations and runtime-role provisioning, recreates `api`, `worker`, and `web`, then
+requires `http://127.0.0.1:3000/ready` to pass. If an image pull, provisioning, or readiness check
 fails, it restores the previous image references and recreates those services. Database migrations are
 forward-only and are not rolled back.
 
