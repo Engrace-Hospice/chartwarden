@@ -51,6 +51,11 @@ services:
     # part of the public application surface.
     ports:
       - "127.0.0.1:9000:9000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://localhost:9000/minio/health/ready >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   migrate:
     image: ${WARDENX_IMAGE:?set immutable GHCR image in .env.production}
@@ -93,7 +98,7 @@ services:
       DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
       DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
       REDIS_URL: redis://valkey:6379
-      MINIO_ENDPOINT: https://storage.wardenx.chartwarden.cloud
+      MINIO_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       MINIO_REGION: us-east-1
@@ -105,7 +110,7 @@ services:
       valkey:
         condition: service_healthy
       minio:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "bun", "-e", "process.exit((await fetch('http://localhost:3000/ready')).ok ? 0 : 1)"]
       interval: 15s
@@ -125,7 +130,7 @@ services:
       DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:${WARDENX_PLATFORM_PASSWORD}@postgres:5432/wardenx
       DATABASE_DESTRUCTION_URL: postgresql://wardenx_destruction_login:${WARDENX_DESTRUCTION_PASSWORD}@postgres:5432/wardenx
       REDIS_URL: redis://valkey:6379
-      MINIO_ENDPOINT: https://storage.wardenx.chartwarden.cloud
+      MINIO_ENDPOINT: ${STORAGE_PUBLIC_ORIGIN:?set in .env.production}
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       MINIO_REGION: us-east-1
@@ -135,7 +140,7 @@ services:
       valkey:
         condition: service_healthy
       minio:
-        condition: service_started
+        condition: service_healthy
 
   web:
     image: ${WARDENX_WEB_IMAGE:?set immutable GHCR image in .env.production}
