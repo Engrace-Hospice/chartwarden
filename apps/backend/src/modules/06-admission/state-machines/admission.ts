@@ -136,6 +136,11 @@ export function transitionAdmission(
         "PRIVACY_FLAG_BLOCK",
         "an M5 privacy flag blocks activation",
       );
+      require_(
+        !event.initialAssessment48hOverdue || event.donOverride,
+        "INITIAL_ASSESSMENT_48H_OVERDUE",
+        "the initial 48-hour assessment window is overdue; DON override is required",
+      );
       const effects: AdmissionTransition["effects"] = [
         { kind: "set_timestamp", field: "activated_at", at: event.at },
         { kind: "audit" },

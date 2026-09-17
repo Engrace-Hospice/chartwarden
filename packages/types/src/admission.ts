@@ -162,6 +162,11 @@ export interface ExternalSignalWindowPayload {
  * `m6.bereavement.eligible`); the full set is published in M6-T10. */
 export const M6_EVENT_NAMES = [
   "m6.referral.received",
+  "m6.referral.review_started",
+  "m6.referral.pending_information",
+  "m6.referral.qualified",
+  "m6.referral.duplicate",
+  "m6.referral.converted",
   "m6.referral.triaged",
   "m6.referral.accepted",
   "m6.referral.declined",

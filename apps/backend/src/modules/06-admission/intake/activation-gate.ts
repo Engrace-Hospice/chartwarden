@@ -158,8 +158,8 @@ export function evaluateAdmissionReadiness(
   // if (!facts.admissionDetails.primaryDiagnosisPresent) missingDetails.push("terminal diagnosis");
   // if (!facts.admissionDetails.hospiceMedicalDirectorPresent)
   //   missingDetails.push("hospice medical director");
-  if (!facts.admissionDetails.providerEntityPresent) missingDetails.push("provider entity");
-  if (!facts.admissionDetails.locationPresent) missingDetails.push("location");
+  // Provider/location are denormalized capture-siting facts. They may be unavailable while an
+  // admission is still being assembled and are deliberately not R-AC-01 activation blockers.
   requirements.push(
     missingDetails.length === 0
       ? complete("admission_details", "Admission details")
