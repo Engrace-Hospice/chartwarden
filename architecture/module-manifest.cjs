@@ -59,7 +59,7 @@ exports.ALL_OWNED_PATHS =
     void 0;
 exports.allowedImportPaths = allowedImportPaths;
 exports.allowedTables = allowedTables;
-exports.LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/domain", "packages/ui"];
+exports.LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/domain", "packages/ui", "apps/web/src/shared", "apps/web/src/modules/22-documents"];
 /**
  * Foundation helper packages every module may import WITHOUT a dependsOn edge
  * (ADR-0005 D4): audit() (packages/audit), requirePermission/requireAbac/
@@ -559,7 +559,7 @@ exports.MODULES = [
       "apps/backend/src/modules/17-scheduling",
       "apps/web/src/modules/17-scheduling",
     ], // +packages/scheduling: §3.1 M17-owned feature pkg (cancellation value-set/RRULE-subset/visit-purpose→discipline policy → state machine/proposers), leaf-import only; +web: Track B in-task screens (ADR-0030), land in M17-T08
-    dependsOn: [1, 5, 8, 40], // +M1: the bootstrap seam registry (registerSeam/getSeam) M17's backend module wires its §4.3 owned seams (VisitReader/VisitAssignmentReader/PortalVisitReader/VisitMetricsProvider) into (M17-T05; M6..M14 seam-task precedent)
+    dependsOn: [1, 5, 8, 36, 40], // +M36: cron workers emit typed alerts; +M1: the bootstrap seam registry
     ownedTables: [
       "clinician_availability",
       "membership_credential",
