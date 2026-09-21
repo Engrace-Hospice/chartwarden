@@ -68,6 +68,7 @@ export { createDbMembershipRoleStore } from "./membership-role-store";
 export { createDbBreakGlassStore } from "./break-glass-store";
 
 import type { RbacEngineHandle } from "@wardenx/auth";
+import type { AuditExecutor, NewAuditEvent } from "@wardenx/audit";
 import { organizationSettingsReader, schema } from "@wardenx/db";
 import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -85,6 +86,32 @@ import { registerBreakGlassContract as _registerBreakGlass } from "./contract";
 import { createDbMembershipRoleStore as _dbMembershipRoles } from "./membership-role-store";
 import { createDbRoleStore as _dbRoleStore } from "./role-store";
 import { registerAuthorizationRoutes as _registerAuthzRoutes } from "./routes/authz-routes";
+
+/**
+ * M3 lifecycle audits are emitted after the individual store transaction has completed.  A raw
+ * pooled DB client has no `app.org_id`, so its `audit_event` INSERT is refused under production
+ * RLS (while the development BYPASSRLS role hides the defect).  Keep the route-facing AuditExecutor
+ * shape, but establish tenant context from the immutable audit row before writing it.
+ */
+function createTenantAuditExecutor(db: DbClient): AuditExecutor {
+  return {
+    insert(table) {
+      return {
+        values(row: NewAuditEvent) {
+          const organizationId = row.organizationId;
+          if (typeof organizationId !== "string") {
+            throw new Error("M3 tenant audit event is missing an organization id");
+          }
+          return withOrgContext(
+            db,
+            { organizationId, userId: typeof row.actorUserId === "string" ? row.actorUserId : "" },
+            (tx) => tx.insert(table).values(row),
+          );
+        },
+      };
+    },
+  };
+}
 
 /**
  * Mount the M3 authorization REST routes on a server (composition root, via buildServer's
@@ -137,7 +164,7 @@ export function mountAuthorizationRoutes(
           },
         }
       : {}),
-    audit: db,
+    audit: createTenantAuditExecutor(db),
     // audit C2 — tenant policy for the break-glass co-sign requirement, read server-side from the
     // M1 organization-settings registry (`breakglass_cosign_required`, M3's key). Fail CLOSED to the
     // registered default (false) if the row is absent or unreadable: `cosign_pending` grants no
