@@ -29,6 +29,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import {
   DEFAULT_COSIGN_POLICY,
+  ORDER_KIND_VERSION,
   type OrderCosignPolicy,
   computeVerbalDeadline,
   disciplineCanOrder,
@@ -40,6 +41,7 @@ import {
   resolveCosignRequirement,
   signerEligible,
   transitionOrder,
+  validateOrderData,
   validateVerbalWindowHours,
 } from "@wardenx/orders";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -52,10 +54,14 @@ import {
   type StandingOrderCadence,
   type StandingOrderStatus,
 } from "@wardenx/types";
+import { ValidationError } from "@wardenx/types";
 import { type SQL, and, desc, eq } from "drizzle-orm";
+import { buildOrderWorkflowProjection } from "./routes/service";
 import type {
   CreateOrderArgs,
   OrderAbacFacts,
+  OrderDetailView,
+  OrderDetailActor,
   OrderRouteService,
   OrderView,
   StandingOrderView,
@@ -115,6 +121,8 @@ type OrderRow = {
   patientId: string;
   admissionId: string;
   kind: string;
+  kindVersion: string;
+  data: unknown;
   status: string;
   priority: string;
   version: number;
@@ -161,6 +169,12 @@ const toOrderView = (r: OrderRow): OrderView => ({
   signedBy: r.signedBy,
   completedAt: iso(r.completedAt),
   createdAt: (iso(r.createdAt) as string) ?? new Date(0).toISOString(),
+});
+const toOrderDetailView = (r: OrderRow, actor: OrderDetailActor, cosignerRoleNeeded: "rn_case_manager" | "clinical_supervisor" | "medical_director" | null = null): OrderDetailView => ({
+  ...toOrderView(r),
+  kindVersion: r.kindVersion,
+  data: r.data,
+  ...buildOrderWorkflowProjection({ ...toOrderView(r), kindVersion: r.kindVersion, data: r.data }, actor, cosignerRoleNeeded),
 });
 
 const toStandingView = (r: {
@@ -220,6 +234,8 @@ export function createDbOrderBackend(
         patientId: OR.patientId,
         admissionId: OR.admissionId,
         kind: OR.kind,
+        kindVersion: OR.kindVersion,
+        data: OR.data,
         status: OR.status,
         priority: OR.priority,
         version: OR.version,
@@ -258,9 +274,9 @@ export function createDbOrderBackend(
     });
 
   /** Re-read one order (post-write, RLS-scoped) as the joined view or a non-leaking 404. */
-  async function readOrder(tx: DbClient, id: string): Promise<OrderView> {
+  async function readOrder(tx: DbClient, id: string): Promise<OrderDetailView> {
     const rows = (await selectOrders(tx, eq(OR.id, id)).limit(1)) as unknown as OrderRow[];
-    return toOrderView(firstOrThrow(rows, `order ${id} not found`));
+    return toOrderDetailView(firstOrThrow(rows, `order ${id} not found`), { membershipId: "", roles: [], disciplines: [], permissions: new Set() });
   }
 
   /** The standing-order view projection reused by every standing read/write (same-tx, RLS-scoped). */
@@ -506,13 +522,18 @@ export function createDbOrderBackend(
       if (filter.status) conds.push(eq(OR.status, filter.status as OrderStatus));
       return listWhere(organizationId, conds.length ? and(...conds) : undefined);
     },
-    async getOrder(organizationId, id) {
+    async getOrder(organizationId, id, actor = { membershipId: "", roles: [], disciplines: [], permissions: new Set() }) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const rows = (await selectOrders(tx as DbClient, eq(OR.id, id)).limit(
           1,
         )) as unknown as OrderRow[];
         if (!rows[0]) throw new NotFoundError(`order ${id} not found`);
-        return toOrderView(rows[0]);
+        const r = rows[0];
+        const policy = await cosignPolicyOf(tx as DbClient);
+        const needed = r.cosignRequired
+          ? (lpnCosignRequired(r.drafterDiscipline, r.kind as OrderKind, policy) ? "rn_case_manager" : null)
+          : null;
+        return toOrderDetailView(r, actor, needed);
       });
     },
     async pendingSignature(organizationId) {
@@ -567,6 +588,16 @@ export function createDbOrderBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
+        const findings = validateOrderData(r.kind as OrderKind, r.kindVersion, r.data);
+        if (findings.length)
+          throw new ValidationError(
+            "Order is not ready for signature",
+            findings.map((finding) => ({
+              field: `data.${finding.field}`,
+              code: "INVALID",
+              message: finding.message,
+            })),
+          );
         const requirement = resolveCosignRequirement({
           kind: r.kind as OrderKind,
           drafterDiscipline: r.drafterDiscipline,
@@ -790,6 +821,9 @@ export function createDbOrderBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         await loadOrderRow(t, id); // 404 if the original is cross-tenant/absent
+        const findings = validateOrderData(args.kind, ORDER_KIND_VERSION[args.kind], args.data);
+        if (findings.length)
+          throw new ValidationError("Corrected order clinical details are invalid", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
         // Inserting the correcting draft fires `order_record_replace_supersede_trg` → discontinues the
         // original + writes its ledger row (RAISES REPLACED_ORDER_NOT_REPLACEABLE if not replaceable).
         const newId = await insertDraft(t, organizationId, userId, args, id);
@@ -983,6 +1017,9 @@ export function createDbOrderBackend(
           spawnedBy: "clinician_request",
           now: new Date().toISOString(),
         });
+        const findings = validateOrderData(tmpl.kind as OrderKind, tmpl.kindVersion, tmpl.templateData);
+        if (findings.length)
+          throw new ValidationError("Standing-order template clinical details are invalid", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
         const isLab = tmpl.kind === "lab";
         const at = new Date();
         // The spawned order is born `active` (signature inherited from the template anchor, §2.4 D5); the

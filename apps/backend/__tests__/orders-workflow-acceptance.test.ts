@@ -49,7 +49,7 @@ describe("M11-T09 §5 workflow acceptance", () => {
       admissionId: ADMISSION,
       kind: "comfort_kit",
       drafterDiscipline: "rn_case_manager",
-      data: {},
+      data: { kitSku: "comfort-kit-standard", deploymentSite: "home" },
       orderingPhysicianMdmId: PHYS,
     });
     await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
@@ -84,7 +84,7 @@ describe("M11-T09 §5 workflow acceptance", () => {
       admissionId: ADMISSION,
       kind: "comfort_kit",
       drafterDiscipline: "rn_case_manager",
-      data: {},
+      data: { kitSku: "comfort-kit-standard", deploymentSite: "home" },
       orderingPhysicianMdmId: PHYS,
     });
     await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
@@ -133,7 +133,11 @@ describe("M11-T09 §5 workflow acceptance", () => {
       admissionId: ADMISSION,
       kind: "lab",
       drafterDiscipline: "lpn",
-      data: { loinc: "2160-0" },
+      data: {
+        testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
+        priority: "routine",
+        fastingRequired: false,
+      },
       orderingPhysicianMdmId: PHYS,
     });
     const req = await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
@@ -169,7 +173,11 @@ describe("M11-T09 §5 workflow acceptance", () => {
       admissionId: ADMISSION,
       kind: "lab",
       drafterDiscipline: "lpn",
-      data: { loinc: "2160-0" },
+      data: {
+        testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
+        priority: "routine",
+        fastingRequired: false,
+      },
       orderingPhysicianMdmId: PHYS,
     });
     await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
@@ -213,7 +221,7 @@ describe("M11-T09 §5 workflow acceptance", () => {
       kind: "supply",
       signerDiscipline: "hospice_physician",
       cadence: "prn",
-      data: {},
+      data: { kitSku: "comfort-kit-standard", deploymentSite: "home" },
     });
     svc.drainEvents();
 

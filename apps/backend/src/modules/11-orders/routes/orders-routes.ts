@@ -9,7 +9,7 @@
 // `requireAbac('signer_eligible')` (target = `:id`); the cosign route adds `requireAbac('m11.cosigner_role_match')`
 // (target = `:id`). The §4.1 caseload column maps to the shared `caseload_or_scope` predicate (registered by
 // M5/M6/M7) — bound by the §4.6 default ABAC on each clinical key, enforced by M3's authorization middleware.
-import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
+import { type AbacTarget, requireAbac, requirePermission, resolveActorPermissions } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -36,7 +36,7 @@ import {
   VerbalTimerParamsSchema,
   parse,
 } from "./orders-typebox";
-import type { OrderRouteService } from "./service";
+import type { OrderDetailActor, OrderRouteService } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -53,6 +53,17 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
   const membershipId = ctx?.attributes.membershipId;
   if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
   return { organizationId: ctx.organizationId, userId: membershipId };
+}
+
+/** Assemble the read-projection actor from the authenticated request context and M3's existing resolver. */
+async function detailActorOf(request: FastifyRequest): Promise<OrderDetailActor> {
+  const { organizationId, userId: membershipId } = actorOf(request);
+  const ctx = request.context;
+  const granted = await resolveActorPermissions({ organizationId, userId: ctx.userId });
+  const disciplines = Array.isArray(ctx.attributes.disciplines)
+    ? ctx.attributes.disciplines.filter((x): x is string => typeof x === "string")
+    : ctx.roles;
+  return { membershipId, roles: ctx.roles, disciplines, permissions: granted };
 }
 
 // Static permission guards (§4.6).
@@ -184,7 +195,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
-      return service.getOrder(organizationId, id);
+      return service.getOrder(organizationId, id, await detailActorOf(request));
     },
   );
 

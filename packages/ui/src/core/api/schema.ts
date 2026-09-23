@@ -2098,6 +2098,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/admissions/{id}/nor/uploaded-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1AdmissionsByIdNorUploadedevidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/admissions/{id}/readiness": {
         parameters: {
             query?: never;
@@ -6854,6 +6870,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/election-periods/{id}/cti/uploaded-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1ElectionperiodsByIdCtiUploadedevidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/election-periods/{id}/election-statement/uploaded-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1ElectionperiodsByIdElectionstatementUploadedevidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/election-statements/{id}": {
         parameters: {
             query?: never;
@@ -6882,6 +6930,22 @@ export interface paths {
         put?: never;
         /** Sign the election statement */
         post: operations["postApiV1ElectionstatementsByIdSign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/election-statements/{id}/sign/uploaded-evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["postApiV1ElectionstatementsByIdSignUploadedevidence"];
         delete?: never;
         options?: never;
         head?: never;
@@ -8271,6 +8335,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/hope/assessments/{id}/answers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Patch canonical HOPE item answers on a draft assessment */
+        patch: operations["patchApiV1HopeAssessmentsByIdAnswers"];
+        trace?: never;
+    };
     "/api/v1/hope/assessments/{id}/correct": {
         parameters: {
             query?: never;
@@ -8280,8 +8361,58 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Insert a correction RFA (supersedes the original) */
+        /** Create a correction draft for a signed HOPE assessment */
         post: operations["postApiV1HopeAssessmentsByIdCorrect"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hope/assessments/{id}/huv/completion-date": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patchApiV1HopeAssessmentsByIdHuvCompletiondate"];
+        trace?: never;
+    };
+    "/api/v1/hope/assessments/{id}/inactivations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create an inactivation draft for a signed HOPE assessment */
+        post: operations["postApiV1HopeAssessmentsByIdInactivations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hope/assessments/{id}/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** HOPE final-review readiness model */
+        get: operations["getApiV1HopeAssessmentsByIdReview"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -8297,7 +8428,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Sign a draft (runs the D4 J2051 trigger; snapshots PPS/ESAS-r) */
+        /** Final-validate and sign a draft HOPE assessment */
         post: operations["postApiV1HopeAssessmentsByIdSign"];
         delete?: never;
         options?: never;
@@ -8331,6 +8462,23 @@ export interface paths {
         };
         /** On-demand pre-submission validation findings for one row */
         get: operations["getApiV1HopeAssessmentsByIdValidation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hope/assessments/{id}/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Canonical HOPE assessment workspace from frozen spec and current answers */
+        get: operations["getApiV1HopeAssessmentsByIdWorkspace"];
         put?: never;
         post?: never;
         delete?: never;
@@ -8469,6 +8617,57 @@ export interface paths {
         get: operations["getApiV1HopeSubmissionsById"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hope/submissions/{id}/mark-uploaded": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark a generated HOPE package as manually uploaded to iQIES */
+        post: operations["postApiV1HopeSubmissionsByIdMarkuploaded"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hope/submissions/{id}/package": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Download the generated manual iQIES ZIP package */
+        get: operations["getApiV1HopeSubmissionsByIdPackage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/hope/submissions/{id}/results": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Import structured iQIES Final Validation Report results */
+        post: operations["postApiV1HopeSubmissionsByIdResults"];
         delete?: never;
         options?: never;
         head?: never;
@@ -23750,6 +23949,7 @@ export interface operations {
                             id: string;
                             state: string;
                             version: number;
+                            patientId?: string | null;
                         }[];
                         nextCursor: string | null;
                     };
@@ -23792,6 +23992,7 @@ export interface operations {
                         id: string;
                         state: string;
                         version: number;
+                        patientId?: string | null;
                     };
                 };
             };
@@ -23876,7 +24077,7 @@ export interface operations {
                         };
                         sfvs: {
                             id: string;
-                            status: "open" | "completed" | "overdue" | "missed";
+                            status: "open" | "completed" | "overdue" | "missed" | "withdrawn";
                             triggeringAssessmentId: string;
                             triggeringRfaKind: ("01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge") | null;
                             dueAt: string;
@@ -23984,6 +24185,10 @@ export interface operations {
                         snapshot: {
                             [key: string]: number | null;
                         } | null;
+                        regulatory: {
+                            specVersionId: string | null;
+                            isc: "HA" | "HUV" | "HD" | "XX" | null;
+                        };
                         version: number;
                     };
                 };
@@ -24056,6 +24261,10 @@ export interface operations {
                         snapshot: {
                             [key: string]: number | null;
                         } | null;
+                        regulatory: {
+                            specVersionId: string | null;
+                            isc: "HA" | "HUV" | "HD" | "XX" | null;
+                        };
                         version: number;
                     };
                 };
@@ -24091,9 +24300,24 @@ export interface operations {
                         activatedAt?: string | null;
                         providerEntityId?: string | null;
                         locationId?: string | null;
+                        patientResidenceAddressId?: string | null;
+                        serviceAddressSnapshot?: {
+                            line1: string;
+                            line2: string | null;
+                            city: string;
+                            state: string | null;
+                            postalCode: string;
+                            country: string;
+                        } | null;
+                        hospicePhysicianId?: string | null;
+                        hospicePhysician?: {
+                            id: string;
+                            displayName: string;
+                            npi?: string | null;
+                        } | null;
                         activationGate: {
                             ready: boolean;
-                            missing: ("election_signed" | "nor_acknowledged" | "cti_signed" | "attending_signed")[];
+                            missing: ("election_signed" | "nor_acknowledged" | "cti_signed")[];
                         };
                     };
                 };
@@ -24115,6 +24339,8 @@ export interface operations {
             content: {
                 "application/json": {
                     intakeMethod?: "in_person" | "phone" | "referral_auto" | "transfer_in";
+                    /** Format: uuid */
+                    hospicePhysicianId?: string;
                     /** Format: uuid */
                     attendingPhysicianId?: string;
                     /** Format: date-time */
@@ -24189,6 +24415,7 @@ export interface operations {
                             id: string;
                             state: string;
                             version: number;
+                            patientId?: string | null;
                         }[];
                     };
                 };
@@ -24253,6 +24480,7 @@ export interface operations {
                             id: string;
                             state: string;
                             version: number;
+                            patientId?: string | null;
                         }[];
                     };
                 };
@@ -24418,6 +24646,7 @@ export interface operations {
                             id: string;
                             state: string;
                             version: number;
+                            patientId?: string | null;
                         }[];
                     };
                 };
@@ -24480,6 +24709,7 @@ export interface operations {
                         id: string;
                         state: string;
                         version: number;
+                        patientId?: string | null;
                     };
                 };
             };
@@ -24500,7 +24730,7 @@ export interface operations {
             content: {
                 "application/json": {
                     /** Format: uuid */
-                    formVersionId: string;
+                    formVersionId?: string;
                     deliveryMethod: "wet_ink_scanned" | "electronic_witnessed" | "verbal_with_witness";
                     /** Format: date-time */
                     acknowledgedAt: string;
@@ -24509,6 +24739,28 @@ export interface operations {
                 };
             };
         };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1AdmissionsByIdNorUploadedevidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -24550,8 +24802,16 @@ export interface operations {
                             status: "complete" | "action_required" | "awaiting_signature" | "pending" | "blocked" | "overdue" | "not_applicable";
                             blocking: boolean;
                             message?: string;
-                            action?: "RESOLVE_PATIENT" | "COMPLETE_ADMISSION_DETAILS" | "REVIEW_PRIVACY" | "ACKNOWLEDGE_NOR" | "COMPLETE_ELECTION" | "REVIEW_CTI" | "REVIEW_F2F";
+                            action?: "RESOLVE_PATIENT" | "COMPLETE_ADMISSION_DETAILS" | "REVIEW_PRIVACY" | "COMPLETE_NOTICE_OF_RIGHTS" | "COMPLETE_ELECTION_STATEMENT" | "COMPLETE_ELECTION_SIGNATURE" | "COMPLETE_CTI" | "COMPLETE_CTI_SIGNATURE" | "REVIEW_F2F";
                             satisfiedBy?: "normal" | "override";
+                            evidence?: {
+                                sourceType: "structured" | "uploaded";
+                                evidenceId: string;
+                                documentId?: string;
+                                documentVersionId?: string;
+                                structuredEntityId?: string;
+                                completedAt?: string;
+                            };
                         }[];
                     };
                 };
@@ -32250,6 +32510,7 @@ export interface operations {
                             id: string;
                             state: string;
                             version: number;
+                            patientId?: string | null;
                         }[];
                         nextCursor: string | null;
                     };
@@ -35443,6 +35704,7 @@ export interface operations {
                         id: string;
                         state: string;
                         version: number;
+                        patientId?: string | null;
                     };
                 };
             };
@@ -35494,8 +35756,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    signingPhysicianName: string;
-                    signingPhysicianNpi: string;
                     ifVersion: number;
                 };
             };
@@ -35524,8 +35784,6 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    signingPhysicianName: string;
-                    signingPhysicianNpi: string;
                     ifVersion: number;
                 };
             };
@@ -37113,7 +37371,7 @@ export interface operations {
                     /** Format: uuid */
                     admissionId?: string;
                     retentionClass: "compliance" | "clinical_record" | "bereavement" | "operational" | "intake_artifact" | "compliance_42cfr_part2";
-                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "intake_source" | "other";
+                    aggregateType: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
                     /** Format: uuid */
                     aggregateId?: string;
                     title: string;
@@ -37122,7 +37380,7 @@ export interface operations {
                     byteSize: number;
                     sha256Hex: string;
                     sourceMetadata?: {
-                        documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "intake_source" | "other";
+                        documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
                         sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                         /** Format: date-time */
                         receivedAt?: string;
@@ -37254,7 +37512,7 @@ export interface operations {
                             patientFacing: boolean;
                             attachToDisclosures: boolean;
                             metadata: {
-                                documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "intake_source" | "other";
+                                documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
                                 sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                                 /** Format: date-time */
                                 receivedAt?: string;
@@ -37350,7 +37608,7 @@ export interface operations {
                         patientFacing: boolean;
                         attachToDisclosures: boolean;
                         metadata: {
-                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "intake_source" | "other";
+                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
                             sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                             /** Format: date-time */
                             receivedAt?: string;
@@ -37471,7 +37729,7 @@ export interface operations {
                         patientFacing: boolean;
                         attachToDisclosures: boolean;
                         metadata: {
-                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "intake_source" | "other";
+                            documentType?: "election_statement" | "cti" | "f2f" | "nor" | "revocation" | "discharge_summary" | "nomnc" | "abn" | "hipaa_privacy_notice" | "code_status_directive" | "encounter" | "order_record" | "medication_order" | "medication_administration_record" | "medication_reconciliation_worksheet" | "patient_medication_list" | "comfort_kit_receipt" | "supply_bill_of_lading" | "comfort_kit_return_receipt" | "report_export" | "report_schedule_run" | "referral" | "idg_patient_packet" | "idg_minutes" | "aide_poc" | "msw_plan" | "spiritual_plan" | "volunteer_plan" | "bereavement_letter" | "visit_confirmation" | "evv_verification" | "patient_amendment_statement_of_disagreement" | "consent_record" | "notice_of_rights" | "election_statement" | "cti" | "intake_source" | "other";
                             sourceChannel?: "email" | "fax" | "scanned_physical" | "manual_upload" | "portal" | "api";
                             /** Format: date-time */
                             receivedAt?: string;
@@ -37735,6 +37993,7 @@ export interface operations {
                     /** Format: uuid */
                     attendingPhysicianId?: string;
                     terminalDiagnosisIcd10: string;
+                    secondaryDiagnoses?: string[];
                     prognosisStatement: string;
                     narrative: string;
                     clinicalFindings: {
@@ -37744,6 +38003,50 @@ export interface operations {
                 };
             };
         };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ElectionperiodsByIdCtiUploadedevidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ElectionperiodsByIdElectionstatementUploadedevidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -37777,6 +38080,7 @@ export interface operations {
                         id: string;
                         state: string;
                         version: number;
+                        patientId?: string | null;
                     };
                 };
             };
@@ -37797,11 +38101,33 @@ export interface operations {
             content: {
                 "application/json": {
                     signingPatientName: string;
-                    signingRole: "patient" | "legal_representative";
+                    signingRole: "patient" | "legal_representative" | "caregiver";
                     ifVersion: number;
                 };
             };
         };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1ElectionstatementsByIdSignUploadedevidence: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description OK */
             200: {
@@ -40277,6 +40603,7 @@ export interface operations {
                         id: string;
                         state: string;
                         version: number;
+                        patientId?: string | null;
                     };
                 };
             };
@@ -41041,6 +41368,10 @@ export interface operations {
                         snapshot: {
                             [key: string]: number | null;
                         } | null;
+                        regulatory: {
+                            specVersionId: string | null;
+                            isc: "HA" | "HUV" | "HD" | "XX" | null;
+                        };
                         version: number;
                     };
                 };
@@ -41104,7 +41435,69 @@ export interface operations {
                         snapshot: {
                             [key: string]: number | null;
                         } | null;
+                        regulatory: {
+                            specVersionId: string | null;
+                            isc: "HA" | "HUV" | "HD" | "XX" | null;
+                        };
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    patchApiV1HopeAssessmentsByIdAnswers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    changes: ({
+                        itemCode: string;
+                        /** @constant */
+                        action: "set";
+                        value: string | number | boolean;
+                    } | {
+                        itemCode: string;
+                        /** @constant */
+                        action: "clear";
+                    })[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        assessmentId: string;
+                        version: number;
+                        answers: {
+                            itemCode: string;
+                            active: boolean;
+                            state: "unanswered" | "answered" | "skipped";
+                            value: (string | number | boolean) | null;
+                            source: ("user" | "patient_prefill" | "admission_prefill" | "derived" | "imported" | "correction_copy") | null;
+                            answeredAt: string | null;
+                            answeredByMembershipId: string | null;
+                            applicability: "applicable" | "not_applicable" | "pending";
+                            skipReason: {
+                                ruleId: string;
+                                cmsRuleId?: string;
+                                dependsOn: string[];
+                            } | null;
+                        }[];
                     };
                 };
             };
@@ -41125,6 +41518,7 @@ export interface operations {
             content: {
                 "application/json": {
                     correctionReason: string;
+                    ifVersion?: number;
                     /** Format: date-time */
                     targetDate: string;
                     authorDiscipline: "RN" | "NP" | "MD";
@@ -41171,6 +41565,10 @@ export interface operations {
                         snapshot: {
                             [key: string]: number | null;
                         } | null;
+                        regulatory: {
+                            specVersionId: string | null;
+                            isc: "HA" | "HUV" | "HD" | "XX" | null;
+                        };
                         version: number;
                     };
                 };
@@ -41179,7 +41577,29 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
-    postApiV1HopeAssessmentsByIdSign: {
+    patchApiV1HopeAssessmentsByIdHuvCompletiondate: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1HopeAssessmentsByIdInactivations: {
         parameters: {
             query?: never;
             header?: never;
@@ -41191,8 +41611,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    /** @constant */
-                    attestationConfirmed: true;
+                    reason: string;
+                    ifVersion?: number;
                 };
             };
         };
@@ -41221,7 +41641,138 @@ export interface operations {
                         snapshot: {
                             [key: string]: number | null;
                         } | null;
+                        regulatory: {
+                            specVersionId: string | null;
+                            isc: "HA" | "HUV" | "HD" | "XX" | null;
+                        };
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1HopeAssessmentsByIdReview: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        assessmentId: string;
+                        version: number;
+                        specVersion: string;
+                        isc: "HA" | "HUV" | "HD" | "XX";
+                        status: "draft" | "signed" | "superseded";
+                        signedAt: string | null;
+                        signedByMembershipId: string | null;
+                        z0350: string | null;
+                        z0500b: string | null;
+                        sections: {
+                            code: string;
+                            active: number;
+                            applicable: number;
+                            answered: number;
+                            skipped: number;
+                            pending: number;
+                            unanswered: number;
+                            errors: number;
+                            warnings: number;
+                            state: "complete" | "needs_attention" | "blocked";
+                        }[];
+                        progress: {
+                            active: number;
+                            applicable: number;
+                            answered: number;
+                            skipped: number;
+                            pending: number;
+                            unanswered: number;
+                        };
+                        validation: {
+                            errorCount: number;
+                            warningCount: number;
+                            hasBlockingErrors: boolean;
+                            findings: {
+                                ruleId: string;
+                                severity: "error" | "warning";
+                                section: string;
+                                itemCode: string | null;
+                                message: string;
+                            }[];
+                        };
+                        sfv: {
+                            required: boolean | null;
+                            status?: string;
+                            dueAt?: string;
+                            completedAt?: string | null;
+                        };
+                        readiness: {
+                            readyToSign: boolean;
+                            blockers: {
+                                code: string;
+                                section?: string;
+                                itemCode?: string;
+                                ruleId?: string;
+                                message: string;
+                            }[];
+                        };
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1HopeAssessmentsByIdSign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    /** @constant */
+                    attestationConfirmed?: true;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        assessmentId: string;
+                        /** @constant */
+                        status: "signed";
+                        version: number;
+                        signedAt: string;
+                        signedByMembershipId: string;
+                        z0500b: string;
+                        validation: {
+                            errorCount: number;
+                            warningCount: number;
+                            hasBlockingErrors: boolean;
+                        };
                     };
                 };
             };
@@ -41263,7 +41814,10 @@ export interface operations {
     };
     getApiV1HopeAssessmentsByIdValidation: {
         parameters: {
-            query?: never;
+            query?: {
+                mode?: "draft" | "final";
+                submissionDate?: string;
+            };
             header?: never;
             path: {
                 id: string;
@@ -41280,11 +41834,107 @@ export interface operations {
                 content: {
                     "application/json": {
                         assessmentId: string;
+                        mode: "draft" | "final";
+                        evaluatedAt: string;
                         findings: {
                             ruleId: string;
-                            severity: string;
+                            severity: "error" | "warning";
+                            findingKind: string | null;
+                            section: string;
+                            itemCode: string | null;
                             message: string;
+                            details: {
+                                [key: string]: unknown;
+                            };
+                            fingerprint: string | null;
+                            evaluatedAt: string;
+                            resolved: boolean;
+                            resolvedAt: string | null;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1HopeAssessmentsByIdWorkspace: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        assessment: {
+                            id: string;
+                            status: "draft" | "signed" | "superseded";
+                            rfaKind: "01_admission" | "02_huv1" | "03_huv2" | "04_sfv" | "05_discharge";
+                            targetDate: string;
+                            isc: "HA" | "HUV" | "HD" | "XX";
+                            specVersionId: string;
+                            specVersion: string;
+                            version: number;
+                        };
+                        sections: {
+                            code: string;
+                            label: string;
+                            items: {
+                                itemCode: string;
+                                active: boolean;
+                                state: "unanswered" | "answered" | "skipped";
+                                value: (string | number | boolean) | null;
+                                source: ("user" | "patient_prefill" | "admission_prefill" | "derived" | "imported" | "correction_copy") | null;
+                                answeredAt: string | null;
+                                answeredByMembershipId: string | null;
+                                applicability: "applicable" | "not_applicable" | "pending";
+                                skipReason: {
+                                    ruleId: string;
+                                    cmsRuleId?: string;
+                                    dependsOn: string[];
+                                } | null;
+                                label: string;
+                                section: string;
+                                group: string | null;
+                                /** @constant */
+                                kind: "assessment";
+                                cmsItemTypeCode: string;
+                                maxLength: number | null;
+                                options: {
+                                    valueCode: string;
+                                    label: string;
+                                    sortOrder: number;
+                                }[];
+                            }[];
+                        }[];
+                        progress: {
+                            active: number;
+                            applicable: number;
+                            notApplicable: number;
+                            pending: number;
+                            answered: number;
+                            skipped: number;
+                            unanswered: number;
+                        };
+                        huv: {
+                            scheduleId: string | null;
+                            scheduleStatus: string | null;
+                            windowStart: string | null;
+                            windowEnd: string | null;
+                            lateDeadline: string | null;
+                            timingState: "upcoming" | "within_window" | "due_soon" | "late" | "completed" | "unknown";
+                            z0350: string | null;
+                        } | null;
                     };
                 };
             };
@@ -41459,7 +42109,7 @@ export interface operations {
                             id: string;
                             patientId: string;
                             triggeringAssessmentId: string;
-                            status: "open" | "completed" | "overdue" | "missed";
+                            status: "open" | "completed" | "overdue" | "missed" | "withdrawn";
                             triggeredAt: string;
                             dueAt: string;
                             completingAssessmentId: string | null;
@@ -41492,7 +42142,7 @@ export interface operations {
                         id: string;
                         patientId: string;
                         triggeringAssessmentId: string;
-                        status: "open" | "completed" | "overdue" | "missed";
+                        status: "open" | "completed" | "overdue" | "missed" | "withdrawn";
                         triggeredAt: string;
                         dueAt: string;
                         completingAssessmentId: string | null;
@@ -41525,12 +42175,20 @@ export interface operations {
                             id: string;
                             providerEntityId: string;
                             submissionPeriod: string;
-                            status: "queued" | "in_flight" | "accepted" | "rejected" | "partially_accepted";
+                            status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                            transportMode?: string;
+                            validationProfile?: string | null;
+                            packageFilename?: string | null;
+                            packageSha256?: string | null;
+                            packageSizeBytes?: number | null;
                             itemCount: number;
                             acceptedCount: number;
                             rejectedCount: number;
                             transmittedAt: string | null;
+                            exportedAt?: string | null;
+                            submittedAt?: string | null;
                             acceptedAt: string | null;
+                            iqiesSubmissionReference?: string | null;
                         }[];
                     };
                 };
@@ -41560,12 +42218,153 @@ export interface operations {
                         id: string;
                         providerEntityId: string;
                         submissionPeriod: string;
-                        status: "queued" | "in_flight" | "accepted" | "rejected" | "partially_accepted";
+                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                        transportMode?: string;
+                        validationProfile?: string | null;
+                        packageFilename?: string | null;
+                        packageSha256?: string | null;
+                        packageSizeBytes?: number | null;
                         itemCount: number;
                         acceptedCount: number;
                         rejectedCount: number;
                         transmittedAt: string | null;
+                        exportedAt?: string | null;
+                        submittedAt?: string | null;
                         acceptedAt: string | null;
+                        iqiesSubmissionReference?: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1HopeSubmissionsByIdMarkuploaded: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date-time */
+                    submittedAt?: string;
+                    iqiesSubmissionReference?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        submissionPeriod: string;
+                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                        transportMode?: string;
+                        validationProfile?: string | null;
+                        packageFilename?: string | null;
+                        packageSha256?: string | null;
+                        packageSizeBytes?: number | null;
+                        itemCount: number;
+                        acceptedCount: number;
+                        rejectedCount: number;
+                        transmittedAt: string | null;
+                        exportedAt?: string | null;
+                        submittedAt?: string | null;
+                        acceptedAt: string | null;
+                        iqiesSubmissionReference?: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1HopeSubmissionsByIdPackage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1HopeSubmissionsByIdResults: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reportReference?: string | null;
+                    results: ({
+                        assessmentId?: string;
+                        status?: string;
+                        result?: string;
+                        outcome?: string;
+                        severity?: string;
+                        code?: string;
+                        itemCode?: string;
+                        message?: string;
+                        iqiesRecordId?: string;
+                    } & {
+                        [key: string]: unknown;
+                    })[];
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        providerEntityId: string;
+                        submissionPeriod: string;
+                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                        transportMode?: string;
+                        validationProfile?: string | null;
+                        packageFilename?: string | null;
+                        packageSha256?: string | null;
+                        packageSizeBytes?: number | null;
+                        itemCount: number;
+                        acceptedCount: number;
+                        rejectedCount: number;
+                        transmittedAt: string | null;
+                        exportedAt?: string | null;
+                        submittedAt?: string | null;
+                        acceptedAt: string | null;
+                        iqiesSubmissionReference?: string | null;
                     };
                 };
             };
@@ -41598,12 +42397,20 @@ export interface operations {
                         id: string;
                         providerEntityId: string;
                         submissionPeriod: string;
-                        status: "queued" | "in_flight" | "accepted" | "rejected" | "partially_accepted";
+                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                        transportMode?: string;
+                        validationProfile?: string | null;
+                        packageFilename?: string | null;
+                        packageSha256?: string | null;
+                        packageSizeBytes?: number | null;
                         itemCount: number;
                         acceptedCount: number;
                         rejectedCount: number;
                         transmittedAt: string | null;
+                        exportedAt?: string | null;
+                        submittedAt?: string | null;
                         acceptedAt: string | null;
+                        iqiesSubmissionReference?: string | null;
                     };
                 };
             };
@@ -41636,12 +42443,20 @@ export interface operations {
                         id: string;
                         providerEntityId: string;
                         submissionPeriod: string;
-                        status: "queued" | "in_flight" | "accepted" | "rejected" | "partially_accepted";
+                        status: "ready" | "queued" | "packaged" | "exported" | "in_flight" | "submitted_pending_result" | "accepted" | "rejected" | "partially_accepted" | "accepted_with_warnings" | "file_error";
+                        transportMode?: string;
+                        validationProfile?: string | null;
+                        packageFilename?: string | null;
+                        packageSha256?: string | null;
+                        packageSizeBytes?: number | null;
                         itemCount: number;
                         acceptedCount: number;
                         rejectedCount: number;
                         transmittedAt: string | null;
+                        exportedAt?: string | null;
+                        submittedAt?: string | null;
                         acceptedAt: string | null;
+                        iqiesSubmissionReference?: string | null;
                     };
                 };
             };
@@ -50037,6 +50852,25 @@ export interface operations {
                         signedBy: string | null;
                         completedAt: string | null;
                         createdAt: string;
+                    } & {
+                        kindVersion: string;
+                        data: unknown;
+                        requirements: {
+                            code: "clinical_details" | "rn_cosignature" | "physician_signature" | "verbal_signature";
+                            label: string;
+                            status: "not_required" | "pending" | "satisfied";
+                            deadlineAt?: string;
+                        }[];
+                        allowedActions: {
+                            edit: boolean;
+                            request_signature: boolean;
+                            record_verbal: boolean;
+                            sign: boolean;
+                            cosign: boolean;
+                            complete: boolean;
+                            discontinue: boolean;
+                            correct: boolean;
+                        };
                     };
                 };
             };
@@ -52298,6 +53132,10 @@ export interface operations {
                             snapshot: {
                                 [key: string]: number | null;
                             } | null;
+                            regulatory: {
+                                specVersionId: string | null;
+                                isc: "HA" | "HUV" | "HD" | "XX" | null;
+                            };
                             version: number;
                         }[];
                     };
@@ -53615,14 +54453,18 @@ export interface operations {
                     "application/json": {
                         items: {
                             id: string;
-                            requestedPurpose: "migration" | "baa_termination" | "compliance_audit" | "surveyor_request";
+                            organizationId: string;
+                            requestedPurpose: string;
                             status: "requested" | "generating" | "fulfilled" | "expired" | "cancelled";
                             /** Format: date-time */
                             requestedAt: string;
                             fulfilledAt: string | null;
-                            bundleSizeBytes: number | null;
-                            /** Format: date-time */
-                            createdAt: string;
+                            heldForOversizedApproval: boolean;
+                            heldBundleSizeBytes: string | null;
+                            heldRecordCount: number | null;
+                            heldAt: string | null;
+                            bundleSizeBytes: string | null;
+                            bundleDownloadedAt: string | null;
                         }[];
                         nextCursor: string | null;
                         hasMore: boolean;
@@ -58358,6 +59200,7 @@ export interface operations {
                             id: string;
                             state: string;
                             version: number;
+                            patientId?: string | null;
                         }[];
                         nextCursor: string | null;
                     };
@@ -58428,6 +59271,7 @@ export interface operations {
                         id: string;
                         state: string;
                         version: number;
+                        patientId?: string | null;
                     };
                 };
             };
@@ -58574,6 +59418,7 @@ export interface operations {
                         id: string;
                         state: string;
                         version: number;
+                        patientId?: string | null;
                     };
                 };
             };
@@ -58736,6 +59581,7 @@ export interface operations {
                         id: string;
                         state: string;
                         version: number;
+                        patientId?: string | null;
                     };
                 };
             };
@@ -58873,6 +59719,7 @@ export interface operations {
                         id: string;
                         state: string;
                         version: number;
+                        patientId?: string | null;
                     };
                 };
             };
@@ -58908,6 +59755,7 @@ export interface operations {
                         id: string;
                         state: string;
                         version: number;
+                        patientId?: string | null;
                     };
                 };
             };
@@ -59029,6 +59877,7 @@ export interface operations {
                         id: string;
                         state: string;
                         version: number;
+                        patientId?: string | null;
                     };
                 };
             };

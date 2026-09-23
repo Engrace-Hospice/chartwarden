@@ -99,7 +99,11 @@ const labBody = (over: Record<string, unknown> = {}) => ({
   admissionId: ADMISSION,
   kind: "lab",
   drafterDiscipline: "rn_case_manager",
-  data: { loinc: "2160-0" },
+  data: {
+    testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
+    priority: "routine",
+    fastingRequired: false,
+  },
   orderingPhysicianMdmId: PHYS,
   ...over,
 });

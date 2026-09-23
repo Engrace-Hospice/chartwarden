@@ -14,6 +14,7 @@
 import {
   DEFAULT_COSIGN_POLICY,
   type LevelOfCare,
+  ORDER_KIND_VERSION,
   type OrderCosignPolicy,
   computeVerbalDeadline,
   disciplineCanOrder,
@@ -24,6 +25,7 @@ import {
   resolveCosignRequirement,
   signerEligible,
   transitionOrder,
+  validateOrderData,
   validateVerbalWindowHours,
 } from "@wardenx/orders";
 import type {
@@ -34,7 +36,7 @@ import type {
   StandingOrderCadence,
   StandingOrderStatus,
 } from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError, ValidationError } from "@wardenx/types";
 
 /** Minimal M40 `MdmEntityProvider` subset the order service binds (physician / DME-vendor resolution). */
 export interface OrderMdmValidator {
@@ -87,6 +89,73 @@ export interface OrderView {
   readonly signedBy: string | null;
   readonly completedAt: string | null;
   readonly createdAt: string;
+}
+
+/** PHI-bearing payload projection returned only by the single-order detail read. */
+export interface OrderDetailView extends OrderView {
+  readonly kindVersion: string;
+  readonly data: unknown;
+  readonly requirements: readonly OrderRequirement[];
+  readonly allowedActions: OrderAllowedActions;
+}
+
+/** Detail-only workflow projection. It is deliberately never persisted. */
+export interface OrderRequirement {
+  readonly code: "clinical_details" | "rn_cosignature" | "physician_signature" | "verbal_signature";
+  readonly label: string;
+  readonly status: "not_required" | "pending" | "satisfied";
+  readonly deadlineAt?: string;
+}
+export interface OrderAllowedActions {
+  readonly edit: boolean;
+  readonly request_signature: boolean;
+  readonly record_verbal: boolean;
+  readonly sign: boolean;
+  readonly cosign: boolean;
+  readonly complete: boolean;
+  readonly discontinue: boolean;
+  readonly correct: boolean;
+}
+/** A server-assembled snapshot; never accepted from an HTTP body or query. */
+export interface OrderDetailActor {
+  readonly membershipId: string;
+  readonly roles: readonly string[];
+  readonly disciplines: readonly string[];
+  readonly permissions: ReadonlySet<string>;
+}
+
+export function buildOrderWorkflowProjection(
+  order: Pick<OrderDetailView, "kind" | "kindVersion" | "data" | "status" | "cosignRequired" | "cosignStatus" | "verbalDeadlineAt" | "drafterMembershipId" | "signedAt">,
+  actor: OrderDetailActor,
+  cosignerRoleNeeded: "rn_case_manager" | "clinical_supervisor" | "medical_director" | null,
+): Pick<OrderDetailView, "requirements" | "allowedActions"> {
+  const clinical = validateOrderData(order.kind, order.kindVersion, order.data).length === 0;
+  const signatureApplies = ["pending_signature", "verbal_pending"].includes(order.status);
+  const verbal = order.status === "verbal_pending";
+  const lowerRoles = actor.roles.map((x) => x.toLowerCase());
+  const canCosignRole = cosignerRoleNeeded === "medical_director"
+    ? lowerRoles.includes("medical_director")
+    : lowerRoles.some((x) => x === "rn_case_manager" || x === "clinical_supervisor");
+  const canSign = actor.disciplines.some((d) => signerEligible(d, order.kind));
+  const has = (permission: string) => actor.permissions.has(permission);
+  return {
+    requirements: [
+      { code: "clinical_details", label: "Clinical details", status: clinical ? "satisfied" : "pending" },
+      { code: "rn_cosignature", label: "Required cosignature", status: !order.cosignRequired ? "not_required" : order.cosignStatus === "attached" ? "satisfied" : "pending" },
+      { code: "physician_signature", label: "Required signature", status: !signatureApplies ? "not_required" : order.signedAt ? "satisfied" : "pending" },
+      { code: "verbal_signature", label: "Verbal-order signature", status: !verbal ? "not_required" : order.signedAt ? "satisfied" : "pending", ...(verbal && order.verbalDeadlineAt ? { deadlineAt: order.verbalDeadlineAt } : {}) },
+    ],
+    allowedActions: {
+      edit: order.status === "draft" && has("orders.draft"),
+      request_signature: order.status === "draft" && clinical && has("orders.draft"),
+      record_verbal: order.status === "pending_signature" && has("orders.verbal.record"),
+      sign: signatureApplies && order.cosignStatus !== "pending" && canSign && has("orders.sign"),
+      cosign: order.cosignRequired && order.cosignStatus === "pending" && order.drafterMembershipId !== actor.membershipId && canCosignRole && has("orders.cosign"),
+      complete: order.status === "active" && has("orders.complete"),
+      discontinue: ["pending_signature", "verbal_pending", "active"].includes(order.status) && has("orders.discontinue"),
+      correct: order.status === "active" && has("orders.amend"),
+    },
+  };
 }
 
 export interface StandingOrderView {
@@ -191,7 +260,7 @@ export interface OrderRouteService extends OrderAbacResolver {
     organizationId: string,
     filter: { patientId?: string; admissionId?: string; kind?: string; status?: string },
   ): Promise<{ orders: OrderView[] }>;
-  getOrder(organizationId: string, id: string): Promise<OrderView>;
+  getOrder(organizationId: string, id: string, actor?: OrderDetailActor): Promise<OrderDetailView>;
   createDraft(organizationId: string, userId: string, args: CreateOrderArgs): Promise<OrderView>;
   editDraft(
     organizationId: string,
@@ -288,9 +357,8 @@ export interface OrderRouteService extends OrderAbacResolver {
 
 // ── in-memory records (the slice mutates these; the view DTOs are the read-only projections) ────────────
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
-interface OrderRecord extends Mutable<OrderView> {
+interface OrderRecord extends Mutable<Omit<OrderDetailView, "requirements" | "allowedActions">> {
   organizationId: string;
-  data: unknown;
   cosignerRoleNeeded: "rn_case_manager" | "clinical_supervisor" | "medical_director" | null;
 }
 interface StandingRecord extends Mutable<StandingOrderView> {
@@ -392,6 +460,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       signedBy: null,
       completedAt: null,
       createdAt: now(),
+      kindVersion: `${s.kind}.v1`,
       data: {},
       ...s,
     } as OrderRecord);
@@ -414,9 +483,15 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     events.push({ eventName, payload, idempotencyKey });
   };
   const view = (r: OrderRecord): OrderView => {
-    const { organizationId: _o, data: _d, cosignerRoleNeeded: _c, ...v } = r;
+    const { organizationId: _o, data: _d, kindVersion: _k, cosignerRoleNeeded: _c, ...v } = r;
     return v;
   };
+  const detailView = (r: OrderRecord, actor: OrderDetailActor): OrderDetailView => ({
+    ...view(r),
+    kindVersion: r.kindVersion,
+    data: r.data,
+    ...buildOrderWorkflowProjection(r, actor, r.cosignerRoleNeeded),
+  });
   const viewSt = (r: StandingRecord): StandingOrderView => {
     const { organizationId: _o, signerDiscipline: _s, data: _d, ...v } = r;
     return v;
@@ -472,8 +547,9 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       );
       return { orders: all.map(view) };
     },
-    async getOrder(organizationId, id) {
-      return view(find(organizationId, id));
+    async getOrder(organizationId, id, actor = { membershipId: "", roles: [], disciplines: [], permissions: new Set() }) {
+      const r = find(organizationId, id);
+      return detailView(r, actor);
     },
 
     async createDraft(organizationId, userId, args) {
@@ -483,6 +559,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
           `discipline '${args.drafterDiscipline}' may not author a '${args.kind}' order`,
         );
       await bindCrossModuleRefs(organizationId, args);
+      // Drafts may retain partial clinical details; signature request is the completion gate.
       const id = nextId();
       const rec: OrderRecord = {
         id,
@@ -510,6 +587,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         signedBy: null,
         completedAt: null,
         createdAt: now(),
+        kindVersion: `${args.kind}.v1`,
         data: args.data,
       };
       orders.set(id, rec);
@@ -539,6 +617,16 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
 
     async requestSignature(organizationId, id, args) {
       const r = find(organizationId, id);
+      const findings = validateOrderData(r.kind, r.kindVersion, r.data);
+      if (findings.length)
+        throw new ValidationError(
+          "Order is not ready for signature",
+          findings.map((finding) => ({
+            field: `data.${finding.field}`,
+            code: "INVALID",
+            message: finding.message,
+          })),
+        );
       const requirement = resolveCosignRequirement({
         kind: r.kind,
         drafterDiscipline: r.drafterDiscipline,
@@ -666,6 +754,9 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
 
     async correctOrder(organizationId, userId, id, args) {
       const original = find(organizationId, id);
+      const findings = validateOrderData(args.kind, ORDER_KIND_VERSION[args.kind], args.data);
+      if (findings.length)
+        throw new ValidationError("Corrected order clinical details are invalid", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
       const correction = await this.createDraft(organizationId, userId, {
         ...args,
         replacesOrderId: id,
@@ -799,6 +890,9 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         now: now(),
         timeZone: tz,
       });
+      const findings = validateOrderData(r.kind, ORDER_KIND_VERSION[r.kind], r.data);
+      if (findings.length)
+        throw new ValidationError("Standing-order template clinical details are invalid", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
       const orderId = nextId();
       orders.set(orderId, {
         id: orderId,
@@ -826,6 +920,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         signedBy: userId,
         completedAt: null,
         createdAt: now(),
+        kindVersion: `${r.kind}.v1`,
         data: r.data,
       });
       r.spawnCount += 1;

@@ -14,6 +14,7 @@ import { ORDER_KINDS } from "@wardenx/types";
 import type { OrderKind } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
 import type {
+  OrderDetailView as ServiceOrderDetailView,
   OrderView as ServiceOrderView,
   StandingOrderView as ServiceStandingOrderView,
   VerbalPolicyView as ServiceVerbalPolicyView,
@@ -247,6 +248,25 @@ export const OrderViewResponseSchema = Type.Object({
   createdAt: Type.String(),
 });
 
+/** Single-order detail only. List and work-queue reads deliberately omit clinical JSON payloads. */
+export const OrderDetailResponseSchema = Type.Intersect([
+  OrderViewResponseSchema,
+  Type.Object({
+    kindVersion: Type.String(),
+    data: Type.Unknown(),
+    requirements: Type.Array(Type.Object({
+      code: Type.Union([Type.Literal("clinical_details"), Type.Literal("rn_cosignature"), Type.Literal("physician_signature"), Type.Literal("verbal_signature")]),
+      label: Type.String(),
+      status: Type.Union([Type.Literal("not_required"), Type.Literal("pending"), Type.Literal("satisfied")]),
+      deadlineAt: Type.Optional(Type.String()),
+    })),
+    allowedActions: Type.Object({
+      edit: Type.Boolean(), request_signature: Type.Boolean(), record_verbal: Type.Boolean(), sign: Type.Boolean(),
+      cosign: Type.Boolean(), complete: Type.Boolean(), discontinue: Type.Boolean(), correct: Type.Boolean(),
+    }),
+  }),
+]);
+
 /** Route 19 / standing-order mutation responses — the §2.4 D5 standing-order view projection. */
 export const StandingOrderViewResponseSchema = Type.Object({
   id: Type.String(),
@@ -287,6 +307,7 @@ export const SpawnResponseSchema = Type.Object({ orderId: Type.String() });
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
 type Conforms<T extends V, V> = T;
 type _OrderView = Conforms<Static<typeof OrderViewResponseSchema>, ServiceOrderView>;
+type _OrderDetailView = Conforms<Static<typeof OrderDetailResponseSchema>, ServiceOrderDetailView>;
 type _StandingOrderView = Conforms<
   Static<typeof StandingOrderViewResponseSchema>,
   ServiceStandingOrderView
