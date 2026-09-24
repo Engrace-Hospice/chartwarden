@@ -48417,6 +48417,7 @@ export interface operations {
                             strength: string;
                             doseForm: string;
                             route: string;
+                            data: unknown;
                             rxnormRxcui: string | null;
                             ndc: string | null;
                             version: number;
@@ -48429,6 +48430,7 @@ export interface operations {
                             cosignRequired: boolean;
                             cosignStatus: ("pending" | "attached") | null;
                             refillsRemaining: number;
+                            refillsAuthorized: number;
                             derivedFromRefillId: string | null;
                             replacesMedicationOrderId: string | null;
                             signedAt: string | null;
@@ -48517,6 +48519,7 @@ export interface operations {
                         strength: string;
                         doseForm: string;
                         route: string;
+                        data: unknown;
                         rxnormRxcui: string | null;
                         ndc: string | null;
                         version: number;
@@ -48529,6 +48532,7 @@ export interface operations {
                         cosignRequired: boolean;
                         cosignStatus: ("pending" | "attached") | null;
                         refillsRemaining: number;
+                        refillsAuthorized: number;
                         derivedFromRefillId: string | null;
                         replacesMedicationOrderId: string | null;
                         signedAt: string | null;
@@ -53201,6 +53205,7 @@ export interface operations {
                             strength: string;
                             doseForm: string;
                             route: string;
+                            data: unknown;
                             rxnormRxcui: string | null;
                             ndc: string | null;
                             version: number;
@@ -53213,6 +53218,7 @@ export interface operations {
                             cosignRequired: boolean;
                             cosignStatus: ("pending" | "attached") | null;
                             refillsRemaining: number;
+                            refillsAuthorized: number;
                             derivedFromRefillId: string | null;
                             replacesMedicationOrderId: string | null;
                             signedAt: string | null;

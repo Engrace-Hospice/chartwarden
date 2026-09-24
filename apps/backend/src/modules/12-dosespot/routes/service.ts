@@ -16,6 +16,7 @@ import {
   isEpcsRequired,
   transitionMedicationOrder,
   transitionRefillRequest,
+  validateMedicationOrderData,
 } from "@wardenx/dosespot";
 import type {
   DeaSchedule,
@@ -25,7 +26,7 @@ import type {
   RefillRequestStatus,
   RefillResponseChannel,
 } from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError, ValidationError } from "@wardenx/types";
 import { prescriberEligible } from "../prescriber-eligibility";
 
 // ── injected cross-module validators (narrowed seam subsets; absent ⇒ binding skipped) ──────────────────
@@ -68,6 +69,8 @@ export interface MedicationOrderView {
   readonly strength: string;
   readonly doseForm: string;
   readonly route: string;
+  /** Per-class payload; opaque until M12 publishes discriminated field schemas. */
+  readonly data: unknown;
   readonly rxnormRxcui: string | null;
   readonly ndc: string | null;
   readonly version: number;
@@ -80,6 +83,7 @@ export interface MedicationOrderView {
   readonly cosignRequired: boolean;
   readonly cosignStatus: "pending" | "attached" | null;
   readonly refillsRemaining: number;
+  readonly refillsAuthorized: number;
   readonly derivedFromRefillId: string | null;
   readonly replacesMedicationOrderId: string | null;
   readonly signedAt: string | null;
@@ -493,6 +497,7 @@ export function createInMemoryDoseSpotBackend(
       cosignRequired: false,
       cosignStatus: null,
       refillsRemaining: 0,
+      refillsAuthorized: 0,
       derivedFromRefillId: null,
       replacesMedicationOrderId: null,
       signedAt: null,
@@ -540,7 +545,7 @@ export function createInMemoryDoseSpotBackend(
         emit(e.event, { ...payload, orderId: id }, `${id}:${e.event}`);
   };
   const view = (r: OrderRecord): MedicationOrderView => {
-    const { organizationId: _o, data: _d, cosignerRoleNeeded: _c, ...v } = r;
+    const { organizationId: _o, cosignerRoleNeeded: _c, ...v } = r;
     return v;
   };
   const viewRefill = (r: RefillRecord): RefillRequestView => {
@@ -611,6 +616,8 @@ export function createInMemoryDoseSpotBackend(
     args: CreateMedicationOrderArgs,
     fromExtraction: boolean,
   ): Promise<OrderRecord> {
+    const draftFindings = validateMedicationOrderData(args.medClass, undefined, args.data, false);
+    if (draftFindings.length) throw new ValidationError("medication draft validation failed", draftFindings);
     await bindCrossModuleRefs(organizationId, args);
     const controlled = isControlled(args.medClass, args.containsControlled ?? false);
     const id = nextId();
@@ -637,6 +644,7 @@ export function createInMemoryDoseSpotBackend(
       cosignRequired: false,
       cosignStatus: null,
       refillsRemaining: args.refillsAuthorized,
+      refillsAuthorized: args.refillsAuthorized,
       derivedFromRefillId: args.derivedFromRefillId ?? null,
       replacesMedicationOrderId: args.replacesMedicationOrderId ?? null,
       signedAt: null,
@@ -686,15 +694,24 @@ export function createInMemoryDoseSpotBackend(
       const r = find(organizationId, id);
       if (r.status !== "draft")
         throw new NotFoundError(`medication order ${id} is not a draft and cannot be edited`);
-      if (patch.data !== undefined) r.data = patch.data;
+      if (patch.data !== undefined) {
+        const findings = validateMedicationOrderData(r.medClass, undefined, patch.data, false);
+        if (findings.length) throw new ValidationError("medication draft validation failed", findings);
+        r.data = patch.data;
+      }
       if (patch.drugName !== undefined) r.drugName = patch.drugName;
       if (patch.strength !== undefined) r.strength = patch.strength;
-      if (patch.refillsAuthorized !== undefined) r.refillsRemaining = patch.refillsAuthorized;
+      if (patch.refillsAuthorized !== undefined) {
+        r.refillsAuthorized = patch.refillsAuthorized;
+        r.refillsRemaining = patch.refillsAuthorized;
+      }
       r.version += 1;
       return view(r);
     },
     async requestSignature(organizationId, id, _signerDiscipline) {
       const r = find(organizationId, id);
+      const findings = validateMedicationOrderData(r.medClass, undefined, r.data, true);
+      if (findings.length) throw new ValidationError("medication order is not ready for signature", findings);
       const t = transitionMedicationOrder(r.status, {
         type: "requestSignature",
         medClass: r.medClass,

@@ -16,27 +16,42 @@ import type { ComponentType } from "react";
 const MedicationDetail = lazy(() =>
   import("./medication-detail").then((m) => ({ default: m.MedicationDetail })),
 );
+const MedicationOrderEditor = lazy(() =>
+  import("./medication-order-editor").then((m) => ({
+    default: m.MedicationOrderEditor,
+  })),
+);
 const MedicationReconciliation = lazy(() =>
-  import("./medication-reconciliation").then((m) => ({ default: m.MedicationReconciliation })),
+  import("./medication-reconciliation").then((m) => ({
+    default: m.MedicationReconciliation,
+  })),
 );
 const MedicationSignInbox = lazy(() =>
   import("./sign-inbox").then((m) => ({ default: m.MedicationSignInbox })),
 );
 const PatientMedications = lazy(() =>
-  import("./patient-medications").then((m) => ({ default: m.PatientMedications })),
+  import("./patient-medications").then((m) => ({
+    default: m.PatientMedications,
+  })),
 );
 const PrescriberRoster = lazy(() =>
   import("./prescriber-roster").then((m) => ({ default: m.PrescriberRoster })),
 );
 const PrescribingPolicy = lazy(() =>
-  import("./prescribing-policy").then((m) => ({ default: m.PrescribingPolicy })),
+  import("./prescribing-policy").then((m) => ({
+    default: m.PrescribingPolicy,
+  })),
 );
 const RefillDetail = lazy(() =>
   import("./refill-detail").then((m) => ({ default: m.RefillDetail })),
 );
-const RefillInbox = lazy(() => import("./refill-inbox").then((m) => ({ default: m.RefillInbox })));
+const RefillInbox = lazy(() =>
+  import("./refill-inbox").then((m) => ({ default: m.RefillInbox })),
+);
 const VerbalMedicationOrdersQueue = lazy(() =>
-  import("./verbal-orders-queue").then((m) => ({ default: m.VerbalMedicationOrdersQueue })),
+  import("./verbal-orders-queue").then((m) => ({
+    default: m.VerbalMedicationOrdersQueue,
+  })),
 );
 
 export const dosespotScreens: ScreenRegistryModule<ComponentType> = {
@@ -50,6 +65,20 @@ export const dosespotScreens: ScreenRegistryModule<ComponentType> = {
       title: "Medications",
       requiredPermission: "prescribing.read",
       screen: PatientMedications,
+    },
+    {
+      id: "prescribing.new-medication",
+      path: "/patients/:patientId/medications/new",
+      title: "New Medication",
+      requiredPermission: "prescribing.draft",
+      screen: MedicationOrderEditor,
+    },
+    {
+      id: "prescribing.edit-medication-draft",
+      path: "/medication-orders/:id/edit",
+      title: "Edit Medication Draft",
+      requiredPermission: "prescribing.draft",
+      screen: MedicationOrderEditor,
     },
     {
       // Medication-order detail — reached from a worklist/list row; param path (no nav).

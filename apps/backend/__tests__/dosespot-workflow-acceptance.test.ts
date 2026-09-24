@@ -56,9 +56,20 @@ describe("M12-T10 §5 workflow acceptance", () => {
     });
     expect(draft.status).toBe("draft");
     expect(draft.isControlledSubstance).toBe(false);
+    expect(draft.data).toEqual({ sigFreeText: "1 tablet by mouth daily" });
+    expect(draft.refillsAuthorized).toBe(3);
     expect(eventNames(svc.drainEvents())).toContain("m12.medication_order.draft_created");
 
-    const pending = await svc.requestSignature(ORG, draft.id, "hospice_physician");
+    const edited = await svc.editDraft(ORG, draft.id, {
+      data: { sigFreeText: "2 tablets by mouth daily" },
+      refillsAuthorized: 1,
+    });
+    expect(edited.data).toEqual({ sigFreeText: "2 tablets by mouth daily" });
+    expect(edited.refillsAuthorized).toBe(1);
+    expect(edited.refillsRemaining).toBe(1);
+    expect(edited.version).toBe(2);
+
+    const pending = await svc.requestSignature(ORG, edited.id, "hospice_physician");
     expect(pending.status).toBe("pending_signature");
     expect(eventNames(svc.drainEvents())).toContain("m12.medication_order.signature_requested");
 

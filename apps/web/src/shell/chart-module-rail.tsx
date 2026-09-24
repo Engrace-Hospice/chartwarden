@@ -94,7 +94,7 @@ const ITEMS: {
     route: (id) => `/patients/${id}/assessments`,
   },
   { key: "orders", label: "Orders", icon: "orders", route: (id) => `/patients/${id}/orders` },
-  { key: "medications", label: "Medications", icon: "pill", route: (id) => `/patients/${id}/emar` },
+  { key: "medications", label: "Medications", icon: "pill", route: (id) => `/patients/${id}/medications` },
   {
     key: "documents",
     label: "Documents",

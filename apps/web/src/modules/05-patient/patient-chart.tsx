@@ -133,7 +133,7 @@ const NAV_SECTIONS: {
     label: "Medications / eMAR",
     ready: false,
     icon: "pill",
-    route: (id) => `/patients/${id}/emar`,
+    route: (id) => `/patients/${id}/medications`,
   },
   { label: "Documents", ready: false, icon: "folder", route: (id) => `/patients/${id}/documents` },
   {

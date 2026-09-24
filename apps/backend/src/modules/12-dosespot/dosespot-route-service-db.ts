@@ -30,10 +30,11 @@ import {
   isEpcsRequired,
   transitionMedicationOrder,
   transitionRefillRequest,
+  validateMedicationOrderData,
 } from "@wardenx/dosespot";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { DeaSchedule, MedClass } from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError, ValidationError } from "@wardenx/types";
 import { type SQL, and, desc, eq, exists, inArray, or, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
 import { prescriberEligible } from "./prescriber-eligibility";
@@ -100,6 +101,7 @@ const toOrderView = (r: MoRow): MedicationOrderView => ({
   strength: r.strength,
   doseForm: r.doseForm,
   route: r.route,
+  data: r.data,
   rxnormRxcui: r.rxnormRxcui ?? null,
   ndc: r.ndc ?? null,
   version: Number(r.version),
@@ -112,6 +114,7 @@ const toOrderView = (r: MoRow): MedicationOrderView => ({
   cosignRequired: r.cosignRequired,
   cosignStatus: (r.cosignStatus as "pending" | "attached" | null) ?? null,
   refillsRemaining: Number(r.refillsRemaining),
+  refillsAuthorized: Number(r.refillsAuthorized),
   derivedFromRefillId: r.derivedFromRefillId ?? null,
   replacesMedicationOrderId: r.replacesMedicationOrderId ?? null,
   signedAt: iso(r.signedAt),
@@ -322,6 +325,8 @@ export function createDbDoseSpotBackend(
     userId: string,
     args: CreateMedicationOrderArgs,
   ): Promise<string> {
+    const findings = validateMedicationOrderData(args.medClass, undefined, args.data, false);
+    if (findings.length) throw new ValidationError("medication draft validation failed", findings);
     const controlled = isEpcsRequired(args.medClass, args.containsControlled ?? false);
     // The `medication_order_controlled_schedule_consistency` CHECK requires is_controlled = (dea_schedule
     // IS NOT NULL): pin a schedule for a controlled draft, and force null for a non-controlled one.
@@ -450,6 +455,10 @@ export function createDbDoseSpotBackend(
         const r = await loadOrder(tx, id);
         if (r.status !== "draft")
           throw new NotFoundError(`medication order ${id} is not a draft and cannot be edited`);
+        if (patch.data !== undefined) {
+          const findings = validateMedicationOrderData(r.medClass, undefined, patch.data, false);
+          if (findings.length) throw new ValidationError("medication draft validation failed", findings);
+        }
         await tx
           .update(MO)
           .set({
@@ -457,6 +466,7 @@ export function createDbDoseSpotBackend(
             drugName: patch.drugName ?? r.drugName,
             strength: patch.strength ?? r.strength,
             refillsRemaining: patch.refillsAuthorized ?? r.refillsRemaining,
+            refillsAuthorized: patch.refillsAuthorized ?? r.refillsAuthorized,
             version: r.version + 1,
             updatedAt: new Date(),
           })
@@ -467,6 +477,8 @@ export function createDbDoseSpotBackend(
     async requestSignature(organizationId, id, signerDiscipline) {
       return withOrg(organizationId, async (tx) => {
         const r = await loadOrder(tx, id);
+        const findings = validateMedicationOrderData(r.medClass, undefined, r.data, true);
+        if (findings.length) throw new ValidationError("medication order is not ready for signature", findings);
         // medication_order has no prescriber_discipline column — read the threaded discipline arg (§4.1).
         transitionMedicationOrder(r.status, {
           type: "requestSignature",

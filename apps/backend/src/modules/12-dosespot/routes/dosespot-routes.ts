@@ -163,8 +163,12 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
         prescriberDiscipline: b.prescriberDiscipline,
         prescribingPhysicianMdmId: b.prescribingPhysicianMdmId,
         dispensingPharmacyMdmId: b.dispensingPharmacyMdmId,
-        deaSchedule: b.deaSchedule,
-        containsControlled: b.containsControlled,
+        deaSchedule:
+          b.deaSchedule ??
+          ((b.data as { deaSchedule?: typeof b.deaSchedule } | null)?.deaSchedule),
+        containsControlled:
+          b.containsControlled ??
+          ((b.data as { containsControlled?: boolean } | null)?.containsControlled),
         refillsAuthorized: b.refillsAuthorized,
       });
       return reply.code(201).send(res);
