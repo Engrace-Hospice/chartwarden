@@ -1471,6 +1471,7 @@ import {
   CreateStandingOrderRequest as M11CreateStandingOrderRequest,
   DiscontinueRequest as M11DiscontinueRequest,
   DiscontinueStandingOrderRequest as M11DiscontinueStandingOrderRequest,
+  OrderDetailResponseSchema as M11OrderDetailResponseSchema,
   OrderListQuerySchema as M11OrderListQuerySchema,
   OrderListResponseSchema as M11OrderListResponseSchema,
   OrderViewResponseSchema as M11OrderViewResponseSchema,
@@ -6327,7 +6328,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "GET /api/v1/orders/:id": {
     summary: "Order detail (lifecycle, signatures, verbal deadline, results state)",
-    response: M11OrderViewResponseSchema,
+    response: M11OrderDetailResponseSchema,
   },
   "PATCH /api/v1/orders/:id": {
     summary: "Edit a draft order (draft only)",

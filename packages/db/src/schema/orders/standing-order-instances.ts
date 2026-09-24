@@ -6,6 +6,7 @@
 // hope_submission_item precedent) — the unique index still guards one-instance-per-spawned-order. Actor
 // refs go to M1 `membership`. RLS + grants + M4 write-audit trigger (spawn_context_note denylisted, §8.1)
 // land in the RLS migration.
+import { sql } from "drizzle-orm";
 import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { standingOrderSpawnedBy } from "../../enums";
 import { locations } from "../locations";
@@ -31,6 +32,8 @@ export const standingOrderInstances = pgTable(
       .references(() => standingOrders.id, { onDelete: "restrict" }),
     orderRecordId: uuid("order_record_id").notNull(), // order_record is partitioned → no single-col SQL FK
     spawnedAt: timestamp("spawned_at", { withTimezone: true }).notNull().defaultNow(),
+    /** Scheduled occurrence identity: copied from the template's locked `next_spawn_at`; NULL for PRN. */
+    scheduledFor: timestamp("scheduled_for", { withTimezone: true }),
     spawnedBy: standingOrderSpawnedBy("spawned_by").notNull(),
     spawnedByMembershipId: uuid("spawned_by_membership_id").references(() => memberships.id, {
       onDelete: "restrict",
@@ -44,6 +47,9 @@ export const standingOrderInstances = pgTable(
       t.spawnedAt,
     ),
     byOrder: uniqueIndex("standing_order_instance_order_uq").on(t.orderRecordId),
+    scheduledOccurrence: uniqueIndex("standing_order_instance_scheduled_occurrence_uq")
+      .on(t.standingOrderId, t.scheduledFor)
+      .where(sql`scheduled_for IS NOT NULL`),
   }),
 );
 

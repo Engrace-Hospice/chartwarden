@@ -1,6 +1,7 @@
 // M11's live M14 order-request consumer. IDG recommendations become reviewable draft orders;
 // no signature, activation, transmission, or other privileged clinical action is automated.
 import { type DbClient, schema } from "@wardenx/db";
+import { ORDER_KIND_VERSION, validateOrderData } from "@wardenx/orders";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { RequestedOrderInput } from "@wardenx/types";
 import { and, eq } from "drizzle-orm";
@@ -137,6 +138,21 @@ export function buildM11IdgDecisionConsumer(deps: {
 
           const orderIds: string[] = [];
           for (const request of requests) {
+            const data = {
+              requestedKind: request.kindHint,
+              narrative: request.narrative,
+              recommendedTimeframe: request.recommendedTimeframe,
+              triggeringProblemId: request.triggeringProblemId,
+            };
+            const findings = validateOrderData(
+              "idg_requested",
+              ORDER_KIND_VERSION.idg_requested,
+              data,
+            );
+            if (findings.length)
+              throw new Error(
+                `M14 idg_requested payload violates the M11 registry: ${findings.map((f) => `${f.field}: ${f.message}`).join("; ")}`,
+              );
             const [order] = await tx
               .insert(ORDER)
               .values({
@@ -147,12 +163,7 @@ export function buildM11IdgDecisionConsumer(deps: {
                 admissionId: context.admissionId,
                 kind: "idg_requested",
                 kindVersion: "idg_requested.v1",
-                data: {
-                  requestedKind: request.kindHint,
-                  narrative: request.narrative,
-                  recommendedTimeframe: request.recommendedTimeframe,
-                  triggeringProblemId: request.triggeringProblemId,
-                },
+                data,
                 priority: "routine",
                 indicationText: request.narrative,
                 status: "draft",

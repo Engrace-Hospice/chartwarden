@@ -13,7 +13,10 @@
 // write path never blocks on an external dependency (the M10 §7.13 fail-open convention).
 import {
   DEFAULT_COSIGN_POLICY,
+  assertSpawnAllowed,
   type LevelOfCare,
+  ORDER_KIND_VERSION,
+  computeNextSpawnAt,
   type OrderCosignPolicy,
   computeVerbalDeadline,
   disciplineCanOrder,
@@ -24,6 +27,7 @@ import {
   resolveCosignRequirement,
   signerEligible,
   transitionOrder,
+  validateOrderData,
   validateVerbalWindowHours,
 } from "@wardenx/orders";
 import type {
@@ -34,7 +38,7 @@ import type {
   StandingOrderCadence,
   StandingOrderStatus,
 } from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError, ValidationError } from "@wardenx/types";
 
 /** Minimal M40 `MdmEntityProvider` subset the order service binds (physician / DME-vendor resolution). */
 export interface OrderMdmValidator {
@@ -87,6 +91,81 @@ export interface OrderView {
   readonly signedBy: string | null;
   readonly completedAt: string | null;
   readonly createdAt: string;
+}
+
+/** PHI-bearing payload projection returned only by the single-order detail read. */
+export interface OrderDetailView extends OrderView {
+  readonly kindVersion: string;
+  readonly data: unknown;
+  readonly requirements: readonly OrderRequirement[];
+  readonly allowedActions: OrderAllowedActions;
+}
+
+/** Detail-only workflow projection. It is deliberately never persisted. */
+export interface OrderRequirement {
+  readonly code: "clinical_details" | "rn_cosignature" | "physician_signature" | "verbal_signature";
+  readonly label: string;
+  readonly status: "not_required" | "pending" | "satisfied";
+  readonly deadlineAt?: string;
+}
+export interface OrderAllowedActions {
+  readonly edit: boolean;
+  readonly request_signature: boolean;
+  readonly record_verbal: boolean;
+  readonly sign: boolean;
+  readonly cosign: boolean;
+  readonly complete: boolean;
+  readonly discontinue: boolean;
+  readonly correct: boolean;
+}
+/** A server-assembled snapshot; never accepted from an HTTP body or query. */
+export interface OrderDetailActor {
+  readonly membershipId: string;
+  readonly roles: readonly string[];
+  readonly disciplines: readonly string[];
+  readonly permissions: ReadonlySet<string>;
+}
+
+/** Non-HTTP callers may omit a projection actor; this is deliberately unprivileged. */
+export const EMPTY_ORDER_DETAIL_ACTOR: OrderDetailActor = Object.freeze({
+  membershipId: "",
+  roles: [],
+  disciplines: [],
+  permissions: new Set<string>(),
+});
+
+export function buildOrderWorkflowProjection(
+  order: Pick<OrderDetailView, "kind" | "kindVersion" | "data" | "status" | "cosignRequired" | "cosignStatus" | "verbalDeadlineAt" | "drafterMembershipId" | "signedAt">,
+  actor: OrderDetailActor,
+  cosignerRoleNeeded: "rn_case_manager" | "clinical_supervisor" | "medical_director" | null,
+): Pick<OrderDetailView, "requirements" | "allowedActions"> {
+  const clinical = validateOrderData(order.kind, order.kindVersion, order.data).length === 0;
+  const signatureApplies = ["pending_signature", "verbal_pending"].includes(order.status);
+  const verbal = order.status === "verbal_pending";
+  const lowerRoles = actor.roles.map((x) => x.toLowerCase());
+  const canCosignRole = cosignerRoleNeeded === "medical_director"
+    ? lowerRoles.includes("medical_director")
+    : lowerRoles.some((x) => x === "rn_case_manager" || x === "clinical_supervisor");
+  const canSign = actor.disciplines.some((d) => signerEligible(d, order.kind));
+  const has = (permission: string) => actor.permissions.has(permission);
+  return {
+    requirements: [
+      { code: "clinical_details", label: "Clinical details", status: clinical ? "satisfied" : "pending" },
+      { code: "rn_cosignature", label: "Required cosignature", status: !order.cosignRequired ? "not_required" : order.cosignStatus === "attached" ? "satisfied" : "pending" },
+      { code: "physician_signature", label: "Required signature", status: !signatureApplies ? "not_required" : order.signedAt ? "satisfied" : "pending" },
+      { code: "verbal_signature", label: "Verbal-order signature", status: !verbal ? "not_required" : order.signedAt ? "satisfied" : "pending", ...(verbal && order.verbalDeadlineAt ? { deadlineAt: order.verbalDeadlineAt } : {}) },
+    ],
+    allowedActions: {
+      edit: order.status === "draft" && has("orders.draft"),
+      request_signature: order.status === "draft" && clinical && has("orders.draft"),
+      record_verbal: order.status === "pending_signature" && has("orders.verbal.record"),
+      sign: signatureApplies && order.cosignStatus !== "pending" && canSign && has("orders.sign"),
+      cosign: order.cosignRequired && order.cosignStatus === "pending" && order.drafterMembershipId !== actor.membershipId && canCosignRole && has("orders.cosign"),
+      complete: order.status === "active" && has("orders.complete"),
+      discontinue: ["pending_signature", "verbal_pending", "active"].includes(order.status) && has("orders.discontinue"),
+      correct: order.status === "active" && has("orders.amend"),
+    },
+  };
 }
 
 export interface StandingOrderView {
@@ -158,6 +237,10 @@ export interface CreateStandingArgs {
   readonly signerDiscipline: string;
   readonly cadence: StandingOrderCadence;
   readonly data: unknown;
+  /** M40 physician identity carried by every spawned Order; never synthesize a placeholder. */
+  readonly orderingPhysicianMdmId: string;
+  readonly effectiveFrom?: string;
+  readonly effectiveUntil?: string;
   readonly maxSpawns?: number;
 }
 export interface VerbalPolicyArgs {
@@ -191,56 +274,64 @@ export interface OrderRouteService extends OrderAbacResolver {
     organizationId: string,
     filter: { patientId?: string; admissionId?: string; kind?: string; status?: string },
   ): Promise<{ orders: OrderView[] }>;
-  getOrder(organizationId: string, id: string): Promise<OrderView>;
-  createDraft(organizationId: string, userId: string, args: CreateOrderArgs): Promise<OrderView>;
+  getOrder(organizationId: string, id: string, actor?: OrderDetailActor): Promise<OrderDetailView>;
+  createDraft(organizationId: string, userId: string, args: CreateOrderArgs, actor?: OrderDetailActor): Promise<OrderDetailView>;
   editDraft(
     organizationId: string,
     id: string,
     data: unknown,
     priority?: OrderPriority,
-  ): Promise<OrderView>;
+    actor?: OrderDetailActor,
+  ): Promise<OrderDetailView>;
   requestSignature(
     organizationId: string,
     id: string,
     args: RequestSignatureArgs,
-  ): Promise<OrderView>;
-  signOrder(organizationId: string, userId: string, id: string, args: SignArgs): Promise<OrderView>;
+    actor?: OrderDetailActor,
+  ): Promise<OrderDetailView>;
+  signOrder(organizationId: string, userId: string, id: string, args: SignArgs, actor?: OrderDetailActor): Promise<OrderDetailView>;
   signOnBehalf(
     organizationId: string,
     userId: string,
     id: string,
     args: SignOnBehalfArgs,
-  ): Promise<OrderView>;
+    actor?: OrderDetailActor,
+  ): Promise<OrderDetailView>;
   recordVerbal(
     organizationId: string,
     userId: string,
     id: string,
     args: RecordVerbalArgs,
-  ): Promise<OrderView>;
+    actor?: OrderDetailActor,
+  ): Promise<OrderDetailView>;
   cosignOrder(
     organizationId: string,
     userId: string,
     id: string,
     args: CosignArgs,
-  ): Promise<OrderView>;
+    actor?: OrderDetailActor,
+  ): Promise<OrderDetailView>;
   discontinueOrder(
     organizationId: string,
     userId: string,
     id: string,
     args: DiscontinueArgs,
-  ): Promise<OrderView>;
+    actor?: OrderDetailActor,
+  ): Promise<OrderDetailView>;
   correctOrder(
     organizationId: string,
     userId: string,
     id: string,
     args: CreateOrderArgs,
-  ): Promise<OrderView>;
+    actor?: OrderDetailActor,
+  ): Promise<OrderDetailView>;
   completeOrder(
     organizationId: string,
     userId: string,
     id: string,
     reason?: string,
-  ): Promise<OrderView>;
+    actor?: OrderDetailActor,
+  ): Promise<OrderDetailView>;
   pendingSignature(organizationId: string): Promise<{ orders: OrderView[] }>;
   verbalExpiring(organizationId: string): Promise<{ orders: OrderView[] }>;
   cosignPending(organizationId: string): Promise<{ orders: OrderView[] }>;
@@ -265,7 +356,7 @@ export interface OrderRouteService extends OrderAbacResolver {
   editStandingOrder(
     organizationId: string,
     id: string,
-    patch: { maxSpawns?: number },
+    patch: { data?: unknown; effectiveUntil?: string; maxSpawns?: number },
   ): Promise<StandingOrderView>;
   pauseStandingOrder(organizationId: string, id: string): Promise<StandingOrderView>;
   resumeStandingOrder(organizationId: string, id: string): Promise<StandingOrderView>;
@@ -278,25 +369,35 @@ export interface OrderRouteService extends OrderAbacResolver {
     organizationId: string,
     userId: string,
     id: string,
+    trigger?: "clinician_request" | "system",
+    scheduledFor?: string,
   ): Promise<{ orderId: string }>;
+  spawnDueStandingOrders(organizationId: string, now?: string): Promise<{ spawnedOrderIds: string[] }>;
   getVerbalPolicy(organizationId: string): Promise<VerbalPolicyView>;
   putVerbalPolicy(organizationId: string, args: VerbalPolicyArgs): Promise<VerbalPolicyView>;
-  regenerateVerbalTimer(organizationId: string, id: string): Promise<OrderView>;
+  regenerateVerbalTimer(
+    organizationId: string,
+    id: string,
+    actor?: OrderDetailActor,
+  ): Promise<OrderDetailView>;
   /** Drain (and clear) the §4.4 outbox events recorded since the last call (test/relay seam). */
   drainEvents(): RecordedOrderEvent[];
 }
 
 // ── in-memory records (the slice mutates these; the view DTOs are the read-only projections) ────────────
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
-interface OrderRecord extends Mutable<OrderView> {
+interface OrderRecord extends Mutable<Omit<OrderDetailView, "requirements" | "allowedActions">> {
   organizationId: string;
-  data: unknown;
   cosignerRoleNeeded: "rn_case_manager" | "clinical_supervisor" | "medical_director" | null;
 }
 interface StandingRecord extends Mutable<StandingOrderView> {
   organizationId: string;
   signerDiscipline: string;
+  orderingPhysicianMdmId: string;
   data: unknown;
+  kindVersion: string;
+  effectiveFrom: string;
+  effectiveUntil: string | null;
 }
 
 export interface OrderRouteSeed {
@@ -392,6 +493,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       signedBy: null,
       completedAt: null,
       createdAt: now(),
+      kindVersion: `${s.kind}.v1`,
       data: {},
       ...s,
     } as OrderRecord);
@@ -402,7 +504,11 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       spawnCount: 0,
       maxSpawns: null,
       signerDiscipline: "rn_case_manager",
+      orderingPhysicianMdmId: "00000000-0000-4000-8000-0000000000ff",
       data: {},
+      kindVersion: ORDER_KIND_VERSION[s.kind],
+      effectiveFrom: now(),
+      effectiveUntil: null,
       ...s,
     } as StandingRecord);
 
@@ -414,9 +520,15 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     events.push({ eventName, payload, idempotencyKey });
   };
   const view = (r: OrderRecord): OrderView => {
-    const { organizationId: _o, data: _d, cosignerRoleNeeded: _c, ...v } = r;
+    const { organizationId: _o, data: _d, kindVersion: _k, cosignerRoleNeeded: _c, ...v } = r;
     return v;
   };
+  const detailView = (r: OrderRecord, actor: OrderDetailActor): OrderDetailView => ({
+    ...view(r),
+    kindVersion: r.kindVersion,
+    data: r.data,
+    ...buildOrderWorkflowProjection(r, actor, r.cosignerRoleNeeded),
+  });
   const viewSt = (r: StandingRecord): StandingOrderView => {
     const { organizationId: _o, signerDiscipline: _s, data: _d, ...v } = r;
     return v;
@@ -472,17 +584,19 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       );
       return { orders: all.map(view) };
     },
-    async getOrder(organizationId, id) {
-      return view(find(organizationId, id));
+    async getOrder(organizationId, id, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      const r = find(organizationId, id);
+      return detailView(r, actor);
     },
 
-    async createDraft(organizationId, userId, args) {
+    async createDraft(organizationId, userId, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       // §2.1 / §4.7 author floor (defense-in-depth on top of the route's `discipline_can_order` ABAC).
       if (!disciplineCanOrder(args.drafterDiscipline, args.kind))
         throw new NotFoundError(
           `discipline '${args.drafterDiscipline}' may not author a '${args.kind}' order`,
         );
       await bindCrossModuleRefs(organizationId, args);
+      // Drafts may retain partial clinical details; signature request is the completion gate.
       const id = nextId();
       const rec: OrderRecord = {
         id,
@@ -510,6 +624,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         signedBy: null,
         completedAt: null,
         createdAt: now(),
+        kindVersion: `${args.kind}.v1`,
         data: args.data,
       };
       orders.set(id, rec);
@@ -524,21 +639,31 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         },
         `${id}:draft_created`,
       );
-      return view(rec);
+      return detailView(rec, actor);
     },
 
-    async editDraft(organizationId, id, data, priority) {
+    async editDraft(organizationId, id, data, priority, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
       if (r.status !== "draft")
         throw new NotFoundError(`order ${id} is not a draft and cannot be edited`);
       r.data = data;
       if (priority) r.priority = priority;
       r.version += 1;
-      return view(r);
+      return detailView(r, actor);
     },
 
-    async requestSignature(organizationId, id, args) {
+    async requestSignature(organizationId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
+      const findings = validateOrderData(r.kind, r.kindVersion, r.data);
+      if (findings.length)
+        throw new ValidationError(
+          "Order is not ready for signature",
+          findings.map((finding) => ({
+            field: `data.${finding.field}`,
+            code: "INVALID",
+            message: finding.message,
+          })),
+        );
       const requirement = resolveCosignRequirement({
         kind: r.kind,
         drafterDiscipline: r.drafterDiscipline,
@@ -567,27 +692,27 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
           { orderId: id, cosignerRoleNeeded: requirement.cosignerRoleNeeded },
           `${id}:cosign_requested`,
         );
-      return view(r);
+      return detailView(r, actor);
     },
 
-    async signOrder(organizationId, userId, id, args) {
+    async signOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return signInternal(
         organizationId,
         userId,
         id,
         args.signerDiscipline,
         args.signedAtClient,
-        false,
+        false, actor,
       );
     },
-    async signOnBehalf(organizationId, userId, id, args) {
+    async signOnBehalf(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const v = await signInternal(
         organizationId,
         userId,
         id,
         args.signerDiscipline,
         args.signedAtClient,
-        true,
+        true, actor,
       );
       emit(
         "m11.order.signed_on_behalf",
@@ -597,7 +722,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       return v;
     },
 
-    async recordVerbal(organizationId, userId, id, args) {
+    async recordVerbal(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
       const t = transitionOrder(r.status, {
         type: "recordVerbal",
@@ -618,10 +743,10 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         { orderId: id, deadlineAt: r.verbalDeadlineAt },
         `${id}:verbal_received`,
       );
-      return view(r);
+      return detailView(r, actor);
     },
 
-    async cosignOrder(organizationId, userId, id, args) {
+    async cosignOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
       planCosignAttest({
         orderId: id,
@@ -637,10 +762,10 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         { orderId: id, cosignerRole: args.cosignerRole },
         `${id}:cosigned`,
       );
-      return view(r);
+      return detailView(r, actor);
     },
 
-    async discontinueOrder(organizationId, userId, id, args) {
+    async discontinueOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
       const t = transitionOrder(r.status, {
         type: "discontinue",
@@ -661,15 +786,28 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         },
         `${id}:discontinued`,
       );
-      return view(r);
+      return detailView(r, actor);
     },
 
-    async correctOrder(organizationId, userId, id, args) {
+    async correctOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const original = find(organizationId, id);
+      // Match the production supersede trigger: only a correctable active order may be replaced, and
+      // the historical original is discontinued rather than edited or deleted.
+      transitionOrder(original.status, {
+        type: "discontinue",
+        kind: original.kind,
+        reason: "replaced_by_corrected_order",
+        fulfillmentInFlight: false,
+      });
+      const findings = validateOrderData(args.kind, ORDER_KIND_VERSION[args.kind], args.data);
+      if (findings.length)
+        throw new ValidationError("Corrected order clinical details are invalid", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
       const correction = await this.createDraft(organizationId, userId, {
         ...args,
         replacesOrderId: id,
-      });
+      }, actor);
+      original.status = "discontinued";
+      original.discontinuationReason = "replaced_by_corrected_order";
       original.version += 1;
       emit(
         "m11.order.corrected",
@@ -679,13 +817,13 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       return correction;
     },
 
-    async completeOrder(organizationId, userId, id, _reason) {
+    async completeOrder(organizationId, userId, id, _reason, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
       const t = transitionOrder(r.status, { type: "complete", criterionMet: true });
       r.status = t.to;
       r.completedAt = now();
       emit("m11.order.completed", { orderId: id, completedBy: userId }, `${id}:completed`);
-      return view(r);
+      return detailView(r, actor);
     },
 
     async pendingSignature(organizationId) {
@@ -737,6 +875,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     async createStandingOrder(organizationId, userId, args) {
       planStandingCreation({ kind: args.kind, signerDiscipline: args.signerDiscipline }); // §2.4 D5 eligibility guards.
       const id = nextId();
+      const effectiveFrom = args.effectiveFrom ?? now();
       const rec: StandingRecord = {
         id,
         organizationId,
@@ -745,11 +884,16 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         kind: args.kind,
         cadence: args.cadence,
         status: "active",
-        nextSpawnAt: null,
+        // The hourly worker queries this durable cursor; PRN templates deliberately have none.
+        nextSpawnAt: computeNextSpawnAt(args.cadence, {}, effectiveFrom, tz),
         spawnCount: 0,
         maxSpawns: args.maxSpawns ?? null,
         signerDiscipline: args.signerDiscipline,
+        orderingPhysicianMdmId: args.orderingPhysicianMdmId,
         data: args.data,
+        kindVersion: ORDER_KIND_VERSION[args.kind],
+        effectiveFrom,
+        effectiveUntil: args.effectiveUntil ?? null,
       };
       standings.set(id, rec);
       emit(
@@ -761,6 +905,8 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     },
     async editStandingOrder(organizationId, id, patch) {
       const r = findSt(organizationId, id);
+      if (patch.data !== undefined) r.data = patch.data;
+      if (patch.effectiveUntil !== undefined) r.effectiveUntil = patch.effectiveUntil;
       if (patch.maxSpawns != null) r.maxSpawns = patch.maxSpawns;
       return viewSt(r);
     },
@@ -785,20 +931,34 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       );
       return viewSt(r);
     },
-    async spawnStandingOrder(organizationId, userId, id) {
+    async spawnStandingOrder(organizationId, userId, id, trigger = "clinician_request", scheduledFor) {
       const r = findSt(organizationId, id);
       if (r.status !== "active")
         throw new NotFoundError(
           `standing order ${id} is ${r.status}; only an active template may spawn`,
         );
+      assertSpawnAllowed(
+        {
+          status: r.status,
+          isSigned: true,
+          effectiveFrom: r.effectiveFrom,
+          effectiveUntil: r.effectiveUntil,
+          maxSpawns: r.maxSpawns,
+          spawnCount: r.spawnCount,
+        },
+        now(),
+      );
       const plan = planStandingSpawn({
         kind: r.kind,
         cadence: r.cadence,
         cadenceDetail: {},
-        spawnedBy: "clinician_request",
+        spawnedBy: trigger,
         now: now(),
         timeZone: tz,
       });
+      const findings = validateOrderData(r.kind, r.kindVersion, r.data);
+      if (findings.length)
+        throw new ValidationError("Standing-order template clinical details are invalid", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
       const orderId = nextId();
       orders.set(orderId, {
         id: orderId,
@@ -811,7 +971,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         version: 1,
         drafterMembershipId: userId,
         drafterDiscipline: r.signerDiscipline,
-        orderingPhysicianMdmId: "00000000-0000-4000-8000-0000000000ff",
+        orderingPhysicianMdmId: r.orderingPhysicianMdmId,
         cosignRequired: false,
         cosignStatus: "attached",
         cosignerRoleNeeded: null,
@@ -826,16 +986,27 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         signedBy: userId,
         completedAt: null,
         createdAt: now(),
+        kindVersion: r.kindVersion,
         data: r.data,
       });
       r.spawnCount += 1;
       emit(
         "m11.order.standing_spawned",
-        { standingOrderId: id, orderId },
+        { standingOrderId: id, orderId, spawnedBy: trigger, ...(scheduledFor ? { scheduledFor } : {}) },
         `${orderId}:standing_spawned`,
       );
       emit("m11.order.signed", { orderId, kind: r.kind }, `${orderId}:signed`);
       return { orderId };
+    },
+    async spawnDueStandingOrders(organizationId, at = now()) {
+      const spawnedOrderIds: string[] = [];
+      for (const r of standings.values()) {
+        if (r.organizationId !== organizationId || !r.nextSpawnAt || r.nextSpawnAt > at) continue;
+        try {
+          spawnedOrderIds.push((await this.spawnStandingOrder(organizationId, "system", r.id, "system", r.nextSpawnAt)).orderId);
+        } catch { /* one legacy/invalid template must not poison the org sweep */ }
+      }
+      return { spawnedOrderIds };
     },
 
     async getVerbalPolicy(_organizationId) {
@@ -853,7 +1024,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       };
       return policy;
     },
-    async regenerateVerbalTimer(organizationId, id) {
+    async regenerateVerbalTimer(organizationId, id, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
       if (r.status !== "verbal_pending")
         throw new NotFoundError(`order ${id} is not verbal_pending`);
@@ -868,7 +1039,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         { orderId: id, deadlineAt: r.verbalDeadlineAt, regenerated: true },
         `${id}:regenerated:${now()}`,
       );
-      return view(r);
+      return detailView(r, actor);
     },
 
     // ── §4.7 ABAC resolver ────────────────────────────────────────────────────────────────────────────
@@ -899,7 +1070,8 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     signerDiscipline: string,
     _signedAtClient: string,
     onBehalf: boolean,
-  ): Promise<OrderView> {
+    actor: OrderDetailActor,
+  ): Promise<OrderDetailView> {
     const r = find(organizationId, id);
     if (!signerEligible(signerDiscipline, r.kind)) {
       // surfaced as the §4.7 ABAC floor at the route; defense-in-depth here.
@@ -933,6 +1105,6 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       },
       `${id}:document_requested`,
     );
-    return Promise.resolve(view(r));
+    return Promise.resolve(detailView(r, actor));
   }
 }

@@ -411,7 +411,10 @@ export const DischargeCosignSchema = Type.Object({
 const NOR_METHODS = ["wet_ink_scanned", "electronic_witnessed", "verbal_with_witness"] as const;
 
 export const NorAcknowledgeSchema = Type.Object({
-  formVersionId: Uuid(),
+  // The current NOR acknowledgement persistence has no form-version column and the admission UI
+  // has no form-version source. Keep the field accepted for forward compatibility, but do not
+  // reject the functional acknowledgement flow for omitting a value that cannot be retained.
+  formVersionId: Type.Optional(Uuid()),
   deliveryMethod: Type.Union(NOR_METHODS.map((m) => Type.Literal(m))),
   acknowledgedAt: Type.String({ format: "date-time" }),
   acknowledgedByName: Type.String({ minLength: 1, maxLength: 200 }),
