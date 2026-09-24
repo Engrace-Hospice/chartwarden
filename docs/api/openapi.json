@@ -168165,6 +168165,7 @@
                   "admissionId",
                   "kind",
                   "signerDiscipline",
+                  "orderingPhysicianMdmId",
                   "cadence",
                   "data"
                 ],
@@ -168216,6 +168217,10 @@
                   "signerDiscipline": {
                     "minLength": 1,
                     "maxLength": 64,
+                    "type": "string"
+                  },
+                  "orderingPhysicianMdmId": {
+                    "format": "uuid",
                     "type": "string"
                   },
                   "cadence": {

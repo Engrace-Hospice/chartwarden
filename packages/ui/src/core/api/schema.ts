@@ -64139,6 +64139,8 @@ export interface operations {
                     admissionId: string;
                     kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
                     signerDiscipline: string;
+                    /** Format: uuid */
+                    orderingPhysicianMdmId: string;
                     cadence: "daily" | "weekly" | "biweekly" | "monthly" | "prn";
                     data: unknown;
                     /** Format: date-time */

@@ -30,6 +30,8 @@ import { type DbClient, schema } from "@wardenx/db";
 import {
   DEFAULT_COSIGN_POLICY,
   ORDER_KIND_VERSION,
+  assertSpawnAllowed,
+  computeNextSpawnAt,
   type OrderCosignPolicy,
   computeVerbalDeadline,
   disciplineCanOrder,
@@ -55,8 +57,8 @@ import {
   type StandingOrderStatus,
 } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
-import { type SQL, and, desc, eq } from "drizzle-orm";
-import { buildOrderWorkflowProjection } from "./routes/service";
+import { type SQL, and, desc, eq, lte } from "drizzle-orm";
+import { buildOrderWorkflowProjection, EMPTY_ORDER_DETAIL_ACTOR } from "./routes/service";
 import type {
   CreateOrderArgs,
   OrderAbacFacts,
@@ -75,9 +77,6 @@ const OS = schema.orderSignatures;
 const VO = schema.verbalOrders;
 const VP = schema.orderVerbalPolicies;
 const OD = schema.orderDiscontinuations;
-
-/** The M40 ordering-physician sentinel used when the route/standing-spawn threads none (app-validated, no FK). */
-const PHYSICIAN_SENTINEL = "00000000-0000-4000-8000-0000000000ff";
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
@@ -274,9 +273,20 @@ export function createDbOrderBackend(
     });
 
   /** Re-read one order (post-write, RLS-scoped) as the joined view or a non-leaking 404. */
-  async function readOrder(tx: DbClient, id: string): Promise<OrderDetailView> {
+  async function readOrder(
+    tx: DbClient,
+    id: string,
+    actor: OrderDetailActor,
+  ): Promise<OrderDetailView> {
     const rows = (await selectOrders(tx, eq(OR.id, id)).limit(1)) as unknown as OrderRow[];
-    return toOrderDetailView(firstOrThrow(rows, `order ${id} not found`), { membershipId: "", roles: [], disciplines: [], permissions: new Set() });
+    const row = firstOrThrow(rows, `order ${id} not found`);
+    const policy = await cosignPolicyOf(tx);
+    const needed = row.cosignRequired
+      ? (lpnCosignRequired(row.drafterDiscipline, row.kind as OrderKind, policy)
+          ? "rn_case_manager"
+          : null)
+      : null;
+    return toOrderDetailView(row, actor, needed);
   }
 
   /** The standing-order view projection reused by every standing read/write (same-tx, RLS-scoped). */
@@ -425,8 +435,9 @@ export function createDbOrderBackend(
     id: string,
     signerDiscipline: string,
     onBehalf: boolean,
+    actor: OrderDetailActor,
     onBehalfArgs?: { onBehalfOf: string; reason: string },
-  ): Promise<OrderView> {
+  ): Promise<OrderDetailView> {
     const r = await loadOrderRow(tx, id);
     if (!signerEligible(signerDiscipline, r.kind))
       throw new NotFoundError(
@@ -509,7 +520,7 @@ export function createDbOrderBackend(
         });
       }
     }
-    return readOrder(tx, id);
+    return readOrder(tx, id, actor);
   }
 
   return {
@@ -522,18 +533,9 @@ export function createDbOrderBackend(
       if (filter.status) conds.push(eq(OR.status, filter.status as OrderStatus));
       return listWhere(organizationId, conds.length ? and(...conds) : undefined);
     },
-    async getOrder(organizationId, id, actor = { membershipId: "", roles: [], disciplines: [], permissions: new Set() }) {
+    async getOrder(organizationId, id, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const rows = (await selectOrders(tx as DbClient, eq(OR.id, id)).limit(
-          1,
-        )) as unknown as OrderRow[];
-        if (!rows[0]) throw new NotFoundError(`order ${id} not found`);
-        const r = rows[0];
-        const policy = await cosignPolicyOf(tx as DbClient);
-        const needed = r.cosignRequired
-          ? (lpnCosignRequired(r.drafterDiscipline, r.kind as OrderKind, policy) ? "rn_case_manager" : null)
-          : null;
-        return toOrderDetailView(r, actor, needed);
+        return readOrder(tx as DbClient, id, actor);
       });
     },
     async pendingSignature(organizationId) {
@@ -557,15 +559,15 @@ export function createDbOrderBackend(
     },
 
     // ── Order writes (§2.2 lifecycle; the DB triggers do the state transitions) ──────────────────────
-    async createDraft(organizationId, userId, args) {
+    async createDraft(organizationId, userId, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const id = await insertDraft(t, organizationId, userId, args, args.replacesOrderId ?? null);
-        return readOrder(t, id);
+        return readOrder(t, id, actor);
       });
     },
 
-    async editDraft(organizationId, id, data, priority) {
+    async editDraft(organizationId, id, data, priority, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
@@ -580,11 +582,11 @@ export function createDbOrderBackend(
             updatedAt: new Date(),
           })
           .where(eq(OR.id, id));
-        return readOrder(t, id);
+        return readOrder(t, id, actor);
       });
     },
 
-    async requestSignature(organizationId, id, args) {
+    async requestSignature(organizationId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
@@ -633,11 +635,11 @@ export function createDbOrderBackend(
             kind: r.kind,
             cosignerRoleNeeded: requirement.cosignerRoleNeeded,
           });
-        return readOrder(t, id);
+        return readOrder(t, id, actor);
       });
     },
 
-    async signOrder(organizationId, userId, id, args) {
+    async signOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         signInternal(
           tx as unknown as DbClient,
@@ -646,10 +648,11 @@ export function createDbOrderBackend(
           id,
           args.signerDiscipline,
           false,
+          actor,
         ),
       );
     },
-    async signOnBehalf(organizationId, userId, id, args) {
+    async signOnBehalf(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         signInternal(
           tx as unknown as DbClient,
@@ -658,6 +661,7 @@ export function createDbOrderBackend(
           id,
           args.signerDiscipline,
           true,
+          actor,
           {
             onBehalfOf: args.onBehalfOf,
             reason: args.reason,
@@ -666,7 +670,7 @@ export function createDbOrderBackend(
       );
     },
 
-    async recordVerbal(organizationId, userId, id, args) {
+    async recordVerbal(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
@@ -715,11 +719,11 @@ export function createDbOrderBackend(
           orderingPhysicianMdmId: args.orderingPhysicianMdmId,
           recordingMembershipId: userId,
         });
-        return readOrder(t, id);
+        return readOrder(t, id, actor);
       });
     },
 
-    async cosignOrder(organizationId, userId, id, args) {
+    async cosignOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
@@ -768,11 +772,11 @@ export function createDbOrderBackend(
           cosignerRole: args.cosignerRole,
           cosignerMembershipId: userId,
         });
-        return readOrder(t, id);
+        return readOrder(t, id, actor);
       });
     },
 
-    async discontinueOrder(organizationId, userId, id, args) {
+    async discontinueOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
@@ -813,11 +817,11 @@ export function createDbOrderBackend(
           actorMembershipId: userId,
           effectiveAt: new Date(args.effectiveAt).toISOString(),
         });
-        return readOrder(t, id);
+        return readOrder(t, id, actor);
       });
     },
 
-    async correctOrder(organizationId, userId, id, args) {
+    async correctOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         await loadOrderRow(t, id); // 404 if the original is cross-tenant/absent
@@ -833,11 +837,11 @@ export function createDbOrderBackend(
           kind: args.kind,
           drafterMembershipId: userId,
         });
-        return readOrder(t, newId);
+        return readOrder(t, newId, actor);
       });
     },
 
-    async completeOrder(organizationId, userId, id, _reason) {
+    async completeOrder(organizationId, userId, id, _reason, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
@@ -852,7 +856,7 @@ export function createDbOrderBackend(
           completedAt: at.toISOString(),
           kindAutoOrManual: "manual",
         });
-        return readOrder(t, id);
+        return readOrder(t, id, actor);
       });
     },
 
@@ -906,6 +910,7 @@ export function createDbOrderBackend(
         const t = tx as unknown as DbClient;
         planStandingCreation({ kind: args.kind, signerDiscipline: args.signerDiscipline }); // §2.4 D5 guards
         const at = new Date();
+        const effectiveFrom = args.effectiveFrom ? new Date(args.effectiveFrom) : at;
         const row = firstOrThrow(
           await t
             .insert(SO)
@@ -914,14 +919,20 @@ export function createDbOrderBackend(
               patientId: args.patientId,
               admissionId: args.admissionId,
               kind: args.kind,
-              kindVersion: `${args.kind}.v1`,
+              kindVersion: ORDER_KIND_VERSION[args.kind],
               templateData: args.data ?? {},
               cadence: args.cadence,
-              effectiveFrom: at,
+              effectiveFrom,
+              effectiveUntil: args.effectiveUntil ? new Date(args.effectiveUntil) : null,
               maxSpawns: args.maxSpawns ?? null,
               spawnCount: 0,
-              orderingPhysicianMdmId: PHYSICIAN_SENTINEL,
+              // Scheduled templates must have a cursor from creation; PRN remains null by definition.
+              nextSpawnAt: computeNextSpawnAt(args.cadence, {}, effectiveFrom.toISOString())
+                ? new Date(computeNextSpawnAt(args.cadence, {}, effectiveFrom.toISOString())!)
+                : null,
+              orderingPhysicianMdmId: args.orderingPhysicianMdmId,
               signedByMembershipId: userId,
+              signerDiscipline: args.signerDiscipline,
               signedAt: at,
               status: "active",
             })
@@ -957,10 +968,21 @@ export function createDbOrderBackend(
           .where(eq(SO.id, id))
           .limit(1)) as (typeof SO.$inferSelect)[];
         if (!existing) throw new NotFoundError(`standing order ${id} not found`);
-        if (patch.maxSpawns != null)
+        if (
+          patch.data !== undefined ||
+          patch.effectiveUntil !== undefined ||
+          patch.maxSpawns != null
+        )
           await t
             .update(SO)
-            .set({ maxSpawns: patch.maxSpawns, updatedAt: new Date() })
+            .set({
+              ...(patch.data !== undefined ? { templateData: patch.data } : {}),
+              ...(patch.effectiveUntil !== undefined
+                ? { effectiveUntil: new Date(patch.effectiveUntil) }
+                : {}),
+              ...(patch.maxSpawns != null ? { maxSpawns: patch.maxSpawns } : {}),
+              updatedAt: new Date(),
+            })
             .where(eq(SO.id, id));
         return readStanding(t, id);
       });
@@ -997,24 +1019,42 @@ export function createDbOrderBackend(
         return readStanding(t, id);
       });
     },
-    async spawnStandingOrder(organizationId, userId, id) {
+    async spawnStandingOrder(organizationId, userId, id, trigger = "clinician_request", scheduledFor) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const [tmpl] = (await t
           .select()
           .from(SO)
           .where(eq(SO.id, id))
-          .limit(1)) as (typeof SO.$inferSelect)[];
+          .limit(1)
+          .for("update")) as (typeof SO.$inferSelect)[];
         if (!tmpl) throw new NotFoundError(`standing order ${id} not found`);
+        if (!tmpl.signerDiscipline || !tmpl.signedByMembershipId)
+          throw new ValidationError("Standing-order template signature attribution requires repair", [
+            { field: "signerDiscipline", code: "LEGACY_SIGNATURE_ATTRIBUTION_MISSING", message: "The signed template predates persisted signer discipline and cannot safely materialize." },
+          ]);
+        if (scheduledFor && tmpl.nextSpawnAt?.toISOString() !== scheduledFor)
+          return { orderId: "" }; // another locked worker already consumed this deterministic occurrence
         if (tmpl.status !== "active")
           throw new NotFoundError(
             `standing order ${id} is ${tmpl.status}; only an active template may spawn`,
           );
+        assertSpawnAllowed(
+          {
+            status: tmpl.status,
+            isSigned: tmpl.signedAt !== null,
+            effectiveFrom: tmpl.effectiveFrom.toISOString(),
+            effectiveUntil: tmpl.effectiveUntil?.toISOString() ?? null,
+            maxSpawns: tmpl.maxSpawns,
+            spawnCount: tmpl.spawnCount,
+          },
+          new Date().toISOString(),
+        );
         const plan = planStandingSpawn({
           kind: tmpl.kind as OrderKind,
           cadence: tmpl.cadence as StandingOrderCadence,
           cadenceDetail: {},
-          spawnedBy: "clinician_request",
+          spawnedBy: trigger,
           now: new Date().toISOString(),
         });
         const findings = validateOrderData(tmpl.kind as OrderKind, tmpl.kindVersion, tmpl.templateData);
@@ -1037,8 +1077,10 @@ export function createDbOrderBackend(
               priority: "routine",
               status: plan.spawnedOrderStatus,
               version: 1,
-              drafterMembershipId: userId,
-              drafterDiscipline: "rn_case_manager",
+              // The worker/requester materializes an already-authorized protocol; the template signer is
+              // the clinical author attribution of the active instance.
+              drafterMembershipId: tmpl.signedByMembershipId,
+              drafterDiscipline: tmpl.signerDiscipline,
               orderingPhysicianMdmId: tmpl.orderingPhysicianMdmId,
               standingOrderId: id,
               cosignRequired: false,
@@ -1058,7 +1100,8 @@ export function createDbOrderBackend(
               standingOrderId: id,
               orderRecordId: spawned.id,
               spawnedBy: "clinician_request",
-              spawnedByMembershipId: userId,
+              spawnedByMembershipId: trigger === "clinician_request" ? userId : null,
+              scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
             })
             .returning({ id: SOI.id }),
           "standing_order_instance insert returned no row",
@@ -1075,10 +1118,50 @@ export function createDbOrderBackend(
           standingOrderId: id,
           instanceId: inst.id,
           orderId: spawned.id,
-          spawnedBy: "clinician_request",
+          spawnedBy: trigger,
+        });
+        // D5's signature is inherited, not re-recorded on each instance.  The template id is therefore
+        // deliberately the signature-anchor identifier in this projection event; no synthetic
+        // `order_signature` row is created for a spawned order.
+        await emit(t, organizationId, "m11.order.signed", spawned.id, {
+          orderId: spawned.id,
+          kind: tmpl.kind,
+          signatureId: id,
+          signerMembershipId: tmpl.signedByMembershipId,
+          signedAt: (tmpl.signedAt ?? at).toISOString(),
+          viaVerbal: false,
+        });
+        await emit(t, organizationId, "m11.order.document_requested", spawned.id, {
+          orderId: spawned.id,
+          formTemplate: "order_record",
+          renderPayload: {
+            patientId: tmpl.patientId,
+            admissionId: tmpl.admissionId,
+            kind: tmpl.kind,
+            signedAt: (tmpl.signedAt ?? at).toISOString(),
+            signerMembershipId: tmpl.signedByMembershipId,
+            viaVerbal: false,
+            standingOrderId: id,
+          },
         });
         return { orderId: spawned.id };
       });
+    },
+    async spawnDueStandingOrders(organizationId, at = new Date().toISOString()) {
+      const candidates = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+        tx.select({ id: SO.id, nextSpawnAt: SO.nextSpawnAt }).from(SO).where(and(eq(SO.status, "active"), lte(SO.nextSpawnAt, new Date(at)))),
+      );
+      const spawnedOrderIds: string[] = [];
+      for (const candidate of candidates) {
+        if (!candidate.nextSpawnAt) continue;
+        try {
+          const result = await this.spawnStandingOrder(organizationId, "", candidate.id, "system", candidate.nextSpawnAt.toISOString());
+          if (result.orderId) spawnedOrderIds.push(result.orderId);
+        } catch {
+          // Isolate an invalid/legacy template; the next candidate still receives its own RLS transaction.
+        }
+      }
+      return { spawnedOrderIds };
     },
 
     // ── Verbal-order policy (one row per org; upsert on the per-org unique index) ─────────────────────
@@ -1139,7 +1222,7 @@ export function createDbOrderBackend(
         return readPolicy(t);
       });
     },
-    async regenerateVerbalTimer(organizationId, id) {
+    async regenerateVerbalTimer(organizationId, id, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
@@ -1176,7 +1259,7 @@ export function createDbOrderBackend(
           orderingPhysicianMdmId: v.orderingPhysicianMdmId,
           recordingMembershipId: v.recordingMembershipId,
         });
-        return readOrder(t, id);
+        return readOrder(t, id, actor);
       });
     },
 

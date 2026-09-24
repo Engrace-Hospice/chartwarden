@@ -144,6 +144,8 @@ export const CreateStandingOrderRequest = Type.Object({
   admissionId: Type.String({ format: "uuid" }),
   kind: ORDER_KIND,
   signerDiscipline: Type.String({ minLength: 1, maxLength: 64 }),
+  /** M40 physician identity inherited by each active spawned M11 Order. */
+  orderingPhysicianMdmId: Type.String({ format: "uuid" }),
   cadence: CADENCE,
   data: Type.Unknown(),
   effectiveFrom: Type.Optional(Type.String({ format: "date-time" })),

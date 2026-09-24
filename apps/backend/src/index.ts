@@ -223,8 +223,10 @@ import {
 } from "./modules/10-hope/index";
 import {
   M11_OUTBOX_EVENTS,
+  M11_PLATFORM_JOB_ID,
   buildM11DocumentBackrefConsumer,
   buildM11IdgDecisionConsumer,
+  createDbOrderBackend,
   createDrizzleOrderEraseStore,
   createDrizzleOrderSeamStore,
   createMedicationOrderSignatureCascade,
@@ -233,6 +235,8 @@ import {
   registerOrderErasers,
   registerOrderRoutes,
   registerOrderSeams,
+  registerM11StandingSpawnWorker,
+  scheduleM11StandingSpawn,
 } from "./modules/11-orders/index";
 import {
   M12_OUTBOX_EVENTS,
@@ -1282,6 +1286,7 @@ export function wireModuleSeams(
   wireM9Tenancy();
   wireM10Tenancy();
   wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
+  registerPlatformJob(M11_PLATFORM_JOB_ID);
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
   // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
@@ -3973,6 +3978,23 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       { queues: m14Workers.length },
       "M14 §4.8 BullMQ review-clock-sweep cron constructed",
     );
+
+    // M11 D5 — one repeatable hourly trigger enumerates active org ids under the audited platform
+    // context; each delegated service call opens its own tenant/RLS transaction before touching PHI.
+    const m11StandingActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db, auditBypass: m34PlatformBypassAuditor, jobId: M11_PLATFORM_JOB_ID,
+      reason: "M11 D5 standing-order hourly spawn fan-out",
+    });
+    const m11StandingWorker = registerM11StandingSpawnWorker({
+      connection: queueConnection, activeOrgs: m11StandingActiveOrgs,
+      service: createDbOrderBackend(dbHandle.db, m11OutboxPublisher),
+    });
+    attachDlqAlertsToAll([m11StandingWorker], "m11");
+    app.addHook("onClose", async () => { await m11StandingWorker.close(); });
+    try {
+      const m11StandingQueue = await scheduleM11StandingSpawn(queueConnection);
+      app.addHook("onClose", async () => { await m11StandingQueue.close(); });
+    } catch (err) { app.log.error(err, "M11 standing-spawn schedule registration failed"); }
 
     // ── M29 D11 — the platform NPPES sync worker + its 02:30 UTC nightly repeatable (GAP-045) ────────────
     // `NPPES_SYNC_SCHEDULE` shipped as pure data whose own comment promised "the M29-T08 worker binds this
