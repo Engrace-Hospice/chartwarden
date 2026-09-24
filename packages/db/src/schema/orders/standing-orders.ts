@@ -46,6 +46,9 @@ export const standingOrders = pgTable(
     signedByMembershipId: uuid("signed_by_membership_id").references(() => memberships.id, {
       onDelete: "restrict",
     }),
+    // Nullable only for templates predating the M11 standing-spawn worker.  New templates always persist
+    // the same existing M11 discipline literal used to validate their one-time signature.
+    signerDiscipline: text("signer_discipline"),
     signedAt: timestamp("signed_at", { withTimezone: true }),
 
     status: standingOrderStatus("status").notNull().default("active"),

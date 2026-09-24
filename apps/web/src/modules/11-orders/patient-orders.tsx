@@ -1,4 +1,5 @@
 import {
+  Button,
   CountdownChip,
   EmptyState,
   LoadingSpinner,
@@ -24,6 +25,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
+import { OrderEditor } from "./order-editor";
 import { ORDER_TONE, PRIORITY_TONE, stateLabel } from "./orders-status";
 
 interface OrderRow {
@@ -53,6 +55,7 @@ export function PatientOrders(): JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [createOpen, setCreateOpen] = useState(false);
 
   const load = useCallback(async () => {
     if (!patientId) return;
@@ -128,21 +131,24 @@ export function PatientOrders(): JSX.Element {
             >
               Orders
             </h1>
-            <select
-              aria-label="Order status"
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              style={selectStyle}
-            >
-              <option value="">Any status</option>
-              <option value="draft">Draft</option>
-              <option value="pending_signature">Pending Signature</option>
-              <option value="verbal_pending">Verbal Pending</option>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-              <option value="discontinued">Discontinued</option>
-              <option value="expired_unsigned">Expired Unsigned</option>
-            </select>
+            <div style={{ display: "flex", gap: ".75rem", alignItems: "center" }}>
+              <select
+                aria-label="Order status"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                style={selectStyle}
+              >
+                <option value="">Any status</option>
+                <option value="draft">Draft</option>
+                <option value="pending_signature">Pending Signature</option>
+                <option value="verbal_pending">Verbal Pending</option>
+                <option value="active">Active</option>
+                <option value="completed">Completed</option>
+                <option value="discontinued">Discontinued</option>
+                <option value="expired_unsigned">Expired Unsigned</option>
+              </select>
+              <Button onClick={() => setCreateOpen(true)}>+ New Order</Button>
+            </div>
           </div>
 
           {error ? (
@@ -152,64 +158,72 @@ export function PatientOrders(): JSX.Element {
           ) : rows.length === 0 ? (
             <EmptyState title="No orders" description="No orders match the current filter." />
           ) : (
-            <section style={{ ...cardSurface, padding: "0 1.25rem" }}>
-              <div style={{ ...orderRow, color: t.muted, borderTop: "none", cursor: "default" }}>
-                <span style={{ flex: 1 }}>Order · kind</span>
-                <span style={col}>Priority</span>
-                <span style={col}>Status</span>
-                <span style={col}>Verbal</span>
-              </div>
-              {rows.map((o) => (
-                <button
-                  key={o.id}
-                  type="button"
-                  onClick={() => setSelectedId(o.id)}
-                  aria-pressed={o.id === selectedId}
-                  style={{
-                    ...orderRow,
-                    borderTop: ghostBorder,
-                    background: o.id === selectedId ? t.primaryTint : "transparent",
-                  }}
-                >
-                  <span
-                    style={{
-                      flex: 1,
-                      minWidth: 0,
-                      textAlign: "left",
-                      color: t.onSurface,
-                      fontWeight: 600,
-                    }}
+            <>
+              {status === "" ? (
+                <OrderSections rows={rows} onSelect={setSelectedId} selectedId={selectedId} />
+              ) : (
+                <section style={{ ...cardSurface, padding: "0 1.25rem" }}>
+                  <div
+                    style={{ ...orderRow, color: t.muted, borderTop: "none", cursor: "default" }}
                   >
-                    {stateLabel(o.kind)}
-                    <span style={dateMeta}> · {o.createdAt.slice(0, 10)}</span>
-                  </span>
-                  <span style={col}>
-                    <StatusPill
-                      label={stateLabel(o.priority)}
-                      tone={PRIORITY_TONE[o.priority] ?? "neutral"}
-                    />
-                  </span>
-                  <span style={col}>
-                    <StatusPill
-                      label={stateLabel(o.status)}
-                      tone={ORDER_TONE[o.status] ?? "neutral"}
-                    />
-                  </span>
-                  <span style={col}>
-                    {o.status === "verbal_pending" && o.verbalDeadlineAt ? (
-                      <CountdownChip
-                        dueAt={o.verbalDeadlineAt}
-                        warnWithinHours={12}
-                        alertWithinHours={2}
-                        label="Sign"
-                      />
-                    ) : (
-                      <span style={{ color: t.muted }}>—</span>
-                    )}
-                  </span>
-                </button>
-              ))}
-            </section>
+                    <span style={{ flex: 1 }}>Order · kind</span>
+                    <span style={col}>Priority</span>
+                    <span style={col}>Status</span>
+                    <span style={col}>Verbal</span>
+                  </div>
+                  {rows.map((o) => (
+                    <button
+                      key={o.id}
+                      type="button"
+                      onClick={() => setSelectedId(o.id)}
+                      aria-pressed={o.id === selectedId}
+                      style={{
+                        ...orderRow,
+                        borderTop: ghostBorder,
+                        background: o.id === selectedId ? t.primaryTint : "transparent",
+                      }}
+                    >
+                      <span
+                        style={{
+                          flex: 1,
+                          minWidth: 0,
+                          textAlign: "left",
+                          color: t.onSurface,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {stateLabel(o.kind)}
+                        <span style={dateMeta}> · {o.createdAt.slice(0, 10)}</span>
+                      </span>
+                      <span style={col}>
+                        <StatusPill
+                          label={stateLabel(o.priority)}
+                          tone={PRIORITY_TONE[o.priority] ?? "neutral"}
+                        />
+                      </span>
+                      <span style={col}>
+                        <StatusPill
+                          label={stateLabel(o.status)}
+                          tone={ORDER_TONE[o.status] ?? "neutral"}
+                        />
+                      </span>
+                      <span style={col}>
+                        {o.status === "verbal_pending" && o.verbalDeadlineAt ? (
+                          <CountdownChip
+                            dueAt={o.verbalDeadlineAt}
+                            warnWithinHours={12}
+                            alertWithinHours={2}
+                            label="Sign"
+                          />
+                        ) : (
+                          <span style={{ color: t.muted }}>—</span>
+                        )}
+                      </span>
+                    </button>
+                  ))}
+                </section>
+              )}
+            </>
           )}
         </div>
 
@@ -269,7 +283,90 @@ export function PatientOrders(): JSX.Element {
           )}
         </aside>
       </div>
+      <OrderEditor
+        open={createOpen}
+        onClose={() => setCreateOpen(false)}
+        patientId={patientId ?? ""}
+        onSaved={(id) => {
+          setCreateOpen(false);
+          setSelectedId(id);
+          void load();
+        }}
+      />
     </PatientWorkspaceLayout>
+  );
+}
+
+function OrderSections({
+  rows,
+  onSelect,
+  selectedId,
+}: { rows: OrderRow[]; onSelect: (id: string) => void; selectedId: string | null }): JSX.Element {
+  const groups = [
+    [
+      "Needs attention",
+      rows.filter((o) => ["draft", "pending_signature", "verbal_pending"].includes(o.status)),
+    ],
+    ["Active orders", rows.filter((o) => o.status === "active")],
+    [
+      "Past orders",
+      rows.filter((o) => ["completed", "discontinued", "expired_unsigned"].includes(o.status)),
+    ],
+  ] as const;
+  return (
+    <>
+      {groups.map(([title, group]) =>
+        group.length ? (
+          <section key={title} style={{ marginBottom: "1.25rem" }}>
+            <h2 style={{ fontSize: "1rem" }}>{title}</h2>
+            <div style={{ ...cardSurface, padding: "0 1.25rem" }}>
+              {group.map((o) => (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => onSelect(o.id)}
+                  aria-pressed={o.id === selectedId}
+                  style={{
+                    ...orderRow,
+                    borderTop: ghostBorder,
+                    background: o.id === selectedId ? t.primaryTint : "transparent",
+                  }}
+                >
+                  <span style={{ flex: 1, textAlign: "left", fontWeight: 600 }}>
+                    {stateLabel(o.kind)}
+                    <span style={dateMeta}> · {o.createdAt.slice(0, 10)}</span>
+                  </span>
+                  <span style={col}>
+                    <StatusPill
+                      label={stateLabel(o.priority)}
+                      tone={PRIORITY_TONE[o.priority] ?? "neutral"}
+                    />
+                  </span>
+                  <span style={col}>
+                    <StatusPill
+                      label={stateLabel(o.status)}
+                      tone={ORDER_TONE[o.status] ?? "neutral"}
+                    />
+                  </span>
+                  {o.status === "verbal_pending" && o.verbalDeadlineAt ? (
+                    <span style={col}>
+                      <CountdownChip
+                        dueAt={o.verbalDeadlineAt}
+                        warnWithinHours={12}
+                        alertWithinHours={2}
+                        label="Sign"
+                      />
+                    </span>
+                  ) : (
+                    <span style={col}>—</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </section>
+        ) : null,
+      )}
+    </>
   );
 }
 

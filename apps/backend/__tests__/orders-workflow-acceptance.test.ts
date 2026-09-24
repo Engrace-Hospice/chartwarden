@@ -49,7 +49,7 @@ describe("M11-T09 §5 workflow acceptance", () => {
       admissionId: ADMISSION,
       kind: "comfort_kit",
       drafterDiscipline: "rn_case_manager",
-      data: {},
+      data: { kitSku: "comfort-kit-standard", deploymentSite: "home" },
       orderingPhysicianMdmId: PHYS,
     });
     await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
@@ -84,7 +84,7 @@ describe("M11-T09 §5 workflow acceptance", () => {
       admissionId: ADMISSION,
       kind: "comfort_kit",
       drafterDiscipline: "rn_case_manager",
-      data: {},
+      data: { kitSku: "comfort-kit-standard", deploymentSite: "home" },
       orderingPhysicianMdmId: PHYS,
     });
     await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
@@ -133,7 +133,11 @@ describe("M11-T09 §5 workflow acceptance", () => {
       admissionId: ADMISSION,
       kind: "lab",
       drafterDiscipline: "lpn",
-      data: { loinc: "2160-0" },
+      data: {
+        testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
+        priority: "routine",
+        fastingRequired: false,
+      },
       orderingPhysicianMdmId: PHYS,
     });
     const req = await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
@@ -169,7 +173,11 @@ describe("M11-T09 §5 workflow acceptance", () => {
       admissionId: ADMISSION,
       kind: "lab",
       drafterDiscipline: "lpn",
-      data: { loinc: "2160-0" },
+      data: {
+        testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
+        priority: "routine",
+        fastingRequired: false,
+      },
       orderingPhysicianMdmId: PHYS,
     });
     await svc.requestSignature(ORG, draft.id, { signerDiscipline: "rn_case_manager" });
@@ -212,8 +220,9 @@ describe("M11-T09 §5 workflow acceptance", () => {
       admissionId: ADMISSION,
       kind: "supply",
       signerDiscipline: "hospice_physician",
+      orderingPhysicianMdmId: "00000000-0000-4000-8000-0000000000ff",
       cadence: "prn",
-      data: {},
+      data: { kitSku: "comfort-kit-standard", deploymentSite: "home" },
     });
     svc.drainEvents();
 
@@ -296,5 +305,26 @@ describe("M11-T09 cross-tenant isolation (service-layer non-leaking 404; live-PG
     });
     await expect(svc.getOrder(ORG_B, draft.id)).rejects.toThrow();
     expect((await svc.listOrders(ORG_B, {})).orders).toEqual([]);
+  });
+});
+
+describe("M11 correction parity", () => {
+  it("creates a draft replacement and discontinues the immutable active original", async () => {
+    const svc = backend();
+    const original = await svc.createDraft(ORG, "rn_1", {
+      patientId: PATIENT, admissionId: ADMISSION, kind: "lab", drafterDiscipline: "rn_case_manager",
+      data: { testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }], fastingRequired: false },
+      orderingPhysicianMdmId: PHYS,
+    });
+    await svc.requestSignature(ORG, original.id, { signerDiscipline: "rn_case_manager" });
+    await svc.signOrder(ORG, PHYS, original.id, { signerDiscipline: "medical_director", signedAtClient: NOW });
+    const replacement = await svc.correctOrder(ORG, "rn_1", original.id, {
+      patientId: PATIENT, admissionId: ADMISSION, kind: "lab", drafterDiscipline: "rn_case_manager",
+      data: { testCodes: [{ system: "http://loinc.org", code: "718-7", display: "Hemoglobin" }], fastingRequired: false },
+      priority: "routine", orderingPhysicianMdmId: PHYS,
+    });
+    expect(replacement.status).toBe("draft");
+    expect(replacement.replacesOrderId).toBe(original.id);
+    expect((await svc.getOrder(ORG, original.id)).status).toBe("discontinued");
   });
 });

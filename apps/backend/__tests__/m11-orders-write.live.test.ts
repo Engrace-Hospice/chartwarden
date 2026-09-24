@@ -24,6 +24,7 @@ import {
   type OrderWriteOutboxPort,
   createDbOrderBackend,
 } from "../src/modules/11-orders/orders-route-service-db";
+import type { OrderDetailActor } from "../src/modules/11-orders/routes/service";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -143,6 +144,27 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
     const edited = await svc.editDraft(ORG_A, draft.id, { hcpcs: "E0261" }, "stat");
     expect(edited.version).toBe(2);
     expect(edited.priority).toBe("stat");
+  });
+
+  it("projects a persisted draft mutation with the same actor-aware actions as a subsequent read", async () => {
+    const actor: OrderDetailActor = {
+      membershipId: memberOf[ORG_A] as string,
+      roles: ["rn_case_manager"],
+      disciplines: ["rn_case_manager"],
+      permissions: new Set(["orders.draft"]),
+    };
+    const draft = await svc.createDraft(ORG_A, memberOf[ORG_A] as string, draftArgs(), actor);
+    const edited = await svc.editDraft(
+      ORG_A,
+      draft.id,
+      { hcpcs: "E0261" },
+      "stat",
+      actor,
+    );
+    const read = await svc.getOrder(ORG_A, draft.id, actor);
+
+    expect(edited.allowedActions).toEqual(read.allowedActions);
+    expect(edited.allowedActions.edit).toBe(true);
   });
 
   it("requestSignature → sign flips the order to active (apply-to-target trigger) and emits signed", async () => {
@@ -289,6 +311,7 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
       admissionId: ADMISSION,
       kind: "lab",
       signerDiscipline: "rn_case_manager",
+      orderingPhysicianMdmId: PHYSICIAN_MDM,
       cadence: "prn",
       data: { loinc: "789-8" },
     });

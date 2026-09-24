@@ -20,5 +20,6 @@
 // outbox payload assemblers (`outbox.ts`, M11-T07).
 
 export * from "./catalog";
+export * from "./kinds";
 export * from "./seams";
 export * from "./lifecycle";

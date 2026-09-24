@@ -9,7 +9,7 @@
 // `requireAbac('signer_eligible')` (target = `:id`); the cosign route adds `requireAbac('m11.cosigner_role_match')`
 // (target = `:id`). The §4.1 caseload column maps to the shared `caseload_or_scope` predicate (registered by
 // M5/M6/M7) — bound by the §4.6 default ABAC on each clinical key, enforced by M3's authorization middleware.
-import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
+import { type AbacTarget, requireAbac, requirePermission, resolveActorPermissions } from "@wardenx/auth";
 import { UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
@@ -36,7 +36,7 @@ import {
   VerbalTimerParamsSchema,
   parse,
 } from "./orders-typebox";
-import type { OrderRouteService } from "./service";
+import type { OrderDetailActor, OrderRouteService } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
@@ -53,6 +53,17 @@ function actorOf(request: FastifyRequest): { organizationId: string; userId: str
   const membershipId = ctx?.attributes.membershipId;
   if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
   return { organizationId: ctx.organizationId, userId: membershipId };
+}
+
+/** Assemble the read-projection actor from the authenticated request context and M3's existing resolver. */
+async function detailActorOf(request: FastifyRequest): Promise<OrderDetailActor> {
+  const { organizationId, userId: membershipId } = actorOf(request);
+  const ctx = request.context;
+  const granted = await resolveActorPermissions({ organizationId, userId: ctx.userId });
+  const disciplines = Array.isArray(ctx.attributes.disciplines)
+    ? ctx.attributes.disciplines.filter((x): x is string => typeof x === "string")
+    : ctx.roles;
+  return { membershipId, roles: ctx.roles, disciplines, permissions: granted };
 }
 
 // Static permission guards (§4.6).
@@ -173,7 +184,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       triggeringAssessmentId: body.triggeringAssessmentId,
       triggeringHopeAssessmentId: body.triggeringHopeAssessmentId,
       replacesOrderId: body.replacesOrderId,
-    });
+    }, await detailActorOf(request));
     return reply.code(201).send(res);
   });
 
@@ -184,7 +195,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
-      return service.getOrder(organizationId, id);
+      return service.getOrder(organizationId, id, await detailActorOf(request));
     },
   );
 
@@ -193,7 +204,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     const { organizationId } = actorOf(request);
     const { id } = parse(OrderParamsSchema, request.params);
     const body = parse(UpdateOrderRequest, request.body);
-    return service.editDraft(organizationId, id, body.data, body.priority);
+    return service.editDraft(organizationId, id, body.data, body.priority, await detailActorOf(request));
   });
 
   // 5 — draft → pending_signature (resolves the §2.5 cosign requirement).
@@ -204,7 +215,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     return service.requestSignature(organizationId, id, {
       signerDiscipline: body.signerDiscipline,
       levelChange: body.levelChange,
-    });
+    }, await detailActorOf(request));
   });
 
   // 6 — sign (→ active); signer_eligible ABAC floor (§4.7).
@@ -215,7 +226,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     return service.signOrder(organizationId, userId, id, {
       signerDiscipline: body.signerDiscipline,
       signedAtClient: body.signedAtClient,
-    });
+    }, await detailActorOf(request));
   });
 
   // 7 — sign on behalf (medical_director only).
@@ -231,7 +242,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
         signedAtClient: body.signedAtClient,
         onBehalfOf: body.onBehalfOf,
         reason: body.reason,
-      });
+      }, await detailActorOf(request));
     },
   );
 
@@ -245,7 +256,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       verbalAttestation: body.verbalAttestation,
       receivedAt: body.receivedAt,
       orderingPhysicianMdmId: body.orderingPhysicianMdmId,
-    });
+    }, await detailActorOf(request));
   });
 
   // 9 — attach a cosignature (m11.cosigner_role_match ABAC).
@@ -256,7 +267,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     return service.cosignOrder(organizationId, userId, id, {
       cosignerRole: body.cosignerRole,
       attestationText: body.attestationText,
-    });
+    }, await detailActorOf(request));
   });
 
   // 10 — discontinue active / pending / verbal order.
@@ -268,7 +279,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       reason: body.reason,
       effectiveAt: body.effectiveAt,
       notes: body.notes,
-    });
+    }, await detailActorOf(request));
   });
 
   // 11 — issue a corrected order (replaces_order_id); discipline_can_order ABAC on the new kind.
@@ -290,7 +301,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
         sourceEncounterId: body.sourceEncounterId,
         triggeringAssessmentId: body.triggeringAssessmentId,
         triggeringHopeAssessmentId: body.triggeringHopeAssessmentId,
-      });
+      }, await detailActorOf(request));
       return reply.code(201).send(res);
     },
   );
@@ -300,7 +311,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(OrderParamsSchema, request.params);
     const body = parse(CompleteOrderRequest, request.body);
-    return service.completeOrder(organizationId, userId, id, body.reason);
+    return service.completeOrder(organizationId, userId, id, body.reason, await detailActorOf(request));
   });
 
   // 18 — list standing orders.
@@ -334,8 +345,11 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       admissionId: body.admissionId,
       kind: body.kind,
       signerDiscipline: body.signerDiscipline,
+      orderingPhysicianMdmId: body.orderingPhysicianMdmId,
       cadence: body.cadence,
       data: body.data,
+      effectiveFrom: body.effectiveFrom,
+      effectiveUntil: body.effectiveUntil,
       maxSpawns: body.maxSpawns,
     });
     return reply.code(201).send(res);
@@ -345,7 +359,11 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     const { organizationId } = actorOf(request);
     const { id } = parse(StandingOrderParamsSchema, request.params);
     const body = parse(UpdateStandingOrderRequest, request.body);
-    return service.editStandingOrder(organizationId, id, { maxSpawns: body.maxSpawns });
+    return service.editStandingOrder(organizationId, id, {
+      data: body.data,
+      effectiveUntil: body.effectiveUntil,
+      maxSpawns: body.maxSpawns,
+    });
   });
   // 22 — pause (no new spawns).
   app.post(
@@ -434,7 +452,7 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       const { organizationId } = actorOf(request);
       const { id } = parse(VerbalTimerParamsSchema, request.params);
       parse(RegenerateVerbalTimerRequest, request.body);
-      return service.regenerateVerbalTimer(organizationId, id);
+      return service.regenerateVerbalTimer(organizationId, id, await detailActorOf(request));
     },
   );
 }

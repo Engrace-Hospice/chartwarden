@@ -99,7 +99,11 @@ const labBody = (over: Record<string, unknown> = {}) => ({
   admissionId: ADMISSION,
   kind: "lab",
   drafterDiscipline: "rn_case_manager",
-  data: { loinc: "2160-0" },
+  data: {
+    testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
+    priority: "routine",
+    fastingRequired: false,
+  },
   orderingPhysicianMdmId: PHYS,
   ...over,
 });
@@ -296,8 +300,14 @@ describe("M11-T06 — §2.4 standing-order spawn", () => {
         admissionId: ADMISSION,
         kind: "lab",
         signerDiscipline: "rn_case_manager",
+        orderingPhysicianMdmId: PHYS,
         cadence: "prn",
-        data: { loinc: "2160-0" },
+        data: {
+          testCodes: [
+            { system: "http://loinc.org", code: "2160-0", display: "Creatinine" },
+          ],
+          fastingRequired: false,
+        },
       },
     });
     expect(create.statusCode).toBe(201);
@@ -322,6 +332,162 @@ describe("M11-T06 — §2.4 standing-order spawn", () => {
       headers: RN,
     });
     expect(detail.json().status).toBe("active");
+    await app.close();
+  });
+});
+
+describe("M11 standing-order template persistence and spawn guards", () => {
+  it("persists accepted template updates and materializes the updated canonical payload", async () => {
+    const { app } = makeServer();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/standing-orders",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        kind: "lab",
+        signerDiscipline: "rn_case_manager",
+        orderingPhysicianMdmId: PHYS,
+        cadence: "prn",
+        data: labBody().data,
+      },
+    });
+    const id = created.json().id as string;
+    const updatedData = {
+      testCodes: [{ system: "http://loinc.org", code: "718-7", display: "Hemoglobin" }],
+      fastingRequired: false,
+    };
+    const updated = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/standing-orders/${id}`,
+      headers: RN,
+      payload: {
+        data: updatedData,
+        effectiveUntil: "2026-06-09T12:00:00.000Z",
+        maxSpawns: 1,
+      },
+    });
+    expect(updated.statusCode).toBe(200);
+    expect(updated.json().maxSpawns).toBe(1);
+
+    const spawn = await app.inject({
+      method: "POST",
+      url: `/api/v1/standing-orders/${id}/spawn`,
+      headers: RN,
+      payload: {},
+    });
+    const order = await app.inject({
+      method: "GET",
+      url: `/api/v1/orders/${spawn.json().orderId as string}`,
+      headers: RN,
+    });
+    expect(order.statusCode).toBe(200);
+    expect(order.json().status).toBe("active"); // D5: template signature anchor
+    expect(order.json().kindVersion).toBe("lab.v1");
+    expect(order.json().data).toEqual(updatedData);
+
+    const capped = await app.inject({
+      method: "POST",
+      url: `/api/v1/standing-orders/${id}/spawn`,
+      headers: RN,
+      payload: {},
+    });
+    // `assertSpawnAllowed` maps the established STANDING_MAX_SPAWNS_REACHED domain conflict to 409.
+    expect(capped.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it("permits an incomplete template but does not let it materialize past canonical validation", async () => {
+    const { app } = makeServer();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/standing-orders",
+      headers: RN,
+      payload: {
+        patientId: PATIENT,
+        admissionId: ADMISSION,
+        kind: "lab",
+        signerDiscipline: "rn_case_manager",
+        orderingPhysicianMdmId: PHYS,
+        cadence: "prn",
+        data: {},
+      },
+    });
+    const spawn = await app.inject({
+      method: "POST",
+      url: `/api/v1/standing-orders/${created.json().id as string}/spawn`,
+      headers: RN,
+      payload: {},
+    });
+    expect(spawn.statusCode).toBe(422);
+    await app.close();
+  });
+});
+
+describe("M11 actor-aware mutation detail projections", () => {
+  it("uses the same actor-aware projection for a draft PATCH as the subsequent GET", async () => {
+    const { app } = makeServer();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/orders",
+      headers: RN,
+      payload: labBody(),
+    });
+    const id = created.json().id as string;
+
+    const patched = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/orders/${id}`,
+      headers: RN,
+      payload: { data: labBody().data, priority: "stat" },
+    });
+    const read = await app.inject({
+      method: "GET",
+      url: `/api/v1/orders/${id}`,
+      headers: RN,
+    });
+
+    expect(patched.statusCode).toBe(200);
+    expect(patched.json().allowedActions).toEqual(read.json().allowedActions);
+    expect(patched.json().allowedActions.edit).toBe(true);
+    await app.close();
+  });
+
+  it("keeps the projection actor-aware and recalculates it from the post-transition state", async () => {
+    const { app } = makeServer();
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/orders",
+      headers: RN,
+      payload: labBody(),
+    });
+    const id = created.json().id as string;
+
+    const viewerRead = await app.inject({
+      method: "GET",
+      url: `/api/v1/orders/${id}`,
+      headers: VIEWER,
+    });
+    expect(viewerRead.json().allowedActions.edit).toBe(false);
+
+    const requested = await app.inject({
+      method: "POST",
+      url: `/api/v1/orders/${id}/request-signature`,
+      headers: RN,
+      payload: { signerDiscipline: "rn_case_manager" },
+    });
+    expect(requested.statusCode).toBe(200);
+    expect(requested.json().status).toBe("pending_signature");
+    expect(requested.json().allowedActions.edit).toBe(false);
+
+    const unauthorizedPatch = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/orders/${id}`,
+      headers: VIEWER,
+      payload: { data: labBody().data },
+    });
+    expect(unauthorizedPatch.statusCode).toBe(403);
     await app.close();
   });
 });
