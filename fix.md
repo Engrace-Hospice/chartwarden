@@ -30,3 +30,40 @@
 
 - Hope workflow, HUV1, HUV2, SFV - Ok
 - Discharge
+
+
+- HOPE - Section A - Patient middle initial, Patient name suffix (check if optionnal or not) - Ok
+- The patient can either have medicaid, medicare or both - Ok
+- Prefered language: add a selection option - Ok
+- Facility National Provider Identifier (NPI) and Facility CMS Certification Number (CCN) should be selected - Ok
+- Patient zip code should be workflow controlled - Ok
+- Section J: 500 error while clicking on Yes - Ok
+- Give a clear message to users when they don't have the permissions to complete a SFV - Ok
+- Give the possibility to review the SFV and put it in the  - Ok
+- Review Payer / Coverage - Ok
+- Move the Hope in the patient subview below "Care Team & Assignments" - Ok
+- Fix the patient subview changing - Ok
+- In the ENcounters / visits view, the button should say "New encounter" - Ok
+- In the encounters, show the error next to the fields - Ok
+- Complete Admission modal in the HOPE admission should be centered
+- Move CTI (Certify Terminal Illness) and Face 2 Face in the patient subview (can be modified only by the doctor/MD and viewed by the other)
+- In the encounters, there should be a button to take the user to the care plan (view care plan & create new care plan buttons)
+- Hide the section 5 in the encounter (VISIT LOGISTICS)
+- Show alerts to the users
+- Add a calendar so that the nurse can see all the encouters, HUV1, HOPE, CTI, F2F, MSW visits,...
+So when there is something regarding a patient, everybody can see it
+- Add the patient address from the referral inbox - Ok
+- The signature of the CTI, add a window of 3 days for the doctor to sign it
+- When signing the Election Statement, auto complete the current user's name in the signer name field - Ok (Not what the business logic waits)
+- When a F2F or CTI is needed is due (7 days before, 3 days before and 1 day after the due day), the system should alert the responsible party (doctor, nurse and administrator)
+- In the patient views Demographics & Identifiers & Addresses, improve the UI/UX
+- SHow the Coverage / Payers from the HOPE assessment or in the beggining they give it to use in the referral box, it needs to auto complete
+- Review the care plan view
+- In the care plan, show properly the error to the user
+- Review and Fix the error when signing a care plan
+- Election Statement we need to register who uplaoded the document
+- admissions/c9b161bc-4d91-4159-b2b7-ca930260e9ad/hope should be in the patient view
+- WHen selecting "other" in prefered language in the HOPE admission, we need to have an input to collect that language
+- Payer / Coverage in the HOPE admission (need attention)
+- Completed Admission in the HOPE admission after signing, the message should show the name of the user who signed
+- In the Election & Certification, we should have the possibility to create a CTI and a F2F (only by the MD) and the others can view it

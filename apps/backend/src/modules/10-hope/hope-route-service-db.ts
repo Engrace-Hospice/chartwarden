@@ -393,7 +393,12 @@ export function createDbHopeBackend(
     const plan = buildCompletedSfvRegulatoryAnswerPlan(completedDate, sfvData);
     if (!plan) return;
 
-    const requestedCodes = ["J2052A", "J2052B", "J2052C", ...HOPE_J2053_ITEM_CODES];
+    const requestedCodes = [
+      "J2052A",
+      "J2052B",
+      "J2052C",
+      ...HOPE_J2053_ITEM_CODES,
+    ];
 
     const rows = await tx
       .select({ item: ITEM })
@@ -544,7 +549,10 @@ export function createDbHopeBackend(
       completion.rfaKind !== "04_sfv" ||
       completion.status !== "signed"
     ) {
-      return { repaired: false, reason: "completion_assessment_not_signed_sfv" };
+      return {
+        repaired: false,
+        reason: "completion_assessment_not_signed_sfv",
+      };
     }
 
     const completionData =
@@ -1252,6 +1260,17 @@ export function createDbHopeBackend(
                 organizationId,
                 existingDraft.id,
               );
+
+              await admissionPrefillService.prefillAdmission({
+                tx: t,
+                organizationId,
+                assessment: normalized,
+                specVersionCode: init.specVersionCode,
+                admissionDate: (
+                  admissionSummary?.admissionAt ?? regulatoryTargetDate
+                ).slice(0, 10),
+              });
+
               return toAssessmentView(normalized);
             }
           }

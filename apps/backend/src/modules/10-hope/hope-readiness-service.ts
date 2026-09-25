@@ -21,7 +21,10 @@ type CanonicalReadinessAnswer = {
   readonly state: "answered" | "skipped";
   readonly value: unknown | null;
 };
-type CanonicalReadinessAnswerMap = ReadonlyMap<string, CanonicalReadinessAnswer>;
+type CanonicalReadinessAnswerMap = ReadonlyMap<
+  string,
+  CanonicalReadinessAnswer
+>;
 type MutableSectionReview = {
   code: string;
   active: number;
@@ -144,6 +147,11 @@ const HOPE_J2053_ITEM_CODES = [
   "J2053G",
   "J2053H",
 ] as const;
+
+const OPTIONAL_ASSESSMENT_ITEMS = new Set([
+  "A0500B", // Patient Middle Initial
+  "A0500D", // Patient Name Suffix
+]);
 
 export function isCompletedSfvRegulatoryState(
   answers: CanonicalReadinessAnswerMap,
@@ -335,6 +343,9 @@ export function createHopeAssessmentReadinessService(
         answer?.state !== "answered" &&
         !workflowCompletionItem
       ) {
+        if (OPTIONAL_ASSESSMENT_ITEMS.has(item.itemCode)) {
+          continue;
+        }
         push({
           code: "UNANSWERED_APPLICABLE_ITEM",
           section: sectionOf(item),

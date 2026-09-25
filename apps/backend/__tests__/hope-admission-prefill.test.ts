@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { PatientCoverage, PatientHopeAdmissionPrefillFacts } from "@wardenx/types";
+import type {
+  PatientCoverage,
+  PatientHopeAdmissionPrefillFacts,
+} from "@wardenx/types";
 import {
   buildHopeAdmissionPrefillAnswers,
   isHopeCoverageInForceOn,
@@ -12,7 +15,9 @@ import {
   shouldApplyHopeAdmissionPrefill,
 } from "../src/modules/10-hope/hope-admission-prefill-service";
 
-function patient(overrides: Partial<PatientHopeAdmissionPrefillFacts> = {}): PatientHopeAdmissionPrefillFacts {
+function patient(
+  overrides: Partial<PatientHopeAdmissionPrefillFacts> = {},
+): PatientHopeAdmissionPrefillFacts {
   return {
     patientId: "patient-1",
     organizationId: "org-1",
@@ -46,7 +51,10 @@ function coverage(overrides: Partial<PatientCoverage>): PatientCoverage {
   };
 }
 
-function answerMap(facts: PatientHopeAdmissionPrefillFacts, coverages: readonly PatientCoverage[] = []) {
+function answerMap(
+  facts: PatientHopeAdmissionPrefillFacts,
+  coverages: readonly PatientCoverage[] = [],
+) {
   return new Map(
     buildHopeAdmissionPrefillAnswers({
       patient: facts,
@@ -62,35 +70,97 @@ describe("HOPE Admission prefill mappings", () => {
   it("prefills A0220 from admissionAt plus legal name, DOB, ZIP, sex, language, and residence site", () => {
     const answers = answerMap(patient());
 
-    expect(answers.get("A0220")).toMatchObject({ value: "2025-10-01", source: "admission_prefill" });
-    expect(answers.get("A0500A")).toMatchObject({ value: "Ada", source: "patient_prefill" });
-    expect(answers.get("A0500B")).toMatchObject({ value: "M", source: "patient_prefill" });
-    expect(answers.get("A0500C")).toMatchObject({ value: "Lovelace", source: "patient_prefill" });
-    expect(answers.get("A0500D")).toMatchObject({ value: "Jr", source: "patient_prefill" });
-    expect(answers.get("A0900")).toMatchObject({ value: "1815-12-10", source: "patient_prefill" });
-    expect(answers.get("A0550")).toMatchObject({ value: "02139", source: "patient_prefill" });
-    expect(answers.get("A0810")).toMatchObject({ value: "2", source: "patient_prefill" });
-    expect(answers.get("A1110A")).toMatchObject({ value: "en", source: "patient_prefill" });
-    expect(answers.get("A0215")).toMatchObject({ value: "01", source: "patient_prefill" });
+    expect(answers.get("A0220")).toMatchObject({
+      value: "2025-10-01",
+      source: "admission_prefill",
+    });
+    expect(answers.get("A0500A")).toMatchObject({
+      value: "Ada",
+      source: "patient_prefill",
+    });
+    expect(answers.get("A0500B")).toMatchObject({
+      value: "M",
+      source: "patient_prefill",
+    });
+    expect(answers.get("A0500C")).toMatchObject({
+      value: "Lovelace",
+      source: "patient_prefill",
+    });
+    expect(answers.get("A0500D")).toMatchObject({
+      value: "Jr",
+      source: "patient_prefill",
+    });
+    expect(answers.get("A0900")).toMatchObject({
+      value: "1815-12-10",
+      source: "patient_prefill",
+    });
+    expect(answers.get("A0550")).toMatchObject({
+      value: "02139",
+      source: "patient_prefill",
+    });
+    expect(answers.get("A0810")).toMatchObject({
+      value: "2",
+      source: "patient_prefill",
+    });
+    expect(answers.get("A1110A")).toMatchObject({
+      value: "en",
+      source: "patient_prefill",
+    });
+    expect(answers.get("A0215")).toMatchObject({
+      value: "01",
+      source: "patient_prefill",
+    });
   });
 
   it("selects only an active MBI and never confuses it with MRN, SSN, or Medicaid identifiers", () => {
-    const answers = answerMap(patient({
-      identifiers: [
-        { kind: "mrn", value: "MRN-1", effectiveFrom: "2020-01-01", effectiveTo: null },
-        { kind: "ssn", value: null, effectiveFrom: "2020-01-01", effectiveTo: null },
-        { kind: "hospice_external", value: "MEDICAID-1", effectiveFrom: "2020-01-01", effectiveTo: null },
-        { kind: "mbi", value: "OLDMBI", effectiveFrom: "2020-01-01", effectiveTo: "2025-09-30" },
-        { kind: "mbi", value: "1EG4TE5MK73", effectiveFrom: "2025-10-01", effectiveTo: null },
-      ],
-    }));
+    const answers = answerMap(
+      patient({
+        identifiers: [
+          {
+            kind: "mrn",
+            value: "MRN-1",
+            effectiveFrom: "2020-01-01",
+            effectiveTo: null,
+          },
+          {
+            kind: "ssn",
+            value: null,
+            effectiveFrom: "2020-01-01",
+            effectiveTo: null,
+          },
+          {
+            kind: "hospice_external",
+            value: "MEDICAID-1",
+            effectiveFrom: "2020-01-01",
+            effectiveTo: null,
+          },
+          {
+            kind: "mbi",
+            value: "OLDMBI",
+            effectiveFrom: "2020-01-01",
+            effectiveTo: "2025-09-30",
+          },
+          {
+            kind: "mbi",
+            value: "1EG4TE5MK73",
+            effectiveFrom: "2025-10-01",
+            effectiveTo: null,
+          },
+        ],
+      }),
+    );
 
-    expect(answers.get("A0600B")).toMatchObject({ value: "1EG4TE5MK73", source: "patient_prefill" });
+    expect(answers.get("A0600B")).toMatchObject({
+      value: "1EG4TE5MK73",
+      source: "patient_prefill",
+    });
   });
 
   it("maps known race and ethnicity codes and leaves unknown values unanswered", () => {
     expect(mapHopeRaceCodes(["2106-3", "9999-9"])).toEqual({ A1010A: "1" });
-    expect(mapHopeEthnicityCodes(["2186-5", "9999-9"])).toEqual({ A1005A: "1" });
+    expect(mapHopeEthnicityCodes(["2186-5", "9999-9"])).toEqual({
+      A1005A: "1",
+    });
     expect(mapHopeRaceCodes(["not-known"])).toEqual({});
     expect(mapHopeEthnicityCodes(["not-known"])).toEqual({});
   });
@@ -110,13 +180,31 @@ describe("HOPE Admission prefill mappings", () => {
 
   it("filters payer coverage by the admission effective date before building A1400 answers", () => {
     const inForce = [
-      coverage({ id: "old", coverageKind: "medicaid", effectiveFrom: "2024-01-01", effectiveTo: "2025-09-30" }),
-      coverage({ id: "current", coverageKind: "medicare_ffs", effectiveFrom: "2025-10-01", effectiveTo: null }),
-      coverage({ id: "future", coverageKind: "commercial", effectiveFrom: "2025-10-02", effectiveTo: null }),
+      coverage({
+        id: "old",
+        coverageKind: "medicaid",
+        effectiveFrom: "2024-01-01",
+        effectiveTo: "2025-09-30",
+      }),
+      coverage({
+        id: "current",
+        coverageKind: "medicare_ffs",
+        effectiveFrom: "2025-10-01",
+        effectiveTo: null,
+      }),
+      coverage({
+        id: "future",
+        coverageKind: "commercial",
+        effectiveFrom: "2025-10-02",
+        effectiveTo: null,
+      }),
     ].filter((row) => isHopeCoverageInForceOn(row, "2025-10-01"));
     const answers = answerMap(patient(), inForce);
 
-    expect(answers.get("A1400A")).toMatchObject({ value: "1", source: "patient_prefill" });
+    expect(answers.get("A1400A")).toMatchObject({
+      value: "1",
+      source: "patient_prefill",
+    });
     expect(answers.has("A1400C")).toBe(false);
     expect(answers.has("A1400H")).toBe(false);
   });
@@ -139,7 +227,85 @@ describe("HOPE Admission prefill mappings", () => {
   it("does not prefill Section F or diagnosis-category Section I answers from unrelated structured facts", () => {
     const answers = answerMap(patient(), [coverage({})]);
 
-    expect([...answers.keys()].filter((itemCode) => itemCode.startsWith("F"))).toEqual([]);
-    expect([...answers.keys()].filter((itemCode) => itemCode.startsWith("I"))).toEqual([]);
+    expect(
+      [...answers.keys()].filter((itemCode) => itemCode.startsWith("F")),
+    ).toEqual([]);
+    expect(
+      [...answers.keys()].filter((itemCode) => itemCode.startsWith("I")),
+    ).toEqual([]);
+  });
+
+  it("prefills only the Medicare number for a Medicare-only patient", () => {
+    const answers = answerMap(
+      patient({
+        identifiers: [
+          {
+            kind: "mbi",
+            value: "1EG4TE5MK73",
+            effectiveFrom: "2025-01-01",
+            effectiveTo: null,
+          },
+        ],
+      }),
+      [
+        coverage({
+          coverageKind: "medicare_ffs",
+          subscriberId: "1EG4TE5MK73",
+        }),
+      ],
+    );
+
+    expect(answers.get("A0600B")).toMatchObject({
+      value: "1EG4TE5MK73",
+    });
+
+    expect(answers.has("A0700")).toBe(false);
+  });
+
+  it("prefills only the Medicaid number for a Medicaid-only patient", () => {
+    const answers = answerMap(patient(), [
+      coverage({
+        coverageKind: "medicaid",
+        subscriberId: "MDCD123456",
+      }),
+    ]);
+
+    expect(answers.has("A0600B")).toBe(false);
+
+    expect(answers.get("A0700")).toMatchObject({
+      value: "MDCD123456",
+    });
+  });
+
+  it("prefills both Medicare and Medicaid numbers for dual coverage", () => {
+    const answers = answerMap(
+      patient({
+        identifiers: [
+          {
+            kind: "mbi",
+            value: "1EG4TE5MK73",
+            effectiveFrom: "2025-01-01",
+            effectiveTo: null,
+          },
+        ],
+      }),
+      [
+        coverage({
+          id: "medicare",
+          coverageKind: "medicare_ffs",
+          subscriberId: "1EG4TE5MK73",
+          rank: 1,
+        }),
+        coverage({
+          id: "medicaid",
+          coverageKind: "medicaid",
+          subscriberId: "MDCD123456",
+          rank: 2,
+        }),
+      ],
+    );
+
+    expect(answers.get("A0600B")?.value).toBe("1EG4TE5MK73");
+    expect(answers.get("A0700")?.value).toBe("MDCD123456");
   });
 });

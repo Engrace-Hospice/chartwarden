@@ -48417,6 +48417,7 @@ export interface operations {
                             strength: string;
                             doseForm: string;
                             route: string;
+                            data: unknown;
                             rxnormRxcui: string | null;
                             ndc: string | null;
                             version: number;
@@ -48429,6 +48430,7 @@ export interface operations {
                             cosignRequired: boolean;
                             cosignStatus: ("pending" | "attached") | null;
                             refillsRemaining: number;
+                            refillsAuthorized: number;
                             derivedFromRefillId: string | null;
                             replacesMedicationOrderId: string | null;
                             signedAt: string | null;
@@ -48438,6 +48440,9 @@ export interface operations {
                             discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "pharmacy_nack" | "corrected_replacement" | "expired_verbal" | "transmission_failed" | "no_refills_no_renewal") | null;
                             createdAt: string;
                         }[];
+                        statusCounts: {
+                            [key: string]: number;
+                        };
                     };
                 };
             };
@@ -48517,6 +48522,7 @@ export interface operations {
                         strength: string;
                         doseForm: string;
                         route: string;
+                        data: unknown;
                         rxnormRxcui: string | null;
                         ndc: string | null;
                         version: number;
@@ -48529,6 +48535,7 @@ export interface operations {
                         cosignRequired: boolean;
                         cosignStatus: ("pending" | "attached") | null;
                         refillsRemaining: number;
+                        refillsAuthorized: number;
                         derivedFromRefillId: string | null;
                         replacesMedicationOrderId: string | null;
                         signedAt: string | null;
@@ -53201,6 +53208,7 @@ export interface operations {
                             strength: string;
                             doseForm: string;
                             route: string;
+                            data: unknown;
                             rxnormRxcui: string | null;
                             ndc: string | null;
                             version: number;
@@ -53213,6 +53221,7 @@ export interface operations {
                             cosignRequired: boolean;
                             cosignStatus: ("pending" | "attached") | null;
                             refillsRemaining: number;
+                            refillsAuthorized: number;
                             derivedFromRefillId: string | null;
                             replacesMedicationOrderId: string | null;
                             signedAt: string | null;
@@ -53222,6 +53231,9 @@ export interface operations {
                             discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "pharmacy_nack" | "corrected_replacement" | "expired_verbal" | "transmission_failed" | "no_refills_no_renewal") | null;
                             createdAt: string;
                         }[];
+                        statusCounts: {
+                            [key: string]: number;
+                        };
                     };
                 };
             };

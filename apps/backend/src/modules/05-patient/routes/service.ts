@@ -18,7 +18,11 @@ export interface AdmitInput {
   readonly administrativeSex: string;
   readonly mbi?: string | null;
   readonly ssn?: string | null;
-  readonly primaryAddress?: { line1: string; city: string; postalCode: string } | null;
+  readonly primaryAddress?: {
+    line1: string;
+    city: string;
+    postalCode: string;
+  } | null;
   readonly phone?: string | null;
   readonly email?: string | null;
   readonly bypassMatchReview?: boolean;
@@ -97,6 +101,16 @@ export interface PatientPayerView {
   readonly current: boolean; // effectiveTo IS NULL
   readonly effectiveFrom: string;
   readonly effectiveTo: string | null;
+}
+
+export interface AddPatientPayerInput {
+  readonly payerId: string;
+  readonly rank: number;
+  readonly coverageKind: string;
+  readonly subscriberId: string;
+  readonly groupNumber?: string | null;
+  readonly binPcn?: string | null;
+  readonly effectiveFrom: string;
 }
 
 /**
@@ -246,25 +260,56 @@ export interface PatientListQuery {
 }
 
 export interface PatientRouteService {
-  admit(organizationId: string, input: AdmitInput, actorUserId: string): Promise<AdmitResult>;
+  admit(
+    organizationId: string,
+    input: AdmitInput,
+    actorUserId: string,
+  ): Promise<AdmitResult>;
   getPatient(organizationId: string, id: string): Promise<PatientView | null>;
-  getDemographics(organizationId: string, id: string): Promise<DemographicsView | null>;
-  getIdentifiers(organizationId: string, id: string): Promise<IdentifierView[] | null>;
+  getDemographics(
+    organizationId: string,
+    id: string,
+  ): Promise<DemographicsView | null>;
+  getIdentifiers(
+    organizationId: string,
+    id: string,
+  ): Promise<IdentifierView[] | null>;
   list(
     organizationId: string,
     query: PatientListQuery,
   ): Promise<{ items: PatientView[]; nextCursor: string | null }>;
   censusMetrics(organizationId: string): Promise<CensusMetrics>;
-  listAddresses(organizationId: string, patientId: string): Promise<AddressView[] | null>;
-  listPayers(organizationId: string, patientId: string): Promise<PatientPayerView[] | null>;
-  getCareTeam(organizationId: string, patientId: string): Promise<CareTeamView | null>;
-  getPrivacyFlags(organizationId: string, patientId: string): Promise<PrivacyFlagsView | null>;
+  listAddresses(
+    organizationId: string,
+    patientId: string,
+  ): Promise<AddressView[] | null>;
+  listPayers(
+    organizationId: string,
+    patientId: string,
+  ): Promise<PatientPayerView[] | null>;
+  addPayer(
+    organizationId: string,
+    patientId: string,
+    input: AddPatientPayerInput,
+    actorUserId: string,
+  ): Promise<PatientPayerView>;
+  getCareTeam(
+    organizationId: string,
+    patientId: string,
+  ): Promise<CareTeamView | null>;
+  getPrivacyFlags(
+    organizationId: string,
+    patientId: string,
+  ): Promise<PrivacyFlagsView | null>;
   addAddress(
     organizationId: string,
     patientId: string,
     address: AddAddressInput,
     actorUserId: string,
-  ): Promise<{ addressId: string; cascadeEmitted: "m5.patient.address_changed" }>;
+  ): Promise<{
+    addressId: string;
+    cascadeEmitted: "m5.patient.address_changed";
+  }>;
   submitAmendment(
     organizationId: string,
     patientId: string,
@@ -289,13 +334,17 @@ export interface InMemoryPatientSeed {
 }
 
 /** An in-memory {@link PatientRouteService} for the slice/tests. Runs the real T06 matcher. */
-export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}): {
+export function createInMemoryPatientRouteService(
+  seed: InMemoryPatientSeed = {},
+): {
   service: PatientRouteService;
   events: string[];
 } {
   const events: string[] = [];
   const patients = new Map<string, PatientView & Partial<MatchCandidate>>();
-  const candidates: (PatientView & MatchCandidate)[] = [...(seed.patients ?? [])];
+  const candidates: (PatientView & MatchCandidate)[] = [
+    ...(seed.patients ?? []),
+  ];
   for (const p of candidates) patients.set(p.id, p);
   const amendments = new Map<string, AmendmentView>();
   const addresses = new Map<string, AddressView[]>(); // patientId → append-only address history
@@ -337,7 +386,11 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
         events.push("m5.patient.created");
         if (result.outcome === "soft_review") {
           const reviewIds = result.reviewCandidates.map((c) => nextId("rev"));
-          return { outcome: "soft_review", patientId: id, matchReviewIds: reviewIds };
+          return {
+            outcome: "soft_review",
+            patientId: id,
+            matchReviewIds: reviewIds,
+          };
         }
         return { outcome: "created", patientId: id };
       }
@@ -472,7 +525,10 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       const offset = query.cursor ? Number.parseInt(query.cursor, 10) || 0 : 0;
       const page = filtered.slice(offset, offset + limit);
       const nextOffset = offset + page.length;
-      return { items: page, nextCursor: nextOffset < filtered.length ? String(nextOffset) : null };
+      return {
+        items: page,
+        nextCursor: nextOffset < filtered.length ? String(nextOffset) : null,
+      };
     },
 
     async censusMetrics(organizationId) {
@@ -508,6 +564,54 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       );
     },
 
+    async addPayer(organizationId, patientId, input, _actorUserId) {
+      const patient = patients.get(patientId);
+
+      if (!patient || patient.organizationId !== organizationId) {
+        throw new Error(`patient ${patientId} not found`);
+      }
+
+      const history = payers.get(patientId) ?? [];
+
+      /*
+       * One active coverage per (patient, rank).
+       *
+       * Adding a new coverage at an occupied rank closes the previous
+       * current row rather than mutating it.
+       */
+      for (let index = 0; index < history.length; index += 1) {
+        const payer = history[index]!;
+
+        if (payer.rank === input.rank && payer.current) {
+          history[index] = {
+            ...payer,
+            current: false,
+            effectiveTo: input.effectiveFrom,
+          };
+        }
+      }
+
+      const row: PatientPayerView = {
+        id: nextId("payer"),
+        payerId: input.payerId,
+        rank: input.rank,
+        coverageKind: input.coverageKind,
+        subscriberId: input.subscriberId,
+        groupNumber: input.groupNumber ?? null,
+        binPcn: input.binPcn ?? null,
+        current: true,
+        effectiveFrom: input.effectiveFrom,
+        effectiveTo: null,
+      };
+
+      history.push(row);
+      payers.set(patientId, history);
+
+      events.push("m5.patient.payer_changed");
+
+      return row;
+    },
+
     async getCareTeam(organizationId, patientId) {
       const p = patients.get(patientId);
       if (!p || p.organizationId !== organizationId) return null; // §7.5 no-leak
@@ -520,7 +624,12 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       if (!p || p.organizationId !== organizationId) return null; // §7.5 no-leak
       // The slice carries no snapshot seed; production reads `patient_privacy_flag_snapshot` under RLS.
       // No flags → unrestricted; SUD disclosable (§7.6 fail-closed only when the sud flag is present).
-      return { flags: [], capturedAt: null, sudRestricted: false, sudDisclosable: true };
+      return {
+        flags: [],
+        capturedAt: null,
+        sudRestricted: false,
+        sudDisclosable: true,
+      };
     },
 
     async addAddress(_organizationId, patientId, address, _actorUserId) {
@@ -531,7 +640,8 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       if (address.isPrimary) {
         for (let i = 0; i < history.length; i += 1) {
           const a = history[i]!;
-          if (a.isPrimary && a.current) history[i] = { ...a, current: false, effectiveTo: today };
+          if (a.isPrimary && a.current)
+            history[i] = { ...a, current: false, effectiveTo: today };
         }
       }
       const id = nextId("addr");
@@ -561,19 +671,32 @@ export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}
       // §7.7: SLA due = received + 60 days.
       const id = nextId("amd");
       const slaDueAt = new Date(now().getTime() + SIXTY_DAYS_MS).toISOString();
-      const view: AmendmentView = { id, patientId, status: "pending", slaDueAt };
+      const view: AmendmentView = {
+        id,
+        patientId,
+        status: "pending",
+        slaDueAt,
+      };
       amendments.set(id, view);
       events.push("m5.patient.amendment_request_received");
       return view;
     },
 
-    async decideAmendment(_organizationId, amendmentId, decision, _actorUserId) {
+    async decideAmendment(
+      _organizationId,
+      amendmentId,
+      decision,
+      _actorUserId,
+    ) {
       const a = amendments.get(amendmentId);
       if (!a) throw new Error(`amendment ${amendmentId} not found`);
       if (!decision.accept && !decision.denialReason) {
         throw new Error("denial requires a reason");
       }
-      const next: AmendmentView = { ...a, status: decision.accept ? "accepted" : "denied" };
+      const next: AmendmentView = {
+        ...a,
+        status: decision.accept ? "accepted" : "denied",
+      };
       amendments.set(amendmentId, next);
       events.push("m5.patient.amendment_decided");
       return next;

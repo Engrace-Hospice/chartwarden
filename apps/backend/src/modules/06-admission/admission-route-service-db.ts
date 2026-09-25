@@ -2981,20 +2981,23 @@ export function createDbAdmissionRouteService(
             organizationId,
             current.patientId,
           );
-          if (!residence) {
-            throw new WardenXError(
-              "PATIENT_RESIDENCE_ADDRESS_REQUIRED",
-              "A patient residence address is required before completing admission details.",
-              422,
-            );
+
+          /*
+           * Residence is optional while progressing through admission.
+           *
+           * If available, snapshot it onto the admission.
+           * If absent, admission details may still be completed.
+           */
+          if (residence) {
+            updates.patientResidenceAddressId = residence.id;
+            updates.serviceAddressLine1 = residence.line1;
+            updates.serviceAddressLine2 = residence.line2;
+            updates.serviceAddressCity = residence.city;
+            updates.serviceAddressState = residence.state;
+            updates.serviceAddressPostalCode = residence.postalCode;
+            updates.serviceAddressCountry = residence.country;
           }
-          updates.patientResidenceAddressId = residence.id;
-          updates.serviceAddressLine1 = residence.line1;
-          updates.serviceAddressLine2 = residence.line2;
-          updates.serviceAddressCity = residence.city;
-          updates.serviceAddressState = residence.state;
-          updates.serviceAddressPostalCode = residence.postalCode;
-          updates.serviceAddressCountry = residence.country;
+
           updates.locationId =
             input.locationId ??
             (finalProviderEntityId

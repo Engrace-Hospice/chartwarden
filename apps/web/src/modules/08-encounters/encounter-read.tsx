@@ -125,6 +125,94 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
+
+type FieldErrors = Record<string, string>;
+
+function validationDetails(error: unknown): Array<{ field?: string; message?: string }> {
+  const body = error as {
+    details?: unknown;
+    error?: {
+      details?: unknown;
+    };
+  } | null;
+
+  const raw = body?.error?.details ?? body?.details;
+  if (!Array.isArray(raw)) return [];
+
+  return raw.flatMap((detail) => {
+    if (typeof detail !== "object" || detail === null) return [];
+
+    const row = detail as {
+      field?: unknown;
+      path?: unknown;
+      message?: unknown;
+    };
+
+    const field =
+      typeof row.field === "string"
+        ? row.field
+        : typeof row.path === "string"
+          ? row.path
+          : undefined;
+
+    return [
+      {
+        field,
+        message: typeof row.message === "string" ? row.message : undefined,
+      },
+    ];
+  });
+}
+
+function fieldKeyFromPath(path: string | undefined): string | null {
+  if (!path) return null;
+
+  const normalized = path
+    .replace(/^body\./, "")
+    .replace(/^data\./, "")
+    .replace(/^selections\./, "");
+
+  if (
+    normalized.includes("clinicalSummary") ||
+    normalized === "finalDocumentation" ||
+    normalized === "documentation" ||
+    normalized === "narrative"
+  ) {
+    return "clinicalSummary";
+  }
+
+  return normalized.split(".").filter(Boolean).at(-1) ?? null;
+}
+
+function fieldErrorsFrom(
+  error: unknown,
+  supportedFields: readonly string[],
+): FieldErrors {
+  const supported = new Set(supportedFields);
+  const result: FieldErrors = {};
+
+  for (const detail of validationDetails(error)) {
+    const key = fieldKeyFromPath(detail.field);
+
+    if (key && supported.has(key) && detail.message && !result[key]) {
+      result[key] = detail.message;
+    }
+  }
+
+  return result;
+}
+
+function FieldError({ message }: { message?: string }): JSX.Element | null {
+  if (!message) return null;
+
+  return (
+    <span role="alert" style={fieldErrorStyle}>
+      {message}
+    </span>
+  );
+}
+
+
 function docFromSelections(selections: Record<string, unknown> | null | undefined): string {
   const narrative = selections?.narrative;
 
@@ -192,6 +280,7 @@ export function EncounterRead(): JSX.Element {
 
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [reason, setReason] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -422,23 +511,58 @@ export function EncounterRead(): JSX.Element {
     void load();
   }, [load]);
 
+  const clearFieldError = useCallback((field: string) => {
+    setFieldErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  }, []);
+
+  const clearFieldErrors = useCallback((fields: readonly string[]) => {
+    if (fields.length === 0) return;
+
+    setFieldErrors((current) => {
+      const next = { ...current };
+      let changed = false;
+
+      for (const field of fields) {
+        if (next[field]) {
+          delete next[field];
+          changed = true;
+        }
+      }
+
+      return changed ? next : current;
+    });
+  }, []);
+
   const closeCeremony = useCallback(() => {
     setCeremony(null);
     setReason("");
     setActionError(null);
-  }, []);
+    clearFieldError("reason");
+  }, [clearFieldError]);
 
   const runWrite = useCallback(
     async (mode: Exclude<CeremonyMode, null>) => {
       if (!encounterId) return;
 
       if (mode === "supervisor-release" && reason.trim().length < REASON_MIN) {
-        setActionError(`Provide a reason of at least ${REASON_MIN} characters.`);
+        setActionError(null);
+        setFieldErrors((current) => ({
+          ...current,
+          reason: `Provide a reason of at least ${REASON_MIN} characters.`,
+        }));
         return;
       }
 
       setBusy(true);
       setActionError(null);
+      if (mode === "supervisor-release") {
+        clearFieldError("reason");
+      }
 
       const stepUpAuthAt = new Date().toISOString();
 
@@ -497,6 +621,15 @@ export function EncounterRead(): JSX.Element {
 
         setBusy(false);
 
+        const mapped =
+          mode === "supervisor-release" ? fieldErrorsFrom(err, ["reason"]) : {};
+
+        if (Object.keys(mapped).length > 0) {
+          setFieldErrors((current) => ({ ...current, ...mapped }));
+          setActionError(null);
+          return;
+        }
+
         if (response?.status === 412 && errCode === "STEP_UP_AUTH_REQUIRED") {
           setActionError("Your step-up expired — try again.");
         } else if (response?.status === 412) {
@@ -515,7 +648,7 @@ export function EncounterRead(): JSX.Element {
 
       void load();
     },
-    [encounterId, reason, client, navigate, closeCeremony, load],
+    [encounterId, reason, client, navigate, closeCeremony, load, clearFieldError],
   );
 
   async function runMutation(
@@ -525,20 +658,36 @@ export function EncounterRead(): JSX.Element {
       response?: Response;
     }>,
     success: string,
+    supportedFields: readonly string[] = [],
   ): Promise<void> {
     setBusy(true);
     setActionError(null);
     setNotice(null);
+    clearFieldErrors(supportedFields);
 
     const res = await action();
 
     setBusy(false);
 
     if (res.error) {
-      setActionError(errorMessage(res.error, "The encounter action could not be completed."));
+      const mapped = fieldErrorsFrom(res.error, supportedFields);
+
+      if (Object.keys(mapped).length > 0) {
+        setFieldErrors((current) => ({
+          ...current,
+          ...mapped,
+        }));
+        setActionError(null);
+      } else {
+        setActionError(
+          errorMessage(res.error, "The encounter action could not be completed."),
+        );
+      }
+
       return;
     }
 
+    clearFieldErrors(supportedFields);
     setUtilityModal(null);
     setReason("");
     setNotice(success);
@@ -569,6 +718,7 @@ export function EncounterRead(): JSX.Element {
           },
         }),
       "Documentation saved.",
+      ["clinicalSummary"],
     );
   }
 
@@ -598,6 +748,17 @@ export function EncounterRead(): JSX.Element {
           },
         }),
       "Vitals saved.",
+      [
+        "bpSystolic",
+        "bpDiastolic",
+        "heartRate",
+        "respiratoryRate",
+        "temperature",
+        "temperatureUnit",
+        "spo2",
+        "painScore",
+        "painScale",
+      ],
     );
   }
 
@@ -623,6 +784,13 @@ export function EncounterRead(): JSX.Element {
           },
         }),
       "Mileage saved.",
+      [
+        "odometerStart",
+        "odometerEnd",
+        "milesDriven",
+        "source",
+        "manualOverrideReason",
+      ],
     );
   }
 
@@ -699,6 +867,23 @@ export function EncounterRead(): JSX.Element {
           body: {},
         }),
       "Encounter finalized.",
+      [
+        "clinicalSummary",
+        "bpSystolic",
+        "bpDiastolic",
+        "heartRate",
+        "respiratoryRate",
+        "temperature",
+        "temperatureUnit",
+        "spo2",
+        "painScore",
+        "painScale",
+        "odometerStart",
+        "odometerEnd",
+        "milesDriven",
+        "source",
+        "manualOverrideReason",
+      ],
     );
   }
 
@@ -718,6 +903,7 @@ export function EncounterRead(): JSX.Element {
           },
         }),
       "Draft voided.",
+      ["reason"],
     );
   }
 
@@ -737,6 +923,7 @@ export function EncounterRead(): JSX.Element {
           },
         }),
       "Addendum opened.",
+      ["reason"],
     );
   }
 
@@ -748,12 +935,17 @@ export function EncounterRead(): JSX.Element {
     try {
       data = JSON.parse(assessment.data) as Record<string, unknown>;
     } catch {
-      setActionError("Assessment payload must be valid JSON.");
+      setActionError(null);
+      setFieldErrors((current) => ({
+        ...current,
+        data: "Assessment payload must be valid JSON.",
+      }));
       return;
     }
 
     setBusy(true);
     setActionError(null);
+    clearFieldErrors(["scaleType", "data"]);
 
     const res = await post("/api/v1/patients/{patientId}/assessments", {
       params: {
@@ -773,7 +965,15 @@ export function EncounterRead(): JSX.Element {
     setBusy(false);
 
     if (res.error) {
-      setActionError(errorMessage(res.error, "Assessment could not be created."));
+      const mapped = fieldErrorsFrom(res.error, ["scaleType", "data"]);
+
+      if (Object.keys(mapped).length > 0) {
+        setFieldErrors((current) => ({ ...current, ...mapped }));
+        setActionError(null);
+      } else {
+        setActionError(errorMessage(res.error, "Assessment could not be created."));
+      }
+
       return;
     }
 
@@ -1065,11 +1265,19 @@ export function EncounterRead(): JSX.Element {
                   <textarea
                     aria-label="Clinical documentation"
                     value={noteText}
-                    onChange={(event) => setNoteText(event.target.value)}
+                    onChange={(event) => {
+                      setNoteText(event.target.value);
+                      clearFieldError("clinicalSummary");
+                    }}
                     rows={9}
                     placeholder="Document the patient's condition, observations, care provided, response to care, and relevant follow-up..."
-                    style={documentationTextarea}
+                    style={{
+                      ...documentationTextarea,
+                      ...(fieldErrors.clinicalSummary ? fieldControlErrorStyle : null),
+                    }}
+                    aria-invalid={Boolean(fieldErrors.clinicalSummary)}
                   />
+                  <FieldError message={fieldErrors.clinicalSummary} />
 
                   <div style={editorFooter}>
                     <span style={meta}>Save as you work. Finalization is a separate action.</span>
@@ -1117,84 +1325,98 @@ export function EncounterRead(): JSX.Element {
                   label="BP systolic"
                   suffix="mmHg"
                   value={vitals.bpSystolic}
-                  onChange={(value) =>
+                  onChange={(value) => {
                     setVitals((current) => ({
                       ...current,
                       bpSystolic: value,
-                    }))
-                  }
-                />
+                    }));
+                    clearFieldError("bpSystolic");
+                  }}
+
+                  error={fieldErrors.bpSystolic}                />
 
                 <Input
                   label="BP diastolic"
                   suffix="mmHg"
                   value={vitals.bpDiastolic}
-                  onChange={(value) =>
+                  onChange={(value) => {
                     setVitals((current) => ({
                       ...current,
                       bpDiastolic: value,
-                    }))
-                  }
-                />
+                    }));
+                    clearFieldError("bpDiastolic");
+                  }}
+
+                  error={fieldErrors.bpDiastolic}                />
 
                 <Input
                   label="Heart rate"
                   suffix="bpm"
                   value={vitals.heartRate}
-                  onChange={(value) =>
+                  onChange={(value) => {
                     setVitals((current) => ({
                       ...current,
                       heartRate: value,
-                    }))
-                  }
-                />
+                    }));
+                    clearFieldError("heartRate");
+                  }}
+
+                  error={fieldErrors.heartRate}                />
 
                 <Input
                   label="Respiratory rate"
                   suffix="/min"
                   value={vitals.respiratoryRate}
-                  onChange={(value) =>
+                  onChange={(value) => {
                     setVitals((current) => ({
                       ...current,
                       respiratoryRate: value,
-                    }))
-                  }
-                />
+                    }));
+                    clearFieldError("respiratoryRate");
+                  }}
+
+                  error={fieldErrors.respiratoryRate}                />
 
                 <Input
                   label="Temperature"
                   value={vitals.temperature}
-                  onChange={(value) =>
+                  onChange={(value) => {
                     setVitals((current) => ({
                       ...current,
                       temperature: value,
-                    }))
-                  }
-                />
+                    }));
+                    clearFieldError("temperature");
+                  }}
+
+                  error={fieldErrors.temperature}                />
 
                 <Input
                   label="SpO₂"
                   suffix="%"
                   value={vitals.spo2}
-                  onChange={(value) =>
+                  onChange={(value) => {
                     setVitals((current) => ({
                       ...current,
                       spo2: value,
-                    }))
-                  }
-                />
+                    }));
+                    clearFieldError("spo2");
+                  }}
+
+                  error={fieldErrors.spo2}                />
 
                 <Input
                   label="Pain"
                   suffix="/10"
                   value={vitals.painScore}
-                  onChange={(value) =>
+                  onChange={(value) => {
                     setVitals((current) => ({
                       ...current,
                       painScore: value,
-                    }))
-                  }
-                />
+                    }));
+                    clearFieldError("painScore");
+                  }}
+
+                  error={fieldErrors.painScore}                />
               </div>
             </section>
 
@@ -1360,48 +1582,59 @@ export function EncounterRead(): JSX.Element {
                 <Input
                   label="Odometer start"
                   value={mileage.odometerStart}
-                  onChange={(value) =>
+                  onChange={(value) => {
                     setMileage((current) => ({
                       ...current,
                       odometerStart: value,
-                    }))
-                  }
-                />
+                    }));
+                    clearFieldError("odometerStart");
+                  }}
+
+                  error={fieldErrors.odometerStart}                />
 
                 <Input
                   label="Odometer end"
                   value={mileage.odometerEnd}
-                  onChange={(value) =>
+                  onChange={(value) => {
                     setMileage((current) => ({
                       ...current,
                       odometerEnd: value,
-                    }))
-                  }
-                />
+                    }));
+                    clearFieldError("odometerEnd");
+                  }}
+
+                  error={fieldErrors.odometerEnd}                />
 
                 <Input
                   label="Miles driven"
                   value={mileage.milesDriven}
-                  onChange={(value) =>
+                  onChange={(value) => {
                     setMileage((current) => ({
                       ...current,
                       milesDriven: value,
-                    }))
-                  }
-                />
+                    }));
+                    clearFieldError("milesDriven");
+                  }}
+
+                  error={fieldErrors.milesDriven}                />
 
                 <label style={fieldStyle}>
                   <span style={fieldLabelStyle}>Source</span>
 
                   <select
                     value={mileage.source}
-                    onChange={(event) =>
+                    onChange={(event) => {
                       setMileage((current) => ({
                         ...current,
                         source: event.target.value,
-                      }))
-                    }
-                    style={inputStyle}
+                      }));
+                      clearFieldError("source");
+                    }}
+                    style={{
+                      ...inputStyle,
+                      ...(fieldErrors.source ? fieldControlErrorStyle : null),
+                    }}
+                    aria-invalid={Boolean(fieldErrors.source)}
                   >
                     <option value="odometer">Odometer</option>
 
@@ -1409,6 +1642,7 @@ export function EncounterRead(): JSX.Element {
 
                     <option value="manual_override">Manual override</option>
                   </select>
+                  <FieldError message={fieldErrors.source} />
                 </label>
               </div>
 
@@ -1423,16 +1657,22 @@ export function EncounterRead(): JSX.Element {
 
                   <textarea
                     value={mileage.manualOverrideReason}
-                    onChange={(event) =>
+                    onChange={(event) => {
                       setMileage((current) => ({
                         ...current,
                         manualOverrideReason: event.target.value,
-                      }))
-                    }
+                      }));
+                      clearFieldError("manualOverrideReason");
+                    }}
                     rows={3}
                     placeholder="Explain why mileage is being entered manually..."
-                    style={textareaStyle}
+                    style={{
+                      ...textareaStyle,
+                      ...(fieldErrors.manualOverrideReason ? fieldControlErrorStyle : null),
+                    }}
+                    aria-invalid={Boolean(fieldErrors.manualOverrideReason)}
                   />
+                  <FieldError message={fieldErrors.manualOverrideReason} />
                 </label>
               ) : null}
             </section>
@@ -1872,10 +2112,18 @@ export function EncounterRead(): JSX.Element {
               id="supervisor-release-reason"
               aria-describedby="supervisor-release-reason-count"
               value={reason}
-              onChange={(event) => setReason(event.target.value)}
+              onChange={(event) => {
+                setReason(event.target.value);
+                clearFieldError("reason");
+              }}
               rows={3}
-              style={textareaStyle}
+              style={{
+                ...textareaStyle,
+                ...(fieldErrors.reason ? fieldControlErrorStyle : null),
+              }}
+              aria-invalid={Boolean(fieldErrors.reason)}
             />
+            <FieldError message={fieldErrors.reason} />
 
             <span
               id="supervisor-release-reason-count"
@@ -1941,13 +2189,18 @@ export function EncounterRead(): JSX.Element {
 
                 <select
                   value={assessment.scaleType}
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setAssessment((current) => ({
                       ...current,
                       scaleType: event.target.value,
-                    }))
-                  }
-                  style={inputStyle}
+                    }));
+                    clearFieldError("scaleType");
+                  }}
+                  style={{
+                    ...inputStyle,
+                    ...(fieldErrors.scaleType ? fieldControlErrorStyle : null),
+                  }}
+                  aria-invalid={Boolean(fieldErrors.scaleType)}
                 >
                   {SCALE_TYPES.map((scale) => (
                     <option key={scale} value={scale}>
@@ -1955,6 +2208,7 @@ export function EncounterRead(): JSX.Element {
                     </option>
                   ))}
                 </select>
+                <FieldError message={fieldErrors.scaleType} />
               </label>
 
               <label style={fieldStyle}>
@@ -1962,15 +2216,21 @@ export function EncounterRead(): JSX.Element {
 
                 <textarea
                   value={assessment.data}
-                  onChange={(event) =>
+                  onChange={(event) => {
                     setAssessment((current) => ({
                       ...current,
                       data: event.target.value,
-                    }))
-                  }
+                    }));
+                    clearFieldError("data");
+                  }}
                   rows={5}
-                  style={textareaStyle}
+                  style={{
+                    ...textareaStyle,
+                    ...(fieldErrors.data ? fieldControlErrorStyle : null),
+                  }}
+                  aria-invalid={Boolean(fieldErrors.data)}
                 />
+                <FieldError message={fieldErrors.data} />
               </label>
             </>
           ) : (
@@ -1979,10 +2239,18 @@ export function EncounterRead(): JSX.Element {
 
               <textarea
                 value={reason}
-                onChange={(event) => setReason(event.target.value)}
+                onChange={(event) => {
+                  setReason(event.target.value);
+                  clearFieldError("reason");
+                }}
                 rows={4}
-                style={textareaStyle}
+                style={{
+                  ...textareaStyle,
+                  ...(fieldErrors.reason ? fieldControlErrorStyle : null),
+                }}
+                aria-invalid={Boolean(fieldErrors.reason)}
               />
+              <FieldError message={fieldErrors.reason} />
             </label>
           )}
 
@@ -2056,25 +2324,35 @@ function Input({
   value,
   onChange,
   suffix,
+  error,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   suffix?: string;
+  error?: string;
 }): JSX.Element {
   return (
     <label style={fieldStyle}>
       <span style={fieldLabelStyle}>{label}</span>
 
-      <div style={inputWrapper}>
+      <div
+        style={{
+          ...inputWrapper,
+          ...(error ? fieldControlErrorStyle : null),
+        }}
+      >
         <input
           value={value}
           onChange={(event) => onChange(event.target.value)}
           style={plainInputStyle}
+          aria-invalid={Boolean(error)}
         />
 
         {suffix ? <span style={inputSuffix}>{suffix}</span> : null}
       </div>
+
+      <FieldError message={error} />
     </label>
   );
 }
@@ -2637,6 +2915,17 @@ const fieldLabelStyle: CSSProperties = {
   fontSize: "0.72rem",
   color: t.onSurfaceVariant,
   fontWeight: 650,
+};
+
+const fieldErrorStyle: CSSProperties = {
+  fontSize: "0.7rem",
+  lineHeight: 1.35,
+  color: t.error,
+};
+
+const fieldControlErrorStyle: CSSProperties = {
+  borderColor: t.error,
+  boxShadow: "0 0 0 1px color-mix(in srgb, var(--color-error) 25%, transparent)",
 };
 
 const inputWrapper: CSSProperties = {

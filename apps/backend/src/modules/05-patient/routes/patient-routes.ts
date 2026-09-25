@@ -19,6 +19,7 @@ import {
   LooseIdParamsSchema,
   PatientListQuerySchema,
   parse,
+  AddPatientPayerBodySchema,
 } from "./patient-typebox";
 import type { PatientRouteService } from "./service";
 
@@ -141,6 +142,35 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
       return { payers: rows };
     },
   );
+
+  app.post(
+  "/api/v1/patients/:id/payers",
+  {
+    preHandler: [EDIT],
+  },
+  async (request, reply) => {
+    const { organizationId, userId } = actorOf(request);
+
+    const { id } = parse(
+      LooseIdParamsSchema,
+      request.params,
+    );
+
+    const body = parse(
+      AddPatientPayerBodySchema,
+      request.body,
+    );
+
+    const payer = await service.addPayer(
+      organizationId,
+      id,
+      body,
+      userId,
+    );
+
+    return reply.code(201).send(payer);
+  },
+);
 
   // --- §3.4/§3.5 care team & assignments tab (assignment roster + caregivers + emergency contacts) -
   app.get(

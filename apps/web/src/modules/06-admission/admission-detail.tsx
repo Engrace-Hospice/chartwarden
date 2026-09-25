@@ -46,6 +46,7 @@ import {
   type UploadStage,
   verifiedUpload,
 } from "../22-documents/document-workflows";
+import { PatientIntakeDetails } from "./patient-intake-details";
 
 const NOR_METHODS = [
   { value: "electronic_witnessed", label: "Electronic (witnessed)" },
@@ -204,8 +205,11 @@ export function AdmissionDetail(): JSX.Element {
   const [windows, setWindows] = useState<SummaryRow[]>([]);
   const [hope, setHope] = useState<HopeSummary | null>(null);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
-  const [patientAddresses, setPatientAddresses] = useState<AddressView[] | null>(null);
-  const [electionCert, setElectionCert] = useState<ElectionCertificationView | null>(null);
+  const [patientAddresses, setPatientAddresses] = useState<
+    AddressView[] | null
+  >(null);
+  const [electionCert, setElectionCert] =
+    useState<ElectionCertificationView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -231,33 +235,36 @@ export function AdmissionDetail(): JSX.Element {
   const [actionError, setActionError] = useState<string | null>(null);
   const [uploadStage, setUploadStage] = useState<UploadStage>("idle");
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [uploadedSignedState, setUploadedSignedState] = useState<"unsigned" | "signed">("unsigned");
+  const [uploadedSignedState, setUploadedSignedState] = useState<
+    "unsigned" | "signed"
+  >("unsigned");
   const [uploadedSignerName, setUploadedSignerName] = useState("");
   const [uploadedSignerRole, setUploadedSignerRole] = useState<
     "patient" | "legal_representative" | "caregiver"
   >("patient");
   const [uploadedSignatureDate, setUploadedSignatureDate] = useState("");
 
-  const [deliveryMethod, setDeliveryMethod] = useState<NorMethod>("electronic_witnessed");
-  const [acknowledgedByName, setAcknowledgedByName] = useState("");
-  const [acknowledgedByRole, setAcknowledgedByRole] = useState<"patient" | "legal_representative">(
-    "patient",
+  const [deliveryMethod, setDeliveryMethod] = useState<NorMethod>(
+    "electronic_witnessed",
   );
+  const [acknowledgedByName, setAcknowledgedByName] = useState("");
+  const [acknowledgedByRole, setAcknowledgedByRole] = useState<
+    "patient" | "legal_representative"
+  >("patient");
   const [admissionDate, setAdmissionDate] = useState("");
   const [providerEntityId, setProviderEntityId] = useState("");
   const [hospicePhysicianId, setHospicePhysicianId] = useState("");
   const [electionEffectiveDate, setElectionEffectiveDate] = useState("");
   const [primaryDiagnosisIcd10, setPrimaryDiagnosisIcd10] = useState("");
   const [electedProviderEntityId, setElectedProviderEntityId] = useState("");
-  const [electedAttendingPhysicianId, setElectedAttendingPhysicianId] = useState("");
+  const [electedAttendingPhysicianId, setElectedAttendingPhysicianId] =
+    useState("");
   const [waiverAcknowledged, setWaiverAcknowledged] = useState(false);
   const [stateAddendum, setStateAddendum] = useState("");
   const [electionSignerName, setElectionSignerName] = useState("");
   const [electionSignerRole, setElectionSignerRole] = useState<
     "patient" | "legal_representative" | "caregiver"
-  >(
-    "patient",
-  );
+  >("patient");
   const [ctiDiagnosisIcd10, setCtiDiagnosisIcd10] = useState("");
   const [ctiSecondaryDiagnoses, setCtiSecondaryDiagnoses] = useState("");
   const [ctiPrognosis, setCtiPrognosis] = useState(
@@ -317,10 +324,15 @@ export function AdmissionDetail(): JSX.Element {
     setWindows(w.data?.items ?? []);
     setReadiness(r.data ?? (data as AdmissionDetailView).readiness ?? null);
     setHope(h.data ? (h.data as HopeSummary) : null);
-    setElectionCert(ec.data ? (ec.data as unknown as ElectionCertificationView) : null);
-    setPatient(patientResult.data ? (patientResult.data as PatientSummary) : null);
+    setElectionCert(
+      ec.data ? (ec.data as unknown as ElectionCertificationView) : null,
+    );
+    setPatient(
+      patientResult.data ? (patientResult.data as PatientSummary) : null,
+    );
     setPatientAddresses(
-      (addressResult.data as { addresses?: AddressView[] } | null | undefined)?.addresses ?? null,
+      (addressResult.data as { addresses?: AddressView[] } | null | undefined)
+        ?.addresses ?? null,
     );
     setLoading(false);
   }, [client, id]);
@@ -341,18 +353,30 @@ export function AdmissionDetail(): JSX.Element {
   }, []);
 
   const branchError = useCallback(
-    (status: number | undefined, code: string | undefined, fallback: string) => {
-      const redirect = authFailureRedirect(status, code, window.location.pathname);
+    (
+      status: number | undefined,
+      code: string | undefined,
+      fallback: string,
+    ) => {
+      const redirect = authFailureRedirect(
+        status,
+        code,
+        window.location.pathname,
+      );
       if (redirect) {
         navigate(redirect);
         return true;
       }
       setBusy(false);
       if (status === 412) {
-        setActionError("Admission requirements changed. Review the blockers and try again.");
+        setActionError(
+          "Admission requirements changed. Review the blockers and try again.",
+        );
         void load();
-      } else if (status === 403) setActionError("You do not have permission for this action.");
-      else if (status === 422) setActionError("Validation failed — check the values you entered.");
+      } else if (status === 403)
+        setActionError("You do not have permission for this action.");
+      else if (status === 422)
+        setActionError("Validation failed — check the values you entered.");
       else setActionError(fallback);
       return false;
     },
@@ -363,10 +387,13 @@ export function AdmissionDetail(): JSX.Element {
     if (!id || !admission) return;
     setBusy(true);
     setActionError(null);
-    const { error: err, response } = await client.POST("/api/v1/admissions/{id}/activate", {
-      params: { path: { id } },
-      body: { ifVersion: admission.version },
-    });
+    const { error: err, response } = await client.POST(
+      "/api/v1/admissions/{id}/activate",
+      {
+        params: { path: { id } },
+        body: { ifVersion: admission.version },
+      },
+    );
     if (err) {
       branchError(response?.status, err?.error?.code, "Activation failed.");
       return;
@@ -384,17 +411,24 @@ export function AdmissionDetail(): JSX.Element {
     }
     setBusy(true);
     setActionError(null);
-    const { error: err, response } = await client.POST("/api/v1/admissions/{id}/nor", {
-      params: { path: { id } },
-      body: {
-        deliveryMethod,
-        acknowledgedAt: new Date().toISOString(),
-        acknowledgedByName: acknowledgedByName.trim(),
-        acknowledgedByRole,
-      } as never,
-    });
+    const { error: err, response } = await client.POST(
+      "/api/v1/admissions/{id}/nor",
+      {
+        params: { path: { id } },
+        body: {
+          deliveryMethod,
+          acknowledgedAt: new Date().toISOString(),
+          acknowledgedByName: acknowledgedByName.trim(),
+          acknowledgedByRole,
+        } as never,
+      },
+    );
     if (err) {
-      branchError(response?.status, err?.error?.code, "Could not record the acknowledgment.");
+      branchError(
+        response?.status,
+        err?.error?.code,
+        "Could not record the acknowledgment.",
+      );
       return;
     }
     setBusy(false);
@@ -414,7 +448,12 @@ export function AdmissionDetail(): JSX.Element {
   const completeAdmissionDetails = useCallback(async () => {
     if (!id || !admission) return;
     const residence = currentResidenceAddress(patientAddresses);
-    if (!admissionDate || !providerEntityId || !hospicePhysicianId || !residence) {
+    if (
+      !admissionDate ||
+      !providerEntityId ||
+      !hospicePhysicianId ||
+      !residence
+    ) {
       setActionError(
         !residence
           ? "A patient residence address is required before completing admission details."
@@ -424,17 +463,24 @@ export function AdmissionDetail(): JSX.Element {
     }
     setBusy(true);
     setActionError(null);
-    const { error: err, response } = await client.PATCH("/api/v1/admissions/{id}", {
-      params: { path: { id } },
-      body: {
-        ifVersion: admission.version,
-        admissionAt: dateInputToIso(admissionDate),
-        providerEntityId,
-        hospicePhysicianId,
-      } as never,
-    });
+    const { error: err, response } = await client.PATCH(
+      "/api/v1/admissions/{id}",
+      {
+        params: { path: { id } },
+        body: {
+          ifVersion: admission.version,
+          admissionAt: dateInputToIso(admissionDate),
+          providerEntityId,
+          hospicePhysicianId,
+        } as never,
+      },
+    );
     if (err) {
-      branchError(response?.status, err?.error?.code, "Could not save admission details.");
+      branchError(
+        response?.status,
+        err?.error?.code,
+        "Could not save admission details.",
+      );
       return;
     }
     setBusy(false);
@@ -462,11 +508,15 @@ export function AdmissionDetail(): JSX.Element {
       primaryDiagnosisIcd10.trim().length === 0 ||
       electedProviderEntityId.trim().length === 0
     ) {
-      setActionError("Provide the effective date, diagnosis, provider, and waiver acknowledgment.");
+      setActionError(
+        "Provide the effective date, diagnosis, provider, and waiver acknowledgment.",
+      );
       return;
     }
     if (!waiverAcknowledged) {
-      setActionError("Confirm the election/waiver acknowledgment before creating the statement.");
+      setActionError(
+        "Confirm the election/waiver acknowledgment before creating the statement.",
+      );
       return;
     }
     setBusy(true);
@@ -487,7 +537,11 @@ export function AdmissionDetail(): JSX.Element {
       },
     );
     if (err) {
-      branchError(response?.status, err?.error?.code, "Could not create the Election Statement.");
+      branchError(
+        response?.status,
+        err?.error?.code,
+        "Could not create the Election Statement.",
+      );
       return;
     }
     setBusy(false);
@@ -513,7 +567,10 @@ export function AdmissionDetail(): JSX.Element {
     async (
       documentType: DocumentTypeValue,
       title: string,
-      attach: (ids: { documentId: string; documentVersionId: string }) => Promise<{
+      attach: (ids: {
+        documentId: string;
+        documentVersionId: string;
+      }) => Promise<{
         error?: unknown;
         response?: Response;
       }>,
@@ -569,40 +626,62 @@ export function AdmissionDetail(): JSX.Element {
   );
 
   const uploadNor = useCallback(async () => {
-    await attachUploadedEvidence("notice_of_rights", "Notice of Rights", ({ documentId, documentVersionId }) =>
-      postUntyped(client, `/api/v1/admissions/${id}/nor/uploaded-evidence`, {
-        documentId,
-        documentVersionId,
-        acknowledgedAt: new Date().toISOString(),
-        acknowledgedByName: acknowledgedByName.trim() || undefined,
-        acknowledgedByRole,
-      }),
+    await attachUploadedEvidence(
+      "notice_of_rights",
+      "Notice of Rights",
+      ({ documentId, documentVersionId }) =>
+        postUntyped(client, `/api/v1/admissions/${id}/nor/uploaded-evidence`, {
+          documentId,
+          documentVersionId,
+          acknowledgedAt: new Date().toISOString(),
+          acknowledgedByName: acknowledgedByName.trim() || undefined,
+          acknowledgedByRole,
+        }),
     );
-  }, [attachUploadedEvidence, client, id, acknowledgedByName, acknowledgedByRole]);
+  }, [
+    attachUploadedEvidence,
+    client,
+    id,
+    acknowledgedByName,
+    acknowledgedByRole,
+  ]);
 
   const uploadElection = useCallback(async () => {
     const period = currentPeriod(electionCert, periods);
     if (!period) return;
-    const state = ceremony === "election-sign-upload" ? "signed" : uploadedSignedState;
-    if (state === "signed" && (!uploadedSignerName.trim() || !uploadedSignatureDate)) {
-      setActionError("Signer name, signer role, and signature date are required for a signed Election Statement.");
+    const state =
+      ceremony === "election-sign-upload" ? "signed" : uploadedSignedState;
+    if (
+      state === "signed" &&
+      (!uploadedSignerName.trim() || !uploadedSignatureDate)
+    ) {
+      setActionError(
+        "Signer name, signer role, and signature date are required for a signed Election Statement.",
+      );
       return;
     }
-    await attachUploadedEvidence("election_statement", "Election Statement", ({ documentId, documentVersionId }) =>
-      postUntyped(
-        client,
-        ceremony === "election-sign-upload" && period.electionStatement?.id
-          ? `/api/v1/election-statements/${period.electionStatement.id}/sign/uploaded-evidence`
-          : `/api/v1/election-periods/${period.id}/election-statement/uploaded-evidence`,
-        {
-        documentId,
-        documentVersionId,
-        documentState: state,
-        signerName: state === "signed" ? uploadedSignerName.trim() : undefined,
-        signerRole: state === "signed" ? uploadedSignerRole : undefined,
-        signedAt: state === "signed" ? dateInputToIso(uploadedSignatureDate) : undefined,
-        },
-      ),
+    await attachUploadedEvidence(
+      "election_statement",
+      "Election Statement",
+      ({ documentId, documentVersionId }) =>
+        postUntyped(
+          client,
+          ceremony === "election-sign-upload" && period.electionStatement?.id
+            ? `/api/v1/election-statements/${period.electionStatement.id}/sign/uploaded-evidence`
+            : `/api/v1/election-periods/${period.id}/election-statement/uploaded-evidence`,
+          {
+            documentId,
+            documentVersionId,
+            documentState: state,
+            signerName:
+              state === "signed" ? uploadedSignerName.trim() : undefined,
+            signerRole: state === "signed" ? uploadedSignerRole : undefined,
+            signedAt:
+              state === "signed"
+                ? dateInputToIso(uploadedSignatureDate)
+                : undefined,
+          },
+        ),
     );
   }, [
     attachUploadedEvidence,
@@ -627,13 +706,23 @@ export function AdmissionDetail(): JSX.Element {
       setActionError("Signature date is required for a signed CTI.");
       return;
     }
-    await attachUploadedEvidence("cti", "Certification of Terminal Illness", ({ documentId, documentVersionId }) =>
-      postUntyped(client, `/api/v1/election-periods/${period.id}/cti/uploaded-evidence`, {
-        documentId,
-        documentVersionId,
-        documentState: uploadedSignedState,
-        signedAt: uploadedSignedState === "signed" ? dateInputToIso(uploadedSignatureDate) : undefined,
-      }),
+    await attachUploadedEvidence(
+      "cti",
+      "Certification of Terminal Illness",
+      ({ documentId, documentVersionId }) =>
+        postUntyped(
+          client,
+          `/api/v1/election-periods/${period.id}/cti/uploaded-evidence`,
+          {
+            documentId,
+            documentVersionId,
+            documentState: uploadedSignedState,
+            signedAt:
+              uploadedSignedState === "signed"
+                ? dateInputToIso(uploadedSignatureDate)
+                : undefined,
+          },
+        ),
     );
   }, [
     admission,
@@ -651,11 +740,20 @@ export function AdmissionDetail(): JSX.Element {
       const getContent = client.GET as unknown as (
         path: string,
         init: { params: { path: { id: string; versionId: string } } },
-      ) => Promise<{ data?: { url?: string }; error?: unknown; response?: Response }>;
+      ) => Promise<{
+        data?: { url?: string };
+        error?: unknown;
+        response?: Response;
+      }>;
       const res = await getContent(
         "/api/v1/documents/{id}/versions/{versionId}/content",
         {
-          params: { path: { id: evidence.documentId, versionId: evidence.documentVersionId } },
+          params: {
+            path: {
+              id: evidence.documentId,
+              versionId: evidence.documentVersionId,
+            },
+          },
         },
       );
       if (res.error || !res.data?.url) {
@@ -704,21 +802,28 @@ export function AdmissionDetail(): JSX.Element {
       return;
     }
 
-    const { error: err, response } = await client.POST("/api/v1/election-statements/{id}/sign", {
-      params: {
-        path: {
-          id: election.id,
+    const { error: err, response } = await client.POST(
+      "/api/v1/election-statements/{id}/sign",
+      {
+        params: {
+          path: {
+            id: election.id,
+          },
         },
+        body: {
+          signingPatientName: electionSignerName.trim(),
+          signingRole: electionSignerRole,
+          ifVersion: currentElection.version,
+        } as never,
       },
-      body: {
-        signingPatientName: electionSignerName.trim(),
-        signingRole: electionSignerRole,
-        ifVersion: currentElection.version,
-      } as never,
-    });
+    );
 
     if (err) {
-      branchError(response?.status, err?.error?.code, "Could not sign the Election Statement.");
+      branchError(
+        response?.status,
+        err?.error?.code,
+        "Could not sign the Election Statement.",
+      );
       return;
     }
 
@@ -739,31 +844,44 @@ export function AdmissionDetail(): JSX.Element {
   const createCti = useCallback(async () => {
     const period = currentPeriod(electionCert, periods);
     if (!period) return;
-    const selectedPhysicianId = admission?.hospicePhysicianId ?? hospicePhysicianId;
+    const selectedPhysicianId =
+      admission?.hospicePhysicianId ?? hospicePhysicianId;
     if (!selectedPhysicianId) {
       setActionError("Select a Hospice Physician before creating the CTI.");
       return;
     }
-    if (ctiDiagnosisIcd10.trim().length === 0 || ctiNarrative.trim().length === 0) {
+    if (
+      ctiDiagnosisIcd10.trim().length === 0 ||
+      ctiNarrative.trim().length === 0
+    ) {
       setActionError("Provide the diagnosis and CTI narrative.");
       return;
     }
     setBusy(true);
     setActionError(null);
-    const { error: err, response } = await client.POST("/api/v1/election-periods/{id}/cti", {
-      params: { path: { id: period.id } },
-      body: {
-        hospiceMedicalDirectorId: selectedPhysicianId,
-        terminalDiagnosisIcd10: ctiDiagnosisIcd10.trim().toUpperCase(),
-        secondaryDiagnoses: normalizeSecondaryDiagnoses(ctiSecondaryDiagnoses),
-        prognosisStatement: ctiPrognosis.trim(),
-        narrative: ctiNarrative.trim(),
-        clinicalFindings: {},
-        isRecert: false,
-      } as never,
-    });
+    const { error: err, response } = await client.POST(
+      "/api/v1/election-periods/{id}/cti",
+      {
+        params: { path: { id: period.id } },
+        body: {
+          hospiceMedicalDirectorId: selectedPhysicianId,
+          terminalDiagnosisIcd10: ctiDiagnosisIcd10.trim().toUpperCase(),
+          secondaryDiagnoses: normalizeSecondaryDiagnoses(
+            ctiSecondaryDiagnoses,
+          ),
+          prognosisStatement: ctiPrognosis.trim(),
+          narrative: ctiNarrative.trim(),
+          clinicalFindings: {},
+          isRecert: false,
+        } as never,
+      },
+    );
     if (err) {
-      branchError(response?.status, err?.error?.code, "Could not create the CTI.");
+      branchError(
+        response?.status,
+        err?.error?.code,
+        "Could not create the CTI.",
+      );
       return;
     }
     setBusy(false);
@@ -784,87 +902,112 @@ export function AdmissionDetail(): JSX.Element {
     load,
   ]);
 
-  const signCti = useCallback(
-    async () => {
-      const cti = currentPeriod(electionCert, periods)?.cti;
+  const signCti = useCallback(async () => {
+    const cti = currentPeriod(electionCert, periods)?.cti;
 
-      if (!cti) return;
-      if (!admission?.hospicePhysicianId) {
-        setActionError("Select a Hospice Physician before signing the CTI.");
-        return;
-      }
+    if (!cti) return;
+    if (!admission?.hospicePhysicianId) {
+      setActionError("Select a Hospice Physician before signing the CTI.");
+      return;
+    }
 
-      setBusy(true);
-      setActionError(null);
+    setBusy(true);
+    setActionError(null);
 
-      const {
-        data: currentCti,
-        error: readError,
-        response: readResponse,
-      } = await client.GET("/api/v1/cti/{id}", {
+    const {
+      data: currentCti,
+      error: readError,
+      response: readResponse,
+    } = await client.GET("/api/v1/cti/{id}", {
+      params: {
+        path: {
+          id: cti.id,
+        },
+      },
+    });
+
+    if (readError || !currentCti) {
+      branchError(
+        readResponse?.status,
+        readError?.error?.code,
+        "Could not load the current CTI.",
+      );
+      return;
+    }
+
+    const { error: err, response } = await client.POST(
+      "/api/v1/cti/{id}/sign-hospice-md",
+      {
         params: {
           path: {
             id: cti.id,
           },
         },
-      });
+        body: {
+          ifVersion: currentCti.version,
+        } as never,
+      },
+    );
 
-      if (readError || !currentCti) {
-        branchError(
-          readResponse?.status,
-          readError?.error?.code,
-          "Could not load the current CTI.",
-        );
-        return;
-      }
+    if (err) {
+      branchError(
+        response?.status,
+        err?.error?.code,
+        "Could not sign the CTI.",
+      );
+      return;
+    }
 
-      const { error: err, response } = await client.POST("/api/v1/cti/{id}/sign-hospice-md", {
-        params: {
-          path: {
-            id: cti.id,
-          },
-        },
-      body: {
-        ifVersion: currentCti.version,
-      } as never,
-      });
-
-      if (err) {
-        branchError(response?.status, err?.error?.code, "Could not sign the CTI.");
-        return;
-      }
-
-      setBusy(false);
-      closeCeremony();
-      void load();
-    },
-    [electionCert, periods, admission, client, branchError, closeCeremony, load],
-  );
+    setBusy(false);
+    closeCeremony();
+    void load();
+  }, [
+    electionCert,
+    periods,
+    admission,
+    client,
+    branchError,
+    closeCeremony,
+    load,
+  ]);
 
   if (loading) return <LoadingSpinner />;
   if (error || !admission)
-    return <EmptyState title="Unavailable" description={error ?? "Not found."} />;
+    return (
+      <EmptyState title="Unavailable" description={error ?? "Not found."} />
+    );
 
   const pendingWorkspace =
-    admission.state === "pending" || admission.state === "notice_of_rights_acknowledged";
+    admission.state === "pending" ||
+    admission.state === "notice_of_rights_acknowledged";
   const canAcknowledgeNor =
     pendingWorkspace &&
-    !readiness?.requirements.some((r) => r.code === "notice_of_rights" && r.status === "complete");
+    !readiness?.requirements.some(
+      (r) => r.code === "notice_of_rights" && r.status === "complete",
+    );
   const canActivate =
-    pendingWorkspace && (readiness?.canActivate ?? admission.activationGate.ready);
+    pendingWorkspace &&
+    (readiness?.canActivate ?? admission.activationGate.ready);
   const period = currentPeriod(electionCert, periods);
   const electionStatement = period?.electionStatement ?? null;
   const cti = period?.cti ?? null;
   const nextRequirement = readiness?.requirements.find(
-    (r) => r.blocking && r.status !== "complete" && r.status !== "not_applicable",
+    (r) =>
+      r.blocking && r.status !== "complete" && r.status !== "not_applicable",
   );
   const triggerAction = (action: string | undefined): void => {
     if (!action) return;
-    if (action === "ACKNOWLEDGE_NOR" || action === "COMPLETE_NOTICE_OF_RIGHTS") setCeremony("nor");
-    else if (action === "COMPLETE_ADMISSION_DETAILS") setCeremony("admission-details");
-    else if (action === "COMPLETE_ELECTION" || action === "COMPLETE_ELECTION_STATEMENT")
+    if (action === "ACKNOWLEDGE_NOR" || action === "COMPLETE_NOTICE_OF_RIGHTS")
+      setCeremony("nor");
+    else if (action === "COMPLETE_ADMISSION_DETAILS")
+      setCeremony("admission-details");
+    else if (
+      action === "COMPLETE_ELECTION" ||
+      action === "COMPLETE_ELECTION_STATEMENT"
+    )
       setCeremony(electionStatement ? "sign-election" : "election");
-    else if (action === "COMPLETE_ELECTION_SIGNATURE") setCeremony("sign-election");
+    else if (action === "COMPLETE_ELECTION_SIGNATURE")
+      setCeremony("sign-election");
     else if (action === "REVIEW_CTI") {
       if (!cti) {
         setCeremony("cti");
@@ -876,7 +1019,8 @@ export function AdmissionDetail(): JSX.Element {
         return;
       }
     } else if (action === "COMPLETE_CTI") setCeremony("cti");
-    else if (action === "COMPLETE_CTI_SIGNATURE") setCeremony("sign-cti-hospice-md");
+    else if (action === "COMPLETE_CTI_SIGNATURE")
+      setCeremony("sign-cti-hospice-md");
   };
 
   if (pendingWorkspace) {
@@ -917,11 +1061,16 @@ export function AdmissionDetail(): JSX.Element {
               }}
             >
               Patient{" "}
-              <AdmissionPatientLink patientId={admission.patientId} patient={patient} compact />
+              <AdmissionPatientLink
+                patientId={admission.patientId}
+                patient={patient}
+                compact
+              />
               {admission.referralId ? (
                 <>
                   {" "}
-                  · Referral <span className="wx-data-md">{admission.referralId}</span>
+                  · Referral{" "}
+                  <span className="wx-data-md">{admission.referralId}</span>
                 </>
               ) : null}
             </div>
@@ -960,7 +1109,9 @@ export function AdmissionDetail(): JSX.Element {
                   {readiness.requirements
                     .filter((r) => r.blocking && r.status !== "complete")
                     .map((r) => (
-                      <li key={r.code}>{r.message ?? `${r.label} is incomplete.`}</li>
+                      <li key={r.code}>
+                        {r.message ?? `${r.label} is incomplete.`}
+                      </li>
                     ))}
                 </ul>
               </div>
@@ -975,7 +1126,8 @@ export function AdmissionDetail(): JSX.Element {
                 <div>
                   <strong>Next step: {nextRequirement.label}</strong>
                   <p style={requirementMessageStyle}>
-                    {nextRequirement.message ?? "Complete this item to move the admission forward."}
+                    {nextRequirement.message ??
+                      "Complete this item to move the admission forward."}
                   </p>
                 </div>
                 {nextRequirement.action ? (
@@ -1005,7 +1157,11 @@ export function AdmissionDetail(): JSX.Element {
               "Documents",
               "Activity",
             ].map((tab) => (
-              <a key={tab} href={`#${tab.toLowerCase().replaceAll(" ", "-")}`} style={tabStyle}>
+              <a
+                key={tab}
+                href={`#${tab.toLowerCase().replaceAll(" ", "-")}`}
+                style={tabStyle}
+              >
                 {tab}
               </a>
             ))}
@@ -1023,18 +1179,45 @@ export function AdmissionDetail(): JSX.Element {
             <div id="admission-details" style={sectionStackStyle}>
               <div style={fieldGridStyle}>
                 <Field label="Admission ID" value={admission.id} mono />
+
                 <Field
                   label="Patient"
-                  value={<AdmissionPatientLink patientId={admission.patientId} patient={patient} />}
+                  value={
+                    <AdmissionPatientLink
+                      patientId={admission.patientId}
+                      patient={patient}
+                    />
+                  }
                 />
-                <Field label="Referral" value={admission.referralId ?? "Direct admission"} mono />
-                <Field label="Planned/SOC" value={fmtDate(admission.admissionAt)} />
+
+                <Field
+                  label="Referral"
+                  value={admission.referralId ?? "Direct admission"}
+                  mono
+                />
+
+                <Field
+                  label="Planned/SOC"
+                  value={fmtDate(admission.admissionAt)}
+                />
               </div>
+
+              {admission.patientId ? (
+                <PatientIntakeDetails
+                  patientId={admission.patientId}
+                  onSaved={load}
+                />
+              ) : null}
+
               <RequirementLine
-                requirement={readiness?.requirements.find((r) => r.code === "admission_details")}
+                requirement={readiness?.requirements.find(
+                  (r) => r.code === "admission_details",
+                )}
               />
-              {readiness?.requirements.find((r) => r.code === "admission_details")?.status !==
-              "complete" ? (
+
+              {readiness?.requirements.find(
+                (r) => r.code === "admission_details",
+              )?.status !== "complete" ? (
                 <div>
                   <button
                     type="button"
@@ -1057,10 +1240,16 @@ export function AdmissionDetail(): JSX.Element {
           <Section title="Notice of Rights">
             <div id="notice-of-rights" style={sectionInnerStyle}>
               <RequirementLine
-                requirement={readiness?.requirements.find((r) => r.code === "notice_of_rights")}
+                requirement={readiness?.requirements.find(
+                  (r) => r.code === "notice_of_rights",
+                )}
               />
               {canAcknowledgeNor ? (
-                <button type="button" onClick={() => setCeremony("nor")} style={ghostBtn}>
+                <button
+                  type="button"
+                  onClick={() => setCeremony("nor")}
+                  style={ghostBtn}
+                >
                   Complete Notice of Rights
                 </button>
               ) : null}
@@ -1069,23 +1258,38 @@ export function AdmissionDetail(): JSX.Element {
           <Section title="Election">
             <div id="election" style={sectionStackStyle}>
               <RequirementLine
-                requirement={readiness?.requirements.find((r) => r.code === "election_statement")}
+                requirement={readiness?.requirements.find(
+                  (r) => r.code === "election_statement",
+                )}
               />
               <div style={fieldGridStyle}>
                 <Field
                   label="Period"
-                  value={period ? `Period ${period.sequenceNumber}` : "Not created"}
+                  value={
+                    period ? `Period ${period.sequenceNumber}` : "Not created"
+                  }
                 />
                 <Field
                   label="Statement"
-                  value={electionStatement ? stateLabel(electionStatement.state) : "Not created"}
+                  value={
+                    electionStatement
+                      ? stateLabel(electionStatement.state)
+                      : "Not created"
+                  }
                 />
-                <Field label="Signed" value={fmtDate(electionStatement?.signedAt)} />
+                <Field
+                  label="Signed"
+                  value={fmtDate(electionStatement?.signedAt)}
+                />
               </div>
               <div>
                 <button
                   type="button"
-                  onClick={() => setCeremony(electionStatement ? "sign-election" : "election")}
+                  onClick={() =>
+                    setCeremony(
+                      electionStatement ? "sign-election" : "election",
+                    )
+                  }
                   style={ghostBtn}
                   disabled={!period || electionStatement?.state === "signed"}
                 >
@@ -1101,13 +1305,21 @@ export function AdmissionDetail(): JSX.Element {
           <Section title="CTI">
             <div id="cti" style={sectionStackStyle}>
               <RequirementLine
-                requirement={readiness?.requirements.find((r) => r.code === "cti")}
+                requirement={readiness?.requirements.find(
+                  (r) => r.code === "cti",
+                )}
               />
               <div style={fieldGridStyle}>
-                <Field label="CTI" value={cti ? stateLabel(cti.state) : "Not created"} />
+                <Field
+                  label="CTI"
+                  value={cti ? stateLabel(cti.state) : "Not created"}
+                />
                 <Field
                   label="Hospice Physician"
-                  value={physicianLabel(admission.hospicePhysician, admission.hospicePhysicianId)}
+                  value={physicianLabel(
+                    admission.hospicePhysician,
+                    admission.hospicePhysicianId,
+                  )}
                 />
               </div>
               <div>
@@ -1123,7 +1335,11 @@ export function AdmissionDetail(): JSX.Element {
                     )
                   }
                   style={ghostBtn}
-                  disabled={!period || cti?.state === "signed" || !admission.hospicePhysicianId}
+                  disabled={
+                    !period ||
+                    cti?.state === "signed" ||
+                    !admission.hospicePhysicianId
+                  }
                 >
                   {!cti
                     ? "Complete CTI"
@@ -1137,10 +1353,17 @@ export function AdmissionDetail(): JSX.Element {
             </div>
           </Section>
           <Section title="Face-to-Face">
-            <RequirementLine requirement={readiness?.requirements.find((r) => r.code === "f2f")} />
+            <RequirementLine
+              requirement={readiness?.requirements.find(
+                (r) => r.code === "f2f",
+              )}
+            />
           </Section>
           <Section title="Documents">
-            <AdmissionDocuments requirements={readiness?.requirements ?? []} onView={viewDocument} />
+            <AdmissionDocuments
+              requirements={readiness?.requirements ?? []}
+              onView={viewDocument}
+            />
           </Section>
           <Section title="Activity">
             <RowList
@@ -1162,18 +1385,28 @@ export function AdmissionDetail(): JSX.Element {
           title="Admission"
           breadcrumb="Admissions / Detail"
           actions={
-            <div style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}
+            >
               <StatusPill
                 label={stateLabel(admission.state)}
                 tone={ADMISSION_TONE[admission.state] ?? "neutral"}
               />
               {canAcknowledgeNor ? (
-                <button type="button" onClick={() => setCeremony("nor")} style={ghostBtn}>
+                <button
+                  type="button"
+                  onClick={() => setCeremony("nor")}
+                  style={ghostBtn}
+                >
                   Acknowledge NOR
                 </button>
               ) : null}
               {canActivate ? (
-                <button type="button" onClick={() => setCeremony("activate")} style={primaryBtn}>
+                <button
+                  type="button"
+                  onClick={() => setCeremony("activate")}
+                  style={primaryBtn}
+                >
                   Activate
                 </button>
               ) : null}
@@ -1186,13 +1419,17 @@ export function AdmissionDetail(): JSX.Element {
               fontSize: "0.875rem",
             }}
           >
-            Admission <span className="wx-data-md">{admission.id}</span> · version{" "}
-            <span className="tabular-nums">{admission.version}</span>
+            Admission <span className="wx-data-md">{admission.id}</span> ·
+            version <span className="tabular-nums">{admission.version}</span>
             {admission.patientId ? (
               <>
                 {" "}
                 · Patient{" "}
-                <AdmissionPatientLink patientId={admission.patientId} patient={patient} compact />
+                <AdmissionPatientLink
+                  patientId={admission.patientId}
+                  patient={patient}
+                  compact
+                />
               </>
             ) : null}
           </div>
@@ -1222,7 +1459,12 @@ export function AdmissionDetail(): JSX.Element {
             <Field label="Admission ID" value={admission.id} mono />
             <Field
               label="Patient"
-              value={<AdmissionPatientLink patientId={admission.patientId} patient={patient} />}
+              value={
+                <AdmissionPatientLink
+                  patientId={admission.patientId}
+                  patient={patient}
+                />
+              }
             />
             <Field label="Version" value={String(admission.version)} mono />
             <Field
@@ -1243,7 +1485,11 @@ export function AdmissionDetail(): JSX.Element {
           />
         </Section>
         <Section title="Compliance windows">
-          <RowList rows={windows} empty="No open compliance windows." toneFor={WINDOW_TONE} />
+          <RowList
+            rows={windows}
+            empty="No open compliance windows."
+            toneFor={WINDOW_TONE}
+          />
         </Section>
       </div>
 
@@ -1260,8 +1506,8 @@ export function AdmissionDetail(): JSX.Element {
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Set the planned admission/SOC date first. The CTI step records the terminal
-                diagnosis and certifying physician.
+                Set the planned admission/SOC date first. The CTI step records
+                the terminal diagnosis and certifying physician.
               </span>
               <label htmlFor="admission-date" style={fieldLabel}>
                 Admission/SOC date
@@ -1317,7 +1563,8 @@ export function AdmissionDetail(): JSX.Element {
                 },
                 {
                   title: "Upload document",
-                  description: "Upload an existing scanned or completed Notice of Rights.",
+                  description:
+                    "Upload an existing scanned or completed Notice of Rights.",
                   onChoose: () => setCeremony("nor-upload"),
                 },
               ]}
@@ -1337,7 +1584,8 @@ export function AdmissionDetail(): JSX.Element {
               options={[
                 {
                   title: "Create in WardenX",
-                  description: "Prepare the Election Statement here, then collect signature.",
+                  description:
+                    "Prepare the Election Statement here, then collect signature.",
                   onChoose: () => setCeremony("election-create"),
                 },
                 {
@@ -1389,11 +1637,15 @@ export function AdmissionDetail(): JSX.Element {
             <div style={formStackStyle}>
               <Field
                 label="Hospice Physician"
-                value={physicianLabel(admission!.hospicePhysician, admission!.hospicePhysicianId)}
+                value={physicianLabel(
+                  admission!.hospicePhysician,
+                  admission!.hospicePhysicianId,
+                )}
               />
               {!admission!.hospicePhysicianId ? (
                 <div role="alert" style={blockerBoxStyle}>
-                  Select a Hospice Physician in Admission Details before completing the CTI.
+                  Select a Hospice Physician in Admission Details before
+                  completing the CTI.
                 </div>
               ) : (
                 <RequirementMethodPicker
@@ -1437,7 +1689,10 @@ export function AdmissionDetail(): JSX.Element {
         />
 
         <CeremonyModal
-          open={ceremony === "election-upload" || ceremony === "election-sign-upload"}
+          open={
+            ceremony === "election-upload" ||
+            ceremony === "election-sign-upload"
+          }
           title={
             ceremony === "election-sign-upload"
               ? "Upload signed Election Statement"
@@ -1478,7 +1733,10 @@ export function AdmissionDetail(): JSX.Element {
               onSignedState={setUploadedSignedState}
               signatureDate={uploadedSignatureDate}
               onSignatureDate={setUploadedSignatureDate}
-              signedByLabel={physicianLabel(admission!.hospicePhysician, admission!.hospicePhysicianId)}
+              signedByLabel={physicianLabel(
+                admission!.hospicePhysician,
+                admission!.hospicePhysicianId,
+              )}
               error={actionError}
             />
           }
@@ -1494,8 +1752,9 @@ export function AdmissionDetail(): JSX.Element {
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Create the election document for the first benefit period. After it is created, the
-                patient or representative can sign it from this same page.
+                Create the election document for the first benefit period. After
+                it is created, the patient or representative can sign it from
+                this same page.
               </span>
               <label htmlFor="election-effective-date" style={fieldLabel}>
                 Effective date
@@ -1536,7 +1795,8 @@ export function AdmissionDetail(): JSX.Element {
                   checked={waiverAcknowledged}
                   onChange={(ev) => setWaiverAcknowledged(ev.target.checked)}
                 />
-                Patient/representative acknowledged hospice election and applicable waiver.
+                Patient/representative acknowledged hospice election and
+                applicable waiver.
               </label>
               <label htmlFor="state-addendum" style={fieldLabel}>
                 State addendum
@@ -1567,8 +1827,8 @@ export function AdmissionDetail(): JSX.Element {
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Capture the patient or representative signature. This is required before the
-                admission can activate.
+                Capture the patient or representative signature. This is
+                required before the admission can activate.
               </span>
               <label htmlFor="election-signer-name" style={fieldLabel}>
                 Signer name
@@ -1587,12 +1847,17 @@ export function AdmissionDetail(): JSX.Element {
                 value={electionSignerRole}
                 onChange={(ev) =>
                   setElectionSignerRole(
-                    ev.target.value as "patient" | "legal_representative" | "caregiver",
+                    ev.target.value as
+                      | "patient"
+                      | "legal_representative"
+                      | "caregiver",
                   )
                 }
               >
                 <option value="patient">Patient</option>
-                <option value="legal_representative">Legal representative</option>
+                <option value="legal_representative">
+                  Legal representative
+                </option>
                 <option value="caregiver">Caregiver</option>
               </select>
               {actionError ? (
@@ -1615,18 +1880,23 @@ export function AdmissionDetail(): JSX.Element {
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Create the CTI with the selected Hospice Physician, terminal diagnosis, prognosis,
-                and clinical narrative. Signature is a separate governed action.
+                Create the CTI with the selected Hospice Physician, terminal
+                diagnosis, prognosis, and clinical narrative. Signature is a
+                separate governed action.
               </span>
-              {admission!.primaryDiagnosisIcd10 || admission!.referringDxText ? (
+              {admission!.primaryDiagnosisIcd10 ||
+              admission!.referringDxText ? (
                 <span style={hintTextStyle}>
-                  Diagnosis was prefilled from the referral/admission when available; edit it here
-                  if the CTI needs a different value.
+                  Diagnosis was prefilled from the referral/admission when
+                  available; edit it here if the CTI needs a different value.
                 </span>
               ) : null}
               <Field
                 label="Certifying Hospice Physician"
-                value={physicianLabel(admission!.hospicePhysician, admission!.hospicePhysicianId)}
+                value={physicianLabel(
+                  admission!.hospicePhysician,
+                  admission!.hospicePhysicianId,
+                )}
               />
               <label htmlFor="cti-diagnosis" style={fieldLabel}>
                 Terminal diagnosis ICD-10
@@ -1687,13 +1957,17 @@ export function AdmissionDetail(): JSX.Element {
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Capture the CTI signature for the Hospice Physician selected in Admission Details.
+                Capture the CTI signature for the Hospice Physician selected in
+                Admission Details.
               </span>
               <Field
                 label="Physician name"
                 value={
                   admission!.hospicePhysician?.displayName ??
-                  physicianLabel(admission!.hospicePhysician, admission!.hospicePhysicianId)
+                  physicianLabel(
+                    admission!.hospicePhysician,
+                    admission!.hospicePhysicianId,
+                  )
                 }
               />
               <Field
@@ -1720,8 +1994,9 @@ export function AdmissionDetail(): JSX.Element {
           attestation={
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
-                Records that the patient (or their legal representative) received and acknowledged
-                the Notice of Rights. Required before the admission can activate.
+                Records that the patient (or their legal representative)
+                received and acknowledged the Notice of Rights. Required before
+                the admission can activate.
               </span>
               <label htmlFor="nor-method" style={fieldLabel}>
                 Delivery method
@@ -1729,7 +2004,9 @@ export function AdmissionDetail(): JSX.Element {
               <select
                 id="nor-method"
                 value={deliveryMethod}
-                onChange={(ev) => setDeliveryMethod(ev.target.value as NorMethod)}
+                onChange={(ev) =>
+                  setDeliveryMethod(ev.target.value as NorMethod)
+                }
               >
                 {NOR_METHODS.map((m) => (
                   <option key={m.value} value={m.value}>
@@ -1753,11 +2030,15 @@ export function AdmissionDetail(): JSX.Element {
                 id="nor-role"
                 value={acknowledgedByRole}
                 onChange={(ev) =>
-                  setAcknowledgedByRole(ev.target.value as "patient" | "legal_representative")
+                  setAcknowledgedByRole(
+                    ev.target.value as "patient" | "legal_representative",
+                  )
                 }
               >
                 <option value="patient">Patient</option>
-                <option value="legal_representative">Legal representative</option>
+                <option value="legal_representative">
+                  Legal representative
+                </option>
               </select>
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>
@@ -1789,8 +2070,9 @@ export function AdmissionDetail(): JSX.Element {
                   color: "var(--color-on-surface-variant)",
                 }}
               >
-                All four R-AC-01 preconditions are satisfied. Activating opens active-period billing
-                and compliance tracking for this admission.
+                All four R-AC-01 preconditions are satisfied. Activating opens
+                active-period billing and compliance tracking for this
+                admission.
               </span>
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>
@@ -1825,7 +2107,8 @@ function HopeEntry({
         <div>
           <h3 style={miniTitleStyle}>HOPE workflow</h3>
           <p style={emptyTextStyle}>
-            HOPE summary is unavailable or not visible for admission {admissionId}.
+            HOPE summary is unavailable or not visible for admission{" "}
+            {admissionId}.
           </p>
         </div>
         <button type="button" onClick={onOpen} style={ghostBtn}>
@@ -1834,7 +2117,9 @@ function HopeEntry({
       </div>
     );
   }
-  const openSfvs = summary.sfvs.filter((s) => s.status === "open" || s.status === "overdue").length;
+  const openSfvs = summary.sfvs.filter(
+    (s) => s.status === "open" || s.status === "overdue",
+  ).length;
   const workflowIssueCount = summary.summary.workflowIssueCount ?? 0;
   const overdueCount = summary.summary.overdueCount ?? 0;
   const dueSoonCount = summary.summary.dueSoonCount ?? 0;
@@ -1860,8 +2145,9 @@ function HopeEntry({
           label="SFV"
           status={openSfvs > 0 ? `${openSfvs} open` : "none open"}
           attention={
-            summary.sfvs.find((s) => s.attention?.state && s.attention.state !== "none")?.attention
-              ?.state
+            summary.sfvs.find(
+              (s) => s.attention?.state && s.attention.state !== "none",
+            )?.attention?.state
           }
         />
         <HopeMini
@@ -1886,7 +2172,8 @@ function HopeEntry({
             dueSoonCount,
           )}
           tone={
-            (summary.summary.highestSeverity ?? "none") === "critical" || workflowIssueCount > 0
+            (summary.summary.highestSeverity ?? "none") === "critical" ||
+            workflowIssueCount > 0
               ? "error"
               : summary.summary.actionableCount > 0 || dueSoonCount > 0
                 ? "warning"
@@ -1896,7 +2183,9 @@ function HopeEntry({
         {overdueCount > 0 ? (
           <span style={summaryMetaStyle}>{overdueCount} overdue or missed</span>
         ) : null}
-        <span style={summaryMetaStyle}>Next deadline {fmtDate(summary.summary.nextDeadline)}</span>
+        <span style={summaryMetaStyle}>
+          Next deadline {fmtDate(summary.summary.nextDeadline)}
+        </span>
         <button type="button" onClick={onOpen} style={primaryBtn}>
           Open HOPE
         </button>
@@ -1916,7 +2205,10 @@ function HopeMini({
 }): JSX.Element {
   const display = attention && attention !== "none" ? attention : status;
   const tone: StatusTone =
-    display.includes("open") || display === "late" || display === "due" || display === "due_soon"
+    display.includes("open") ||
+    display === "late" ||
+    display === "due" ||
+    display === "due_soon"
       ? "warning"
       : display === "completed"
         ? "success"
@@ -1966,7 +2258,9 @@ function currentPeriod(
   electionCert: ElectionCertificationView | null,
   fallbackPeriods: SummaryRow[],
 ): ElectionPeriodView | (SummaryRow & Partial<ElectionPeriodView>) | null {
-  const electionPeriods = Array.isArray(electionCert?.periods) ? electionCert.periods : [];
+  const electionPeriods = Array.isArray(electionCert?.periods)
+    ? electionCert.periods
+    : [];
   return (
     electionPeriods.find((p) => p.sequenceNumber === 1) ??
     electionPeriods[0] ??
@@ -1975,7 +2269,9 @@ function currentPeriod(
   );
 }
 
-function currentResidenceAddress(addresses: AddressView[] | null): AddressView | null {
+function currentResidenceAddress(
+  addresses: AddressView[] | null,
+): AddressView | null {
   if (!addresses?.length) return null;
   return (
     addresses.find((a) => a.current && a.isPrimary && a.kind === "home") ??
@@ -1990,7 +2286,10 @@ function addressLines(address: AddressView | null | undefined): string[] {
   return [
     address.line1,
     address.line2,
-    [address.city, [address.state, address.postalCode].filter(Boolean).join(" ")]
+    [
+      address.city,
+      [address.state, address.postalCode].filter(Boolean).join(" "),
+    ]
       .filter(Boolean)
       .join(", "),
     address.country && address.country !== "US" ? address.country : null,
@@ -2006,7 +2305,7 @@ function ServiceLocationBlock({
 }): JSX.Element {
   return (
     <div style={formStackStyle}>
-      <span style={fieldLabel}>Service location</span>
+      <span style={fieldLabel}>Service location / residence</span>
       {address ? (
         <div style={addressBoxStyle}>
           <strong>Patient residence</strong>
@@ -2015,12 +2314,20 @@ function ServiceLocationBlock({
           ))}
         </div>
       ) : (
-        <div role="alert" style={blockerBoxStyle}>
-          <strong>Patient residence address is missing.</strong>
-          <div>Add a residence address to the patient record before completing admission.</div>
+        <div style={addressBoxStyle}>
+          <strong>No patient residence address on file.</strong>
+
+          <div style={hintTextStyle}>
+            Residence address is optional at this stage. You can continue
+            admission and add it later.
+          </div>
+
           {patientId ? (
-            <Link to={`/patients/${patientId}`} style={patientLinkStyle}>
-              Open patient record
+            <Link
+              to={`/patients/${patientId}?view=addresses`}
+              style={patientLinkStyle}
+            >
+              Open patient addresses
             </Link>
           ) : null}
         </div>
@@ -2049,7 +2356,12 @@ function RequirementMethodPicker({
   return (
     <div style={methodGridStyle}>
       {options.map((option) => (
-        <button key={option.title} type="button" onClick={option.onChoose} style={methodButtonStyle}>
+        <button
+          key={option.title}
+          type="button"
+          onClick={option.onChoose}
+          style={methodButtonStyle}
+        >
           <strong>{option.title}</strong>
           <span>{option.description}</span>
         </button>
@@ -2082,7 +2394,9 @@ function UploadedEvidenceForm({
   signerName?: string;
   onSignerName?: (value: string) => void;
   signerRole?: "patient" | "legal_representative" | "caregiver";
-  onSignerRole?: (value: "patient" | "legal_representative" | "caregiver") => void;
+  onSignerRole?: (
+    value: "patient" | "legal_representative" | "caregiver",
+  ) => void;
   signatureDate?: string;
   onSignatureDate?: (value: string) => void;
   signedByLabel?: string;
@@ -2103,7 +2417,11 @@ function UploadedEvidenceForm({
       />
       {file ? <span style={hintTextStyle}>{file.name}</span> : null}
       {onSignedState ? (
-        <div style={segmentedStyle} role="radiogroup" aria-label="Document signature status">
+        <div
+          style={segmentedStyle}
+          role="radiogroup"
+          aria-label="Document signature status"
+        >
           {(["unsigned", "signed"] as const).map((state) => (
             <button
               key={state}
@@ -2112,7 +2430,9 @@ function UploadedEvidenceForm({
               aria-checked={effectiveState === state}
               onClick={() => onSignedState(state)}
               disabled={signedOnly && state === "unsigned"}
-              style={effectiveState === state ? selectedSegmentStyle : segmentStyle}
+              style={
+                effectiveState === state ? selectedSegmentStyle : segmentStyle
+              }
             >
               {state === "signed" ? "Signed" : "Unsigned"}
             </button>
@@ -2121,7 +2441,9 @@ function UploadedEvidenceForm({
       ) : null}
       {effectiveState === "signed" ? (
         <>
-          {signedByLabel ? <Field label="Signed by" value={signedByLabel} /> : null}
+          {signedByLabel ? (
+            <Field label="Signed by" value={signedByLabel} />
+          ) : null}
           {onSignerName ? (
             <>
               <label htmlFor="uploaded-signer-name" style={fieldLabel}>
@@ -2144,11 +2466,18 @@ function UploadedEvidenceForm({
                 id="uploaded-signer-role"
                 value={signerRole ?? "patient"}
                 onChange={(ev) =>
-                  onSignerRole(ev.target.value as "patient" | "legal_representative" | "caregiver")
+                  onSignerRole(
+                    ev.target.value as
+                      | "patient"
+                      | "legal_representative"
+                      | "caregiver",
+                  )
                 }
               >
                 <option value="patient">Patient</option>
-                <option value="legal_representative">Legal representative</option>
+                <option value="legal_representative">
+                  Legal representative
+                </option>
                 <option value="caregiver">Caregiver</option>
               </select>
             </>
@@ -2169,7 +2498,9 @@ function UploadedEvidenceForm({
           ) : null}
         </>
       ) : null}
-      {stage !== "idle" ? <span style={hintTextStyle}>{uploadStageLabel(stage)}</span> : null}
+      {stage !== "idle" ? (
+        <span style={hintTextStyle}>{uploadStageLabel(stage)}</span>
+      ) : null}
       {error ? (
         <p role="alert" aria-live="assertive" style={alertStyle}>
           {error}
@@ -2194,9 +2525,15 @@ function AdmissionDocuments({
   requirements: ReadinessRequirement[];
   onView: (evidence: ReadinessRequirement["evidence"]) => void;
 }): JSX.Element {
-  const rows = requirements.filter((r) => r.evidence?.documentId && r.evidence.documentVersionId);
+  const rows = requirements.filter(
+    (r) => r.evidence?.documentId && r.evidence.documentVersionId,
+  );
   if (rows.length === 0) {
-    return <p id="documents" style={emptyTextStyle}>No admission intake documents are attached yet.</p>;
+    return (
+      <p id="documents" style={emptyTextStyle}>
+        No admission intake documents are attached yet.
+      </p>
+    );
   }
   return (
     <table id="documents" style={tableStyle}>
@@ -2211,15 +2548,25 @@ function AdmissionDocuments({
       </thead>
       <tbody>
         {rows.map((r) => (
-          <tr key={`${r.code}-${r.evidence?.documentVersionId}`} style={rowStyle}>
+          <tr
+            key={`${r.code}-${r.evidence?.documentVersionId}`}
+            style={rowStyle}
+          >
             <td style={tdStyle}>{r.label}</td>
             <td style={tdStyle}>Uploaded document</td>
             <td style={tdStyle}>{fmtDate(r.evidence?.completedAt)}</td>
             <td style={tdStyle}>
-              <StatusPill label={stateLabel(r.status)} tone={requirementTone(r.status)} />
+              <StatusPill
+                label={stateLabel(r.status)}
+                tone={requirementTone(r.status)}
+              />
             </td>
             <td style={tdStyle}>
-              <button type="button" style={ghostBtn} onClick={() => onView(r.evidence)}>
+              <button
+                type="button"
+                style={ghostBtn}
+                onClick={() => onView(r.evidence)}
+              >
                 View document
               </button>
             </td>
@@ -2244,10 +2591,16 @@ function actionLabel(
     return "Complete admission details";
   }
 
-  if (action === "COMPLETE_ELECTION" || action === "COMPLETE_ELECTION_STATEMENT") {
-    return context.electionStatement ? "Complete Election signature" : "Complete Election Statement";
+  if (
+    action === "COMPLETE_ELECTION" ||
+    action === "COMPLETE_ELECTION_STATEMENT"
+  ) {
+    return context.electionStatement
+      ? "Complete Election signature"
+      : "Complete Election Statement";
   }
-  if (action === "COMPLETE_ELECTION_SIGNATURE") return "Complete Election signature";
+  if (action === "COMPLETE_ELECTION_SIGNATURE")
+    return "Complete Election signature";
   if (action === "COMPLETE_CTI") return "Complete CTI";
   if (action === "COMPLETE_CTI_SIGNATURE") return "Complete CTI signature";
 
@@ -2675,10 +3028,16 @@ function ReadinessChecklist({
     <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
       <StatusPill
         tone={
-          readiness.canActivate ? "success" : readiness.status === "blocked" ? "error" : "warning"
+          readiness.canActivate
+            ? "success"
+            : readiness.status === "blocked"
+              ? "error"
+              : "warning"
         }
         label={
-          readiness.canActivate ? "Ready to activate" : `${readiness.blockingRemaining} blockers`
+          readiness.canActivate
+            ? "Ready to activate"
+            : `${readiness.blockingRemaining} blockers`
         }
       />
       <GateStepper items={items} ariaLabel="Admission readiness requirements" />
@@ -2697,20 +3056,29 @@ function RequirementCards({
   cti: CtiView | null;
   onAction: (action: string) => void;
 }): JSX.Element {
-  if (requirements.length === 0) return <p style={emptyTextStyle}>Readiness is loading.</p>;
+  if (requirements.length === 0)
+    return <p style={emptyTextStyle}>Readiness is loading.</p>;
   return (
     <div style={requirementGridStyle}>
       {requirements.map((r) => (
         <div key={r.code} style={requirementCardStyle}>
           <div style={requirementHeaderStyle}>
             <strong>{r.label}</strong>
-            <StatusPill label={stateLabel(r.status)} tone={requirementTone(r.status)} />
+            <StatusPill
+              label={stateLabel(r.status)}
+              tone={requirementTone(r.status)}
+            />
           </div>
           <p style={requirementMessageStyle}>
-            {r.message ?? (r.status === "complete" ? "Complete" : "No action required.")}
+            {r.message ??
+              (r.status === "complete" ? "Complete" : "No action required.")}
           </p>
           {r.action ? (
-            <button type="button" style={ghostBtn} onClick={() => onAction(r.action!)}>
+            <button
+              type="button"
+              style={ghostBtn}
+              onClick={() => onAction(r.action!)}
+            >
               {actionLabel(r.action, { electionStatement, cti })}
             </button>
           ) : null}
@@ -2725,7 +3093,8 @@ function RequirementLine({
 }: {
   requirement: ReadinessRequirement | undefined;
 }): JSX.Element {
-  if (!requirement) return <p style={emptyTextStyle}>No readiness data available.</p>;
+  if (!requirement)
+    return <p style={emptyTextStyle}>No readiness data available.</p>;
   return (
     <div style={requirementLineStyle}>
       <StatusPill
@@ -2739,18 +3108,27 @@ function RequirementLine({
 
 function requirementTone(status: ReadinessRequirement["status"]): StatusTone {
   if (status === "complete" || status === "not_applicable") return "success";
-  if (status === "pending" || status === "awaiting_signature") return "progress";
+  if (status === "pending" || status === "awaiting_signature")
+    return "progress";
   if (status === "blocked" || status === "overdue") return "error";
   return "warning";
 }
 
 function fmtDate(value: string | null | undefined): string {
   if (!value) return "Not set";
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(
+    new Date(value),
+  );
 }
 
-function patientDisplayName(patient: PatientSummary | null, patientId?: string): string {
-  const name = [patient?.firstName, patient?.lastName].filter(Boolean).join(" ").trim();
+function patientDisplayName(
+  patient: PatientSummary | null,
+  patientId?: string,
+): string {
+  const name = [patient?.firstName, patient?.lastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
   return name || patient?.mrn || patientId || "Unresolved";
 }
 
@@ -2765,9 +3143,14 @@ function patientMeta(patient: PatientSummary | null): string | null {
     .join(" · ");
 }
 
-function physicianLabel(physician: PhysicianSummary | null | undefined, fallbackId?: string | null): string {
+function physicianLabel(
+  physician: PhysicianSummary | null | undefined,
+  fallbackId?: string | null,
+): string {
   if (physician?.displayName) {
-    return physician.npi ? `${physician.displayName} · NPI ${physician.npi}` : physician.displayName;
+    return physician.npi
+      ? `${physician.displayName} · NPI ${physician.npi}`
+      : physician.displayName;
   }
   return fallbackId ? `Physician ${fallbackId.slice(0, 8)}` : "Not selected";
 }
@@ -2854,7 +3237,10 @@ function RowList({
               {r.id}
             </td>
             <td style={tdStyle}>
-              <StatusPill label={stateLabel(r.state)} tone={toneFor?.[r.state] ?? "neutral"} />
+              <StatusPill
+                label={stateLabel(r.state)}
+                tone={toneFor?.[r.state] ?? "neutral"}
+              />
             </td>
           </tr>
         ))}

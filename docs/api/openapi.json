@@ -109391,7 +109391,8 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "orders"
+                    "orders",
+                    "statusCounts"
                   ],
                   "properties": {
                     "orders": {
@@ -109408,6 +109409,7 @@
                           "strength",
                           "doseForm",
                           "route",
+                          "data",
                           "rxnormRxcui",
                           "ndc",
                           "version",
@@ -109420,6 +109422,7 @@
                           "cosignRequired",
                           "cosignStatus",
                           "refillsRemaining",
+                          "refillsAuthorized",
                           "derivedFromRefillId",
                           "replacesMedicationOrderId",
                           "signedAt",
@@ -109527,6 +109530,7 @@
                           "route": {
                             "type": "string"
                           },
+                          "data": {},
                           "rxnormRxcui": {
                             "anyOf": [
                               {
@@ -109622,6 +109626,9 @@
                             ]
                           },
                           "refillsRemaining": {
+                            "type": "integer"
+                          },
+                          "refillsAuthorized": {
                             "type": "integer"
                           },
                           "derivedFromRefillId": {
@@ -109738,6 +109745,15 @@
                           "createdAt": {
                             "type": "string"
                           }
+                        }
+                      }
+                    },
+                    "statusCounts": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {
+                          "minimum": 0,
+                          "type": "integer"
                         }
                       }
                     }
@@ -109937,6 +109953,7 @@
                     "strength",
                     "doseForm",
                     "route",
+                    "data",
                     "rxnormRxcui",
                     "ndc",
                     "version",
@@ -109949,6 +109966,7 @@
                     "cosignRequired",
                     "cosignStatus",
                     "refillsRemaining",
+                    "refillsAuthorized",
                     "derivedFromRefillId",
                     "replacesMedicationOrderId",
                     "signedAt",
@@ -110056,6 +110074,7 @@
                     "route": {
                       "type": "string"
                     },
+                    "data": {},
                     "rxnormRxcui": {
                       "anyOf": [
                         {
@@ -110151,6 +110170,9 @@
                       ]
                     },
                     "refillsRemaining": {
+                      "type": "integer"
+                    },
+                    "refillsAuthorized": {
                       "type": "integer"
                     },
                     "derivedFromRefillId": {
@@ -129198,7 +129220,8 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "orders"
+                    "orders",
+                    "statusCounts"
                   ],
                   "properties": {
                     "orders": {
@@ -129215,6 +129238,7 @@
                           "strength",
                           "doseForm",
                           "route",
+                          "data",
                           "rxnormRxcui",
                           "ndc",
                           "version",
@@ -129227,6 +129251,7 @@
                           "cosignRequired",
                           "cosignStatus",
                           "refillsRemaining",
+                          "refillsAuthorized",
                           "derivedFromRefillId",
                           "replacesMedicationOrderId",
                           "signedAt",
@@ -129334,6 +129359,7 @@
                           "route": {
                             "type": "string"
                           },
+                          "data": {},
                           "rxnormRxcui": {
                             "anyOf": [
                               {
@@ -129429,6 +129455,9 @@
                             ]
                           },
                           "refillsRemaining": {
+                            "type": "integer"
+                          },
+                          "refillsAuthorized": {
                             "type": "integer"
                           },
                           "derivedFromRefillId": {
@@ -129545,6 +129574,15 @@
                           "createdAt": {
                             "type": "string"
                           }
+                        }
+                      }
+                    },
+                    "statusCounts": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {
+                          "minimum": 0,
+                          "type": "integer"
                         }
                       }
                     }
