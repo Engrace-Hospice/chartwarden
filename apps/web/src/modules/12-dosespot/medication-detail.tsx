@@ -1,24 +1,22 @@
 import {
-  DetailPageLayout,
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
+  PatientWorkspaceLayout,
   StatusPill,
   useApiClient,
 } from "@wardenx/ui";
-// apps/web/src/modules/12-dosespot — medication-order detail (M12 §4.1/§6.1, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_MEDICATIONS_EMAR.md — "Use Detail" (medication detail / the
-// prescribe modal in sign-only mode). Read-only view of a single medication order: drug + sig facts, the §2.2
-// D2 lifecycle status, the controlled-substance / EPCS posture, the prescriber + pharmacy, the signature
-// posture, refills remaining, and the correction lineage (replaces / derived-from-refill). For a transmitted
-// order it also loads the DoseSpot transmission status + retry history (§2.6). The sign / sign-controlled /
-// discontinue / correct write actions fill in as their write surfaces harden; the SERVER enforces every scope
-// incl. ABAC (ADR-0030 — out-of-scope orders 404, never 403). Reads GET /api/v1/medication-orders/:id and
-// (when transmitted) GET .../transmission via the typed client. Leaves only (@wardenx/ui).
 import { useEffect, useState } from "react";
-import type { JSX } from "react";
-import { useParams } from "react-router-dom";
-import { MED_ORDER_TONE, SEND_TONE, controlledLabel, stateLabel } from "./medication-status";
+import type { JSX, ReactNode } from "react";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
+import { ChartModuleRail } from "../../shell/chart-module-rail";
+import {
+  MED_ORDER_TONE,
+  SEND_TONE,
+  controlledLabel,
+  stateLabel,
+} from "./medication-status";
 
 interface MedicationOrderView {
   id: string;
@@ -56,40 +54,105 @@ interface TransmissionView {
   retryHistory: { attempt: number; at: string; errorClass: string | null }[];
 }
 
-const ts = (v: string | null): string => (v ? v.slice(0, 16).replace("T", " ") : "—");
+function dateTime(value: string | null): string {
+  if (!value) return "—";
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : new Intl.DateTimeFormat(undefined, {
+        dateStyle: "medium",
+        timeStyle: "short",
+      }).format(parsed);
+}
+
+function Fact({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <div style={fact}>
+      <dt style={term}>{label}</dt>
+      <dd style={description}>{children}</dd>
+    </div>
+  );
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <section style={card} aria-label={title}>
+      <h2 style={sectionTitle}>{title}</h2>
+      {children}
+    </section>
+  );
+}
 
 export function MedicationDetail(): JSX.Element {
   const client = useApiClient();
+  const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams<{ id: string }>();
   const [row, setRow] = useState<MedicationOrderView | null>(null);
   const [tx, setTx] = useState<TransmissionView | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [txError, setTxError] = useState(false);
 
   useEffect(() => {
     let active = true;
-    (async () => {
-      if (!id) return;
-      setLoading(true);
-      setError(null);
-      const { data, error: err } = await client.GET("/api/v1/medication-orders/{id}", {
-        params: { path: { id } },
-      });
-      if (!active) return;
-      if (err) {
-        setError("Could not load the medication order.");
-        setLoading(false);
-        return;
-      }
-      const order = data as MedicationOrderView;
-      setRow(order);
-      if (order.transmittedAt) {
-        const { data: txData } = await client.GET("/api/v1/medication-orders/{id}/transmission", {
-          params: { path: { id } },
-        });
-        if (active && txData) setTx(txData as TransmissionView);
-      }
+    setRow(null);
+    setTx(null);
+    setTxError(false);
+    setError(null);
+    setLoading(true);
+    if (!id) {
+      setError("Medication order ID is missing.");
       setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+    void (async () => {
+      try {
+        const { data, error: fetchError } = await client.GET(
+          "/api/v1/medication-orders/{id}",
+          {
+            params: { path: { id } },
+          },
+        );
+        if (!active) return;
+        if (fetchError || !data) {
+          setError("Could not load the medication order.");
+          return;
+        }
+        const order = data as MedicationOrderView;
+        setRow(order);
+        if (order.transmittedAt) {
+          try {
+            const { data: transmission, error: transmissionError } =
+              await client.GET("/api/v1/medication-orders/{id}/transmission", {
+                params: { path: { id } },
+              });
+            if (!active) return;
+            if (transmissionError || !transmission) setTxError(true);
+            else setTx(transmission as TransmissionView);
+          } catch {
+            if (active) setTxError(true);
+          }
+        }
+      } catch {
+        if (active) setError("Could not load the medication order.");
+      } finally {
+        if (active) setLoading(false);
+      }
     })();
     return () => {
       active = false;
@@ -97,13 +160,58 @@ export function MedicationDetail(): JSX.Element {
   }, [client, id]);
 
   return (
-    <DetailPageLayout
-      header={
+    <PatientWorkspaceLayout
+      banner={
         <PageHeader
-          title="Medication Order"
+          title="Medication order"
+          breadcrumb={row ? <button type="button" onClick={() => navigate(`/patients/${row.patientId}/medications${location.search}`)}>← Medications</button> : undefined}
           actions={
-            row ? (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
+            row?.status === "draft" ? (
+              <Button
+                tone="secondary"
+                onClick={() => navigate(`/medication-orders/${row.id}/edit${location.search}`)}
+              >
+                Edit draft
+              </Button>
+            ) : undefined
+          }
+        >
+          {row ? (
+            <span style={muted}>Created {dateTime(row.createdAt)}</span>
+          ) : null}
+        </PageHeader>
+      }
+    >
+      <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+        {row ? <ChartModuleRail patientId={row.patientId} current="medications" /> : null}
+        <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
+      {loading ? (
+        <LoadingSpinner />
+      ) : error || !row ? (
+        <EmptyState
+          title="Medication order unavailable"
+          description={error ?? "Could not load the medication order."}
+        />
+      ) : (
+        <div style={page}>
+          <section style={hero} aria-labelledby="medication-title">
+            <div style={heroTop}>
+              <div style={{ minWidth: 0 }}>
+                <p style={eyebrow}>Medication prescription</p>
+                <h1 id="medication-title" style={drugTitle}>
+                  {row.drugName}
+                </h1>
+                <p style={drugSubtitle}>
+                  {[row.strength, row.doseForm, row.route]
+                    .filter(Boolean)
+                    .join(" · ") || "Strength, form and route not recorded"}
+                </p>
+              </div>
+              <div style={badges}>
+                <StatusPill
+                  label={stateLabel(row.status)}
+                  tone={MED_ORDER_TONE[row.status] ?? "neutral"}
+                />
                 {row.isControlledSubstance ? (
                   <StatusPill
                     label={controlledLabel(row.deaSchedule)}
@@ -111,135 +219,266 @@ export function MedicationDetail(): JSX.Element {
                     glyph="alert"
                   />
                 ) : null}
-                <StatusPill
-                  label={stateLabel(row.status)}
-                  tone={MED_ORDER_TONE[row.status] ?? "neutral"}
-                />
+              </div>
+            </div>
+            <div style={heroSummary}>
+              <span>
+                <strong>{row.refillsRemaining}</strong> refills remaining
               </span>
-            ) : undefined
-          }
-        >
-          {row ? (
-            <span style={meta}>
-              {row.drugName} {row.strength}
-            </span>
-          ) : null}
-        </PageHeader>
-      }
-    >
-      {error ? (
-        <EmptyState title="Unavailable" description={error} />
-      ) : loading || !row ? (
-        <LoadingSpinner />
-      ) : (
-        <dl
-          style={{
-            display: "grid",
-            gridTemplateColumns: "12rem 1fr",
-            gap: "0.4rem 1rem",
-            fontSize: "0.85rem",
-          }}
-        >
-          <dt style={dt}>Drug</dt>
-          <dd style={dd}>
-            {row.drugName} {row.strength} {row.doseForm} · {row.route}
-          </dd>
-          <dt style={dt}>Class</dt>
-          <dd style={dd}>{row.medClass}</dd>
-          <dt style={dt}>Controlled</dt>
-          <dd style={dd}>
-            {/* §10 — controlled-substance / EPCS gold `critical` tone. */}
-            {row.isControlledSubstance ? (
-              <StatusPill
-                label={`${controlledLabel(row.deaSchedule)} · EPCS`}
-                tone="critical"
-                glyph="alert"
-              />
-            ) : (
-              <span style={{ color: "var(--color-muted)" }}>No</span>
-            )}
-          </dd>
-          <dt style={dt}>RxNorm / NDC</dt>
-          <dd style={dd} className="wx-data-md">
-            {row.rxnormRxcui ?? "—"} / {row.ndc ?? "—"}
-          </dd>
-          <dt style={dt}>Status</dt>
-          <dd style={dd}>
-            <StatusPill
-              label={stateLabel(row.status)}
-              tone={MED_ORDER_TONE[row.status] ?? "neutral"}
-            />
-          </dd>
-          <dt style={dt}>Prescriber</dt>
-          <dd style={dd}>
-            <span className="wx-data-md">{row.prescribingPhysicianMdmId}</span> (
-            {stateLabel(row.prescriberDiscipline)})
-          </dd>
-          <dt style={dt}>Pharmacy</dt>
-          <dd style={dd} className="wx-data-md">
-            {row.dispensingPharmacyMdmId ?? "—"}
-          </dd>
-          <dt style={dt}>Signed</dt>
-          <dd style={dd} className="tabular-nums">
-            {row.signedAt ? `${ts(row.signedAt)} · ${row.signedBy ?? ""}` : "—"}
-          </dd>
-          <dt style={dt}>Cosignature</dt>
-          <dd style={dd}>
-            {row.cosignRequired ? (
-              <StatusPill
-                label={stateLabel(row.cosignStatus ?? "pending")}
-                tone={row.cosignStatus === "attached" ? "success" : "warning"}
-              />
-            ) : (
-              <span style={{ color: "var(--color-muted)" }}>Not required</span>
-            )}
-          </dd>
-          <dt style={dt}>Refills remaining</dt>
-          <dd style={dd} className="tabular-nums">
-            {row.refillsRemaining}
-          </dd>
-          <dt style={dt}>Corrects order</dt>
-          <dd style={dd} className="wx-data-md">
-            {row.replacesMedicationOrderId ?? "—"}
-          </dd>
-          <dt style={dt}>From refill</dt>
-          <dd style={dd} className="wx-data-md">
-            {row.derivedFromRefillId ?? "—"}
-          </dd>
-          <dt style={dt}>Discontinued</dt>
-          <dd style={dd}>
-            {row.discontinuedAt
-              ? `${ts(row.discontinuedAt)} · ${row.discontinuationReason ?? ""}`
-              : "—"}
-          </dd>
-          {tx ? (
-            <>
-              <dt style={dt}>Transmission</dt>
-              <dd style={dd}>
-                <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-                  <StatusPill
-                    label={stateLabel(tx.status)}
-                    tone={SEND_TONE[tx.status] ?? "neutral"}
-                  />
-                  {tx.retryHistory.length > 0 ? (
-                    <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.78rem" }}>
-                      {tx.retryHistory.length} retr{tx.retryHistory.length === 1 ? "y" : "ies"}
+              <span>
+                Signed: <strong>{row.signedAt ? "Yes" : "No"}</strong>
+              </span>
+              <span>
+                Transmitted: <strong>{row.transmittedAt ? "Yes" : "No"}</strong>
+              </span>
+            </div>
+          </section>
+
+          <div style={columns}>
+            <div style={stack}>
+              <Section title="Prescription">
+                <dl style={facts}>
+                  <Fact label="Medication class">
+                    {stateLabel(row.medClass)}
+                  </Fact>
+                  <Fact label="Strength">{row.strength || "—"}</Fact>
+                  <Fact label="Dose form">{row.doseForm || "—"}</Fact>
+                  <Fact label="Route">{row.route || "—"}</Fact>
+                  <Fact label="RxNorm RxCUI">
+                    <span className="wx-data-md">{row.rxnormRxcui || "—"}</span>
+                  </Fact>
+                  <Fact label="NDC">
+                    <span className="wx-data-md">{row.ndc || "—"}</span>
+                  </Fact>
+                </dl>
+              </Section>
+              <Section title="Prescriber and pharmacy">
+                <dl style={facts}>
+                  <Fact label="Prescriber">
+                    <span className="wx-data-md">
+                      {row.prescribingPhysicianMdmId}
                     </span>
+                  </Fact>
+                  <Fact label="Discipline">
+                    {stateLabel(row.prescriberDiscipline)}
+                  </Fact>
+                  <Fact label="Dispensing pharmacy">
+                    <span className="wx-data-md">
+                      {row.dispensingPharmacyMdmId || "Not selected"}
+                    </span>
+                  </Fact>
+                </dl>
+              </Section>
+            </div>
+            <div style={stack}>
+              <Section title="Signature and safety">
+                <dl style={facts}>
+                  <Fact label="Controlled substance">
+                    {row.isControlledSubstance ? (
+                      <StatusPill
+                        label={controlledLabel(row.deaSchedule)}
+                        tone="critical"
+                        glyph="alert"
+                      />
+                    ) : (
+                      "No"
+                    )}
+                  </Fact>
+                  <Fact label="Signed">
+                    {row.signedAt ? dateTime(row.signedAt) : "Not signed"}
+                  </Fact>
+                  {row.signedAt ? (
+                    <Fact label="Signed by">
+                      <span className="wx-data-md">{row.signedBy || "—"}</span>
+                    </Fact>
                   ) : null}
-                </span>
-              </dd>
-            </>
+                  <Fact label="Cosignature">
+                    {row.cosignRequired ? (
+                      <StatusPill
+                        label={stateLabel(row.cosignStatus ?? "pending")}
+                        tone={
+                          row.cosignStatus === "attached"
+                            ? "success"
+                            : "warning"
+                        }
+                      />
+                    ) : (
+                      "Not required"
+                    )}
+                  </Fact>
+                </dl>
+              </Section>
+              <Section title="Transmission">
+                {row.transmittedAt ? (
+                  <>
+                    <p style={muted}>Sent {dateTime(row.transmittedAt)}</p>
+                    {tx ? (
+                      <>
+                        <StatusPill
+                          label={stateLabel(tx.status)}
+                          tone={SEND_TONE[tx.status] ?? "neutral"}
+                        />
+                        {tx.retryHistory.length ? (
+                          <div style={history}>
+                            <h3 style={historyTitle}>
+                              Retry history ({tx.retryHistory.length})
+                            </h3>
+                            <ol style={retryList}>
+                              {tx.retryHistory.map((attempt) => (
+                                <li
+                                  key={`${attempt.attempt}-${attempt.at}`}
+                                  style={retryItem}
+                                >
+                                  <strong>Attempt {attempt.attempt}</strong>
+                                  <span>{dateTime(attempt.at)}</span>
+                                  {attempt.errorClass ? (
+                                    <span>
+                                      {stateLabel(attempt.errorClass)}
+                                    </span>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ol>
+                          </div>
+                        ) : (
+                          <p style={muted}>No retries recorded.</p>
+                        )}
+                      </>
+                    ) : (
+                      <p role={txError ? "alert" : "status"} style={muted}>
+                        {txError
+                          ? "Transmission details are unavailable."
+                          : "Loading transmission details…"}
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p style={muted}>Not transmitted.</p>
+                )}
+              </Section>
+            </div>
+          </div>
+          {row.replacesMedicationOrderId ||
+          row.derivedFromRefillId ||
+          row.discontinuedAt ? (
+            <Section title="Order history">
+              <dl style={facts}>
+                {row.replacesMedicationOrderId ? (
+                  <Fact label="Corrects order">
+                    <span className="wx-data-md">
+                      {row.replacesMedicationOrderId}
+                    </span>
+                  </Fact>
+                ) : null}
+                {row.derivedFromRefillId ? (
+                  <Fact label="From refill">
+                    <span className="wx-data-md">
+                      {row.derivedFromRefillId}
+                    </span>
+                  </Fact>
+                ) : null}
+                {row.discontinuedAt ? (
+                  <Fact label="Discontinued">
+                    {dateTime(row.discontinuedAt)}
+                    {row.discontinuationReason
+                      ? ` · ${stateLabel(row.discontinuationReason)}`
+                      : ""}
+                  </Fact>
+                ) : null}
+              </dl>
+            </Section>
           ) : null}
-        </dl>
+        </div>
       )}
-    </DetailPageLayout>
+        </div>
+      </div>
+    </PatientWorkspaceLayout>
   );
 }
 
-const meta = {
-  fontSize: "0.75rem",
-  color: "var(--color-on-surface-variant)",
-  margin: "0.25rem 0",
+const page = { display: "grid", gap: "1rem", paddingBottom: "2rem" } as const;
+const card = {
+  border: "1px solid var(--color-outline-variant)",
+  borderRadius: ".75rem",
+  background: "var(--color-surface)",
+  padding: "1.25rem",
+  minWidth: 0,
 } as const;
-const dt = { fontWeight: 600, color: "var(--color-on-surface)" } as const;
-const dd = { margin: 0 } as const;
+const hero = { ...card, padding: "1.5rem" };
+const heroTop = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: "1rem",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+};
+const eyebrow = {
+  margin: "0 0 .4rem",
+  fontSize: ".75rem",
+  fontWeight: 700,
+  color: "var(--color-on-surface-variant)",
+  textTransform: "uppercase" as const,
+  letterSpacing: ".04em",
+};
+const drugTitle = {
+  margin: 0,
+  fontSize: "clamp(1.35rem, 2vw, 1.8rem)",
+  lineHeight: 1.25,
+  overflowWrap: "anywhere" as const,
+};
+const drugSubtitle = {
+  margin: ".4rem 0 0",
+  color: "var(--color-on-surface-variant)",
+  lineHeight: 1.5,
+};
+const badges = { display: "flex", flexWrap: "wrap" as const, gap: ".5rem" };
+const heroSummary = {
+  display: "flex",
+  flexWrap: "wrap" as const,
+  gap: ".5rem 1.5rem",
+  borderTop: "1px solid var(--color-outline-variant)",
+  paddingTop: "1rem",
+  marginTop: "1.25rem",
+  fontSize: ".875rem",
+};
+const columns = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 24rem), 1fr))",
+  gap: "1rem",
+  alignItems: "start",
+} as const;
+const stack = { display: "grid", gap: "1rem", minWidth: 0 } as const;
+const sectionTitle = { margin: "0 0 1rem", fontSize: "1rem" };
+const facts = { display: "grid", gap: 0, margin: 0 } as const;
+const fact = {
+  display: "grid",
+  gridTemplateColumns: "minmax(8rem, 38%) minmax(0, 1fr)",
+  gap: ".75rem",
+  padding: ".65rem 0",
+  borderTop: "1px solid var(--color-outline-variant)",
+} as const;
+const term = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: ".85rem",
+} as const;
+const description = {
+  margin: 0,
+  minWidth: 0,
+  overflowWrap: "anywhere" as const,
+  fontSize: ".875rem",
+};
+const muted = {
+  color: "var(--color-on-surface-variant)",
+  fontSize: ".875rem",
+  lineHeight: 1.5,
+} as const;
+const history = { marginTop: "1rem" } as const;
+const historyTitle = { margin: "0 0 .5rem", fontSize: ".875rem" } as const;
+const retryList = { margin: 0, paddingLeft: "1.25rem" } as const;
+const retryItem = {
+  display: "flex",
+  gap: ".5rem 1rem",
+  flexWrap: "wrap" as const,
+  padding: ".35rem 0",
+  fontSize: ".85rem",
+};

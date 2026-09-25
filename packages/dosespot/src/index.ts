@@ -39,6 +39,7 @@
 // builders (`alerts.ts`) + `m12.*` outbox payload assemblers (`outbox.ts`) (M12-T08).
 
 export * from "./classes/catalog";
+export * from "./classes/contracts";
 export * from "./lifecycle";
 export * from "./refill";
 export * from "./epcs";

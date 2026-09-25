@@ -254,6 +254,7 @@ export const MedicationOrderResponseSchema = Type.Object({
   strength: Type.String(),
   doseForm: Type.String(),
   route: Type.String(),
+  data: Type.Unknown(),
   rxnormRxcui: Nullable(Type.String()),
   ndc: Nullable(Type.String()),
   version: Type.Integer(),
@@ -266,6 +267,7 @@ export const MedicationOrderResponseSchema = Type.Object({
   cosignRequired: Type.Boolean(),
   cosignStatus: Nullable(Type.Union([Type.Literal("pending"), Type.Literal("attached")])),
   refillsRemaining: Type.Integer(),
+  refillsAuthorized: Type.Integer(),
   derivedFromRefillId: Nullable(Type.String()),
   replacesMedicationOrderId: Nullable(Type.String()),
   signedAt: Nullable(Type.String()),
@@ -278,6 +280,8 @@ export const MedicationOrderResponseSchema = Type.Object({
 /** The `{ orders }` envelope the list + active-medications reads return. */
 export const MedicationOrderListResponseSchema = Type.Object({
   orders: Type.Array(MedicationOrderResponseSchema),
+  /** Patient-/tenant-scoped lifecycle totals, calculated before any selected status filter. */
+  statusCounts: Type.Record(Type.String(), Type.Integer({ minimum: 0 })),
 });
 
 /** The refill-request read projection (routes 20–21). */
