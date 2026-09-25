@@ -32,12 +32,12 @@
 - Discharge
 
 
-- HOPE - Section A - Patient middle initial, Patient name suffix (check if optionnal or not)
-- The patient can either have medicaid, medicare or both
-- Prefered language: add a selection option
-- Facility National Provider Identifier (NPI) and Facility CMS Certification Number (CCN) should be selected
-- Patient zip code should be workflow controlled
-- Section J: 500 error while clicking on Yes
+- HOPE - Section A - Patient middle initial, Patient name suffix (check if optionnal or not) - Ok
+- The patient can either have medicaid, medicare or both - Ok
+- Prefered language: add a selection option - Ok
+- Facility National Provider Identifier (NPI) and Facility CMS Certification Number (CCN) should be selected - Ok
+- Patient zip code should be workflow controlled - Ok
+- Section J: 500 error while clicking on Yes - Ok
 - Give a clear message to users when they don't have the permissions to complete a SFV
 - Give the possibility to review the SFV and put it in the calendar
 - Review Payer / Coverage

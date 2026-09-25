@@ -246,6 +246,8 @@ const SECTION_ORDER: { id: SectionId; label: string; helper: string }[] = [
 ];
 
 const PROTECTED_ITEMS = new Set([
+  "A0100A", // Facility NPI — from selected Hospice Provider
+  "A0100B", // Facility CCN — from selected Hospice Provider
   "A0050",
   "A0220",
   "A0250",
@@ -1279,7 +1281,12 @@ function PayerCoverageGroup(props: {
             />
 
             <span>
-              <strong>{item.label}</strong>
+              <strong>
+                {item.label}{" "}
+                {(item.itemCode === "A0500B" || item.itemCode === "A0500D") && (
+                  <span style={optionalLabel}>Optional</span>
+                )}
+              </strong>
 
               {item.source && item.source !== "user" ? (
                 <small style={payerSource}>
@@ -1615,7 +1622,12 @@ function QuestionRenderer(props: {
   if (item.applicability === "not_applicable") {
     return (
       <div id={`hope-item-${item.itemCode}`} tabIndex={-1} style={skippedRow}>
-        <span>{item.label}</span>
+        <span>
+          {item.label}{" "}
+          {(item.itemCode === "A0500B" || item.itemCode === "A0500D") && (
+            <span style={optionalLabel}>Optional</span>
+          )}
+        </span>
         <StatusPill label="Skipped" tone="neutral" />
       </div>
     );
@@ -1623,7 +1635,12 @@ function QuestionRenderer(props: {
   if (item.applicability === "pending") {
     return (
       <div id={`hope-item-${item.itemCode}`} tabIndex={-1} style={pendingRow}>
-        <strong>{item.label}</strong>
+        <strong>
+          {" "}
+          {(item.itemCode === "A0500B" || item.itemCode === "A0500D") && (
+            <span style={optionalLabel}>Optional</span>
+          )}
+        </strong>
         <span>{pendingApplicabilityMessage(item)}</span>
         <small style={pendingMeta}>{pendingApplicabilityDetail(item)}</small>
       </div>
@@ -1651,11 +1668,19 @@ function QuestionRenderer(props: {
       <div style={questionHead}>
         <label htmlFor={inputId} style={questionLabel}>
           {item.label}
+          {(item.itemCode === "A0500B" || item.itemCode === "A0500D") && (
+            <span style={optionalLabel}>Optional</span>
+          )}
         </label>
         <span style={codePill}>{item.itemCode}</span>
       </div>
       <div id={hintId} style={hintLine}>
         <SourceBadge source={item.source} />
+
+        {coverageNumberHint(item) ? (
+          <span>{coverageNumberHint(item)}</span>
+        ) : null}
+
         {readonly ? <span>{workflowControlledMessage(item)}</span> : null}
       </div>
       {workflowControlled ? (
@@ -1707,6 +1732,23 @@ function WorkflowControlledValue({
   );
 }
 
+const PREFERRED_LANGUAGE_OPTIONS = [
+  { value: "en", label: "English" },
+  { value: "es", label: "Spanish" },
+  { value: "fr", label: "French" },
+  { value: "zh", label: "Chinese" },
+  { value: "vi", label: "Vietnamese" },
+  { value: "tl", label: "Tagalog" },
+  { value: "ar", label: "Arabic" },
+  { value: "ko", label: "Korean" },
+  { value: "ru", label: "Russian" },
+  { value: "pt", label: "Portuguese" },
+  { value: "de", label: "German" },
+  { value: "hi", label: "Hindi" },
+  { value: "ja", label: "Japanese" },
+  { value: "ot", label: "Other" },
+] as const;
+
 function AnswerControl(props: {
   item: WorkspaceItem;
   inputId: string;
@@ -1735,6 +1777,38 @@ function AnswerControl(props: {
     );
   }
   const displayOptions = answerOptionsForControl(props.item);
+
+  if (props.item.itemCode === "A1110A") {
+    const knownLanguage = PREFERRED_LANGUAGE_OPTIONS.some(
+      (option) => option.value === value,
+    );
+
+    return (
+      <select
+        id={props.inputId}
+        value={value}
+        disabled={props.readonly}
+        aria-describedby={props.describedBy}
+        style={inputStyle}
+        onChange={(event) =>
+          void props.onSave(props.item, event.target.value || null)
+        }
+      >
+        <option value="">Select preferred language...</option>
+
+        {!knownLanguage && value ? (
+          <option value={value}>{value}</option>
+        ) : null}
+
+        {PREFERRED_LANGUAGE_OPTIONS.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    );
+  }
+
   if (isTextItem(props.item)) {
     return (
       <input
@@ -1839,6 +1913,18 @@ function textPlaceholder(item: WorkspaceItem): string | undefined {
   if (item.itemCode === "A0500B") return "Middle initial";
   if (item.itemCode === "A0500D") return "Suffix";
   return item.maxLength ? `Up to ${item.maxLength} characters` : undefined;
+}
+
+function coverageNumberHint(item: WorkspaceItem): string | null {
+  if (item.itemCode === "A0600B") {
+    return "Required only when the patient has Medicare coverage.";
+  }
+
+  if (item.itemCode === "A0700") {
+    return "Required only when the patient has Medicaid coverage.";
+  }
+
+  return null;
 }
 
 function ReviewPanel(props: {
@@ -2422,6 +2508,9 @@ function SourceBadge({
 }
 
 function workflowControlledMessage(item: WorkspaceItem): string {
+  if (item.itemCode === "A0100A" || item.itemCode === "A0100B") {
+    return "Set automatically from the selected Hospice Provider.";
+  }
   if (item.itemCode === "A0050") {
     return "Set automatically from whether this is a new record, correction, or inactivation.";
   }
@@ -3474,4 +3563,11 @@ const sfvFooterActions: CSSProperties = {
 const sfvDisabledButton: CSSProperties = {
   opacity: 0.5,
   cursor: "not-allowed",
+};
+
+const optionalLabel: CSSProperties = {
+  marginLeft: 8,
+  fontSize: 12,
+  fontWeight: 500,
+  opacity: 0.65,
 };

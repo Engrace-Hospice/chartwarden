@@ -162,14 +162,32 @@ function activeMbi(
   return identifiers[0]?.value ?? null;
 }
 
+function coverageSubscriberId(
+  coverages: readonly PatientCoverage[],
+  coverageKinds: readonly string[],
+): string | null {
+  const coverage = [...coverages]
+    .filter(
+      (row) =>
+        coverageKinds.includes(row.coverageKind) && row.subscriberId?.trim(),
+    )
+    .sort((a, b) => a.rank - b.rank)[0];
+
+  return coverage?.subscriberId?.trim() || null;
+}
+
 export function buildHopeAdmissionPrefillAnswers(input: {
   readonly patient: PatientHopeAdmissionPrefillFacts;
   readonly admissionDate: string;
   readonly postalCode: string | null;
   readonly residenceSite: string | null;
   readonly coverages: readonly PatientCoverage[];
+  readonly providerNpi: string | null;
+  readonly providerCcn: string | null;
 }): HopePrefillAnswer[] {
   const out: HopePrefillAnswer[] = [];
+  add(out, "A0100A", input.providerNpi, "admission_prefill");
+  add(out, "A0100B", input.providerCcn, "admission_prefill");
   add(out, "A0220", input.admissionDate, "admission_prefill");
   add(out, "A0500A", input.patient.legalFirstName, "patient_prefill");
   add(
@@ -183,7 +201,20 @@ export function buildHopeAdmissionPrefillAnswers(input: {
   add(
     out,
     "A0600B",
-    activeMbi(input.patient, input.admissionDate),
+    activeMbi(input.patient, input.admissionDate) ??
+      coverageSubscriberId(input.coverages, [
+        "medicare_ffs",
+        "medicare_advantage",
+      ]),
+    "patient_prefill",
+  );
+  add(
+    out,
+    "A0700",
+    coverageSubscriberId(input.coverages, [
+      "medicaid",
+      "medicaid_managed_care",
+    ]),
     "patient_prefill",
   );
   add(
@@ -234,6 +265,7 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
   const ISC = schema.hopeSpecItemIsc;
   const OPTION = schema.hopeSpecItemOptions;
   const ANSWER = schema.hopeAssessmentAnswers;
+  const PROVIDER = schema.providerEntities;
 
   async function specItems(
     tx: DbClient,
@@ -431,6 +463,23 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
           patientId: assessment.patientId,
         })
       ).filter((coverage) => isHopeCoverageInForceOn(coverage, admissionDate));
+      const provider = assessment.providerEntityId
+        ? ((
+            await tx
+              .select({
+                npi: PROVIDER.npi,
+                ccn: PROVIDER.ccn,
+              })
+              .from(PROVIDER)
+              .where(
+                and(
+                  eq(PROVIDER.id, assessment.providerEntityId),
+                  eq(PROVIDER.organizationId, organizationId),
+                ),
+              )
+              .limit(1)
+          )[0] ?? null)
+        : null;
       const answers = buildHopeAdmissionPrefillAnswers({
         patient,
         admissionDate,
@@ -440,6 +489,8 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
           residence?.facilityId,
         ),
         coverages,
+        providerNpi: provider?.npi ?? null,
+        providerCcn: provider?.ccn ?? null,
       });
       const items = await specItems(
         tx,
