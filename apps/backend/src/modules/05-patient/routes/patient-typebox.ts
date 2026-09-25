@@ -205,6 +205,36 @@ export const PatientPayersResponseSchema = Type.Object({
   payers: Type.Array(PatientPayerSchema),
 });
 
+export const AddPatientPayerBodySchema = Type.Object({
+  payerId: Type.String({ minLength: 1 }),
+
+  rank: Type.Integer({
+    minimum: 1,
+  }),
+
+  coverageKind: Type.String({
+    minLength: 1,
+  }),
+
+  subscriberId: Type.String({
+    minLength: 1,
+  }),
+
+  groupNumber: Type.Optional(
+    Type.Union([Type.String(), Type.Null()]),
+  ),
+
+  binPcn: Type.Optional(
+    Type.Union([Type.String(), Type.Null()]),
+  ),
+
+  effectiveFrom: Type.String({
+    minLength: 1,
+  }),
+});
+
+export const AddPatientPayerResponseSchema = PatientPayerSchema;
+
 // GET /api/v1/patients/:id/care-team (§3.4/§3.5) — assignment roster + caregivers + emergency contacts.
 // `clinicianUserId` names an M2 user whose display name is resolved client-side via the M2 roster
 // (no cross-module schema import); `current` rows render above closed ones.

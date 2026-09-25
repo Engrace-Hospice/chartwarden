@@ -49,11 +49,14 @@ function getScreenIcon(title: string, group?: string): GlyphName {
   if (g.includes("admin")) return "settings";
 
   if (t.includes("patient")) return "heart";
-  if (t.includes("member") || t.includes("staff") || t.includes("user")) return "users";
-  if (t.includes("billing") || t.includes("invoice") || t.includes("payment")) return "dollar";
+  if (t.includes("member") || t.includes("staff") || t.includes("user"))
+    return "users";
+  if (t.includes("billing") || t.includes("invoice") || t.includes("payment"))
+    return "dollar";
   if (t.includes("schedule") || t.includes("calendar")) return "calendar";
   if (t.includes("supply") || t.includes("inventory")) return "truck";
-  if (t.includes("document") || t.includes("file") || t.includes("record")) return "file-text";
+  if (t.includes("document") || t.includes("file") || t.includes("record"))
+    return "file-text";
   if (
     t.includes("chat") ||
     t.includes("message") ||
@@ -61,9 +64,12 @@ function getScreenIcon(title: string, group?: string): GlyphName {
     t.includes("communication")
   )
     return "message-square";
-  if (t.includes("ai") || t.includes("copilot") || t.includes("intelligence")) return "cpu";
-  if (t.includes("security") || t.includes("credential") || t.includes("auth")) return "shield";
-  if (t.includes("activity") || t.includes("log") || t.includes("audit")) return "activity";
+  if (t.includes("ai") || t.includes("copilot") || t.includes("intelligence"))
+    return "cpu";
+  if (t.includes("security") || t.includes("credential") || t.includes("auth"))
+    return "shield";
+  if (t.includes("activity") || t.includes("log") || t.includes("audit"))
+    return "activity";
 
   return "dot";
 }
@@ -76,6 +82,7 @@ export interface AppLayoutProps {
 
 export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   const session = useSession();
+  const navigate = useNavigate();
   // Below the responsive breakpoint (TASK-033 / UI-004) the sidebar becomes an off-canvas drawer —
   // a fixed 14rem sidebar plus content leaves under 170px at 390px wide, so it's hidden by default
   // and toggled by the header's hamburger button instead of always occupying the viewport.
@@ -100,7 +107,10 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
     const root = document.documentElement;
     const previous = root.style.getPropertyValue("--wx-app-header-height");
     const update = (): void =>
-      root.style.setProperty("--wx-app-header-height", `${header.offsetHeight}px`);
+      root.style.setProperty(
+        "--wx-app-header-height",
+        `${header.offsetHeight}px`,
+      );
     update();
     const observer = new ResizeObserver(update);
     observer.observe(header);
@@ -159,7 +169,11 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
           </div>
           <span
             className="wx-brand"
-            style={{ fontWeight: 700, fontSize: "1.15rem", letterSpacing: "-0.02em" }}
+            style={{
+              fontWeight: 700,
+              fontSize: "1.15rem",
+              letterSpacing: "-0.02em",
+            }}
           >
             WardenX
           </span>
@@ -168,15 +182,44 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
             /search route — the Global Search screen (M5) owns the query + facets. */}
         <TopNavSearch />
 
-        <div style={{ display: "flex", alignItems: "center", gap: "0.75rem", marginLeft: "auto" }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "0.5rem",
+            marginLeft: "auto",
+          }}
+        >
+          <button
+            type="button"
+            className="wx-icon-btn"
+            onClick={() => navigate("/calendar")}
+            aria-label="Open calendar"
+            title="Calendar"
+            aria-current={pathname === "/calendar" ? "page" : undefined}
+            style={
+              pathname === "/calendar"
+                ? {
+                    background: "var(--color-primary-tint)",
+                    color: "var(--color-primary)",
+                  }
+                : undefined
+            }
+          >
+            <Glyph name="calendar" size={18} />
+          </button>
+
           <ThemeToggle />
+
           <div
             style={{
               width: "1px",
               height: "1.25rem",
-              background: "color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
+              background:
+                "color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
             }}
           />
+
           <ActorMenu session={session} />
         </div>
       </header>
@@ -189,12 +232,18 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
             a NavLink descendant, which is already keyboard-navigable — the nav itself isn't a control. */}
         <nav
           id="wx-primary-nav"
-          className={navOpen ? "wx-nav wx-nav-open wx-no-scrollbar" : "wx-nav wx-no-scrollbar"}
+          className={
+            navOpen
+              ? "wx-nav wx-nav-open wx-no-scrollbar"
+              : "wx-nav wx-no-scrollbar"
+          }
           aria-label="Primary"
           onClick={closeNavOnLinkClick}
         >
           <NavLink to="/" end>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+            <div
+              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+            >
               <Glyph name="home" size={16} style={{ opacity: 0.8 }} />
               <span>Home</span>
             </div>
@@ -204,12 +253,20 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
               Grouped by navGroup (UI-001) — 35 module screen-sets already declare one; ungrouped
               screens fall into "General" so nothing silently disappears from the sidebar. */}
           {groupByNavGroup(
-            screens.filter((s) => !s.path.includes(":")).filter((s) => canSeeScreen(s, session)),
+            screens
+              .filter((s) => !s.path.includes(":"))
+              .filter((s) => canSeeScreen(s, session)),
           ).map(([group, items]) => (
             <NavGroup key={group} label={group}>
               {items.map((s) => (
                 <NavLink key={s.id} to={s.path}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                    }}
+                  >
                     <Glyph
                       name={getScreenIcon(s.title, s.navGroup)}
                       size={14}
@@ -279,7 +336,8 @@ function TopNavSearch(): JSX.Element {
           width: "100%",
           paddingLeft: "2.25rem",
           background: "var(--color-surface-low)",
-          border: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+          border:
+            "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
           borderRadius: "var(--radius-md)",
           transition: "all 0.15s ease",
         }}

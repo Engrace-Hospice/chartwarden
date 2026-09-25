@@ -27,6 +27,7 @@ import type {
   PatientRouteService,
   PatientView,
   PrivacyFlagsView,
+  AddPatientPayerInput,
 } from "./routes/service";
 
 const ID = schema.patientIdentifiers;
@@ -432,6 +433,114 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
       }));
     });
 
+  const addPayer = async (
+  organizationId: string,
+  patientId: string,
+  input: AddPatientPayerInput,
+  actorUserId: string,
+): Promise<PatientPayerView> =>
+  withOrgContext(
+    db,
+    {
+      organizationId,
+      userId: actorUserId,
+    },
+    async (tx) => {
+      /*
+       * Fail closed if the patient does not belong to the current
+       * organization / is not visible under RLS.
+       */
+      const [patient] = await tx
+        .select({
+          id: P.id,
+        })
+        .from(P)
+        .where(eq(P.id, patientId))
+        .limit(1);
+
+      if (!patient) {
+        throw new Error(`patient ${patientId} not found`);
+      }
+
+      /*
+       * patient_payer has a partial unique index:
+       *
+       *   (patient_id, rank)
+       *   WHERE effective_to IS NULL
+       *
+       * Close the existing current coverage occupying this rank
+       * before inserting its replacement.
+       *
+       * We preserve history rather than updating the old coverage
+       * in place.
+       */
+      await tx
+        .update(PAYER)
+        .set({
+          effectiveTo: input.effectiveFrom,
+        })
+        .where(
+          and(
+            eq(PAYER.patientId, patientId),
+            eq(PAYER.rank, input.rank),
+            isNull(PAYER.effectiveTo),
+          ),
+        );
+
+      const [inserted] = await tx
+        .insert(PAYER)
+        .values({
+          organizationId,
+          patientId,
+
+          payerId: input.payerId,
+
+          rank: input.rank,
+
+          coverageKind:
+            input.coverageKind as typeof PAYER.$inferInsert.coverageKind,
+
+          subscriberId: input.subscriberId,
+
+          groupNumber: input.groupNumber ?? null,
+
+          binPcn: input.binPcn ?? null,
+
+          effectiveFrom: input.effectiveFrom,
+
+          effectiveTo: null,
+        })
+        .returning({
+          id: PAYER.id,
+          payerId: PAYER.payerId,
+          rank: PAYER.rank,
+          coverageKind: PAYER.coverageKind,
+          subscriberId: PAYER.subscriberId,
+          groupNumber: PAYER.groupNumber,
+          binPcn: PAYER.binPcn,
+          effectiveFrom: PAYER.effectiveFrom,
+          effectiveTo: PAYER.effectiveTo,
+        });
+
+      if (!inserted) {
+        throw new Error("patient payer insert failed");
+      }
+
+      return {
+        id: inserted.id,
+        payerId: inserted.payerId,
+        rank: inserted.rank,
+        coverageKind: inserted.coverageKind,
+        subscriberId: inserted.subscriberId,
+        groupNumber: inserted.groupNumber ?? null,
+        binPcn: inserted.binPcn ?? null,
+        current: inserted.effectiveTo === null,
+        effectiveFrom: inserted.effectiveFrom,
+        effectiveTo: inserted.effectiveTo ?? null,
+      };
+    },
+  );
+
   // §3.4/§3.5 Care Team & Assignments tab: the clinical assignment roster (`patient_assignment`) +
   // the caregiver involvements (`patient_caregiver` ⨝ `caregiver`) + the emergency contacts. Each is
   // an M5-owned read under RLS (app.org_id). The assignment's clinician is returned as a bare
@@ -671,6 +780,7 @@ export function createDbPatientRouteService(db: DbClient): PatientRouteService {
     getIdentifiers,
     listAddresses,
     listPayers,
+    addPayer,
     getCareTeam,
     getPrivacyFlags,
     admit,

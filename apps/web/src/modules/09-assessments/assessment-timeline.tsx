@@ -24,7 +24,10 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { PatientChartBail } from "../../shell/chart-module-rail";
+import {
+  ChartModuleRail,
+  PatientChartBail,
+} from "../../shell/chart-module-rail";
 import { ASSESSMENT_TONE, stateLabel } from "./assessment-status";
 
 interface AssessmentRow {
@@ -66,8 +69,12 @@ export function AssessmentTimeline(): JSX.Element {
       setLoading(true);
       setError(null);
       const [aRes, pRes] = await Promise.all([
-        client.GET("/api/v1/patients/{patientId}/assessments", { params: { path: { patientId } } }),
-        client.GET("/api/v1/patients/{id}", { params: { path: { id: patientId } } }),
+        client.GET("/api/v1/patients/{patientId}/assessments", {
+          params: { path: { patientId } },
+        }),
+        client.GET("/api/v1/patients/{id}", {
+          params: { path: { id: patientId } },
+        }),
       ]);
       if (!active) return;
       if (pRes.data) setPatient(pRes.data as PatientSummary);
@@ -87,11 +94,19 @@ export function AssessmentTimeline(): JSX.Element {
   // One entry per distinct scale, with its captures (newest first) + latest summary — the left list.
   const scales = useMemo(() => {
     const by = new Map<string, AssessmentRow[]>();
-    for (const a of items) by.set(a.scaleType, [...(by.get(a.scaleType) ?? []), a]);
+    for (const a of items)
+      by.set(a.scaleType, [...(by.get(a.scaleType) ?? []), a]);
     return [...by.entries()]
       .map(([scaleType, rows]) => {
-        const sorted = [...rows].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt));
-        return { scaleType, rows: sorted, latest: sorted[0]!, count: rows.length };
+        const sorted = [...rows].sort((a, b) =>
+          b.capturedAt.localeCompare(a.capturedAt),
+        );
+        return {
+          scaleType,
+          rows: sorted,
+          latest: sorted[0]!,
+          count: rows.length,
+        };
       })
       .sort((a, b) => b.latest.capturedAt.localeCompare(a.latest.capturedAt));
   }, [items]);
@@ -121,14 +136,22 @@ export function AssessmentTimeline(): JSX.Element {
 
   if (loading) {
     return (
-      <PatientChartBail banner={banner}>
+      <PatientChartBail
+        banner={banner}
+        patientId={patientId}
+        current="assessments"
+      >
         <LoadingSpinner />
       </PatientChartBail>
     );
   }
   if (error) {
     return (
-      <PatientChartBail banner={banner}>
+      <PatientChartBail
+        banner={banner}
+        patientId={patientId}
+        current="assessments"
+      >
         <EmptyState title="Unavailable" description={error} />
       </PatientChartBail>
     );
@@ -137,23 +160,38 @@ export function AssessmentTimeline(): JSX.Element {
   if (items.length === 0) {
     return (
       <PatientWorkspaceLayout banner={banner}>
-        <EmptyState
-          title="No assessments"
-          description="No clinical scales have been recorded for this patient."
-        />
+        <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
+          <ChartModuleRail patientId={patientId ?? ""} current="assessments" />
+
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              padding: "1.5rem",
+            }}
+          >
+            <EmptyState
+              title="No assessments"
+              description="No clinical scales have been recorded for this patient."
+            />
+          </div>
+        </div>
       </PatientWorkspaceLayout>
     );
   }
 
   const selected = scales.find((s) => s.scaleType === scale) ?? scales[0]!;
   // Chronological (oldest→newest) numeric scores → the right-rail trend bars.
-  const series = [...selected.rows].reverse().filter((r) => r.score != null) as (AssessmentRow & {
+  const series = [...selected.rows]
+    .reverse()
+    .filter((r) => r.score != null) as (AssessmentRow & {
     score: number;
   })[];
 
   return (
     <PatientWorkspaceLayout banner={banner}>
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+        <ChartModuleRail patientId={patientId ?? ""} current="assessments" />
         {/* Scale list */}
         <div style={scaleListStyle}>
           <span style={listHead}>Scales</span>
@@ -168,16 +206,33 @@ export function AssessmentTimeline(): JSX.Element {
                 style={{ ...scaleItem, ...(active ? scaleItemActive : null) }}
               >
                 <span
-                  style={{ display: "flex", alignItems: "center", gap: "0.35rem", fontWeight: 600 }}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.35rem",
+                    fontWeight: 600,
+                  }}
                 >
                   {s.scaleType}
                   {s.latest.sudContext ? (
-                    <Glyph name="lock" size={12} label="Substance-use context" />
+                    <Glyph
+                      name="lock"
+                      size={12}
+                      label="Substance-use context"
+                    />
                   ) : null}
                 </span>
-                <span style={{ display: "flex", alignItems: "center", gap: "0.4rem" }}>
+                <span
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "0.4rem",
+                  }}
+                >
                   <span style={listMeta}>{s.count}</span>
-                  {needsCosign ? <span style={cosignDot} title="Cosignature pending" /> : null}
+                  {needsCosign ? (
+                    <span style={cosignDot} title="Cosignature pending" />
+                  ) : null}
                 </span>
               </button>
             );
@@ -185,7 +240,9 @@ export function AssessmentTimeline(): JSX.Element {
         </div>
 
         {/* Selected scale — latest score + capture history */}
-        <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
+        <div
+          style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}
+        >
           <div
             style={{
               display: "flex",
@@ -213,12 +270,19 @@ export function AssessmentTimeline(): JSX.Element {
               <div style={{ textAlign: "right" }}>
                 <div
                   className="tabular-nums"
-                  style={{ fontSize: "2rem", fontWeight: 700, lineHeight: 1, color: t.onSurface }}
+                  style={{
+                    fontSize: "2rem",
+                    fontWeight: 700,
+                    lineHeight: 1,
+                    color: t.onSurface,
+                  }}
                 >
                   {selected.latest.score ?? "—"}
                 </div>
                 {selected.latest.scoreInterpretation ? (
-                  <div style={{ fontSize: "0.78rem", color: t.onSurfaceVariant }}>
+                  <div
+                    style={{ fontSize: "0.78rem", color: t.onSurfaceVariant }}
+                  >
                     {selected.latest.scoreInterpretation}
                   </div>
                 ) : null}
@@ -226,11 +290,17 @@ export function AssessmentTimeline(): JSX.Element {
             )}
           </div>
           <p style={{ ...meta, marginTop: "0.25rem" }}>
-            Each capture's total score is shown; the per-item breakdown renders here once the
-            assessment read exposes individual scale items.
+            Each capture's total score is shown; the per-item breakdown renders
+            here once the assessment read exposes individual scale items.
           </p>
 
-          <section style={{ ...cardSurface, padding: "0.5rem 1.25rem", marginTop: "1rem" }}>
+          <section
+            style={{
+              ...cardSurface,
+              padding: "0.5rem 1.25rem",
+              marginTop: "1rem",
+            }}
+          >
             {selected.rows.map((a, i) => {
               const needsCosign = a.cosignRequired && !a.cosignedAt;
               return (
@@ -238,12 +308,19 @@ export function AssessmentTimeline(): JSX.Element {
                   key={a.id}
                   type="button"
                   onClick={() =>
-                    patientId && navigate(`/patients/${patientId}/scales/${a.scaleType}`)
+                    patientId &&
+                    navigate(`/patients/${patientId}/scales/${a.scaleType}`)
                   }
-                  style={{ ...captureRow, borderTop: i === 0 ? "none" : ghostBorder }}
+                  style={{
+                    ...captureRow,
+                    borderTop: i === 0 ? "none" : ghostBorder,
+                  }}
                 >
                   <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                    <span className="tabular-nums" style={{ color: t.onSurface }}>
+                    <span
+                      className="tabular-nums"
+                      style={{ color: t.onSurface }}
+                    >
                       {a.capturedAt.slice(0, 16).replace("T", " ")}
                     </span>
                     <span style={{ ...meta, margin: 0 }}>
@@ -254,7 +331,10 @@ export function AssessmentTimeline(): JSX.Element {
                   {a.redacted ? (
                     <span style={meta}>Redacted</span>
                   ) : (
-                    <span className="tabular-nums" style={{ fontWeight: 600, color: t.onSurface }}>
+                    <span
+                      className="tabular-nums"
+                      style={{ fontWeight: 600, color: t.onSurface }}
+                    >
                       {a.score ?? "—"}
                       {a.scoreInterpretation ? (
                         <span style={tag}> {a.scoreInterpretation}</span>
@@ -265,7 +345,9 @@ export function AssessmentTimeline(): JSX.Element {
                     label={stateLabel(a.status)}
                     tone={ASSESSMENT_TONE[a.status] ?? "neutral"}
                   />
-                  {needsCosign ? <StatusPill label="Cosign needed" tone="warning" /> : null}
+                  {needsCosign ? (
+                    <StatusPill label="Cosign needed" tone="warning" />
+                  ) : null}
                   <Glyph name="arrow-right" size={16} />
                 </button>
               );
@@ -283,8 +365,8 @@ export function AssessmentTimeline(): JSX.Element {
               <Trend series={series} />
             )}
             <p style={{ ...meta, marginTop: "0.5rem" }}>
-              {series.length} scored capture{series.length === 1 ? "" : "s"} · significant changes
-              are triaged in the changes inbox.
+              {series.length} scored capture{series.length === 1 ? "" : "s"} ·
+              significant changes are triaged in the changes inbox.
             </p>
           </div>
         </aside>
@@ -294,10 +376,21 @@ export function AssessmentTimeline(): JSX.Element {
 }
 
 // A compact bar chart of the real per-capture scores (oldest → newest), normalized to the max.
-function Trend({ series }: { series: (AssessmentRow & { score: number })[] }): JSX.Element {
+function Trend({
+  series,
+}: {
+  series: (AssessmentRow & { score: number })[];
+}): JSX.Element {
   const max = Math.max(...series.map((s) => s.score), 1);
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: "0.35rem", height: "5rem" }}>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "flex-end",
+        gap: "0.35rem",
+        height: "5rem",
+      }}
+    >
       {series.map((s) => (
         <div
           key={s.id}
@@ -311,7 +404,10 @@ function Trend({ series }: { series: (AssessmentRow & { score: number })[] }): J
           }}
           title={`${s.capturedAt.slice(0, 10)} · ${s.score}`}
         >
-          <span className="tabular-nums" style={{ fontSize: "0.6rem", color: t.onSurfaceVariant }}>
+          <span
+            className="tabular-nums"
+            style={{ fontSize: "0.6rem", color: t.onSurfaceVariant }}
+          >
             {s.score}
           </span>
           <div
@@ -377,7 +473,10 @@ const scaleItem: CSSProperties = {
   color: t.onSurface,
   textAlign: "left",
 };
-const scaleItemActive: CSSProperties = { background: t.primaryTint, color: t.primary };
+const scaleItemActive: CSSProperties = {
+  background: t.primaryTint,
+  color: t.primary,
+};
 const listMeta: CSSProperties = { fontSize: "0.72rem", color: t.muted };
 const cosignDot: CSSProperties = {
   width: "0.45rem",
@@ -415,7 +514,11 @@ const meta: CSSProperties = {
   color: t.onSurfaceVariant,
   margin: "0.25rem 0 0",
 };
-const tag: CSSProperties = { color: t.muted, fontSize: "0.75rem", fontWeight: 400 };
+const tag: CSSProperties = {
+  color: t.muted,
+  fontSize: "0.75rem",
+  fontWeight: 400,
+};
 const restricted: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",

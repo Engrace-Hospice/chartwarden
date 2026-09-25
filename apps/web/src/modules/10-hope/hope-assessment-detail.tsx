@@ -31,6 +31,12 @@ type HopeApiResult<T = unknown> = Promise<{
   error?: unknown;
   response?: Response;
 }>;
+type SfvError = {
+  type: "permission" | "validation" | "conflict" | "generic";
+  title: string;
+  message: string;
+};
+
 interface HopeApiCompat {
   GET(path: string, init?: unknown): HopeApiResult;
   PATCH(path: string, init?: unknown): HopeApiResult;
@@ -375,6 +381,7 @@ export function HopeAssessmentDetail(): JSX.Element {
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("A");
   const [sfvOpen, setSfvOpen] = useState(false);
+  const [sfvReviewOpen, setSfvReviewOpen] = useState(false);
   const [saving, setSaving] = useState<
     "idle" | "saving" | "saved" | "failed" | "conflict"
   >("idle");
@@ -864,6 +871,7 @@ export function HopeAssessmentDetail(): JSX.Element {
                 fieldErrors={fieldErrors}
                 onSave={saveAnswer}
                 onCompleteSfv={() => setSfvOpen(true)}
+                onReviewSfv={() => setSfvReviewOpen(true)}
               />
             ) : (
               <EmptyState
@@ -900,12 +908,32 @@ export function HopeAssessmentDetail(): JSX.Element {
         <CompleteSfvDialog
           assessment={assessment}
           api={api}
+          items={
+            workspace.sections
+              .find((section) => section.code === "J")
+              ?.items.filter((item) => item.itemCode.startsWith("J2053")) ?? []
+          }
           onCancel={() => setSfvOpen(false)}
           onCompleted={async () => {
             setSfvOpen(false);
 
             await refreshWorkspaceOnly();
           }}
+        />
+      ) : null}
+
+      {sfvReviewOpen ? (
+        <ReviewSfvDialog
+          items={
+            workspace.sections
+              .find((section) => section.code === "J")
+              ?.items.filter(
+                (item) =>
+                  item.itemCode.startsWith("J2052") ||
+                  item.itemCode.startsWith("J2053"),
+              ) ?? []
+          }
+          onClose={() => setSfvReviewOpen(false)}
         />
       ) : null}
     </PatientWorkspaceLayout>
@@ -915,11 +943,13 @@ export function HopeAssessmentDetail(): JSX.Element {
 function CompleteSfvDialog({
   assessment,
   api,
+  items,
   onCancel,
   onCompleted,
 }: {
   assessment: AssessmentDetail;
   api: HopeApiCompat;
+  items: WorkspaceItem[];
   onCancel: () => void;
   onCompleted: () => Promise<void>;
 }): JSX.Element {
@@ -931,17 +961,13 @@ function CompleteSfvDialog({
 
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sfvError, setSfvError] = useState<SfvError | null>(null);
 
-  const codes = [
-    "J2053A",
-    "J2053B",
-    "J2053C",
-    "J2053D",
-    "J2053E",
-    "J2053F",
-    "J2053G",
-    "J2053H",
-  ];
+  const sfvQuestions = items.filter((item) =>
+    /^J2053[A-H]$/.test(item.itemCode),
+  );
+
+  const codes = sfvQuestions.map((item) => item.itemCode);
 
   const completedCount = codes.filter((code) => Boolean(answers[code])).length;
 
@@ -979,9 +1005,67 @@ function CompleteSfvDialog({
     setSaving(false);
 
     if (res.error) {
-      setError(
-        "The SFV could not be completed. Review the information and try again.",
-      );
+      const apiError = res.error as {
+        error?: {
+          code?: string;
+          message?: string;
+          details?: Array<{
+            field?: string;
+            code?: string;
+            message?: string;
+          }>;
+        };
+      };
+
+      const code = apiError.error?.code;
+      const message = apiError.error?.message;
+
+      if (
+        code === "FORBIDDEN" ||
+        code === "PERMISSION_DENIED" ||
+        code === "INSUFFICIENT_PERMISSIONS"
+      ) {
+        setSfvError({
+          type: "permission",
+          title: "You don't have permission to complete this SFV",
+          message:
+            message ??
+            "Your current role does not allow you to record a Symptom Follow-Up Visit.",
+        });
+        return;
+      }
+
+      if (code === "VALIDATION_FAILED") {
+        setSfvError({
+          type: "validation",
+          title: "Some information needs attention",
+          message:
+            apiError.error?.details?.[0]?.message ??
+            message ??
+            "Review the SFV information and try again.",
+        });
+        return;
+      }
+
+      if (code === "CONFLICT") {
+        setSfvError({
+          type: "conflict",
+          title: "The SFV could not be completed",
+          message:
+            message ??
+            "The assessment has changed. Refresh the assessment and try again.",
+        });
+        return;
+      }
+
+      setSfvError({
+        type: "generic",
+        title: "Unable to complete SFV",
+        message:
+          message ??
+          "Something went wrong while completing the SFV. Please try again.",
+      });
+
       return;
     }
 
@@ -1099,12 +1183,12 @@ function CompleteSfvDialog({
             </div>
 
             <div style={sfvAnswersGrid}>
-              {codes.map((code, index) => {
-                const value = answers[code] ?? "";
+              {sfvQuestions.map((item, index) => {
+                const value = answers[item.itemCode] ?? "";
 
                 return (
                   <label
-                    key={code}
+                    key={item.itemCode}
                     style={{
                       ...sfvAnswerCard,
                       ...(value ? sfvAnswerCardComplete : null),
@@ -1113,10 +1197,10 @@ function CompleteSfvDialog({
                     <div style={sfvAnswerCardHeader}>
                       <span style={sfvAnswerNumber}>{index + 1}</span>
 
-                      <div>
-                        <strong style={sfvAnswerTitle}>{code}</strong>
+                      <div style={sfvQuestionContent}>
+                        <span style={sfvQuestionCode}>{item.itemCode}</span>
 
-                        <span style={sfvAnswerHint}>Symptom impact</span>
+                        <strong style={sfvQuestionText}>{item.label}</strong>
                       </div>
                     </div>
 
@@ -1127,18 +1211,14 @@ function CompleteSfvDialog({
                       onChange={(event) =>
                         setAnswers((previous) => ({
                           ...previous,
-                          [code]: event.target.value,
+                          [item.itemCode]: event.target.value,
                         }))
                       }
                     >
                       <option value="">Select severity...</option>
-
                       <option value="0">None</option>
-
                       <option value="1">Mild</option>
-
                       <option value="2">Moderate</option>
-
                       <option value="3">Severe</option>
                     </select>
                   </label>
@@ -1147,11 +1227,24 @@ function CompleteSfvDialog({
             </div>
           </section>
 
-          {error ? (
-            <div style={sfvErrorBox} role="alert">
-              <strong>Unable to complete SFV</strong>
-
-              <span>{error}</span>
+          {sfvError ? (
+            <div
+              style={{
+                ...sfvErrorBox,
+                ...(sfvError.type === "permission"
+                  ? sfvPermissionErrorBox
+                  : null),
+              }}
+              role="alert"
+            >
+              <strong
+                style={{
+                  color: sfvError.type === "permission" ? t.warning : t.error,
+                }}
+              >
+                {sfvError.title}
+              </strong>
+              <span>{sfvError.message}</span>
             </div>
           ) : null}
         </div>
@@ -1196,6 +1289,142 @@ function CompleteSfvDialog({
   );
 }
 
+function ReviewSfvDialog({
+  items,
+  onClose,
+}: {
+  items: WorkspaceItem[];
+  onClose: () => void;
+}): JSX.Element {
+  const completedDate = items.find((item) => item.itemCode === "J2052B")?.value;
+
+  const questions = items.filter((item) => /^J2053[A-H]$/.test(item.itemCode));
+
+  return (
+    <div
+      style={sfvModalBackdrop}
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <dialog
+        open
+        style={sfvModal}
+        aria-modal="true"
+        aria-labelledby="sfv-review-dialog-title"
+      >
+        <header style={sfvModalHeader}>
+          <div style={sfvModalHeaderText}>
+            <div style={sfvModalEyebrow}>Symptom Follow-Up Visit</div>
+
+            <h2 id="sfv-review-dialog-title" style={sfvModalTitle}>
+              SFV details
+            </h2>
+
+            <p style={sfvModalDescription}>
+              Review the completed symptom follow-up visit.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            aria-label="Close"
+            style={sfvCloseButton}
+            onClick={onClose}
+          >
+            ×
+          </button>
+        </header>
+
+        <div style={sfvModalBody}>
+          <section style={sfvSection}>
+            <div style={sfvSectionHeader}>
+              <div>
+                <h3 style={sfvSectionTitle}>Visit details</h3>
+
+                <p style={sfvSectionDescription}>
+                  Recorded information for this completed SFV.
+                </p>
+              </div>
+
+              <StatusPill label="Completed" tone="success" />
+            </div>
+
+            <div style={sfvDetailsGrid}>
+              <div style={sfvField}>
+                <span style={sfvFieldLabel}>SFV date</span>
+
+                <div style={sfvReadonlyAnswer}>
+                  {completedDate ? formatDate(String(completedDate)) : "—"}
+                </div>
+              </div>
+
+              <div style={sfvField}>
+                <span style={sfvFieldLabel}>Status</span>
+
+                <div style={sfvReadonlyAnswer}>Completed</div>
+              </div>
+            </div>
+          </section>
+
+          <section style={sfvSection}>
+            <div style={sfvSectionHeader}>
+              <div>
+                <h3 style={sfvSectionTitle}>Symptom impact reassessment</h3>
+
+                <p style={sfvSectionDescription}>
+                  Responses recorded during the follow-up visit.
+                </p>
+              </div>
+            </div>
+
+            <div style={sfvAnswersGrid}>
+              {questions.map((item, index) => {
+                const value = String(item.value ?? "");
+
+                const option = item.options.find(
+                  (row) => row.valueCode === value,
+                );
+
+                return (
+                  <div key={item.itemCode} style={sfvAnswerCard}>
+                    <div style={sfvAnswerCardHeader}>
+                      <span style={sfvAnswerNumber}>{index + 1}</span>
+
+                      <div style={sfvQuestionContent}>
+                        <span style={sfvQuestionCode}>{item.itemCode}</span>
+
+                        <strong style={sfvQuestionText}>{item.label}</strong>
+                      </div>
+                    </div>
+
+                    <div style={sfvReadonlyAnswer}>
+                      {option?.label || value || "—"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </div>
+
+        <footer style={sfvModalFooter}>
+          <div />
+
+          <div style={sfvFooterActions}>
+            <button type="button" style={secondaryButton} onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </footer>
+      </dialog>
+    </div>
+  );
+}
+
 function SectionPanel(props: {
   sectionId: Exclude<SectionId, "Review">;
   section: WorkspaceSection;
@@ -1204,6 +1433,7 @@ function SectionPanel(props: {
   fieldErrors: Record<string, string>;
   onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
   onCompleteSfv?: () => void;
+  onReviewSfv?: () => void;
 }): JSX.Element {
   const config = SECTION_ORDER.find((s) => s.id === props.sectionId)!;
   return (
@@ -1491,10 +1721,12 @@ function SfvWorkflowSection({
   items,
   readonly,
   onComplete,
+  onReview,
 }: {
   items: WorkspaceItem[];
   readonly: boolean;
   onComplete?: () => void;
+  onReview?: () => void;
 }): JSX.Element {
   const j2052a = items.find((item) => item.itemCode === "J2052A");
 
@@ -1532,7 +1764,13 @@ function SfvWorkflowSection({
           />
         </div>
 
-        {!readonly && required && !completed ? (
+        {completed ? (
+          <div style={actionRow}>
+            <button type="button" style={secondaryButton} onClick={onReview}>
+              View SFV details
+            </button>
+          </div>
+        ) : !readonly && required ? (
           <div style={actionRow}>
             <button type="button" style={primaryButton} onClick={onComplete}>
               Complete SFV
@@ -1604,6 +1842,7 @@ function SectionJ(props: Parameters<typeof SectionPanel>[0]): JSX.Element {
           items={sfvItems}
           readonly={props.readonly}
           onComplete={props.onCompleteSfv}
+          onReview={props.onReviewSfv}
         />
       ) : null}
     </div>
@@ -1927,6 +2166,137 @@ function coverageNumberHint(item: WorkspaceItem): string | null {
   return null;
 }
 
+function PayerCoverageReview({
+  workspace,
+  onGoTo,
+}: {
+  workspace: Workspace;
+  onGoTo: (section: SectionId) => void;
+}): JSX.Element | null {
+  const sectionA = workspace.sections.find((section) => section.code === "A");
+
+  if (!sectionA) {
+    return null;
+  }
+
+  const payerItems = sectionA.items.filter((item) =>
+    item.itemCode.startsWith("A1400"),
+  );
+
+  const selectedPayers = payerItems.filter(
+    (item) => String(item.value ?? "") === "1",
+  );
+
+  const medicareNumber = sectionA.items.find(
+    (item) => item.itemCode === "A0600B",
+  );
+
+  const medicaidNumber = sectionA.items.find(
+    (item) => item.itemCode === "A0700",
+  );
+
+  const hasMedicare = payerItems.some(
+    (item) =>
+      (item.itemCode === "A1400A" || item.itemCode === "A1400B") &&
+      String(item.value ?? "") === "1",
+  );
+
+  const hasMedicaid = payerItems.some(
+    (item) =>
+      (item.itemCode === "A1400C" || item.itemCode === "A1400D") &&
+      String(item.value ?? "") === "1",
+  );
+
+  return (
+    <section style={questionGroup}>
+      <div style={reviewSubsectionHeader}>
+        <div>
+          <h3 style={groupTitle}>Payer / Coverage</h3>
+          <p style={muted}>
+            Review the payer sources recorded for this HOPE assessment.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          style={secondaryButton}
+          onClick={() => onGoTo("A")}
+        >
+          View Section A
+        </button>
+      </div>
+
+      {selectedPayers.length > 0 ? (
+        <div style={payerReviewList}>
+          {selectedPayers.map((item) => (
+            <div key={item.itemCode} style={payerReviewRow}>
+              <div style={payerReviewIdentity}>
+                <span style={payerReviewCheck} aria-hidden="true">
+                  ✓
+                </span>
+
+                <div>
+                  <strong style={payerReviewLabel}>{item.label}</strong>
+
+                  {item.source ? (
+                    <small style={payerSource}>
+                      {item.source === "patient_prefill"
+                        ? "From patient coverage"
+                        : item.source === "admission_prefill"
+                          ? "From admission"
+                          : item.source === "user"
+                            ? "Confirmed in HOPE"
+                            : "Prefilled"}
+                    </small>
+                  ) : null}
+                </div>
+              </div>
+
+              <span style={codePill}>{item.itemCode}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={payerReviewEmpty}>
+          No payer source is currently selected.
+        </div>
+      )}
+
+      {hasMedicare || hasMedicaid ? (
+        <div style={payerIdentifierGrid}>
+          {hasMedicare ? (
+            <div style={payerIdentifierCard}>
+              <span style={payerIdentifierLabel}>Medicare number</span>
+
+              <strong style={payerIdentifierValue}>
+                {medicareNumber?.value
+                  ? maskCoverageIdentifier(String(medicareNumber.value))
+                  : "Not recorded"}
+              </strong>
+
+              <span style={codePill}>A0600B</span>
+            </div>
+          ) : null}
+
+          {hasMedicaid ? (
+            <div style={payerIdentifierCard}>
+              <span style={payerIdentifierLabel}>Medicaid number</span>
+
+              <strong style={payerIdentifierValue}>
+                {medicaidNumber?.value
+                  ? maskCoverageIdentifier(String(medicaidNumber.value))
+                  : "Not recorded"}
+              </strong>
+
+              <span style={codePill}>A0700</span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 function ReviewPanel(props: {
   assessment: AssessmentDetail;
   review: ReviewModel | null;
@@ -2009,6 +2379,8 @@ function ReviewPanel(props: {
             );
           })}
       </div>
+      <PayerCoverageReview workspace={props.workspace} onGoTo={props.onGoTo} />
+
       <IssueList review={props.review} onGoTo={props.onGoTo} />
       {props.workspace.assessment.isc === "HA" ||
       props.workspace.assessment.isc === "HUV" ? (
@@ -2775,6 +3147,24 @@ function maskIdentifier(value: string | null | undefined): string {
   return value.length <= 4 ? value : `MRN ...${value.slice(-4)}`;
 }
 
+function maskCoverageIdentifier(value: string | null | undefined): string {
+  if (!value) {
+    return "Not recorded";
+  }
+
+  const normalized = value.trim();
+
+  if (normalized === "^" || normalized === "+" || normalized === "N") {
+    return normalized;
+  }
+
+  if (normalized.length <= 4) {
+    return normalized;
+  }
+
+  return `••••${normalized.slice(-4)}`;
+}
+
 function stateDot(
   kind: "complete" | "progress" | "attention" | "empty",
 ): CSSProperties {
@@ -3288,28 +3678,34 @@ const srOnly: CSSProperties = {
 const sfvModalBackdrop: CSSProperties = {
   position: "fixed",
   inset: 0,
-  zIndex: 50,
-  display: "grid",
-  placeItems: "center",
-  padding: "1rem",
-  background: "rgba(15, 23, 42, 0.52)",
+  zIndex: 1000,
+
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+
+  padding: "24px",
+  background: "rgba(15, 23, 42, 0.48)",
   backdropFilter: "blur(2px)",
 };
 
 const sfvModal: CSSProperties = {
+  position: "relative",
+  margin: 0,
+
+  width: "min(820px, calc(100vw - 48px))",
+  maxHeight: "calc(100vh - 48px)",
+
   display: "flex",
   flexDirection: "column",
-  width: "min(760px, calc(100vw - 2rem))",
-  maxWidth: "760px",
-  maxHeight: "min(860px, calc(100vh - 2rem))",
-  margin: 0,
+
   padding: 0,
-  overflow: "hidden",
   border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 12,
+  borderRadius: 16,
   background: t.surface,
   color: t.onSurface,
-  boxShadow: "0 24px 70px rgba(15, 23, 42, 0.28)",
+  boxShadow: "0 24px 64px rgba(0, 0, 0, 0.28)",
+  overflow: "hidden",
 };
 
 const sfvModalHeader: CSSProperties = {
@@ -3367,11 +3763,16 @@ const sfvCloseButton: CSSProperties = {
 };
 
 const sfvModalBody: CSSProperties = {
-  flex: "1 1 auto",
-  minHeight: 0,
+  padding: "24px",
   overflowY: "auto",
-  overscrollBehavior: "contain",
-  padding: "1rem 1.35rem 1.25rem",
+  flex: 1,
+  minHeight: 0,
+};
+
+const sfvPermissionErrorBox: CSSProperties = {
+  borderColor: t.warning,
+  background: `color-mix(in srgb, ${t.warning} 10%, ${t.surface})`,
+  color: t.onSurface,
 };
 
 const sfvSection: CSSProperties = {
@@ -3408,8 +3809,8 @@ const sfvSectionDescription: CSSProperties = {
 
 const sfvDetailsGrid: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
-  gap: "0.85rem",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: "16px",
 };
 
 const sfvField: CSSProperties = {
@@ -3465,28 +3866,58 @@ const sfvProgressValue: CSSProperties = {
 
 const sfvAnswersGrid: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: "0.7rem",
+  gridTemplateColumns: "1fr",
+  gap: "12px",
 };
 
 const sfvAnswerCard: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.65rem",
-  padding: "0.75rem",
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 220px",
+  alignItems: "center",
+  gap: "20px",
+
+  padding: "16px",
   border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 9,
+  borderRadius: 12,
   background: t.surface,
+  color: t.onSurface,
 };
 
 const sfvAnswerCardComplete: CSSProperties = {
   border: `1px solid ${t.primary}`,
+  background: `color-mix(in srgb, ${t.primary} 6%, ${t.surface})`,
 };
 
 const sfvAnswerCardHeader: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: "0.6rem",
+};
+
+const sfvQuestionContent: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.3rem",
+  minWidth: 0,
+};
+
+const sfvQuestionCode: CSSProperties = {
+  alignSelf: "flex-start",
+  padding: "0.15rem 0.4rem",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 6,
+  background: t.surfaceLow,
+  color: t.muted,
+  fontSize: "0.72rem",
+  fontWeight: 700,
+  lineHeight: 1.2,
+};
+
+const sfvQuestionText: CSSProperties = {
+  color: t.onSurface,
+  fontSize: "0.88rem",
+  fontWeight: 650,
+  lineHeight: 1.4,
 };
 
 const sfvAnswerNumber: CSSProperties = {
@@ -3518,12 +3949,12 @@ const sfvAnswerHint: CSSProperties = {
 const sfvErrorBox: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  gap: "0.2rem",
+  gap: "0.25rem",
   padding: "0.75rem 0.85rem",
   border: `1px solid ${t.error}`,
   borderRadius: 8,
-  background: "#fff3f3",
-  color: t.error,
+  background: `color-mix(in srgb, ${t.error} 10%, ${t.surface})`,
+  color: t.onSurface,
   fontSize: "0.82rem",
 };
 
@@ -3570,4 +4001,111 @@ const optionalLabel: CSSProperties = {
   fontSize: 12,
   fontWeight: 500,
   opacity: 0.65,
+};
+
+const sfvReadonlyAnswer: CSSProperties = {
+  minHeight: 42,
+  display: "flex",
+  alignItems: "center",
+  boxSizing: "border-box",
+  padding: "0.55rem 0.65rem",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  background: t.surface,
+  color: t.onSurface,
+  fontSize: "0.85rem",
+  fontWeight: 600,
+};
+
+const reviewSubsectionHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "1rem",
+  marginBottom: "0.9rem",
+};
+
+const payerReviewList: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.55rem",
+};
+
+const payerReviewRow: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+  padding: "0.75rem",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  background: t.surfaceLow,
+  color: t.onSurface,
+};
+
+const payerReviewIdentity: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.65rem",
+  minWidth: 0,
+};
+
+const payerReviewCheck: CSSProperties = {
+  display: "grid",
+  flex: "0 0 auto",
+  placeItems: "center",
+  width: 26,
+  height: 26,
+  borderRadius: 999,
+  background: `color-mix(in srgb, ${t.success} 12%, ${t.surface})`,
+  color: t.success,
+  fontSize: "0.78rem",
+  fontWeight: 800,
+};
+
+const payerReviewLabel: CSSProperties = {
+  color: t.onSurface,
+  fontSize: "0.88rem",
+  lineHeight: 1.35,
+};
+
+const payerReviewEmpty: CSSProperties = {
+  padding: "0.8rem",
+  border: `1px dashed ${t.outline}`,
+  borderRadius: 8,
+  background: t.surfaceLow,
+  color: t.muted,
+  fontSize: "0.85rem",
+};
+
+const payerIdentifierGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+  gap: "0.65rem",
+  marginTop: "0.8rem",
+};
+
+const payerIdentifierCard: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: "0.25rem 0.75rem",
+  padding: "0.75rem",
+  border: `1px solid ${t.outlineVariant}`,
+  borderRadius: 8,
+  background: t.surface,
+  color: t.onSurface,
+};
+
+const payerIdentifierLabel: CSSProperties = {
+  gridColumn: "1 / -1",
+  color: t.muted,
+  fontSize: "0.75rem",
+  fontWeight: 650,
+};
+
+const payerIdentifierValue: CSSProperties = {
+  color: t.onSurface,
+  fontSize: "0.9rem",
+  fontWeight: 700,
 };

@@ -1,11 +1,12 @@
 import {
-  DetailPageLayout,
+  PatientWorkspaceLayout,
   EmptyState,
   LoadingSpinner,
   PageHeader,
   StatusPill,
   useApiClient,
 } from "@wardenx/ui";
+import { ChartModuleRail } from "../../shell/chart-module-rail";
 // apps/web/src/modules/10-hope — Patient HOPE timeline (M10 §5.1/§5.2, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_HOPE_ENGINE.md — "Use Patient Workspace + Documentation Workspace."
 // Per-patient chronology: Admission → HUV1 → HUV2 → SFV(s) → Discharge, newest first — each row carries the
@@ -16,7 +17,12 @@ import {
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ASSESSMENT_TONE, J2051_TONE, rfaLabel, stateLabel } from "./hope-status";
+import {
+  ASSESSMENT_TONE,
+  J2051_TONE,
+  rfaLabel,
+  stateLabel,
+} from "./hope-status";
 
 interface AssessmentRow {
   id: string;
@@ -67,89 +73,149 @@ export function PatientHopeTimeline(): JSX.Element {
   const triggered = items.filter((a) => a.j2051TriggerFired).length;
 
   return (
-    <DetailPageLayout
-      header={
+    <PatientWorkspaceLayout
+      banner={
         <PageHeader title="HOPE Timeline">
           <span style={meta}>
-            {items.length} timepoints{triggered > 0 ? ` · ${triggered} triggered an SFV` : ""}
+            {items.length} timepoints
+            {triggered > 0 ? ` · ${triggered} triggered an SFV` : ""}
           </span>
         </PageHeader>
       }
     >
-      {error ? (
-        <EmptyState title="Unavailable" description={error} />
-      ) : loading ? (
-        <LoadingSpinner />
-      ) : items.length === 0 ? (
-        <EmptyState
-          title="No HOPE timepoints"
-          description="No HOPE assessments have been recorded for this patient."
-        />
-      ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>RFA</th>
-              <th>Target date</th>
-              <th>Author</th>
-              <th>J2051</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((a) => (
-              <tr
-                key={a.id}
-                // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                role="button"
-                tabIndex={0}
-                onClick={() => navigate(`/hope/assessments/${a.id}`)}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    navigate(`/hope/assessments/${a.id}`);
-                  }
-                }}
+      <div
+        style={{
+          display: "flex",
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
+        <ChartModuleRail patientId={patientId ?? ""} current="hope" />
+
+        <main
+          style={{
+            flex: 1,
+            minWidth: 0,
+            overflow: "auto",
+            padding: "1.5rem",
+          }}
+        >
+          {error ? (
+            <EmptyState title="Unavailable" description={error} />
+          ) : loading ? (
+            <LoadingSpinner />
+          ) : items.length === 0 ? (
+            <EmptyState
+              title="No HOPE timepoints"
+              description="No HOPE assessments have been recorded for this patient."
+            />
+          ) : (
+            <div style={{ overflowX: "auto" }}>
+              <table
                 style={{
-                  cursor: "pointer",
-                  // Superseded (corrected) rows render in strikethrough as a chronology cue (§5.2).
-                  textDecoration: a.supersededByAssessmentId ? "line-through" : "none",
+                  width: "100%",
+                  borderCollapse: "collapse",
                 }}
               >
-                <td>{rfaLabel(a.rfaKind)}</td>
-                <td className="tabular-nums">{a.targetDate.slice(0, 10)}</td>
-                <td>{stateLabel(a.authorDiscipline)}</td>
-                <td>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-                    {a.j2051MaxSeverity ? (
-                      <StatusPill
-                        label={stateLabel(a.j2051MaxSeverity)}
-                        tone={J2051_TONE[a.j2051MaxSeverity] ?? "neutral"}
-                      />
-                    ) : (
-                      <span style={{ color: "var(--color-muted)" }}>—</span>
-                    )}
-                    {/* J2051 trigger fired → a 2-day Symptom Follow-Up Visit obligation (§2.3). */}
-                    {a.j2051TriggerFired ? (
-                      <StatusPill label="SFV" tone="warning" glyph="alert" />
-                    ) : null}
-                  </span>
-                </td>
-                <td>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: "0.35rem" }}>
-                    <StatusPill
-                      label={stateLabel(a.status)}
-                      tone={ASSESSMENT_TONE[a.status] ?? "neutral"}
-                    />
-                    {a.wasLate ? <StatusPill label="Late" tone="warning" /> : null}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </DetailPageLayout>
+                <thead>
+                  <tr>
+                    <th>RFA</th>
+                    <th>Target date</th>
+                    <th>Author</th>
+                    <th>J2051</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {items.map((a) => (
+                    <tr
+                      key={a.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/hope/assessments/${a.id}`)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+
+                          navigate(`/hope/assessments/${a.id}`);
+                        }
+                      }}
+                      style={{
+                        cursor: "pointer",
+                        textDecoration: a.supersededByAssessmentId
+                          ? "line-through"
+                          : "none",
+                      }}
+                    >
+                      <td>{rfaLabel(a.rfaKind)}</td>
+
+                      <td className="tabular-nums">
+                        {a.targetDate.slice(0, 10)}
+                      </td>
+
+                      <td>{stateLabel(a.authorDiscipline)}</td>
+
+                      <td>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.35rem",
+                          }}
+                        >
+                          {a.j2051MaxSeverity ? (
+                            <StatusPill
+                              label={stateLabel(a.j2051MaxSeverity)}
+                              tone={J2051_TONE[a.j2051MaxSeverity] ?? "neutral"}
+                            />
+                          ) : (
+                            <span
+                              style={{
+                                color: "var(--color-muted)",
+                              }}
+                            >
+                              —
+                            </span>
+                          )}
+
+                          {a.j2051TriggerFired ? (
+                            <StatusPill
+                              label="SFV"
+                              tone="warning"
+                              glyph="alert"
+                            />
+                          ) : null}
+                        </span>
+                      </td>
+
+                      <td>
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "0.35rem",
+                          }}
+                        >
+                          <StatusPill
+                            label={stateLabel(a.status)}
+                            tone={ASSESSMENT_TONE[a.status] ?? "neutral"}
+                          />
+
+                          {a.wasLate ? (
+                            <StatusPill label="Late" tone="warning" />
+                          ) : null}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </main>
+      </div>
+    </PatientWorkspaceLayout>
   );
 }
 

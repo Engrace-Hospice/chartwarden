@@ -10,10 +10,16 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // fill in as those write paths / Phase-2 modules land.
 import { lazy } from "react";
 import type { ComponentType } from "react";
-const MyVisits = lazy(() => import("./my-visits").then((m) => ({ default: m.MyVisits })));
-const SchedulingDay = lazy(() => import("./day-view").then((m) => ({ default: m.SchedulingDay })));
+const MyVisits = lazy(() =>
+  import("./my-visits").then((m) => ({ default: m.MyVisits })),
+);
+const SchedulingDay = lazy(() =>
+  import("./day-view").then((m) => ({ default: m.SchedulingDay })),
+);
 const SchedulingMetrics = lazy(() =>
-  import("./scheduling-metrics").then((m) => ({ default: m.SchedulingMetrics })),
+  import("./scheduling-metrics").then((m) => ({
+    default: m.SchedulingMetrics,
+  })),
 );
 const SchedulingProposals = lazy(() =>
   import("./proposals").then((m) => ({ default: m.SchedulingProposals })),
@@ -27,12 +33,26 @@ const SchedulingTimeOff = lazy(() =>
 const SchedulingWeek = lazy(() =>
   import("./week-view").then((m) => ({ default: m.SchedulingWeek })),
 );
-const VisitDetail = lazy(() => import("./visit-detail").then((m) => ({ default: m.VisitDetail })));
+const VisitDetail = lazy(() =>
+  import("./visit-detail").then((m) => ({ default: m.VisitDetail })),
+);
+const CalendarPage = lazy(() =>
+  import("./calendar-page").then((m) => ({
+    default: m.CalendarPage,
+  })),
+);
 
 export const schedulingScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 17,
   slug: "17-scheduling",
   screens: [
+    {
+      id: "scheduling.calendar",
+      path: "/calendar",
+      title: "Calendar",
+      navGroup: "Scheduling",
+      screen: CalendarPage,
+    },
     {
       // Day View — the scheduler's per-clinician day grid (clinician `?membership=`, date `?date=`).
       id: "scheduling.day",
