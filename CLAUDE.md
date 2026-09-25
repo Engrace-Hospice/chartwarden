@@ -42,8 +42,7 @@ couldn't apply); M15's `DisciplineComplianceProvider` now exposes the count pair
 `opioid_on_admission_rate` remains genuinely blocked — it needs an M38 RxCUI→therapeutic-class capability
 that doesn't exist yet.
 
-The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104, see
-[`audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`](./audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md)):
+The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit
 coverage gate** (`apps/backend/src/bootstrap/plugins/read-audit.ts`) + request-time emission;
@@ -215,9 +214,8 @@ the prose docs in `docs/architecture/`.
 
 - `docs/adr/` — Architecture Decision Records (ADR-0001…).
 - `docs/reviews/` — audit/review prompt templates.
-- `docs/REMEDIATION_SUMMARY.md`, `audit/` — point-in-time audit reports. These reference module
-  specs **by filename**; resolve those filenames under `docs/modules/`. The latest external review is
-  `audit/EHR_CODEBASE_AUDIT_REPORT_2026-06-27.md`; its findings are remediated and merged (PRs #103/#104).
+- `audit/` — point-in-time audit reports. These reference module specs **by filename**; resolve
+  those filenames under `docs/modules/`.
 
 ## Authority rule
 
