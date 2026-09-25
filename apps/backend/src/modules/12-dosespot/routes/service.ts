@@ -226,7 +226,7 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
   listOrders(
     organizationId: string,
     filter: { patientId?: string; prescriberId?: string; medClass?: string; status?: string },
-  ): Promise<{ orders: MedicationOrderView[] }>;
+  ): Promise<{ orders: MedicationOrderView[]; statusCounts: Record<string, number> }>;
   getOrder(organizationId: string, id: string): Promise<MedicationOrderView>;
   createDraft(
     organizationId: string,
@@ -674,15 +674,16 @@ export function createInMemoryDoseSpotBackend(
 
   return {
     async listOrders(organizationId, filter) {
-      const all = [...orders.values()].filter(
+      const scoped = [...orders.values()].filter(
         (r) =>
           r.organizationId === organizationId &&
           (!filter.patientId || r.patientId === filter.patientId) &&
           (!filter.prescriberId || r.prescriberMembershipId === filter.prescriberId) &&
-          (!filter.medClass || r.medClass === filter.medClass) &&
-          (!filter.status || r.status === filter.status),
+          (!filter.medClass || r.medClass === filter.medClass),
       );
-      return { orders: all.map(view) };
+      const statusCounts = Object.fromEntries(scoped.map((r) => [r.status, 0])) as Record<string, number>;
+      for (const r of scoped) statusCounts[r.status] = (statusCounts[r.status] ?? 0) + 1;
+      return { orders: scoped.filter((r) => !filter.status || r.status === filter.status).map(view), statusCounts };
     },
     async getOrder(organizationId, id) {
       return view(find(organizationId, id));

@@ -48440,6 +48440,9 @@ export interface operations {
                             discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "pharmacy_nack" | "corrected_replacement" | "expired_verbal" | "transmission_failed" | "no_refills_no_renewal") | null;
                             createdAt: string;
                         }[];
+                        statusCounts: {
+                            [key: string]: number;
+                        };
                     };
                 };
             };
@@ -53228,6 +53231,9 @@ export interface operations {
                             discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "pharmacy_nack" | "corrected_replacement" | "expired_verbal" | "transmission_failed" | "no_refills_no_renewal") | null;
                             createdAt: string;
                         }[];
+                        statusCounts: {
+                            [key: string]: number;
+                        };
                     };
                 };
             };

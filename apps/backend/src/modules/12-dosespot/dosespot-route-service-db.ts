@@ -380,18 +380,23 @@ export function createDbDoseSpotBackend(
     // ── Medication-order reads ─────────────────────────────────────────────────────────────────────
     async listOrders(organizationId, filter) {
       return withOrg(organizationId, async (tx) => {
-        const preds = [
+        const scopedPreds = [
           filter.patientId ? eq(MO.patientId, filter.patientId) : undefined,
           filter.prescriberId ? eq(MO.prescriberMembershipId, filter.prescriberId) : undefined,
           filter.medClass ? eq(MO.medClass, filter.medClass as MoRow["medClass"]) : undefined,
-          filter.status ? eq(MO.status, filter.status as MoRow["status"]) : undefined,
         ].filter((p): p is NonNullable<typeof p> => p !== undefined);
-        const rows = await tx
+        const preds = [...scopedPreds, filter.status ? eq(MO.status, filter.status as MoRow["status"]) : undefined]
+          .filter((p): p is NonNullable<typeof p> => p !== undefined);
+        const [rows, counts] = await Promise.all([tx
           .select()
           .from(MO)
           .where(preds.length ? and(...preds) : undefined)
-          .orderBy(desc(MO.createdAt), desc(MO.id));
-        return { orders: rows.map(toOrderView) };
+          .orderBy(desc(MO.createdAt), desc(MO.id)), tx
+          .select({ status: MO.status, count: sql<number>`count(*)` })
+          .from(MO)
+          .where(scopedPreds.length ? and(...scopedPreds) : undefined)
+          .groupBy(MO.status)]);
+        return { orders: rows.map(toOrderView), statusCounts: Object.fromEntries(counts.map((row) => [row.status, Number(row.count)])) };
       });
     },
     async getOrder(organizationId, id) {

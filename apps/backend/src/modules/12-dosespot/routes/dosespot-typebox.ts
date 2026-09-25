@@ -280,6 +280,8 @@ export const MedicationOrderResponseSchema = Type.Object({
 /** The `{ orders }` envelope the list + active-medications reads return. */
 export const MedicationOrderListResponseSchema = Type.Object({
   orders: Type.Array(MedicationOrderResponseSchema),
+  /** Patient-/tenant-scoped lifecycle totals, calculated before any selected status filter. */
+  statusCounts: Type.Record(Type.String(), Type.Integer({ minimum: 0 })),
 });
 
 /** The refill-request read projection (routes 20–21). */

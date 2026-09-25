@@ -9,13 +9,14 @@ import {
 } from "@wardenx/ui";
 import { useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
-import { Link, useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import {
   MED_ORDER_TONE,
   controlledLabel,
   stateLabel,
 } from "./medication-status";
+import { ATTENTION_STATUSES, WORKSPACE_KPIS, workspaceCount, workspaceStatus } from "./medication-workspace";
 
 interface MedRow {
   id: string;
@@ -32,6 +33,8 @@ interface MedRow {
 }
 
 type MedicationStatus =
+  | "all"
+  | "needs_attention"
   | "active"
   | "draft"
   | "pending_signature"
@@ -39,20 +42,26 @@ type MedicationStatus =
   | "discontinued"
   | "completed";
 const statuses: { value: MedicationStatus; label: string }[] = [
+  { value: "all", label: "All" },
   { value: "active", label: "Active" },
   { value: "draft", label: "Drafts" },
   { value: "pending_signature", label: "Pending signature" },
   { value: "verbal_pending", label: "Verbal pending" },
   { value: "discontinued", label: "Discontinued" },
   { value: "completed", label: "Completed" },
+  { value: "discontinued", label: "Discontinued" },
 ];
 
 export function PatientMedications(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { patientId } = useParams<{ patientId: string }>();
   const [items, setItems] = useState<MedRow[]>([]);
-  const [status, setStatus] = useState<MedicationStatus>("active");
+  const statusParam = searchParams.get("status");
+  const status = workspaceStatus(statusParam) as MedicationStatus;
+  const setStatus = (next: MedicationStatus) => setSearchParams(next === "all" ? {} : { status: next });
+  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -72,25 +81,16 @@ export function PatientMedications(): JSX.Element {
     }
     void (async () => {
       try {
-        if (status === "active") {
-          const { data, error: requestError } = await client.GET(
-            "/api/v1/patients/{patientId}/medications/active",
-            { params: { path: { patientId } } },
-          );
-          if (!active) return;
-          if (requestError) throw new Error("Request failed");
-          setItems((data?.orders ?? []) as MedRow[]);
-        } else {
-          const { data, error: requestError } = await client.GET(
+        const { data, error: requestError } = await client.GET(
             "/api/v1/medication-orders",
             {
-              params: { query: { patientId, status } },
+              params: { query: { patientId, ...(status !== "all" && status !== "needs_attention" ? { status } : {}) } },
             },
           );
           if (!active) return;
           if (requestError) throw new Error("Request failed");
-          setItems((data?.orders ?? []) as MedRow[]);
-        }
+          setItems((data?.orders ?? []).filter((row: MedRow) => status !== "needs_attention" || (ATTENTION_STATUSES as readonly string[]).includes(row.status)) as MedRow[]);
+          setStatusCounts(data?.statusCounts ?? {});
       } catch {
         if (active) setError("Could not load medications for this patient.");
       } finally {
@@ -126,7 +126,7 @@ export function PatientMedications(): JSX.Element {
             <button
               type="button"
               className="wx-medications-primary"
-              onClick={() => navigate(`/patients/${patientId}/medications/new`)}
+              onClick={() => navigate(`/patients/${patientId}/medications/new${status === "all" ? "" : `?status=${status}`}`)}
               disabled={!patientId}
             >
               New medication
@@ -183,6 +183,12 @@ export function PatientMedications(): JSX.Element {
             ) : null}
           </div>
         </div>
+        <div className="wx-medications-kpis" aria-label="Medication status summary">
+          {WORKSPACE_KPIS.map(([value, label]) => {
+            const count = workspaceCount(value, statusCounts);
+            return <button type="button" key={value} className={status === value ? "is-selected" : ""} onClick={() => setStatus(value)}><span>{label}</span><strong className="tabular-nums">{count}</strong></button>;
+          })}
+        </div>
         {loading ? (
           <LoadingSpinner />
         ) : error ? (
@@ -198,7 +204,7 @@ export function PatientMedications(): JSX.Element {
               title={
                 search
                   ? "No matching medications"
-                  : `No ${statusLabel.toLowerCase()} medications`
+                  : status === "all" ? "No medication orders" : status === "needs_attention" ? "No medications need attention" : `No ${statusLabel.toLowerCase()} medications`
               }
               description={
                 search
@@ -233,7 +239,7 @@ export function PatientMedications(): JSX.Element {
                     <td>
                       <Link
                         className="wx-medications-drug"
-                        to={`/medication-orders/${order.id}`}
+                        to={`/medication-orders/${order.id}${status === "all" ? "" : `?status=${status}`}`}
                       >
                         {order.drugName || "Unnamed medication"}
                       </Link>
@@ -280,6 +286,9 @@ const styles = `
 .wx-medications-heading { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin: 0 0 1rem; }
 .wx-medications-heading h2 { margin: 0; font-size: 1.125rem; }
 .wx-medications-heading p { margin: .25rem 0 0; color: var(--color-on-surface-variant); font-size: .875rem; }
+.wx-medications-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: .5rem; margin: 0 0 1rem; }
+.wx-medications-kpis button { display: flex; justify-content: space-between; gap: .5rem; text-align: left; }
+.wx-medications-kpis button.is-selected { border-color: var(--color-primary); background: var(--color-primary-container); }
 .wx-medications-filters { display: flex; flex-wrap: wrap; align-items: end; gap: .75rem; }
 .wx-medications-filters label { display: grid; gap: .3rem; min-width: min(100%, 12rem); font-size: .8rem; font-weight: 600; }
 .wx-medications-filters label:has(input) { flex: 1 1 13rem; }
@@ -297,5 +306,5 @@ const styles = `
 .wx-medications-state { display: grid; justify-items: center; gap: .75rem; padding: 1.5rem; }
 .wx-medications-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 .wx-medications a:focus-visible, .wx-medications button:focus-visible, .wx-medications-filters select:focus-visible, .wx-medications-filters input:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
-@media (max-width: 40rem) { .wx-medications-table th, .wx-medications-table td { padding: .75rem; } }
+@media (max-width: 40rem) { .wx-medications-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .wx-medications-table th, .wx-medications-table td { padding: .75rem; } }
 `;

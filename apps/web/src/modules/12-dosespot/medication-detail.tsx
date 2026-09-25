@@ -9,7 +9,7 @@ import {
 } from "@wardenx/ui";
 import { useEffect, useState } from "react";
 import type { JSX, ReactNode } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import {
   MED_ORDER_TONE,
@@ -98,6 +98,7 @@ function Section({
 export function MedicationDetail(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
+  const location = useLocation();
   const { id } = useParams<{ id: string }>();
   const [row, setRow] = useState<MedicationOrderView | null>(null);
   const [tx, setTx] = useState<TransmissionView | null>(null);
@@ -163,11 +164,12 @@ export function MedicationDetail(): JSX.Element {
       banner={
         <PageHeader
           title="Medication order"
+          breadcrumb={row ? <button type="button" onClick={() => navigate(`/patients/${row.patientId}/medications${location.search}`)}>← Medications</button> : undefined}
           actions={
             row?.status === "draft" ? (
               <Button
                 tone="secondary"
-                onClick={() => navigate(`/medication-orders/${row.id}/edit`)}
+                onClick={() => navigate(`/medication-orders/${row.id}/edit${location.search}`)}
               >
                 Edit draft
               </Button>

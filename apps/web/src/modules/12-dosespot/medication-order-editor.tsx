@@ -1,11 +1,11 @@
-import { PageHeader, PatientWorkspaceLayout, useApiClient } from "@wardenx/ui";
+import { Button, PageHeader, PatientWorkspaceLayout, useApiClient } from "@wardenx/ui";
 import {
   AdmissionLookupField,
   MdmEntityLookupField,
 } from "../../shared/entity-lookups";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import {
   medicationFindingKey,
@@ -266,6 +266,7 @@ function Components({
 export function MedicationOrderEditor(): JSX.Element {
   const api = useApiClient(),
     navigate = useNavigate(),
+    location = useLocation(),
     { patientId: routePatientId, id } = useParams<{ patientId: string; id: string }>();
   const editing = !!id;
   const [kind, setKind] = useState<Kind>("standard"),
@@ -289,7 +290,19 @@ export function MedicationOrderEditor(): JSX.Element {
     [searchError, setSearchError] = useState<string | null>(null),
     [saving, setSaving] = useState(false),
     [saveError, setSaveError] = useState<string | null>(null),
-    [loadingDraft, setLoadingDraft] = useState(!!id);
+    [loadingDraft, setLoadingDraft] = useState(!!id),
+    [dirty, setDirty] = useState(false),
+    [confirmDiscard, setConfirmDiscard] = useState(false);
+  const parent = editing && id ? `/medication-orders/${id}${location.search}` : `/patients/${patientId}/medications${location.search}`;
+  const blocker = useBlocker(dirty && !saving);
+  useEffect(() => {
+    if (blocker.state === "blocked") setConfirmDiscard(true);
+  }, [blocker.state]);
+  const discardChanges = () => {
+    if (blocker.state === "blocked") blocker.proceed();
+    else navigate(parent);
+  };
+  const requestCancel = () => dirty ? setConfirmDiscard(true) : navigate(parent);
   useEffect(() => {
     if (!id) return;
     let active = true;
@@ -375,7 +388,8 @@ export function MedicationOrderEditor(): JSX.Element {
         window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
-      navigate(`/medication-orders/${r.data.id}`);
+      setDirty(false);
+      navigate(`/medication-orders/${r.data.id}${location.search}`);
     } catch {
       setSaveError("Draft could not be saved. Please try again.");
       window.scrollTo({ top: 0, behavior: "smooth" });
@@ -384,7 +398,7 @@ export function MedicationOrderEditor(): JSX.Element {
     }
   };
   return (
-    <PatientWorkspaceLayout banner={<PageHeader title={editing ? "Edit medication draft" : "New medication order"} />}>
+    <PatientWorkspaceLayout banner={<PageHeader title={editing ? "Edit medication draft" : "New medication order"} breadcrumb={<button type="button" onClick={requestCancel}>← {editing ? "Medication order" : "Medications"}</button>} actions={<Button tone="secondary" onClick={requestCancel}>Cancel</Button>} />}>
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
         {patientId ? <ChartModuleRail patientId={patientId} current="medications" /> : null}
         <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
@@ -396,6 +410,7 @@ export function MedicationOrderEditor(): JSX.Element {
             : "Complete the prescription details, then save a draft for review."}
         </p>
         <form
+          onChangeCapture={() => setDirty(true)}
           onSubmit={(e) => {
             e.preventDefault();
             void save();
@@ -411,6 +426,7 @@ export function MedicationOrderEditor(): JSX.Element {
               {saveError}
             </p>
           ) : null}
+          {confirmDiscard ? <div role="alert" className="med-editor-error">Discard unsaved changes? <button type="button" className="med-editor-secondary" onClick={() => { if (blocker.state === "blocked") blocker.reset(); setConfirmDiscard(false); }}>Keep editing</button> <button type="button" onClick={discardChanges}>Discard changes</button></div> : null}
           {findings.length ? (
             <p role="alert" className="med-editor-error">
               Review {findings.length} issue{findings.length === 1 ? "" : "s"}{" "}
@@ -446,6 +462,10 @@ export function MedicationOrderEditor(): JSX.Element {
               RxNorm search
               <input
                 value={query}
+                onKeyDown={(e) => {
+                  // The search control lives in the draft form; Enter must never submit a draft.
+                  if (e.key === "Enter") e.preventDefault();
+                }}
                 onChange={(e) => {
                   setQuery(e.target.value);
                   setResults([]);
@@ -464,8 +484,7 @@ export function MedicationOrderEditor(): JSX.Element {
                     setResults([]);
                     setSearched(false);
                     try {
-                      const get: any = api.GET;
-                      const r = await get("/api/v1/terminology/rxnorm/search", {
+                      const r = await api.GET("/api/v1/terminology/{system}/search", {
                         params: {
                           path: { system: "rxnorm" },
                           query: { q: query.trim(), mode: "fuzzy", limit: 10 },
@@ -887,7 +906,7 @@ export function MedicationOrderEditor(): JSX.Element {
               <button
                 type="button"
                 className="med-editor-secondary"
-                onClick={() => navigate(-1)}
+                onClick={requestCancel}
                 disabled={saving}
               >
                 Cancel

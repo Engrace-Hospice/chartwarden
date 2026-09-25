@@ -109391,7 +109391,8 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "orders"
+                    "orders",
+                    "statusCounts"
                   ],
                   "properties": {
                     "orders": {
@@ -109744,6 +109745,15 @@
                           "createdAt": {
                             "type": "string"
                           }
+                        }
+                      }
+                    },
+                    "statusCounts": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {
+                          "minimum": 0,
+                          "type": "integer"
                         }
                       }
                     }
@@ -129210,7 +129220,8 @@
                 "schema": {
                   "type": "object",
                   "required": [
-                    "orders"
+                    "orders",
+                    "statusCounts"
                   ],
                   "properties": {
                     "orders": {
@@ -129563,6 +129574,15 @@
                           "createdAt": {
                             "type": "string"
                           }
+                        }
+                      }
+                    },
+                    "statusCounts": {
+                      "type": "object",
+                      "patternProperties": {
+                        "^(.*)$": {
+                          "minimum": 0,
+                          "type": "integer"
                         }
                       }
                     }
