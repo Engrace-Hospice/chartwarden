@@ -81,6 +81,10 @@ const PATIENT_LAST_NAME = "Okonkwo";
 
 test.describe("HOPE", () => {
   test("main path: an RN records a HOPE timepoint and signs it", async ({ page }) => {
+    // This journey completes the whole CMS instrument through the UI (dozens of answers, each waited on
+    // until the server has re-read it) plus the SFV. ~9 s locally, but past the suite's 30 s default on a
+    // shared CI runner (it timed out mid-Section I) — a longer budget for this test only.
+    test.setTimeout(180_000);
     await signInAs(page, RN_ACCOUNT());
 
     const patientId = await openPatientChartByLastName(page, PATIENT_LAST_NAME);
