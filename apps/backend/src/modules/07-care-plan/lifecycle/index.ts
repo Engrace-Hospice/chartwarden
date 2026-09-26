@@ -75,6 +75,7 @@ export {
   computeNextReviewDueAt,
   endOfOrgDayInstant,
   orgLocalDateOf,
+  warningOpensAt,
 } from "./gate-clock";
 export {
   TEXT_MINIMUMS,

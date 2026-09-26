@@ -37,7 +37,7 @@ import {
   redactedSudProblemIds,
 } from "./authoring/index";
 import { CarePlanStateError } from "./lifecycle/errors";
-import { GATE_WARNING_LEAD_DAYS, computeNextReviewDueAt } from "./lifecycle/gate-clock";
+import { computeNextReviewDueAt, warningOpensAt } from "./lifecycle/gate-clock";
 import { decideRecordSignature, resolveRequiredSignerSet } from "./lifecycle/required-signer-set";
 import {
   checkGoalReferencesProblem,
@@ -362,8 +362,28 @@ export function createDbCarePlanRouteService(
     return value;
   }
 
+  /**
+   * Structural equality for the IDG baseline check. `baseline_snapshot` is persisted as `jsonb`, which
+   * does NOT preserve object key order (Postgres stores keys by length, then bytewise), so comparing
+   * `JSON.stringify` of the round-tripped baseline against a freshly captured snapshot reported every
+   * untouched plan as "changed" (IDG_PROPOSAL_CONFLICT on every finalize/publish). Canonicalise object
+   * keys before comparing; array order stays significant (the snapshot sorts every list by id).
+   */
+  function canonicalJson(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(canonicalJson);
+    if (value !== null && typeof value === "object") {
+      const obj = value as Record<string, unknown>;
+      return Object.fromEntries(
+        Object.keys(obj)
+          .sort()
+          .map((k) => [k, canonicalJson(obj[k])]),
+      );
+    }
+    return value;
+  }
+
   function jsonEqual(a: unknown, b: unknown): boolean {
-    return JSON.stringify(a) === JSON.stringify(b);
+    return JSON.stringify(canonicalJson(a)) === JSON.stringify(canonicalJson(b));
   }
 
   async function loadIdgProposalBundle(tx: DbClient, versionId: string) {
@@ -1023,7 +1043,9 @@ export function createDbCarePlanRouteService(
         if (open) {
           status = "review_in_progress";
         } else if (dueAt) {
-          const leadAt = new Date(dueAt.getTime() - GATE_WARNING_LEAD_DAYS * 86_400_000);
+          // D3 — "due" opens at the START of org-local day 13 (the same instant the review_due cron
+          // alert uses), not `dueAt − 48h`, which lands on the last millisecond of day 13.
+          const leadAt = new Date(warningOpensAt(dueAt.toISOString()));
           if (now.getTime() > dueAt.getTime()) {
             status = "overdue";
             overdueByDays = Math.floor((now.getTime() - dueAt.getTime()) / 86_400_000);
