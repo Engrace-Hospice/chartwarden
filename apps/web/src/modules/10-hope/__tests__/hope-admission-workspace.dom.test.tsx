@@ -321,7 +321,7 @@ describe("Admission HOPE workspace", () => {
     ).toBeTruthy();
     expect(screen.getByText("From admission")).toBeTruthy();
     expect(screen.getByText("From patient chart")).toBeTruthy();
-    const middleInitial = screen.queryByLabelText("Patient middle initial") as HTMLInputElement;
+    const middleInitial = screen.queryByLabelText(/^Patient middle initial/) as HTMLInputElement;
     expect(middleInitial).toBeTruthy();
     expect(middleInitial.maxLength).toBe(1);
     expect(middleInitial.type).toBe("text");
@@ -372,8 +372,8 @@ describe("Admission HOPE workspace", () => {
             label: "Administrative",
             items: [
               item({
-                itemCode: "A0100A",
-                label: "Provider name",
+                itemCode: "A1005",
+                label: "Ethnicity",
                 options: [
                   {
                     valueCode: "^",
@@ -395,7 +395,7 @@ describe("Admission HOPE workspace", () => {
       ).toBeTruthy(),
     );
 
-    fireEvent.click(screen.getByLabelText("Not assessed / skipped"));
+    fireEvent.change(screen.getByLabelText(/^Ethnicity/), { target: { value: "^" } });
 
     await waitFor(() => expect(client.PATCH).toHaveBeenCalled());
     expect(client.PATCH).toHaveBeenCalledWith(
@@ -403,7 +403,7 @@ describe("Admission HOPE workspace", () => {
       expect.objectContaining({
         body: {
           ifVersion: 4,
-          changes: [{ itemCode: "A0100A", action: "clear" }],
+          changes: [{ itemCode: "A1005", action: "clear" }],
         },
       }),
     );

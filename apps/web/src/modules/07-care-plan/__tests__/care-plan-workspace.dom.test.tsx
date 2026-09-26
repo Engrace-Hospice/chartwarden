@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -293,7 +293,7 @@ describe("M7 Care Plan workspace", () => {
     );
     expect(screen.getAllByText("June Rivera").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Active terminal problem required/).length).toBeGreaterThan(0);
-    expect(screen.getByText("Care Plan review is due.")).toBeTruthy();
+    expect(screen.getByText("Scheduled review is due")).toBeTruthy();
     expect(screen.getByText("Comfort maintained")).toBeTruthy();
   });
 
@@ -302,11 +302,12 @@ describe("M7 Care Plan workspace", () => {
     renderWorkspace(client);
 
     await screen.findByRole("heading", { name: "Plan of Care" });
-    fireEvent.click(screen.getByRole("button", { name: "Add problem" }));
-    fireEvent.change(screen.getByLabelText("Description"), {
+    fireEvent.click(screen.getByRole("tab", { name: "Problems" }));
+    fireEvent.click(screen.getByRole("button", { name: /Add problem/ }));
+    fireEvent.change(screen.getByLabelText("Problem description"), {
       target: { value: "Dyspnea at rest" },
     });
-    fireEvent.change(screen.getByLabelText("Kind"), { target: { value: "related" } });
+    fireEvent.change(screen.getByLabelText("Problem type"), { target: { value: "related" } });
     fireEvent.click(screen.getByRole("button", { name: "Save problem" }));
 
     await waitFor(() =>
@@ -325,9 +326,9 @@ describe("M7 Care Plan workspace", () => {
     renderWorkspace(client);
 
     await screen.findByRole("heading", { name: "Plan of Care" });
-    fireEvent.click(screen.getByRole("tab", { name: "Revision / Review" }));
-    fireEvent.click(screen.getByRole("button", { name: "Add goal" }));
-    fireEvent.change(screen.getByLabelText("Goal text"), {
+    fireEvent.click(screen.getByRole("tab", { name: /^Review & Sign/ }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Add goal/ })[0]!);
+    fireEvent.change(screen.getByLabelText("Goal statement"), {
       target: { value: "Patient remains comfortable at rest" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Save goal" }));
@@ -340,11 +341,11 @@ describe("M7 Care Plan workspace", () => {
       ),
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Add intervention" }));
+    fireEvent.click(screen.getAllByRole("button", { name: /Add intervention/ })[0]!);
     fireEvent.change(screen.getByLabelText("Intervention / scope"), {
       target: { value: "Teach family comfort positioning" },
     });
-    fireEvent.change(screen.getByLabelText("Frequency text"), { target: { value: "Every visit" } });
+    fireEvent.change(screen.getByLabelText("Frequency"), { target: { value: "Every visit" } });
     fireEvent.change(screen.getByLabelText("Frequency value"), { target: { value: "1/visit" } });
     fireEvent.click(screen.getByRole("button", { name: "Save intervention" }));
 
@@ -389,9 +390,9 @@ describe("M7 Care Plan workspace", () => {
     renderWorkspace(client);
 
     await screen.findByRole("heading", { name: "Plan of Care" });
-    fireEvent.click(screen.getByRole("tab", { name: "Revision / Review" }));
+    fireEvent.click(screen.getByRole("tab", { name: /^Review & Sign/ }));
     expect(screen.getAllByText(/Nurse Practitioner/).length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: "Review & send for signatures" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send to hospice physician" }));
 
     await waitFor(() =>
       expect(client.POST).toHaveBeenCalledWith(
@@ -441,13 +442,14 @@ describe("M7 Care Plan workspace", () => {
     renderWorkspace(client);
 
     await screen.findByRole("heading", { name: "Plan of Care" });
-    fireEvent.click(screen.getByRole("tab", { name: "Revision / Review" }));
-    expect(screen.getByText("IDG proposed changes")).toBeTruthy();
-    expect(screen.getByText("Terminal cancer")).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: /^Review & Sign/ }));
+    const idgChanges = screen.getByText("IDG proposed changes").closest("section") as HTMLElement;
+    expect(idgChanges).toBeTruthy();
+    expect(within(idgChanges).getByText("Terminal cancer")).toBeTruthy();
     expect(screen.getAllByText("IDG-updated terminal cancer").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: "Sign" }));
+    fireEvent.click(screen.getAllByRole("button", { name: "Review & sign" })[0]!);
     fireEvent.change(screen.getByLabelText("Signing role"), { target: { value: "msw" } });
-    fireEvent.click(screen.getByRole("button", { name: "Sign version" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign care plan" }));
 
     await waitFor(() =>
       expect(client.POST).toHaveBeenCalledWith(
