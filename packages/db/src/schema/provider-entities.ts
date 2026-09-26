@@ -20,6 +20,8 @@ export const providerEntities = pgTable(
     taxIdEncrypted: text("tax_id_encrypted").notNull(),
     fiscalYearEnd: text("fiscal_year_end").notNull(), // 'MMDD'
     addresses: jsonb("addresses").notNull().default([]),
+    // CMS iQIES facility ID (HOPE control item FAC_ID); assigned at iQIES registration (migration 0235).
+    iqiesFacilityId: text("iqies_facility_id"),
     status: providerEntityStatus("status").notNull().default("created"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

@@ -4,7 +4,8 @@
 // (scripts/check-table-ownership.ts — cross-module READS go through the owner's exported reader).
 //
 // Consumers today: M6 (admission siting — default location for a provider entity, the location↔provider
-// consistency check on an admission update) and M10 (the HOPE Admission prefill's provider NPI/CCN).
+// consistency check on an admission update) and M10 (the HOPE Admission prefill's provider NPI/CCN, and
+// the iQIES submission header's facility ID + state).
 //
 // TRANSACTIONALITY. Every method takes the CALLER's org-context tx (the `PrimaryProviderEntityResolver`
 // precedent in ./provider-entity-resolver.ts): the reads run inside the consumer's own `withOrgContext`
@@ -36,6 +37,16 @@ export interface FoundationSiteReader {
     organizationId: string,
     providerEntityId: string,
   ): Promise<{ readonly npi: string; readonly ccn: string } | null>;
+  /**
+   * The facts a CMS HOPE submission header needs from the provider entity: its iQIES facility ID
+   * (FAC_ID) and the state postal code of its first address that has one (STATE_CD). Null when the
+   * provider entity is not found in the org.
+   */
+  providerEntitySubmissionProfile(
+    tx: DbClient,
+    organizationId: string,
+    providerEntityId: string,
+  ): Promise<{ readonly iqiesFacilityId: string | null; readonly stateCode: string | null } | null>;
 }
 
 export function buildFoundationSiteReader(): FoundationSiteReader {
@@ -71,6 +82,22 @@ export function buildFoundationSiteReader(): FoundationSiteReader {
         .where(and(eq(PROVIDER.id, providerEntityId), eq(PROVIDER.organizationId, organizationId)))
         .limit(1);
       return provider ?? null;
+    },
+    async providerEntitySubmissionProfile(tx, organizationId, providerEntityId) {
+      const [provider] = await tx
+        .select({ iqiesFacilityId: PROVIDER.iqiesFacilityId, addresses: PROVIDER.addresses })
+        .from(PROVIDER)
+        .where(and(eq(PROVIDER.id, providerEntityId), eq(PROVIDER.organizationId, organizationId)))
+        .limit(1);
+      if (!provider) return null;
+      const addresses = Array.isArray(provider.addresses)
+        ? (provider.addresses as { state?: unknown }[])
+        : [];
+      const state = addresses.find((a) => typeof a?.state === "string" && a.state.trim())?.state;
+      return {
+        iqiesFacilityId: provider.iqiesFacilityId,
+        stateCode: typeof state === "string" ? state.trim() : null,
+      };
     },
   };
 }
