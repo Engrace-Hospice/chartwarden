@@ -29,6 +29,37 @@ interface AlertItem {
   summary: string;
   createdAt: string;
   deliveryStatus: "delivered" | "partial" | "failed" | "pending";
+  readAt: string | null;
+}
+
+type AlertReadPost = (
+  path: string,
+  options: {
+    params: {
+      path: {
+        id: string;
+      };
+    };
+  },
+) => Promise<{
+  data?: unknown;
+  error?: unknown;
+  response?: Response;
+}>;
+
+async function postAlertRead(
+  client: ReturnType<typeof useApiClient>,
+  alertId: string,
+): Promise<{ error?: unknown }> {
+  const post = client.POST as unknown as AlertReadPost;
+
+  return post("/api/v1/alerts/{id}/read", {
+    params: {
+      path: {
+        id: alertId,
+      },
+    },
+  });
 }
 
 type Tab = "notifications" | "tasks" | "mentions";
@@ -78,7 +109,12 @@ export function NotificationsInbox(): JSX.Element {
   const [severityFilter, setSeverityFilter] = useState<
     "all" | "critical" | "high" | "warn" | "info"
   >("all");
-  const [deliveryFilter, setDeliveryFilter] = useState<"all" | AlertItem["deliveryStatus"]>("all");
+  const [deliveryFilter, setDeliveryFilter] = useState<
+    "all" | AlertItem["deliveryStatus"]
+  >("all");
+  const [readFilter, setReadFilter] = useState<"all" | "unread" | "read">(
+    "all",
+  );
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
@@ -108,23 +144,38 @@ export function NotificationsInbox(): JSX.Element {
         alert.category.toLowerCase().includes(q) ||
         alert.eventType.toLowerCase().includes(q) ||
         alert.alertId.toLowerCase().includes(q);
-      const matchesSeverity = severityFilter === "all" || alert.severity === severityFilter;
-      const matchesDelivery = deliveryFilter === "all" || alert.deliveryStatus === deliveryFilter;
-      return matchesSearch && matchesSeverity && matchesDelivery;
+      const matchesSeverity =
+        severityFilter === "all" || alert.severity === severityFilter;
+      const matchesDelivery =
+        deliveryFilter === "all" || alert.deliveryStatus === deliveryFilter;
+      const matchesRead =
+        readFilter === "all" ||
+        (readFilter === "unread" && alert.readAt === null) ||
+        (readFilter === "read" && alert.readAt !== null);
+      return matchesSearch && matchesSeverity && matchesDelivery && matchesRead;
     });
-  }, [alerts, deliveryFilter, searchQuery, severityFilter]);
+  }, [alerts, deliveryFilter, readFilter, searchQuery, severityFilter]);
 
   const total = alerts?.length ?? 0;
+  const unreadTotal =
+    alerts?.filter((alert) => alert.readAt === null).length ?? 0;
   const hasActiveFilters =
-    searchQuery.trim() !== "" || severityFilter !== "all" || deliveryFilter !== "all";
+    searchQuery.trim() !== "" ||
+    severityFilter !== "all" ||
+    deliveryFilter !== "all" ||
+    readFilter !== "all";
   const pageCount = Math.max(1, Math.ceil(filteredAlerts.length / pageSize));
   const activePage = Math.min(page, pageCount);
-  const pagedAlerts = filteredAlerts.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const pagedAlerts = filteredAlerts.slice(
+    (activePage - 1) * pageSize,
+    activePage * pageSize,
+  );
 
   const clearFilters = (): void => {
     setSearchQuery("");
     setSeverityFilter("all");
     setDeliveryFilter("all");
+    setReadFilter("all");
     setPage(1);
   };
 
@@ -133,12 +184,47 @@ export function NotificationsInbox(): JSX.Element {
     setPage(1);
   };
 
+  async function markAlertRead(alert: AlertItem): Promise<void> {
+    if (alert.readAt !== null) return;
+
+    const readAt = new Date().toISOString();
+
+    setAlerts(
+      (current) =>
+        current?.map((item) =>
+          item.alertId === alert.alertId
+            ? {
+                ...item,
+                readAt,
+              }
+            : item,
+        ) ?? [],
+    );
+
+    const { error: markError } = await postAlertRead(client, alert.alertId);
+
+    if (markError) {
+      const { data } = await client.GET("/api/v1/alerts/inbox");
+
+      setAlerts((data?.alerts ?? []) as AlertItem[]);
+    }
+  }
+
   return (
     <WorkQueueLayout
       header={
-        <PageHeader title="Notifications & Tasks" breadcrumb="General / Notifications">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Review alert delivery, operational notifications, and upcoming worklist scopes.
+        <PageHeader
+          title="Notifications & Tasks"
+          breadcrumb="General / Notifications"
+        >
+          <div
+            style={{
+              color: "var(--color-on-surface-variant)",
+              fontSize: "0.875rem",
+            }}
+          >
+            Review alert delivery, operational notifications, and upcoming
+            worklist scopes.
           </div>
         </PageHeader>
       }
@@ -151,9 +237,17 @@ export function NotificationsInbox(): JSX.Element {
             </div>
           ) : null}
           <div style={toolbarStyle}>
-            <div style={tabWrapStyle} role="tablist" aria-label="Notification scope">
+            <div
+              style={tabWrapStyle}
+              role="tablist"
+              aria-label="Notification scope"
+            >
               <TabButton
-                label={`Notifications (${total})`}
+                label={
+                  unreadTotal > 0
+                    ? `Notifications (${unreadTotal} unread)`
+                    : `Notifications (${total})`
+                }
                 active={tab === "notifications"}
                 onClick={() => selectTab("notifications")}
               />
@@ -215,6 +309,19 @@ export function NotificationsInbox(): JSX.Element {
                   <option value="failed">Failed</option>
                   <option value="pending">Pending</option>
                 </select>
+                <select
+                  value={readFilter}
+                  onChange={(e) => {
+                    setReadFilter(e.target.value as typeof readFilter);
+                    setPage(1);
+                  }}
+                  aria-label="Filter notifications by read status"
+                  style={selectStyle}
+                >
+                  <option value="all">Status: All</option>
+                  <option value="unread">Unread</option>
+                  <option value="read">Read</option>
+                </select>
                 {hasActiveFilters ? (
                   <Button size="sm" tone="tertiary" onClick={clearFilters}>
                     Clear
@@ -244,7 +351,9 @@ export function NotificationsInbox(): JSX.Element {
         ) : filteredAlerts.length === 0 ? (
           <div style={{ padding: "2rem 1.5rem" }}>
             <EmptyState
-              title={hasActiveFilters ? "No matching notifications" : "All clear"}
+              title={
+                hasActiveFilters ? "No matching notifications" : "All clear"
+              }
               description={
                 hasActiveFilters
                   ? "Try adjusting the notification filters."
@@ -264,41 +373,93 @@ export function NotificationsInbox(): JSX.Element {
             <table style={tableStyle}>
               <thead>
                 <tr style={headRowStyle}>
-                  <th style={{ ...thStyle, width: "44%" }}>Notification</th>
-                  <th style={{ ...thStyle, width: "18%" }}>Source</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Severity</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Delivery</th>
-                  <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Age</th>
+                  <th style={{ ...thStyle, width: "38%" }}>Notification</th>
+                  <th style={{ ...thStyle, width: "16%" }}>Source</th>
+                  <th style={{ ...thStyle, width: "12%" }}>Severity</th>
+                  <th style={{ ...thStyle, width: "12%" }}>Delivery</th>
+                  <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>
+                    Age
+                  </th>
+                  <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {pagedAlerts.map((alert) => (
-                  <tr key={alert.alertId} style={rowStyle}>
-                    <td style={tdStyle}>
-                      <NotificationCell alert={alert} />
-                    </td>
-                    <td style={tdStyle}>
-                      <span style={sourceChipStyle}>{cap(alert.category.replace(/_/g, " "))}</span>
-                    </td>
-                    <td style={tdStyle}>
-                      <StatusPill
-                        label={cap(alert.severity)}
-                        tone={SEVERITY_TONE[alert.severity] ?? "neutral"}
-                      />
-                    </td>
-                    <td style={tdStyle}>
-                      <StatusPill
-                        label={cap(alert.deliveryStatus)}
-                        tone={DELIVERY_TONE[alert.deliveryStatus]}
-                      />
-                    </td>
-                    <td
-                      style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}
+                {pagedAlerts.map((alert) => {
+                  const unread = alert.readAt === null;
+
+                  return (
+                    <tr
+                      key={alert.alertId}
+                      style={{
+                        ...rowStyle,
+                        ...(unread ? unreadNotificationRowStyle : {}),
+                      }}
                     >
-                      {relTime(alert.createdAt)}
-                    </td>
-                  </tr>
-                ))}
+                      <td style={tdStyle}>
+                        <div style={notificationWithStateStyle}>
+                          {unread ? (
+                            <span
+                              aria-label="Unread"
+                              title="Unread"
+                              style={tableUnreadDotStyle}
+                            />
+                          ) : null}
+
+                          <NotificationCell alert={alert} />
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <span style={sourceChipStyle}>
+                          {cap(alert.category.replace(/_/g, " "))}
+                        </span>
+                      </td>
+                      <td style={tdStyle}>
+                        <StatusPill
+                          label={cap(alert.severity)}
+                          tone={SEVERITY_TONE[alert.severity] ?? "neutral"}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <StatusPill
+                          label={cap(alert.deliveryStatus)}
+                          tone={DELIVERY_TONE[alert.deliveryStatus]}
+                        />
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "right",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
+                      >
+                        {relTime(alert.createdAt)}
+                      </td>
+                      <td
+                        style={{
+                          ...tdStyle,
+                          textAlign: "right",
+                        }}
+                      >
+                        {unread ? (
+                          <button
+                            type="button"
+                            onClick={() => void markAlertRead(alert)}
+                            style={markReadButtonStyle}
+                          >
+                            Mark read
+                          </button>
+                        ) : (
+                          <span style={readLabelStyle}>
+                            <Glyph name="check" size={13} />
+                            Read
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
             <OffsetPagination
@@ -350,7 +511,9 @@ function NotificationCell({ alert }: { alert: AlertItem }): JSX.Element {
         style={{
           ...severityIconStyle,
           color:
-            alert.severity === "info" ? "var(--color-on-surface-variant)" : "var(--color-error)",
+            alert.severity === "info"
+              ? "var(--color-on-surface-variant)"
+              : "var(--color-error)",
         }}
       >
         <Glyph name={SEVERITY_GLYPH[alert.severity] ?? "info"} size={18} />
@@ -452,11 +615,13 @@ const tableStyle: CSSProperties = {
 const headRowStyle: CSSProperties = {
   textAlign: "left",
   color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  borderBottom:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
   background: "var(--color-surface-low)",
 };
 const rowStyle: CSSProperties = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+  borderBottom:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
 const thStyle: CSSProperties = {
   padding: "0.625rem 1rem",
@@ -501,4 +666,40 @@ const sourceChipStyle: CSSProperties = {
   background: "var(--color-surface-container)",
   borderRadius: "9999px",
   padding: "0.1rem 0.55rem",
+};
+const unreadNotificationRowStyle: CSSProperties = {
+  background: "color-mix(in srgb, var(--color-primary) 4%, transparent)",
+};
+
+const notificationWithStateStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.55rem",
+};
+
+const tableUnreadDotStyle: CSSProperties = {
+  width: "0.45rem",
+  height: "0.45rem",
+  borderRadius: "9999px",
+  flexShrink: 0,
+  background: "var(--color-primary)",
+};
+
+const markReadButtonStyle: CSSProperties = {
+  border: 0,
+  background: "transparent",
+  color: "var(--color-primary)",
+  cursor: "pointer",
+  fontSize: "0.75rem",
+  fontWeight: 650,
+  whiteSpace: "nowrap",
+};
+
+const readLabelStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  gap: "0.3rem",
+  color: "var(--color-on-surface-variant)",
+  fontSize: "0.72rem",
 };
