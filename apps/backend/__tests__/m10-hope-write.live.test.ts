@@ -16,7 +16,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
@@ -29,6 +29,7 @@ import {
   createAdmissionStatusReader,
   createDrizzleAdmissionReaderStore,
 } from "../src/modules/06-admission/index";
+import { registerPatientSeams } from "../src/modules/05-patient/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
 
@@ -42,6 +43,24 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 /** J2051 fires at `moderate` or higher; `mild` does not. */
 const TRIGGER_DATA = { J: { J2051: { entries: [{ symptomCode: "pain", severity: "moderate" }] } } };
 const QUIET_DATA = { J: { J2051: { entries: [{ symptomCode: "pain", severity: "mild" }] } } };
+/** An RFA-04 SFV payload whose J2053 re-rating completes the regulatory SFV branch on the admission. */
+const SFV_DATA = {
+  J: {
+    J2053: {
+      J2053A: "1",
+      J2053B: "1",
+      J2053C: "1",
+      J2053D: "1",
+      J2053E: "1",
+      J2053F: "1",
+      J2053G: "1",
+      J2053H: "1",
+    },
+  },
+};
+/** Items the workflow writes (control / prefill / SFV reconciliation / sign) — the public answer API refuses them. */
+const WORKFLOW_ITEMS = /^(A0050|A0220|A0250|A0270|J2052[A-C]|J2053[A-H]|Z0350|Z0500B)$/;
+const today = (): string => new Date().toISOString().slice(0, 10);
 
 describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", () => {
   let admin: Client;
@@ -54,6 +73,17 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   const nextAdmission = (): string => {
     admSeq += 1;
     return `77000000-0000-4000-8000-${admSeq.toString(16).padStart(12, "0")}`;
+  };
+  /**
+   * The patient each seeded admission belongs to. `admission_patient_open_idx` allows ONE open admission
+   * per (org, patient) (§2.3.1 no double-election), so every live admission gets its own patient.
+   */
+  const patientOf: Record<string, string> = {};
+  /** A fresh admission id with a REAL active `admission` row behind it (M6's reader resolves it). */
+  const admitted = async (org: string = ORG_A): Promise<string> => {
+    const adm = nextAdmission();
+    await seedAdmission(org, adm);
+    return adm;
   };
 
   async function resetSchema() {
@@ -110,7 +140,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
           org,
           providerOf[org],
           locationOf[org],
-          PATIENT,
+          patientOf[admissionId] ?? PATIENT,
           admissionId,
           rfaKind,
           window.opensAt ?? new Date(Date.now() - 1_000).toISOString(),
@@ -123,12 +153,39 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   }
 
   async function seedAdmission(org: string, admissionId: string): Promise<void> {
+    // Derive a distinct patient from the admission id (one open admission per patient — see patientOf).
+    const patientId = `44444444-4444-4444-8444-${admissionId.slice(-12)}`;
+    patientOf[admissionId] = patientId;
+    // A real M5 patient: the HOPE admission prefill (A0220 admission date, A0500 name, …) reads it
+    // through PatientHopeAdmissionPrefillReader, and those workflow-owned items gate sign readiness.
+    await admin.query(
+      `INSERT INTO patient (id, organization_id, provider_entity_id, location_id, mrn,
+         legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status)
+       VALUES ($1,$2,$3,$4,$5,'Test','Patient','1950-01-01','F','active')`,
+      [patientId, org, providerOf[org], locationOf[org], `MRN-${patientId.slice(-12)}`],
+    );
     await admin.query(
       `INSERT INTO admission (id, organization_id, provider_entity_id, location_id, patient_id,
          admitted_by_physician_id, status, admission_at, activated_at)
        VALUES ($1,$2,$3,$4,$5,$6,'active','2026-06-01'::date,'2026-06-01'::date)`,
-      [admissionId, org, providerOf[org], locationOf[org], PATIENT, USER],
+      [admissionId, org, providerOf[org], locationOf[org], patientId, USER],
     );
+  }
+
+  /**
+   * The seams production boot wires (src/index.ts → registerAdmissionSeams / registerPatientSeams) that
+   * the HOPE write path reads: M6's AdmissionStatusReader (recordTimepoint resolves the admission's
+   * patient/siting/admission date for the 01/02/03/05 RFAs; sign reads the siting for D8 findings) and
+   * M5's HOPE-admission prefill readers (PatientHopeAdmissionPrefillReader / PatientAddressReader /
+   * PatientCoverageReader). Both are bound to the SAME Drizzle adapters boot uses, over this suite's
+   * NOBYPASSRLS app-role handle. Re-applied before every test because the D8 block resets the registry.
+   */
+  function registerBootSeams(): void {
+    registerSeam(
+      "AdmissionStatusReader",
+      createAdmissionStatusReader(createDrizzleAdmissionReaderStore(handle.db)),
+    );
+    registerPatientSeams({ db: handle.db });
   }
 
   beforeAll(async () => {
@@ -185,6 +242,8 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     if (admin) await admin.end();
   });
 
+  beforeEach(() => registerBootSeams());
+
   const recordArgs = (data: Record<string, unknown>) => ({
     rfaKind: "01_admission" as const,
     targetDate: new Date().toISOString(),
@@ -192,9 +251,84 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     data,
   });
 
+  /** Stand-in for the missing CMS-header control producer (see the assembleSubmission test). */
+  async function seedIqiesHeaderControls(org: string): Promise<void> {
+    await admin.query(
+      `INSERT INTO hope_assessment_answer (organization_id, provider_entity_id, location_id,
+         hope_assessment_id, spec_version_id, spec_item_id, state, value, source, answered_at)
+       SELECT a.organization_id, a.provider_entity_id, a.location_id, a.id, a.spec_version_id, i.id,
+              'answered', to_jsonb(CASE i.item_code WHEN 'STATE_CD' THEN 'OR' WHEN 'CRCTN_NUM' THEN '00'
+                                    ELSE 'WX-TEST' END), 'derived', now()
+         FROM hope_assessment a
+         JOIN hope_spec_item i ON i.spec_version_id = a.spec_version_id AND i.kind = 'control'
+         JOIN hope_spec_item_isc isc ON isc.spec_item_id = i.id AND isc.isc = a.isc AND isc.active
+        WHERE a.organization_id = $1 AND a.status = 'signed'
+          AND NOT EXISTS (SELECT 1 FROM hope_assessment_answer x
+                           WHERE x.hope_assessment_id = a.id AND x.spec_item_id = i.id)`,
+      [org],
+    );
+  }
+
+  /** Patch canonical answers through the production route-service path (which emits on its tx). */
+  async function patch(id: string, answers: Record<string, string>): Promise<void> {
+    const ws = await svc.getAssessmentWorkspace(ORG_A, id);
+    await svc.patchAssessmentAnswers(ORG_A, memberOf[ORG_A], id, {
+      ifVersion: ws.assessment.version,
+      changes: Object.entries(answers).map(([itemCode, value]) => ({
+        itemCode,
+        action: "set" as const,
+        value,
+      })),
+    });
+  }
+
+  /**
+   * Answer a draft until the server's sign-readiness review passes. Since the HOPE workflow rework,
+   * `signTimepoint` refuses (HopeAssessmentNotReadyToSignError) any record whose active, applicable
+   * items are unanswered or that carries an error finding (hope-readiness-service `blockersFor`), so a
+   * sign-path test must first complete the record the way the workspace does. `overrides` are applied
+   * first (e.g. the J2051 branch under test); every remaining UNANSWERED_APPLICABLE_ITEM blocker then
+   * gets its first CMS option (No / Not at all for gates, so skip branches resolve), a date, or text.
+   * A1400A (Medicare payer) is always set — CMS rule -3081 needs at least one A1400 payer source.
+   */
+  async function answerForSign(id: string, overrides: Record<string, string> = {}): Promise<void> {
+    await patch(id, { A1400A: "1", ...overrides });
+    for (let round = 0; round < 6; round++) {
+      const review = await svc.getAssessmentReview(ORG_A, id);
+      if (review.readiness.readyToSign) return;
+      const ws = await svc.getAssessmentWorkspace(ORG_A, id);
+      const items = new Map(ws.sections.flatMap((s) => s.items).map((i) => [i.itemCode, i]));
+      const changes: Record<string, string> = {};
+      for (const b of review.readiness.blockers) {
+        if (b.code !== "UNANSWERED_APPLICABLE_ITEM" || !b.itemCode) continue;
+        if (WORKFLOW_ITEMS.test(b.itemCode)) continue;
+        const item = items.get(b.itemCode);
+        if (!item) continue;
+        const codes = [...item.options]
+          .sort((x, y) => x.sortOrder - y.sortOrder)
+          .map((o) => o.valueCode);
+        const real = codes.filter(
+          (c) => !["Text", "YYYYMMDD", "YYYYMM", "YYYY", "^", "-"].includes(c),
+        );
+        changes[b.itemCode] =
+          codes.includes("YYYYMMDD") || /date/i.test(item.cmsItemTypeCode)
+            ? today()
+            : codes.includes("Text")
+              ? "Test"
+              : (real[0] ?? "0");
+      }
+      if (Object.keys(changes).length === 0) {
+        throw new Error(
+          `HOPE ${id} is not sign-ready: ${JSON.stringify(review.readiness.blockers)}`,
+        );
+      }
+      await patch(id, changes);
+    }
+    throw new Error(`HOPE ${id} did not reach sign readiness`);
+  }
+
   it("M6 activation/discharge consumer materializes HOPE schedules idempotently", async () => {
-    const adm = nextAdmission();
-    await seedAdmission(ORG_A, adm);
+    const adm = await admitted();
     const published: string[] = [];
     const consumer = buildM10AdmissionWorkflowConsumer({
       db: handle.db,
@@ -210,7 +344,11 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       id: "evt-activation-1",
       organizationId: ORG_A,
       eventType: "m6.admission.activated",
-      payload: { admissionId: adm, patientId: PATIENT, activatedAt: "2026-06-01T12:00:00.000Z" },
+      payload: {
+        admissionId: adm,
+        patientId: patientOf[adm],
+        activatedAt: "2026-06-01T12:00:00.000Z",
+      },
     };
     await consumer.handle(activated);
     await consumer.handle(activated);
@@ -250,13 +388,14 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   });
 
   it("record → sign (no J2051) closes the linked schedule and emits timepoint_signed", async () => {
-    const adm = nextAdmission();
+    const adm = await admitted();
     const sched = await seedSchedule(ORG_A, adm);
     const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
     expect(draft.status).toBe("draft");
+    await answerForSign(draft.id); // J2050A defaults to "0" (no symptom impact) → no trigger
     const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
     expect(signed.status).toBe("signed");
-    expect(signed.j2051TriggerFired).toBe(false);
+    expect((await svc.getAssessment(ORG_A, draft.id)).j2051TriggerFired).toBe(false);
     // The AFTER-UPDATE trigger closed the schedule.
     const back = await svc.getSchedule(ORG_A, sched);
     expect(back.status).toBe("completed");
@@ -264,7 +403,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   });
 
   it("recordTimepoint enforces the linked schedule window and persists late capture facts", async () => {
-    const beforeAdm = nextAdmission();
+    const beforeAdm = await admitted();
     await seedSchedule(ORG_A, beforeAdm, "01_admission", {
       opensAt: "2026-06-10T00:00:00.000Z",
       closesAt: "2026-06-14T23:59:59.999Z",
@@ -277,7 +416,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       }),
     ).rejects.toMatchObject({ code: "M10_TIMEPOINT_NOT_OPEN", statusCode: 409 });
 
-    const lateAdm = nextAdmission();
+    const lateAdm = await admitted();
     await seedSchedule(ORG_A, lateAdm, "01_admission", {
       opensAt: "2026-06-10T00:00:00.000Z",
       closesAt: "2026-06-14T23:59:59.999Z",
@@ -306,15 +445,15 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     });
   });
 
-  it("sign with a J2051 moderate trigger opens the SFV; recordSfv completes it", async () => {
-    const adm = nextAdmission();
+  it("a J2051 moderate answer opens the SFV; recordSfv completes it; the signed admission carries the trigger", async () => {
+    // The SFV obligation now opens while the draft is ANSWERED (hope-sfv-service
+    // reconcileTriggeringAssessment, on J2050/J2051 patch), and readiness refuses to sign a fired
+    // trigger until the SFV's regulatory J2052/J2053 branch is complete — so the order is
+    // answer → SFV open → RFA-04 completion → sign.
+    const adm = await admitted();
     await seedSchedule(ORG_A, adm);
     const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(TRIGGER_DATA));
-    const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
-    expect(signed.j2051TriggerFired).toBe(true);
-    const events = await eventsFor(draft.id);
-    expect(events).toContain("m10.hope.timepoint_signed");
-    expect(events).toContain("m10.hope.j2051_trigger_fired");
+    await patch(draft.id, { J2050A: "1", J2050B: today(), J2051A: "2" }); // 2 = Moderate
     const { sfvs } = await svc.listSfv(ORG_A, "open");
     const sfv = sfvs.find((s) => s.triggeringAssessmentId === draft.id);
     expect(sfv).toBeDefined();
@@ -324,12 +463,22 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       triggeringAssessmentId: draft.id,
       targetDate: new Date().toISOString(),
       authorDiscipline: "RN",
-      data: QUIET_DATA,
+      data: SFV_DATA,
     });
     expect(completion.status).toBe("signed");
     const done = await svc.getSfv(ORG_A, sfv!.id);
     expect(done.status).toBe("completed");
     expect(await eventsFor(sfv!.id)).toContain("m10.hope.sfv_completed");
+    // Now the admission record signs, carrying the server-authoritative trigger verdict.
+    await answerForSign(draft.id);
+    const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+    expect(signed.status).toBe("signed");
+    const view = await svc.getAssessment(ORG_A, draft.id);
+    expect(view.j2051TriggerFired).toBe(true);
+    expect(view.j2051MaxSeverity).toBe("moderate");
+    const events = await eventsFor(draft.id);
+    expect(events).toContain("m10.hope.timepoint_signed");
+    expect(events).toContain("m10.hope.j2051_trigger_fired");
   });
 
   // ── GAP-019 — the §D8 clinical-context snapshot + its compensating warning finding ───────────────
@@ -340,23 +489,12 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   // PPS is on file at signing, the validator emits a warning-severity finding") did not exist either,
   // so the gap was invisible to compliance review rather than merely non-blocking.
   describe("D8 clinical-context snapshot at sign (GAP-019)", () => {
-    /** Register the M9 + M6 seams the sign path reads. `pps` null ⇒ the missing-PPS case. */
+    /**
+     * Register the M9 seam the sign path reads. `pps` null ⇒ the missing-PPS case. The M6
+     * AdmissionStatusReader the finding's siting comes from is the real Drizzle reader registered by the
+     * suite-level beforeEach (registerBootSeams) over the admission row `admitted()` seeds.
+     */
     function seams(scores: { pps: number | null; esas_r: number | null } | "unavailable"): void {
-      registerSeam("AdmissionStatusReader", {
-        getAdmissionSummary: async (admissionId: string) => ({
-          admissionId,
-          patientId: PATIENT,
-          organizationId: ORG_A,
-          providerEntityId: providerOf[ORG_A],
-          locationId: locationOf[ORG_A],
-          status: "active",
-          admissionAt: "2026-01-05",
-          activatedAt: "2026-01-05",
-          dischargedAt: null,
-          currentElectionPeriodId: null,
-          currentLevelOfCare: "routine_home_care",
-        }),
-      });
       registerSeam("LatestAssessmentProvider", {
         latestBatch: async (_patientId: string, scaleTypes: readonly string[]) => {
           if (scores === "unavailable") throw new Error("M9 seam unavailable");
@@ -380,11 +518,12 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
 
     it("snapshots PPS + ESAS-r onto the signed row, and writes NO warning finding", async () => {
       seams({ pps: 60, esas_r: 4 });
-      const adm = nextAdmission();
+      const adm = await admitted();
       await seedSchedule(ORG_A, adm);
       const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
-      const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
-      expect(signed.snapshot).toEqual({ pps: 60, esas_r: 4 });
+      await answerForSign(draft.id);
+      await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+      expect((await svc.getAssessment(ORG_A, draft.id)).snapshot).toEqual({ pps: 60, esas_r: 4 });
       expect(await d8Findings(draft.id)).toHaveLength(0);
     });
 
@@ -392,12 +531,13 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       // "we looked and there was none" is a different fact from "we never looked", so the snapshot is
       // still written — with a null pps — beside the finding.
       seams({ pps: null, esas_r: 7 });
-      const adm = nextAdmission();
+      const adm = await admitted();
       await seedSchedule(ORG_A, adm);
       const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      await answerForSign(draft.id);
       const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
       expect(signed.status).toBe("signed"); // §7.13 — never blocking
-      expect(signed.snapshot).toEqual({ pps: null, esas_r: 7 });
+      expect((await svc.getAssessment(ORG_A, draft.id)).snapshot).toEqual({ pps: null, esas_r: 7 });
       const findings = await d8Findings(draft.id);
       expect(findings).toHaveLength(1);
       expect(findings[0]!.severity).toBe("warning");
@@ -405,33 +545,42 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
 
     it("still signs, and still records the finding, when the M9 seam cannot be reached at all", async () => {
       seams("unavailable");
-      const adm = nextAdmission();
+      const adm = await admitted();
       await seedSchedule(ORG_A, adm);
       const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      await answerForSign(draft.id);
       const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
       expect(signed.status).toBe("signed");
-      expect(signed.snapshot).toBeNull();
+      expect((await svc.getAssessment(ORG_A, draft.id)).snapshot).toBeNull();
       expect(await d8Findings(draft.id)).toHaveLength(1);
     });
 
     it("with no seams registered at all the signature still succeeds (the old behaviour, unblocked)", async () => {
-      const adm = nextAdmission();
+      const adm = await admitted();
       await seedSchedule(ORG_A, adm);
+      // Recording a 01_admission draft REQUIRES the M6 seam (recordTimepoint resolves the admission's
+      // patient/siting/admission date through it) and its prefill reads M5, so the draft is recorded and
+      // answered with the boot seams in place; the registry is then emptied so the SIGN path — the
+      // subject of this test — runs with none at all.
       const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
+      await answerForSign(draft.id);
+      __resetSeamsForTest();
       const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
       expect(signed.status).toBe("signed");
-      expect(signed.snapshot).toBeNull();
+      expect((await svc.getAssessment(ORG_A, draft.id)).snapshot).toBeNull();
       // The finding row needs the NOT NULL siting the M6 seam supplies, so it cannot be written here —
       // the service logs that instead of dropping it silently.
       expect(await d8Findings(draft.id)).toHaveLength(0);
     });
   });
 
-  it("correct a signed timepoint supersedes the original (DB trigger), reuses target_date, emits correction_submitted", async () => {
-    const adm = nextAdmission();
+  it("a signed correction supersedes the original (DB trigger), reuses target_date, emits correction_submitted", async () => {
+    const adm = await admitted();
     await seedSchedule(ORG_A, adm);
     const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
-    const signed = await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+    await answerForSign(draft.id);
+    await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
+    const signed = await svc.getAssessment(ORG_A, draft.id);
     const corrected = await svc.correctTimepoint(ORG_A, memberOf[ORG_A], signed.id, {
       correctionReason: "corrected section J after re-review",
       targetDate: new Date(Date.now() + 86_400_000).toISOString(), // ignored — the FK reuses the original's
@@ -440,10 +589,15 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     });
     expect(corrected.correctsAssessmentId).toBe(signed.id);
     expect(corrected.targetDate).toBe(signed.targetDate); // composite self-FK forces the reuse
+    expect(await eventsFor(corrected.id)).toContain("m10.hope.correction_submitted");
+    // Migration 0225: a DRAFT correction must not supersede the source record — only its signature does.
+    expect((await svc.getAssessment(ORG_A, signed.id)).status).toBe("signed");
+    // Sign the correction with a substantive change (sign refuses NO_REGULATORY_CHANGES otherwise).
+    await answerForSign(corrected.id, { A1400A: "0", A1400B: "1" }); // payer: Medicare → Medicaid
+    await svc.signTimepoint(ORG_A, memberOf[ORG_A], corrected.id);
     const original = await svc.getAssessment(ORG_A, signed.id);
     expect(original.status).toBe("superseded");
     expect(original.supersededByAssessmentId).toBe(corrected.id);
-    expect(await eventsFor(corrected.id)).toContain("m10.hope.correction_submitted");
     // Correcting the now-superseded original is refused (409).
     await expect(
       svc.correctTimepoint(ORG_A, memberOf[ORG_A], signed.id, {
@@ -456,7 +610,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   });
 
   it("updateDraft merges into a draft; a signed row cannot be edited (409) and cannot correct a draft (409)", async () => {
-    const adm = nextAdmission();
+    const adm = await admitted();
     await seedSchedule(ORG_A, adm);
     const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
     const updated = await svc.updateDraft(ORG_A, draft.id, { A: { A1: "x" } });
@@ -470,6 +624,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
         data: QUIET_DATA,
       }),
     ).rejects.toMatchObject({ statusCode: 409 });
+    await answerForSign(draft.id);
     await svc.signTimepoint(ORG_A, memberOf[ORG_A], draft.id);
     await expect(svc.updateDraft(ORG_A, draft.id, { A: { A1: "y" } })).rejects.toMatchObject({
       statusCode: 409,
@@ -477,15 +632,28 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   });
 
   it("skipSchedule marks the schedule skipped", async () => {
-    const adm = nextAdmission();
+    const adm = await admitted();
     const sched = await seedSchedule(ORG_A, adm);
     const skipped = await svc.skipSchedule(ORG_A, sched, "patient_declined");
     expect(skipped.status).toBe("skipped");
   });
 
   it("assembleSubmission queues a submission; retry is refused unless the submission is rejected", async () => {
+    // KNOWN PRODUCT GAP: the iQIES serializer (hope-cms-xml-serializer) emits every active CONTROL item
+    // of the frozen spec — the CMS submission header (FAC_ID, STATE_CD, SFTWR_*, SPEC_VRSN_CD, …) — but
+    // no production code writes those answers yet, so a real signed record cannot be packaged. Until
+    // that producer exists, this fixture stands in for it on the org's signed records, so the rest of
+    // the assemble → package → retry lifecycle stays proven.
+    await seedIqiesHeaderControls(ORG_A);
     const assembled = await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
-    expect(assembled.status).toBe("queued");
+    // The manual-iQIES-upload transport builds the XML package in the same tx: the row lands
+    // `packaged` (package + per-assessment items written), still announced as submission_queued.
+    expect(assembled.status).toBe("packaged");
+    const { rows: packagedItems } = await admin.query(
+      "SELECT count(*)::int AS n FROM hope_submission_item WHERE hope_submission_id=$1",
+      [assembled.id],
+    );
+    expect(packagedItems[0].n).toBeGreaterThan(0);
     expect(await eventsFor(assembled.id)).toContain("m10.hope.submission_queued");
     // A queued submission cannot be retried (409).
     await expect(svc.retrySubmission(ORG_A, assembled.id)).rejects.toMatchObject({
@@ -504,7 +672,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   });
 
   it("requestSummaryPdf emits summary_requested for a real assessment", async () => {
-    const adm = nextAdmission();
+    const adm = await admitted();
     await seedSchedule(ORG_A, adm);
     const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
     const res = await svc.requestSummaryPdf(ORG_A, memberOf[ORG_A], draft.id);
@@ -513,7 +681,7 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   });
 
   it("RLS — org B cannot sign or correct org A's assessment (non-leaking 404)", async () => {
-    const adm = nextAdmission();
+    const adm = await admitted();
     await seedSchedule(ORG_A, adm);
     const draft = await svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, recordArgs(QUIET_DATA));
     await expect(svc.signTimepoint(ORG_B, memberOf[ORG_B], draft.id)).rejects.toMatchObject({

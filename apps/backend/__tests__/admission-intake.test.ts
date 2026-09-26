@@ -60,6 +60,7 @@ const WIZARD_KEYS = [
   "cti.sign_hospice_md",
   "cti.sign_attending",
   "nor.acknowledge",
+  "admission.update",
 ];
 
 function makeServer() {
@@ -78,7 +79,12 @@ function makeServer() {
       orgId: ORG,
       userId: MD_ID,
       grants: [
-        { roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: ["cti.sign_hospice_md"] },
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: ["cti.sign_hospice_md"],
+        },
       ],
     },
     {
@@ -160,7 +166,22 @@ async function acceptedAdmission(app: ReturnType<typeof makeServer>["app"]): Pro
     headers: SUP,
     payload: { primaryDiagnosisIcd10: "C50.9", ifVersion: qualified.json().version },
   });
-  return accepted.json().admissionId as string;
+  const admissionId = accepted.json().admissionId as string;
+  // Wizard details step (route 11): the admission date is an R-AC-01 readiness blocker
+  // (activation-gate.ts evaluateAdmissionReadiness `admission_details`) that conversion leaves null.
+  const draft = await app.inject({
+    method: "GET",
+    url: `/api/v1/admissions/${admissionId}`,
+    headers: SUP,
+  });
+  const details = await app.inject({
+    method: "PATCH",
+    url: `/api/v1/admissions/${admissionId}`,
+    headers: SUP,
+    payload: { admissionAt: "2026-06-20T00:00:00Z", ifVersion: draft.json().version },
+  });
+  expect(details.statusCode).toBe(200);
+  return admissionId;
 }
 
 /** Complete election + CTI + NOR for an admission so its activation gate is green. */
@@ -205,6 +226,7 @@ async function completeBundle(
     payload: {
       hospiceMedicalDirectorId: MD_ID,
       attendingPhysicianId: ATTENDING,
+      terminalDiagnosisIcd10: "C50.9", // required by CtiDraftSchema (route 22)
       prognosisStatement: "Terminal prognosis ≤6 months.",
       narrative: "Clinical course supports hospice eligibility.",
       clinicalFindings: {},
@@ -467,6 +489,7 @@ describe("M6-T07 — §7.2 admission wizard + R-AC-01 activation gate", () => {
       payload: {
         hospiceMedicalDirectorId: MD_ID,
         attendingPhysicianId: ATTENDING,
+        terminalDiagnosisIcd10: "C50.9", // required by CtiDraftSchema (route 22)
         prognosisStatement: "p",
         narrative: "n",
         clinicalFindings: {},

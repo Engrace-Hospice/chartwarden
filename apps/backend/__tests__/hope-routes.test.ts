@@ -389,7 +389,36 @@ describe("M10-T06 — correction chain (§4.4)", () => {
       },
     });
     expect(ok.statusCode).toBe(201);
-    expect((await backend.getAssessment(ORG, SIGNED_A)).status).toBe("superseded");
+    // Migration 0225 (hope_assessment_supersede_on_correction_sign): a DRAFT correction must not
+    // supersede its source — "merely opening a draft" is no longer destructive. The original stays the
+    // current signed record until the correction is signed.
+    expect((await backend.getAssessment(ORG, SIGNED_A)).status).toBe("signed");
+
+    // While that correction draft is pending, a second correction is refused (one pending lineage op).
+    const pending = await app.inject({
+      method: "POST",
+      url: `/api/v1/hope/assessments/${SIGNED_A}/correct`,
+      headers: RN,
+      payload: {
+        correctionReason: "second draft",
+        targetDate: NOW,
+        authorDiscipline: "RN",
+        data: {},
+      },
+    });
+    expect(pending.statusCode).toBe(409);
+
+    // Signing the correction supersedes the original.
+    const signedCorrection = await app.inject({
+      method: "POST",
+      url: `/api/v1/hope/assessments/${ok.json().id}/sign`,
+      headers: RN,
+      payload: { ifVersion: ok.json().version, attestationConfirmed: true },
+    });
+    expect(signedCorrection.statusCode).toBe(200);
+    const original = await backend.getAssessment(ORG, SIGNED_A);
+    expect(original.status).toBe("superseded");
+    expect(original.supersededByAssessmentId).toBe(ok.json().id);
 
     // Correcting the now-superseded original is 409.
     const dup = await app.inject({

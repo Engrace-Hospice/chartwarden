@@ -16,6 +16,11 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { registerSeam } from "../src/bootstrap/seams/registry";
+import {
+  createAdmissionStatusReader,
+  createDrizzleAdmissionReaderStore,
+} from "../src/modules/06-admission/index";
 import { createDbEncounterRouteService } from "../src/modules/08-encounters/encounters-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -96,6 +101,17 @@ describe.skipIf(!DB_URL)("M8 Drizzle read service — LIVE Postgres (M8L-T01)", 
       )
     ).rows[0].id as string;
     seeded[org] = { encounter, membership };
+    if (org === ORG_A) {
+      // createDraft resolves the admission through M6's AdmissionStatusReader (§2.7: the patient must
+      // match, the service date may not precede activation, the status must allow authoring, and the
+      // encounter is sited from the admission) — so org A's ADMISSION literal gets a real, active row.
+      await admin.query(
+        `INSERT INTO admission (id, organization_id, provider_entity_id, location_id, patient_id,
+           status, admission_at, activated_at)
+         VALUES ($1,$2,$3,$4,$5,'active','2025-12-01','2025-12-01')`,
+        [ADMISSION, org, providerEntity, location, PATIENT],
+      );
+    }
   }
 
   beforeAll(async () => {
@@ -117,6 +133,13 @@ describe.skipIf(!DB_URL)("M8 Drizzle read service — LIVE Postgres (M8L-T01)", 
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
     });
+    // Production boot registers M6's reader seams (src/index.ts → registerAdmissionSeams); bind the
+    // same Drizzle-backed AdmissionStatusReader over this suite's NOBYPASSRLS app-role handle, as the
+    // M8 write suite does.
+    registerSeam(
+      "AdmissionStatusReader",
+      createAdmissionStatusReader(createDrizzleAdmissionReaderStore(handle.db)),
+    );
     service = createDbEncounterRouteService(handle.db);
   }, 120_000);
 

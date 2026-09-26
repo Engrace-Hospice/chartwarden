@@ -154,13 +154,7 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
       permissions: new Set(["orders.draft"]),
     };
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A] as string, draftArgs(), actor);
-    const edited = await svc.editDraft(
-      ORG_A,
-      draft.id,
-      { hcpcs: "E0261" },
-      "stat",
-      actor,
-    );
+    const edited = await svc.editDraft(ORG_A, draft.id, { hcpcs: "E0261" }, "stat", actor);
     const read = await svc.getOrder(ORG_A, draft.id, actor);
 
     expect(edited.allowedActions).toEqual(read.allowedActions);
@@ -313,7 +307,17 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
       signerDiscipline: "rn_case_manager",
       orderingPhysicianMdmId: PHYSICIAN_MDM,
       cadence: "prn",
-      data: { loinc: "789-8" },
+      // lab.v1 canonical payload (packages/orders/src/kinds.ts): the spawn re-validates template_data.
+      data: {
+        testCodes: [
+          {
+            system: "http://loinc.org",
+            code: "789-8",
+            display: "Erythrocytes [#/volume] in Blood by Automated count",
+          },
+        ],
+        fastingRequired: false,
+      },
     });
     expect(so.status).toBe("active");
     expect(await eventsFor(so.id)).toContain("m11.order.standing_created");

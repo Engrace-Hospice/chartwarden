@@ -146,7 +146,23 @@ const stdBody = (over: Record<string, unknown> = {}) => ({
   strength: "500mg",
   doseForm: "tablet",
   route: "oral",
-  data: {},
+  // A complete standard.v1 payload (packages/dosespot/src/classes/contracts.ts): request-signature
+  // enforces the full clinical shape, so an empty `{}` is (correctly) 422 "not ready for signature".
+  data: {
+    sigStructured: {
+      doseQuantity: 1,
+      doseUnit: "tablet",
+      route: "oral",
+      frequencyCode: "Q6H",
+      asNeeded: true,
+      asNeededReasonCode: "pain",
+    },
+    sigFreeText: "1 tablet by mouth every 6 hours as needed for pain",
+    refillsAuthorized: 3,
+    dispenseQuantity: { value: 28, unit: "tablet" },
+    daysSupply: 7,
+    daw: false,
+  },
   prescriberDiscipline: "hospice_physician",
   prescribingPhysicianMdmId: PHYS,
   refillsAuthorized: 3,

@@ -102,3 +102,20 @@ export function computeNextReviewDueAt(
   const signedDay = orgLocalDateOf(signedAt, timeZone);
   return endOfOrgDayInstant(addCalendarDays(signedDay, REVIEW_INTERVAL_DAYS), timeZone);
 }
+
+/**
+ * §7.1/§7.2 (D2/D3) — the instant the early-warning window opens for a due instant produced by
+ * `computeInitialDueAt` / `computeNextReviewDueAt`: the START of the org-local calendar day
+ * `GATE_WARNING_LEAD_DAYS` before the due day (review: day 13 of 15; initial: day 3 of 5). The warning
+ * is a calendar-day rule like the due dates themselves, so it must not be `dueAt − 48h` — the due
+ * instant is END-of-day, and subtracting 48h from it only opens the window at the last millisecond of
+ * day 13 (i.e. effectively day 14).
+ */
+export function warningOpensAt(
+  dueAt: IsoInstant,
+  timeZone: string = DEFAULT_ORG_TIME_ZONE,
+): IsoInstant {
+  const dueDay = orgLocalDateOf(dueAt, timeZone);
+  const dayBeforeWarning = addCalendarDays(dueDay, -(GATE_WARNING_LEAD_DAYS + 1));
+  return new Date(Date.parse(endOfOrgDayInstant(dayBeforeWarning, timeZone)) + 1).toISOString();
+}

@@ -60,7 +60,29 @@ describe("admission readiness evaluator", () => {
     expect(req(result, "patient_identity")).toMatchObject({ status: "blocked", blocking: true });
   });
 
-  it("requires a provider entity in admission details", () => {
+  // activation-gate.ts evaluateAdmissionReadiness (commit 5cf3d073): "Provider/location are denormalized
+  // capture-siting facts. They may be unavailable while an admission is still being assembled and are
+  // deliberately not R-AC-01 activation blockers." The admission DATE is the admission-details blocker.
+  it("requires an admission date in admission details", () => {
+    const result = evaluateAdmissionReadiness(
+      facts({
+        admissionDetails: {
+          admissionDatePresent: false,
+          providerEntityPresent: true,
+          locationPresent: true,
+        },
+      }),
+    );
+    expect(result.canActivate).toBe(false);
+    expect(req(result, "admission_details")).toMatchObject({
+      status: "action_required",
+      blocking: true,
+      action: "COMPLETE_ADMISSION_DETAILS",
+    });
+    expect(req(result, "admission_details")?.message).toBe("Missing admission date.");
+  });
+
+  it("does not block activation on a missing provider entity (siting, not an R-AC-01 blocker)", () => {
     const result = evaluateAdmissionReadiness(
       facts({
         admissionDetails: {
@@ -71,13 +93,13 @@ describe("admission readiness evaluator", () => {
       }),
     );
     expect(req(result, "admission_details")).toMatchObject({
-      status: "action_required",
+      status: "complete",
       blocking: true,
     });
-    expect(req(result, "admission_details")?.message).toContain("provider entity");
+    expect(result.canActivate).toBe(true);
   });
 
-  it("requires a service location in admission details", () => {
+  it("does not block activation on a missing service location (siting, not an R-AC-01 blocker)", () => {
     const result = evaluateAdmissionReadiness(
       facts({
         admissionDetails: {
@@ -88,10 +110,10 @@ describe("admission readiness evaluator", () => {
       }),
     );
     expect(req(result, "admission_details")).toMatchObject({
-      status: "action_required",
+      status: "complete",
       blocking: true,
     });
-    expect(req(result, "admission_details")?.message).toContain("location");
+    expect(result.canActivate).toBe(true);
   });
 
   it("completes admission details when date, provider entity, and location are present", () => {

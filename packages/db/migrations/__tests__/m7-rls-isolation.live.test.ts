@@ -189,8 +189,10 @@ describe.skipIf(!DB_URL)("M7 Care Plan — RLS cross-tenant denial — LIVE Post
       await db.query(
         `INSERT INTO care_plan_idg_decision_application
            (organization_id, provider_entity_id, location_id, idg_decision_id,
-            source_outbox_event_id, care_plan_id, care_plan_version_id)
-         VALUES ($1,$2,$3,gen_random_uuid(),gen_random_uuid(),$4,$5) RETURNING id`,
+            source_outbox_event_id, care_plan_id, care_plan_version_id, idg_meeting_id)
+         VALUES ($1,$2,$3,gen_random_uuid(),gen_random_uuid(),$4,$5,gen_random_uuid()) RETURNING id`,
+        // idg_meeting_id: NOT NULL since 0218 (M7 governed IDG proposals). Like idg_decision_id it is a
+        // cross-module M14 reference with no FK, so a fresh uuid satisfies it.
         [org, providerEntity, location, carePlan, carePlanVersion],
       )
     ).rows[0].id as string;

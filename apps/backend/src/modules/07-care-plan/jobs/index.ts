@@ -6,7 +6,7 @@
 // `apply-idg-decision` is now handled directly by the live M14 outbox binding. The legacy queue name is
 // retained for contract compatibility; `build-summary` remains a separate event-driven job.
 import type { IsoInstant } from "@wardenx/types";
-import { GATE_WARNING_LEAD_DAYS } from "../lifecycle/gate-clock";
+import { warningOpensAt } from "../lifecycle/gate-clock";
 
 // ── §4.6 queue catalog ──────────────────────────────────────────────────────────────────────────────
 
@@ -88,8 +88,6 @@ export function summaryJobId(input: { planId: string; versionId: string }): stri
 
 // ── §7.1/§7.2 gate scans ────────────────────────────────────────────────────────────────────────────
 
-const MS_PER_DAY = 86_400_000;
-
 /**
  * The per-plan projection the gate scans operate over — the §7.1/§7.2 clock columns plus the emission
  * markers that make the scans idempotent. A plan re-arms its markers when a version signs (initial sign
@@ -130,9 +128,12 @@ export interface CarePlanGateScanPlan {
   readonly markedPlanIds: readonly string[];
 }
 
-/** True once `now` has reached `dueAt − leadDays` (the early-warning window opens). */
-function withinLead(now: IsoInstant, dueAt: IsoInstant, leadDays: number): boolean {
-  return Date.parse(now) >= Date.parse(dueAt) - leadDays * MS_PER_DAY;
+/**
+ * True once `now` has reached the start of the org-local warning day (`GATE_WARNING_LEAD_DAYS` calendar
+ * days before the due day — D2 day 3, D3 day 13); see `warningOpensAt`.
+ */
+function withinLead(now: IsoInstant, dueAt: IsoInstant): boolean {
+  return Date.parse(now) >= Date.parse(warningOpensAt(dueAt));
 }
 
 /**
@@ -148,7 +149,7 @@ export function planInitialGateScan(
   const markedPlanIds: string[] = [];
   for (const s of snapshots) {
     if (s.hasSignedInitialVersion || s.initialWarningEmitted) continue;
-    if (!withinLead(now, s.initialDueAt, GATE_WARNING_LEAD_DAYS)) continue;
+    if (!withinLead(now, s.initialDueAt)) continue;
     events.push({
       eventName: "m7.care_plan.initial_overdue",
       payload: {
@@ -186,7 +187,7 @@ export function planReviewGateScan(
       markedPlanIds.push(s.planId);
       continue; // the overdue event supersedes the due warning for this scan
     }
-    if (!overdue && !s.reviewDueEmitted && withinLead(now, dueAt, GATE_WARNING_LEAD_DAYS)) {
+    if (!overdue && !s.reviewDueEmitted && withinLead(now, dueAt)) {
       events.push({
         eventName: "m7.care_plan.review_due",
         payload: { planId: s.planId, patientId: s.patientId, dueAt },

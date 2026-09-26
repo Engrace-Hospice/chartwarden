@@ -170,6 +170,13 @@ describe("15day-overdue gate scan (§7.2)", () => {
     expect(plan.events[0]?.eventName).toBe("m7.care_plan.review_due");
   });
 
+  it("opens the review_due window at the START of org-local day 13 (D3), not dueAt − 48h", () => {
+    // Signed 2026-06-01 (LA) → due end of 06-16 LA. Day 13 = 06-14 LA, which starts at 06-14T07:00Z.
+    expect(planReviewGateScan([signed({})], "2026-06-14T06:59:59.999Z").events).toHaveLength(0);
+    const plan = planReviewGateScan([signed({})], "2026-06-14T07:00:00.000Z");
+    expect(plan.events[0]?.eventName).toBe("m7.care_plan.review_due");
+  });
+
   it("fires review_overdue once the deadline passes (supersedes the due warning)", () => {
     const plan = planReviewGateScan([signed({})], "2026-06-18T12:00:00.000Z");
     expect(plan.events).toHaveLength(1);

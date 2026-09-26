@@ -362,7 +362,22 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       strength: "5 mg",
       doseForm: "tablet",
       route: "oral",
-      data: { sig_free_text: "1 tab PO q6h PRN pain" },
+      // standard.v1 payload (packages/dosespot/src/classes/contracts.ts) — complete, so requestSignature passes.
+      data: {
+        sigStructured: {
+          doseQuantity: 1,
+          doseUnit: "tablet",
+          route: "oral",
+          frequencyCode: "Q6H",
+          asNeeded: true,
+          asNeededReasonCode: "pain",
+        },
+        sigFreeText: "1 tab PO q6h PRN pain",
+        refillsAuthorized: 0,
+        dispenseQuantity: { value: 28, unit: "tablet" },
+        daysSupply: 7,
+        daw: false,
+      },
       prescriberDiscipline: "hospice_physician",
       prescribingPhysicianMdmId: PHYSICIAN_MDM,
       refillsAuthorized: 0,

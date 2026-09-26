@@ -148,7 +148,12 @@ const HOPE_J2053_ITEM_CODES = [
   "J2053H",
 ] as const;
 
-const OPTIONAL_ASSESSMENT_ITEMS = new Set([
+/**
+ * Active items sign-readiness lets stay UNANSWERED (the CMS spec offers `^` "Blank (not available or
+ * unknown)" for each). Exported so the iQIES serializer encodes an unanswered one as that CMS blank
+ * instead of refusing a record readiness already accepted.
+ */
+export const OPTIONAL_ASSESSMENT_ITEMS: ReadonlySet<string> = new Set([
   "A0500B", // Patient Middle Initial
   "A0500D", // Patient Name Suffix
 ]);

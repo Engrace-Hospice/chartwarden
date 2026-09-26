@@ -14,8 +14,45 @@ import {
 } from "../src/index";
 
 describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
-  it("seeds the §3.10 eighteen platform-default rules, all org-less (organization_id NULL)", () => {
-    expect(PLATFORM_DEFAULT_ALERT_RULES).toHaveLength(18);
+  it("seeds exactly the platform-default rule set, all org-less (organization_id NULL)", () => {
+    // The §3.10 eighteen, grown by the HOPE (680a27db: m10.hope.sfv_overdue / sfv_missed /
+    // timepoint_expired, and hope.sfv_triggered renamed to the catalog's m10.hope.sfv_created) and the
+    // admission/scheduling/encounter alert work (c3886b68: m6.admission.discharged, the four m17 visit
+    // alerts, and the six m8 encounter sign/cosignature alerts). Every added type is a real emitter:
+    // an M6/M10/M17/M8 outbox catalog event, or an alert the M8 cron workers raise directly
+    // (m8.encounter.unsigned / documentation_late). The full set is pinned so a rule cannot be added
+    // or dropped silently.
+    expect(PLATFORM_DEFAULT_ALERT_RULES.map((r) => r.eventType)).toEqual([
+      "field_safety.sos",
+      "m10.hope.sfv_created",
+      "m10.hope.sfv_overdue",
+      "m10.hope.sfv_missed",
+      "m10.hope.timepoint_expired",
+      "emar.dose_missed",
+      "patient.hospitalization_risk_high",
+      "patient.pps_drop_20",
+      "admission.recert_window_opening",
+      "admission.f2f_due",
+      "m6.admission.discharged",
+      "visit.late",
+      "m17.visit.cancelled",
+      "m17.visit.rescheduled",
+      "m17.visit.no_show_detected",
+      "m17.stale_visit_detected",
+      "m8.encounter.unsigned",
+      "m8.encounter.documentation_late",
+      "m8.encounter.cosignature_routed",
+      "m8.encounter.cosignature_overdue",
+      "m8.encounter.cosignature_escalated",
+      "m8.encounter.cosignature_hard_cap_reached",
+      "evv.geofence_violation",
+      "claim.denied",
+      "cap.approaching",
+      "noe.late_risk",
+      "system.integration_failure",
+      "system.ai_cost_threshold",
+      "system.backup_failure",
+    ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();
     }
@@ -35,9 +72,12 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
   it("seeds HOPE transition alerts using the M10 event catalog names", () => {
     expect(PLATFORM_DEFAULT_ALERT_RULES).toEqual(
       expect.arrayContaining([
+        // c3886b68 routes a new SFV obligation to the roles that staff it (clinical lead + scheduler:
+        // the follow-up visit must be scheduled within its due window), not the patient's care team.
         expect.objectContaining({
           eventType: "m10.hope.sfv_created",
-          recipientResolver: "care_team",
+          recipientResolver: "role_set",
+          resolverArgs: { roleKeys: ["clinical_lead", "scheduler"] },
         }),
         expect.objectContaining({ eventType: "m10.hope.sfv_overdue", severityFloor: "critical" }),
         expect.objectContaining({ eventType: "m10.hope.sfv_missed", severityFloor: "critical" }),

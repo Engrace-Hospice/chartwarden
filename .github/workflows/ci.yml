@@ -19,6 +19,11 @@ concurrency:
 jobs:
   build-and-verify:
     runs-on: ubuntu-latest
+    # `tsc -b` over the full project graph outgrew Node's default heap on the runner (~2 GB, sized
+    # from runner RAM): it died with "Reached heap limit … JavaScript heap out of memory" (SIGABRT,
+    # exit 134) before arch:fitness, the unit suite or the dependency audit ever ran.
+    env:
+      NODE_OPTIONS: --max-old-space-size=6144
     steps:
       - uses: actions/checkout@v4
 

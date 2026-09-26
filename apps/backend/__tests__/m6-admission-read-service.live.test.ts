@@ -87,10 +87,14 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
         [org, admission],
       )
     ).rows[0].id;
+    // A SIGNED statement is `status = 'signed'` (migration 0124's drafted → signed → voided lifecycle;
+    // the column defaults to 'drafted'). Only that status yields election-signature evidence
+    // (backfillLegacyEvidenceForAdmission, and migration 0220's backfill: status='signed' AND signed_at).
     await admin.query(
       `INSERT INTO election_statement (organization_id, election_period_id, patient_id, signer_kind,
-         patient_name_at_signing, hospice_name_at_signing, curative_care_acknowledgment, signed_at, signature_method)
-       VALUES ($1,$2,$3,'patient','Jane Doe','M6R Hospice',true, now()::date, 'electronic_witnessed')`,
+         patient_name_at_signing, hospice_name_at_signing, curative_care_acknowledgment, signed_at,
+         signature_method, status)
+       VALUES ($1,$2,$3,'patient','Jane Doe','M6R Hospice',true, now()::date, 'electronic_witnessed', 'signed')`,
       [org, period, PATIENT],
     );
     await admin.query(
@@ -127,7 +131,7 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
       await admin.query(
         `INSERT INTO admission (organization_id, provider_entity_id, location_id, patient_id,
            admitted_by_physician_id, status, admission_at)
-         VALUES ($1,$2,$3,$4,$5,'active', now() - interval '1 day') RETURNING id`,
+         VALUES ($1,$2,$3,$4,$5,'active', now() - interval '2 days') RETURNING id`,
         [ORG_A, pe, loc, OTHER_PATIENT, PHYSICIAN],
       )
     ).rows[0].id;
@@ -162,9 +166,12 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
   });
 
   it("listAdmissions returns the org's admission (RLS-scoped), newest-first paging shape", async () => {
+    // Newest-first is ORDER BY admission_at DESC: the primary admission (admitted 1 day ago) precedes
+    // the other one (admitted 2 days ago — seeded strictly older so the order is deterministic).
     const page = await service.listAdmissions(ORG_A, {});
     expect(page.items.length).toBe(2);
     expect(page.items[0].id).toBe(seeded[ORG_A].admission);
+    expect(page.items[1].id).toBe(seeded[ORG_A].otherAdmission);
     expect(page.items[0].state).toBe("active");
     expect(page.nextCursor).toBeNull();
   });
@@ -181,9 +188,11 @@ describe.skipIf(!DB_URL)("M6 Drizzle read service — LIVE Postgres (M6L-T01)", 
     const detail = await service.getAdmission(ORG_A, seeded[ORG_A].admission);
     expect(detail).not.toBeNull();
     expect(detail?.state).toBe("active");
-    // election signed + NOR ack + hospice-MD CTI signed, but attending NOT signed → gate not ready.
-    expect(detail?.activationGate.ready).toBe(false);
-    expect(detail?.activationGate.missing).toEqual(["attending_signed"]);
+    // election signed + NOR ack + hospice-MD CTI signed → gate ready. R-AC-01
+    // (intake/activation-gate.ts computeActivationGate): "the attending-physician CTI signature is not
+    // an activation prerequisite" — the unsigned attending no longer blocks (no `attending_signed` gap).
+    expect(detail?.activationGate.ready).toBe(true);
+    expect(detail?.activationGate.missing).toEqual([]);
   });
 
   it("RLS: org B cannot see org A's admission through the read service", async () => {

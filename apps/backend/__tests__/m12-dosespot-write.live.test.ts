@@ -40,6 +40,32 @@ const PHYSICIAN_MDM = "66666666-6666-6666-6666-666666666666";
 const ATTESTATION =
   "Read back and verbally confirmed the complete medication order with the named prescriber at the bedside per §2.3.";
 
+/** A complete, clinically coherent standard.v1 payload: morphine 5 mg tab, 1 tab PO q6h PRN pain, 7-day supply. */
+const STANDARD_MED_DATA = {
+  sigStructured: {
+    doseQuantity: 1,
+    doseUnit: "tablet",
+    route: "oral",
+    frequencyCode: "Q6H",
+    asNeeded: true,
+    asNeededReasonCode: "pain",
+  },
+  sigFreeText: "1 tab PO q6h PRN pain",
+  refillsAuthorized: 0,
+  dispenseQuantity: { value: 28, unit: "tablet" },
+  daysSupply: 7,
+  daw: false,
+};
+/** controlled_substance.v1 for a Schedule II opioid: non-refillable, indication + justification + DEA required. */
+const CONTROLLED_MED_DATA = {
+  ...STANDARD_MED_DATA,
+  indication: "Severe cancer-related pain",
+  clinicalJustification:
+    "Opioid required for pain uncontrolled on non-opioid analgesics at end of life.",
+  deaSchedule: "II",
+  prescriberDea: "AB1234563",
+};
+
 describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
@@ -124,7 +150,9 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     strength: "5 mg",
     doseForm: "tablet",
     route: "oral",
-    data: { sig_free_text: "1 tab PO q6h PRN pain" },
+    // standard.v1 payload (packages/dosespot/src/classes/contracts.ts): unknown keys are rejected at draft
+    // and the full shape is required at requestSignature.
+    data: STANDARD_MED_DATA,
     prescriberDiscipline: "hospice_physician",
     prescribingPhysicianMdmId: PHYSICIAN_MDM,
     refillsAuthorized: 0,
@@ -263,7 +291,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     const draft = await svc.createDraft(
       ORG_A,
       memberOf[ORG_A],
-      draftArgs({ medClass: "controlled_substance", deaSchedule: "II" }),
+      draftArgs({ medClass: "controlled_substance", deaSchedule: "II", data: CONTROLLED_MED_DATA }),
     );
     expect(draft.isControlledSubstance).toBe(true);
     expect(draft.deaSchedule).toBe("II");
