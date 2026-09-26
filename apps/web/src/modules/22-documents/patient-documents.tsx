@@ -1,139 +1,111 @@
-import {
-  PatientBanner,
-  PatientWorkspaceLayout,
-  StatusPill as UiStatusPill,
-  ageYears,
-  t,
-  useApiClient,
-} from "@wardenx/ui";
-import { useCallback, useEffect, useState } from "react";
-import type { CSSProperties, JSX, ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { Glyph, Panel, PatientWorkspaceLayout, t } from "@wardenx/ui";
+// apps/web/src/modules/22-documents — the patient chart's Documents tab (M22, Track B / ADR-0030;
+// 2026-09-25 redesign, mockup "Documents"). The chart banner and module rail around the patient document
+// library, with a right rail that summarizes the patient and checks which of the hospice's key documents
+// have an uploaded copy. That check reads only this library: an election or consent signed
+// electronically on the admission is tracked there, so the panel says "no upload", not "missing".
+import { useState } from "react";
+import type { JSX } from "react";
+import { Link, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
-import { PatientDocumentWorkspace } from "./document-workflows";
+import { ChartBanner, PatientSummaryPanel, useChartIdentity } from "../../shell/patient-context";
+import { type DocumentRow, PatientDocumentWorkspace } from "./document-workflows";
 
-interface PatientSummary {
-  mrn: string;
-  lastName: string;
-  firstName: string;
-  dob: string;
-  status: string;
-}
-
-const PATIENT_TONE: Record<
-  string,
-  "success" | "progress" | "neutral" | "error"
-> = {
-  active: "success",
-  pending: "progress",
-  admitted: "success",
-  discharged: "neutral",
-  deceased: "neutral",
-};
+const KEY_DOCUMENTS = [
+  { type: "election_statement", label: "Election Statement" },
+  { type: "notice_of_rights", label: "Notice of Rights" },
+  { type: "consent_record", label: "Hospice Consent" },
+  { type: "code_status_directive", label: "POLST / Code Status" },
+  { type: "cti", label: "Certification of Terminal Illness" },
+] as const;
 
 export function PatientDocuments(): JSX.Element {
-  const client = useApiClient();
   const { patientId } = useParams<{ patientId: string }>();
-
-  const [patient, setPatient] = useState<PatientSummary | null>(null);
-
-  const load = useCallback(async () => {
-    if (!patientId) return;
-
-    const { data } = await client.GET("/api/v1/patients/{id}", {
-      params: { path: { id: patientId } },
-    });
-
-    if (data) setPatient(data as PatientSummary);
-  }, [client, patientId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const age = patient ? ageYears(patient.dob) : null;
-
-  const banner = patient ? (
-    <PatientBanner
-      name={`${patient.firstName} ${patient.lastName}`}
-      meta={`DOB ${patient.dob}${age != null ? ` · ${age}y` : ""}`}
-      chips={
-        <>
-          <MonoChip>{patient.mrn}</MonoChip>
-
-          <UiStatusPill
-            label={titleCase(patient.status)}
-            tone={PATIENT_TONE[patient.status] ?? "neutral"}
-          />
-        </>
-      }
-    />
-  ) : (
-    <PatientBanner name="Documents" />
-  );
+  const identity = useChartIdentity(patientId);
+  const [rows, setRows] = useState<DocumentRow[] | null>(null);
 
   return (
-    <PatientWorkspaceLayout banner={banner}>
-      <div style={workspace}>
-        <ChartModuleRail
-          patientId={patientId ?? ""}
-          current="documents"
-        />
-
-        <main style={content}>
+    <PatientWorkspaceLayout
+      banner={
+        identity ? (
+          <ChartBanner
+            identity={identity}
+            actions={
+              <Link to={`/patients/${patientId}`} className="wx-btn-secondary">
+                <Glyph name="file-text" size={16} /> View Patient Chart
+              </Link>
+            }
+          />
+        ) : (
+          <div
+            className="wx-patient-banner"
+            aria-busy="true"
+            style={{ minHeight: "6.25rem", background: t.surfaceLowest }}
+          />
+        )
+      }
+      rail={
+        patientId ? (
+          <>
+            <PatientSummaryPanel identity={identity} />
+            <KeyDocumentsPanel rows={rows} />
+          </>
+        ) : undefined
+      }
+    >
+      <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+        {patientId ? <ChartModuleRail patientId={patientId} current="documents" /> : null}
+        <div style={{ flex: 1, overflow: "auto", padding: "0.5rem 1.5rem 1.5rem", minWidth: 0 }}>
           {patientId ? (
-            <PatientDocumentWorkspace patientId={patientId} />
+            <PatientDocumentWorkspace patientId={patientId} onRowsChange={setRows} />
           ) : (
-            <div style={missingPatient}>
-              Select a patient to view their documents.
-            </div>
+            <div className="wx-list-state">Select a patient to view their documents.</div>
           )}
-        </main>
+        </div>
       </div>
     </PatientWorkspaceLayout>
   );
 }
 
-const titleCase = (value: string): string =>
-  value
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (character) => character.toUpperCase());
-
-function MonoChip({ children }: { children: ReactNode }): JSX.Element {
-  return <span style={monoChip}>{children}</span>;
+function KeyDocumentsPanel({ rows }: { rows: DocumentRow[] | null }): JSX.Element {
+  const typeOf = (d: DocumentRow): string => d.metadata?.documentType ?? d.aggregateType;
+  return (
+    <Panel title="Key Documents" icon="clipboard-check" flush>
+      <ul className="wx-checklist wx-checklist-status" style={{ padding: "0 1.125rem 0.75rem" }}>
+        {KEY_DOCUMENTS.map((k) => {
+          const latest = (rows ?? [])
+            .filter((d) => typeOf(d) === k.type)
+            .sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0];
+          return (
+            <li key={k.type} className={latest ? "is-done" : undefined}>
+              <span className="wx-check-box" aria-hidden>
+                {latest ? <Glyph name="check" size={12} strokeWidth={3} /> : null}
+              </span>
+              <span style={{ display: "grid" }}>
+                <span>{k.label}</span>
+                <span className="wx-row-sub wx-nums" style={{ fontSize: "0.75rem" }}>
+                  {rows === null
+                    ? "Loading…"
+                    : latest
+                      ? `Uploaded ${new Date(latest.updatedAt).toLocaleDateString("en-US", {
+                          month: "2-digit",
+                          day: "2-digit",
+                          year: "numeric",
+                        })}`
+                      : "No upload"}
+                </span>
+              </span>
+            </li>
+          );
+        })}
+      </ul>
+      <p
+        className="wx-row-sub"
+        style={{ margin: 0, padding: "0 1.125rem 1rem", fontSize: "0.75rem" }}
+      >
+        Counts uploaded copies only. Elections and consents signed on the admission are tracked
+        there.
+      </p>
+    </Panel>
+  );
 }
-
-const workspace: CSSProperties = {
-  display: "flex",
-  height: "100%",
-  minHeight: 0,
-  background: "var(--color-surface-lowest, var(--color-surface))",
-};
-
-const content: CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  minHeight: 0,
-  overflow: "auto",
-  padding: "1.5rem clamp(1rem, 2.5vw, 2rem) 2rem",
-};
-
-const missingPatient: CSSProperties = {
-  minHeight: "20rem",
-  display: "grid",
-  placeItems: "center",
-  color: t.onSurfaceVariant,
-  fontSize: "0.9rem",
-};
-
-const monoChip: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  fontFamily: t.fontMono,
-  fontSize: "0.76rem",
-  lineHeight: 1.2,
-  color: t.onSurfaceVariant,
-  background: t.surfaceContainer,
-  borderRadius: "9999px",
-  padding: "0.2rem 0.55rem",
-};

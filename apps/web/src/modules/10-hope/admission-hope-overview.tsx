@@ -212,8 +212,7 @@ export function AdmissionHopeOverview(): JSX.Element {
               item={item}
               onAction={() => {
                 if (item.assessmentId) navigate(`/hope/assessments/${item.assessmentId}`);
-                else
-                  navigate(`/admissions/${state.admissionId}/hope/timepoints/${item.kind}`);
+                else navigate(`/admissions/${state.admissionId}/hope/timepoints/${item.kind}`);
               }}
             />
           ))}
@@ -326,7 +325,7 @@ function HopeTimepointCard({
                 ? `Completed ${fmtDate(item.completedAt)}`
                 : hasDraft
                   ? "Draft in progress"
-                : guidanceFor(item)
+                  : guidanceFor(item)
           }
         />
       </dl>

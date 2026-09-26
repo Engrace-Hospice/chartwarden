@@ -151,6 +151,11 @@ const LOCATION_IPU_ID = "55555555-0000-4000-8000-000000000002"; // db:seed:org-s
 
 const today = (): string => new Date().toISOString().slice(0, 10);
 
+// The CTI signatures are physician certifications (§418.22(c)): `cti.is_hospice_md` / `cti.is_attending`
+// admit only the medical director / hospice physician / MD roles, which the org admin does not hold.
+// They are signed as the seeded Hospice Medical Director persona (db:seed:staff), set in main().
+let physicianSession: WxSession | null = null;
+
 /** The shared prefix every non-transfer-in scenario needs: create → NOR → election → CTI → activate. */
 async function admitAndActivate(
   session: WxSession,
@@ -212,13 +217,14 @@ async function admitAndActivate(
     body: { signingPatientName: patientName, signingRole: "patient", ifVersion: esData.version },
   });
 
-  const ctiMd = await session.client.POST("/api/v1/cti/{id}/sign-hospice-md", {
+  const signer = physicianSession ?? session;
+  const ctiMd = await signer.client.POST("/api/v1/cti/{id}/sign-hospice-md", {
     params: { path: { id: ctiId } },
     body: { signingPhysicianName: "Eleanor Whitfield MD", signingPhysicianNpi: "1003000001", ifVersion: 0 },
   });
   const ctiMdData = ctiMd.data as unknown as { version: number } | undefined;
   if (ctiMd.error || !ctiMdData) throw new Error(`cti hospice-md sign failed: ${JSON.stringify(ctiMd.error)}`);
-  await session.client.POST("/api/v1/cti/{id}/sign-attending", {
+  await signer.client.POST("/api/v1/cti/{id}/sign-attending", {
     params: { path: { id: ctiId } },
     body: {
       signingPhysicianName: "Marcus Delgado DO",
@@ -246,6 +252,7 @@ async function main(): Promise<void> {
   await wipePriorAdmissions();
 
   const session = await signIn("admin@wardenx.local");
+  physicianSession = await signIn("drharris@wardenx.local");
   const log = new ScenarioLog("admission-outcome scenarios");
 
   // ── 1. Whitfield — active, routine home care (flagship patient) ──────────────────────────────

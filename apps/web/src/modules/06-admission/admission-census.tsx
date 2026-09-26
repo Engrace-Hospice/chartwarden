@@ -1,33 +1,45 @@
 import {
-  Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
+  type GlyphName,
   LoadingSpinner,
   OffsetPagination,
-  PageHeader,
   StatusPill,
-  WorkQueueLayout,
+  t,
   useApiClient,
 } from "@wardenx/ui";
-// apps/web/src/modules/06-admission — Admission Census (M6 §5.2.12 entry, Track B / ADR-0030).
-// Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md — "Use Work Queue."
-// Org-scoped admissions queue read from GET /api/v1/admissions (optional state filter) via the
-// generated typed client; a row opens the Admission Detail (§5.2.4). The server enforces every scope
-// (ADR-0030 — no authz on the frontend). Reconciled to Lantern (R1): §6.6 status pills, mono ids,
-// No-Line table (global index.css styles carry the tokens). Imports only leaves (@wardenx/ui). The
-// header's "New admission" link is the entry point into the direct-intake form (TASK-031).
-import { useCallback, useEffect, useState } from "react";
-import type { CSSProperties, JSX } from "react";
+// apps/web/src/modules/06-admission — Admissions (M6 §5.2.12 entry, Track B / ADR-0030; 2026-09-25
+// redesign, mockup "Admissions"). Spec: docs/design/screens/clinical/WARDENX_UI_ADMISSIONS_REFERRAL_INTAKE.md.
+// KPI cards, a labeled filter bar, the admissions table (patient · MRN · admission date · status ·
+// source · hospice physician) and a right drawer for the selected admission: its intake workflow and
+// task checklist from the M6 readiness read, and its key facts. The list route carries only
+// id/state/patient, so each loaded row's admission date, referral link and physician come from the
+// admission detail read; names from the patient read. Admission type, assigned nurse and payer
+// eligibility are not on these reads, so they are not drawn. The server enforces every scope
+// (ADR-0030 — no authz on the frontend).
+import { useEffect, useMemo, useState } from "react";
+import type { JSX, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { ADMISSION_TONE, stateLabel } from "./admission-status";
+import { ADMISSION_TONE, stateLabel as enumLabel } from "./admission-status";
+
+// Short labels for the pills; the long lifecycle names crowd the table.
+const SHORT_STATE: Record<string, string> = { notice_of_rights_acknowledged: "NOR Acknowledged" };
+const stateLabel = (s: string): string => SHORT_STATE[s] ?? enumLabel(s);
 
 interface AdmissionRow {
   id: string;
   state: string;
   version: number;
   patientId?: string | null;
+}
+
+interface AdmissionDetail {
+  id: string;
+  referralId?: string | null;
+  admissionAt?: string | null;
+  activatedAt?: string | null;
+  serviceAddressSnapshot?: { city: string; state: string | null } | null;
+  hospicePhysician?: { displayName: string } | null;
 }
 
 interface PatientSummary {
@@ -38,256 +50,450 @@ interface PatientSummary {
   dob?: string | null;
 }
 
-const ADMISSION_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
+interface Requirement {
+  code: string;
+  label: string;
+  status: string;
+  blocking: boolean;
+  message?: string;
+}
+interface Readiness {
+  status: "blocked" | "action_required" | "ready";
+  canActivate: boolean;
+  completed: number;
+  blockingRemaining: number;
+  requirements: Requirement[];
+}
+
+const ADMISSION_PAGE_SIZES = [10, 25, 50] as const;
+const PENDING = ["referred", "pending", "notice_of_rights_acknowledged"];
+const ENDED = ["discharged", "bereavement", "closed"];
+const DONE = ["complete", "not_applicable"];
+const DAY = 86_400_000;
+
+// The intake stepper groups the readiness requirements into the mockup's four stages.
+const STEPS: { label: string; codes: string[] }[] = [
+  { label: "Referral", codes: ["patient_identity", "admission_details"] },
+  { label: "Consents", codes: ["patient_privacy", "notice_of_rights"] },
+  { label: "Election", codes: ["election_statement"] },
+  { label: "Certification", codes: ["cti", "f2f"] },
+];
+
+const AVATAR_TINTS = [
+  "var(--color-viz-blue)",
+  "var(--color-viz-green)",
+  "var(--color-viz-violet)",
+  "var(--color-viz-amber)",
+  "var(--color-viz-teal)",
+  "var(--color-viz-pink)",
+];
+function tintFor(key: string): string {
+  let h = 0;
+  for (const c of key) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return AVATAR_TINTS[h % AVATAR_TINTS.length]!;
+}
+function initials(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
+}
+
+function patientDisplayName(patient: PatientSummary | null, patientId?: string | null): string {
+  const name = [patient?.firstName, patient?.lastName].filter(Boolean).join(" ").trim();
+  return name || patient?.mrn || patientId || "Unresolved";
+}
+
+function ageOf(dob?: string | null): number | null {
+  const m = dob ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob) : null;
+  if (!m) return null;
+  const now = new Date();
+  let age = now.getFullYear() - Number(m[1]);
+  const month = now.getMonth() + 1;
+  if (month < Number(m[2]) || (month === Number(m[2]) && now.getDate() < Number(m[3]))) age -= 1;
+  return age;
+}
+
+const maskMrn = (mrn?: string | null): string => (mrn ? `…${mrn.slice(-4)}` : "—");
+
+function usDate(value?: string | null): string {
+  if (!value) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (!m) return value;
+  if (value.length === 10) return `${m[2]}/${m[3]}/${m[1]}`;
+  const d = new Date(value);
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
+}
+
+const sourceOf = (d?: AdmissionDetail): string =>
+  d ? (d.referralId ? "Referral" : "Direct intake") : "…";
 
 export function AdmissionCensus(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
-  const [state, setState] = useState("");
-  const [searchQuery, setSearchQuery] = useState("");
   const [items, setItems] = useState<AdmissionRow[]>([]);
   const [patientsById, setPatientsById] = useState<Record<string, PatientSummary>>({});
+  const [details, setDetails] = useState<Record<string, AdmissionDetail>>({});
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
+  const [cursor, setCursor] = useState<string | undefined>(undefined);
+
+  const [state, setState] = useState("");
+  const [source, setSource] = useState("");
+  const [range, setRange] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(true);
 
-  const load = useCallback(
-    async (cursor?: string) => {
-      setLoading(true);
-      setError(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: retryKey re-runs the load on "Try again".
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError(null);
+    void (async () => {
       const query: { state?: string; cursor?: string; limit?: number } = { limit: 50 };
       if (state) query.state = state;
       if (cursor) query.cursor = cursor;
       const { data, error: err } = await client.GET("/api/v1/admissions", { params: { query } });
+      if (!active) return;
       if (err) {
         setError("Could not load the admission census.");
         setLoading(false);
         return;
       }
-      const page = (data?.items ?? []) as AdmissionRow[];
-      setItems((prev) => (cursor ? [...prev, ...page] : page));
-      const patientIds = [
-        ...new Set(
-          page.map((row) => row.patientId).filter((patientId): patientId is string => !!patientId),
-        ),
-      ];
-      if (patientIds.length > 0) {
-        const results = await Promise.all(
-          patientIds.map((patientId) =>
-            client.GET("/api/v1/patients/{id}", { params: { path: { id: patientId } } }),
-          ),
-        );
-        setPatientsById((prev) => {
-          const next = { ...prev };
-          results.forEach((result, index) => {
-            if (result.data) next[patientIds[index]!] = result.data as PatientSummary;
-          });
-          return next;
-        });
-      }
+      const rows = (data?.items ?? []) as AdmissionRow[];
+      setItems((prev) => (cursor ? [...prev, ...rows] : rows));
       setNextCursor(data?.nextCursor ?? null);
       setLoading(false);
-    },
-    [client, state],
-  );
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+      const patientIds = [
+        ...new Set(rows.map((r) => r.patientId).filter((id): id is string => !!id)),
+      ];
+      void Promise.all(
+        patientIds.map((id) =>
+          client
+            .GET("/api/v1/patients/{id}", { params: { path: { id } } })
+            .then((r) => [id, r.data as PatientSummary | undefined] as const)
+            .catch(() => [id, undefined] as const),
+        ),
+      ).then((pairs) => {
+        if (!active) return;
+        setPatientsById((prev) => {
+          const next = { ...prev };
+          for (const [id, p] of pairs) if (p) next[id] = p;
+          return next;
+        });
+      });
+      void Promise.all(
+        rows.map((r) =>
+          client
+            .GET("/api/v1/admissions/{id}", { params: { path: { id: r.id } } })
+            .then((res) => [r.id, res.data as AdmissionDetail | undefined] as const)
+            .catch(() => [r.id, undefined] as const),
+        ),
+      ).then((pairs) => {
+        if (!active) return;
+        setDetails((prev) => {
+          const next = { ...prev };
+          for (const [id, d] of pairs) if (d) next[id] = d;
+          return next;
+        });
+      });
+    })();
+    return () => {
+      active = false;
+    };
+  }, [client, state, cursor, retryKey]);
 
-  const filtered = items.filter((a) => {
+  const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    const patient = a.patientId ? (patientsById[a.patientId] ?? null) : null;
-    return (
-      !q ||
-      a.id.toLowerCase().includes(q) ||
-      a.state.toLowerCase().includes(q) ||
-      patientDisplayName(patient, a.patientId).toLowerCase().includes(q) ||
-      (patient?.mrn ?? "").toLowerCase().includes(q)
-    );
-  });
-  const activeCount = items.filter((a) => a.state === "active").length;
-  const pendingCount = items.filter(
-    (a) => a.state === "pending" || a.state === "notice_of_rights_acknowledged",
-  ).length;
-  const holdCount = items.filter((a) => a.state === "on_hold").length;
-  const dischargedCount = items.filter(
-    (a) => a.state === "discharged" || a.state === "bereavement" || a.state === "closed",
-  ).length;
-  const hasActiveFilters = searchQuery !== "" || state !== "";
+    const cutoff = range === "all" ? 0 : Date.now() - Number(range) * DAY;
+    return items.filter((a) => {
+      const patient = a.patientId ? (patientsById[a.patientId] ?? null) : null;
+      const d = details[a.id];
+      if (source && sourceOf(d) !== source) return false;
+      if (cutoff) {
+        const at = d?.admissionAt ? Date.parse(d.admissionAt) : Number.NaN;
+        if (Number.isNaN(at) || at < cutoff) return false;
+      }
+      return (
+        !q ||
+        a.id.toLowerCase().includes(q) ||
+        a.state.toLowerCase().includes(q) ||
+        patientDisplayName(patient, a.patientId).toLowerCase().includes(q) ||
+        (patient?.mrn ?? "").toLowerCase().includes(q) ||
+        (d?.hospicePhysician?.displayName ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [items, patientsById, details, searchQuery, source, range]);
+
+  const kpis = useMemo(() => {
+    const now = new Date();
+    const thisMonth = items.filter((a) => {
+      const at = details[a.id]?.admissionAt;
+      if (!at) return false;
+      const d = new Date(at);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    }).length;
+    return {
+      total: items.length,
+      pending: items.filter((a) => PENDING.includes(a.state)).length,
+      thisMonth,
+      active: items.filter((a) => a.state === "active").length,
+      onHold: items.filter((a) => a.state === "on_hold").length,
+      ended: items.filter((a) => ENDED.includes(a.state)).length,
+    };
+  }, [items, details]);
+
+  const hasActiveFilters = searchQuery !== "" || state !== "" || source !== "" || range !== "all";
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const activePage = Math.min(page, pageCount);
   const pagedItems = filtered.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const selected =
+    filtered.find((a) => a.id === selectedId) ?? (selectedId ? null : (pagedItems[0] ?? null));
 
   function clearFilters(): void {
     setSearchQuery("");
     setState("");
+    setSource("");
+    setRange("all");
+    setCursor(undefined);
     setPage(1);
   }
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="Admissions"
-          breadcrumb="Admissions / Census"
-          actions={
-            <Link to="/admissions/new" style={newAdmissionLink}>
-              <Glyph name="check" size={14} />
-              <span>New admission</span>
-            </Link>
-          }
-        >
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Monitor admission records from pending intake through active care and discharge.
+    <div className={`wx-admissions${drawerOpen && selected ? " has-drawer" : ""}`}>
+      <div className="wx-admissions-main">
+        <header className="wx-page-head">
+          <div>
+            <h1 style={{ fontSize: "1.875rem" }}>Admissions</h1>
+            <p>Manage hospice admissions, pending referrals, and the intake workflow.</p>
           </div>
-        </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
+          <Link to="/admissions/new" className="wx-btn-primary">
+            <Glyph name="plus" size={16} /> New Admission
+          </Link>
+        </header>
+
+        <nav className="wx-subtabs" aria-label="Admissions views">
+          <Link to="/admissions" aria-current="page" className="is-current">
+            All Admissions
+          </Link>
+          <Link to="/referrals">Pending Referrals</Link>
+          <Link to="/compliance/admissions">Compliance Windows</Link>
+        </nav>
+
+        <div className="wx-stat-grid" aria-label="Admissions summary">
+          <Stat
+            icon="file-text"
+            value={kpis.total}
+            label="Total Admissions"
+            hint="Loaded records"
+          />
+          <Stat
+            icon="clock"
+            value={kpis.pending}
+            label="Pending Intake"
+            hint="In progress"
+            color="var(--color-viz-violet)"
+          />
+          <Stat
+            icon="calendar"
+            value={kpis.thisMonth}
+            label="This Month"
+            hint="By admission date"
+          />
+          <Stat
+            icon="check-circle"
+            value={kpis.active}
             label="Active"
-            value={activeCount}
-            detail="Current census"
-            tone="success"
-            accentColor="var(--color-success)"
+            hint={`${kpis.onHold} on hold · ${kpis.ended} closed`}
+            color={t.success}
           />
-          <KpiCard
-            label="Pending"
-            value={pendingCount}
-            detail="Intake in progress"
-            tone={pendingCount > 0 ? "info" : "neutral"}
-            accentColor={pendingCount > 0 ? "var(--color-primary)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="On hold"
-            value={holdCount}
-            detail="Paused records"
-            tone={holdCount > 0 ? "warning" : "neutral"}
-            accentColor={holdCount > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"}
-          />
-          <KpiCard
-            label="Closed flow"
-            value={dischargedCount}
-            detail="Discharged or closed"
-            tone="neutral"
-            accentColor="var(--color-outline-variant)"
-          />
-          <KpiCard
-            label="In view"
-            value={filtered.length}
-            detail="After filters"
-            tone="neutral"
-            accentColor="var(--color-outline-variant)"
-          />
-        </KpiStrip>
-      }
-      filters={
-        <div
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: "0.75rem",
-            padding: "0 1.5rem 0.75rem",
-          }}
-        >
-          {error ? (
-            <div role="alert" style={alertStyle}>
-              <Glyph name="alert" size={16} />
-              <span>{error}</span>
-            </div>
-          ) : null}
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "1rem",
+        </div>
+
+        <div className="wx-filter-panel">
+          <label className="wx-search-field">
+            <Glyph name="search" size={16} />
+            <input
+              type="search"
+              placeholder="Search by name, MRN, physician…"
+              value={searchQuery}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setPage(1);
+              }}
+              aria-label="Search admissions"
+            />
+          </label>
+          <Filter
+            label="Status"
+            value={state}
+            onChange={(v) => {
+              setState(v);
+              setCursor(undefined);
+              setPage(1);
+            }}
+            ariaLabel="Admission state"
+          >
+            <option value="">All</option>
+            <option value="pending">Pending</option>
+            <option value="notice_of_rights_acknowledged">Notice acknowledged</option>
+            <option value="active">Active</option>
+            <option value="on_hold">On hold</option>
+            <option value="discharged">Discharged</option>
+            <option value="bereavement">Bereavement</option>
+            <option value="closed">Closed</option>
+          </Filter>
+          <Filter
+            label="Source"
+            value={source}
+            onChange={(v) => {
+              setSource(v);
+              setPage(1);
             }}
           >
-            <div style={tabsShellStyle}>
-              <button type="button" style={tabButtonStyle(true)}>
-                Admissions ({items.length})
-              </button>
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-              <div style={{ position: "relative", minWidth: "15rem" }}>
-                <input
-                  type="search"
-                  placeholder="Search admissions by ID or state..."
-                  value={searchQuery}
-                  onChange={(event) => {
-                    setSearchQuery(event.target.value);
-                    setPage(1);
-                  }}
-                  aria-label="Search admissions"
-                  style={searchInputStyle}
-                />
-                <div style={searchIconStyle}>
-                  <Glyph name="search" size={14} />
-                </div>
-              </div>
-              <select
-                aria-label="Admission state"
-                value={state}
-                onChange={(event) => {
-                  setState(event.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">State: All</option>
-                <option value="pending">Pending</option>
-                <option value="notice_of_rights_acknowledged">Notice acknowledged</option>
-                <option value="active">Active</option>
-                <option value="on_hold">On hold</option>
-                <option value="discharged">Discharged</option>
-                <option value="bereavement">Bereavement</option>
-                <option value="closed">Closed</option>
-              </select>
-              {hasActiveFilters ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
-            </div>
-          </div>
+            <option value="">All</option>
+            <option value="Referral">Referral</option>
+            <option value="Direct intake">Direct intake</option>
+          </Filter>
+          <Filter
+            label="Admission date"
+            value={range}
+            onChange={(v) => {
+              setRange(v);
+              setPage(1);
+            }}
+          >
+            <option value="all">Any time</option>
+            <option value="30">Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="365">Last 12 months</option>
+          </Filter>
+          {hasActiveFilters ? (
+            <button type="button" className="wx-btn-secondary" onClick={clearFilters}>
+              <Glyph name="filter" size={15} /> Clear
+            </button>
+          ) : null}
         </div>
-      }
-      table={
-        loading && items.length === 0 ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
+
+        {error ? (
+          <div className="wx-list-state" role="alert">
+            <EmptyState title="Admissions unavailable" description={error} />
+            <button
+              type="button"
+              className="wx-btn-secondary"
+              onClick={() => setRetryKey((k) => k + 1)}
+            >
+              Try again
+            </button>
           </div>
+        ) : loading && items.length === 0 ? (
+          <LoadingSpinner />
         ) : filtered.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
+          <div className="wx-list-state">
             <EmptyState
               title={hasActiveFilters ? "No matching admissions found" : "No admissions"}
               description={
                 hasActiveFilters
-                  ? "Try adjusting the search or state filter."
-                  : "No admissions match the current filters."
-              }
-              action={
-                hasActiveFilters ? (
-                  <Button tone="secondary" size="sm" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
+                  ? "Try adjusting the search or filters."
+                  : "Admissions appear here once intake begins."
               }
             />
+            {hasActiveFilters ? (
+              <button type="button" className="wx-btn-secondary" onClick={clearFilters}>
+                Clear filters
+              </button>
+            ) : null}
           </div>
         ) : (
-          <>
-            <AdmissionTable
-              items={pagedItems}
-              patientsById={patientsById}
-              loading={loading}
-              onOpen={(id) => navigate(`/admissions/${id}`)}
-            />
+          <div className="wx-list-table-wrap">
+            <table className="wx-list-table">
+              <caption className="wx-sr-only">Admissions</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Patient</th>
+                  <th scope="col">MRN</th>
+                  <th scope="col">Admission date</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Source</th>
+                  <th scope="col">Hospice physician</th>
+                  <th scope="col">
+                    <span className="wx-sr-only">Actions</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedItems.map((a) => {
+                  const patient = a.patientId ? (patientsById[a.patientId] ?? null) : null;
+                  const name = patientDisplayName(patient, a.patientId);
+                  const age = ageOf(patient?.dob);
+                  const d = details[a.id];
+                  const isSelected = selected?.id === a.id;
+                  return (
+                    // biome-ignore lint/a11y/useKeyWithClickEvents: whole-row click is a mouse shortcut; the patient link and "…" are the keyboard paths.
+                    <tr
+                      key={a.id}
+                      className={isSelected ? "is-selected" : undefined}
+                      onClick={() => {
+                        setSelectedId(a.id);
+                        setDrawerOpen(true);
+                      }}
+                    >
+                      <td>
+                        <span style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>
+                          <Avatar name={name} />
+                          <span style={{ minWidth: 0 }}>
+                            {a.patientId ? (
+                              <Link
+                                to={`/patients/${a.patientId}`}
+                                className="wx-row-title"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                {name}
+                              </Link>
+                            ) : (
+                              <span className="wx-row-title">Unresolved patient</span>
+                            )}
+                            <span className="wx-row-sub">
+                              {age != null ? `${age}y` : patient ? "Age unknown" : "…"}
+                            </span>
+                          </span>
+                        </span>
+                      </td>
+                      <td
+                        className="wx-nums"
+                        title={patient?.mrn ? `MRN ${patient.mrn}` : undefined}
+                      >
+                        {maskMrn(patient?.mrn)}
+                      </td>
+                      <td className="wx-nums">{d ? usDate(d.admissionAt) : "…"}</td>
+                      <td>
+                        <StatusPill
+                          label={stateLabel(a.state)}
+                          tone={ADMISSION_TONE[a.state] ?? "neutral"}
+                        />
+                      </td>
+                      <td>{sourceOf(d)}</td>
+                      <td>{d ? (d.hospicePhysician?.displayName ?? "—") : "…"}</td>
+                      <td>
+                        <Link
+                          to={`/admissions/${a.id}`}
+                          className="wx-icon-link"
+                          aria-label={`Open admission for ${name}`}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <Glyph name="more-horizontal" size={18} />
+                        </Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
             <OffsetPagination
               page={activePage}
               pageSize={pageSize}
@@ -301,271 +507,302 @@ export function AdmissionCensus(): JSX.Element {
               noun="admissions"
             />
             {nextCursor ? (
-              <div
-                style={{ display: "flex", justifyContent: "center", padding: "0 1.5rem 1.5rem" }}
-              >
-                <Button
+              <div style={{ display: "flex", justifyContent: "center", padding: "0 1rem 1rem" }}>
+                <button
                   type="button"
-                  tone="secondary"
-                  size="sm"
-                  onClick={() => load(nextCursor)}
-                  loading={loading}
+                  className="wx-btn-secondary"
+                  onClick={() => setCursor(nextCursor)}
+                  disabled={loading}
                 >
                   Load more admissions
-                </Button>
+                </button>
               </div>
             ) : null}
-          </>
-        )
-      }
-    />
-  );
-}
+          </div>
+        )}
+      </div>
 
-function AdmissionTable({
-  items,
-  patientsById,
-  loading,
-  onOpen,
-}: {
-  items: AdmissionRow[];
-  patientsById: Record<string, PatientSummary>;
-  loading: boolean;
-  onOpen: (id: string) => void;
-}): JSX.Element {
-  return (
-    <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
-      <table style={tableStyle}>
-        <thead>
-          <tr style={tableHeadRowStyle}>
-            <th style={{ ...thStyle, width: "34%" }}>Admission</th>
-            <th style={{ ...thStyle, width: "30%" }}>Patient</th>
-            <th style={{ ...thStyle, width: "16%" }}>State</th>
-            <th style={{ ...thStyle, width: "10%" }}>Version</th>
-            <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((a) => {
-            const patient = a.patientId ? (patientsById[a.patientId] ?? null) : null;
-            return (
-              <tr
-                key={a.id}
-                // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                role="button"
-                tabIndex={0}
-                onClick={() => onOpen(a.id)}
-                onKeyDown={(ev) => {
-                  if (ev.key === "Enter" || ev.key === " ") {
-                    ev.preventDefault();
-                    onOpen(a.id);
-                  }
-                }}
-                style={{ cursor: "pointer" }}
-              >
-                <td style={tdStyle}>
-                  <div
-                    style={{ display: "flex", alignItems: "center", gap: "0.75rem", minWidth: 0 }}
-                  >
-                    <div style={rowIconStyle}>
-                      <Glyph name="clipboard-check" size={16} />
-                    </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div className="wx-data-md" style={{ fontWeight: 650 }}>
-                        {a.id}
-                      </div>
-                      <div style={rowSubtextStyle}>Admission record</div>
-                    </div>
-                  </div>
-                </td>
-                <td style={tdStyle}>
-                  {a.patientId ? (
-                    <Link
-                      to={`/patients/${a.patientId}`}
-                      style={patientLinkStyle}
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      {patientDisplayName(patient, a.patientId)}
-                      <span style={patientMetaStyle}>{patientMeta(patient)}</span>
-                    </Link>
-                  ) : (
-                    <span style={rowSubtextStyle}>Unresolved</span>
-                  )}
-                </td>
-                <td style={tdStyle}>
-                  <StatusPill
-                    label={stateLabel(a.state)}
-                    tone={ADMISSION_TONE[a.state] ?? "neutral"}
-                  />
-                </td>
-                <td className="wx-data-md" style={tdStyle}>
-                  v{a.version}
-                </td>
-                <td style={{ ...tdStyle, textAlign: "right" }}>
-                  <Button
-                    size="sm"
-                    tone="secondary"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onOpen(a.id);
-                    }}
-                    disabled={loading}
-                  >
-                    Open
-                  </Button>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      {selected && drawerOpen ? (
+        <AdmissionDrawer
+          key={selected.id}
+          admission={selected}
+          patient={selected.patientId ? (patientsById[selected.patientId] ?? null) : null}
+          detail={details[selected.id]}
+          onClose={() => setDrawerOpen(false)}
+          onOpen={() => navigate(`/admissions/${selected.id}`)}
+        />
+      ) : null}
     </div>
   );
 }
 
-const newAdmissionLink: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  padding: "0.45rem 0.9rem",
-  borderRadius: "9999px",
-  background: "var(--color-primary)",
-  color: "var(--color-on-primary)",
-  fontSize: "0.8125rem",
-  fontWeight: 600,
-  textDecoration: "none",
-  gap: "0.4rem",
-};
+function AdmissionDrawer({
+  admission: a,
+  patient,
+  detail,
+  onClose,
+  onOpen,
+}: {
+  admission: AdmissionRow;
+  patient: PatientSummary | null;
+  detail?: AdmissionDetail;
+  onClose: () => void;
+  onOpen: () => void;
+}): JSX.Element {
+  const client = useApiClient();
+  const [readiness, setReadiness] = useState<Readiness | null | undefined>(undefined);
+  useEffect(() => {
+    let active = true;
+    void client
+      .GET("/api/v1/admissions/{id}/readiness", { params: { path: { id: a.id } } })
+      .then((r) => {
+        if (active) setReadiness(r.error ? null : ((r.data as Readiness | undefined) ?? null));
+      })
+      .catch(() => active && setReadiness(null));
+    return () => {
+      active = false;
+    };
+  }, [client, a.id]);
 
-const alertStyle: CSSProperties = {
-  padding: "0.625rem 1rem",
-  borderRadius: "var(--radius-md)",
-  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-  color: "var(--color-error)",
-  fontSize: "0.85rem",
-  display: "flex",
-  alignItems: "center",
-  gap: "0.5rem",
-};
-
-const tabsShellStyle: CSSProperties = {
-  display: "flex",
-  gap: "0.25rem",
-  background: "var(--color-surface-container)",
-  padding: "0.2rem",
-  borderRadius: "var(--radius-md)",
-};
-
-function tabButtonStyle(active: boolean): CSSProperties {
-  return {
-    border: "none",
-    borderRadius: "calc(var(--radius-md) - 2px)",
-    background: active ? "var(--color-surface-lowest)" : "transparent",
-    color: active ? "var(--color-on-surface)" : "var(--color-on-surface-variant)",
-    padding: "0.4rem 0.8rem",
-    fontSize: "0.85rem",
-    fontWeight: active ? 650 : 500,
-    cursor: "pointer",
-    boxShadow: active ? "var(--shadow-soft)" : "none",
+  const name = patientDisplayName(patient, a.patientId);
+  const age = ageOf(patient?.dob);
+  const reqs = readiness?.requirements ?? [];
+  const stepDone = (codes: string[]) => {
+    const own = reqs.filter((r) => codes.includes(r.code));
+    return own.length > 0 && own.every((r) => DONE.includes(r.status));
   };
+  const steps = STEPS.map((s) => ({ ...s, done: a.state === "active" || stepDone(s.codes) }));
+  const current = steps.findIndex((s) => !s.done);
+  const address = detail?.serviceAddressSnapshot;
+
+  return (
+    <aside className="wx-admission-drawer" aria-label={`Admission for ${name}`}>
+      <header className="wx-drawer-head">
+        <Avatar name={name} size="lg" />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+            <h2>{name}</h2>
+            <StatusPill label={stateLabel(a.state)} tone={ADMISSION_TONE[a.state] ?? "neutral"} />
+          </div>
+          <div className="wx-row-sub" style={{ fontSize: "0.8125rem" }}>
+            {[age != null ? `${age}y` : null, patient?.mrn ? `MRN: ${maskMrn(patient.mrn)}` : null]
+              .filter(Boolean)
+              .join(" • ") || "—"}
+          </div>
+        </div>
+        <button type="button" className="wx-icon-link" aria-label="Close details" onClick={onClose}>
+          <Glyph name="close" size={18} />
+        </button>
+      </header>
+      <nav className="wx-detail-tabs" aria-label="Admission views">
+        <span aria-current="page">Overview</span>
+        <Link to={`/admissions/${a.id}`}>Intake</Link>
+        {a.patientId ? (
+          <>
+            <Link to={`/patients/${a.patientId}/election-certification`}>Election</Link>
+            <Link to={`/patients/${a.patientId}/documents`}>Documents</Link>
+          </>
+        ) : null}
+      </nav>
+
+      <div className="wx-drawer-body">
+        <section className="wx-drawer-card">
+          <h3>Admission Workflow</h3>
+          {readiness === undefined ? (
+            <LoadingSpinner />
+          ) : (
+            <ol className="wx-stepper">
+              {steps.map((s, i) => (
+                <li
+                  key={s.label}
+                  className={s.done ? "is-done" : i === current ? "is-current" : undefined}
+                >
+                  <span className="wx-step-dot" aria-hidden>
+                    {s.done ? <Glyph name="check" size={12} strokeWidth={3} /> : i + 1}
+                  </span>
+                  <span>{s.label}</span>
+                </li>
+              ))}
+            </ol>
+          )}
+        </section>
+
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>Key Information</h3>
+            <Link
+              to={`/admissions/${a.id}`}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "0.25rem",
+                fontWeight: 500,
+                fontSize: "0.8125rem",
+                whiteSpace: "nowrap",
+              }}
+            >
+              <Glyph name="pencil" size={13} /> Edit
+            </Link>
+          </div>
+          <dl className="wx-kv">
+            <dt>Admission date</dt>
+            <dd className="wx-nums">{detail ? usDate(detail.admissionAt) : "…"}</dd>
+            <dt>Activated</dt>
+            <dd className="wx-nums">{detail ? usDate(detail.activatedAt) : "…"}</dd>
+            <dt>Source</dt>
+            <dd>
+              {detail?.referralId ? (
+                <Link to={`/referrals/${detail.referralId}`}>Referral</Link>
+              ) : (
+                sourceOf(detail)
+              )}
+            </dd>
+            <dt>Hospice physician</dt>
+            <dd>{detail ? (detail.hospicePhysician?.displayName ?? "Not assigned") : "…"}</dd>
+            <dt>Service location</dt>
+            <dd>
+              {address ? [address.city, address.state].filter(Boolean).join(", ") : "Not recorded"}
+            </dd>
+          </dl>
+        </section>
+
+        <section className="wx-drawer-card">
+          <div className="wx-drawer-card-head">
+            <h3>
+              Readiness{" "}
+              {readiness ? (
+                <StatusPill
+                  label={
+                    readiness.status === "ready"
+                      ? "Ready"
+                      : readiness.status === "blocked"
+                        ? "Blocked"
+                        : "Action required"
+                  }
+                  tone={
+                    readiness.status === "ready"
+                      ? "success"
+                      : readiness.status === "blocked"
+                        ? "error"
+                        : "warning"
+                  }
+                />
+              ) : null}
+            </h3>
+            <button
+              type="button"
+              className="wx-link-button"
+              onClick={onOpen}
+              style={{ fontSize: "0.8125rem" }}
+            >
+              View all
+            </button>
+          </div>
+          {readiness === undefined ? (
+            <LoadingSpinner />
+          ) : readiness === null ? (
+            <p className="wx-row-sub">The intake checklist could not be loaded.</p>
+          ) : (
+            <ul className="wx-checklist">
+              {reqs
+                .filter((r) => r.status !== "not_applicable")
+                .map((r) => {
+                  const done = DONE.includes(r.status);
+                  return (
+                    <li key={r.code} className={done ? "is-done" : undefined}>
+                      <span className="wx-check-box" aria-hidden>
+                        {done ? <Glyph name="check" size={12} strokeWidth={3} /> : null}
+                      </span>
+                      <span style={{ flex: 1 }}>
+                        {r.label}
+                        {!done && r.message ? (
+                          <span className="wx-row-sub">{r.message}</span>
+                        ) : null}
+                      </span>
+                      {!done ? (
+                        <span className="wx-row-sub" style={{ whiteSpace: "nowrap" }}>
+                          {stateLabel(r.status)}
+                        </span>
+                      ) : null}
+                    </li>
+                  );
+                })}
+            </ul>
+          )}
+        </section>
+      </div>
+    </aside>
+  );
 }
 
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  paddingLeft: "2rem",
-  height: "2.25rem",
-  fontSize: "0.85rem",
-};
-
-const searchIconStyle: CSSProperties = {
-  position: "absolute",
-  left: "0.625rem",
-  top: "50%",
-  transform: "translateY(-50%)",
-  color: "var(--color-on-surface-variant)",
-  pointerEvents: "none",
-};
-
-const selectStyle: CSSProperties = {
-  height: "2.25rem",
-  fontSize: "0.85rem",
-  cursor: "pointer",
-};
-
-const tableStyle: CSSProperties = {
-  display: "table",
-  width: "100%",
-  borderCollapse: "collapse",
-  fontSize: "0.875rem",
-};
-
-const tableHeadRowStyle: CSSProperties = {
-  textAlign: "left",
-  color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-  background: "var(--color-surface-low)",
-};
-
-const thStyle: CSSProperties = {
-  padding: "0.75rem 1rem",
-  fontSize: "0.75rem",
-  fontWeight: 650,
-  letterSpacing: "0.03em",
-  textTransform: "uppercase",
-};
-
-const tdStyle: CSSProperties = {
-  padding: "0.875rem 1rem",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-  verticalAlign: "middle",
-};
-
-const rowIconStyle: CSSProperties = {
-  width: "2rem",
-  height: "2rem",
-  borderRadius: "var(--radius-md)",
-  background: "var(--color-primary-tint)",
-  color: "var(--color-primary)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-const rowSubtextStyle: CSSProperties = {
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.75rem",
-};
-
-const patientLinkStyle: CSSProperties = {
-  display: "inline-flex",
-  flexDirection: "column",
-  gap: "0.15rem",
-  color: "var(--color-primary)",
-  fontWeight: 700,
-  textDecoration: "none",
-};
-
-const patientMetaStyle: CSSProperties = {
-  color: "var(--color-on-surface-variant)",
-  fontSize: "0.75rem",
-  fontWeight: 500,
-};
-
-function patientDisplayName(patient: PatientSummary | null, patientId?: string | null): string {
-  const name = [patient?.firstName, patient?.lastName].filter(Boolean).join(" ").trim();
-  return name || patient?.mrn || patientId || "Unresolved";
+function Stat({
+  icon,
+  value,
+  label,
+  hint,
+  color = t.primary,
+}: {
+  icon: GlyphName;
+  value: number;
+  label: string;
+  hint: string;
+  color?: string;
+}): JSX.Element {
+  return (
+    <div className="wx-stat-card">
+      <span
+        aria-hidden
+        className="wx-stat-icon"
+        style={{ color, background: `color-mix(in srgb, ${color} 12%, ${t.surfaceLowest})` }}
+      >
+        <Glyph name={icon} size={22} strokeWidth={1.6} />
+      </span>
+      <div style={{ minWidth: 0 }}>
+        <div className="wx-stat-label">{label}</div>
+        <strong className="wx-stat-value wx-nums">{value}</strong>
+        <div className="wx-stat-label">{hint}</div>
+      </div>
+    </div>
+  );
 }
 
-function patientMeta(patient: PatientSummary | null): string {
-  if (!patient) return "Patient chart";
-  return [
-    patient.dob ? `DOB ${formatDate(patient.dob)}` : null,
-    patient.mrn ? `MRN ${patient.mrn}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+function Filter({
+  label,
+  value,
+  onChange,
+  ariaLabel,
+  children,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  ariaLabel?: string;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <label className="wx-filter-field">
+      <span>{label}</span>
+      <select
+        className="wx-select"
+        aria-label={ariaLabel ?? label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {children}
+      </select>
+    </label>
+  );
 }
 
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
+function Avatar({ name, size }: { name: string; size?: "lg" }): JSX.Element {
+  const c = tintFor(name);
+  return (
+    <span
+      className={`wx-home-avatar${size === "lg" ? " wx-avatar-lg" : ""}`}
+      aria-hidden
+      style={{ color: c, background: `color-mix(in srgb, ${c} 14%, ${t.surfaceLowest})` }}
+    >
+      {initials(name)}
+    </span>
+  );
 }

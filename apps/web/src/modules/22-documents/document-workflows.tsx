@@ -1,13 +1,14 @@
 import {
   Button,
   EmptyState,
+  Glyph,
   LoadingSpinner,
   StatusPill,
   t,
   useApiClient,
 } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   CSSProperties,
   DragEvent,
@@ -29,7 +30,7 @@ export type DocumentContext =
       admissionId?: string | null;
     };
 
-interface DocumentRow {
+export interface DocumentRow {
   id: string;
   patientId: string | null;
   admissionId: string | null;
@@ -152,8 +153,10 @@ const SOURCE_OPTIONS: ReadonlyArray<{
 
 export function PatientDocumentWorkspace({
   patientId,
+  onRowsChange,
 }: {
   patientId: string;
+  onRowsChange?: (rows: DocumentRow[]) => void;
 }): JSX.Element {
   return (
     <DocumentCollection
@@ -164,6 +167,7 @@ export function PatientDocumentWorkspace({
       emptyDescription="Upload a patient document to make it available in the chart."
       defaultDocumentType="code_status_directive"
       showPatientFacing
+      onRowsChange={onRowsChange}
     />
   );
 }
@@ -204,6 +208,7 @@ function DocumentCollection({
   defaultDocumentType,
   compact = false,
   showPatientFacing = false,
+  onRowsChange,
 }: {
   context: DocumentContext;
   title: string;
@@ -213,8 +218,15 @@ function DocumentCollection({
   defaultDocumentType: string;
   compact?: boolean;
   showPatientFacing?: boolean;
+  onRowsChange?: (rows: DocumentRow[]) => void;
 }): JSX.Element {
   const client = useApiClient();
+  // Callers pass the context inline; key it by value so a parent re-render does not reload the list.
+  const contextKey = JSON.stringify(context);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: keyed by value (contextKey).
+  const stableContext = useMemo(() => context, [contextKey]);
+  const onRowsChangeRef = useRef(onRowsChange);
+  onRowsChangeRef.current = onRowsChange;
 
   const [rows, setRows] = useState<DocumentRow[]>([]);
   const [versions, setVersions] = useState<Record<string, VersionRow[]>>({});
@@ -243,11 +255,11 @@ function DocumentCollection({
     setError(null);
 
     const query =
-      context.kind === "patient"
-        ? { patientId: context.patientId }
+      stableContext.kind === "patient"
+        ? { patientId: stableContext.patientId }
         : {
             aggregateType: "referral",
-            aggregateId: context.referralId,
+            aggregateId: stableContext.referralId,
           };
 
     const { data, error: err } = await client.GET(
@@ -273,6 +285,7 @@ function DocumentCollection({
       );
 
     setRows(items);
+    onRowsChangeRef.current?.(items);
     setLoading(false);
 
     const versionPairs = await Promise.all(
@@ -297,7 +310,7 @@ function DocumentCollection({
     );
 
     setVersions(Object.fromEntries(versionPairs));
-  }, [client, context]);
+  }, [client, stableContext]);
 
   useEffect(() => {
     void load();
@@ -445,6 +458,92 @@ function DocumentCollection({
       );
     }
   };
+
+  const dialogs = (
+    <>
+      {uploadOpen ? (
+        <DocumentUploadDialog
+          context={context}
+          defaultDocumentType={defaultDocumentType}
+          showPatientFacing={showPatientFacing}
+          onClose={() => setUploadOpen(false)}
+          onUploaded={() => {
+            setUploadOpen(false);
+            void load();
+          }}
+        />
+      ) : null}
+
+      {newVersionFor ? (
+        <DocumentUploadDialog
+          context={context}
+          mode="new_version"
+          targetDocument={newVersionFor}
+          defaultDocumentType={displayDocumentTypeValue(
+            newVersionFor,
+          )}
+          showPatientFacing={showPatientFacing}
+          onClose={() => setNewVersionFor(null)}
+          onUploaded={() => {
+            setNewVersionFor(null);
+            void load();
+          }}
+        />
+      ) : null}
+
+      {detail ? (
+        <DocumentDetail
+          doc={detail}
+          versions={versions[detail.id] ?? []}
+          onClose={() => setDetail(null)}
+          onOpen={(mode) =>
+            void openSigned(detail, mode)
+          }
+          onNewVersion={() => {
+            setDetail(null);
+            setNewVersionFor(detail);
+          }}
+        />
+      ) : null}
+
+      {preview ? (
+        <PreviewModal
+          preview={preview}
+          onClose={() => setPreview(null)}
+        />
+      ) : null}
+    </>
+  );
+
+  if (!compact) {
+    return (
+      <PatientLibrary
+        title={title}
+        rows={rows}
+        versions={versions}
+        loading={loading}
+        error={error}
+        onDismissError={() => setError(null)}
+        emptyTitle={emptyTitle}
+        emptyDescription={emptyDescription}
+        typeFilter={filter}
+        onTypeFilter={setFilter}
+        search={search}
+        onSearch={setSearch}
+        sourceFilter={sourceFilter}
+        onSourceFilter={setSourceFilter}
+        sourceOptions={sourceOptions}
+        statusFilter={statusFilter}
+        onStatusFilter={setStatusFilter}
+        statusOptions={statusOptions}
+        onUpload={() => setUploadOpen(true)}
+        onDetail={setDetail}
+        onView={(doc) => void openSigned(doc, "preview")}
+      >
+        {dialogs}
+      </PatientLibrary>
+    );
+  }
 
   return (
     <section style={compact ? referralShell : patientShell}>
@@ -773,58 +872,402 @@ function DocumentCollection({
         </div>
       </div>
 
-      {uploadOpen ? (
-        <DocumentUploadDialog
-          context={context}
-          defaultDocumentType={defaultDocumentType}
-          showPatientFacing={showPatientFacing}
-          onClose={() => setUploadOpen(false)}
-          onUploaded={() => {
-            setUploadOpen(false);
-            void load();
-          }}
-        />
-      ) : null}
-
-      {newVersionFor ? (
-        <DocumentUploadDialog
-          context={context}
-          mode="new_version"
-          targetDocument={newVersionFor}
-          defaultDocumentType={displayDocumentTypeValue(
-            newVersionFor,
-          )}
-          showPatientFacing={showPatientFacing}
-          onClose={() => setNewVersionFor(null)}
-          onUploaded={() => {
-            setNewVersionFor(null);
-            void load();
-          }}
-        />
-      ) : null}
-
-      {detail ? (
-        <DocumentDetail
-          doc={detail}
-          versions={versions[detail.id] ?? []}
-          onClose={() => setDetail(null)}
-          onOpen={(mode) =>
-            void openSigned(detail, mode)
-          }
-          onNewVersion={() => {
-            setDetail(null);
-            setNewVersionFor(detail);
-          }}
-        />
-      ) : null}
-
-      {preview ? (
-        <PreviewModal
-          preview={preview}
-          onClose={() => setPreview(null)}
-        />
-      ) : null}
+      {dialogs}
     </section>
+  );
+}
+
+// ── patient library (2026-09-25 redesign, mockup "Documents") ─────────────────────────────────────────
+// Category tabs over the document type (clinical · administrative · other) plus the portal-visible set,
+// a labeled filter bar, and a table of name · category · date · source · status. The documents read has
+// no uploader, so the mockup's "Uploaded by" column shows the recorded source channel instead.
+type Category = "clinical" | "administrative" | "other";
+const CATEGORY_OF: Record<string, Category> = {
+  code_status_directive: "clinical",
+  cti: "clinical",
+  consent_record: "administrative",
+  notice_of_rights: "administrative",
+  election_statement: "administrative",
+  referral: "administrative",
+  intake_source: "administrative",
+};
+const categoryOf = (doc: DocumentRow): Category =>
+  CATEGORY_OF[displayDocumentTypeValue(doc)] ?? "other";
+const CATEGORY_TABS = [
+  { key: "", label: "All" },
+  { key: "clinical", label: "Clinical" },
+  { key: "administrative", label: "Administrative" },
+  { key: "other", label: "Other" },
+  { key: "portal", label: "Patient Portal" },
+] as const;
+type CategoryTab = (typeof CATEGORY_TABS)[number]["key"];
+const PAGE_SIZE = 10;
+
+function usDate(value: string): string {
+  const d = new Date(value);
+  return Number.isNaN(d.getTime())
+    ? "—"
+    : d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
+}
+
+function PatientLibrary({
+  title,
+  rows,
+  versions,
+  loading,
+  error,
+  onDismissError,
+  emptyTitle,
+  emptyDescription,
+  typeFilter,
+  onTypeFilter,
+  search,
+  onSearch,
+  sourceFilter,
+  onSourceFilter,
+  sourceOptions,
+  statusFilter,
+  onStatusFilter,
+  statusOptions,
+  onUpload,
+  onDetail,
+  onView,
+  children,
+}: {
+  title: string;
+  rows: DocumentRow[];
+  versions: Record<string, VersionRow[]>;
+  loading: boolean;
+  error: string | null;
+  onDismissError: () => void;
+  emptyTitle: string;
+  emptyDescription: string;
+  typeFilter: string;
+  onTypeFilter: (v: string) => void;
+  search: string;
+  onSearch: (v: string) => void;
+  sourceFilter: string;
+  onSourceFilter: (v: string) => void;
+  sourceOptions: SourceChannel[];
+  statusFilter: string;
+  onStatusFilter: (v: string) => void;
+  statusOptions: string[];
+  onUpload: () => void;
+  onDetail: (doc: DocumentRow) => void;
+  onView: (doc: DocumentRow) => void;
+  children: ReactNode;
+}): JSX.Element {
+  const [tab, setTab] = useState<CategoryTab>("");
+  const [page, setPage] = useState(1);
+
+  const inTab = (doc: DocumentRow, key: CategoryTab): boolean =>
+    key === "" ? true : key === "portal" ? doc.patientFacing : categoryOf(doc) === key;
+  const counts = Object.fromEntries(
+    CATEGORY_TABS.map((c) => [c.key, rows.filter((d) => inTab(d, c.key)).length]),
+  ) as Record<CategoryTab, number>;
+
+  const q = search.trim().toLowerCase();
+  const visible = rows.filter(
+    (doc) =>
+      inTab(doc, tab) &&
+      (!typeFilter || displayDocumentTypeValue(doc) === typeFilter) &&
+      (!sourceFilter || doc.metadata?.sourceChannel === sourceFilter) &&
+      (!statusFilter || doc.status === statusFilter) &&
+      (!q ||
+        doc.title.toLowerCase().includes(q) ||
+        displayDocumentType(doc).toLowerCase().includes(q) ||
+        provenanceLabel(doc.metadata).toLowerCase().includes(q) ||
+        Boolean(doc.metadata?.originalFilename?.toLowerCase().includes(q)) ||
+        Boolean(doc.metadata?.notes?.toLowerCase().includes(q))),
+  );
+  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const current = Math.min(page, pages);
+  const pageRows = visible.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
+  const filtersActive = Boolean(q || typeFilter || sourceFilter || statusFilter);
+  const reset = (): void => {
+    onSearch("");
+    onTypeFilter("");
+    onSourceFilter("");
+    onStatusFilter("");
+    setPage(1);
+  };
+
+  return (
+    <section className="wx-chart-section" aria-label={title} aria-busy={loading}>
+      <header className="wx-page-head">
+        <div>
+          <h2 style={{ margin: 0, fontSize: "1.375rem", fontWeight: 700 }}>{title}</h2>
+          <p>Clinical, administrative and patient documents.</p>
+        </div>
+        <button
+          type="button"
+          className="wx-btn-primary"
+          aria-label="Upload document"
+          onClick={onUpload}
+        >
+          <Glyph name="plus" size={16} /> Upload
+        </button>
+      </header>
+
+      {error ? (
+        <div role="alert" style={alert}>
+          <span>{error}</span>
+          <button
+            type="button"
+            aria-label="Dismiss error"
+            style={dismissAlert}
+            onClick={onDismissError}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
+      <fieldset className="wx-seg">
+        <legend className="wx-sr-only">Document category</legend>
+        {CATEGORY_TABS.map((c) => (
+          <button
+            key={c.key || "all"}
+            type="button"
+            aria-pressed={tab === c.key}
+            className={tab === c.key ? "is-selected" : undefined}
+            onClick={() => {
+              setTab(c.key);
+              setPage(1);
+            }}
+          >
+            {c.label}
+            <span className="wx-seg-count wx-nums">{counts[c.key]}</span>
+          </button>
+        ))}
+      </fieldset>
+
+      <div className="wx-filter-panel">
+        <label className="wx-search-field">
+          <Glyph name="search" size={16} />
+          <input
+            type="search"
+            aria-label="Search documents"
+            placeholder="Search by name, type, source…"
+            value={search}
+            onChange={(e) => {
+              onSearch(e.target.value);
+              setPage(1);
+            }}
+          />
+        </label>
+        <LibraryFilter
+          label="Type"
+          value={typeFilter}
+          onChange={(v) => {
+            onTypeFilter(v);
+            setPage(1);
+          }}
+        >
+          <option value="">All types</option>
+          {DOCUMENT_TYPE_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </LibraryFilter>
+        <LibraryFilter
+          label="Source"
+          value={sourceFilter}
+          onChange={(v) => {
+            onSourceFilter(v);
+            setPage(1);
+          }}
+        >
+          <option value="">All sources</option>
+          {sourceOptions.map((o) => (
+            <option key={o} value={o}>
+              {sourceLabel(o)}
+            </option>
+          ))}
+        </LibraryFilter>
+        <LibraryFilter
+          label="Status"
+          value={statusFilter}
+          onChange={(v) => {
+            onStatusFilter(v);
+            setPage(1);
+          }}
+        >
+          <option value="">All statuses</option>
+          {statusOptions.map((o) => (
+            <option key={o} value={o}>
+              {labelize(o)}
+            </option>
+          ))}
+        </LibraryFilter>
+        {filtersActive ? (
+          <button type="button" className="wx-btn-secondary" onClick={reset}>
+            Reset
+          </button>
+        ) : null}
+      </div>
+
+      {loading ? (
+        <div className="wx-list-state">
+          <LoadingSpinner />
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="wx-list-state">
+          <EmptyState
+            title={rows.length === 0 ? emptyTitle : "No matching documents"}
+            description={
+              rows.length === 0 ? emptyDescription : "Try changing the category, search or filters."
+            }
+          />
+          {rows.length === 0 ? (
+            <button type="button" className="wx-btn-primary" onClick={onUpload}>
+              <Glyph name="plus" size={16} /> Upload document
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="wx-btn-secondary"
+              onClick={() => {
+                reset();
+                setTab("");
+              }}
+            >
+              Clear filters
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="wx-list-table-wrap">
+          <table className="wx-list-table wx-list-table-static">
+            <caption className="wx-sr-only">Patient documents</caption>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Category</th>
+                <th>Date</th>
+                <th>Source</th>
+                <th>Status</th>
+                <th>
+                  <span className="wx-sr-only">Actions</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {pageRows.map((doc) => {
+                const v = currentVersion(doc, versions[doc.id]);
+                const category = categoryOf(doc);
+                return (
+                  <tr key={doc.id}>
+                    <td>
+                      <div className="wx-doc-name">
+                        <FileIcon type={displayDocumentTypeValue(doc)} />
+                        <div style={{ minWidth: 0 }}>
+                          <button
+                            type="button"
+                            className="wx-row-title wx-link-button"
+                            onClick={() => onView(doc)}
+                          >
+                            {doc.title}
+                          </button>
+                          <div className="wx-row-sub">
+                            {displayDocumentType(doc)}
+                            {v
+                              ? ` • ${formatMime(v.mimeType)} • v${v.versionNumber} • ${formatBytes(v.byteSize)}`
+                              : ""}
+                            {doc.patientFacing ? " • In portal" : ""}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      {category === "clinical"
+                        ? "Clinical"
+                        : category === "administrative"
+                          ? "Administrative"
+                          : "Other"}
+                    </td>
+                    <td className="wx-nums">{usDate(doc.updatedAt)}</td>
+                    <td>
+                      {doc.metadata?.sourceChannel
+                        ? sourceLabel(doc.metadata.sourceChannel)
+                        : "Not recorded"}
+                    </td>
+                    <td>
+                      <StatusPill label={labelize(doc.status)} tone={lifecycleTone(doc.status)} />
+                    </td>
+                    <td style={{ textAlign: "right", whiteSpace: "nowrap" }}>
+                      <button
+                        type="button"
+                        className="wx-icon-link"
+                        aria-label={`More actions for ${doc.title}`}
+                        title="Document details, history and actions"
+                        onClick={() => onDetail(doc)}
+                      >
+                        <Glyph name="more-horizontal" size={18} />
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          <div className="wx-table-footer">
+            <span className="wx-nums">
+              Showing {(current - 1) * PAGE_SIZE + 1} to{" "}
+              {Math.min(current * PAGE_SIZE, visible.length)} of {visible.length} documents
+            </span>
+            {pages > 1 ? (
+              <span style={{ display: "inline-flex", gap: "0.375rem" }}>
+                <button
+                  type="button"
+                  className="wx-btn-secondary wx-btn-sm"
+                  disabled={current === 1}
+                  onClick={() => setPage(current - 1)}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="wx-btn-secondary wx-btn-sm"
+                  disabled={current === pages}
+                  onClick={() => setPage(current + 1)}
+                >
+                  Next
+                </button>
+              </span>
+            ) : null}
+          </div>
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
+function LibraryFilter({
+  label,
+  value,
+  onChange,
+  children,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  children: ReactNode;
+}): JSX.Element {
+  return (
+    <label className="wx-filter-field">
+      <span>{label}</span>
+      <select
+        className="wx-select"
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {children}
+      </select>
+    </label>
   );
 }
 

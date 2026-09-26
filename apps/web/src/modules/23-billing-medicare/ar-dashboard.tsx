@@ -1,33 +1,29 @@
 import {
-  Button,
   EmptyState,
   Glyph,
-  KpiCard,
-  KpiStrip,
+  type GlyphName,
   LoadingSpinner,
-  OffsetPagination,
-  PageHeader,
-  RightDetailPanel,
+  Panel,
   StatusPill,
-  WorkQueueLayout,
   t,
   useApiClient,
 } from "@wardenx/ui";
-// apps/web/src/modules/23-billing-medicare — M23 Billing — Medicare, the AR DASHBOARD (R2, §5.1 #1).
-// The landing surface: AR aging buckets (0-30 / 31-60 / 61-90 / 90+), denial rate, NOE/NOTR filing-window
-// posture, and the claim-state mix. The spec names no single aggregate route, so the dashboard is composed
-// CLIENT-SIDE from the org-scoped rollup reads:
-//   GET /api/v1/billing/ar-dashboard  → ArAgingDto (the four aging buckets) — REQUIRED.
-//   GET /api/v1/billing/metrics       → { buckets: { key=claimState, count, amountCents }[] } — best-effort.
-//   GET /api/v1/noe-records / notr-records → filing-window posture (at-risk / breached) — best-effort.
-// All reads are org-scoped server-side (RLS); these are aggregate-only (no row-level PHI). The server is the
-// only authz point (ADR-0030) — a 403/503 on a best-effort read simply leaves that tile absent (degraded),
-// never a hard failure. Lantern: DashboardLayout + KpiStrip (Fraunces eyebrow / Inter tabular figure),
-// No-Line cards, CSS-var tokens only; every status pill resolves through billing-status.ts (§6.6).
-import { useCallback, useEffect, useState } from "react";
-import type { CSSProperties, JSX } from "react";
+// apps/web/src/modules/23-billing-medicare — Billing landing (M23 §5.1 #1, Track B / ADR-0030; 2026-09-25
+// redesign, mockup "Billing / Claims"). Four headline cards, the org's claims table, and a right rail with
+// the A/R aging buckets, the claim pipeline by state, and the NOE/NOTR filing-window posture.
+//   GET /api/v1/billing/claims        → the claims table (cursor pages of 50, "Load more").
+//   GET /api/v1/billing/ar-dashboard  → the four A/R aging buckets.
+//   GET /api/v1/billing/metrics       → claim counts and amounts by state.
+//   GET /api/v1/noe-records / notr-records → filing-window posture.
+// Claims carry no submitted/paid dates, so the cards are current counts by state, not month-to-date
+// figures, and there are no period-over-period trends. Each read is independent: one that fails leaves its
+// card or panel saying so rather than blanking the page. Every read is org-scoped server-side (RLS); the
+// server is the only authz point (ADR-0030).
+import { useEffect, useMemo, useState } from "react";
+import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { claimStateTone, dollars, statusLabel, windowTierLabel, windowTierTone } from "./billing-status";
+import { useSession } from "../../shell/session";
+import { claimStateTone, dollars, statusLabel } from "./billing-status";
 
 interface ArAging {
   bucket0to30Cents: number;
@@ -35,603 +31,643 @@ interface ArAging {
   bucket61to90Cents: number;
   bucket90PlusCents: number;
 }
-
 interface MetricsBucket {
   key: string;
   count: number;
   amountCents: number;
 }
-
 interface NoticeWindowRecord {
   state: string;
   windowTargetAt: string | null;
   windowBreachedAt: string | null;
 }
-
-interface ListPage<T> {
-  items: T[];
-  nextCursor: string | null;
-  hasMore: boolean;
+interface ClaimSummary {
+  claimId: string;
+  patientId: string;
+  tob: string;
+  state: string;
+  serviceFrom: string;
+  serviceTo: string;
+  claimControlNumber: string;
+  macJurisdiction: string;
+  totalChargeCents: number;
+  totalExpectedPaymentCents: number;
 }
+interface PatientName {
+  firstName?: string | null;
+  lastName?: string | null;
+  mrn?: string | null;
+}
+type Load<T> = T | null | "error";
 
-// Days remaining until a filing window closes (negative = breached). A row already flagged
-// `windowBreachedAt` is breached regardless of the wall clock.
+const SUBMITTED = ["submitted", "ack_pending", "ack_accepted", "ack_partial"];
+const PAID = ["paid", "partial_paid"];
+const PIPELINE = [
+  "draft",
+  "validating",
+  "ready",
+  "submitted",
+  "ack_pending",
+  "ack_accepted",
+  "ack_partial",
+  "paid",
+  "partial_paid",
+  "denied",
+] as const;
+const PAGE_SIZE = 10;
+
+const TOB_SHORT: Record<string, string> = {
+  "811": "Admit–discharge",
+  "812": "Interim · first",
+  "813": "Interim · continuing",
+  "814": "Interim · last",
+  "817": "Replacement",
+  "818": "Void",
+};
+
+// Days until a filing window closes (negative = breached).
 function daysRemaining(rec: NoticeWindowRecord): number {
   if (rec.windowBreachedAt) return -1;
   if (!rec.windowTargetAt) return Number.POSITIVE_INFINITY;
   return Math.floor((new Date(rec.windowTargetAt).getTime() - Date.now()) / 86_400_000);
 }
-
-type WindowPosture = { atRisk: number; breached: number; total: number };
-type RowKind = "ar" | "claim" | "notice";
-type RowFilter = "all" | RowKind;
-
-interface DashboardRow {
-  id: string;
-  kind: RowKind;
-  category: string;
-  label: string;
-  count: number | null;
-  amountCents: number | null;
-  tone: "success" | "progress" | "warning" | "error" | "critical" | "neutral";
-  detail: string;
-  href?: string;
-}
-
-const BILLING_PAGE_SIZES = [5, 10, 15, 20, 30, 50] as const;
-
-const thStyle: CSSProperties = {
-  padding: "0.625rem 0.75rem",
-  fontSize: "0.7rem",
-  fontWeight: 600,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-};
-
-const tdStyle: CSSProperties = {
-  padding: "0.65rem 0.75rem",
-  color: "var(--color-on-surface)",
-  verticalAlign: "middle",
-};
-
-const drawerActionStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "center",
-  padding: "0.45rem 0.95rem",
-  borderRadius: "var(--radius-md)",
-  border: "none",
-  cursor: "pointer",
-  background: "var(--color-surface-container)",
-  color: "var(--color-on-surface)",
-  fontSize: "0.82rem",
-  fontWeight: 600,
-  textDecoration: "none",
-};
-
-function summarizeWindows(records: NoticeWindowRecord[]): WindowPosture {
+function posture(records: NoticeWindowRecord[]): {
+  atRisk: number;
+  breached: number;
+  open: number;
+} {
   let atRisk = 0;
   let breached = 0;
+  let open = 0;
   for (const r of records) {
-    // Terminal notices (accepted / cancelled) have left the window — they don't count against posture.
     if (r.state === "ack_accepted" || r.state === "cancelled" || r.state === "ack_rejected")
       continue;
+    open += 1;
     const d = daysRemaining(r);
     if (d < 0) breached += 1;
     else if (d <= 2) atRisk += 1;
   }
-  return { atRisk, breached, total: records.length };
+  return { atRisk, breached, open };
 }
+
+const ymd = (v: string): Date | null => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+  return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+};
+function servicePeriod(from: string, to: string): string {
+  const a = ymd(from);
+  const b = ymd(to);
+  if (!a || !b) return "—";
+  const md = (d: Date) =>
+    `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`;
+  return `${md(a)} – ${md(b)}/${b.getFullYear()}`;
+}
+const wholeDollars = (cents: number): string =>
+  (cents / 100).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  });
 
 export function ArDashboard(): JSX.Element {
   const client = useApiClient();
-  const [aging, setAging] = useState<ArAging | null>(null);
-  const [buckets, setBuckets] = useState<MetricsBucket[] | null>(null);
-  const [noe, setNoe] = useState<WindowPosture | null>(null);
-  const [notr, setNotr] = useState<WindowPosture | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [degraded, setDegraded] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [rowFilter, setRowFilter] = useState<RowFilter>("all");
+  const permissions = useSession()?.permissions;
+  const [aging, setAging] = useState<Load<ArAging>>(null);
+  const [buckets, setBuckets] = useState<Load<MetricsBucket[]>>(null);
+  const [noe, setNoe] = useState<Load<NoticeWindowRecord[]>>(null);
+  const [notr, setNotr] = useState<Load<NoticeWindowRecord[]>>(null);
+  const [claims, setClaims] = useState<Load<ClaimSummary[]>>(null);
+  const [cursor, setCursor] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [patients, setPatients] = useState<Map<string, PatientName>>(new Map());
+  const [retryKey, setRetryKey] = useState(0);
+  const [search, setSearch] = useState("");
+  const [stateFilter, setStateFilter] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    setDegraded(false);
-    const [agingRes, metricsRes, noeRes, notrRes] = await Promise.all([
-      client.GET("/api/v1/billing/ar-dashboard"),
-      client.GET("/api/v1/billing/metrics"),
-      client.GET("/api/v1/noe-records"),
-      client.GET("/api/v1/notr-records"),
-    ]);
-    // The AR aging rollup is the page anchor; a 503 (seams unbound) / 403 here degrades the whole surface.
-    if (agingRes.error) {
-      setError("AR dashboard unavailable — the billing read seam is not bound, or you lack scope.");
-      setLoading(false);
-      return;
-    }
-    setAging(agingRes.data as unknown as ArAging);
-    // Best-effort tiles: each absent read leaves its tile out and raises the degraded marker (never throws).
-    if (metricsRes.error) setDegraded(true);
-    else setBuckets((metricsRes.data as unknown as { buckets?: MetricsBucket[] })?.buckets ?? []);
-    if (noeRes.error) setDegraded(true);
-    else
-      setNoe(
-        summarizeWindows(
-          ((noeRes.data as unknown as ListPage<NoticeWindowRecord>)?.items ??
-            []) as NoticeWindowRecord[],
-        ),
-      );
-    if (notrRes.error) setDegraded(true);
-    else
-      setNotr(
-        summarizeWindows(
-          ((notrRes.data as unknown as ListPage<NoticeWindowRecord>)?.items ??
-            []) as NoticeWindowRecord[],
-        ),
-      );
-    setLoading(false);
-  }, [client]);
-
+  // biome-ignore lint/correctness/useExhaustiveDependencies: retryKey re-runs the load on "Retry".
   useEffect(() => {
-    void load();
-  }, [load]);
+    let active = true;
+    const settle = <T,>(
+      p: Promise<{ data?: unknown; error?: unknown }>,
+      set: (v: Load<T>) => void,
+      pick: (d: unknown) => T,
+    ) =>
+      p
+        .then((r) => active && set(r.error ? "error" : pick(r.data)))
+        .catch(() => active && set("error"));
+    setClaims(null);
+    void settle<ArAging>(client.GET("/api/v1/billing/ar-dashboard"), setAging, (d) => d as ArAging);
+    void settle<MetricsBucket[]>(
+      client.GET("/api/v1/billing/metrics"),
+      setBuckets,
+      (d) => (d as { buckets?: MetricsBucket[] })?.buckets ?? [],
+    );
+    void settle<NoticeWindowRecord[]>(
+      client.GET("/api/v1/noe-records"),
+      setNoe,
+      (d) => (d as { items?: NoticeWindowRecord[] })?.items ?? [],
+    );
+    void settle<NoticeWindowRecord[]>(
+      client.GET("/api/v1/notr-records"),
+      setNotr,
+      (d) => (d as { items?: NoticeWindowRecord[] })?.items ?? [],
+    );
+    void client
+      .GET("/api/v1/billing/claims", { params: { query: { limit: 50 } } } as never)
+      .then((r) => {
+        if (!active) return;
+        if (r.error) return setClaims("error");
+        const page = r.data as unknown as {
+          items?: ClaimSummary[];
+          nextCursor?: string | null;
+          hasMore?: boolean;
+        };
+        setClaims(page?.items ?? []);
+        setCursor(page?.hasMore ? (page.nextCursor ?? null) : null);
+      })
+      .catch(() => active && setClaims("error"));
+    return () => {
+      active = false;
+    };
+  }, [client, retryKey]);
 
-  if (loading) return <LoadingSpinner />;
-  if (error || !aging) return <EmptyState title="Unavailable" description={error ?? "No data."} />;
+  async function loadMore(): Promise<void> {
+    if (!cursor || !Array.isArray(claims)) return;
+    setLoadingMore(true);
+    const r = await client
+      .GET("/api/v1/billing/claims", { params: { query: { limit: 50, cursor } } } as never)
+      .catch(() => ({ data: undefined, error: true }));
+    setLoadingMore(false);
+    if (r.error) return;
+    const next = r.data as unknown as {
+      items?: ClaimSummary[];
+      nextCursor?: string | null;
+      hasMore?: boolean;
+    };
+    setClaims([...claims, ...(next?.items ?? [])]);
+    setCursor(next?.hasMore ? (next.nextCursor ?? null) : null);
+  }
 
-  const totalArCents =
-    aging.bucket0to30Cents +
-    aging.bucket31to60Cents +
-    aging.bucket61to90Cents +
-    aging.bucket90PlusCents;
+  // Patient names for the loaded claims.
+  useEffect(() => {
+    if (!Array.isArray(claims)) return;
+    const missing = [...new Set(claims.map((c) => c.patientId))].filter((id) => !patients.has(id));
+    if (missing.length === 0) return;
+    let active = true;
+    void Promise.all(
+      missing.slice(0, 60).map((id) =>
+        client
+          .GET("/api/v1/patients/{id}", { params: { path: { id } } })
+          .then((r) => [id, (r.data ?? {}) as PatientName] as const)
+          .catch(() => [id, {} as PatientName] as const),
+      ),
+    ).then((rows) => {
+      if (active) setPatients((prev) => new Map([...prev, ...rows]));
+    });
+    return () => {
+      active = false;
+    };
+  }, [client, claims, patients]);
 
-  // Claim-state mix → denial rate + open-claim count (best-effort; absent when metrics degraded).
-  const byState = new Map((buckets ?? []).map((b) => [b.key, b]));
-  const totalClaims = (buckets ?? []).reduce((n, b) => n + b.count, 0);
-  const deniedCount = byState.get("denied")?.count ?? 0;
-  const denialRate = totalClaims > 0 ? Math.round((deniedCount / totalClaims) * 100) : null;
-  const validatingCount = byState.get("validating")?.count ?? 0;
-  const rows = dashboardRowsFor({ aging, buckets: buckets ?? [], noe, notr });
-  const hasActiveFilters = searchQuery !== "" || rowFilter !== "all";
-  const filteredRows = rows.filter((row) => {
-    const q = searchQuery.trim().toLowerCase();
-    const matchesSearch =
-      !q ||
-      row.category.toLowerCase().includes(q) ||
-      row.label.toLowerCase().includes(q) ||
-      row.detail.toLowerCase().includes(q);
-    const matchesKind = rowFilter === "all" || row.kind === rowFilter;
-    return matchesSearch && matchesKind;
-  });
-  const pageCount = Math.max(1, Math.ceil(filteredRows.length / pageSize));
-  const activePage = Math.min(page, pageCount);
-  const pagedRows = filteredRows.slice((activePage - 1) * pageSize, activePage * pageSize);
-  const selectedRow = rows.find((row) => row.id === selectedRowId) ?? null;
-
-  const clearFilters = (): void => {
-    setSearchQuery("");
-    setRowFilter("all");
-    setPage(1);
+  const nameOf = (id: string): string => {
+    const p = patients.get(id);
+    return (
+      [p?.firstName, p?.lastName].filter(Boolean).join(" ") || (p ? (p.mrn ?? "Patient") : "…")
+    );
   };
 
+  const byState = useMemo(
+    () => new Map((Array.isArray(buckets) ? buckets : []).map((b) => [b.key, b])),
+    [buckets],
+  );
+  const sum = (keys: readonly string[], f: "count" | "amountCents") =>
+    keys.reduce((n, k) => n + (byState.get(k)?.[f] ?? 0), 0);
+  const totalClaims = Array.isArray(buckets) ? buckets.reduce((n, b) => n + b.count, 0) : 0;
+  const denied = byState.get("denied")?.count ?? 0;
+  const over30 =
+    aging && aging !== "error"
+      ? aging.bucket31to60Cents + aging.bucket61to90Cents + aging.bucket90PlusCents
+      : null;
+  const openAr = aging && aging !== "error" ? (over30 ?? 0) + aging.bucket0to30Cents : null;
+
+  const q = search.trim().toLowerCase();
+  const visible = (Array.isArray(claims) ? claims : []).filter(
+    (c) =>
+      (!stateFilter || c.state === stateFilter) &&
+      (!q ||
+        c.claimControlNumber.toLowerCase().includes(q) ||
+        nameOf(c.patientId).toLowerCase().includes(q)),
+  );
+  const pages = Math.max(1, Math.ceil(visible.length / PAGE_SIZE));
+  const current = Math.min(page, pages);
+  const rows = visible.slice((current - 1) * PAGE_SIZE, current * PAGE_SIZE);
+  const canAssemble = permissions?.includes("billing.claim.assemble") ?? false;
+
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="Accounts Receivable"
-          breadcrumb="Billing / Medicare"
-          actions={
-            <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-              <Link to="/billing/claims" style={drawerActionStyle}>
-                Claims
-              </Link>
-              <Link to="/billing/noe" style={drawerActionStyle}>
-                NOE queue
-              </Link>
-              <Link to="/billing/notr" style={drawerActionStyle}>
-                NOTR queue
-              </Link>
-            </div>
-          }
-        >
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Review Medicare AR aging, claim-state aggregates, and notice filing-window posture.
+    <div className="wx-with-rail">
+      <div className="wx-with-rail-main">
+        <header className="wx-page-head">
+          <div>
+            <h1 style={{ fontSize: "1.875rem" }}>Billing / Claims</h1>
+            <p>Medicare claims, remittances, denials and accounts receivable.</p>
           </div>
-        </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="AR · 0-30 days"
-            value={dollars(aging.bucket0to30Cents)}
-            detail="Backend AR bucket"
-            tone="success"
-            accentColor="var(--color-success)"
+          <div style={{ display: "flex", gap: "0.625rem" }}>
+            <Link to="/billing/claims" className="wx-btn-secondary">
+              <Glyph name="clipboard-list" size={16} /> Claim Workbench
+            </Link>
+            {canAssemble ? (
+              <Link to="/billing/claims/new" className="wx-btn-primary">
+                <Glyph name="plus" size={16} /> New Claim
+              </Link>
+            ) : null}
+          </div>
+        </header>
+
+        <nav className="wx-subtabs" aria-label="Billing views">
+          <Link to="/billing" aria-current="page" className="is-current">
+            Claims
+          </Link>
+          <Link to="/remittance">Remittances</Link>
+          <Link to="/remittance/denials">Denials</Link>
+          <Link to="/billing/noe">NOE / NOTR</Link>
+          <Link to="/billing/eligibility">Eligibility</Link>
+        </nav>
+
+        <div className="wx-stat-grid" aria-label="Billing summary">
+          <Kpi
+            icon="send"
+            label="Submitted"
+            value={buckets === "error" ? "—" : buckets ? sum(SUBMITTED, "count") : null}
+            hint={buckets === "error" ? "Unavailable" : "Awaiting payment"}
           />
-          <KpiCard
-            label="AR · 31-60 days"
-            value={dollars(aging.bucket31to60Cents)}
-            detail="Backend AR bucket"
-            tone="info"
-            accentColor="var(--color-primary)"
-          />
-          <KpiCard
-            label="AR · 61-90 days"
-            value={dollars(aging.bucket61to90Cents)}
-            detail="Backend AR bucket"
-            tone="warning"
-            accentColor="var(--color-warning)"
-          />
-          <KpiCard
-            label="AR · 90+ days"
-            value={dollars(aging.bucket90PlusCents)}
-            detail="Backend AR bucket"
-            tone={aging.bucket90PlusCents > 0 ? "danger" : "neutral"}
-            accentColor={
-              aging.bucket90PlusCents > 0 ? "var(--color-error)" : "var(--color-outline-variant)"
+          <Kpi
+            icon="check-circle"
+            label="Paid"
+            value={buckets === "error" ? "—" : buckets ? sum(PAID, "count") : null}
+            hint={
+              buckets === "error"
+                ? "Unavailable"
+                : buckets
+                  ? wholeDollars(sum(PAID, "amountCents"))
+                  : ""
             }
+            color={Array.isArray(buckets) && sum(PAID, "count") > 0 ? t.success : undefined}
           />
-          <KpiCard
-            label="Total Open AR"
-            value={dollars(totalArCents)}
-            detail="Sum of backend buckets"
-            tone="neutral"
-            accentColor="var(--color-outline-variant)"
+          <Kpi
+            icon="x-circle"
+            label="Denied"
+            value={buckets === "error" ? "—" : buckets ? denied : null}
+            hint={
+              buckets === "error"
+                ? "Unavailable"
+                : totalClaims > 0
+                  ? `${Math.round((denied / totalClaims) * 100)}% of claims`
+                  : "No claims yet"
+            }
+            color={denied > 0 ? t.error : undefined}
           />
-          {buckets ? (
-            <>
-              <KpiCard
-                label="Denial Rate"
-                value={denialRate === null ? "—" : `${denialRate}%`}
-                detail="Backend metrics buckets"
-                tone={(denialRate ?? 0) > 0 ? "warning" : "neutral"}
-                accentColor={
-                  (denialRate ?? 0) > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-                }
-              />
-              <KpiCard
-                label="Open Claims"
-                value={totalClaims}
-                detail="Backend metrics buckets"
-                tone="info"
-                accentColor="var(--color-primary)"
-              />
-              <KpiCard
-                label="Pending Validation"
-                value={validatingCount}
-                detail="Backend metrics buckets"
-                tone={validatingCount > 0 ? "warning" : "neutral"}
-                accentColor={
-                  validatingCount > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-                }
-              />
-            </>
-          ) : null}
-        </KpiStrip>
-      }
-      filters={
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "0 1.5rem 0.75rem" }}>
-          {degraded ? (
-            <p
-              role="status"
-              style={{
-                margin: 0,
-                padding: "0.625rem 1rem",
-                borderRadius: "var(--radius-md)",
-                background: "var(--color-surface-low)",
-                color: "var(--color-on-surface-variant)",
-                fontSize: "0.85rem",
+          <Kpi
+            icon="clock"
+            label="A/R > 30 days"
+            value={aging === "error" ? "—" : over30 === null ? null : wholeDollars(over30)}
+            hint={
+              aging === "error"
+                ? "Unavailable"
+                : openAr === null
+                  ? ""
+                  : `of ${wholeDollars(openAr)} open`
+            }
+            color={(over30 ?? 0) > 0 ? t.warning : undefined}
+          />
+        </div>
+
+        <div className="wx-filter-panel">
+          <label className="wx-search-field">
+            <Glyph name="search" size={16} />
+            <input
+              type="search"
+              aria-label="Search claims"
+              placeholder="Search by claim # or patient…"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(1);
+              }}
+            />
+          </label>
+          <label className="wx-filter-field">
+            <span>Status</span>
+            <select
+              className="wx-select"
+              aria-label="Claim status"
+              value={stateFilter}
+              onChange={(e) => {
+                setStateFilter(e.target.value);
+                setPage(1);
               }}
             >
-              Some panels are running in a degraded mode — a supporting read is unavailable.
-            </p>
-          ) : null}
-
-          <div
-            style={{
-              display: "flex",
-              flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: "1rem",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-              <div style={{ position: "relative", minWidth: "15rem" }}>
-                <input
-                  type="search"
-                  placeholder="Search billing metrics..."
-                  value={searchQuery}
-                  onChange={(event) => {
-                    setSearchQuery(event.target.value);
-                    setPage(1);
-                  }}
-                  aria-label="Search billing metrics"
-                  style={{
-                    width: "100%",
-                    paddingLeft: "2rem",
-                    height: "2.25rem",
-                    fontSize: "0.85rem",
-                  }}
-                />
-                <div
-                  style={{
-                    position: "absolute",
-                    left: "0.625rem",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    color: "var(--color-on-surface-variant)",
-                    pointerEvents: "none",
-                  }}
-                >
-                  <Glyph name="search" size={14} />
-                </div>
-              </div>
-
-              <select
-                value={rowFilter}
-                onChange={(event) => {
-                  setRowFilter(event.target.value as RowFilter);
-                  setPage(1);
-                }}
-                aria-label="Filter by billing metric type"
-                style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
-              >
-                <option value="all">Type: All</option>
-                <option value="ar">AR aging</option>
-                <option value="claim">Claims</option>
-                <option value="notice">NOE / NOTR</option>
-              </select>
-
-              {hasActiveFilters ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
-            </div>
-
-            <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8125rem" }}>
-              {filteredRows.length} of {rows.length} metrics
-            </span>
-          </div>
+              <option value="">All statuses</option>
+              {[...PIPELINE, "replaced", "voided"].map((s) => (
+                <option key={s} value={s}>
+                  {statusLabel(s)}
+                </option>
+              ))}
+            </select>
+          </label>
         </div>
-      }
-      table={
-        filteredRows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
+
+        {claims === null ? (
+          <div className="wx-list-state">
+            <LoadingSpinner />
+          </div>
+        ) : claims === "error" ? (
+          <div className="wx-list-state">
             <EmptyState
-              title="No matching billing metrics"
-              description="Try adjusting your search criteria or clearing active filters."
-              action={
-                <Button tone="secondary" size="sm" onClick={clearFilters}>
-                  Clear filters
-                </Button>
+              title="Claims unavailable"
+              description="The claims list could not be loaded."
+            />
+            <button
+              type="button"
+              className="wx-btn-secondary"
+              onClick={() => setRetryKey((k) => k + 1)}
+            >
+              Retry
+            </button>
+          </div>
+        ) : visible.length === 0 ? (
+          <div className="wx-list-state">
+            <EmptyState
+              title={claims.length === 0 ? "No claims yet" : "No matching claims"}
+              description={
+                claims.length === 0
+                  ? "Claims appear here once they are assembled from a patient's billing period."
+                  : "Try a different search or status."
               }
             />
           </div>
         ) : (
-          <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem" }}>
-            <BillingMetricTable
-              rows={pagedRows}
-              selectedRowId={selectedRowId}
-              onSelectRow={setSelectedRowId}
-            />
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={filteredRows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={BILLING_PAGE_SIZES}
-              noun="metrics"
-            />
+          <div className="wx-list-table-wrap">
+            <table className="wx-list-table wx-list-table-static">
+              <caption className="wx-sr-only">Claims</caption>
+              <thead>
+                <tr>
+                  <th>Claim #</th>
+                  <th>Patient</th>
+                  <th>Dates of Service</th>
+                  <th>Type</th>
+                  <th style={{ textAlign: "right" }}>Amount</th>
+                  <th style={{ textAlign: "right" }}>Expected</th>
+                  <th>Status</th>
+                  <th>
+                    <span className="wx-sr-only">Open</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((c) => (
+                  <tr key={c.claimId}>
+                    <td className="wx-nums">
+                      <Link to={`/billing/claims/${c.claimId}`} className="wx-row-title">
+                        {c.claimControlNumber}
+                      </Link>
+                    </td>
+                    <td>
+                      <Link to={`/patients/${c.patientId}`}>{nameOf(c.patientId)}</Link>
+                    </td>
+                    <td className="wx-nums">{servicePeriod(c.serviceFrom, c.serviceTo)}</td>
+                    <td>
+                      <span title={`TOB ${c.tob}`}>{TOB_SHORT[c.tob] ?? c.tob}</span>
+                      <div className="wx-row-sub">Medicare · {c.macJurisdiction}</div>
+                    </td>
+                    <td className="wx-nums" style={{ textAlign: "right" }}>
+                      {dollars(c.totalChargeCents)}
+                    </td>
+                    <td className="wx-nums" style={{ textAlign: "right" }}>
+                      {dollars(c.totalExpectedPaymentCents)}
+                    </td>
+                    <td>
+                      <StatusPill label={statusLabel(c.state)} tone={claimStateTone(c.state)} />
+                    </td>
+                    <td style={{ textAlign: "right" }}>
+                      <Link
+                        to={`/billing/claims/${c.claimId}`}
+                        className="wx-icon-link"
+                        aria-label={`Open claim ${c.claimControlNumber}`}
+                      >
+                        <Glyph name="chevron-right" size={18} />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className="wx-table-footer">
+              <span className="wx-nums">
+                Showing {(current - 1) * PAGE_SIZE + 1} to{" "}
+                {Math.min(current * PAGE_SIZE, visible.length)} of {visible.length} loaded claims
+              </span>
+              <span style={{ display: "inline-flex", gap: "0.375rem" }}>
+                <button
+                  type="button"
+                  className="wx-btn-secondary wx-btn-sm"
+                  disabled={current === 1}
+                  onClick={() => setPage(current - 1)}
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  className="wx-btn-secondary wx-btn-sm"
+                  disabled={current === pages}
+                  onClick={() => setPage(current + 1)}
+                >
+                  Next
+                </button>
+                {cursor ? (
+                  <button
+                    type="button"
+                    className="wx-btn-secondary wx-btn-sm"
+                    disabled={loadingMore}
+                    onClick={() => void loadMore()}
+                  >
+                    {loadingMore ? "Loading…" : "Load more"}
+                  </button>
+                ) : null}
+              </span>
+            </div>
           </div>
-        )
-      }
-      detail={
-        selectedRow ? (
-          <RightDetailPanel
-            open={selectedRow !== null}
-            title="Billing Metric"
-            onClose={() => setSelectedRowId(null)}
-            hideScrollbar
-          >
-            <BillingMetricDrawer row={selectedRow} />
-          </RightDetailPanel>
-        ) : null
-      }
-      fullPageScroll
-    />
-  );
-}
+        )}
+      </div>
 
-function dashboardRowsFor({
-  aging,
-  buckets,
-  noe,
-  notr,
-}: {
-  aging: ArAging;
-  buckets: MetricsBucket[];
-  noe: WindowPosture | null;
-  notr: WindowPosture | null;
-}): DashboardRow[] {
-  const arRows: DashboardRow[] = [
-    ["0-30 days", aging.bucket0to30Cents, "success"],
-    ["31-60 days", aging.bucket31to60Cents, "progress"],
-    ["61-90 days", aging.bucket61to90Cents, "warning"],
-    ["90+ days", aging.bucket90PlusCents, aging.bucket90PlusCents > 0 ? "error" : "neutral"],
-  ].map(([label, amountCents, tone]) => ({
-    id: `ar:${label}`,
-    kind: "ar",
-    category: "AR aging",
-    label: String(label),
-    count: null,
-    amountCents: Number(amountCents),
-    tone: tone as DashboardRow["tone"],
-    detail: "Backend AR aging bucket from /api/v1/billing/ar-dashboard.",
-  }));
+      <aside className="wx-with-rail-side" aria-label="Receivables">
+        <Panel title="A/R Aging" icon="bar-chart">
+          {aging === null ? (
+            <LoadingSpinner />
+          ) : aging === "error" ? (
+            <p className="wx-rail-empty" style={{ padding: 0 }}>
+              A/R aging is unavailable.
+            </p>
+          ) : (
+            <ArAgingBars aging={aging} />
+          )}
+        </Panel>
 
-  const claimRows = buckets.map((bucket) => ({
-    id: `claim:${bucket.key}`,
-    kind: "claim" as const,
-    category: "Claims",
-    label: statusLabel(bucket.key),
-    count: bucket.count,
-    amountCents: bucket.amountCents,
-    tone: claimStateTone(bucket.key),
-    detail: "Backend claim-state aggregate from /api/v1/billing/metrics.",
-    href: "/billing/claims",
-  }));
-
-  const noticeRows = [
-    noticeRow("NOE filing windows", noe, "/billing/noe"),
-    noticeRow("NOTR filing windows", notr, "/billing/notr"),
-  ].filter((row): row is DashboardRow => row !== null);
-
-  return [...arRows, ...claimRows, ...noticeRows];
-}
-
-function noticeRow(label: string, posture: WindowPosture | null, href: string): DashboardRow | null {
-  if (!posture) return null;
-  const worstDays = posture.breached > 0 ? -1 : posture.atRisk > 0 ? 1 : 5;
-  return {
-    id: `notice:${label}`,
-    kind: "notice",
-    category: "NOE / NOTR",
-    label,
-    count: posture.total,
-    amountCents: null,
-    tone: windowTierTone(worstDays),
-    detail: `${posture.atRisk} at risk · ${posture.breached} breached · summarized from notice records.`,
-    href,
-  };
-}
-
-function BillingMetricTable({
-  rows,
-  selectedRowId,
-  onSelectRow,
-}: {
-  rows: DashboardRow[];
-  selectedRowId: string | null;
-  onSelectRow: (id: string) => void;
-}): JSX.Element {
-  return (
-    <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
-      <thead>
-        <tr
-          style={{
-            textAlign: "left",
-            color: "var(--color-on-surface-variant)",
-            borderBottom:
-              "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-            background: "var(--color-surface-low)",
-          }}
+        <Panel
+          title="Claim Pipeline"
+          icon="activity"
+          action={<Link to="/billing/claims">Workbench</Link>}
         >
-          <th style={{ ...thStyle, width: "18%" }}>Type</th>
-          <th style={{ ...thStyle, width: "24%" }}>Metric</th>
-          <th style={{ ...thStyle, width: "16%", textAlign: "right" }}>Count</th>
-          <th style={{ ...thStyle, width: "18%", textAlign: "right" }}>Amount</th>
-          <th style={{ ...thStyle, width: "24%" }}>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((row) => {
-          const isSelected = selectedRowId === row.id;
-          return (
-            <tr
-              key={row.id}
-              onClick={() => onSelectRow(row.id)}
-              className="wx-data-row-interactive"
-              style={{
-                borderBottom:
-                  "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-                background: isSelected ? "var(--color-primary-tint)" : "transparent",
-                cursor: "pointer",
-                transition: "background 0.15s ease",
-              }}
-            >
-              <td style={tdStyle}>{row.category}</td>
-              <td style={tdStyle}>{row.label}</td>
-              <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                {row.count ?? "—"}
-              </td>
-              <td style={{ ...tdStyle, textAlign: "right", fontVariantNumeric: "tabular-nums" }}>
-                {row.amountCents === null ? "—" : dollars(row.amountCents)}
-              </td>
-              <td style={tdStyle}>
-                <StatusPill label={statusForRow(row)} tone={row.tone} />
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+          {buckets === null ? (
+            <LoadingSpinner />
+          ) : buckets === "error" ? (
+            <p className="wx-rail-empty" style={{ padding: 0 }}>
+              Claim counts are unavailable.
+            </p>
+          ) : totalClaims === 0 ? (
+            <p className="wx-rail-empty" style={{ padding: 0 }}>
+              No claims yet.
+            </p>
+          ) : (
+            <ul className="wx-hbars">
+              {PIPELINE.filter((s) => (byState.get(s)?.count ?? 0) > 0).map((s) => {
+                const n = byState.get(s)?.count ?? 0;
+                const max = Math.max(...PIPELINE.map((k) => byState.get(k)?.count ?? 0), 1);
+                return (
+                  <li key={s}>
+                    <span>{statusLabel(s)}</span>
+                    <span className="wx-hbar-track">
+                      <span
+                        style={{
+                          width: `${(n / max) * 100}%`,
+                          background: s === "denied" ? t.error : undefined,
+                        }}
+                      />
+                    </span>
+                    <strong className="wx-nums">{n}</strong>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Panel>
+
+        <Panel title="Filing Windows" icon="calendar-check">
+          <dl className="wx-kv">
+            <WindowRow label="NOE" records={noe} to="/billing/noe" />
+            <WindowRow label="NOTR" records={notr} to="/billing/notr" />
+          </dl>
+          <p className="wx-row-sub" style={{ margin: "0.625rem 0 0", fontSize: "0.75rem" }}>
+            At risk: 2 days or less left in the filing window.
+          </p>
+        </Panel>
+      </aside>
+    </div>
   );
 }
 
-function BillingMetricDrawer({ row }: { row: DashboardRow }): JSX.Element {
+function Kpi({
+  icon,
+  label,
+  value,
+  hint,
+  color,
+}: {
+  icon: GlyphName;
+  label: string;
+  value: ReactNode | null;
+  hint: string;
+  color?: string;
+}): JSX.Element {
+  const c = color ?? t.primary;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-        <StatusPill label={row.category} tone={row.tone} />
-        <StatusPill label={statusForRow(row)} tone={row.tone} />
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
-        <span style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>{row.label}</span>
-        <span style={{ color: "var(--color-on-surface-variant)", fontSize: "0.8125rem" }}>
-          {row.detail}
-        </span>
-      </div>
-
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-          gap: "0.75rem",
-          padding: "0.75rem",
-          borderRadius: "var(--radius-md)",
-          background: "var(--color-surface-low)",
-        }}
+    <div className="wx-stat-card">
+      <span
+        className="wx-stat-icon"
+        style={{ color: c, background: `color-mix(in srgb, ${c} 12%, ${t.surfaceLowest})` }}
       >
-        <MetricField label="Count" value={row.count ?? "—"} />
-        <MetricField label="Amount" value={row.amountCents === null ? "—" : dollars(row.amountCents)} />
-      </div>
-
-      {row.href ? (
-        <Link to={row.href} style={drawerActionStyle}>
-          Open related queue
-        </Link>
-      ) : null}
-    </div>
-  );
-}
-
-function MetricField({ label, value }: { label: string; value: string | number }): JSX.Element {
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "0.2rem" }}>
-      <span style={{ color: t.onSurfaceVariant, fontSize: "0.7rem" }}>{label}</span>
-      <span style={{ color: t.onSurface, fontSize: "0.875rem", fontVariantNumeric: "tabular-nums" }}>
-        {value}
+        <Glyph name={icon} size={20} />
       </span>
+      <div style={{ minWidth: 0 }}>
+        <div className="wx-stat-label">{label}</div>
+        <strong className="wx-stat-value wx-nums" style={color ? { color } : undefined}>
+          {value ?? "…"}
+        </strong>
+        <div className="wx-stat-label">{hint}</div>
+      </div>
     </div>
   );
 }
 
-function statusForRow(row: DashboardRow): string {
-  if (row.kind === "notice") {
-    if (row.detail.includes("breached") && !row.detail.startsWith("0 at risk · 0 breached"))
-      return row.detail.includes("· 0 breached") ? "At risk" : "Breached";
-    return "In window";
+function ArAgingBars({ aging }: { aging: ArAging }): JSX.Element {
+  const bars = [
+    { label: "0–30", cents: aging.bucket0to30Cents },
+    { label: "31–60", cents: aging.bucket31to60Cents },
+    { label: "61–90", cents: aging.bucket61to90Cents },
+    { label: "90+", cents: aging.bucket90PlusCents },
+  ];
+  const total = bars.reduce((n, b) => n + b.cents, 0);
+  if (total === 0) {
+    return (
+      <p className="wx-row-sub" style={{ margin: 0 }}>
+        No open claims in accounts receivable.
+      </p>
+    );
   }
-  return row.kind === "claim" ? row.label : row.label;
+  const max = Math.max(...bars.map((b) => b.cents), 1);
+  return (
+    <figure style={{ margin: 0 }}>
+      <figcaption className="wx-row-sub" style={{ marginBottom: "0.5rem" }}>
+        {wholeDollars(total)} open, by days outstanding
+      </figcaption>
+      <div className="wx-bars">
+        {bars.map((b) => (
+          <div key={b.label} title={`${b.label} days: ${dollars(b.cents)}`}>
+            <span className="wx-bar-value wx-nums">{wholeDollars(b.cents)}</span>
+            <span
+              className="wx-bar"
+              style={{
+                height: `${Math.max(3, (b.cents / max) * 100)}%`,
+                background: b.label === "90+" ? t.warning : t.primary,
+              }}
+            />
+            <span className="wx-bar-label">{b.label}</span>
+          </div>
+        ))}
+      </div>
+    </figure>
+  );
+}
+
+function WindowRow({
+  label,
+  records,
+  to,
+}: {
+  label: string;
+  records: Load<NoticeWindowRecord[]>;
+  to: string;
+}): JSX.Element {
+  const p = Array.isArray(records) ? posture(records) : null;
+  return (
+    <>
+      <dt>
+        <Link to={to}>{label} queue</Link>
+      </dt>
+      <dd>
+        {records === null ? (
+          "…"
+        ) : records === "error" ? (
+          "Unavailable"
+        ) : p && (p.breached > 0 || p.atRisk > 0) ? (
+          <span style={{ display: "inline-flex", gap: "0.375rem", flexWrap: "wrap" }}>
+            {p.breached > 0 ? <StatusPill label={`${p.breached} breached`} tone="error" /> : null}
+            {p.atRisk > 0 ? <StatusPill label={`${p.atRisk} at risk`} tone="warning" /> : null}
+          </span>
+        ) : (
+          <span className="wx-nums">{p?.open ? `${p.open} open · on time` : "None open"}</span>
+        )}
+      </dd>
+    </>
+  );
 }

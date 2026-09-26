@@ -28,11 +28,12 @@ const TONE: Record<StatusTone, { fg: string; bg: string; glyph: GlyphName }> = {
 export interface StatusPillProps {
   label: ReactNode;
   tone: StatusTone;
-  /** Override the default glyph for the tone. */
+  /** Opt-in glyph partner. The redesign's pills are text-only (the label carries the meaning, so
+   *  color is never the sole signal — §10.10); pass a glyph where a pill needs one. */
   glyph?: GlyphName;
 }
 
-/** A status pill — radius-full, label-md, color + glyph partner (§6.6). */
+/** A status pill — tinted, md radius, text label (+ optional glyph) (§6.6, 2026-09-25 redesign). */
 export function StatusPill({ label, tone, glyph }: StatusPillProps): JSX.Element {
   const meta = TONE[tone];
   return (
@@ -42,18 +43,18 @@ export function StatusPill({ label, tone, glyph }: StatusPillProps): JSX.Element
         display: "inline-flex",
         alignItems: "center",
         gap: "0.3rem",
-        padding: "0.2rem 0.6rem",
-        borderRadius: "9999px",
+        padding: "0.15rem 0.55rem",
+        borderRadius: t.radiusSm,
         background: meta.bg,
         color: meta.fg,
         fontFamily: t.fontSans,
         fontSize: "0.75rem",
-        fontWeight: 600,
-        lineHeight: 1.4,
+        fontWeight: 500,
+        lineHeight: 1.45,
         whiteSpace: "nowrap",
       }}
     >
-      <Glyph name={glyph ?? meta.glyph} size={13} />
+      {glyph ? <Glyph name={glyph} size={13} /> : null}
       {label}
     </span>
   );

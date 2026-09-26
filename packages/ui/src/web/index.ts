@@ -47,6 +47,8 @@ export type {
   TextFieldProps,
 } from "./components/fields";
 export { NavGroup, NavLink, groupByNavGroup } from "./components/nav-link";
+export { CountBadge, FlagChip, InfoRows, Panel } from "./components/panel";
+export type { InfoRow, PanelProps } from "./components/panel";
 export type { NavGroupProps, NavLinkProps } from "./components/nav-link";
 export { StatusPill } from "./components/status-pill";
 export type { StatusPillProps, StatusTone } from "./components/status-pill";

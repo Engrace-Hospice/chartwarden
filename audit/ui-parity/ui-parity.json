@@ -516,6 +516,22 @@
       "app": "web",
       "module": "12-dosespot",
       "moduleId": 12,
+      "id": "prescribing.new-medication",
+      "path": "/patients/:patientId/medications/new",
+      "permission": "prescribing.draft"
+    },
+    {
+      "app": "web",
+      "module": "12-dosespot",
+      "moduleId": 12,
+      "id": "prescribing.edit-medication-draft",
+      "path": "/medication-orders/:id/edit",
+      "permission": "prescribing.draft"
+    },
+    {
+      "app": "web",
+      "module": "12-dosespot",
+      "moduleId": 12,
       "id": "prescribing.medication-detail",
       "path": "/medication-orders/:id",
       "permission": "prescribing.read"
@@ -871,6 +887,14 @@
       "id": "bereavement.plan.history",
       "path": "/bereavement/plans/:planId/history",
       "permission": "bereavement.plan.read"
+    },
+    {
+      "app": "web",
+      "module": "17-scheduling",
+      "moduleId": 17,
+      "id": "scheduling.calendar",
+      "path": "/calendar",
+      "permission": "(none)"
     },
     {
       "app": "web",
@@ -1374,6 +1398,14 @@
       "moduleId": 23,
       "id": "billing.claims",
       "path": "/billing/claims",
+      "permission": "billing.claim.read"
+    },
+    {
+      "app": "web",
+      "module": "23-billing-medicare",
+      "moduleId": 23,
+      "id": "billing.patient-claims",
+      "path": "/patients/:patientId/claims",
       "permission": "billing.claim.read"
     },
     {

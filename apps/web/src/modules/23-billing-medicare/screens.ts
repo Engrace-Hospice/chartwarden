@@ -32,6 +32,9 @@ const NoeDetail = lazy(() => import("./noe-detail").then((m) => ({ default: m.No
 const NoeQueue = lazy(() => import("./noe-queue").then((m) => ({ default: m.NoeQueue })));
 const NotrDetail = lazy(() => import("./notr-detail").then((m) => ({ default: m.NotrDetail })));
 const NotrQueue = lazy(() => import("./notr-queue").then((m) => ({ default: m.NotrQueue })));
+const PatientClaims = lazy(() =>
+  import("./patient-claims").then((m) => ({ default: m.PatientClaims })),
+);
 const OverrideAudit = lazy(() =>
   import("./override-audit").then((m) => ({ default: m.OverrideAudit })),
 );
@@ -72,6 +75,14 @@ export const billingScreens: ScreenRegistryModule<ComponentType> = {
       navGroup: "Billing",
       requiredPermission: "billing.claim.read",
       screen: ClaimWorkbench,
+    },
+    // --- patient chart Claims tab (2026-09-25 redesign) — reached from the chart tab strip, no nav ---
+    {
+      id: "billing.patient-claims",
+      path: "/patients/:patientId/claims",
+      title: "Claims",
+      requiredPermission: "billing.claim.read",
+      screen: PatientClaims,
     },
     // --- claim assembly wizard (§5.1 #3) ---
     {

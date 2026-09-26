@@ -18,11 +18,16 @@ const sizeStyle: Record<ButtonSize, { minHeight: string; padding: string; fontSi
   lg: { minHeight: "2.875rem", padding: "0.625rem 1.25rem", fontSize: "0.875rem" },
 };
 
-const toneStyle: Record<ButtonTone, { background: string; color: string }> = {
-  primary: { background: t.primary, color: t.onPrimary },
-  secondary: { background: t.surfaceContainer, color: t.onSurface },
-  tertiary: { background: "transparent", color: t.primary },
-  danger: { background: t.error, color: t.onEmphasis },
+const toneStyle: Record<ButtonTone, { background: string; color: string; border: string }> = {
+  primary: { background: t.primary, color: t.onPrimary, border: `1px solid ${t.primary}` },
+  // Secondary is the mockups' outlined white button ("Actions ▾", "Save draft").
+  secondary: {
+    background: t.surfaceLowest,
+    color: t.onSurface,
+    border: `1px solid ${t.cardBorder}`,
+  },
+  tertiary: { background: "transparent", color: t.primary, border: "1px solid transparent" },
+  danger: { background: t.error, color: t.onEmphasis, border: `1px solid ${t.error}` },
 };
 
 /**
@@ -54,15 +59,15 @@ export function Button({
         alignItems: "center",
         justifyContent: "center",
         gap: t.space2,
-        border: "none",
-        borderRadius: "9999px",
+        border: unavailable ? `1px solid ${t.cardBorder}` : visual.border,
+        borderRadius: t.radiusMd,
         minHeight: sizeStyle[size].minHeight,
         padding: sizeStyle[size].padding,
         background: unavailable ? t.surfaceContainer : visual.background,
         color: unavailable ? t.onSurfaceVariant : visual.color,
         fontFamily: t.fontSans,
         fontSize: sizeStyle[size].fontSize,
-        fontWeight: 650,
+        fontWeight: 600,
         lineHeight: 1.2,
         cursor: unavailable ? "not-allowed" : "pointer",
         opacity: unavailable ? 0.72 : 1,

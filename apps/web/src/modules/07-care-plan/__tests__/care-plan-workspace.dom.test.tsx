@@ -289,9 +289,9 @@ describe("M7 Care Plan workspace", () => {
     renderWorkspace(client);
 
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Patient Care Plan" })).toBeTruthy(),
+      expect(screen.getByRole("heading", { name: "Plan of Care" })).toBeTruthy(),
     );
-    expect(screen.getByText("June Rivera")).toBeTruthy();
+    expect(screen.getAllByText("June Rivera").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Active terminal problem required/).length).toBeGreaterThan(0);
     expect(screen.getByText("Care Plan review is due.")).toBeTruthy();
     expect(screen.getByText("Comfort maintained")).toBeTruthy();
@@ -301,7 +301,7 @@ describe("M7 Care Plan workspace", () => {
     const client = clientFor({ plan: planWith([signedInitial, draftRevision]) });
     renderWorkspace(client);
 
-    await screen.findByRole("heading", { name: "Patient Care Plan" });
+    await screen.findByRole("heading", { name: "Plan of Care" });
     fireEvent.click(screen.getByRole("button", { name: "Add problem" }));
     fireEvent.change(screen.getByLabelText("Description"), {
       target: { value: "Dyspnea at rest" },
@@ -324,7 +324,7 @@ describe("M7 Care Plan workspace", () => {
     const client = clientFor({ plan: planWith([signedInitial, draftRevision]) });
     renderWorkspace(client);
 
-    await screen.findByRole("heading", { name: "Patient Care Plan" });
+    await screen.findByRole("heading", { name: "Plan of Care" });
     fireEvent.click(screen.getByRole("tab", { name: "Revision / Review" }));
     fireEvent.click(screen.getByRole("button", { name: "Add goal" }));
     fireEvent.change(screen.getByLabelText("Goal text"), {
@@ -388,7 +388,7 @@ describe("M7 Care Plan workspace", () => {
     });
     renderWorkspace(client);
 
-    await screen.findByRole("heading", { name: "Patient Care Plan" });
+    await screen.findByRole("heading", { name: "Plan of Care" });
     fireEvent.click(screen.getByRole("tab", { name: "Revision / Review" }));
     expect(screen.getAllByText(/Nurse Practitioner/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Review & send for signatures" }));
@@ -440,7 +440,7 @@ describe("M7 Care Plan workspace", () => {
     });
     renderWorkspace(client);
 
-    await screen.findByRole("heading", { name: "Patient Care Plan" });
+    await screen.findByRole("heading", { name: "Plan of Care" });
     fireEvent.click(screen.getByRole("tab", { name: "Revision / Review" }));
     expect(screen.getByText("IDG proposed changes")).toBeTruthy();
     expect(screen.getByText("Terminal cancer")).toBeTruthy();

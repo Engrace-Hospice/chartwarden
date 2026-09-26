@@ -9,32 +9,31 @@ export const statusColors = {
 } as const;
 
 /**
- * Brand palette seed — WardenX "Lantern" design system (docs/design/DESIGN.md §2).
+ * Brand palette seed — WardenX design system (docs/design/DESIGN.md §2; 2026-09-25 clinical-blue redesign).
  * `primary` / `surface` / `muted` / `border` are the keys the shared Tailwind config reads;
  * the remaining keys carry the full Lantern token set so this stays the single source of truth.
  * Light values; dark-mode values live in apps/web/src/index.css `.dark`.
  */
 export const brandColors = {
   // consumed by sharedTailwindConfig
-  primary: "#3b45a8", // twilight indigo
+  primary: "#1a56eb", // clinical blue (2026-09-25 redesign)
   surface: "#ffffff", // card surface (surface-container-lowest)
-  // WX-PR-018: was #8c877f (~3.57:1 on white — fails WCAG AA 4.5:1 for normal-weight text, caught
-  // by the E2E suite's axe scan on the nav-group toggle buttons). #726d64 keeps the warm-gray hue
-  // while giving ~5.1:1 against --color-surface-lowest.
-  muted: "#726d64", // warm muted text
-  border: "#d7d3cb", // warm ghost border (outline-variant)
+  // WX-PR-018: muted text must hold WCAG AA 4.5:1 on white (the E2E axe scan checks it) — slate
+  // #64748b gives ~4.8:1 against --color-surface-lowest.
+  muted: "#64748b", // slate muted text
+  border: "#dfe4eb", // slate hairline (outline-variant)
   // full Lantern palette
-  primaryStrong: "#2b338a",
-  primaryTint: "#ecedfb",
-  accent: "#c98a1f", // Lantern gold — brand warmth only, never status
-  success: "#1f8a5b",
-  warning: "#9a5b00",
-  error: "#c12b3b",
-  alert: "#e0413f", // critical clinical/safety
-  background: "#f6f5f2", // warm paper canvas
-  onSurface: "#1c1b1a",
-  onSurfaceVariant: "#56524c",
-  outline: "#6e6a62",
+  primaryStrong: "#1443c6",
+  primaryTint: "#e6edfd",
+  accent: "#d97706", // warm amber — brand warmth only, never status
+  success: "#16a34a",
+  warning: "#b45309",
+  error: "#dc2626",
+  alert: "#e5484d", // critical clinical/safety
+  background: "#f7f8fa", // cool slate canvas
+  onSurface: "#0f172a",
+  onSurfaceVariant: "#475569",
+  outline: "#94a3b8",
 } as const;
 
 export const colors = { status: statusColors, brand: brandColors } as const;

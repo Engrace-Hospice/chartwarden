@@ -398,20 +398,21 @@ export function PatientBanner({
           .join("")
       : null;
   const avatarNode = avatar ?? initials;
+  // 2026-09-25 redesign (mockups): a large tinted avatar, the name in bold with its status chip beside
+  // it, the meta line below, actions right. The tab strip that follows draws the bottom rule.
   return (
     <div
       className="wx-patient-banner"
       style={{
         position: "sticky",
         top: 0,
-        zIndex: 1,
+        zIndex: 2,
         display: "flex",
         flexWrap: "wrap",
         gap: "1rem",
         alignItems: "center",
-        padding: "0.625rem 1.5rem",
+        padding: "1.125rem 1.5rem 0.875rem",
         background: t.surfaceLowest,
-        borderBottom: ghostBorder,
       }}
     >
       {avatarNode ? (
@@ -419,8 +420,8 @@ export function PatientBanner({
           aria-hidden
           className="wx-banner-avatar"
           style={{
-            width: "2.75rem",
-            height: "2.75rem",
+            width: "4rem",
+            height: "4rem",
             flexShrink: 0,
             borderRadius: "9999px",
             background: t.primaryTint,
@@ -428,63 +429,58 @@ export function PatientBanner({
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            fontFamily: t.fontDisplay,
+            fontFamily: t.fontSans,
             fontWeight: 600,
-            fontSize: "1rem",
+            fontSize: "1.5rem",
           }}
         >
           {avatarNode}
         </div>
       ) : null}
 
-      {/* headline-md — the patient name in Fraunces, the human anchor of the chart (§3.3) — over an
-          optional meta line (DOB · age · sex · pronouns) in the Inter functional voice. */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.1rem" }}>
-        <strong
-          className="wx-banner-name"
-          style={{
-            fontFamily: t.fontDisplay,
-            fontSize: "1.25rem",
-            fontWeight: 500,
-            color: t.onSurface,
-            lineHeight: 1.1,
-          }}
-        >
-          {name}
-        </strong>
-        {meta ? (
-          <span style={{ color: t.onSurfaceVariant, fontSize: "0.75rem" }}>{meta}</span>
-        ) : null}
-      </div>
-
-      {/* Chips row — caller-supplied identity/status/alert pills; falls back to the original fields. */}
       <div
-        className="wx-banner-chips"
-        style={{
-          display: "flex",
-          flexWrap: "wrap",
-          alignItems: "center",
-          gap: "0.5rem",
-          flex: 1,
-          minWidth: 0,
-        }}
+        style={{ display: "flex", flexDirection: "column", gap: "0.3rem", minWidth: 0, flex: 1 }}
       >
-        {chips ?? (
-          <>
-            {/* MRN is an identifier → IBM Plex Mono (§3.1). */}
-            {field("MRN", mrn, true)}
-            {field("DOB", dob)}
-            {field("Code", codeStatus)}
-            {field("Allergies", allergies)}
-            {field("Benefit period", benefitPeriod)}
-          </>
-        )}
+        <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.625rem" }}>
+          <strong
+            className="wx-banner-name"
+            style={{
+              fontFamily: t.fontSans,
+              fontSize: "1.625rem",
+              fontWeight: 700,
+              letterSpacing: "-0.015em",
+              color: t.onSurface,
+              lineHeight: 1.15,
+            }}
+          >
+            {name}
+          </strong>
+          {/* Chips — caller-supplied identity/status/alert pills; falls back to the original fields. */}
+          <div
+            className="wx-banner-chips"
+            style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: "0.5rem" }}
+          >
+            {chips ?? (
+              <>
+                {/* MRN is an identifier → IBM Plex Mono (§3.1). */}
+                {field("MRN", mrn, true)}
+                {field("DOB", dob)}
+                {field("Code", codeStatus)}
+                {field("Allergies", allergies)}
+                {field("Benefit period", benefitPeriod)}
+              </>
+            )}
+          </div>
+        </div>
+        {meta ? (
+          <span style={{ color: t.onSurfaceVariant, fontSize: "0.9375rem" }}>{meta}</span>
+        ) : null}
       </div>
 
       {actions ? (
         <div
           className="wx-banner-actions"
-          style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.5rem" }}
+          style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: "0.625rem" }}
         >
           {actions}
         </div>

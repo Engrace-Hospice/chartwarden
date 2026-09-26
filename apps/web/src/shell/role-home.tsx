@@ -1,10 +1,15 @@
-// apps/web/src/shell — Operational Home (M1 app-shell landing, Track A).
-// The sidebar is the exhaustive navigation surface. Home answers the operational question:
-// "what needs my attention today?" using only permission-gated, org-scoped backend reads that
-// already exist in the domain modules.
-import { EmptyState, Glyph, cardSurface, ghostBorder, t, useApiClient } from "@wardenx/ui";
+// apps/web/src/shell — Operational Home (M1 app-shell landing, Track A; 2026-09-25 redesign, mockup
+// "Dashboard"). Home answers "what needs my attention today?" from permission-gated, org-scoped reads
+// that already exist in the domain modules: a greeting, five KPI cards, My Tasks (HOPE windows, orders
+// awaiting signature, my IDG action items, my unsigned notes), the patients those items point at,
+// census and A/R aging, HOPE assessments due, and a right column with alerts, today's visits and
+// quick links. A source the actor lacks the permission for is never called. WardenX keeps no
+// history snapshots for "vs last week" trends or a daily census/revenue series, and no "recently
+// viewed" patient list, so the cards show current detail instead and the patient panel lists the
+// patients the open work refers to.
+import { EmptyState, Glyph, type GlyphName, Panel, t, useApiClient } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
-import type { CSSProperties, JSX, ReactNode } from "react";
+import type { JSX, ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { canSeeScreen } from "./actor-session";
@@ -14,6 +19,7 @@ import type { Session } from "./session";
 
 type Tone = "neutral" | "healthy" | "info" | "warning" | "critical";
 type Severity = "critical" | "warning" | "info";
+type TaskCategory = "assessments" | "orders" | "followups" | "other";
 
 interface DashboardKpi {
   readonly id: string;
@@ -22,6 +28,9 @@ interface DashboardKpi {
   readonly detail?: string;
   readonly href?: string;
   readonly tone: Tone;
+  readonly icon: GlyphName;
+  /** Lower sorts first; the five lowest the actor can see fill the card row. */
+  readonly rank: number;
 }
 
 interface AttentionItem {
@@ -30,71 +39,107 @@ interface AttentionItem {
   readonly title: string;
   readonly description?: string;
   readonly severity: Severity;
-  readonly timestamp?: string;
   readonly href?: string;
   readonly module: string;
 }
 
-interface TodayItem {
+interface TaskItem {
   readonly id: string;
-  readonly label: string;
-  readonly value: string;
-  readonly detail?: string;
-  readonly href?: string;
-  readonly tone: Tone;
+  readonly category: TaskCategory;
+  readonly title: string;
+  readonly patientId?: string | null;
+  readonly fallbackSubject?: string;
+  readonly dueAt?: string | null;
+  readonly href: string;
 }
 
-interface ActivityItem {
+interface DueAssessment {
   readonly id: string;
-  readonly title: string;
-  readonly detail?: string;
-  readonly timestamp?: string;
-  readonly href?: string;
-  readonly tone: Tone;
+  readonly patientId: string;
+  readonly type: string;
+  readonly dueAt: string;
+  readonly href: string;
+}
+
+interface UpcomingVisit {
+  readonly id: string;
+  readonly patientId: string;
+  readonly purpose: string;
+  readonly startAt: string;
+  readonly href: string;
+}
+
+interface CensusFigures {
+  readonly active?: number;
+  readonly byStatus?: Record<string, number>;
+  readonly aging?: { label: string; cents: number }[];
 }
 
 interface Contribution {
   readonly kpis?: readonly DashboardKpi[];
   readonly attention?: readonly AttentionItem[];
-  readonly today?: readonly TodayItem[];
-  readonly activity?: readonly ActivityItem[];
+  readonly tasks?: readonly TaskItem[];
+  readonly assessments?: readonly DueAssessment[];
+  readonly visits?: readonly UpcomingVisit[];
+  readonly census?: CensusFigures;
+  /** Sources the server scoped out for this actor (not failures). */
+  readonly unavailable?: readonly string[];
 }
 
 interface WidgetSource {
   readonly id: string;
-  readonly permission: string;
+  /** The actor needs any one of these keys. */
+  readonly permission: string | readonly string[];
   readonly load: (client: ApiClient) => Promise<Contribution>;
+}
+
+interface PatientRef {
+  readonly id: string;
+  readonly firstName: string;
+  readonly lastName: string;
+  readonly dob: string;
+  readonly status: string;
 }
 
 interface DashboardState {
   readonly kpis: DashboardKpi[];
   readonly attention: AttentionItem[];
-  readonly today: TodayItem[];
-  readonly activity: ActivityItem[];
+  readonly tasks: TaskItem[];
+  readonly assessments: DueAssessment[];
+  readonly visits: UpcomingVisit[];
+  readonly census: CensusFigures;
+  readonly unavailable: string[];
   readonly failed: string[];
 }
 
-const EMPTY_STATE: DashboardState = { kpis: [], attention: [], today: [], activity: [], failed: [] };
+const EMPTY_STATE: DashboardState = {
+  kpis: [],
+  attention: [],
+  tasks: [],
+  assessments: [],
+  visits: [],
+  census: {},
+  unavailable: [],
+  failed: [],
+};
+
+const DAY = 86_400_000;
+const SKELETON_KEYS = ["a", "b", "c", "d", "e"];
 
 const toneColor: Record<Tone, string> = {
-  neutral: t.onSurfaceVariant,
+  neutral: t.primary,
   healthy: t.success,
   info: t.primary,
   warning: t.warning,
   critical: t.error,
 };
 
-const severityTone: Record<Severity, Tone> = {
-  critical: "critical",
-  warning: "warning",
-  info: "info",
-};
-
 const toneTint = (color: string, pct = 12): string =>
   `color-mix(in srgb, ${color} ${pct}%, ${t.surfaceLowest})`;
 
-function hasPermission(session: Session | null, permission: string): boolean {
-  return session?.permissions?.includes(permission) ?? false;
+function hasPermission(session: Session | null, permission: string | readonly string[]): boolean {
+  const keys = typeof permission === "string" ? [permission] : permission;
+  return keys.some((k) => session?.permissions?.includes(k) ?? false);
 }
 
 function countBy<T>(items: readonly T[], predicate: (item: T) => boolean): number {
@@ -114,21 +159,6 @@ function formatMoney(cents: number): string {
   }).format(cents / 100);
 }
 
-function formatRelative(value?: string): string | undefined {
-  if (!value) return undefined;
-  const time = Date.parse(value);
-  if (Number.isNaN(time)) return value;
-  const deltaMs = time - Date.now();
-  const abs = Math.abs(deltaMs);
-  const minute = 60_000;
-  const hour = 60 * minute;
-  const day = 24 * hour;
-  const rtf = new Intl.RelativeTimeFormat("en-US", { numeric: "auto" });
-  if (abs < hour) return rtf.format(Math.round(deltaMs / minute), "minute");
-  if (abs < day) return rtf.format(Math.round(deltaMs / hour), "hour");
-  return rtf.format(Math.round(deltaMs / day), "day");
-}
-
 function stateLabel(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -145,6 +175,105 @@ function greeting(): string {
   return "Good evening";
 }
 
+function startOfDay(offsetDays = 0): Date {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + offsetDays);
+  return d;
+}
+
+/** Calendar days from today to `iso` (negative = past). Date-only strings are local calendar dates. */
+function daysUntil(iso: string): number {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(iso);
+  d.setHours(0, 0, 0, 0);
+  return Math.round((d.getTime() - startOfDay().getTime()) / DAY);
+}
+
+function dueLabel(iso?: string | null): { text: string; tone: Tone } {
+  if (!iso) return { text: "No due date", tone: "neutral" };
+  const n = daysUntil(iso);
+  if (n < 0) return { text: "Overdue", tone: "critical" };
+  if (n === 0) return { text: "Due today", tone: "critical" };
+  if (n === 1) return { text: "Tomorrow", tone: "warning" };
+  return { text: `In ${n} days`, tone: n <= 2 ? "warning" : "info" };
+}
+
+function usDate(iso: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[2]}/${m[3]}/${m[1]}` : iso;
+}
+
+function timeOf(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+function ageOf(dob: string): number | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dob);
+  if (!m) return null;
+  const now = new Date();
+  let age = now.getFullYear() - Number(m[1]);
+  if (
+    now.getMonth() + 1 < Number(m[2]) ||
+    (now.getMonth() + 1 === Number(m[2]) && now.getDate() < Number(m[3]))
+  ) {
+    age -= 1;
+  }
+  return age;
+}
+
+function initials(name: string): string {
+  const parts = name.split(/[\s,._@-]+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0]}${parts[parts.length - 1]![0]}`.toUpperCase();
+}
+
+const AVATAR_TINTS = [
+  "var(--color-viz-blue)",
+  "var(--color-viz-green)",
+  "var(--color-viz-violet)",
+  "var(--color-viz-amber)",
+  "var(--color-viz-teal)",
+  "var(--color-viz-pink)",
+];
+function tintFor(key: string): string {
+  let h = 0;
+  for (const c of key) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return AVATAR_TINTS[h % AVATAR_TINTS.length]!;
+}
+
+const HOPE_KIND: Record<string, string> = {
+  "01_admission": "HOPE Admission",
+  "02_huv1": "HOPE Update Visit 1",
+  "03_huv2": "HOPE Update Visit 2",
+  "04_sfv": "Symptom Follow-up",
+  "05_discharge": "HOPE Discharge",
+};
+
+const VISIT_PURPOSE: Record<string, string> = {
+  routine_visit: "Routine visit",
+  prn: "PRN visit",
+  aide_poc: "Aide visit",
+  msw_assessment: "Social work assessment",
+  msw_followup: "Social work",
+  chaplain_visit: "Chaplain visit",
+  chaplain_assessment: "Spiritual assessment",
+  volunteer_visit: "Volunteer visit",
+  f2f: "Face-to-face",
+  recert: "Recertification visit",
+  loc_change: "Level-of-care change",
+  pronouncement: "Pronouncement",
+  admission_visit: "Admission visit",
+  discharge_visit: "Discharge visit",
+};
+
+const CLAIM_SETTLED = /paid|denied|void|cancel|reject|written_off|closed/i;
+const CLAIM_REVIEW = /reject|denied|failed|partial/i;
+
 const DASHBOARD_SOURCES: readonly WidgetSource[] = [
   {
     id: "patients",
@@ -158,23 +287,16 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
         kpis: [
           {
             id: "patients-active",
-            label: "Active census",
+            label: "Active Patients",
             value: String(active),
             detail: `${data.total ?? 0} total records`,
             href: "/patients",
-            tone: active > 0 ? "info" : "neutral",
-          },
-        ],
-        today: [
-          {
-            id: "patients-census",
-            label: "Active patients",
-            value: String(active),
-            detail: "Current census",
-            href: "/patients",
             tone: "info",
+            icon: "users",
+            rank: 1,
           },
         ],
+        census: { active, byStatus: data.byStatus ?? {} },
       };
     },
   },
@@ -187,16 +309,17 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
       const items = pageItems<{ id: string; state: string }>(res.data);
       const received = countBy(items, (x) => x.state === "received");
       const triaged = countBy(items, (x) => x.state === "triaged" || x.state === "evaluated");
-      const active = received + triaged;
       return {
         kpis: [
           {
             id: "referrals-open",
             label: "Referrals",
-            value: String(active),
+            value: String(received + triaged),
             detail: `${received} awaiting triage`,
             href: "/referrals",
             tone: received > 0 ? "warning" : "healthy",
+            icon: "user-plus",
+            rank: 6,
           },
         ],
         attention:
@@ -213,16 +336,6 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
                 },
               ]
             : [],
-        today: [
-          {
-            id: "referrals-intake",
-            label: "Referral intake",
-            value: String(active),
-            detail: "Open or triaged",
-            href: "/referrals",
-            tone: active > 0 ? "warning" : "healthy",
-          },
-        ],
       };
     },
   },
@@ -239,11 +352,13 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
         kpis: [
           {
             id: "admissions-pending",
-            label: "Admissions",
+            label: "Pending Admissions",
             value: String(pending),
             detail: `${active} active`,
             href: "/admissions",
             tone: pending > 0 ? "warning" : "healthy",
+            icon: "file-text",
+            rank: 2,
           },
         ],
         attention:
@@ -260,16 +375,183 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
                 },
               ]
             : [],
-        today: [
+      };
+    },
+  },
+  {
+    id: "hope",
+    permission: "hope.timepoint.read",
+    async load(client) {
+      const res = await client.GET("/api/v1/hope/schedules", {
+        params: { query: { status: "open" } },
+      });
+      // The hope.scope ABAC answers an out-of-scope org-wide list with 404 (deny-as-not-found):
+      // the actor simply has no HOPE worklist here, which is not a load failure.
+      if (res.response.status === 404) return { unavailable: ["hope"] };
+      if (res.error) throw res.error;
+      const open = [...(res.data?.schedules ?? [])].sort((a, b) =>
+        a.windowClosesAt.localeCompare(b.windowClosesAt),
+      );
+      const overdue = countBy(open, (s) => daysUntil(s.windowClosesAt) < 0);
+      const href = (s: { admissionId: string }) => `/admissions/${s.admissionId}/hope`;
+      return {
+        kpis: [
           {
-            id: "admissions-workload",
-            label: "Admissions workload",
-            value: String(items.length),
-            detail: "Visible admission records",
-            href: "/admissions",
-            tone: pending > 0 ? "warning" : "neutral",
+            id: "hope-due",
+            label: "Assessments Due",
+            value: String(open.length),
+            detail: overdue > 0 ? `${overdue} past window` : "HOPE windows open",
+            href: "/hope",
+            tone: overdue > 0 ? "critical" : "info",
+            icon: "clipboard-check",
+            rank: 3,
           },
         ],
+        attention:
+          overdue > 0
+            ? [
+                {
+                  id: "hope-overdue",
+                  type: "HIGH",
+                  title: `${overdue} HOPE assessment${overdue === 1 ? "" : "s"} past window`,
+                  description: "HOPE compliance",
+                  severity: "critical",
+                  href: "/hope",
+                  module: "HOPE",
+                },
+              ]
+            : [],
+        tasks: open.slice(0, 10).map((s) => ({
+          id: `hope-${s.id}`,
+          category: "assessments" as const,
+          title: `Complete ${HOPE_KIND[s.rfaKind] ?? "HOPE assessment"}`,
+          patientId: s.patientId,
+          dueAt: s.windowClosesAt,
+          href: href(s),
+        })),
+        assessments: open.slice(0, 6).map((s) => ({
+          id: s.id,
+          patientId: s.patientId,
+          type: HOPE_KIND[s.rfaKind] ?? "HOPE",
+          dueAt: s.windowClosesAt,
+          href: href(s),
+        })),
+      };
+    },
+  },
+  {
+    id: "idg",
+    permission: "idg.read",
+    async load(client) {
+      const [locs, mine] = await Promise.all([
+        client.GET("/api/v1/locations", { params: { query: {} } }),
+        client.GET("/api/v1/idg/action-items", { params: { query: { assignee: "me" } } }),
+      ]);
+      const from = startOfDay().toISOString();
+      const to = startOfDay(1).toISOString();
+      const sites = (locs.data?.items ?? []).slice(0, 5);
+      const lists = await Promise.all(
+        sites.map((l) =>
+          client
+            .GET("/api/v1/idg/schedule", { params: { query: { location: l.id, from, to } } })
+            .then((r) => r.data ?? [])
+            .catch(() => []),
+        ),
+      );
+      const today = lists
+        .flat()
+        .filter((m) => m.status !== "cancelled" && m.status !== "rescheduled");
+      const next = [...today].sort((a, b) => a.scheduledStart.localeCompare(b.scheduledStart))[0];
+      const items = (mine.data ?? []).filter(
+        (a) => a.status === "open" || a.status === "in_progress",
+      );
+      return {
+        kpis: locs.error
+          ? []
+          : [
+              {
+                id: "idg-today",
+                label: "IDG Meetings",
+                value: String(today.length),
+                detail: next ? `Today · first at ${timeOf(next.scheduledStart)}` : "Today",
+                href: "/idg/schedule",
+                tone: "info",
+                icon: "users",
+                rank: 4,
+              },
+            ],
+        tasks: items.slice(0, 10).map((a) => ({
+          id: `idg-${a.id}`,
+          category: "followups" as const,
+          title: a.linkedArtifactKind
+            ? `IDG follow-up: ${stateLabel(a.linkedArtifactKind).toLowerCase()}`
+            : "IDG follow-up",
+          patientId: a.patientId,
+          fallbackSubject: "IDG action item",
+          dueAt: a.dueDate,
+          href: "/idg/action-items",
+        })),
+      };
+    },
+  },
+  {
+    id: "orders",
+    permission: "orders.read",
+    async load(client) {
+      const res = await client.GET("/api/v1/orders", {
+        params: { query: { status: "pending_signature" } },
+      });
+      if (res.error) throw res.error;
+      const orders = res.data?.orders ?? [];
+      return {
+        tasks: orders.slice(0, 10).map((o) => ({
+          id: `order-${o.id}`,
+          category: "orders" as const,
+          title: `Sign ${o.kind === "dme" ? "DME" : stateLabel(o.kind).toLowerCase()} order`,
+          patientId: o.patientId,
+          dueAt: o.verbalDeadlineAt,
+          href: `/orders/${o.id}`,
+        })),
+      };
+    },
+  },
+  {
+    id: "notes",
+    permission: "encounter.read",
+    async load(client) {
+      const res = await client.GET("/api/v1/encounters/my-drafts");
+      if (res.error) throw res.error;
+      return {
+        tasks: (res.data?.encounters ?? []).slice(0, 10).map((e) => ({
+          id: `note-${e.id}`,
+          category: "other" as const,
+          title: `Finish ${stateLabel(e.encounterType).toLowerCase()} note`,
+          patientId: e.patientId,
+          dueAt: null,
+          href: `/patients/${e.patientId}/encounters/${e.id}`,
+        })),
+      };
+    },
+  },
+  {
+    id: "visits",
+    permission: ["visit.read_team", "visit.read"],
+    async load(client) {
+      const res = await client.GET("/api/v1/visits", {
+        params: { query: { from: new Date().toISOString(), to: startOfDay(1).toISOString() } },
+      });
+      if (res.error) throw res.error;
+      const visits = [...(res.data ?? [])]
+        .filter((v) => !/cancel|missed|no_show|completed/.test(v.status))
+        .sort((a, b) => a.scheduledStartedAt.localeCompare(b.scheduledStartedAt));
+      return {
+        visits: visits.slice(0, 6).map((v) => ({
+          id: v.id,
+          patientId: v.patientId,
+          purpose: VISIT_PURPOSE[v.visitPurpose] ?? stateLabel(v.visitPurpose),
+          startAt: v.scheduledStartedAt,
+          href: `/scheduling/visits/${v.id}`,
+        })),
       };
     },
   },
@@ -284,9 +566,8 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
         overdueCheckInCount?: number;
         clinicians?: {
           membershipId: string;
-          displayName: string;
           overdueState: string;
-          activeSosAlert: { id?: string; state?: string } | null;
+          activeSosAlert: { id?: string } | null;
         }[];
       };
       const clinicians = board.clinicians ?? [];
@@ -322,24 +603,16 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
         kpis: [
           {
             id: "safety-posture",
-            label: "Field safety",
+            label: "Field Safety",
             value: String(activeSos + overdue),
             detail: activeSos > 0 ? `${activeSos} SOS active` : `${overdue} overdue check-ins`,
             href: "/safety",
             tone: activeSos > 0 ? "critical" : overdue > 0 ? "warning" : "healthy",
+            icon: "shield",
+            rank: 7,
           },
         ],
         attention,
-        today: [
-          {
-            id: "safety-covered-clinicians",
-            label: "Safety board",
-            value: String(clinicians.length),
-            detail: "Visible staff rows",
-            href: "/safety",
-            tone: activeSos > 0 ? "critical" : overdue > 0 ? "warning" : "healthy",
-          },
-        ],
       };
     },
   },
@@ -351,9 +624,7 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
         params: { query: { limit: 50 } },
       });
       if (res.error) throw res.error;
-      const items = pageItems<{ id: string; state: string; severity: string; occurredAt?: string }>(
-        res.data,
-      );
+      const items = pageItems<{ id: string; state: string; severity: string }>(res.data);
       const open = countBy(
         items,
         (x) => !["resolved", "closed_followup_complete"].includes(x.state),
@@ -363,11 +634,13 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
         kpis: [
           {
             id: "quality-open-incidents",
-            label: "Quality incidents",
+            label: "Quality Incidents",
             value: String(open),
             detail: `${critical} severe or critical`,
             href: "/quality/qapi",
             tone: critical > 0 ? "critical" : open > 0 ? "warning" : "healthy",
+            icon: "alert",
+            rank: 8,
           },
         ],
         attention:
@@ -400,51 +673,7 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
     },
   },
   {
-    id: "scheduling",
-    permission: "visit.metrics.read",
-    async load(client) {
-      const to = new Date();
-      const from = new Date(to);
-      from.setHours(0, 0, 0, 0);
-      to.setHours(23, 59, 59, 999);
-      const res = await client.GET("/api/v1/metrics/visits", {
-        params: { query: { from: from.toISOString(), to: to.toISOString() } },
-      });
-      if (res.error) throw res.error;
-      const data = (res.data ?? {}) as Record<string, unknown>;
-      const completed = Number(data.completed ?? data.completedCount ?? 0);
-      const scheduled = Number(data.scheduled ?? data.scheduledCount ?? data.total ?? 0);
-      const missed = Number(data.noShow ?? data.noShowCount ?? 0);
-      return {
-        today: [
-          {
-            id: "visits-today",
-            label: "Scheduled visits",
-            value: String(scheduled),
-            detail: `${completed} completed`,
-            href: "/scheduling/metrics",
-            tone: missed > 0 ? "warning" : "info",
-          },
-        ],
-        attention:
-          missed > 0
-            ? [
-                {
-                  id: "visits-no-show",
-                  type: "WARNING",
-                  title: `${missed} no-show visit${missed === 1 ? "" : "s"} today`,
-                  description: "Scheduling metrics",
-                  severity: "warning",
-                  href: "/scheduling/metrics",
-                  module: "Scheduling",
-                },
-              ]
-            : [],
-      };
-    },
-  },
-  {
-    id: "billing-ar",
+    id: "billing",
     permission: "billing.claim.read_ar_dashboard",
     async load(client) {
       const [agingRes, metricsRes] = await Promise.all([
@@ -452,39 +681,36 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
         client.GET("/api/v1/billing/metrics"),
       ]);
       if (agingRes.error) throw agingRes.error;
-      const aging = (agingRes.data ?? {}) as Record<string, number | undefined>;
-      const total =
-        (aging.bucket0to30Cents ?? 0) +
-        (aging.bucket31to60Cents ?? 0) +
-        (aging.bucket61to90Cents ?? 0) +
-        (aging.bucket90PlusCents ?? 0);
-      const old = aging.bucket90PlusCents ?? 0;
-      const buckets =
-        metricsRes.error || !metricsRes.data
-          ? []
-          : (((metricsRes.data as { buckets?: { key: string; count: number }[] }).buckets ??
-              []) as { key: string; count: number }[]);
-      const failedClaims = buckets
-        .filter((x) => /reject|denied|failed|partial/i.test(x.key))
+      const aging = agingRes.data;
+      const buckets = metricsRes.data?.buckets ?? [];
+      const pending = buckets
+        .filter((x) => !CLAIM_SETTLED.test(x.key))
+        .reduce((sum, x) => sum + x.count, 0);
+      const review = buckets
+        .filter((x) => CLAIM_REVIEW.test(x.key))
         .reduce((sum, x) => sum + x.count, 0);
       return {
-        kpis: [
-          {
-            id: "billing-ar",
-            label: "Accounts receivable",
-            value: formatMoney(total),
-            detail: `${formatMoney(old)} over 90 days`,
-            href: "/billing",
-            tone: old > 0 ? "warning" : "info",
-          },
-        ],
+        kpis: metricsRes.error
+          ? []
+          : [
+              {
+                id: "claims-pending",
+                label: "Claims Pending",
+                value: String(pending),
+                detail: review > 0 ? `${review} need billing review` : "Not yet paid or denied",
+                href: "/billing/claims",
+                tone: review > 0 ? "warning" : "info",
+                icon: "receipt",
+                rank: 5,
+              },
+            ],
         attention:
-          failedClaims > 0
+          review > 0
             ? [
                 {
                   id: "billing-failed-claims",
                   type: "DUE",
-                  title: `${failedClaims} claim${failedClaims === 1 ? "" : "s"} need billing review`,
+                  title: `${review} claim${review === 1 ? "" : "s"} need billing review`,
                   description: "Claim workbench",
                   severity: "warning",
                   href: "/billing/claims",
@@ -492,53 +718,41 @@ const DASHBOARD_SOURCES: readonly WidgetSource[] = [
                 },
               ]
             : [],
-      };
-    },
-  },
-  {
-    id: "audit",
-    permission: "audit.read",
-    async load(client) {
-      const res = await client.GET("/api/v1/audit/events", {
-        params: { query: { limit: 6 } },
-      });
-      if (res.error) throw res.error;
-      const items = pageItems<{
-        id: string;
-        createdAt: string;
-        eventType: string;
-        resourceKind: string;
-        outcome: string;
-        severity: "info" | "warn" | "critical";
-      }>(res.data);
-      return {
-        activity: items.map((item) => ({
-          id: item.id,
-          title: stateLabel(item.eventType),
-          detail: `${stateLabel(item.resourceKind)} · ${stateLabel(item.outcome)}`,
-          timestamp: item.createdAt,
-          href: "/audit",
-          tone:
-            item.severity === "critical"
-              ? "critical"
-              : item.severity === "warn"
-                ? "warning"
-                : "neutral",
-        })),
+        census: aging
+          ? {
+              aging: [
+                { label: "0–30", cents: aging.bucket0to30Cents },
+                { label: "31–60", cents: aging.bucket31to60Cents },
+                { label: "61–90", cents: aging.bucket61to90Cents },
+                { label: "90+", cents: aging.bucket90PlusCents },
+              ],
+            }
+          : {},
       };
     },
   },
 ];
 
-function mergeContributions(results: readonly Contribution[], failed: readonly string[]): DashboardState {
+function mergeContributions(
+  results: readonly Contribution[],
+  failed: readonly string[],
+): DashboardState {
+  const all = <K extends keyof Contribution>(k: K) =>
+    results.flatMap((x) => [...((x[k] as readonly unknown[] | undefined) ?? [])]);
   return {
-    kpis: results.flatMap((x) => [...(x.kpis ?? [])]).slice(0, 5),
-    attention: results
-      .flatMap((x) => [...(x.attention ?? [])])
+    kpis: (all("kpis") as DashboardKpi[]).sort((a, b) => a.rank - b.rank).slice(0, 5),
+    attention: (all("attention") as AttentionItem[])
       .sort((a, b) => severityRank(b.severity) - severityRank(a.severity))
       .slice(0, 6),
-    today: results.flatMap((x) => [...(x.today ?? [])]).slice(0, 6),
-    activity: results.flatMap((x) => [...(x.activity ?? [])]).slice(0, 6),
+    tasks: (all("tasks") as TaskItem[]).sort(
+      (a, b) =>
+        (a.dueAt ? Date.parse(a.dueAt) : Number.MAX_SAFE_INTEGER) -
+        (b.dueAt ? Date.parse(b.dueAt) : Number.MAX_SAFE_INTEGER),
+    ),
+    assessments: all("assessments") as DueAssessment[],
+    visits: all("visits") as UpcomingVisit[],
+    census: Object.assign({}, ...results.map((x) => x.census ?? {})) as CensusFigures,
+    unavailable: all("unavailable") as string[],
     failed: [...failed],
   };
 }
@@ -555,26 +769,24 @@ function quickAccessScreens(
     .filter((s) => !s.path.includes(":") && !s.path.includes("*"))
     .filter((s) => canSeeScreen(s, session));
   const preferred = [
+    "admission.create",
+    "hope.dashboard",
+    "orders.sign-inbox",
+    "idg.schedule",
+    "documents.explorer",
+    "reporting.catalog",
+    "admission.referrals",
     "safety.dashboard",
     "quality.qapi-incidents",
-    "admission.referrals",
     "admission.census",
     "patient.census",
-    "scheduling.day-view",
-    "billing.ar-dashboard",
     "billing.claims",
     "identity.staff-management",
     "audit.log",
-    "reporting.catalog",
   ];
   return visible
-    .sort((a, b) => {
-      const ai = preferred.indexOf(a.id);
-      const bi = preferred.indexOf(b.id);
-      const ar = ai === -1 ? Number.MAX_SAFE_INTEGER : ai;
-      const br = bi === -1 ? Number.MAX_SAFE_INTEGER : bi;
-      return ar - br || a.title.localeCompare(b.title);
-    })
+    .filter((s) => preferred.includes(s.id))
+    .sort((a, b) => preferred.indexOf(a.id) - preferred.indexOf(b.id))
     .slice(0, 8);
 }
 
@@ -590,11 +802,36 @@ function primaryAction(
   return null;
 }
 
+const QUICK_ICON: Record<string, GlyphName> = {
+  "admission.create": "plus",
+  "hope.dashboard": "clipboard-check",
+  "orders.sign-inbox": "file-check",
+  "idg.schedule": "users",
+  "documents.explorer": "upload",
+  "reporting.catalog": "bar-chart",
+  "admission.referrals": "user-plus",
+  "safety.dashboard": "shield",
+  "quality.qapi-incidents": "alert",
+  "billing.claims": "receipt",
+  "identity.staff-management": "users",
+  "audit.log": "file-text",
+};
+
+const TASK_CHIPS: { key: TaskCategory | "all"; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "assessments", label: "Assessments" },
+  { key: "orders", label: "Orders" },
+  { key: "followups", label: "Follow-ups" },
+  { key: "other", label: "Notes" },
+];
+
 export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.Element {
   const client = useApiClient();
   const session = useSession();
   const [state, setState] = useState<DashboardState>(EMPTY_STATE);
+  const [patients, setPatients] = useState<Map<string, PatientRef>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [taskChip, setTaskChip] = useState<TaskCategory | "all">("all");
   const action = primaryAction(screens, session);
   const quickAccess = useMemo(() => quickAccessScreens(screens, session), [screens, session]);
 
@@ -616,236 +853,566 @@ export function RoleHome({ screens }: { screens: WebScreenDescriptor[] }): JSX.E
         if (result.status === "fulfilled") good.push(result.value);
         else failed.push(enabled[index]?.id ?? "unknown");
       });
-      setState(mergeContributions(good, failed));
+      const merged = mergeContributions(good, failed);
+      setState(merged);
       setLoading(false);
+      // Names for the patients the tasks, visits and assessments point at.
+      const referenced =
+        merged.tasks.some((x) => x.patientId) ||
+        merged.visits.length > 0 ||
+        merged.assessments.length > 0;
+      if (referenced && hasPermission(session, "patient.read")) {
+        try {
+          const res = await client.GET("/api/v1/patients", { params: { query: { limit: 200 } } });
+          if (!active) return;
+          setPatients(new Map(pageItems<PatientRef>(res.data).map((p) => [p.id, p])));
+        } catch {
+          // Names are context; the rows still render with a neutral subject.
+        }
+      }
     })();
     return () => {
       active = false;
     };
   }, [client, session]);
 
+  const nameOf = (id?: string | null): string | null => {
+    const p = id ? patients.get(id) : undefined;
+    return p ? `${p.firstName} ${p.lastName}` : null;
+  };
+
+  const taskCounts = useMemo(() => {
+    const c: Record<string, number> = { all: state.tasks.length };
+    for (const x of state.tasks) c[x.category] = (c[x.category] ?? 0) + 1;
+    return c;
+  }, [state.tasks]);
+  const tasks = state.tasks.filter((x) => taskChip === "all" || x.category === taskChip);
+
+  // The patients open work points at, most urgent first (tasks are already sorted by due date).
+  const watch = useMemo(() => {
+    const seen = new Map<string, { reason: string; tone: Tone; when: string }>();
+    for (const v of state.visits) {
+      if (!seen.has(v.patientId)) {
+        seen.set(v.patientId, { reason: v.purpose, tone: "info", when: timeOf(v.startAt) });
+      }
+    }
+    for (const x of state.tasks) {
+      if (x.patientId && !seen.has(x.patientId)) {
+        const due = dueLabel(x.dueAt);
+        seen.set(x.patientId, {
+          reason: x.title.replace(/^(Complete|Sign|Finish) /, ""),
+          tone: due.tone,
+          when: x.dueAt ? due.text : "",
+        });
+      }
+    }
+    return [...seen.entries()].slice(0, 5);
+  }, [state.visits, state.tasks]);
+
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+
   return (
-    <div style={pageStyle}>
-      <header style={headerStyle}>
-        <div>
-          <h1 style={titleStyle}>
-            {session ? `${greeting()}, ${firstName(session)}` : "Welcome to WardenX"}
-          </h1>
-          <p style={subtitleStyle}>Here's what needs your attention today.</p>
-        </div>
-        {action ? (
-          <Link to={action.path} className="wx-button" style={primaryActionStyle}>
-            <Glyph name="arrow-right" size={16} />
-            <span>{action.title}</span>
-          </Link>
+    <div className="wx-home">
+      <div className="wx-home-main">
+        <header className="wx-page-head">
+          <div>
+            <h1 style={{ fontSize: "1.875rem" }}>
+              {session ? `${greeting()}, ${firstName(session)}` : "Welcome to WardenX"}
+            </h1>
+            <p>Here's what's happening with your hospice today.</p>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+            <span style={{ color: t.onSurfaceVariant, fontSize: "0.875rem" }}>{today}</span>
+            {action ? (
+              <Link to={action.path} className="wx-btn-primary">
+                <Glyph name="plus" size={16} />
+                <span>{action.title}</span>
+              </Link>
+            ) : null}
+          </div>
+        </header>
+
+        <section aria-label="Summary" className="wx-home-kpis">
+          {loading && state.kpis.length === 0
+            ? SKELETON_KEYS.map((k) => <KpiSkeleton key={k} />)
+            : state.kpis.map((kpi) => <Kpi key={kpi.id} kpi={kpi} />)}
+        </section>
+
+        {state.failed.length > 0 ? (
+          <output className="wx-home-degraded">
+            Some dashboard sections could not be loaded: {state.failed.join(", ")}.
+          </output>
         ) : null}
-      </header>
 
-      <section aria-label="Summary" style={kpiGridStyle}>
-        {loading && state.kpis.length === 0
-          ? Array.from({ length: 4 }, (_, i) => <KpiSkeleton key={i} />)
-          : state.kpis.map((kpi) => <Kpi key={kpi.id} kpi={kpi} />)}
-      </section>
+        <div className="wx-home-row">
+          <Card title="My Tasks" icon="clipboard-list">
+            <fieldset className="wx-seg wx-seg-compact" style={{ alignSelf: "start" }}>
+              <legend className="wx-sr-only">Task type</legend>
+              {TASK_CHIPS.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  aria-pressed={taskChip === c.key}
+                  className={taskChip === c.key ? "is-selected" : undefined}
+                  onClick={() => setTaskChip(c.key)}
+                >
+                  {c.label}
+                  <span className="wx-seg-count wx-nums">{taskCounts[c.key] ?? 0}</span>
+                </button>
+              ))}
+            </fieldset>
+            {loading ? (
+              <ListSkeleton rows={4} />
+            ) : tasks.length === 0 ? (
+              <p className="wx-row-sub">No open tasks in this view.</p>
+            ) : (
+              <ul className="wx-home-list">
+                {tasks.slice(0, 5).map((x) => {
+                  const due = dueLabel(x.dueAt);
+                  return (
+                    <li key={x.id}>
+                      <Link to={x.href}>
+                        <span
+                          className="wx-task-ring"
+                          aria-hidden
+                          style={{ borderColor: toneColor[due.tone] }}
+                        />
+                        <span className="wx-home-list-main">
+                          <strong>{x.title}</strong>
+                          <span className="wx-row-sub">
+                            {nameOf(x.patientId) ?? x.fallbackSubject ?? "Patient"}
+                          </span>
+                        </span>
+                        {x.dueAt ? (
+                          <span
+                            style={{
+                              color: due.tone === "critical" ? t.error : t.onSurfaceVariant,
+                              fontSize: "0.8125rem",
+                            }}
+                          >
+                            {due.text}
+                          </span>
+                        ) : null}
+                        <Glyph name="chevron-right" size={16} />
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
 
-      <div style={mainGridStyle}>
+          <Card title="Patients Needing Attention" icon="user-circle" viewAll="/patients">
+            {loading ? (
+              <ListSkeleton rows={4} />
+            ) : watch.length === 0 ? (
+              <p className="wx-row-sub">No open work points at a patient right now.</p>
+            ) : (
+              <ul className="wx-home-list">
+                {watch.map(([id, w]) => {
+                  const p = patients.get(id);
+                  const name = p ? `${p.firstName} ${p.lastName}` : "Patient";
+                  const age = p ? ageOf(p.dob) : null;
+                  return (
+                    <li key={id}>
+                      <Link to={`/patients/${id}`}>
+                        <Avatar name={name} />
+                        <span className="wx-home-list-main">
+                          <strong>{name}</strong>
+                          <span className="wx-row-sub">
+                            {p ? `DOB ${usDate(p.dob)}${age != null ? ` (${age}y)` : ""}` : "—"}
+                          </span>
+                        </span>
+                        <span
+                          className="wx-home-pill"
+                          style={{
+                            color: toneColor[w.tone],
+                            background: toneTint(toneColor[w.tone]),
+                          }}
+                        >
+                          {w.reason}
+                        </span>
+                        <span
+                          className="wx-row-sub"
+                          style={{ minWidth: "4.5rem", textAlign: "right" }}
+                        >
+                          {w.when}
+                        </span>
+                        <Glyph name="chevron-right" size={16} />
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Card>
+        </div>
+
+        <div className="wx-home-row">
+          <CensusCard census={state.census} loading={loading} />
+          <Card title="Assessments Due" icon="clipboard-check" viewAll="/hope">
+            {loading ? (
+              <ListSkeleton rows={4} />
+            ) : !hasPermission(session, "hope.timepoint.read") ||
+              state.unavailable.includes("hope") ? (
+              <p className="wx-row-sub">
+                The HOPE worklist is not available for your access scope.
+              </p>
+            ) : state.assessments.length === 0 ? (
+              <p className="wx-row-sub">No HOPE assessment windows are open.</p>
+            ) : (
+              <table className="wx-mini-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Patient</th>
+                    <th scope="col">Type</th>
+                    <th scope="col">Target Date</th>
+                    <th scope="col">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {state.assessments.map((a) => {
+                    const n = daysUntil(a.dueAt);
+                    const status =
+                      n < 0
+                        ? { label: "Overdue", tone: "critical" as Tone }
+                        : n <= 2
+                          ? { label: "Due soon", tone: "warning" as Tone }
+                          : { label: "Pending", tone: "neutral" as Tone };
+                    const color =
+                      status.tone === "neutral" ? t.onSurfaceVariant : toneColor[status.tone];
+                    return (
+                      <tr key={a.id}>
+                        <td>
+                          <Link to={a.href} style={{ color: t.onSurface, fontWeight: 600 }}>
+                            {nameOf(a.patientId) ?? "Patient"}
+                          </Link>
+                        </td>
+                        <td>{a.type}</td>
+                        <td className="wx-nums">{usDate(a.dueAt)}</td>
+                        <td>
+                          <span
+                            className="wx-home-pill"
+                            style={{ color, background: toneTint(color) }}
+                          >
+                            {status.label}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </Card>
+        </div>
+      </div>
+
+      <aside className="wx-home-rail" aria-label="Today">
         <Panel
-          title="Needs your attention"
-          action={
-            state.attention.length > 0 ? (
-              <Link to={state.attention[0]!.href ?? "/"}>View first</Link>
-            ) : null
-          }
-          prominent
+          title="Critical Alerts"
+          icon="alert"
+          tone={state.attention.some((x) => x.severity === "critical") ? "danger" : "default"}
         >
           {loading && state.attention.length === 0 ? (
-            <ListSkeleton rows={4} />
+            <ListSkeleton rows={2} />
           ) : state.attention.length > 0 ? (
-            <div style={{ display: "grid", gap: "0.75rem" }}>
+            <ul className="wx-alert-list">
               {state.attention.map((item) => (
-                <AttentionRow key={item.id} item={item} />
+                <li key={item.id}>
+                  <Link to={item.href ?? "/"}>
+                    <span
+                      className="wx-alert-badge"
+                      aria-hidden
+                      style={{
+                        color: item.severity === "critical" ? t.error : t.warning,
+                        background: toneTint(
+                          item.severity === "critical" ? t.error : t.warning,
+                          16,
+                        ),
+                      }}
+                    >
+                      <Glyph
+                        name={item.severity === "critical" ? "alert-circle" : "clock"}
+                        size={16}
+                      />
+                    </span>
+                    <span className="wx-home-list-main">
+                      <strong
+                        style={{ color: item.severity === "critical" ? t.error : t.onSurface }}
+                      >
+                        {item.title}
+                      </strong>
+                      <span className="wx-row-sub">
+                        {item.module}
+                        {item.description ? ` · ${item.description}` : ""}
+                      </span>
+                    </span>
+                    <Glyph name="chevron-right" size={16} />
+                  </Link>
+                </li>
               ))}
-            </div>
+            </ul>
           ) : (
             <HealthyState />
           )}
         </Panel>
 
-        <Panel title="Today's operations">
-          {loading && state.today.length === 0 ? (
-            <ListSkeleton rows={4} />
-          ) : state.today.length > 0 ? (
-            <div style={{ display: "grid", gap: "0.75rem" }}>
-              {state.today.map((item) => (
-                <TodayRow key={item.id} item={item} />
-              ))}
-            </div>
+        <Panel
+          title="Upcoming Visits"
+          icon="calendar"
+          action={
+            <Link to="/calendar" style={{ fontWeight: 500 }}>
+              View all
+            </Link>
+          }
+        >
+          {loading && state.visits.length === 0 ? (
+            <ListSkeleton rows={3} />
+          ) : state.visits.length === 0 ? (
+            <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.8125rem" }}>
+              No more visits scheduled today.
+            </p>
           ) : (
-            <EmptyState
-              title="No operational rollups yet"
-              description="No accessible module exposes a today-focused aggregate for this role."
-            />
+            <ul className="wx-home-list wx-home-visits">
+              {state.visits.map((v) => {
+                const name = nameOf(v.patientId) ?? "Patient";
+                return (
+                  <li key={v.id}>
+                    <Link to={v.href}>
+                      <span className="wx-nums wx-home-visit-time">{timeOf(v.startAt)}</span>
+                      <Avatar name={name} />
+                      <span className="wx-home-list-main">
+                        <strong>{name}</strong>
+                        <span className="wx-row-sub">{v.purpose}</span>
+                      </span>
+                      <Glyph name="chevron-right" size={16} />
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
           )}
         </Panel>
-      </div>
 
-      {state.failed.length > 0 ? (
-        <div role="status" style={degradedStyle}>
-          Some dashboard sections could not be loaded: {state.failed.join(", ")}.
-        </div>
-      ) : null}
-
-      <section style={{ marginTop: t.space7 }}>
-        <SectionHeading title="Quick access" />
-        {quickAccess.length > 0 ? (
-          <div style={quickGridStyle}>
-            {quickAccess.map((screen) => (
-              <Link key={screen.id} to={screen.path} style={quickLinkStyle}>
-                <span>{screen.title}</span>
-                <Glyph name="arrow-right" size={15} />
-              </Link>
-            ))}
-          </div>
-        ) : (
-          <p style={mutedStyle}>No shortcuts are available for your current permissions.</p>
-        )}
-      </section>
-
-      <section style={{ marginTop: t.space7 }}>
-        <SectionHeading title="Recent activity" />
-        {loading && state.activity.length === 0 ? (
-          <ListSkeleton rows={3} />
-        ) : state.activity.length > 0 ? (
-          <div style={{ ...cardSurface, padding: "0.35rem 1rem" }}>
-            {state.activity.map((item) => (
-              <ActivityRow key={item.id} item={item} />
-            ))}
-          </div>
-        ) : (
-          <p style={mutedStyle}>No recent activity feed is available for your current permissions.</p>
-        )}
-      </section>
+        <Panel title="Quick Links" icon="link" flush>
+          {quickAccess.length > 0 ? (
+            <ul className="wx-rail-links">
+              {quickAccess.map((s) => (
+                <li key={s.id}>
+                  <Link to={s.path}>
+                    <span style={{ color: t.primary }}>
+                      <Glyph
+                        name={QUICK_ICON[s.id] ?? "arrow-right"}
+                        size={17}
+                        strokeWidth={1.75}
+                      />
+                    </span>
+                    <span style={{ flex: 1 }}>{s.title}</span>
+                    <Glyph name="chevron-right" size={16} strokeWidth={1.75} />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p
+              style={{
+                margin: 0,
+                padding: "0 1rem 1rem",
+                color: t.onSurfaceVariant,
+                fontSize: "0.8125rem",
+              }}
+            >
+              No shortcuts are available for your current permissions.
+            </p>
+          )}
+        </Panel>
+      </aside>
     </div>
   );
 }
 
 function Kpi({ kpi }: { kpi: DashboardKpi }): JSX.Element {
+  const color = toneColor[kpi.tone];
   const content = (
     <>
-      <span style={labelStyle}>{kpi.label}</span>
-      <span className="tabular-nums" style={{ ...kpiValueStyle, color: toneColor[kpi.tone] }}>
-        {kpi.value}
-      </span>
-      {kpi.detail ? <span style={mutedSmallStyle}>{kpi.detail}</span> : null}
-    </>
-  );
-  const style = {
-    ...cardSurface,
-    ...kpiStyle,
-    borderLeft: `4px solid ${toneColor[kpi.tone]}`,
-  };
-  return kpi.href ? (
-    <Link to={kpi.href} style={{ ...style, textDecoration: "none", color: t.onSurface }}>
-      {content}
-    </Link>
-  ) : (
-    <div style={style}>{content}</div>
-  );
-}
-
-function AttentionRow({ item }: { item: AttentionItem }): JSX.Element {
-  const accent = toneColor[severityTone[item.severity]];
-  const content = (
-    <>
-      <span style={{ ...pillStyle, color: accent, background: toneTint(accent, 12) }}>
-        {item.type}
-      </span>
-      <span style={{ minWidth: 0 }}>
-        <span style={rowTitleStyle}>{item.title}</span>
-        <span style={rowMetaStyle}>
-          {item.description ?? item.module}
-          {item.timestamp ? ` · ${formatRelative(item.timestamp)}` : ""}
+      <span className="wx-home-kpi-head">
+        <span
+          className="wx-home-kpi-icon"
+          aria-hidden
+          style={{ color: t.primary, background: toneTint(t.primary) }}
+        >
+          <Glyph name={kpi.icon} size={20} strokeWidth={1.75} />
         </span>
+        <span>{kpi.label}</span>
       </span>
+      <strong className="wx-nums wx-home-kpi-value">{kpi.value}</strong>
+      {kpi.detail ? (
+        <span
+          className="wx-home-kpi-detail"
+          style={{ color: kpi.tone === "critical" ? color : undefined }}
+        >
+          {kpi.detail}
+        </span>
+      ) : null}
     </>
   );
-  return item.href ? (
-    <Link to={item.href} style={attentionRowStyle}>
+  return kpi.href ? (
+    <Link to={kpi.href} className="wx-home-kpi">
       {content}
     </Link>
   ) : (
-    <div style={attentionRowStyle}>{content}</div>
+    <div className="wx-home-kpi">{content}</div>
   );
 }
 
-function TodayRow({ item }: { item: TodayItem }): JSX.Element {
-  const content = (
-    <>
-      <span>
-        <span style={rowTitleStyle}>{item.label}</span>
-        {item.detail ? <span style={rowMetaStyle}>{item.detail}</span> : null}
-      </span>
-      <span className="tabular-nums" style={{ color: toneColor[item.tone], fontWeight: 750 }}>
-        {item.value}
-      </span>
-    </>
-  );
-  return item.href ? (
-    <Link to={item.href} style={todayRowStyle}>
-      {content}
-    </Link>
-  ) : (
-    <div style={todayRowStyle}>{content}</div>
-  );
-}
-
-function ActivityRow({ item }: { item: ActivityItem }): JSX.Element {
-  return (
-    <Link to={item.href ?? "/audit"} style={activityRowStyle}>
-      <span style={{ ...activityDotStyle, background: toneColor[item.tone] }} />
-      <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={rowTitleStyle}>{item.title}</span>
-        {item.detail ? <span style={rowMetaStyle}>{item.detail}</span> : null}
-      </span>
-      {item.timestamp ? <span style={mutedSmallStyle}>{formatRelative(item.timestamp)}</span> : null}
-    </Link>
-  );
-}
-
-function Panel({
+function Card({
   title,
-  action,
-  prominent = false,
+  icon,
+  viewAll,
   children,
 }: {
   title: string;
-  action?: ReactNode;
-  prominent?: boolean;
+  icon: GlyphName;
+  viewAll?: string;
   children: ReactNode;
 }): JSX.Element {
   return (
-    <section style={{ ...cardSurface, padding: t.space5, minHeight: prominent ? "21rem" : "auto" }}>
-      <div style={panelHeaderStyle}>
-        <h2 style={sectionTitleStyle}>{title}</h2>
-        {action ? <div style={{ fontSize: "0.85rem" }}>{action}</div> : null}
-      </div>
+    <section className="wx-foot-card" aria-label={title}>
+      <header style={{ alignItems: "center" }}>
+        <span style={{ color: t.primary, display: "flex" }}>
+          <Glyph name={icon} size={20} strokeWidth={1.75} />
+        </span>
+        <h2 style={{ flex: 1 }}>{title}</h2>
+        {viewAll ? (
+          <Link to={viewAll} style={{ fontWeight: 500, fontSize: "0.875rem" }}>
+            View all →
+          </Link>
+        ) : null}
+      </header>
       {children}
     </section>
   );
 }
 
-function SectionHeading({ title }: { title: string }): JSX.Element {
-  return <h2 style={{ ...sectionTitleStyle, marginBottom: "0.85rem" }}>{title}</h2>;
+function CensusCard({ census, loading }: { census: CensusFigures; loading: boolean }): JSX.Element {
+  const aging = census.aging ?? [];
+  const total = aging.reduce((s, b) => s + b.cents, 0);
+  const old = aging.find((b) => b.label === "90+")?.cents ?? 0;
+  const statuses = Object.entries(census.byStatus ?? {}).filter(([, n]) => n > 0);
+  const max = Math.max(1, ...aging.map((b) => b.cents));
+  const statusMax = Math.max(1, ...statuses.map(([, n]) => n));
+  const hasAny = census.active !== undefined || aging.length > 0;
+  return (
+    <Card title="Census & Receivables" icon="bar-chart">
+      {loading ? (
+        <ListSkeleton rows={3} />
+      ) : !hasAny ? (
+        <EmptyState
+          title="No census or A/R data"
+          description="Census and receivables appear for roles with patient or billing access."
+        />
+      ) : (
+        <>
+          <div className="wx-home-figures">
+            {census.active !== undefined ? (
+              <div>
+                <span>Active census</span>
+                <strong className="wx-nums">{census.active}</strong>
+              </div>
+            ) : null}
+            {aging.length > 0 ? (
+              <>
+                <div>
+                  <span>Open A/R</span>
+                  <strong className="wx-nums">{formatMoney(total)}</strong>
+                </div>
+                <div>
+                  <span>Over 90 days</span>
+                  <strong className="wx-nums" style={{ color: old > 0 ? t.warning : undefined }}>
+                    {formatMoney(old)}
+                  </strong>
+                </div>
+              </>
+            ) : null}
+          </div>
+          <div className="wx-home-charts">
+            {aging.length > 0 && total === 0 ? (
+              <p className="wx-row-sub" style={{ margin: 0 }}>
+                No open claims in accounts receivable.
+              </p>
+            ) : null}
+            {aging.length > 0 && total > 0 ? (
+              <figure>
+                <figcaption>A/R aging (days)</figcaption>
+                <div className="wx-bars">
+                  {aging.map((b) => (
+                    <div key={b.label} title={`${b.label} days: ${formatMoney(b.cents)}`}>
+                      <span className="wx-bar-value wx-nums">{formatMoney(b.cents)}</span>
+                      <span
+                        className="wx-bar"
+                        style={{
+                          height: `${Math.max(3, (b.cents / max) * 100)}%`,
+                          background: b.label === "90+" ? t.warning : t.primary,
+                        }}
+                      />
+                      <span className="wx-bar-label">{b.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </figure>
+            ) : null}
+            {statuses.length > 0 ? (
+              <figure>
+                <figcaption>Patients by status</figcaption>
+                <ul className="wx-hbars">
+                  {statuses.map(([status, n]) => (
+                    <li key={status}>
+                      <span>{stateLabel(status)}</span>
+                      <span className="wx-hbar-track">
+                        <span style={{ width: `${(n / statusMax) * 100}%` }} />
+                      </span>
+                      <strong className="wx-nums">{n}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </figure>
+            ) : null}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function Avatar({ name }: { name: string }): JSX.Element {
+  const c = tintFor(name);
+  return (
+    <span className="wx-home-avatar" aria-hidden style={{ color: c, background: toneTint(c, 14) }}>
+      {initials(name)}
+    </span>
+  );
 }
 
 function HealthyState(): JSX.Element {
   return (
-    <div style={healthyStyle}>
-      <span style={healthyIconStyle}>
-        <Glyph name="check" size={18} />
+    <div style={{ display: "flex", alignItems: "center", gap: "0.75rem" }}>
+      <span
+        className="wx-alert-badge"
+        style={{ color: t.success, background: toneTint(t.success, 16) }}
+      >
+        <Glyph name="check" size={16} />
       </span>
       <div>
-        <div style={{ fontWeight: 750, color: t.onSurface }}>You're all caught up</div>
-        <div style={mutedSmallStyle}>No urgent items require your attention.</div>
+        <div style={{ fontWeight: 700, color: t.onSurface, fontSize: "0.875rem" }}>
+          You're all caught up
+        </div>
+        <div className="wx-row-sub">No urgent items require your attention.</div>
       </div>
     </div>
   );
@@ -853,222 +1420,24 @@ function HealthyState(): JSX.Element {
 
 function KpiSkeleton(): JSX.Element {
   return (
-    <div style={{ ...cardSurface, ...kpiStyle }}>
-      <span style={{ ...skeletonStyle, width: "55%" }} />
-      <span style={{ ...skeletonStyle, width: "35%", height: "1.9rem" }} />
-      <span style={{ ...skeletonStyle, width: "70%" }} />
+    <div className="wx-home-kpi" aria-hidden>
+      <span className="wx-skeleton" style={{ width: "60%" }} />
+      <span className="wx-skeleton" style={{ width: "35%", height: "1.9rem" }} />
+      <span className="wx-skeleton" style={{ width: "70%" }} />
     </div>
   );
 }
 
 function ListSkeleton({ rows }: { rows: number }): JSX.Element {
   return (
-    <div style={{ display: "grid", gap: "0.75rem" }}>
-      {Array.from({ length: rows }, (_, i) => (
-        <div key={i} style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
-          <span style={{ ...skeletonStyle, width: "3rem" }} />
-          <span style={{ ...skeletonStyle, flex: 1 }} />
-          <span style={{ ...skeletonStyle, width: "4rem" }} />
+    <div style={{ display: "grid", gap: "0.75rem" }} aria-hidden>
+      {SKELETON_KEYS.slice(0, rows).map((k) => (
+        <div key={k} style={{ display: "flex", gap: "0.75rem", alignItems: "center" }}>
+          <span className="wx-skeleton" style={{ width: "2.25rem", height: "2.25rem" }} />
+          <span className="wx-skeleton" style={{ flex: 1 }} />
+          <span className="wx-skeleton" style={{ width: "4rem" }} />
         </div>
       ))}
     </div>
   );
 }
-
-const pageStyle: CSSProperties = {
-  padding: "clamp(1rem, 3vw, 2rem)",
-  overflow: "auto",
-  background: t.background,
-  minHeight: "100%",
-};
-const headerStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "flex-start",
-  gap: t.space5,
-  marginBottom: t.space7,
-  flexWrap: "wrap",
-};
-const titleStyle: CSSProperties = {
-  margin: "0 0 0.35rem",
-  fontFamily: t.fontDisplay,
-  fontWeight: 650,
-  fontSize: "1.75rem",
-  letterSpacing: 0,
-  color: t.onSurface,
-};
-const subtitleStyle: CSSProperties = {
-  margin: 0,
-  color: t.onSurfaceVariant,
-  maxWidth: "44rem",
-};
-const primaryActionStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  gap: "0.45rem",
-  padding: "0.65rem 0.9rem",
-  borderRadius: t.radiusMd,
-  background: t.primary,
-  color: t.onPrimary,
-  textDecoration: "none",
-  fontWeight: 750,
-  whiteSpace: "nowrap",
-};
-const kpiGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 12rem), 1fr))",
-  gap: t.space4,
-  marginBottom: t.space7,
-};
-const kpiStyle: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  alignItems: "flex-start",
-  gap: "0.45rem",
-  padding: "1rem 1.1rem",
-  minHeight: "7.75rem",
-};
-const labelStyle: CSSProperties = {
-  color: t.onSurfaceVariant,
-  fontSize: "0.72rem",
-  fontWeight: 750,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-};
-const kpiValueStyle: CSSProperties = {
-  fontFamily: t.fontSans,
-  fontSize: "1.85rem",
-  fontWeight: 750,
-  lineHeight: 1.05,
-};
-const mainGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 21rem), 1fr))",
-  gap: t.space5,
-};
-const panelHeaderStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: t.space3,
-  marginBottom: t.space4,
-};
-const sectionTitleStyle: CSSProperties = {
-  margin: 0,
-  fontFamily: t.fontDisplay,
-  fontSize: "1rem",
-  fontWeight: 750,
-  letterSpacing: 0,
-  color: t.onSurface,
-};
-const pillStyle: CSSProperties = {
-  width: "4.7rem",
-  flex: "0 0 4.7rem",
-  textAlign: "center",
-  borderRadius: t.radiusSm,
-  padding: "0.22rem 0.35rem",
-  fontSize: "0.68rem",
-  fontWeight: 800,
-  letterSpacing: "0.04em",
-};
-const attentionRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.85rem",
-  padding: "0.85rem",
-  borderRadius: t.radiusMd,
-  background: t.surfaceLow,
-  color: t.onSurface,
-  textDecoration: "none",
-};
-const todayRowStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: t.space3,
-  alignItems: "center",
-  padding: "0.8rem 0",
-  borderBottom: ghostBorder,
-  color: t.onSurface,
-  textDecoration: "none",
-};
-const activityRowStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.75rem",
-  padding: "0.8rem 0",
-  borderBottom: ghostBorder,
-  color: t.onSurface,
-  textDecoration: "none",
-};
-const rowTitleStyle: CSSProperties = {
-  display: "block",
-  color: t.onSurface,
-  fontWeight: 700,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-const rowMetaStyle: CSSProperties = {
-  display: "block",
-  color: t.onSurfaceVariant,
-  fontSize: "0.8rem",
-  marginTop: "0.18rem",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-};
-const mutedStyle: CSSProperties = { color: t.onSurfaceVariant, margin: 0 };
-const mutedSmallStyle: CSSProperties = { color: t.onSurfaceVariant, fontSize: "0.8rem" };
-const degradedStyle: CSSProperties = {
-  marginTop: t.space5,
-  padding: "0.8rem 1rem",
-  borderRadius: t.radiusMd,
-  color: t.warning,
-  background: toneTint(t.warning, 10),
-};
-const quickGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 12rem), 1fr))",
-  gap: t.space3,
-};
-const quickLinkStyle: CSSProperties = {
-  ...cardSurface,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: t.space3,
-  padding: "0.85rem 1rem",
-  color: t.onSurface,
-  textDecoration: "none",
-  fontWeight: 700,
-};
-const healthyStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "0.85rem",
-  padding: "1.25rem",
-  borderRadius: t.radiusLg,
-  background: toneTint(t.success, 10),
-};
-const healthyIconStyle: CSSProperties = {
-  display: "inline-flex",
-  width: "2rem",
-  height: "2rem",
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: "999px",
-  color: t.successPillFg,
-  background: toneTint(t.success, 18),
-};
-const activityDotStyle: CSSProperties = {
-  width: "0.5rem",
-  height: "0.5rem",
-  borderRadius: "999px",
-  flex: "0 0 auto",
-};
-const skeletonStyle: CSSProperties = {
-  display: "block",
-  height: "0.85rem",
-  borderRadius: "999px",
-  background: `linear-gradient(90deg, ${t.surfaceLow}, ${t.surfaceContainer}, ${t.surfaceLow})`,
-};
