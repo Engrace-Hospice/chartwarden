@@ -739,6 +739,12 @@ jobs:
       # A throwaway 32-byte test KEK. It wraps DEKs minted by this run's seed and nothing else; a real
       # deployment's lives in its secret manager (ADR-0045).
       M34_TENANT_KEK: kek-1:Y2ktdGVuYW50LWtlay10ZXN0LTAxMjM0NTY3ODlhYmM=
+      # Document upload (documents.spec) needs the MinIO/S3 adapter: without MINIO_* the upload route answers
+      # 503 DEGRADED and the SPA drops to its maintenance page. The adapter creates its own buckets.
+      MINIO_ENDPOINT: http://localhost:9000
+      MINIO_ACCESS_KEY: wardenx
+      MINIO_SECRET_KEY: wardenx-minio-ci-secret
+      MINIO_REGION: us-east-1
     steps:
       - uses: actions/checkout@v4
       - name: Install Bun
@@ -760,6 +766,18 @@ jobs:
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-e2e; exit 1
+      # `docker run`, not a `services:` container: MinIO needs its `server /data` argument, which a service
+      # container cannot take.
+      - name: Start MinIO (document storage)
+        run: |
+          docker run -d --name wardenx-ci-minio-e2e \
+            -e MINIO_ROOT_USER=wardenx -e MINIO_ROOT_PASSWORD=wardenx-minio-ci-secret \
+            -p 9000:9000 minio/minio:latest server /data
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:9000/minio/health/live > /dev/null && exit 0
+            sleep 1
+          done
+          echo "MinIO did not become ready" >&2; docker logs wardenx-ci-minio-e2e; exit 1
       - name: Install the Chromium build this Playwright version pins
         run: bunx playwright install --with-deps chromium
       - name: Migrate
@@ -789,6 +807,11 @@ jobs:
       # this exercises RLS, ABAC and the state machines on the way to the fixtures the specs need.
       - name: Seed the demo tenant (the `db:reset` chain)
         run: bun run db:seed:all
+      # The seeded demo org is created by SQL, not through M34 provisioning, so its `tenant-<orgId>` bucket
+      # does not exist and document uploads 404 (NoSuchBucket) at the presigned PUT. The operator reconcile
+      # creates the bucket for every tenant missing one.
+      - name: Create the demo tenant's storage bucket
+        run: bun run storage:reconcile-tenants
       - name: Start the web app and wait for it to serve
         run: |
           (cd apps/web && nohup bun run dev > "$RUNNER_TEMP/e2e-logs/web.log" 2>&1 &)

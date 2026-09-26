@@ -279,6 +279,11 @@ async function purgeOrgOwnedRows(db: Client, orgId: string): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  // Dev/demo only: this deletes the demo org and (purgeOrgOwnedRows) every row of any org that no longer
+  // exists, across all tables. A production database may legitimately hold such rows, so refuse outright.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("db:seed is a local dev seed and refuses to run with NODE_ENV=production");
+  }
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
   await db.connect();
