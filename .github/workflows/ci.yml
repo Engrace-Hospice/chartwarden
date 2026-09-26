@@ -168,7 +168,7 @@ jobs:
             -p 5432:5432 pgvector/pgvector:pg16 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg pg_isready -U postgres -d wardenx_test && exit 0
+            docker exec wardenx-ci-pg pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg; exit 1
@@ -458,7 +458,7 @@ jobs:
             -p 5432:5432 pgvector/pgvector:pg16 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg-lifecycle pg_isready -U postgres -d wardenx_test && exit 0
+            docker exec wardenx-ci-pg-lifecycle pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-lifecycle; exit 1
@@ -503,7 +503,7 @@ jobs:
             -p 5432:5432 pgvector/pgvector:pg16 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg-migrate pg_isready -U postgres -d wardenx_migration_gate && exit 0
+            docker exec wardenx-ci-pg-migrate pg_isready -h 127.0.0.1 -U postgres -d wardenx_migration_gate && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-migrate; exit 1
@@ -559,7 +559,7 @@ jobs:
             -p 5432:5432 pgvector/pgvector:pg16 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg pg_isready -U postgres -d wardenx_test && exit 0
+            docker exec wardenx-ci-pg pg_isready -h 127.0.0.1 -U postgres -d wardenx_test && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg; exit 1
@@ -608,7 +608,7 @@ jobs:
             -p 5432:5432 pgvector/pgvector:pg16 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg-boot pg_isready -U postgres -d wardenx_boot && exit 0
+            docker exec wardenx-ci-pg-boot pg_isready -h 127.0.0.1 -U postgres -d wardenx_boot && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-boot; exit 1
@@ -762,17 +762,19 @@ jobs:
             -p 5432:5432 pgvector/pgvector:pg16 \
             -c max_locks_per_transaction=4096
           for i in $(seq 1 60); do
-            docker exec wardenx-ci-pg-e2e pg_isready -U postgres -d wardenx_e2e && exit 0
+            docker exec wardenx-ci-pg-e2e pg_isready -h 127.0.0.1 -U postgres -d wardenx_e2e && exit 0
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-e2e; exit 1
       # `docker run`, not a `services:` container: MinIO needs its `server /data` argument, which a service
       # container cannot take.
+      # Chainguard's build of the same MinIO server: MinIO no longer publishes `minio/minio` to Docker Hub
+      # (`docker pull` is denied).
       - name: Start MinIO (document storage)
         run: |
           docker run -d --name wardenx-ci-minio-e2e \
             -e MINIO_ROOT_USER=wardenx -e MINIO_ROOT_PASSWORD=wardenx-minio-ci-secret \
-            -p 9000:9000 minio/minio:latest server /data
+            -p 9000:9000 cgr.dev/chainguard/minio:latest server /data
           for i in $(seq 1 60); do
             curl -sf http://localhost:9000/minio/health/live > /dev/null && exit 0
             sleep 1
