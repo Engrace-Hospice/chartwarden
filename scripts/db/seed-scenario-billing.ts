@@ -36,14 +36,14 @@
  *       (b) `state_medicaid_trading_partner_credential` for the PE/OR — DOES have a real route
  *           (`POST /state-medicaid-trading-partner-credentials`), used here, but it is ALSO
  *           `STEP_UP`-gated, hitting the exact same unreachable-step-up-route gap as `submitClaim`
- *           below — one `stepUpSession()` nudge covers both calls.
+ *           below — one `stepUpSession()` nudge (lib/step-up.ts) covers both calls.
  *     `submitClaim`'s D12 step-up gate (`STEP_UP("medicaid.claim.submit")`) uses the REAL
  *     `step_up_recent` ABAC predicate, which reads `session.last_step_up_at`/`last_step_up_factor` —
  *     NOT the raw-header trick M14's adjourn route accepts. The step-up verify routes
  *     (`POST /sessions/step-up/initiate` and `/step-up`, `apps/backend/src/modules/02-identity/routes/
  *     session-step-up.ts`) are exported from M2's index but never imported/mounted in
  *     `apps/backend/src/index.ts` — confirmed by grep, same unreachable-mount class as M19's missing
- *     outbox catalog. `stepUpSession()` below nudges the actor's own `session` row directly (columns
+ *     outbox catalog. `stepUpSession()` (lib/step-up.ts) nudges the actor's own `session` row directly (columns
  *     the real step-up flow would have written) rather than fabricating a bypass — same documented
  *     DB-direct-workaround pattern used elsewhere in this project for a confirmed no-API-path gap.
  *   - M26: `POST /cap/periods` 409s `CAP_CONSTANT_UNPUBLISHED` unless a platform cap-year constant was
@@ -69,6 +69,7 @@
 import { Client } from "pg";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
 import { firstRow } from "./lib/query-rows";
+import { stepUpSession } from "./lib/step-up";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
@@ -116,25 +117,6 @@ async function grantBillingScope(organizationId: string, membershipId: string): 
     `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)
      ON CONFLICT DO NOTHING`,
     [organizationId, membershipId, firstRow(role, "seed-scenario-billing: role lookup").id],
-  );
-  await db.end();
-}
-
-/**
- * GENUINE GAP (see file header): the step-up verify routes are never mounted. Nudges the acting user's
- * own most-recent `session` row to the exact fields a real step-up completion would have written
- * (`login-mfa-completed.ts`'s paired-write, D8), satisfying `step_up_recent`'s freshness window
- * (`STEP_UP_POLICY.defaultMaxAgeSec = 300`) for the few seconds until the gated call fires.
- */
-async function stepUpSession(userId: string): Promise<void> {
-  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
-  const db = new Client({ connectionString: ADMIN_URL });
-  await db.connect();
-  await db.query("SET session_replication_role = replica");
-  await db.query(
-    `UPDATE session SET last_step_up_at = now(), last_step_up_factor = 'totp'
-     WHERE id = (SELECT id FROM session WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1)`,
-    [userId],
   );
   await db.end();
 }
@@ -270,7 +252,9 @@ async function main(): Promise<void> {
   const admin = await signIn("orgadmin@wardenx.local");
   const log = new ScenarioLog("billing (Whitfield / org-wide)");
 
-  const patientId = await findPatientIdByLastName(admin, "Whitfield");
+  // The census is caseload-scoped (F-096) and `org_admin` is a tenant administrator, not an org-wide patient
+  // reader, so the demo patient is looked up as the admin persona the admissions scenario uses.
+  const patientId = await findPatientIdByLastName(await signIn("admin@wardenx.local"), "Whitfield");
   const cert = await admin.client.GET("/api/v1/patients/{patientId}/election-certification", {
     params: { path: { patientId } },
   });

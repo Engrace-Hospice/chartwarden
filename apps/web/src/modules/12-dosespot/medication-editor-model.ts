@@ -19,14 +19,24 @@ export function emptyMedicationData(kind: MedicationEditorKind = "standard"): Me
   };
 }
 
-/** GET data is already the canonical payload: clone it so local updates never mutate the response. */
+/**
+ * GET data is already the canonical payload: clone it so local updates never mutate the response.
+ *
+ * One default is applied: `refillsAuthorized`. A draft opened from the chart's "Prescribe" dialog
+ * stores only `sigStructured`, and the Refills control renders `data.refillsAuthorized ?? 0` — so the
+ * prescriber SAW 0 refills while the payload carried none, and request-signature refused the order
+ * ("data.refillsAuthorized: Expected required property") with nothing on screen to fix. For a
+ * Schedule II order the control is disabled, so it could not be fixed by typing either. Seeding the
+ * state with the value the control already shows makes what is saved match what is displayed.
+ */
 export function hydrateMedicationData(
   value: unknown,
   kind: MedicationEditorKind,
 ): MedicationEditorData {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (structuredClone(value) as MedicationEditorData)
-    : emptyMedicationData(kind);
+  if (!value || typeof value !== "object" || Array.isArray(value)) return emptyMedicationData(kind);
+  const data = structuredClone(value) as MedicationEditorData;
+  if (data.refillsAuthorized === undefined) data.refillsAuthorized = 0;
+  return data;
 }
 
 /** Canonical compound rule: a non-controlled compound never sends a stale DEA schedule. */

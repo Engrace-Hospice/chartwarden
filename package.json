@@ -40,7 +40,7 @@
     "db:seed:scenario-billing": "bun run scripts/db/seed-scenario-billing.ts",
     "db:seed:scenario-remaining": "bun run scripts/db/seed-scenario-remaining.ts",
     "db:seed:scenario-reporting": "bun run scripts/db/seed-scenario-reporting.ts",
-    "db:seed:all": "bun run db:seed && bun run db:seed:org-admin && bun run db:seed:patients && bun run db:seed:staff && bun run db:seed:clinical && bun run db:seed:mdm && bun run db:seed:terminology && bun run db:seed:consent-types && bun run db:seed:org-structure && bun run db:seed:scenario-admissions && bun run db:seed:scenario-clinical && bun run db:seed:scenario-orders-idg && bun run db:seed:scenario-field-ops && bun run db:seed:scenario-billing && bun run db:seed:scenario-remaining && bun run db:seed:scenario-reporting",
+    "db:seed:all": "bun run db:seed && bun run db:seed:org-admin && bun run db:seed:patients && bun run db:seed:staff && bun run db:seed:clinical && bun run db:seed:mdm && bun run db:seed:terminology && bun run db:import:hope-spec && bun run db:seed:consent-types && bun run db:seed:org-structure && bun run db:seed:scenario-admissions && bun run db:seed:scenario-clinical && bun run db:seed:scenario-orders-idg && bun run db:seed:scenario-field-ops && bun run db:seed:scenario-billing && bun run db:seed:scenario-remaining && bun run db:seed:scenario-reporting",
     "db:reset": "docker compose down -v && bun run db:up && bun run db:wait -- --expect-empty && bun run db:migrate && bun run db:seed:all",
     "db:wait": "bun run scripts/db/wait-for-postgres.ts",
     "dev:backend": "cd apps/backend && bun run dev",

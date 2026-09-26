@@ -50,14 +50,27 @@
 // is exact-match by design ("a name is not a specification"). CI reseeds before the suite; locally,
 // re-run `bun run db:seed:scenario-field-ops` — or expect the 500 on a second pass.
 import { expect, test } from "@playwright/test";
+import type { Locator } from "@playwright/test";
 import { ADMIN_ACCOUNT } from "../fixtures/credentials";
 import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
 
 const PATIENT_LAST_NAME = "Whitfield";
 
-/** `YYYY-MM-DDTHH:mm`, the shape the modal's free-text Starts/Ends fields are parsed from. */
-function todayAt(hhmm: string): string {
-  return `${new Date().toISOString().slice(0, 10)}T${hhmm}`;
+/** Types into an entity-lookup combobox and picks the first option matching `option`. */
+async function pickLookupOption(
+  scope: Locator,
+  label: string,
+  query: string,
+  option: RegExp,
+): Promise<void> {
+  const box = scope.getByRole("combobox", { name: label, exact: true });
+  await box.fill(query);
+  const hit = scope
+    .getByRole("listbox", { name: label, exact: true })
+    .getByRole("option", { name: option })
+    .first();
+  await expect(hit).toBeVisible({ timeout: 15_000 });
+  await hit.click();
 }
 
 test.describe("Scheduling", () => {
@@ -67,56 +80,76 @@ test.describe("Scheduling", () => {
     await signInAs(page, ADMIN_ACCOUNT());
     await page.goto("/scheduling/day");
     await expect(page.getByRole("heading", { name: "Day View" })).toBeVisible({ timeout: 15_000 });
+    // The day the view is showing, read off the screen rather than recomputed here, so the visit is
+    // booked on exactly the day the scheduler is looking at.
+    const dayLine = await page.getByText(/^Scheduled visits for \d{4}-\d{2}-\d{2}/).innerText();
+    const day = /(\d{4}-\d{2}-\d{2})/.exec(dayLine)?.[1] as string;
 
-    // A day view has no patient context, so scheduling starts by finding one — and choosing them is
-    // what resolves the open admission and the addresses the create needs.
-    await page.getByLabel("Schedule a visit — find a patient").fill(PATIENT_LAST_NAME);
-    await page.getByRole("button", { name: "Search" }).click();
-    const hit = page.getByRole("button", { name: new RegExp(PATIENT_LAST_NAME, "i") }).first();
-    await expect(hit).toBeVisible({ timeout: 15_000 });
-    await hit.click();
-
-    const dialog = page.getByRole("dialog", { name: "Schedule a visit" });
+    // Since the #235 redesign, scheduling starts from the scheduling nav's "New Visit" action, and the
+    // patient, the active admission and the assignee are each an entity lookup (type, pick an option)
+    // inside one "New Visit" dialog — where the old day view had its own patient search box.
+    await page.getByRole("button", { name: "New Visit" }).click();
+    const dialog = page.getByRole("dialog", { name: "New Visit" });
     await expect(dialog).toBeVisible({ timeout: 15_000 });
 
-    // Telephonic rather than a home visit: the demo patient has no recorded address, and the modal says
-    // so rather than offering an address picker with nothing in it. The setting is the honest choice,
-    // not a workaround — a telephonic visit is a real hospice visit setting.
-    await dialog.getByLabel("Purpose").selectOption("routine_visit");
-    await dialog.getByLabel("Setting").selectOption("telephonic");
+    // Choosing the patient is what resolves the open admission the create needs.
+    await pickLookupOption(
+      dialog,
+      "Patient",
+      PATIENT_LAST_NAME,
+      new RegExp(PATIENT_LAST_NAME, "i"),
+    );
+    const admission = dialog.getByRole("combobox", { name: "Active admission" });
+    await expect(admission).toBeEnabled();
+    await admission.click();
+    await dialog
+      .getByRole("listbox", { name: "Active admission" })
+      .getByRole("option")
+      .first()
+      .click();
+
+    // Telephonic rather than a home visit: the demo patient has no recorded address. The setting is the
+    // honest choice, not a workaround — a telephonic visit is a real hospice visit setting.
+    await dialog.getByLabel("Visit purpose").selectOption("routine_visit");
+    await dialog.getByLabel("Visit setting").selectOption("telephonic");
 
     // The assignee picker offers the org's ACTIVE ROSTER, not an eligibility list — the §4.7 D8
     // pre-schedule gate is the server's, and filtering here would be a second implementation of it.
     // So the spec picks the RN and lets the server decide, which is the whole point of the gate.
-    const assignee = dialog.getByLabel("Assign to");
-    await expect(assignee).toBeVisible();
-    const rnOption = dialog.locator("option", { hasText: /Rita/i }).first();
-    await expect(rnOption).toHaveCount(1);
-    await assignee.selectOption({ label: await rnOption.innerText() });
+    await pickLookupOption(dialog, "Assigned clinician", "Rita", /Rita/i);
 
-    await dialog.getByLabel("Starts").fill(todayAt("14:00"));
-    await dialog.getByLabel("Ends").fill(todayAt("15:00"));
+    await dialog.getByLabel("Scheduled start").fill(`${day}T14:00`);
+    await dialog.getByLabel("Scheduled end").fill(`${day}T15:00`);
 
-    const schedule = dialog.getByRole("button", { name: "Schedule", exact: true });
-    await expect(schedule).toBeEnabled();
-    await schedule.click();
+    await dialog.getByRole("button", { name: "Create Visit" }).click();
 
     // The dialog closes only on a committed write. Before F-079 this is exactly where it failed, on a
-    // 403 from `clinician_credentials_active` — the assignee held the RN role and no RN licence.
+    // 403 from `clinician_credentials_active` — the assignee held the RN role and no RN licence. A
+    // committed create opens the new visit.
     await expect(dialog).toBeHidden({ timeout: 15_000 });
+    await page.waitForURL(/\/scheduling\/visits\/[^/]+$/, { timeout: 15_000 });
+    const visitId = /\/scheduling\/visits\/([^/?#]+)$/.exec(page.url())?.[1] as string;
+    expect(visitId).toBeTruthy();
 
     // And the round trip: the visit is on the day the scheduler was looking at. Asserting the DAY VIEW
     // rather than the POST is what makes this about the schedule a clinician will actually be dispatched
     // from — a create filed against the wrong service date would pass a status-code assertion.
-    await expect(page.getByRole("table")).toBeVisible({ timeout: 15_000 });
-    await expect(
-      page
-        .getByRole("table")
-        .getByText(/Routine/i)
-        .first(),
-    ).toBeVisible({
-      timeout: 15_000,
-    });
+    //
+    // Selected by the `button` role, not `row`: the day grid's `<tr>` carries `role="button"` so the
+    // whole row is keyboard-actionable, and an explicit role replaces the implicit one. The row shows
+    // the scheduled window in UTC, so the 14:00-local start is matched in that form.
+    await page.goto(`/scheduling/day?date=${day}`);
+    const startsAt = new Date(`${day}T14:00`).toISOString().slice(0, 16).replace("T", " ");
+    const row = page
+      .getByRole("table")
+      .getByRole("button")
+      .filter({ hasText: startsAt })
+      .filter({ hasText: /Routine/i })
+      .first();
+    await expect(row).toBeVisible({ timeout: 15_000 });
+    // …and it is THIS visit: opening the row lands on the id the create returned.
+    await row.click();
+    await page.waitForURL(new RegExp(`/scheduling/visits/${visitId}$`));
   });
 
   test("the day view is accessible (WCAG 2.1 A/AA)", async ({ page }) => {

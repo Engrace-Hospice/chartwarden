@@ -229,7 +229,61 @@ async function provisionTenantSpine(db: Client, orgId: string): Promise<void> {
   );
 }
 
+/**
+ * Delete every row the prior demo org owns — every table with an `organization_id` — before the org
+ * row itself goes. The cleanup below used to delete only the handful of tables that FK the org
+ * RESTRICT, then the org, with RI off (replication session). Everything else the demo seeds had written
+ * — patients, admissions, the fixed-id provider entity, IPU units, trading-partner credentials, … —
+ * survived as orphans carrying a deleted org's id, and a re-seed then tripped over them: the fixed-id
+ * rows (`ON CONFLICT (id) DO NOTHING`) stayed bound to the dead org and 404'd under RLS, unique slots
+ * stayed taken (500 on re-create), and admin-connection workers picked orphaned units up.
+ *
+ * Rows whose org no longer exists at all are swept too, so a database polluted by earlier runs heals on
+ * the next seed. NULL `organization_id` (platform-level rows) is never matched. Each table runs under
+ * its own savepoint so one refusal cannot abort the surrounding cleanup transaction.
+ */
+async function purgeOrgOwnedRows(db: Client, orgId: string): Promise<void> {
+  const tables = await db.query<{ schema: string; name: string }>(
+    `SELECT n.nspname AS schema, c.relname AS name
+       FROM pg_attribute a
+       JOIN pg_class c ON c.oid = a.attrelid
+       JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE a.attname = 'organization_id' AND NOT a.attisdropped
+        AND c.relkind IN ('r', 'p') AND NOT c.relispartition
+        AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+        AND c.relname <> 'organization'`,
+  );
+  let purged = 0;
+  for (const { schema, name } of tables.rows) {
+    await db.query("SAVEPOINT purge_org_table");
+    try {
+      const r = await db.query(
+        `DELETE FROM "${schema}"."${name}"
+          WHERE organization_id::text = $1
+             OR (organization_id IS NOT NULL
+                 AND organization_id::text NOT IN (SELECT id::text FROM organization))`,
+        [orgId],
+      );
+      purged += r.rowCount ?? 0;
+      await db.query("RELEASE SAVEPOINT purge_org_table");
+    } catch (err) {
+      await db.query("ROLLBACK TO SAVEPOINT purge_org_table");
+      console.warn(
+        `  ! could not purge prior demo-org rows from ${schema}.${name}: ${String(err)}`,
+      );
+    }
+  }
+  console.log(
+    `prior demo org ${orgId}: purged ${purged} org-owned row(s) across ${tables.rowCount} tables`,
+  );
+}
+
 async function main(): Promise<void> {
+  // Dev/demo only: this deletes the demo org and (purgeOrgOwnedRows) every row of any org that no longer
+  // exists, across all tables. A production database may legitimately hold such rows, so refuse outright.
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("db:seed is a local dev seed and refuses to run with NODE_ENV=production");
+  }
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
   await db.connect();
@@ -262,6 +316,7 @@ async function main(): Promise<void> {
   ]);
   if (prior.rowCount) {
     const orgId = firstRow(prior, "seed: existing organization lookup").id;
+    await purgeOrgOwnedRows(db, orgId);
     await db.query("DELETE FROM membership_role WHERE organization_id = $1", [orgId]);
     await db.query("DELETE FROM role_permission WHERE organization_id = $1", [orgId]);
     await db.query("DELETE FROM membership WHERE organization_id = $1", [orgId]);

@@ -66,6 +66,7 @@
 // `rn_case_manager`; only the first normalizes into the CMS author vocabulary, so "Recording as" resolves
 // to exactly one option and preselects it.
 import { expect, test } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { RN_ACCOUNT } from "../fixtures/credentials";
 import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
 import { openPatientChartByLastName } from "../fixtures/patients";
@@ -80,6 +81,10 @@ const PATIENT_LAST_NAME = "Okonkwo";
 
 test.describe("HOPE", () => {
   test("main path: an RN records a HOPE timepoint and signs it", async ({ page }) => {
+    // This journey completes the whole CMS instrument through the UI (dozens of answers, each waited on
+    // until the server has re-read it) plus the SFV. ~9 s locally, but past the suite's 30 s default on a
+    // shared CI runner (it timed out mid-Section I) — a longer budget for this test only.
+    test.setTimeout(180_000);
     await signInAs(page, RN_ACCOUNT());
 
     const patientId = await openPatientChartByLastName(page, PATIENT_LAST_NAME);
@@ -112,8 +117,9 @@ test.describe("HOPE", () => {
     // "Select a discipline…" placeholder.
     await expect(dialog.getByLabel("Recording as")).toHaveValue("RN");
 
-    // Section J, so the capture carries something a CMS rule can read. `moderate` deliberately arms the
-    // D4 trigger — signing must then create the 2-day SFV obligation, asserted below.
+    // The dialog's own Section J capture. Note (#235): the CMS workspace does not read these legacy
+    // dialog fields — its J2051 answers start empty (the timeline's J2051 column reads "None") — so the
+    // D4 trigger is armed below, in the workspace's J2051A item, where the server evaluates it.
     await dialog.getByLabel("J2030 — screened for pain").check();
     await dialog.getByRole("combobox", { name: "Pain", exact: true }).selectOption("moderate");
 
@@ -134,35 +140,75 @@ test.describe("HOPE", () => {
     await expect(draftRow).toBeVisible();
     await draftRow.click();
     await page.waitForURL(/\/hope\/assessments\/[^/]+$/);
-    await expect(page.getByRole("heading", { name: "HOPE — Admission timepoint" })).toBeVisible();
+    // Since the #235 redesign the assessment detail is the CMS item WORKSPACE: a section navigator
+    // (A · F · I · J · M · N · Review) over the imported HOPE specification, answers auto-saving item
+    // by item.
+    await expect(page.getByRole("heading", { level: 1, name: "Admission Workspace" })).toBeVisible({
+      timeout: 15_000,
+    });
 
-    // An unsigned assessment cannot reach iQIES, and the footer says so rather than offering submission.
-    // The count is asserted as a pattern, not a number: it is one blocking `REQUIRED_SECTION_MISSING`
-    // finding per HOPE section with no item definitions in this codebase (13 of the instrument's 17 —
-    // `screens.ts` states the gap), so it moves whenever a section gains items. What matters here is that
-    // the validation rail RAN and produced findings, which is what makes "No findings." elsewhere mean
-    // checked-and-clean rather than never-checked.
-    await expect(page.getByText(/\d+ errors block iQIES submission/)).toBeVisible();
+    // An incomplete assessment cannot be signed, and the Review step says so rather than offering the
+    // signature. The redesign made this a hard gate: signing is enabled only when the SERVER's readiness
+    // review reports no blockers (it used to be possible to sign over "N errors block iQIES
+    // submission"). What matters here is that the review RAN and found the record incomplete, which is
+    // what makes "Ready to complete" below mean checked-and-clean rather than never-checked.
+    await openSection(page, "Review");
+    await expect(page.getByRole("heading", { name: "Before signature" })).toBeVisible();
+    await expect(workspace(page).getByRole("button", { name: "Sign & complete" })).toBeDisabled();
 
-    await page.getByRole("button", { name: "Sign", exact: true }).click();
-    const signDialog = page.getByRole("dialog", { name: "Sign HOPE timepoint" });
+    // Complete the CMS instrument the way a nurse does: section by section, through the workspace's own
+    // controls, each answer saved by the server before the next.
+    await completeAdmissionSections(page);
+
+    // D4 — a moderate symptom impact (J2051A) arms the 2-day Symptom Follow-Up Visit. Since ea6979a9 the
+    // SERVER opens that obligation when the J2051 answers are saved rather than at signature, and
+    // readiness then holds the signature until the SFV is recorded — so the SFV is asserted, and
+    // completed, here, before the sign ceremony instead of after it.
+    const sfvCard = workspace(page).getByRole("heading", { name: "Symptom Follow-Up Visit" });
+    await expect(sfvCard).toBeVisible();
+    await expect(
+      workspace(page).getByText("A moderate or severe symptom impact requires a follow-up visit."),
+    ).toBeVisible();
+    await workspace(page).getByRole("button", { name: "Complete SFV" }).click();
+    const sfv = page.getByRole("dialog", { name: "Complete SFV" });
+    await expect(sfv).toBeVisible();
+    await expect(sfv.getByLabel("Author discipline")).toHaveValue("RN");
+    const reassessment = sfv.getByRole("combobox", { name: /J2053[A-H]/ });
+    await expect(reassessment).toHaveCount(8);
+    for (let i = 0; i < 8; i += 1) {
+      // Pain eased to mild at the follow-up; nothing else present.
+      await reassessment.nth(i).selectOption({ label: i === 0 ? "Mild" : "None" });
+    }
+    await sfv.getByRole("button", { name: "Complete SFV" }).click();
+    await expect(sfv).toBeHidden({ timeout: 15_000 });
+
+    // Now the review is clean, and only now is the signature offered.
+    await openSection(page, "Review");
+    await expect(page.getByRole("heading", { name: "Ready to complete" })).toBeVisible({
+      timeout: 15_000,
+    });
+    await workspace(page).getByRole("button", { name: "Sign & complete" }).first().click();
+    const signDialog = page.getByRole("dialog", { name: "Complete Admission" });
     await expect(signDialog).toBeVisible();
-    await signDialog.getByRole("button", { name: "Sign", exact: true }).click();
+    await signDialog.getByRole("button", { name: "Sign & complete" }).click();
     await expect(signDialog).toBeHidden({ timeout: 15_000 });
 
-    // The round trip: the server re-read the row and it is signed. Asserting the status pill rather than
-    // the POST's status code is what makes this a statement about the record instead of about the call.
-    await expect(page.getByText("Signed", { exact: true })).toBeVisible({ timeout: 15_000 });
-    // …and the footer now offers the correction path, which is only ever shown on a signed, unsuperseded
-    // assessment — so its presence is a second, independent read of the same transition.
-    await expect(page.getByRole("button", { name: "Correct" })).toBeVisible();
+    // The round trip: the server re-read the row and it is signed — the workspace re-renders as the
+    // completed, read-only record. Asserting the record's own state rather than the POST's status code
+    // is what makes this a statement about the record instead of about the call.
+    await expect(page.getByRole("heading", { level: 1, name: "Completed Admission" })).toBeVisible({
+      timeout: 15_000,
+    });
+    // …and the header now offers the correction path, which is only ever shown on a signed assessment —
+    // so its presence is a second, independent read of the same transition.
+    // (Offered twice on the completed record — in the header and in the review panel.)
+    await expect(page.getByRole("button", { name: "Create correction" }).first()).toBeVisible();
 
-    // D4 — the SFV obligation is created by the SERVER's J2051 evaluation at SIGN time, from the stored
-    // payload, and `j2051TriggerFired` on the row is how the caller learns it happened. Asserted on THIS
-    // assessment's own timeline row rather than by counting the org-wide SFV worklist: that worklist
-    // paginates, so once a database has accumulated a page of obligations a "one more than before" count
-    // stops growing and the assertion silently becomes untestable. Found exactly that way — the count
-    // stuck at 10 after repeated local runs while the trigger was firing correctly every time.
+    // D4, from the record's side: `j2051TriggerFired` is set on the signed row, which the timeline shows
+    // as the "SFV" chip. Asserted on THIS assessment's own timeline row rather than by counting the
+    // org-wide SFV worklist: that worklist paginates, so once a database has accumulated a page of
+    // obligations a "one more than before" count stops growing and the assertion silently becomes
+    // untestable.
     await page.goto(`/patients/${patientId}/hope`);
     await expect(page.getByRole("heading", { name: "HOPE Timeline" })).toBeVisible();
     const signedAdmission = rows
@@ -180,3 +226,161 @@ test.describe("HOPE", () => {
     await expectNoAxeViolations(page);
   });
 });
+
+// ── The HOPE workspace, driven through its own controls ───────────────────────────────────────────────
+
+/** The workspace's main column (the section form), as opposed to the chart rail beside it. */
+function workspace(page: Page): Locator {
+  return page.locator(".wx-hope-main");
+}
+
+async function openSection(page: Page, code: string): Promise<void> {
+  await page
+    .getByRole("navigation", { name: "Admission sections" })
+    .getByRole("button", { name: new RegExp(`^${code}\\b`) })
+    .click();
+  const heading = code === "Review" ? /^Review & Sign$/ : new RegExp(`^${code}\\. `);
+  await expect(page.getByRole("heading", { level: 2, name: heading })).toBeVisible();
+}
+
+/**
+ * Performs one answer and waits for it to be SAVED: every answer is its own versioned PATCH, after which
+ * the workspace re-reads the item state and the readiness review, and only then re-renders the control.
+ * Acting on the next control before that lands races the re-render (a checkbox clicked back off before
+ * its "on" had rendered stays on).
+ */
+async function saving(page: Page, act: () => Promise<void>): Promise<void> {
+  const reread = (path: string) =>
+    page.waitForResponse(
+      (r) => r.request().method() === "GET" && new URL(r.url()).pathname.endsWith(path),
+      { timeout: 20_000 },
+    );
+  const done = Promise.all([reread("/workspace"), reread("/review")]);
+  await act();
+  await done;
+}
+
+async function answerRadio(page: Page, question: string, choice: string): Promise<void> {
+  const option = workspace(page)
+    .getByRole("group", { name: question, exact: true })
+    .getByRole("radio", { name: choice, exact: true });
+  if (await option.isChecked()) return;
+  await saving(page, () => option.click());
+  await expect(option).toBeChecked();
+}
+
+async function answerSelect(select: Locator, page: Page): Promise<void> {
+  if ((await select.inputValue()) !== "") return;
+  const values = await select
+    .locator("option")
+    .evaluateAll((options) =>
+      options.map((o) => (o as HTMLOptionElement).value).filter((v) => v !== ""),
+    );
+  await saving(page, async () => {
+    await select.selectOption(values[0] as string);
+  });
+}
+
+async function answerText(page: Page, label: string, value: string): Promise<void> {
+  const box = workspace(page).getByRole("textbox", { name: label });
+  if ((await box.inputValue()) !== "") return;
+  await box.fill(value);
+  await saving(page, () => box.blur());
+}
+
+/**
+ * Answers every item the CMS admission record requires, choosing the simplest clinically coherent path
+ * (the "No" branches, which close their follow-on items) — except J2050/J2051, where a moderate pain
+ * impact is recorded on purpose so the D4 Symptom Follow-Up Visit is armed.
+ */
+async function completeAdmissionSections(page: Page): Promise<void> {
+  const main = workspace(page);
+
+  // A — Administrative. Identity, payer and admission items arrive pre-filled from the chart; the rest
+  // is the nurse's. "Select all that apply" groups: CMS scores every box, so each one left unticked must
+  // be answered "not checked" too — in the workspace that is ticking it and clearing it again.
+  await openSection(page, "A");
+  await answerText(page, "Social Security Number", "123456789");
+  await answerText(page, "Patient Medicaid number", "N");
+  for (const legend of [/^Ethnicity/, /^Race/, /^Payer information/]) {
+    const boxes = main.getByRole("group", { name: legend }).getByRole("checkbox");
+    const count = await boxes.count();
+    for (let i = 0; i < count; i += 1) {
+      const box = boxes.nth(i);
+      if (await box.isChecked()) continue;
+      await saving(page, () => box.click());
+      await expect(box).toBeChecked();
+      await saving(page, () => box.click());
+      await expect(box).not.toBeChecked();
+    }
+  }
+  for (const label of [
+    "Preferred language",
+    "Does the patient need or want an interpreter",
+    "Admitted from",
+    "Living Arrangements",
+    "Availability of Assistance",
+    "Sex",
+  ]) {
+    await answerSelect(main.getByRole("combobox", { name: label, exact: true }), page);
+  }
+
+  // F — Preferences & goals.
+  await openSection(page, "F");
+  for (const question of [
+    "Was ptnt/rsp prty asked about CPR",
+    "Was ptnt/rsp prty asked treatments oth than CPR",
+    "Was ptnt/rsp prty asked hospitalization",
+    "Was ptnt/crgvr asked sprtual/exstntial cncrns",
+  ]) {
+    await answerRadio(page, question, "No");
+  }
+
+  // I — Diagnoses: the principal diagnosis category and each comorbidity flag.
+  await openSection(page, "I");
+  const diagnoses = main.getByRole("combobox");
+  const diagnosisCount = await diagnoses.count();
+  expect(diagnosisCount).toBeGreaterThan(0);
+  for (let i = 0; i < diagnosisCount; i += 1) await answerSelect(diagnoses.nth(i), page);
+
+  // M — Skin, N — Medications.
+  await openSection(page, "M");
+  await answerRadio(page, "Patient has one or more skin conditions", "No");
+  await openSection(page, "N");
+  await answerRadio(page, "Was scheduled opioid initiated or continued", "No");
+  await answerRadio(page, "Was PRN opioid initiated or continued", "No");
+
+  // J — Health conditions, last, so the section stays open for the SFV it arms.
+  await openSection(page, "J");
+  for (const question of [
+    "Death is Imminent",
+    "Was patient screened for pain",
+    "Is pain an active problem for the patient?",
+    "Neuropathic Pain",
+    "Was patient screened for shortness of breath",
+  ]) {
+    await answerRadio(page, question, "No");
+  }
+  await answerRadio(page, "Was symptom impact screening completed", "Yes");
+  await answerText(
+    page,
+    "J2050B Date of symptom impact screening",
+    new Date().toLocaleDateString("en-CA"),
+  );
+  await answerRadio(page, "Symptom Impact - Pain", "Moderate");
+  for (const symptom of [
+    "Shortness of breath",
+    "Anxiety",
+    "Nausea",
+    "Vomiting",
+    "Diarrhea",
+    "Constipation",
+    "Agitation",
+  ]) {
+    await answerRadio(
+      page,
+      `Symptom Impact - ${symptom}`,
+      "Not applicable (the patient is not experiencing the symptom)",
+    );
+  }
+}

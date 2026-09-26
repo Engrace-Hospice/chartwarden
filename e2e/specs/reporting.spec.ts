@@ -35,9 +35,16 @@ test.describe("Reporting", () => {
 
     // The catalog itself. Before F-044 this was the "No dashboards" empty state on every install,
     // because `listDashboards` read an unbound provider rather than the org's shared views.
-    const card = page.getByRole("link", { name: new RegExp(DASHBOARD_NAME) });
-    await expect(card).toBeVisible();
-    await card.click();
+    //
+    // Since the #235 redesign the catalog is one "Reports" table of datasets and dashboards; a dashboard
+    // row's action is an "Open" link (a dataset row's is "Run").
+    const row = page
+      .getByRole("table", { name: "Reports" })
+      .getByRole("row")
+      .filter({ hasText: DASHBOARD_NAME });
+    await expect(row).toBeVisible();
+    await expect(row).toContainText("Dashboard");
+    await row.getByRole("link", { name: "Open" }).click();
     await page.waitForURL(/\/reports\/dashboards\/[^/]+$/);
 
     // The tile manifest: the dashboard resolves to a tile, named by its report-base key. The "No tiles"

@@ -16,12 +16,14 @@ test.describe("Consent", () => {
       .getByPlaceholder("What this consent authorises, in plain language.")
       .fill("WX-PR-018 E2E: authorize routine care coordination.");
     await page.getByRole("button", { name: "Create draft" }).click();
-    // A real write either lands on the consent's detail step (success) or surfaces a structured
-    // server error inline — either way proves the full stack responded, not a client-side stub.
+    // A real write either confirms the draft in place (success — since the #235 redesign the capture
+    // form stays put and reports "Draft <id> created", locking type + grantor, instead of navigating
+    // to a detail step) or surfaces a structured server error inline — either way proves the full
+    // stack responded, not a client-side stub.
     await expect(
       page
         .getByText(/could not be created|permission|changed since you loaded/i)
-        .or(page.getByRole("heading", { name: /Consent/ })),
+        .or(page.getByText(/^Draft [0-9a-f-]{36} created\./)),
     ).toBeVisible({ timeout: 10_000 });
   });
 

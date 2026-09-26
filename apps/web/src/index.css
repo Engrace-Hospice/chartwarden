@@ -54,6 +54,10 @@
      its own tint sits at the 4.5:1 edge. This darker text-only variant (#92400e) clears it with room
      (~6.3:1 on the 12% tint). Text-only; the tint still derives from --color-warning unchanged. */
   --color-warning-pill-fg: #92400e;
+  /* And for `error` / `critical` (the #243 E2E axe scans): #dc2626 on its 12% tint measures 4.0:1 and
+     --color-alert 3.35:1. Text-only darker variants (~5.4:1 and ~5.6:1); the tints are unchanged. */
+  --color-error-pill-fg: #b91c1c;
+  --color-alert-pill-fg: #b42330;
 
   /* Surfaces — cool slate hierarchy */
   --color-background: #f7f8fa;
@@ -71,8 +75,10 @@
   /* Text & line */
   --color-on-surface: #0f172a;
   --color-on-surface-variant: #475569;
-  /* WX-PR-018: muted text must hold ≥4.5:1 on white — slate #64748b gives ~4.8:1. */
-  --color-muted: #64748b;
+  /* WX-PR-018: muted text must hold ≥4.5:1 on EVERY light surface it sits on, not just white. #64748b
+     (~4.8:1 on white) fell to 4.35:1 on --color-sidebar and 3.6:1 on --color-surface-highest; #586476
+     holds 4.57:1 on the darkest of them. */
+  --color-muted: #586476;
   --color-outline: #94a3b8;
   --color-outline-variant: #dfe4eb;
   --color-focus-ring: #1a56eb;
@@ -177,6 +183,9 @@
   --color-warning-pill-fg: #fbbf24;
   --color-error: #f87171;
   --color-alert: #fb7185;
+  /* Dark --color-error / --color-alert already pass on their own pill tints — same values. */
+  --color-error-pill-fg: #f87171;
+  --color-alert-pill-fg: #fb7185;
   --color-background: #0b1120;
   --color-surface: #0b1120;
   --color-surface-lowest: #111827;
@@ -1492,7 +1501,7 @@
     padding: 0.15rem 0.5rem;
     border-radius: var(--radius-sm);
     background: color-mix(in srgb, var(--color-error) 12%, var(--color-surface-lowest));
-    color: var(--color-error);
+    color: var(--color-error-pill-fg);
     font-size: 0.75rem;
     font-weight: 600;
   }

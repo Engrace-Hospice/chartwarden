@@ -9,6 +9,7 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type { AdmissionStatusReader, LocalDate } from "@wardenx/types";
 import { and, eq, gt, inArray, isNull } from "drizzle-orm";
+import { anchorDateOf } from "../scheduling/schedule-writer";
 
 const SCHED = schema.hopeTimepointSchedules;
 
@@ -43,14 +44,6 @@ function stringOf(payload: Record<string, unknown>, key: string): string {
     throw new Error(`m10.m6-admission-workflow: '${key}' must be a non-empty string`);
   }
   return value;
-}
-
-function localDateOf(value: string, key: string): LocalDate {
-  const date = value.slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    throw new Error(`m10.m6-admission-workflow: '${key}' must carry a yyyy-mm-dd date`);
-  }
-  return date as LocalDate;
 }
 
 export function buildM10AdmissionWorkflowConsumer(deps: {
@@ -95,8 +88,16 @@ export function buildM10AdmissionWorkflowConsumer(deps: {
           const descriptors =
             event.eventType === "m6.admission.activated"
               ? planAdmissionTimepoints({
-                  anchorDate: localDateOf(
-                    summary.activatedAt ?? stringOf(payload, "activatedAt"),
+                  // The ORG-LOCAL day of the activation INSTANT, not its UTC date: an activation at
+                  // 23:30 in America/Los_Angeles is 06:30Z the next day, and anchoring on that UTC date
+                  // opened the Admission window the day AFTER the patient was admitted. The event's
+                  // `activatedAt` (schema-required) is the instant; M6's summary only carries its UTC
+                  // `yyyy-mm-dd`, so it is the fallback, not the source.
+                  anchorDate: anchorDateOf(
+                    typeof payload.activatedAt === "string" && payload.activatedAt.length > 10
+                      ? payload.activatedAt
+                      : (summary.activatedAt ?? stringOf(payload, "activatedAt")),
+                    timeZone,
                     "activatedAt",
                   ),
                   timeZone,
@@ -105,13 +106,21 @@ export function buildM10AdmissionWorkflowConsumer(deps: {
                   planDischargeTimepoint({
                     // Validate the M6 discharge discriminator is present; Section-Q branching remains a
                     // recording-boundary rule on the HOPE assessment itself.
-                    dischargeDate: localDateOf(stringOf(payload, "dischargeDate"), "dischargeDate"),
+                    dischargeDate: anchorDateOf(
+                      stringOf(payload, "dischargeDate"),
+                      timeZone,
+                      "dischargeDate",
+                    ),
                     timeZone,
                   }),
                 ];
           if (event.eventType === "m6.admission.discharged") {
             stringOf(payload, "reason");
-            const dischargeDate = localDateOf(stringOf(payload, "dischargeDate"), "dischargeDate");
+            const dischargeDate = anchorDateOf(
+              stringOf(payload, "dischargeDate"),
+              timeZone,
+              "dischargeDate",
+            );
             await t
               .update(SCHED)
               .set({

@@ -35,11 +35,99 @@
  */
 import { resolveTemplate } from "@wardenx/hearthnote";
 import { Client } from "pg";
+import type { WxSession } from "./lib/api-session";
 import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
+import { stepUpSession } from "./lib/step-up";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const today = (): string => new Date().toISOString().slice(0, 10);
 const nowIso = (): string => new Date().toISOString();
+
+/** HOPE items the workflow owns (prefill, SFV, signature) — never answered through the public API. */
+const HOPE_WORKFLOW_ITEMS = /^(A0050|A0220|A0250|A0270|J2052[A-C]|J2053[A-H]|Z0350|Z0500B)$/;
+
+type HopeWorkspace = {
+  assessment: { version: number };
+  sections: Array<{
+    items: Array<{
+      itemCode: string;
+      cmsItemTypeCode: string;
+      options: Array<{ valueCode: string; sortOrder: number }>;
+    }>;
+  }>;
+};
+type HopeReview = {
+  readiness: { readyToSign: boolean; blockers: Array<{ code: string; itemCode?: string }> };
+};
+
+/**
+ * Answer every applicable HOPE item until the assessment is sign-ready (signing requires it), the same
+ * way `m10-hope-write.live.test.ts`'s `answerForSign` does: the first real option for a coded item,
+ * `answerDate` for a date, "Test" for text. Returns the assessment version to sign against.
+ */
+async function answerForSign(session: WxSession, id: string, answerDate: string): Promise<number> {
+  const workspace = async (): Promise<HopeWorkspace> => {
+    const ws = await session.client.GET("/api/v1/hope/assessments/{id}/workspace", {
+      params: { path: { id } },
+    });
+    if (ws.error || !ws.data) throw new Error(`HOPE workspace failed: ${JSON.stringify(ws.error)}`);
+    return ws.data as unknown as HopeWorkspace;
+  };
+  const patch = async (changes: Record<string, string>): Promise<void> => {
+    const ws = await workspace();
+    const res = await session.client.PATCH("/api/v1/hope/assessments/{id}/answers", {
+      params: { path: { id } },
+      body: {
+        ifVersion: ws.assessment.version,
+        changes: Object.entries(changes).map(([itemCode, value]) => ({
+          itemCode,
+          action: "set" as const,
+          value,
+        })),
+      } as never,
+    });
+    if (res.error) throw new Error(`HOPE answer patch failed: ${JSON.stringify(res.error)}`);
+  };
+  await patch({ A1400A: "1" });
+  for (let round = 0; round < 6; round++) {
+    const review = await session.client.GET("/api/v1/hope/assessments/{id}/review", {
+      params: { path: { id } },
+    });
+    const readiness = (review.data as unknown as HopeReview | undefined)?.readiness;
+    if (review.error || !readiness)
+      throw new Error(`HOPE review failed: ${JSON.stringify(review.error)}`);
+    if (readiness.readyToSign) return (await workspace()).assessment.version;
+    const ws = await workspace();
+    const items = new Map(ws.sections.flatMap((s) => s.items).map((i) => [i.itemCode, i]));
+    const changes: Record<string, string> = {};
+    for (const b of readiness.blockers) {
+      if (b.code !== "UNANSWERED_APPLICABLE_ITEM" || !b.itemCode) continue;
+      if (HOPE_WORKFLOW_ITEMS.test(b.itemCode)) continue;
+      const item = items.get(b.itemCode);
+      if (!item) continue;
+      const codes = [...item.options]
+        .sort((x, y) => x.sortOrder - y.sortOrder)
+        .map((o) => o.valueCode);
+      const real = codes.filter(
+        (c) => !["Text", "YYYYMMDD", "YYYYMM", "YYYY", "^", "-"].includes(c),
+      );
+      changes[b.itemCode] =
+        codes.includes("YYYYMMDD") || /date/i.test(item.cmsItemTypeCode)
+          ? answerDate
+          : codes.includes("Text")
+            ? "Test"
+            : (real[0] ?? "0");
+    }
+    const entries = Object.entries(changes);
+    if (entries.length === 0)
+      throw new Error(`HOPE ${id} is not sign-ready: ${JSON.stringify(readiness.blockers)}`);
+    // The answers route takes at most 32 changes per request.
+    for (let i = 0; i < entries.length; i += 32) {
+      await patch(Object.fromEntries(entries.slice(i, i + 32)));
+    }
+  }
+  throw new Error(`HOPE ${id} did not reach sign readiness`);
+}
 
 /** Wipe any prior (possibly stuck-mid-draft, from an earlier failed run) care plan for one patient. */
 async function wipePriorCarePlan(patientId: string): Promise<void> {
@@ -228,7 +316,9 @@ async function main(): Promise<void> {
     if (finalize.error)
       throw new Error(`care-plan finalize failed: ${JSON.stringify(finalize.error)}`);
 
+    // Care-plan signing is step-up gated; see lib/step-up.ts.
     const v2 = await readDraftVersion();
+    await stepUpSession(rn.userId);
     const sign1 = await rn.client.POST(
       "/api/v1/care-plans/{planId}/versions/{versionId}/signatures",
       {
@@ -239,6 +329,7 @@ async function main(): Promise<void> {
     if (sign1.error) throw new Error(`RN care-plan sign failed: ${JSON.stringify(sign1.error)}`);
 
     const v3 = await readDraftVersion();
+    await stepUpSession(md.userId);
     const sign2 = await md.client.POST(
       "/api/v1/care-plans/{planId}/versions/{versionId}/signatures",
       {
@@ -405,11 +496,22 @@ async function main(): Promise<void> {
 
   // ── M10 — HOPE ─────────────────────────────────────────────────────────────────────────────────
   try {
+    // Capture inside the admission timepoint's window. It opens at local midnight of the activation's
+    // date, which for an activation in the hours before local midnight is still ahead of "now" — so the
+    // target is the later of now and the open 01_admission window's opening.
+    const schedules = await rn.client.GET("/api/v1/hope/schedules", {
+      params: { query: { patientId, rfaKind: "01_admission", status: "open" } },
+    });
+    const opensAt = (
+      schedules.data as unknown as { schedules?: Array<{ windowOpensAt: string }> } | undefined
+    )?.schedules?.[0]?.windowOpensAt;
+    const now = nowIso();
+    const targetDate = opensAt && opensAt > now ? opensAt : now;
     const hope = await rn.client.POST("/api/v1/admissions/{admissionId}/hope/timepoints", {
       params: { path: { admissionId } },
       body: {
         rfaKind: "01_admission",
-        targetDate: nowIso(),
+        targetDate,
         authorDiscipline: "RN",
         data: {
           J: {
@@ -424,9 +526,10 @@ async function main(): Promise<void> {
     if (hope.error || !hopeData)
       throw new Error(`HOPE timepoint create failed: ${JSON.stringify(hope.error)}`);
 
+    const signVersion = await answerForSign(rn, hopeData.id, targetDate.slice(0, 10));
     const sign = await rn.client.POST("/api/v1/hope/assessments/{id}/sign", {
       params: { path: { id: hopeData.id } },
-      body: { ifVersion: hopeData.version, attestationConfirmed: true },
+      body: { ifVersion: signVersion, attestationConfirmed: true },
     });
     if (sign.error) throw new Error(`HOPE sign failed: ${JSON.stringify(sign.error)}`);
 

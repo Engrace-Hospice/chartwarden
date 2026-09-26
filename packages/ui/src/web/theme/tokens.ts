@@ -30,6 +30,9 @@ export const t = {
   // passes, by 0.09, which is why no axe scan had caught it; the care-plan guard chip tinted at 14%
   // instead and measured 4.47:1, which does not. Dark mode's `--color-warning` already passes.
   warningPillFg: "var(--color-warning-pill-fg)",
+  // …and for `error` / `critical`, which measured 4.0:1 / 3.35:1 on their tints in the #243 axe scans.
+  errorPillFg: "var(--color-error-pill-fg)",
+  alertPillFg: "var(--color-alert-pill-fg)",
 
   // Surfaces — warm paper hierarchy (§2.5)
   background: "var(--color-background)",

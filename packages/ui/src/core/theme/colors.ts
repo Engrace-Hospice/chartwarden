@@ -18,9 +18,9 @@ export const brandColors = {
   // consumed by sharedTailwindConfig
   primary: "#1a56eb", // clinical blue (2026-09-25 redesign)
   surface: "#ffffff", // card surface (surface-container-lowest)
-  // WX-PR-018: muted text must hold WCAG AA 4.5:1 on white (the E2E axe scan checks it) — slate
-  // #64748b gives ~4.8:1 against --color-surface-lowest.
-  muted: "#64748b", // slate muted text
+  // WX-PR-018: muted text must hold WCAG AA 4.5:1 on every light surface (the E2E axe scan checks it);
+  // #586476 holds 4.57:1 on the darkest, --color-surface-highest (see apps/web/src/index.css).
+  muted: "#586476", // slate muted text
   border: "#dfe4eb", // slate hairline (outline-variant)
   // full Lantern palette
   primaryStrong: "#1443c6",

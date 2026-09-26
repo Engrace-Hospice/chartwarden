@@ -19,11 +19,9 @@
  *   - Brandt     → revoked
  *   - Fairbanks  → death discharge (feeds M16 bereavement — a later scenario script's prerequisite)
  *
- * Three genuine platform gaps found and left DOCUMENTED rather than silently worked around:
- * (1) an admission created with no `attendingPhysicianId` can never activate — the CTI auto-signs
- * straight past `awaiting_attending` on the hospice-MD signature, but `activateAdmission`'s gate
- * unconditionally demands `attending_signed` for period 1 regardless of whether an attending was
- * ever named — so every scenario here supplies one. (2) `transferIn` never calls
+ * Genuine platform gaps found and left DOCUMENTED rather than silently worked around (the original
+ * (1), activation demanding an attending CTI signature, is gone: since #241 the hospice-MD signature
+ * alone signs the CTI). (2) `transferIn` never calls
  * `transitionAdmission` at all, so the admission's own `status` column never advances past whatever
  * `createAdmission` left it at — only the inherited election period is genuinely "active"; there is
  * no discoverable way to also flip `admission.status` for a transfer-in through the real API today.
@@ -115,6 +113,10 @@ async function wipePriorAdmissions(): Promise<void> {
     await db.query("DELETE FROM admission WHERE id = ANY($1)", [admissionIds]);
   }
   await db.query("DELETE FROM referral WHERE patient_id = ANY($1)", [patientIds]);
+  // A prior run's post-admission privacy flag (see PRIVACY_FLAGS) would block this run's activation.
+  await db.query("DELETE FROM patient_privacy_flag_snapshot WHERE patient_id = ANY($1)", [
+    patientIds,
+  ]);
   await db.query(
     `UPDATE patient SET status = 'prospective', updated_at = now() WHERE id = ANY($1)`,
     [patientIds],
@@ -156,12 +158,46 @@ async function syncPatientStatus(
   await db.end();
 }
 
+/**
+ * The Part-2/SUD restriction db:seed:clinical describes for Okonkwo (its `flags` column), recorded here
+ * AFTER his admission activates. M6 readiness refuses activation while any privacy flag is active and
+ * asks for an "authorized review" no route performs yet (`overrideAllowed` is returned but unused), so a
+ * flag recorded first would leave him un-admittable. A restriction recorded mid-stay is also realistic.
+ */
+const PRIVACY_FLAGS: Readonly<Record<string, readonly string[]>> = { Okonkwo: ["sud_part2"] };
+
+async function recordPrivacyFlags(patientId: string, flags: readonly string[]): Promise<void> {
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  const [org] = (
+    await db.query<{ organization_id: string }>(
+      "SELECT organization_id FROM patient WHERE id = $1",
+      [patientId],
+    )
+  ).rows;
+  if (!org) throw new Error(`patient ${patientId} not found for privacy flags`);
+  await db.query(
+    `INSERT INTO patient_privacy_flag_snapshot (patient_id, organization_id, flags, captured_at)
+     VALUES ($1,$2,$3,now())
+     ON CONFLICT (patient_id) DO UPDATE SET flags = EXCLUDED.flags, captured_at = now()`,
+    [patientId, org.organization_id, [...flags]],
+  );
+  await db.end();
+}
+
 const HOSPICE_MD = "11111111-0000-4000-8000-000000000001"; // Eleanor Whitfield MD, NPI 1003000001 (db:seed:mdm)
 const ATTENDING = "11111111-0000-4000-8000-000000000002"; // Marcus Delgado DO, NPI 1003000002
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
 const LOCATION_IPU_ID = "55555555-0000-4000-8000-000000000002"; // db:seed:org-structure
 
 const today = (): string => new Date().toISOString().slice(0, 10);
+/**
+ * The admission day: yesterday (UTC). A same-day admission dated with the UTC date sits in the org's
+ * timezone "tomorrow" for the hours before local midnight, so HOPE's admission window (opening at local
+ * midnight of the admission day) would not be open yet when db:seed:scenario-clinical records it.
+ */
+const admissionDay = (): string => new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
 
 // The CTI signatures are physician certifications (§418.22(c)): `cti.is_hospice_md` / `cti.is_attending`
 // admit only the medical director / hospice physician / MD roles, which the org admin does not hold.
@@ -218,7 +254,7 @@ async function admitAndActivate(
     params: { path: { id: admissionId } },
     body: {
       electionPeriodId: periodId,
-      effectiveDate: today(),
+      effectiveDate: admissionDay(),
       primaryDiagnosisIcd10: "C34.90",
       electedProviderEntityId: PROVIDER_ENTITY_ID,
       electedAttendingPhysicianId: ATTENDING,
@@ -242,17 +278,10 @@ async function admitAndActivate(
       ifVersion: 0,
     },
   });
-  const ctiMdData = ctiMd.data as unknown as { version: number } | undefined;
-  if (ctiMd.error || !ctiMdData)
+  if (ctiMd.error || !ctiMd.data)
     throw new Error(`cti hospice-md sign failed: ${JSON.stringify(ctiMd.error)}`);
-  await signer.client.POST("/api/v1/cti/{id}/sign-attending", {
-    params: { path: { id: ctiId } },
-    body: {
-      signingPhysicianName: "Marcus Delgado DO",
-      signingPhysicianNpi: "1003000002",
-      ifVersion: ctiMdData.version,
-    },
-  });
+  // #241: the hospice-MD signature alone signs the CTI; the attending's signature gates billing, not
+  // activation, so there is no attending step here.
 
   const certAfter = await session.client.GET(
     "/api/v1/patients/{patientId}/election-certification",
@@ -260,8 +289,17 @@ async function admitAndActivate(
       params: { path: { patientId } },
     },
   );
-  const admVersion =
+  const certVersion =
     (certAfter.data as { admission?: { version?: number } } | undefined)?.admission?.version ?? 1;
+  // Admission details: activation readiness requires an admission date (`admission_details`).
+  const details = await session.client.PATCH("/api/v1/admissions/{id}", {
+    params: { path: { id: admissionId } },
+    body: { admissionAt: `${admissionDay()}T12:00:00.000Z`, ifVersion: certVersion },
+  });
+  const detailsData = details.data as unknown as { version: number } | undefined;
+  if (details.error || !detailsData)
+    throw new Error(`admission details update failed: ${JSON.stringify(details.error)}`);
+  const admVersion = detailsData.version;
   // #50 — activation SITES the admission at a service location. The demo hospice has two active sites
   // (Main Office + Inpatient Unit, db:seed:org-structure), so the server refuses to guess and requires
   // one to be named. Resolved through the real M1 directory route rather than hardcoding the seeded id,
@@ -330,6 +368,7 @@ async function main(): Promise<void> {
     });
     if (loc.error) throw new Error(`GIP level-of-care change failed: ${JSON.stringify(loc.error)}`);
     await syncPatientStatus(patientId, "active");
+    await recordPrivacyFlags(patientId, PRIVACY_FLAGS.Okonkwo ?? []);
     log.ok(
       "Okonkwo: admitted + activated, GIP level of care (assigning → confirm-bed still needed for M37)",
     );

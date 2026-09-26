@@ -233,7 +233,18 @@ async function main(): Promise<void> {
         admissionId,
         kind: "lab",
         drafterDiscipline: "lpn",
-        data: { testName: "Comprehensive metabolic panel", reason: "Routine hospice labs" },
+        // M11 `lab.v1`: LOINC-coded tests + the fasting flag are required before signature.
+        data: {
+          testCodes: [
+            {
+              system: "http://loinc.org",
+              code: "24323-8",
+              display: "Comprehensive metabolic panel",
+            },
+          ],
+          fastingRequired: false,
+          clinicalJustification: "Routine hospice labs",
+        },
         orderingPhysicianMdmId: "11111111-0000-4000-8000-000000000001",
       },
     });
@@ -336,7 +347,23 @@ async function main(): Promise<void> {
         strength: "20 mg/mL",
         doseForm: "solution",
         route: "oral",
-        data: { sig: "0.25-0.5 mL PO every 2 hours PRN pain or dyspnea" },
+        // `StandardMedOrderData`: a structured sig beside its free text, plus dispense terms.
+        data: {
+          sigStructured: {
+            doseQuantity: 0.25,
+            doseUnit: "mL",
+            route: "oral",
+            frequencyCode: "Q2H",
+            asNeeded: true,
+            asNeededReasonCode: "pain",
+          },
+          sigFreeText: "0.25-0.5 mL PO every 2 hours PRN pain or dyspnea",
+          indication: "Pain or dyspnea at end of life",
+          refillsAuthorized: 0,
+          dispenseQuantity: { value: 30, unit: "mL" },
+          daysSupply: 14,
+          daw: false,
+        },
         prescriberDiscipline: "hospice_physician",
         prescribingPhysicianMdmId: "11111111-0000-4000-8000-000000000001",
         refillsAuthorized: 0,

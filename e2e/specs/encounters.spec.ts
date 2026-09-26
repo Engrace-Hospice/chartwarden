@@ -65,9 +65,22 @@ test.describe("Encounters", () => {
     await expect(page.getByRole("heading", { name: "Encounters / Visits" })).toBeVisible();
 
     // ── 1. Open the note (F-083) ───────────────────────────────────────────────────────────────────
-    await page.getByRole("button", { name: "New encounter" }).click();
-    const dialog = page.getByRole("dialog", { name: "New encounter" });
+    //
+    // The #235 redesign replaced the old "New encounter" modal with the chart tab's "New Encounter"
+    // dialog, which asks for the ACTIVE ADMISSION explicitly (a lookup over this patient's active
+    // admissions) and, on a committed 201, lands on the encounter record rather than the composer —
+    // the record's "Compose note" action is the way into the composer from there.
+    await page.getByRole("button", { name: "New Encounter" }).click();
+    const dialog = page.getByRole("dialog", { name: "New Encounter" });
     await expect(dialog).toBeVisible();
+
+    const admission = dialog.getByRole("combobox", { name: "Active admission" });
+    await admission.click();
+    await dialog
+      .getByRole("listbox", { name: "Active admission" })
+      .getByRole("option")
+      .first()
+      .click();
 
     // THE REGRESSION GUARD for the derivation. Rita holds `rn` and `rn_case_manager`; only the first is
     // a clinical discipline, so the intersection with the §2.2 vocabulary is exactly {rn} and the field
@@ -79,14 +92,16 @@ test.describe("Encounters", () => {
     // the HearthNote registry has a template for the pair — which is the reason the type list is built
     // from that map rather than from the raw enum.
     await dialog.getByLabel("Encounter type").selectOption("routine_visit");
-    await dialog.getByRole("button", { name: "Open note" }).click();
+    await dialog.getByRole("button", { name: "Create Encounter" }).click();
 
-    // The modal closes only on a committed 201, and the app goes straight to the composer: an empty
-    // draft is not the goal, the note is.
+    // The dialog closes only on a committed 201, and the app opens the new encounter's record.
     await expect(dialog).toBeHidden({ timeout: 15_000 });
-    await page.waitForURL(/\/encounters\/[^/]+\/compose$/, { timeout: 15_000 });
-    const encounterId = /\/encounters\/([^/]+)\/compose$/.exec(page.url())?.[1] as string;
+    await page.waitForURL(/\/encounters\/[^/]+$/, { timeout: 15_000 });
+    const encounterId = /\/encounters\/([^/]+)$/.exec(page.url())?.[1] as string;
     expect(encounterId).toBeTruthy();
+    // An empty draft is not the goal, the note is: straight on to the composer.
+    await page.getByRole("button", { name: "Compose note" }).click();
+    await page.waitForURL(new RegExp(`/encounters/${encounterId}/compose$`), { timeout: 15_000 });
 
     // ── 2. Compose it ──────────────────────────────────────────────────────────────────────────────
     await expect(page.getByRole("heading", { name: "Compose visit note" })).toBeVisible({
@@ -135,10 +150,10 @@ test.describe("Encounters", () => {
     // establishes. What changed is what the clinician is TOLD: this used to redirect nowhere and read
     // "You do not have permission for this action".
     await page.goto(`/patients/${patientId}/encounters/${encounterId}`);
-    await expect(page.getByRole("button", { name: "Sign", exact: true })).toBeVisible({
-      timeout: 15_000,
-    });
-    await page.getByRole("button", { name: "Sign", exact: true }).click();
+    // The record's footer action is "Sign encounter" since the redesign (it was "Sign").
+    const signButton = page.getByRole("button", { name: "Sign encounter", exact: true });
+    await expect(signButton).toBeVisible({ timeout: 15_000 });
+    await signButton.click();
     const signDialog = page.getByRole("dialog", { name: "Sign encounter" });
     await expect(signDialog).toBeVisible();
     // The §2.7 attestation. `commitReady` is false until it is ticked, which is the ceremony's own
@@ -152,7 +167,7 @@ test.describe("Encounters", () => {
     await enrolPasskey(page);
     await stepUpWithPasskey(page, `/patients/${patientId}/encounters/${encounterId}`);
 
-    await page.getByRole("button", { name: "Sign", exact: true }).click();
+    await signButton.click();
     await expect(signDialog).toBeVisible();
     await signDialog.getByRole("checkbox").check();
     await signDialog.getByRole("button", { name: "Sign & commit" }).click();
@@ -164,7 +179,7 @@ test.describe("Encounters", () => {
     await expect(page.getByText("Signed", { exact: true }).first()).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByRole("button", { name: "Sign", exact: true })).toBeHidden();
+    await expect(signButton).toBeHidden();
   });
 
   test("the patient encounters list is accessible (WCAG 2.1 A/AA)", async ({ page }) => {

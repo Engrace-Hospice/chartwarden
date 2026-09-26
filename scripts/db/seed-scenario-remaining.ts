@@ -480,8 +480,10 @@ async function main(): Promise<void> {
   const drharris = await signIn("drharris@wardenx.local");
   const log = new ScenarioLog("remaining (M16/M30/M37/M39/M22)");
 
-  const whitfieldId = await findPatientIdByLastName(admin, "Whitfield");
-  const fairbanksId = await findPatientIdByLastName(admin, "Fairbanks");
+  // The census is caseload-scoped (F-096): `org_admin` is not an org-wide patient reader, the medical
+  // director is — so patients are looked up as drharris.
+  const whitfieldId = await findPatientIdByLastName(drharris, "Whitfield");
+  const fairbanksId = await findPatientIdByLastName(drharris, "Fairbanks");
 
   const whitfieldCert = await admin.client.GET(
     "/api/v1/patients/{patientId}/election-certification",
@@ -832,7 +834,7 @@ async function main(): Promise<void> {
   // with the real store — the same thing `m37-rn-coverage.live.test.ts` does — not a hand-written INSERT
   // of what it would have produced.
   try {
-    const okonkwoId = await findPatientIdByLastName(admin, "Okonkwo");
+    const okonkwoId = await findPatientIdByLastName(drharris, "Okonkwo");
     const okonkwoAdmissionId = await activeAdmissionIdFor(okonkwoId);
     const ritaMembershipId = await membershipIdFor("rita@wardenx.local");
 

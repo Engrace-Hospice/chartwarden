@@ -15,13 +15,13 @@ export type StatusTone =
   | "neutral"; // draft / closed / inactive
 
 const TONE: Record<StatusTone, { fg: string; bg: string; glyph: GlyphName }> = {
-  // fg uses the pill-safe darker variant (WX-PR-022) — WCAG AA contrast against this tinted bg;
+  // fg uses the pill-safe darker variants (WX-PR-022, F-077, #243) — WCAG AA against the tinted bg;
   // `bg` still tints from the raw `t.success` token, unaffected.
   success: { fg: t.successPillFg, bg: tint(t.success), glyph: "check-circle" },
   progress: { fg: t.primary, bg: t.primaryTint, glyph: "dot" },
-  warning: { fg: t.warning, bg: tint(t.warning), glyph: "clock" },
-  error: { fg: t.error, bg: tint(t.error), glyph: "block" },
-  critical: { fg: t.alert, bg: tint(t.alert), glyph: "alert" },
+  warning: { fg: t.warningPillFg, bg: tint(t.warning), glyph: "clock" },
+  error: { fg: t.errorPillFg, bg: tint(t.error), glyph: "block" },
+  critical: { fg: t.alertPillFg, bg: tint(t.alert), glyph: "alert" },
   neutral: { fg: t.onSurfaceVariant, bg: t.surfaceContainer, glyph: "dot" },
 };
 
