@@ -38,7 +38,11 @@ export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
     async residenceAt(organizationId, patientId, asOfDate) {
       return withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
         const [row] = await tx
-          .select({ kind: ADDRESS.kind, facilityId: ADDRESS.facilityId, postalCode: ADDRESS.postalCode })
+          .select({
+            kind: ADDRESS.kind,
+            facilityId: ADDRESS.facilityId,
+            postalCode: ADDRESS.postalCode,
+          })
           .from(ADDRESS)
           .where(
             and(
@@ -50,7 +54,9 @@ export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
             ),
           )
           .limit(1);
-        return row ? { kind: row.kind, facilityId: row.facilityId, postalCode: row.postalCode ?? null } : null;
+        return row
+          ? { kind: row.kind, facilityId: row.facilityId, postalCode: row.postalCode ?? null }
+          : null;
       });
     },
   };

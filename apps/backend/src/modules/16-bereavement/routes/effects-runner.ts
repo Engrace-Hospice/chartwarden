@@ -128,6 +128,10 @@ export async function runEffects(
         const payload = ctx.payloads[effect.event];
         if (payload === undefined) throw new MissingOutboxPayloadError(effect.event);
         const emission: OutboxEmission = {
+          // F-105 — the tenant. It was already on the context one case arm below (`alert` passes
+          // `ctx.organizationId`), and simply never reached the outbox row: every `m16.*` emission
+          // wrote NULL, RLS refused it, and the transition it announced rolled back with it.
+          organizationId: ctx.organizationId,
           eventName: effect.event,
           payload,
           aggregateKind: ctx.aggregateKind,

@@ -275,7 +275,12 @@ export function createDrizzleM6ApplierGateway(
               .from(REF)
               .where(
                 and(
-                  inArray(REF.status, ["received", "under_review", "pending_information", "qualified"]),
+                  inArray(REF.status, [
+                    "received",
+                    "under_review",
+                    "pending_information",
+                    "qualified",
+                  ]),
                   sql`${REF.externalMessageRef} ->> 'messageControlId' = ${controlId}`,
                 ),
               )
@@ -384,7 +389,12 @@ export function createDrizzleM6ApplierGateway(
         const [existing] = await tx
           .select({ receivedAt: REF.receivedAt, externalMessageRef: REF.externalMessageRef })
           .from(REF)
-          .where(and(eq(REF.id, action.referralId), inArray(REF.status, ["received", "under_review", "pending_information", "qualified"])))
+          .where(
+            and(
+              eq(REF.id, action.referralId),
+              inArray(REF.status, ["received", "under_review", "pending_information", "qualified"]),
+            ),
+          )
           .limit(1);
         const at = now();
         if (!existing) {
@@ -421,7 +431,10 @@ export function createDrizzleM6ApplierGateway(
             },
           })
           .where(
-            and(eq(REF.id, action.referralId), inArray(REF.status, ["received", "under_review", "pending_information", "qualified"])),
+            and(
+              eq(REF.id, action.referralId),
+              inArray(REF.status, ["received", "under_review", "pending_information", "qualified"]),
+            ),
           );
         await outbox.publish(tx, {
           eventName: "m6.referral.withdrawn",

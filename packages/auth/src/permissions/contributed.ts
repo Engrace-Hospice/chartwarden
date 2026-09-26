@@ -357,6 +357,27 @@ export const M5_CONTRIBUTED_PERMISSIONS = {
     category: "compliance",
     abac: "none",
   },
+  /**
+   * Unmasked PHI in a compliance projection — today only M32's §164.528 disclosure ledger (R16/R17),
+   * where it unlocks the patient identity and the free-text error on an `ai_invocation` row.
+   *
+   * A CHECK-don't-gate key, like `cost_report.edit_any_provider`: no route gates on it (R16's route
+   * key is `ai.invocation.read`); the projection consults it and masks when it is absent. It was
+   * never in this catalog, so it could not be granted to anyone — and M32 asked for it as a ROLE
+   * token (`context.roles.includes("phi.full_read")`, a `resource.action` key checked against a list
+   * of role keys like `compliance_officer`) and as an unwritten context attribute. Both arms were
+   * dead, so R16/R17 masked every caller including the compliance officer the ledger exists for
+   * (F-030).
+   *
+   * Deliberately assigned to NO default role template: who reads unmasked PHI by default is a
+   * tenant policy decision, and inventing one here would grant it silently on every existing org.
+   */
+  "phi.full_read": {
+    resource: "phi",
+    action: "full_read",
+    category: "compliance",
+    abac: "none",
+  },
   "phi.read_ssn": {
     resource: "phi",
     action: "read_ssn",
@@ -1907,6 +1928,27 @@ export const M17_CONTRIBUTED_PERMISSIONS = {
   },
   "membership_credential.revoke": {
     resource: "membership_credential",
+    action: "revoke",
+    category: "compliance",
+    abac: "none",
+  },
+
+  // --- ADR-0023 D2 / SecHardening §12.4 — the device-attestation surface (M2). ---
+  //
+  // No `.attest` key: a clinician attesting the phone in their own hand is not an administrative act,
+  // and gating it on a permission would mean an org had to grant every field user a security-management
+  // key just to sign in from a device. The attest route is bound to the CALLER'S OWN membership by the
+  // session, which is the narrower control — you can only ever enrol a device for yourself.
+  "device_attestation.read": {
+    resource: "device_attestation",
+    action: "read",
+    category: "compliance",
+    abac: "none",
+  },
+  // Revoking IS administrative: it is how a lost or compromised handset is taken out of service, and it
+  // acts on someone else's device. Org-wide staff management, the `membership_credential.revoke` shape.
+  "device_attestation.revoke": {
+    resource: "device_attestation",
     action: "revoke",
     category: "compliance",
     abac: "none",
@@ -4124,6 +4166,18 @@ export const M19_CONTRIBUTED_PERMISSIONS = {
   "oncall.admin_policy": {
     resource: "tenant_oncall_policy",
     action: "admin",
+    category: "admin",
+    abac: "inOrg",
+  },
+  // F-030 / #75 — binding an authenticated session to an `external_triage_vendor` (D3 Hybrid/Centralized).
+  //
+  // `admin`, alongside `oncall.admin_policy`, for exactly the reason that one is: the binding decides
+  // which outside party may act on the agency's after-hours line, and §8.3.2 lists tampering with the
+  // vendor binding as a named threat. It is the same authority as editing the policy that names the
+  // vendor, so it carries the same category rather than the operational `oncall` one.
+  "oncall.bind_vendor_session": {
+    resource: "external_triage_vendor",
+    action: "bind_session",
     category: "admin",
     abac: "inOrg",
   },

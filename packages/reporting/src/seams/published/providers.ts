@@ -203,11 +203,15 @@ export class DashboardCatalogProviderImpl implements DashboardCatalogProvider {
         }[] = [];
         for (const view of views) {
           const version = await defRepo.findVersionById(view.definitionVersionId);
-          const spec = version?.spec;
-          const tileCount = (spec?.measures?.length ?? 0) + (spec?.dimensions?.length ?? 0) || 1;
           const definition = version
             ? await defRepo.findDefinitionById(version.definitionId)
             : null;
+          // F-044 — a TILE, not a column. This counted `measures + dimensions` off the spec, which is the
+          // number of things a tile PROJECTS, not the number of tiles: the demo dashboard reported 3 while
+          // `GET /dashboards/:id`'s manifest listed 1, for the same dashboard on the same screen. A
+          // definition binds exactly one `base_key` and `readTile`'s key IS a base key, so a dashboard has
+          // one tile per bound definition — and 0 when the version is missing, which is not the same as 1.
+          const tileCount = definition ? 1 : 0;
           out.push({
             dashboardId: view.id,
             displayName: view.displayName,

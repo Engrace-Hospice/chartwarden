@@ -17,6 +17,7 @@
  */
 import { readFileSync } from "node:fs";
 import { type ApiClient, createApiClient } from "@wardenx/ui";
+import { group } from "../../lib/strict";
 import { fetchAuthWithRateLimitRetry } from "./auth-rate-limit";
 import { SEED_CREDENTIALS_PATH } from "./credentials";
 
@@ -52,16 +53,21 @@ function readPassword(email: string): string {
   const md = readFileSync(SEED_CREDENTIALS_PATH, "utf8");
   const needle = `\`${email}\``;
   const lines = md.split("\n").filter((l) => l.includes(needle));
-  for (let i = lines.length - 1; i >= 0; i--) {
-    const m = lines[i].match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
-    if (m) return m[2];
+  for (const line of [...lines].reverse()) {
+    const m = line.match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
+    if (m) return group(m, 2, "CREDENTIALS.local.md password cell");
   }
-  throw new Error(`could not read password for ${email} from CREDENTIALS.local.md (run db:seed first)`);
+  throw new Error(
+    `could not read password for ${email} from CREDENTIALS.local.md (run db:seed first)`,
+  );
 }
 
 function absorbSetCookie(jar: Map<string, string>, res: Response): void {
   for (const c of res.headers.getSetCookie?.() ?? []) {
-    const [pair] = c.split(";");
+    // `split(";")` always yields at least one element, so `pair` is always a string — but the
+    // type cannot say so. `?? ""` costs nothing and makes the empty-header case a no-op rather
+    // than a throw.
+    const pair = c.split(";")[0] ?? "";
     const idx = pair.indexOf("=");
     if (idx > 0) jar.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim());
   }
@@ -89,7 +95,9 @@ export async function signIn(email: string): Promise<WxSession> {
     `sign-in for ${email}`,
   );
   if (!signInRes.ok) {
-    throw new Error(`sign-in failed for ${email}: HTTP ${signInRes.status} ${await signInRes.text()}`);
+    throw new Error(
+      `sign-in failed for ${email}: HTTP ${signInRes.status} ${await signInRes.text()}`,
+    );
   }
   absorbSetCookie(jar, signInRes);
   const signInBody = (await signInRes.json()) as { user?: { id?: string } };
@@ -117,7 +125,9 @@ export async function signIn(email: string): Promise<WxSession> {
     body: JSON.stringify({ organizationId: org.organizationId }),
   });
   if (!selRes.ok) {
-    throw new Error(`select-organization failed for ${email}: HTTP ${selRes.status} ${await selRes.text()}`);
+    throw new Error(
+      `select-organization failed for ${email}: HTTP ${selRes.status} ${await selRes.text()}`,
+    );
   }
   absorbSetCookie(jar, selRes);
 
@@ -157,7 +167,8 @@ export async function findPatientIdByLastName(
   });
   if (error) throw new Error(`patient search for "${lastName}" failed: ${JSON.stringify(error)}`);
   const hit = data?.items.find((p) => p.lastName === lastName);
-  if (!hit) throw new Error(`no patient found with last name "${lastName}" — run db:seed:patients first`);
+  if (!hit)
+    throw new Error(`no patient found with last name "${lastName}" — run db:seed:patients first`);
   return hit.id;
 }
 
@@ -179,6 +190,15 @@ export class ScenarioLog {
   fail(msg: string): void {
     this.failed++;
     console.log(`  ✗ ${msg}`);
+  }
+  /**
+   * A step that could not run because a PLATFORM capability is unbound — not because the seed is wrong.
+   * Counted as skipped, so `db:seed:all` stays green, and printed distinctly so the output says which
+   * capability and which issue rather than looking like a seeding bug. Use only for a named, filed gap.
+   */
+  blocked(msg: string): void {
+    this.skipped++;
+    console.log(`  ⊘ ${msg}`);
   }
   summary(): void {
     console.log(

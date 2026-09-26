@@ -62,7 +62,7 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
 
   it("read keys bind to support/billing/admin/owner", () => {
     for (const key of M35_BILLING_ADMIN_READ_KEYS) {
-      expect(rolesForPermission(key).sort()).toEqual(
+      expect([...rolesForPermission(key)].sort()).toEqual(
         [
           "platform_admin",
           "platform_billing_admin",
@@ -75,14 +75,14 @@ describe("ADMIN-T02 `billing_admin.*` → role bindings (no orphan key)", () => 
 
   it("mutating keys bind to billing/admin/owner (no support read-only role)", () => {
     for (const key of M35_BILLING_ADMIN_WRITE_KEYS) {
-      expect(rolesForPermission(key).sort()).toEqual(
+      expect([...rolesForPermission(key)].sort()).toEqual(
         ["platform_admin", "platform_billing_admin", "platform_owner"].sort(),
       );
     }
   });
 
   it("`refund.approve` binds to admin/owner ONLY — disjoint from `refund.request` (four-eyes assignable)", () => {
-    expect(rolesForPermission(M35_REFUND_APPROVE_KEY).sort()).toEqual(
+    expect([...rolesForPermission(M35_REFUND_APPROVE_KEY)].sort()).toEqual(
       ["platform_admin", "platform_owner"].sort(),
     );
     // The four-eyes rule (§4.8 `refund_requires_step_up_approval`) requires approver ≠ requester. A

@@ -161,17 +161,24 @@ export function effectKindsForTopic(topic: string): readonly M27SubscriptionEffe
 /**
  * The minimal `m22.document.rendered` payload M27 reads (§4.4). M22 fans this event out to every requesting
  * module; M27 acts ONLY when the rendered document back-references an M27 artifact render-request — keyed by
- * `sourceModule === 'm27'` AND a recognized M27 `artifactKind`. Everything else is a deliberate no-op
+ * `sourceModule === 'm27'` AND an aggregate type that is one of M27's three. Everything else is a deliberate no-op
  * (fail-closed: M27 never writes a back-ref for a document it did not request).
  */
 export interface DocumentRenderedEvent {
   readonly eventId: string;
   /** The requesting module the M22 render handshake echoes back (`'m27'` for an M27 artifact). */
   readonly sourceModule: string;
-  /** The `ecr_submission` the artifact belongs to (M27 carried this in `m27.artifact.render_requested`). */
-  readonly submissionId: string;
-  /** The artifact kind M27 requested (`ecr` / `pi` / `supporting_doc`); other strings are not M27 artifacts. */
-  readonly artifactKind: string;
+  /**
+   * M22's `document.aggregate_type` — the WIRE-VISIBLE artifact discriminator. The published
+   * `m22.document.rendered` payload carries no `artifactKind`: M27 fans three artifacts out under ONE
+   * request event name, and M22 routes each to its own template + aggregate type, so the aggregate type
+   * is what comes back. It is also the shared vocabulary rather than M22's private routing map — the
+   * three values are `DocumentAggregateType` members in the leaf `packages/types`, which is why
+   * {@link artifactKindForAggregateType} is a read of a published contract and not a copy of a list.
+   */
+  readonly aggregateType: string;
+  /** The `ecr_submission` this artifact belongs to — M22 echoes back the aggregate id M27's request set. */
+  readonly aggregateId: string;
   /** The MinIO-stored document id M22 minted and returned. */
   readonly documentId: string;
 }
@@ -214,15 +221,26 @@ export interface UpstreamConsumeReport {
 
 // ── per-topic handlers (PURE projection + port fan-out) ──────────────────────────────────────────────────
 
-/** Narrow an arbitrary `artifactKind` string to the M27 artifact-kind union, or `null` if it is not ours. */
-function asM27ArtifactKind(kind: string): M27ArtifactKind | null {
-  return kind === "ecr" || kind === "pi" || kind === "supporting_doc" ? kind : null;
+/**
+ * M22 `document.aggregate_type` → the M27 artifact kind it materializes, or `null` when the rendered
+ * document is not one of M27's three. Pure and total over arbitrary input (fail-closed: an unrecognized
+ * aggregate type is another module's document, never a guess).
+ */
+const M27_ARTIFACT_KIND_BY_AGGREGATE_TYPE: Readonly<Record<string, M27ArtifactKind>> =
+  Object.freeze({
+    cost_report_ecr: "ecr",
+    cost_report_pi: "pi",
+    cost_report_supporting_doc: "supporting_doc",
+  });
+
+export function artifactKindForAggregateType(aggregateType: string): M27ArtifactKind | null {
+  return M27_ARTIFACT_KIND_BY_AGGREGATE_TYPE[aggregateType] ?? null;
 }
 
 /**
  * `m22.document.rendered` → record the ECR / PI / supporting-doc back-reference onto `ecr_submission` and
  * emit `m27.artifact.stored_back_reference` (§4.4 / §4.10). FAIL-CLOSED: the handler acts only when the
- * rendered document is an M27 artifact (`sourceModule === 'm27'` AND a recognized `artifactKind`) — a
+ * rendered document is an M27 artifact (`sourceModule === 'm27'` AND a recognized `aggregateType`) — a
  * document another module requested is a deliberate no-op, never a stray back-ref write.
  */
 export async function handleDocumentRendered(
@@ -235,25 +253,25 @@ export async function handleDocumentRendered(
     actedOnIds: [],
   };
   if (event.sourceModule !== "m27") return empty;
-  const artifactKind = asM27ArtifactKind(event.artifactKind);
+  const artifactKind = artifactKindForAggregateType(event.aggregateType);
   if (artifactKind === null) return empty;
 
   const target = resolveArtifactBackRefTarget(artifactKind);
   await ports.recordArtifactBackReference({
-    submissionId: event.submissionId,
+    submissionId: event.aggregateId,
     documentId: event.documentId,
     target,
     triggeringEventId: event.eventId,
   });
   await ports.outbox.emitArtifactStoredBackReference({
-    submissionId: event.submissionId,
+    submissionId: event.aggregateId,
     artifactKind,
     documentId: event.documentId,
   });
   return {
     eventName: "m22.document.rendered",
     effects: ["artifact_back_reference"],
-    actedOnIds: [event.submissionId],
+    actedOnIds: [event.aggregateId],
   };
 }
 

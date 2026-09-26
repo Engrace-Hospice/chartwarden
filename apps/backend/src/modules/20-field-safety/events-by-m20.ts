@@ -66,7 +66,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       coordinatesIncluded: Bool,
       isPartOfSosBracket: Bool,
     }),
-    declaredConsumers: ["m17", "m33"],
+    declaredConsumers: ["m17"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -83,7 +84,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       expectedAt: Iso,
       minutesOverdue: Type.Number(),
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -100,7 +102,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       afterHours: Bool,
       tier: Str,
     }),
-    declaredConsumers: ["m36", "m19", "m33"],
+    declaredConsumers: ["m19"],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
 
@@ -119,7 +122,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       deviceAttested: Bool,
       coordinatesCaptured: Bool,
     }),
-    declaredConsumers: ["m36", "m19", "m33"],
+    declaredConsumers: ["m19"],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -133,7 +137,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       attemptedAt: Iso,
       biometricResult: Str,
     }),
-    declaredConsumers: ["m36", "m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m4"],
     isOutboxOnly: true,
   },
   {
@@ -149,7 +154,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       tierAtAcknowledgment: Str,
       slaBreached: Bool,
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -165,7 +171,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       escalatedAt: Iso,
       reasonCode: Str,
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -182,7 +189,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       psapJurisdictionId: IdOrNull,
       wardenxOpsPaged: Bool,
     }),
-    declaredConsumers: ["m36", "m34"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -196,7 +204,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       outcome: Str,
       resolvedAt: Iso,
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -211,7 +220,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       windowHours: Count,
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m4", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -227,7 +237,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       checkInId: IdOrNull,
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m4", "m34"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
 
@@ -247,7 +258,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       occurredAt: Iso,
       linkedSosAlertId: IdOrNull,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -265,7 +277,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       oshaReportable: Bool,
       linkedSosAlertId: IdOrNull,
     }),
-    declaredConsumers: ["m36", "m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -278,7 +291,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       closedByMembershipId: Id,
       closedAt: Iso,
     }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -289,6 +303,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       ...base,
       incidentId: Id,
+      /** The chart target, or null for a staff-safety incident with no patient (F-099). */
+      patientId: Type.Union([Id, Type.Null()]),
       renderTargetKind: Type.Literal("pdf"),
     }),
     declaredConsumers: ["m22"],
@@ -309,7 +325,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       stateCode: Str,
       reportingWindowHours: Count,
     }),
-    declaredConsumers: ["m36", "m29", "m30", "m33"],
+    declaredConsumers: ["m29", "m30"],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -323,7 +340,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       initiatedByMembershipId: Id,
       initiatedAt: Iso,
     }),
-    declaredConsumers: ["m29", "m33"],
+    declaredConsumers: ["m29"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
 
@@ -341,7 +359,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       enteredAt: Iso,
       visitId: IdOrNull,
     }),
-    declaredConsumers: ["m36", "m17"],
+    declaredConsumers: ["m17"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -356,7 +375,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       changedAt: Iso,
       thresholdDiffs: Type.Array(Type.Object({ field: Str, direction: Str })),
     }),
-    declaredConsumers: ["m36", "m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m4"],
     isOutboxOnly: true,
   },
   {
@@ -371,7 +391,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       detectedAt: Iso,
       policyVersionId: Id,
     }),
-    declaredConsumers: ["m4", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -385,7 +406,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Str,
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m36", "m34"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

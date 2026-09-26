@@ -131,7 +131,7 @@ describe.skipIf(!DB_URL)("M39 consent lifecycle — LIVE Postgres (WX-PR-009)", 
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
     await expect(
-      service.updateDraft(ORG, draft.id, { scopeDescriptor: { altered: true } }, now),
+      service.updateDraft(ORG, draft.id, { scopeDescriptor: { altered: true } }),
     ).rejects.toMatchObject({ code: "invalid_transition" });
 
     const persisted = await admin.query(

@@ -19,12 +19,13 @@ export const hearthnoteAssembledOutputs = pgTable(
     organizationId: uuid("organization_id")
       .notNull()
       .references(() => organizations.id, { onDelete: "restrict" }),
-    providerEntityId: uuid("provider_entity_id")
-      .notNull()
-      .references(() => providerEntities.id, { onDelete: "restrict" }),
-    locationId: uuid("location_id")
-      .notNull()
-      .references(() => locations.id, { onDelete: "restrict" }),
+    // Nullable since 0226, mirroring 0128 (`encounter`) and 0225 (`hearthnote_selection`): a child that
+    // denormalizes the parent's siting cannot require what the parent may not have — the draft route
+    // captures neither, and the M6 admission may itself be unsited.
+    providerEntityId: uuid("provider_entity_id").references(() => providerEntities.id, {
+      onDelete: "restrict",
+    }),
+    locationId: uuid("location_id").references(() => locations.id, { onDelete: "restrict" }),
     encounterId: uuid("encounter_id").references(() => encounters.id, { onDelete: "cascade" }),
     addendumId: uuid("addendum_id").references(() => encounterAddenda.id, { onDelete: "cascade" }),
 
@@ -37,7 +38,9 @@ export const hearthnoteAssembledOutputs = pgTable(
     layer2InvolvedAtFinalize: boolean("layer2_involved_at_finalize").notNull().default(false),
 
     assemblyTemplateKey: text("assembly_template_key").notNull(),
-    vocabVersionId: uuid("vocab_version_id").notNull(), // pinned per D11
+    // Pinned per D11 — the parent's own pin, resolved once per finalize so the version the bytes were
+    // assembled under cannot drift from the version the encounter claims (ADR-0046).
+    vocabVersionId: uuid("vocab_version_id").notNull(),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

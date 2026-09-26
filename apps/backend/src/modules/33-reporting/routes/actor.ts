@@ -10,11 +10,24 @@ import type { M33ReadActor } from "./read-service";
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-/** Extract the org-scoped actor from `request.context` (server-assembled), or 401. */
+/**
+ * Extract the org-scoped actor from `request.context` (server-assembled), or 401.
+ *
+ * Carries the active `membershipId` when the session has one, because the §4.7.1 `self` scope IS that
+ * membership id and the read path now narrows on it (F-059). Absent, `self` resolves over an empty set
+ * and the tile denies — the same fail-closed answer `reportable_scope` itself gives an actor it cannot
+ * scope-filter.
+ */
 export function actorOf(request: FastifyRequest): M33ReadActor {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
-  return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
+  const membershipId = ctx.attributes?.membershipId;
+  return {
+    organizationId: ctx.organizationId,
+    userId: ctx.userId,
+    roles: ctx.roles,
+    ...(typeof membershipId === "string" && membershipId.length > 0 ? { membershipId } : {}),
+  };
 }
 
 /**

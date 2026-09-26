@@ -285,7 +285,10 @@ function makeDsarPorts() {
       });
     },
     async renderBundleDocument(args) {
-      renderCalls.push({ aggregateId: args.aggregateId, bundleMinioObjectKey: args.bundleMinioObjectKey });
+      renderCalls.push({
+        aggregateId: args.aggregateId,
+        bundleMinioObjectKey: args.bundleMinioObjectKey,
+      });
       return { documentId: `doc_${args.aggregateId}` };
     },
     async publishOutbox(event, payload) {

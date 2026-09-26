@@ -26,7 +26,6 @@ import {
   InterventionParams,
   PlanListQuerySchema,
   PlanParams,
-  SignAssessmentBody,
   SignVersionBody,
   UpdateGoalBody,
   UpdateInterventionBody,
@@ -225,7 +224,6 @@ export function registerDisciplinePlanRoutes(app: FastifyInstance, deps: PlanRou
     },
     async (request) => {
       const { planId, assessmentId } = parse(AssessmentParams, request.params);
-      parse(SignAssessmentBody, request.body);
       return writeService.signAssessment(writeActorOf(request), planId, assessmentId, {
         expectedVersion: ifMatchVersion(request, true),
       });

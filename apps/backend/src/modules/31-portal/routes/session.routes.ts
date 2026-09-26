@@ -35,7 +35,7 @@ export function registerPortalSessionRoutes(app: FastifyInstance, deps: PortalRo
 
   // select-patient — bind the session to (patient, grant) after login (D2). No ABAC_GRANT preHandler here
   // (TASK-050A/TEST-003 finding, fixed): `ABAC_GRANT`'s `getTarget` reads `patientId` from
-  // `context.attributes.portalPatientId` — the SESSION's already-bound patient — but that is precisely the
+  // `context.attributes.sessionPatientId` — the SESSION's already-bound patient — but that is precisely the
   // fact this route exists to establish; on a fresh session it is always empty, so the guard always denied,
   // unconditionally, before a session could ever select its first patient. The handler below already
   // performs the equivalent (and here, correct) check itself: `store.activeGrant(organizationId,
@@ -53,6 +53,22 @@ export function registerPortalSessionRoutes(app: FastifyInstance, deps: PortalRo
       if (!grant) {
         throw new ForbiddenError("no active grant for this account and patient (§8.3.1)");
       }
+      // Hand the binding to M2 (F-030). This route's header has always said it does; it did not, and
+      // there was no M2 surface to hand it to — so `scope.patientId` was never written, the hook had
+      // nothing to stamp as `sessionPatientId`, and every §4.7 predicate that reads the session's bound
+      // patient denied. The value written is the REQUEST BODY's patientId, which is legitimate here and
+      // only here: the grant above has just been proven active for (this account, this patient), and
+      // §8.3.1 threat (b) is about a LATER request naming a different patient — which now reads the
+      // bound value off the session instead.
+      const sessionId = request.context?.attributes?.sessionId;
+      if (typeof sessionId === "string" && sessionId.length > 0) {
+        await getSeam("PortalSessionBinder").bindPortalPatient({
+          scope: { orgId: actor.organizationId },
+          sessionId,
+          patientId,
+        });
+      }
+
       let displayName = "your family member";
       try {
         const identity = await (getSeam("PatientReader") as unknown as PatientReaderArm).findById({

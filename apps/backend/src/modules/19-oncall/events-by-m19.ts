@@ -72,7 +72,8 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m19.triage_call.red_flag_hit",
     moduleOwner: "m19",
-    description: "A protocol question answer matched a D5 red-flag predicate, opening a mandatory escalation.",
+    description:
+      "A protocol question answer matched a D5 red-flag predicate, opening a mandatory escalation.",
     payloadSchema: Type.Object({
       ...callEventBase,
       questionId: id,
@@ -84,7 +85,8 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m19.triage_call.escalation_recorded",
     moduleOwner: "m19",
-    description: "A D7 escalation tier was recorded against a triage call (manual or protocol-mandatory).",
+    description:
+      "A D7 escalation tier was recorded against a triage call (manual or protocol-mandatory).",
     payloadSchema: Type.Object({
       ...callEventBase,
       escalationId: id,
@@ -151,7 +153,8 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m19.triage_call.care_plan_change_indicated",
     moduleOwner: "m19",
-    description: "A disposition indicated a care-plan-relevant change (rides alongside gip_admission_proposed).",
+    description:
+      "A disposition indicated a care-plan-relevant change (rides alongside gip_admission_proposed).",
     payloadSchema: Type.Object({
       ...callEventBase,
       patientId: nullableId,
@@ -186,7 +189,13 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
       externalActorId: nullableId,
       openedAt: isoInstant,
     }),
-    declaredConsumers: ["m20", "m36"],
+    // F-043/#103 — M20's own `consumers/index.ts` states why it has no consumer for this and never will:
+    // the topic exists in `M20_SUBSCRIBED_EVENT_NAMES` as the re-sync trigger for a CACHED on-call
+    // resolution, and M20 caches none — the D14 union is resolved live at fan-out, because a cached
+    // roster is a 3 a.m. staleness bug. Nothing to re-sync, nothing to consume, and a declaration with no
+    // consumer behind it deferred every shift activation forever.
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -200,7 +209,8 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
       occurredAt: isoInstant,
       shiftId: id,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -215,7 +225,8 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
       gapEndsAt: isoInstant,
       discipline: Type.Literal("clinical_rn"),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

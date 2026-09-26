@@ -23,10 +23,14 @@
 // `m6.discharge.created` / `m6.cti.signed` / `m6.f2f.attested` / `m6.loc.changed` / `m5.patient.deceased` /
 // `m8.encounter.signed` / `m8.encounter.cosigned` / `m18.evv.late_check_resolved` / `m22.document.rendered`
 // are confirmed against the live emitting modules (grep of apps/backend/src/modules/06|05|08|18|22). The M40
-// canonical-update topic and the M25/M26 topics are the spec §4.4 / §8 / §10 documented names; M40's
-// events-by file is not yet landed (closest real emit today: `m40.nppes.provider_synced.applied`), so the
-// M40 topic key below is the spec name — rebind to the canonical M40 event string when M40's events-by-m40.ts
-// lands. M25/M26 topics likewise resolve when those modules land.
+// canonical-update topic and the M25/M26 topics were the spec §4.4 / §8 / §10 documented names, carried here
+// as placeholders with the instruction to "rebind to the canonical M40 event string when M40's
+// events-by-m40.ts lands". BOTH HAVE LANDED, and nothing came back to rebind them (F-095): `m40-mdm`
+// catalogues `m40.canonical.updated` and M26 catalogues `m26.cap.projection_updated`, while this file went on
+// naming `mdm.canonical_updated` and `m26.cap.projection_updated.v1` — names no module has ever emitted, so
+// the freeze-new-claims and cap-projection effects behind them could not fire. A placeholder that names a
+// module's OWN spelling of an event is indistinguishable from a real subscription at a glance, which is why
+// it survived; rule 6 of `check-outbox-bindings.ts` is what asks.
 
 /** The validation_run trigger the §8 `revalidate.consumer` worker stamps for a re-validate fan-out (D1). */
 export const RE_VALIDATION_TRIGGER = "re_validation_after_correction" as const;
@@ -57,9 +61,9 @@ export type M23SubscriptionEffect =
   | { readonly kind: "claim_remittance_transition"; readonly note: string };
 
 /** The §4.4 / §8 documented M40 canonical-update topic (see EVENT-NAME PROVENANCE above). */
-export const M40_CANONICAL_UPDATED_TOPIC = "mdm.canonical_updated" as const;
+export const M40_CANONICAL_UPDATED_TOPIC = "m40.canonical.updated" as const;
 /** The §4.4 / §8 documented M26 cap-projection-change topic (DENY-STUB until M26 lands). */
-export const M26_CAP_PROJECTION_TOPIC = "m26.cap.projection_updated.v1" as const;
+export const M26_CAP_PROJECTION_TOPIC = "m26.cap.projection_updated" as const;
 
 /** One topic's subscription record: its LIVE/DENY-STUB status + the ordered M23 effects it triggers. */
 export interface M23TopicSubscription {
@@ -75,12 +79,18 @@ export interface M23TopicSubscription {
 export const M23_OUTBOX_SUBSCRIPTIONS: Readonly<Record<string, M23TopicSubscription>> =
   Object.freeze({
     // ── M6 election → NOE draft (task 47) ───────────────────────────────────────────────────────────────
-    "m6.election.signed": {
+    // F-106 — the trigger is `period_started`, NOT `election.signed`. `noe_record.election_effective_date`
+    // and `window_target_at` are both NOT NULL, and the election's effective date exists in exactly one
+    // place: `election_period.effective_at`, written by the `setActive` transition at admission
+    // ACTIVATION. `election_statement` carries only `signed_at`. At signing time the anchor is NULL, so a
+    // draft created there could not be dated — and the CMS deadline IS the date. `period_started` is
+    // emitted from the same transaction that writes the column.
+    "m6.election.period_started": {
       status: "live",
       effects: [
         {
           kind: "create_noe_draft",
-          note: "An election was signed in M6 — M23 creates a `noe_record` DRAFT and computes the 5-day CMS filing-window target (task 47); the bound noe-assembly port emits `m23.noe.draft_created`.",
+          note: "An election period activated in M6 — M23 creates the `noe_record` DRAFT for a FIRST period (an NOE is filed once per election, not per benefit period) and computes the 5-day CMS filing-window target (task 47, 42 CFR 418.24(b)); the bound noe-assembly port emits `m23.noe.draft_created`.",
         },
       ],
     },

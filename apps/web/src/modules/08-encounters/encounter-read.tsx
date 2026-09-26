@@ -125,7 +125,6 @@ function errorMessage(error: unknown, fallback: string): string {
   return fallback;
 }
 
-
 type FieldErrors = Record<string, string>;
 
 function validationDetails(error: unknown): Array<{ field?: string; message?: string }> {
@@ -184,10 +183,7 @@ function fieldKeyFromPath(path: string | undefined): string | null {
   return normalized.split(".").filter(Boolean).at(-1) ?? null;
 }
 
-function fieldErrorsFrom(
-  error: unknown,
-  supportedFields: readonly string[],
-): FieldErrors {
+function fieldErrorsFrom(error: unknown, supportedFields: readonly string[]): FieldErrors {
   const supported = new Set(supportedFields);
   const result: FieldErrors = {};
 
@@ -210,18 +206,6 @@ function FieldError({ message }: { message?: string }): JSX.Element | null {
       {message}
     </span>
   );
-}
-
-
-function docFromSelections(selections: Record<string, unknown> | null | undefined): string {
-  const narrative = selections?.narrative;
-
-  if (typeof narrative === "object" && narrative !== null) {
-    const value = (narrative as { clinicalSummary?: unknown }).clinicalSummary;
-    return typeof value === "string" ? value : "";
-  }
-
-  return "";
 }
 
 function hasCarePlanLink(
@@ -320,15 +304,6 @@ export function EncounterRead(): JSX.Element {
     response: Response;
   }>;
 
-  const patch = client.PATCH as unknown as (
-    path: string,
-    init?: unknown,
-  ) => Promise<{
-    data?: unknown;
-    error?: unknown;
-    response: Response;
-  }>;
-
   const load = useCallback(async () => {
     if (!encounterId) return;
 
@@ -401,8 +376,6 @@ export function EncounterRead(): JSX.Element {
 
     const pid = patientId ?? data.patientId;
 
-    setNoteText(docFromSelections(selections));
-
     if (loadedVitals) {
       setVitals({
         bpSystolic: String(loadedVitals.bpSystolic ?? ""),
@@ -427,7 +400,7 @@ export function EncounterRead(): JSX.Element {
       });
     }
 
-    const [cos, pat, cp, ass, hope] = await Promise.all([
+    const [cos, pat, cp, ass, hope, sel] = await Promise.all([
       client.GET("/api/v1/encounters/{encounterId}/cosignature", {
         params: {
           path: {
@@ -472,6 +445,12 @@ export function EncounterRead(): JSX.Element {
           },
         },
       } as never),
+
+      // #114 — the stored HearthNote tree, assembled (Layer-1). The note is authored in the composer;
+      // this screen shows what it currently reads as.
+      client.GET("/api/v1/encounters/{encounterId}/selections", {
+        params: { path: { encounterId } },
+      }),
     ]);
 
     setCosignStatus(cos.data?.status ?? null);
@@ -502,6 +481,13 @@ export function EncounterRead(): JSX.Element {
             }
           | undefined
       )?.assessments ?? []) as AssessmentRow[],
+    );
+    // A preview only once something is documented — an empty tree still assembles the template's
+    // headings, which would read as a note that says nothing.
+    setNoteText(
+      sel.data?.sections.some((s) => s.entries.length > 0 || Boolean(s.freeText))
+        ? (sel.data?.layer1Preview ?? "")
+        : "",
     );
 
     setLoading(false);
@@ -621,8 +607,7 @@ export function EncounterRead(): JSX.Element {
 
         setBusy(false);
 
-        const mapped =
-          mode === "supervisor-release" ? fieldErrorsFrom(err, ["reason"]) : {};
+        const mapped = mode === "supervisor-release" ? fieldErrorsFrom(err, ["reason"]) : {};
 
         if (Object.keys(mapped).length > 0) {
           setFieldErrors((current) => ({ ...current, ...mapped }));
@@ -679,9 +664,7 @@ export function EncounterRead(): JSX.Element {
         }));
         setActionError(null);
       } else {
-        setActionError(
-          errorMessage(res.error, "The encounter action could not be completed."),
-        );
+        setActionError(errorMessage(res.error, "The encounter action could not be completed."));
       }
 
       return;
@@ -693,33 +676,6 @@ export function EncounterRead(): JSX.Element {
     setNotice(success);
 
     await load();
-  }
-
-  async function saveDocumentation(): Promise<void> {
-    if (!encounterId || !encounter) return;
-
-    await runMutation(
-      () =>
-        patch("/api/v1/encounters/{encounterId}/selections", {
-          params: {
-            path: {
-              encounterId,
-            },
-            header: {
-              "If-Match": String(encounter.version),
-            },
-          },
-          body: {
-            selections: {
-              narrative: {
-                clinicalSummary: noteText.trim(),
-              },
-            },
-          },
-        }),
-      "Documentation saved.",
-      ["clinicalSummary"],
-    );
   }
 
   async function saveVitals(): Promise<void> {
@@ -784,13 +740,7 @@ export function EncounterRead(): JSX.Element {
           },
         }),
       "Mileage saved.",
-      [
-        "odometerStart",
-        "odometerEnd",
-        "milesDriven",
-        "source",
-        "manualOverrideReason",
-      ],
+      ["odometerStart", "odometerEnd", "milesDriven", "source", "manualOverrideReason"],
     );
   }
 
@@ -846,7 +796,9 @@ export function EncounterRead(): JSX.Element {
     setBusy(false);
 
     if (res.error) {
-      setActionError(errorMessage(res.error, "The Care Plan could not be created from this encounter."));
+      setActionError(
+        errorMessage(res.error, "The Care Plan could not be created from this encounter."),
+      );
       return;
     }
 
@@ -1244,46 +1196,32 @@ export function EncounterRead(): JSX.Element {
                   step="1"
                   eyebrowText="CLINICAL NOTE"
                   title="Documentation"
-                  description="Record the clinical summary for this visit."
+                  description="Compose the visit note from the HearthNote template."
                   complete={documentationStarted}
                 />
 
                 {e.status === "draft" ? (
                   <button
                     type="button"
-                    onClick={() => void saveDocumentation()}
+                    onClick={() => navigate(`/patients/${e.patientId}/encounters/${e.id}/compose`)}
                     disabled={busy}
                     style={primaryBtn}
                   >
-                    Save documentation
+                    {documentationStarted ? "Edit note" : "Compose note"}
                   </button>
                 ) : null}
               </div>
 
+              {/* #91/#114 — the note is AUTHORED in the HearthNote composer: the template's sections, the
+                  vocabulary each accepts, and per-section free text (sealed under the tenant DEK). A
+                  single free-text box here could not satisfy the §2.6 Layer-3 gate, which asks for every
+                  REQUIRED section, and stored its prose in the clear. This panel shows the assembled
+                  Layer-1 note as it currently reads. */}
               {e.status === "draft" ? (
-                <div style={documentationEditor}>
-                  <textarea
-                    aria-label="Clinical documentation"
-                    value={noteText}
-                    onChange={(event) => {
-                      setNoteText(event.target.value);
-                      clearFieldError("clinicalSummary");
-                    }}
-                    rows={9}
-                    placeholder="Document the patient's condition, observations, care provided, response to care, and relevant follow-up..."
-                    style={{
-                      ...documentationTextarea,
-                      ...(fieldErrors.clinicalSummary ? fieldControlErrorStyle : null),
-                    }}
-                    aria-invalid={Boolean(fieldErrors.clinicalSummary)}
-                  />
-                  <FieldError message={fieldErrors.clinicalSummary} />
-
-                  <div style={editorFooter}>
-                    <span style={meta}>Save as you work. Finalization is a separate action.</span>
-
-                    <span style={characterCount}>{noteText.length} characters</span>
-                  </div>
+                <div style={readOnlyPanel}>
+                  <p style={noteBody}>
+                    {noteText || "Nothing documented yet. Use Compose note to document this visit."}
+                  </p>
                 </div>
               ) : (
                 <div style={readOnlyPanel}>
@@ -1332,8 +1270,8 @@ export function EncounterRead(): JSX.Element {
                     }));
                     clearFieldError("bpSystolic");
                   }}
-
-                  error={fieldErrors.bpSystolic}                />
+                  error={fieldErrors.bpSystolic}
+                />
 
                 <Input
                   label="BP diastolic"
@@ -1346,8 +1284,8 @@ export function EncounterRead(): JSX.Element {
                     }));
                     clearFieldError("bpDiastolic");
                   }}
-
-                  error={fieldErrors.bpDiastolic}                />
+                  error={fieldErrors.bpDiastolic}
+                />
 
                 <Input
                   label="Heart rate"
@@ -1360,8 +1298,8 @@ export function EncounterRead(): JSX.Element {
                     }));
                     clearFieldError("heartRate");
                   }}
-
-                  error={fieldErrors.heartRate}                />
+                  error={fieldErrors.heartRate}
+                />
 
                 <Input
                   label="Respiratory rate"
@@ -1374,8 +1312,8 @@ export function EncounterRead(): JSX.Element {
                     }));
                     clearFieldError("respiratoryRate");
                   }}
-
-                  error={fieldErrors.respiratoryRate}                />
+                  error={fieldErrors.respiratoryRate}
+                />
 
                 <Input
                   label="Temperature"
@@ -1387,8 +1325,8 @@ export function EncounterRead(): JSX.Element {
                     }));
                     clearFieldError("temperature");
                   }}
-
-                  error={fieldErrors.temperature}                />
+                  error={fieldErrors.temperature}
+                />
 
                 <Input
                   label="SpO₂"
@@ -1401,8 +1339,8 @@ export function EncounterRead(): JSX.Element {
                     }));
                     clearFieldError("spo2");
                   }}
-
-                  error={fieldErrors.spo2}                />
+                  error={fieldErrors.spo2}
+                />
 
                 <Input
                   label="Pain"
@@ -1415,8 +1353,8 @@ export function EncounterRead(): JSX.Element {
                     }));
                     clearFieldError("painScore");
                   }}
-
-                  error={fieldErrors.painScore}                />
+                  error={fieldErrors.painScore}
+                />
               </div>
             </section>
 
@@ -1589,8 +1527,8 @@ export function EncounterRead(): JSX.Element {
                     }));
                     clearFieldError("odometerStart");
                   }}
-
-                  error={fieldErrors.odometerStart}                />
+                  error={fieldErrors.odometerStart}
+                />
 
                 <Input
                   label="Odometer end"
@@ -1602,8 +1540,8 @@ export function EncounterRead(): JSX.Element {
                     }));
                     clearFieldError("odometerEnd");
                   }}
-
-                  error={fieldErrors.odometerEnd}                />
+                  error={fieldErrors.odometerEnd}
+                />
 
                 <Input
                   label="Miles driven"
@@ -1615,8 +1553,8 @@ export function EncounterRead(): JSX.Element {
                     }));
                     clearFieldError("milesDriven");
                   }}
-
-                  error={fieldErrors.milesDriven}                />
+                  error={fieldErrors.milesDriven}
+                />
 
                 <label style={fieldStyle}>
                   <span style={fieldLabelStyle}>Source</span>
@@ -2841,39 +2779,6 @@ const sectionExplanation: CSSProperties = {
 /* ──────────────────────────────────────────────────────────────────────────
    DOCUMENTATION
 ────────────────────────────────────────────────────────────────────────── */
-
-const documentationEditor: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-};
-
-const documentationTextarea: CSSProperties = {
-  width: "100%",
-  minHeight: "12rem",
-  padding: "0.75rem",
-  borderRadius: t.radiusMd,
-  border: `1px solid ${t.outlineVariant}`,
-  background: t.surfaceLowest,
-  color: t.onSurface,
-  fontFamily: t.fontSans,
-  fontSize: "0.875rem",
-  lineHeight: 1.55,
-  resize: "vertical",
-};
-
-const editorFooter: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "1rem",
-  marginTop: "0.45rem",
-};
-
-const characterCount: CSSProperties = {
-  flexShrink: 0,
-  fontSize: "0.68rem",
-  color: t.muted,
-};
 
 const readOnlyPanel: CSSProperties = {
   padding: "0.75rem",

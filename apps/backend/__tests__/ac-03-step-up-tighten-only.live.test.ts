@@ -216,6 +216,9 @@ describe.skipIf(!DB_URL)("AC-03 step-up tighten-only — LIVE Postgres", () => {
     await insertOverride(ORG_A, ["webauthn"], 60);
     const sessions = createInMemorySessionContextStore([
       {
+        sessionClass: "staff",
+        portalAccountId: null,
+        sessionPatientId: null,
         sessionId: "sess_1",
         userId: USER,
         membershipId: memberOf[ORG_A] ?? null,

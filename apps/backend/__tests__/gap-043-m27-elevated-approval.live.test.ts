@@ -22,6 +22,7 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { resolveActorPermissions, setEffectivePermissionResolver } from "@wardenx/auth";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -70,22 +71,35 @@ describe.skipIf(!DB_URL)("GAP-043 M27 elevated-approval approver gate — LIVE P
     }
   }
 
-  /** An ABAC context shaped like the one `requireAbac` assembles (membershipId rides in `attributes`). */
+  /**
+   * An ABAC context shaped like the one `requireAbac` assembles (membershipId rides in `attributes`).
+   *
+   * `permissions` no longer rides there — nothing in production ever wrote that key (F-030), so the
+   * predicate's org-scope-override arm read `undefined` for every caller. It now resolves through
+   * `resolveActorPermissions`, the same seam `requirePermission` gates on, and this registers the
+   * grant the way M3 would. That matters HERE more than anywhere: this case asserts the override
+   * does not substitute for the designation, and with the grant unregistered it would still pass —
+   * by proving nothing, because the actor would hold no override to be refused.
+   */
   const ctx = (
     organizationId: string,
     userId: string,
     opts: { providerEntityIds?: readonly string[]; permissions?: readonly string[] } = {},
-  ) => ({
-    organizationId,
-    userId,
-    roles: [] as readonly string[],
-    providerEntityIds: opts.providerEntityIds ?? ([] as readonly string[]),
-    locationIds: [] as readonly string[],
-    attributes: {
-      membershipId: memberOf[`${organizationId}:${userId}`] ?? "",
-      permissions: opts.permissions ?? [],
-    } as Record<string, unknown>,
-  });
+  ) => {
+    setEffectivePermissionResolver((c) =>
+      c.userId === userId ? new Set(opts.permissions ?? []) : new Set<string>(),
+    );
+    return {
+      organizationId,
+      userId,
+      roles: [] as readonly string[],
+      providerEntityIds: opts.providerEntityIds ?? ([] as readonly string[]),
+      locationIds: [] as readonly string[],
+      attributes: {
+        membershipId: memberOf[`${organizationId}:${userId}`] ?? "",
+      } as Record<string, unknown>,
+    };
+  };
 
   const designate = (organizationId: string, userId: string) =>
     service.grant({
@@ -244,12 +258,12 @@ describe.skipIf(!DB_URL)("GAP-043 M27 elevated-approval approver gate — LIVE P
     const predicate = predicates.cost_report_approver_for_provider;
     // The org-scope override satisfies the SCOPE conjunct only. Widening WHICH providers you may act on
     // is not the same as being an authorized signatory, and collapsing the two would delete the control.
-    expect(
-      await predicate?.(
-        ctx(ORG_A, USER_EDITOR, { permissions: [EDIT_ANY_PROVIDER_PERMISSION] }),
-        { costReportId: reportOf[ORG_A] ?? "" },
-      ),
-    ).toBe(false);
+    const withOverride = ctx(ORG_A, USER_EDITOR, { permissions: [EDIT_ANY_PROVIDER_PERMISSION] });
+    // The grant is really resolvable for this actor — otherwise "denied" would prove nothing.
+    expect((await resolveActorPermissions(withOverride)).has(EDIT_ANY_PROVIDER_PERMISSION)).toBe(
+      true,
+    );
+    expect(await predicate?.(withOverride, { costReportId: reportOf[ORG_A] ?? "" })).toBe(false);
   });
 
   it("a designation does NOT substitute for provider scope either — both conjuncts must hold", async () => {
@@ -283,8 +297,8 @@ describe.skipIf(!DB_URL)("GAP-043 M27 elevated-approval approver gate — LIVE P
   it("the editor gate is unaffected — it never keyed on the designation", async () => {
     const predicate = predicates.cost_report_editor_for_provider;
     // An in-scope editor could always edit; GAP-043 was only ever about the approver plane.
-    expect(await predicate?.(ctx(ORG_A, USER_EDITOR), { costReportId: reportOf[ORG_A] ?? "" })).toBe(
-      true,
-    );
+    expect(
+      await predicate?.(ctx(ORG_A, USER_EDITOR), { costReportId: reportOf[ORG_A] ?? "" }),
+    ).toBe(true);
   });
 });

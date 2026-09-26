@@ -10,10 +10,9 @@ import {
 import type { CSSProperties, JSX } from "react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { PatientLookupField } from "../../shared/entity-lookups";
+import { ReferralDocumentsPanel } from "../../shell/document-workflows";
+import { PatientLookupField } from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
-import { ReferralDocumentsPanel } from "../22-documents/document-workflows";
-import { PatientIntakeDetails } from "./patient-intake-details";
 import {
   PATIENT_RESOLUTION_LABEL,
   PATIENT_RESOLUTION_TONE,
@@ -21,6 +20,7 @@ import {
   REFERRAL_TONE,
   stateLabel,
 } from "./admission-status";
+import { PatientIntakeDetails } from "./patient-intake-details";
 import {
   type ReferralActivity,
   type ReferralCandidate,
@@ -102,23 +102,16 @@ export function ReferralDetail(): JSX.Element {
   }
 
   if (loading) return <LoadingSpinner />;
-  if (error && !referral)
-    return <EmptyState title="Unavailable" description={error} />;
-  if (!referral)
-    return <EmptyState title="Unavailable" description="Referral not found." />;
+  if (error && !referral) return <EmptyState title="Unavailable" description={error} />;
+  if (!referral) return <EmptyState title="Unavailable" description="Referral not found." />;
 
   const r = referral;
   const resolved =
-    r.patientResolutionStatus === "matched" ||
-    r.patientResolutionStatus === "created";
-  const terminal = ["declined", "duplicate", "withdrawn", "converted"].includes(
-    r.status,
-  );
-  const canReview =
-    r.status === "received" || r.status === "pending_information";
+    r.patientResolutionStatus === "matched" || r.patientResolutionStatus === "created";
+  const terminal = ["declined", "duplicate", "withdrawn", "converted"].includes(r.status);
+  const canReview = r.status === "received" || r.status === "pending_information";
   const canPending = r.status === "under_review";
-  const canQualify =
-    r.status === "under_review" && r.qualificationBlockers.length === 0;
+  const canQualify = r.status === "under_review" && r.qualificationBlockers.length === 0;
   const canConvert = r.status === "qualified" && resolved;
 
   return (
@@ -133,15 +126,11 @@ export function ReferralDetail(): JSX.Element {
                 label={stateLabel(r.status)}
                 tone={REFERRAL_TONE[r.status] ?? "neutral"}
               />
-              {r.priority === "urgent" ? (
-                <span style={urgent}>Urgent</span>
-              ) : null}
+              {r.priority === "urgent" ? <span style={urgent}>Urgent</span> : null}
               {r.status === "converted" && r.convertedAdmissionId ? (
                 <Button
                   tone="primary"
-                  onClick={() =>
-                    navigate(`/admissions/${r.convertedAdmissionId}`)
-                  }
+                  onClick={() => navigate(`/admissions/${r.convertedAdmissionId}`)}
                 >
                   View Admission
                 </Button>
@@ -155,9 +144,7 @@ export function ReferralDetail(): JSX.Element {
             {formatDateTime(r.receivedAt)}
           </div>
           <div style={muted}>
-            {r.assignedToUserId
-              ? `Assigned to ${shortId(r.assignedToUserId)}`
-              : "Unassigned"}
+            {r.assignedToUserId ? `Assigned to ${shortId(r.assignedToUserId)}` : "Unassigned"}
           </div>
         </PageHeader>
       }
@@ -209,33 +196,19 @@ export function ReferralDetail(): JSX.Element {
             </div>
             <div style={factsGrid}>
               <Fact label="Status" value={stateLabel(r.status)} />
-              <Fact
-                label="Priority"
-                value={PRIORITY_LABEL[r.priority] ?? r.priority}
-              />
+              <Fact label="Priority" value={PRIORITY_LABEL[r.priority] ?? r.priority} />
               <Fact
                 label="Owner"
-                value={
-                  r.assignedToUserId
-                    ? shortId(r.assignedToUserId)
-                    : "Unassigned"
-                }
+                value={r.assignedToUserId ? shortId(r.assignedToUserId) : "Unassigned"}
               />
               <Fact
                 label="Patient match"
                 value={
-                  PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ??
-                  r.patientResolutionStatus
+                  PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ?? r.patientResolutionStatus
                 }
               />
-              <Fact
-                label="Source"
-                value={sourceLabel(r.referrerOrganization || r.source)}
-              />
-              <Fact
-                label="Reason"
-                value={r.referringDxText || "Not provided"}
-              />
+              <Fact label="Source" value={sourceLabel(r.referrerOrganization || r.source)} />
+              <Fact label="Reason" value={r.referringDxText || "Not provided"} />
             </div>
             {!terminal ? (
               <div style={inlineControls}>
@@ -295,20 +268,15 @@ export function ReferralDetail(): JSX.Element {
             <h2 style={heading}>Patient Resolution</h2>
             <StatusPill
               label={
-                PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ??
-                r.patientResolutionStatus
+                PATIENT_RESOLUTION_LABEL[r.patientResolutionStatus] ?? r.patientResolutionStatus
               }
-              tone={
-                PATIENT_RESOLUTION_TONE[r.patientResolutionStatus] ?? "neutral"
-              }
+              tone={PATIENT_RESOLUTION_TONE[r.patientResolutionStatus] ?? "neutral"}
             />
             {resolved ? (
               <div style={resolvedBox}>
                 <strong>Patient resolved</strong>
                 <span>
-                  {r.patientId
-                    ? `M5 patient ${shortId(r.patientId)}`
-                    : "Patient link confirmed"}
+                  {r.patientId ? `M5 patient ${shortId(r.patientId)}` : "Patient link confirmed"}
                 </span>
                 {r.patientId ? (
                   <Button
@@ -322,18 +290,14 @@ export function ReferralDetail(): JSX.Element {
               </div>
             ) : (
               <div style={stack}>
-                <p style={muted}>
-                  No canonical patient has been linked to this referral yet.
-                </p>
+                <p style={muted}>No canonical patient has been linked to this referral yet.</p>
                 <div style={actions}>
                   <Button
                     size="sm"
                     tone="secondary"
                     disabled={
                       busy === "matches" ||
-                      !["under_review", "pending_information"].includes(
-                        r.status,
-                      )
+                      !["under_review", "pending_information"].includes(r.status)
                     }
                     onClick={() =>
                       void run("matches", async () => {
@@ -386,42 +350,29 @@ export function ReferralDetail(): JSX.Element {
                 </Button>
                 {candidates.length ? (
                   <div style={candidateList}>
-                    {candidates.map((c, index) => {
+                    {candidates.map((c) => {
                       const patientId = c.patientId ?? c.id ?? "";
                       return (
-                        <div key={`${patientId}-${index}`} style={candidate}>
+                        <div key={candidateKey(c)} style={candidate}>
                           <strong>
-                            {c.displayName ??
-                              c.name ??
-                              `Patient ${shortId(patientId)}`}
+                            {c.displayName ?? c.name ?? `Patient ${shortId(patientId)}`}
                           </strong>
                           <span style={muted}>
-                            {c.dob
-                              ? `DOB ${formatDate(c.dob)}`
-                              : "DOB not shown"}
+                            {c.dob ? `DOB ${formatDate(c.dob)}` : "DOB not shown"}
                             {c.mrn ? ` · MRN ${c.mrn}` : ""}
-                            {c.phoneLast4
-                              ? ` · Phone ending ${c.phoneLast4}`
-                              : ""}
+                            {c.phoneLast4 ? ` · Phone ending ${c.phoneLast4}` : ""}
                           </span>
-                          <span style={muted}>
-                            {c.confidence ?? c.score ?? "Potential match"}
-                          </span>
+                          <span style={muted}>{c.confidence ?? c.score ?? "Potential match"}</span>
                           <Button
                             size="sm"
                             tone="primary"
                             disabled={!patientId}
                             onClick={() =>
                               void run("confirm-patient", async () => {
-                                await referralCommand(
-                                  client,
-                                  r.id,
-                                  "confirm-patient",
-                                  {
-                                    patientId,
-                                    ifVersion: r.version,
-                                  },
-                                );
+                                await referralCommand(client, r.id, "confirm-patient", {
+                                  patientId,
+                                  ifVersion: r.version,
+                                });
                               })
                             }
                           >
@@ -445,8 +396,8 @@ export function ReferralDetail(): JSX.Element {
               <div style={resolvedBox}>
                 <strong>Resolve the patient first</strong>
                 <span>
-                  Address and Coverage / Payers can be added once this referral
-                  is linked to a canonical patient.
+                  Address and Coverage / Payers can be added once this referral is linked to a
+                  canonical patient.
                 </span>
               </div>
             )}
@@ -455,17 +406,10 @@ export function ReferralDetail(): JSX.Element {
           <section style={section}>
             <h2 style={heading}>Referral Information</h2>
             <div style={formGrid}>
-              <ReadOnly
-                label="Patient name at receipt"
-                value={r.patientNameAtReceipt}
-              />
+              <ReadOnly label="Patient name at receipt" value={r.patientNameAtReceipt} />
               <ReadOnly
                 label="DOB at receipt"
-                value={
-                  r.patientDobAtReceipt
-                    ? formatDate(r.patientDobAtReceipt)
-                    : "Not provided"
-                }
+                value={r.patientDobAtReceipt ? formatDate(r.patientDobAtReceipt) : "Not provided"}
               />
               <ReadOnly label="Source channel" value={sourceLabel(r.source)} />
               <ReadOnly
@@ -476,27 +420,21 @@ export function ReferralDetail(): JSX.Element {
                 Organization
                 <input
                   value={edit.referrerOrganization}
-                  onChange={(ev) =>
-                    setEdit({ ...edit, referrerOrganization: ev.target.value })
-                  }
+                  onChange={(ev) => setEdit({ ...edit, referrerOrganization: ev.target.value })}
                 />
               </label>
               <label style={label}>
                 Referrer
                 <input
                   value={edit.referrerName}
-                  onChange={(ev) =>
-                    setEdit({ ...edit, referrerName: ev.target.value })
-                  }
+                  onChange={(ev) => setEdit({ ...edit, referrerName: ev.target.value })}
                 />
               </label>
               <label style={label}>
                 Phone
                 <input
                   value={edit.referrerPhone}
-                  onChange={(ev) =>
-                    setEdit({ ...edit, referrerPhone: ev.target.value })
-                  }
+                  onChange={(ev) => setEdit({ ...edit, referrerPhone: ev.target.value })}
                 />
               </label>
             </div>
@@ -515,9 +453,7 @@ export function ReferralDetail(): JSX.Element {
               <textarea
                 value={edit.referringDxText}
                 rows={4}
-                onChange={(ev) =>
-                  setEdit({ ...edit, referringDxText: ev.target.value })
-                }
+                onChange={(ev) => setEdit({ ...edit, referringDxText: ev.target.value })}
               />
             </label>
             <Button
@@ -557,9 +493,7 @@ export function ReferralDetail(): JSX.Element {
             {r.status === "converted" ? (
               <Button
                 tone="primary"
-                onClick={() =>
-                  navigate(`/admissions/${r.convertedAdmissionId}`)
-                }
+                onClick={() => navigate(`/admissions/${r.convertedAdmissionId}`)}
                 disabled={!r.convertedAdmissionId}
               >
                 View Admission
@@ -576,11 +510,7 @@ export function ReferralDetail(): JSX.Element {
                 </label>
                 <Button
                   tone="primary"
-                  disabled={
-                    !canConvert ||
-                    !primaryDiagnosisIcd10.trim() ||
-                    busy === "convert"
-                  }
+                  disabled={!canConvert || !primaryDiagnosisIcd10.trim() || busy === "convert"}
                   onClick={() =>
                     void run("convert", async () => {
                       const result = await referralCommand<{
@@ -596,9 +526,7 @@ export function ReferralDetail(): JSX.Element {
                   Start Admission
                 </Button>
                 {!canConvert ? (
-                  <p style={muted}>
-                    Resolve and qualify the referral before starting admission.
-                  </p>
+                  <p style={muted}>Resolve and qualify the referral before starting admission.</p>
                 ) : null}
               </div>
             )}
@@ -617,9 +545,7 @@ export function ReferralDetail(): JSX.Element {
             <Button
               size="sm"
               tone="secondary"
-              disabled={
-                !canPending || !pendingReason.trim() || busy === "pending"
-              }
+              disabled={!canPending || !pendingReason.trim() || busy === "pending"}
               onClick={() =>
                 void run("pending", async () => {
                   await referralCommand(client, r.id, "pending-information", {
@@ -648,11 +574,7 @@ export function ReferralDetail(): JSX.Element {
               ))}
               <label style={label}>
                 Add note
-                <textarea
-                  value={newNote}
-                  onChange={(ev) => setNewNote(ev.target.value)}
-                  rows={3}
-                />
+                <textarea value={newNote} onChange={(ev) => setNewNote(ev.target.value)} rows={3} />
               </label>
               <Button
                 size="sm"
@@ -687,9 +609,7 @@ export function ReferralDetail(): JSX.Element {
                 <Button
                   size="sm"
                   tone="danger"
-                  disabled={
-                    terminalReason.trim().length < 10 || busy === "decline"
-                  }
+                  disabled={terminalReason.trim().length < 10 || busy === "decline"}
                   onClick={() =>
                     void run("decline", async () => {
                       await referralCommand(client, r.id, "decline", {
@@ -774,6 +694,14 @@ function ReadOnly({
   );
 }
 
+/** A candidate's patient id is its identity; when the matcher returns none, derive one from the
+ *  demographics it did return, so the key never depends on list position. */
+function candidateKey(c: ReferralCandidate): string {
+  const id = c.patientId ?? c.id;
+  if (id) return id;
+  return [c.displayName ?? c.name ?? "", c.dob ?? "", c.mrn ?? "", c.phoneLast4 ?? ""].join("|");
+}
+
 function shortId(id: string): string {
   return id.length > 8 ? id.slice(0, 8) : id;
 }
@@ -835,9 +763,7 @@ function errorMessage(err: unknown, fallback: string): string {
     error?: { message?: string; details?: Array<{ message?: string }> };
     message?: string;
   };
-  return (
-    e.error?.details?.[0]?.message ?? e.error?.message ?? e.message ?? fallback
-  );
+  return e.error?.details?.[0]?.message ?? e.error?.message ?? e.message ?? fallback;
 }
 
 const layout: CSSProperties = {

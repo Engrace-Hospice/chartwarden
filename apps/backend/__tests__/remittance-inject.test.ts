@@ -83,8 +83,14 @@ import type {
 
 // ── the header-auth shim (the M7/M11/M15 precedent), extended with the extra `request.context.attributes`
 // M25's actor layer + the `/internal/...` seam read: `membershipId` (write attribution, M25WriteActor),
-// `stepUpRecent` (the write-actor shape) and `systemPrincipal` (internal.routes.ts's SYSTEM_PRINCIPAL lock —
-// a plain boolean attribute, unlike M15's string `actorKind`).
+// `stepUpRecent` (the write-actor shape) and the PRINCIPAL KIND (internal.routes.ts's SYSTEM_PRINCIPAL lock).
+//
+// F-030 — this shim used to stamp a boolean `systemPrincipal` attribute, "unlike M15's string
+// `actorKind`", and the routes read the same boolean. Nothing in production has ever written
+// `systemPrincipal`: `actorKind` is the stamped principal-kind fact, and the two names never met, so
+// the /internal seam refused every caller including the M23 service-to-service calls it exists for.
+// The shim now stamps what the authenticate hook stamps — a string `actorKind` — and the routes read
+// that, so the positive cases below exercise the fact production actually assembles.
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
   if (typeof user !== "string" || user.length === 0) return;
@@ -98,10 +104,8 @@ function headerAuth(request: FastifyRequest): void {
     request.context.attributes.membershipId = membership;
   }
   request.context.attributes.stepUpRecent = true;
-  const systemPrincipal = request.headers["x-test-system-principal"];
-  if (systemPrincipal === "true") {
-    request.context.attributes.systemPrincipal = true;
-  }
+  request.context.attributes.actorKind =
+    request.headers["x-test-system-principal"] === "true" ? "system" : "user";
 }
 
 // ── fixed ids (the M7/M11/M15 style — distinct, valid-`uuid`-format constants) ────────────────────────────
@@ -917,14 +921,28 @@ describe.each(ROUTE_CASES)("M25 route smoke — $label", (c) => {
 // ── the /internal seam's system-principal lock — a non-system session is refused even holding the
 // `*_internal` permission key (the second lock `SYSTEM_PRINCIPAL` in internal.routes.ts is the point of).
 describe("M25 route smoke — the /internal seam's system-principal lock", () => {
-  it("403s a staff session (no systemPrincipal attribute) even with the *_internal grant", async () => {
+  it("403s a staff session (actorKind `user`) even with the *_internal grant", async () => {
     const { app } = makeServer();
     const res = await app.inject({
       method: "GET",
       url: "/api/v1/internal/denials/metrics",
-      headers: SUPER_HEADERS, // holds denial.read_internal, but carries no systemPrincipal attribute
+      headers: SUPER_HEADERS, // holds denial.read_internal, but is not a system principal
     });
     expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("admits a real system principal — the lock opens for the fact production assembles (F-030)", async () => {
+    // The negative case above passed throughout the bug, because "refuses a staff session" is also
+    // what a permanently-shut door does. This is the case that distinguishes them, and the one the
+    // suite did not have in a form that used the real attribute.
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/internal/denials/metrics",
+      headers: SYSTEM_HEADERS,
+    });
+    expect(res.statusCode).toBe(200);
     await app.close();
   });
 });

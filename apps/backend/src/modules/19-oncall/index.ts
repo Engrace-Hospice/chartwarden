@@ -99,6 +99,14 @@ export {
 } from "./abac-resolver-drizzle";
 export * from "./routes/index";
 export { mountM19Routes } from "./routes/mount";
+// F-030 — the vendor-session bind surface (the route mounts only when this reader is supplied).
+export {
+  buildDrizzleVendorSessionBindReader,
+  registerVendorSessionRoutes,
+  type VendorBindingFacts,
+  type VendorSessionBindReader,
+  type VendorSessionRouteDeps,
+} from "./routes/mount";
 export { M19_OUTBOX_EVENTS } from "./events-by-m19";
 export {
   type InMemoryTriageEraseSeed,

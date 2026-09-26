@@ -41,7 +41,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: Str,
       requiredSignerSet: RequiredSignerSet,
     }),
-    declaredConsumers: ["m14", "m33"],
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -64,7 +65,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
         }),
       ),
     }),
-    declaredConsumers: ["m22", "m28", "m14", "m30", "m33"],
+    declaredConsumers: ["m22", "m28", "m14", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -78,7 +80,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: Str,
       finalSnapshotVersionId: Id,
     }),
-    declaredConsumers: ["m16", "m22", "m30", "m33"],
+    declaredConsumers: ["m16", "m22", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -95,7 +98,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       performanceSatisfactory: Type.Boolean(),
       nextDueAt: Iso,
     }),
-    declaredConsumers: ["m30", "m33", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -103,7 +107,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m15",
     description: "The 6-hourly cadence cron found a breached 418.76(h) clock (§4.6).",
     payloadSchema: Type.Object({ planId: Id, hoursOverdue: Count, severity: Str }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -116,7 +121,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       daysOverdue: Count,
       severity: Str,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -125,7 +131,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The D10 5-day chaplain clock elapsed with neither a signed initial assessment nor a recorded declination (§7.3).",
     payloadSchema: Type.Object({ planId: Id, admissionId: Id, daysOverdue: Count }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -139,7 +146,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       daysOut: Type.Integer(),
       severity: Str,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -153,7 +161,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       expiredAt: Iso,
       openAssignmentsCount: Count,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -166,7 +175,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       affectedPlanIds: Type.Array(Id),
       reason: Str,
     }),
-    declaredConsumers: ["m17", "m33", "m36"],
+    declaredConsumers: ["m17"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -180,7 +190,8 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       hoursMinutes: Count,
       status: Str,
     }),
-    declaredConsumers: ["m33", "m30"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {

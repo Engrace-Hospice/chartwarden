@@ -335,6 +335,34 @@ export interface HopeSubmissionProvider {
  */
 export const HOPE_J2051_PAIN_SYMPTOM_CODE = "pain";
 
+/**
+ * §2.1 — the CMS J2051 symptom-impact roster. The instrument scores per-symptom severity across exactly
+ * these eight, and `otherSymptomLabel` exists on the entry shape precisely BECAUSE the list is closed:
+ * an open code list would have no need of a free-text label for `other`.
+ *
+ * Lives in the leaf so the route boundary and the recording UI resolve the same vocabulary. Until this
+ * constant, `j2051.ts`'s header called `symptomCode` "the closed CMS list at the route boundary" while
+ * the boundary typed it `Type.String({ maxLength: 64 })` — so the list was closed in prose only, and any
+ * client-side symptom picker would have been an invention rather than the contract.
+ */
+export const HOPE_J2051_SYMPTOM_CODES = [
+  "pain",
+  "shortness_of_breath",
+  "anxiety",
+  "agitation",
+  "nausea_vomiting",
+  "constipation",
+  "restlessness",
+  "other",
+] as const;
+
+/** One CMS J2051 symptom-impact item code (§2.1). */
+export type HopeJ2051SymptomCode = (typeof HOPE_J2051_SYMPTOM_CODES)[number];
+
+/** The pain discriminator is a member of the roster — a compile error if the two ever diverge. */
+const _PAIN_IS_IN_ROSTER: HopeJ2051SymptomCode = HOPE_J2051_PAIN_SYMPTOM_CODE;
+void _PAIN_IS_IN_ROSTER;
+
 /** The inclusive-from / exclusive-to reporting window an org-rollup method aggregates over (ISO-8601). */
 export interface HopeRollupPeriod {
   readonly from: IsoInstant;
@@ -354,11 +382,23 @@ export interface HopeOrgRollupProvider {
     organizationId: string,
     period: HopeRollupPeriod,
   ): Promise<{ readonly onTime: number; readonly late: number }>;
-  /** Submission posture for the acceptance measure: iQIES submissions vs those accepted in the period (APU signal). */
+  /**
+   * Submission posture for the acceptance measure: iQIES submissions vs those accepted in the period
+   * (APU signal), plus how many batches are ASSEMBLED AND NEVER TRANSMITTED.
+   *
+   * `queuedSubmissions` (F-058 / #150) is what tells a zero denominator's two causes apart: an agency
+   * with nothing to report, and one whose batches are stacked up unsent because this deployment has no
+   * iQIES transport. It is period-independent on purpose — a queued batch has no `transmitted_at` to
+   * anchor to, and "there are unsent batches" is a fact about the agency now, not about the window.
+   */
   submissionPostureRollup(
     organizationId: string,
     period: HopeRollupPeriod,
-  ): Promise<{ readonly submissions: number; readonly acceptedSubmissions: number }>;
+  ): Promise<{
+    readonly submissions: number;
+    readonly acceptedSubmissions: number;
+    readonly queuedSubmissions: number;
+  }>;
   /** SFV timeliness for the on-time-SFV measure: SFVs due vs completed within the 2-calendar-day window. */
   sfvTimelinessRollup(
     organizationId: string,

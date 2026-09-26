@@ -89,6 +89,17 @@ export type DocumentAggregateType =
   | "report_schedule_run"
   // M6 referral inbox artifacts — uploaded before patient/admission matching, then linked in place.
   | "referral"
+  // F-099 (mig 0239) — the artifacts behind six render requests that were emitted from production write
+  // paths and consumed by nothing. M16's welcome packet files against `bereavement_letter` below and
+  // needs no value here; M27's three are three types because they are separately retained and separately
+  // superseded, and one type would make a PI render an idempotent skip of the ECR.
+  | "hope_summary"
+  | "safety_incident_report"
+  | "appeal_packet"
+  | "cost_report_ecr"
+  | "cost_report_pi"
+  | "cost_report_supporting_doc"
+  | "body_release_authorization"
   | "idg_patient_packet"
   | "idg_minutes"
   | "aide_poc"

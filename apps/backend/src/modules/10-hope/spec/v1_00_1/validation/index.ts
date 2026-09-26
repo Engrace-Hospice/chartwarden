@@ -1,4 +1,8 @@
 import {
+  type HopeRuleFinding,
+  type HopeValidationContext,
+  type HopeValidationEngine,
+  type HopeValidationRule,
   answerValue,
   applicabilityOf,
   daysBetween,
@@ -7,10 +11,6 @@ import {
   isSkipped,
   parseHopeDate,
   sectionOf,
-  type HopeRuleFinding,
-  type HopeValidationContext,
-  type HopeValidationEngine,
-  type HopeValidationRule,
 } from "../../validation";
 
 const F_PAIRS = [
@@ -128,9 +128,7 @@ function finding(
 }
 
 function activeAssessmentItems(ctx: HopeValidationContext): readonly string[] {
-  return ctx.activeItems
-    .filter((item) => item.kind === "assessment")
-    .map((item) => item.itemCode);
+  return ctx.activeItems.filter((item) => item.kind === "assessment").map((item) => item.itemCode);
 }
 
 function checked(ctx: HopeValidationContext, itemCode: string): boolean {
@@ -256,8 +254,7 @@ const requirednessRule: HopeValidationRule = {
     return activeAssessmentItems(ctx)
       .filter(
         (itemCode) =>
-          !WORKFLOW_COMPLETION_ITEMS.has(itemCode) &&
-          !OPTIONAL_ASSESSMENT_ITEMS.has(itemCode),
+          !WORKFLOW_COMPLETION_ITEMS.has(itemCode) && !OPTIONAL_ASSESSMENT_ITEMS.has(itemCode),
       )
       .flatMap((itemCode) => required(ctx, itemCode));
   },
@@ -269,10 +266,7 @@ const skipStateRule: HopeValidationRule = {
     const out: HopeRuleFinding[] = [];
     for (const itemCode of activeAssessmentItems(ctx)) {
       const applicability = applicabilityOf(ctx, itemCode);
-      if (
-        applicability === "not_applicable" &&
-        isAnswered(ctx.answers, itemCode)
-      ) {
+      if (applicability === "not_applicable" && isAnswered(ctx.answers, itemCode)) {
         out.push(
           finding({
             ruleId: "CMS-HOPE-SKIP-STATE",
@@ -377,15 +371,11 @@ const sectionARule: HopeValidationRule = {
           findingKind: "mutual_exclusivity",
           itemCode: "A1010",
           section: "A",
-          message:
-            "A1010 exclusive race selections cannot be combined with race selections.",
+          message: "A1010 exclusive race selections cannot be combined with race selections.",
         }),
       );
     }
-    if (
-      ctx.mode === "final" &&
-      PAYER_ITEMS.every((code) => !checked(ctx, code))
-    ) {
+    if (ctx.mode === "final" && PAYER_ITEMS.every((code) => !checked(ctx, code))) {
       out.push(
         finding({
           ruleId: "-3081",
@@ -405,8 +395,7 @@ const sectionARule: HopeValidationRule = {
           findingKind: "mutual_exclusivity",
           itemCode: "A1400",
           section: "A",
-          message:
-            "Medicare FFS and Medicare Advantage payer selections are mutually exclusive.",
+          message: "Medicare FFS and Medicare Advantage payer selections are mutually exclusive.",
         }),
       );
     }
@@ -469,8 +458,7 @@ const sectionJRule: HopeValidationRule = {
           severity: "error",
           findingKind: "inconsistent_value",
           itemCode: "J0905",
-          message:
-            "J0905 must indicate active pain when J0900C reports pain severity 1, 2, or 3.",
+          message: "J0905 must indicate active pain when J0900C reports pain severity 1, 2, or 3.",
         }),
       );
     }
@@ -485,18 +473,14 @@ const sectionJRule: HopeValidationRule = {
     );
     out.push(...dateOrder(ctx, "J0900B", "J0910B"));
     const j2040a = answerValue(ctx.answers, "J2040A");
-    if (
-      (j2040a === "0" || j2040a === "1") &&
-      isAnswered(ctx.answers, "J2040B")
-    ) {
+    if ((j2040a === "0" || j2040a === "1") && isAnswered(ctx.answers, "J2040B")) {
       out.push(
         finding({
           ruleId: "-3047",
           severity: "error",
           findingKind: "invalid_skip_state",
           itemCode: "J2040B",
-          message:
-            "J2040B must be skipped unless J2040A indicates treatment was initiated.",
+          message: "J2040B must be skipped unless J2040A indicates treatment was initiated.",
         }),
       );
     }
@@ -506,8 +490,7 @@ const sectionJRule: HopeValidationRule = {
     const allFalse = J2051_ITEMS.every((code) =>
       ["0", "1", "9"].includes(answerValue(ctx.answers, code) ?? ""),
     );
-    if (trigger && ctx.mode === "final")
-      out.push(...required(ctx, "J2052A", "-3108"));
+    if (trigger && ctx.mode === "final") out.push(...required(ctx, "J2052A", "-3108"));
     if (allFalse) {
       for (const child of ["J2052A", "J2052B", "J2052C", ...J2053_ITEMS])
         if (isAnswered(ctx.answers, child)) {
@@ -526,8 +509,7 @@ const sectionJRule: HopeValidationRule = {
     if (j2052a === "1") {
       if (ctx.mode === "final") {
         out.push(...requireDate(ctx, "J2052B", "-3092"));
-        for (const code of J2053_ITEMS)
-          out.push(...required(ctx, code, "-3109"));
+        for (const code of J2053_ITEMS) out.push(...required(ctx, code, "-3109"));
       }
       if (isAnswered(ctx.answers, "J2052C"))
         out.push(
@@ -616,16 +598,12 @@ const sectionNRule: HopeValidationRule = {
     if (answerValue(ctx.answers, "N0520A") === "2" && ctx.mode === "final")
       out.push(...requireDate(ctx, "N0520B", "-3051"));
     if (
-      (answerValue(ctx.answers, "N0500A") === "1" ||
-        answerValue(ctx.answers, "N0510A") === "1") &&
+      (answerValue(ctx.answers, "N0500A") === "1" || answerValue(ctx.answers, "N0510A") === "1") &&
       ctx.mode === "final"
     ) {
       out.push(...required(ctx, "N0520A", "-3059"));
     }
-    if (
-      answerValue(ctx.answers, "N0500A") === "0" &&
-      answerValue(ctx.answers, "N0510A") === "0"
-    ) {
+    if (answerValue(ctx.answers, "N0500A") === "0" && answerValue(ctx.answers, "N0510A") === "0") {
       for (const code of ["N0520A", "N0520B"])
         if (isAnswered(ctx.answers, code)) {
           out.push(
@@ -640,8 +618,7 @@ const sectionNRule: HopeValidationRule = {
         }
     }
     if (
-      (answerValue(ctx.answers, "N0500A") === "1" ||
-        answerValue(ctx.answers, "N0510A") === "1") &&
+      (answerValue(ctx.answers, "N0500A") === "1" || answerValue(ctx.answers, "N0510A") === "1") &&
       answerValue(ctx.answers, "J0905") === "0"
     ) {
       out.push(
@@ -705,12 +682,7 @@ const dateOrderRule: HopeValidationRule = {
       const reason = answerValue(ctx.answers, "A0250");
       const min = reason === "2" ? 6 : reason === "3" ? 16 : null;
       const max = reason === "2" ? 15 : reason === "3" ? 30 : null;
-      if (
-        lag != null &&
-        min != null &&
-        max != null &&
-        (lag < min || lag > max)
-      ) {
+      if (lag != null && min != null && max != null && (lag < min || lag > max)) {
         out.push(
           finding({
             ruleId: "-3110",
@@ -757,8 +729,7 @@ const recordConsistencyRule: HopeValidationRule = {
             findingKind: "record_consistency",
             itemCode: "A0050",
             section: "A",
-            message:
-              "HOPE inactivation records must use ISC XX and target a signed source record.",
+            message: "HOPE inactivation records must use ISC XX and target a signed source record.",
             details: {
               correctsAssessmentId: ctx.assessment.correctsAssessmentId,
               isc: ctx.assessment.isc,
@@ -788,10 +759,7 @@ const recordConsistencyRule: HopeValidationRule = {
       }
       return out;
     }
-    if (
-      expected &&
-      (ctx.assessment.isc !== expected.isc || a0250 !== expected.a0250)
-    ) {
+    if (expected && (ctx.assessment.isc !== expected.isc || a0250 !== expected.a0250)) {
       out.push(
         finding({
           ruleId: "WX-HOPE-RECORD-001",
@@ -848,9 +816,7 @@ export function createHopeV1_00_1ValidationEngine(): HopeValidationEngine {
     specVersionCode: "1.00.1",
     rules: HOPE_V1_00_1_VALIDATION_RULES,
     evaluate(ctx) {
-      return HOPE_V1_00_1_VALIDATION_RULES.flatMap((rule) =>
-        rule.evaluate(ctx),
-      );
+      return HOPE_V1_00_1_VALIDATION_RULES.flatMap((rule) => rule.evaluate(ctx));
     },
   };
 }

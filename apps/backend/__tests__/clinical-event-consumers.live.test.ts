@@ -147,6 +147,8 @@ describe.skipIf(!DB_URL)("M14/M17 clinical consumers — LIVE Postgres", () => {
             kindHint: "dme",
             narrative: "Pressure-relief mattress review",
             recommendedTimeframe: "within 24 hours",
+            // M14 allows null here; the M11 `idg_requested.v1` registry types it `Optional(uuid)`, so the
+            // consumer must leave a null out of the order payload rather than fail the registry check.
             triggeringProblemId: null,
           },
         ],

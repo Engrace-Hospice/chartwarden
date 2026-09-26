@@ -49,8 +49,13 @@ describe("M6 outbox event contract (§4.4)", () => {
   it("the broad activation fan-out reaches the chain modules", () => {
     const activated = M6_OUTBOX_EVENTS.find((e) => e.eventName === "m6.admission.activated");
     expect(activated?.declaredConsumers).toEqual(
-      expect.arrayContaining(["m5", "m7", "m8", "m10", "m23", "m26", "m36"]),
+      expect.arrayContaining(["m5", "m7", "m8", "m10", "m23", "m26"]),
     );
+    // m36 used to be asserted here. It is not an outbox consumer and never was — its alert intake is
+    // the synchronous `AlertEmitter` seam — and declaring it kept this event deferred forever (#103).
+    // The relationship is still recorded, in the field that describes the mechanism it actually uses.
+    expect(activated?.seamConsumers).toEqual(expect.arrayContaining(["m33", "m36"]));
+    expect(activated?.declaredConsumers).not.toContain("m36");
   });
 
   it("applier-reused events carry the optional provenance `source` marker", () => {
@@ -71,6 +76,8 @@ describe("M6 outbox event contract (§4.4)", () => {
                 reason: "death",
                 dischargeDate: "2026-01-01",
                 requiresMedicalDirectorCosign: false,
+                // F-100 — the chart M22 files the rendered discharge summary against.
+                patientId: "p1",
               }
             : {
                 complianceWindowId: "w1",

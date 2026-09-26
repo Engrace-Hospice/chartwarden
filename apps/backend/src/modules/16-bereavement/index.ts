@@ -29,6 +29,11 @@ export {
   M16_IDG_DECISION_CONSUMER,
   buildM16IdgDecisionConsumer,
 } from "./outbox-consumers/m14-idg-decision-recorded";
+export {
+  type BereavementIntakeDeps,
+  M16_BEREAVEMENT_ELIGIBLE_CONSUMER,
+  buildM16BereavementIntakeConsumer,
+} from "./outbox-consumers/m6-bereavement-eligible";
 
 // §4.7 — the twenty-nine permission keys M16 contributes to M3's catalog.
 export {

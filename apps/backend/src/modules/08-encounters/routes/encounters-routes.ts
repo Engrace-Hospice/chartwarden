@@ -1,5 +1,5 @@
 // apps/backend/src/modules/08-encounters/routes/encounters-routes.ts — M8-T09 the §4.1 route inventory
-// (31 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
+// (34 routes) behind the REAL Authorization Contract (`requirePermission`/`requireAbac` from @wardenx/auth,
 // M3) on the §4.5 keys M8 registers into M3's catalog (M8_CONTRIBUTED_PERMISSIONS). Org binding is
 // server-side (`request.context`, never the body). Handlers compose over the injected EncounterRouteService
 // (in-memory slice; Drizzle in prod under `withOrgContext` so RLS backstops).
@@ -221,20 +221,67 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 3 — update selections (§7.7 If-Match).
+  // 3 — update selections (§7.7 If-Match). The body used to be published and never read: the clinician's
+  // HearthNote arrived, the version bumped, a 200 came back, and nothing was written (#114).
   app.patch(
     "/api/v1/encounters/:encounterId/selections",
     { preHandler: [AUTHOR, SCOPE_FOR("encounter.author"), IF_MATCH] },
     async (request) => {
       const { organizationId } = actorOf(request);
-      const body = parse(UpdateSelectionsSchema, request.body);
       parse(EncounterParamsSchema, request.params);
+      const body = parse(UpdateSelectionsSchema, request.body);
       return service.updateSelections(
         organizationId,
         encounterIdOf(request),
         ifMatchVersionOf(request),
         body,
       );
+    },
+  );
+
+  // 3b — read the stored selection tree back, assembled. The PATCH had no counterpart read, which is
+  // why the discard was invisible from every caller-facing surface (#114).
+  app.get(
+    "/api/v1/encounters/:encounterId/selections",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          resourceKind: "hearthnote_selection",
+          resourceIdParam: "encounterId",
+          fields: ["selections", "freeText", "layer1Preview"],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      parse(EncounterParamsSchema, request.params);
+      return service.getSelections(organizationId, encounterIdOf(request));
+    },
+  );
+
+  // 3c — the authoring MENU (F-063). `PATCH .../selections` carries `sectionId` and `code` as free
+  // strings and the server rejects an unknown one, so a client with no menu could only guess at both —
+  // which is why there was no note composer. `resolveTemplate` + `entriesFor` have existed as pure leaf
+  // packages since M8-T05; nothing put them on the wire. Derived from the ENCOUNTER's own
+  // type/discipline, so the menu offered and the rules `assembleSelections` enforces are the same rules.
+  //
+  // Not a PHI read — the template skeleton and the shipped vocabulary corpus are the same for every
+  // patient — so it carries no `auditRead` config, unlike the selections read beside it.
+  app.get(
+    "/api/v1/encounters/:encounterId/template",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          none: "the template skeleton and the shipped vocabulary corpus are platform data, identical for every patient — the encounter id selects which (type × discipline) menu to resolve and no patient content is returned, so there is no disclosure to account for (§164.528). The selection tree this menu is used to build IS audited, on the read beside it",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      parse(EncounterParamsSchema, request.params);
+      return service.getTemplate(organizationId, encounterIdOf(request));
     },
   );
 
@@ -262,6 +309,43 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
+  // 5b — read back the encounter's vitals (#92).
+  //
+  // A SIBLING read rather than an expansion of the encounter DTO: `GET /encounters` and the two work
+  // queues return `EncounterView[]` through the same projection, so folding vitals into the view would
+  // ship every clinician's full measurement set on every list page — a PHI over-fetch to solve a
+  // single-chart problem. `encounter.read` + the same `encounter.scope` caseload predicate the
+  // encounter read carries, so the vitals of an encounter are exactly as reachable as the encounter.
+  app.get(
+    "/api/v1/encounters/:encounterId/vitals",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          resourceKind: "vitals",
+          resourceIdParam: "encounterId",
+          fields: [
+            "bpSystolic",
+            "bpDiastolic",
+            "heartRate",
+            "respiratoryRate",
+            "temperature",
+            "spo2",
+            "painScore",
+            "weight",
+            "height",
+            "bmi",
+            "bloodGlucose",
+          ],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listVitals(organizationId, encounterIdOf(request));
+    },
+  );
+
   // 6 — capture mileage.
   app.post(
     "/api/v1/encounters/:encounterId/mileage",
@@ -285,26 +369,75 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
+  // 7b — read the mileage row back (F-063). `POST`/`PATCH .../mileage` wrote a real row and nothing
+  // returned it — the write-only shape #92 fixed for vitals, on the table beside it. Mileage is
+  // encounter-scoped travel rather than clinical content, but it is still on a PHI-bearing row, so it
+  // audits as a read of the encounter.
+  app.get(
+    "/api/v1/encounters/:encounterId/mileage",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: { auditRead: { resourceKind: "mileage", resourceIdParam: "encounterId" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      parse(EncounterParamsSchema, request.params);
+      return service.getMileage(organizationId, encounterIdOf(request));
+    },
+  );
+
   // 8 — link encounter to care-plan elements.
+  //
+  // F-064 (#159) — the body used to be parsed and DISCARDED: `addCarePlanLink(organizationId,
+  // encounterId)` took no third argument, so the M7 refs the link exists to record never reached the
+  // service, nothing was persisted, and the 201 carried the ENCOUNTER's own id under the name `linkId`.
   app.post(
     "/api/v1/encounters/:encounterId/care-plan-links",
     { preHandler: [AUTHOR, SCOPE_FOR("encounter.author")] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const body = parse(CarePlanLinkSchema, request.body);
-      const res = await service.addCarePlanLink(organizationId, encounterIdOf(request), body);
+      const res = await service.addCarePlanLink(
+        organizationId,
+        userId,
+        encounterIdOf(request),
+        body,
+      );
       return reply.code(201).send(res);
     },
   );
 
+  // 8b — the links on an encounter (F-064). Without this the table would be write-only even once links
+  // persist: nothing projected them, here or on `GET /api/v1/encounters/:id`.
+  app.get(
+    "/api/v1/encounters/:encounterId/care-plan-links",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          none: "Care-plan element refs (problem/goal/intervention ids) for one encounter; no clinical content.",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      return service.listCarePlanLinks(organizationId, encounterIdOf(request));
+    },
+  );
+
   // 9 — remove a care-plan link while draft.
+  //
+  // F-064 — a SOFT invalidate now. This used to load the encounter, check it was mutable, and return
+  // 204 having removed nothing: `wardenx_app` holds DELETE on no M8 table (§3.6 append-only) and there
+  // was no column to mark instead. A link that is absent or already removed is a 404, because the old
+  // 204 was indistinguishable from a working delete.
   app.delete(
     "/api/v1/encounters/:encounterId/care-plan-links/:linkId",
     { preHandler: [AUTHOR] },
     async (request, reply) => {
-      const { organizationId } = actorOf(request);
+      const { organizationId, userId } = actorOf(request);
       const { encounterId, linkId } = parse(CarePlanLinkParamsSchema, request.params);
-      await service.removeCarePlanLink(organizationId, encounterId, linkId);
+      await service.removeCarePlanLink(organizationId, userId, encounterId, linkId);
       return reply.code(204).send();
     },
   );
@@ -334,7 +467,11 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 12 — invoke HearthNote Layer-2 enhancement.
+  // 12 — invoke HearthNote Layer-2 enhancement. Answers the §2.6 D5 ladder's verdict, not a fabricated
+  // modification id (#123). 200 is the spec's own status for this route, and the right one: Layer 2
+  // being off is a steady state, not a fault — every call in Phase 1 returns it, and a normal outcome
+  // expressed as an HTTP error would pollute error rates and client retry logic for a feature that is
+  // simply switched off. The refusal is in the BODY, where a UI can render it.
   app.post(
     "/api/v1/encounters/:encounterId/hearthnote/enhance",
     { preHandler: [FINALIZE] },
@@ -441,7 +578,9 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
   // 20 — cosigner signs (§4.6 m8.cosigner_role_match; D13 step-up).
   app.post(
     "/api/v1/encounters/:encounterId/cosignature/sign",
-    { preHandler: [COSIGN, ABAC_COSIGN, SCOPE_FOR("encounter.cosign"), STEP_UP("encounter.cosign")] },
+    {
+      preHandler: [COSIGN, ABAC_COSIGN, SCOPE_FOR("encounter.cosign"), STEP_UP("encounter.cosign")],
+    },
     async (request) => {
       const { organizationId, roles } = actorOf(request);
       parse(SignEncounterSchema, request.body); // validates the attestation-confirmed shape
@@ -481,14 +620,35 @@ export function registerEncounterRoutes(app: FastifyInstance, deps: EncounterRou
     },
   );
 
-  // 23 — update addendum selections (§7.7 If-Match).
+  // 23 — update addendum selections (§7.7 If-Match). Same discard as route 3, same fix (#114).
   app.patch(
     "/api/v1/encounters/:encounterId/addenda/:addendumId/selections",
     { preHandler: [ADDENDUM_AUTHOR, IF_MATCH] },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
-      return service.updateAddendumSelections(organizationId, encounterId, addendumId);
+      const body = parse(UpdateSelectionsSchema, request.body);
+      return service.updateAddendumSelections(organizationId, encounterId, addendumId, body);
+    },
+  );
+
+  // 23b — read an addendum's stored selection tree back, assembled (#114).
+  app.get(
+    "/api/v1/encounters/:encounterId/addenda/:addendumId/selections",
+    {
+      preHandler: [READ, SCOPE_FOR("encounter.read")],
+      config: {
+        auditRead: {
+          resourceKind: "hearthnote_selection",
+          resourceIdParam: "addendumId",
+          fields: ["selections", "freeText", "layer1Preview"],
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { encounterId, addendumId } = parse(AddendumParamsSchema, request.params);
+      return service.getAddendumSelections(organizationId, encounterId, addendumId);
     },
   );
 

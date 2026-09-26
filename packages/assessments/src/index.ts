@@ -27,3 +27,9 @@ export { ppsScorer } from "./scales/pps";
 export { fastScorer, FAST_STAGE_ORDER } from "./scales/fast";
 export { painadScorer } from "./scales/painad";
 export { esasrScorer } from "./scales/esas-r";
+export {
+  scaleDefinitions,
+  type ScaleDefinition,
+  type ScaleItemDefinition,
+  type ScaleItemKind,
+} from "./scales/definitions";

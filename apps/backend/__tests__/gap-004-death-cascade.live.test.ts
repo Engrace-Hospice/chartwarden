@@ -12,11 +12,11 @@ import { join } from "node:path";
 import { type DbClient, createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { buildTxOutboxPublisher, buildBootOutboxCatalog } from "../src/bootstrap/outbox-persister";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { wireModuleSeams } from "../src/index";
 import {
-  M5_OUTBOX_EVENTS,
   type M5OutboxPort,
+  M5_OUTBOX_EVENTS,
   buildM5DeathCascadeConsumer,
 } from "../src/modules/05-patient/index";
 
@@ -127,12 +127,13 @@ describe.skipIf(!DB_URL)("GAP-004 death cascade — LIVE Postgres", () => {
       payload: { dischargeEventId, admissionId, dischargeDate: "2026-08-01" },
     });
 
-    const patientRow = await admin.query(
-      "SELECT status, deceased_date FROM patient WHERE id=$1",
-      [patientId],
-    );
+    const patientRow = await admin.query("SELECT status, deceased_date FROM patient WHERE id=$1", [
+      patientId,
+    ]);
     expect(patientRow.rows[0].status).toBe("deceased");
-    expect(new Date(patientRow.rows[0].deceased_date).toISOString().slice(0, 10)).toBe("2026-08-01");
+    expect(new Date(patientRow.rows[0].deceased_date).toISOString().slice(0, 10)).toBe(
+      "2026-08-01",
+    );
 
     const outboxRows = await admin.query(
       "SELECT payload FROM outbox_event WHERE event_type='m5.patient.deceased' AND aggregate_id=$1",

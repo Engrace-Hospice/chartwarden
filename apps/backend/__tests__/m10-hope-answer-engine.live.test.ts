@@ -4,9 +4,16 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
-import { createHopeAssessmentAnswerService } from "../src/modules/10-hope/hope-answer-service";
+import { registerSeam } from "../src/bootstrap/seams/registry";
+import { registerPatientSeams } from "../src/modules/05-patient/index";
+import {
+  HopeInvalidAnswerValueError,
+  HopeProtectedItemWriteError,
+  createHopeAssessmentAnswerService,
+} from "../src/modules/10-hope/hope-answer-service";
 import { createDbHopeBackend } from "../src/modules/10-hope/hope-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { seedM5Patient } from "./_m6-admit";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -14,6 +21,17 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 const ORG = "12121212-1212-1212-1212-121212121212";
 const USER = "23232323-2323-2323-2323-232323232323";
 const PATIENT = "34343434-3434-3434-3434-343434343434";
+const WORKFLOW_ITEMS = /^(A0050|A0220|A0250|A0270|J2052[A-C]|J2053[A-H]|Z0350|Z0500B)$/;
+/** The drafts' target date, used for every date answer `answerForSign` fills. */
+const ANSWER_DATE = "2025-10-15";
+/** An RFA-04 SFV payload whose J2053 re-rating completes the regulatory SFV branch on the admission. */
+const SFV_DATA = {
+  J: {
+    J2053: Object.fromEntries(
+      ["A", "B", "C", "D", "E", "F", "G", "H"].map((suffix) => [`J2053${suffix}`, "1"]),
+    ),
+  },
+};
 
 describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Postgres", () => {
   let admin: Client;
@@ -93,6 +111,70 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
     return rows[0] ?? null;
   }
 
+  /**
+   * An item's workspace state. A patch result lists only the items whose answer rows it wrote
+   * (`touched`); an item that merely becomes applicable with no row to write is read back through the
+   * workspace, as the web client does after every save.
+   */
+  async function workspaceItem(assessmentId: string, itemCode: string) {
+    const ws = await svc.getAssessmentWorkspace(ORG, assessmentId);
+    return ws.sections.flatMap((s) => s.items).find((i) => i.itemCode === itemCode);
+  }
+
+  /**
+   * Answer a draft until the server's sign-readiness review passes (the same completion
+   * m10-hope-write.live.test.ts does): `signTimepoint` refuses (HopeAssessmentNotReadyToSignError) any
+   * record whose active, applicable items are unanswered or that carries an error finding. Every
+   * UNANSWERED_APPLICABLE_ITEM blocker gets its first CMS option (No / Not at all for gates, so skip
+   * branches resolve), a date, or text. A1400A (Medicare payer) is always set — CMS rule -3081.
+   */
+  async function answerForSign(id: string): Promise<void> {
+    const patch = async (changes: Record<string, string>) => {
+      const ws = await svc.getAssessmentWorkspace(ORG, id);
+      await svc.patchAssessmentAnswers(ORG, membershipId, id, {
+        ifVersion: ws.assessment.version,
+        changes: Object.entries(changes).map(([itemCode, value]) => ({
+          itemCode,
+          action: "set" as const,
+          value,
+        })),
+      });
+    };
+    await patch({ A1400A: "1" });
+    for (let round = 0; round < 6; round++) {
+      const review = await svc.getAssessmentReview(ORG, id);
+      if (review.readiness.readyToSign) return;
+      const ws = await svc.getAssessmentWorkspace(ORG, id);
+      const items = new Map(ws.sections.flatMap((s) => s.items).map((i) => [i.itemCode, i]));
+      const changes: Record<string, string> = {};
+      for (const b of review.readiness.blockers) {
+        if (b.code !== "UNANSWERED_APPLICABLE_ITEM" || !b.itemCode) continue;
+        if (WORKFLOW_ITEMS.test(b.itemCode)) continue;
+        const item = items.get(b.itemCode);
+        if (!item) continue;
+        const codes = [...item.options]
+          .sort((x, y) => x.sortOrder - y.sortOrder)
+          .map((o) => o.valueCode);
+        const real = codes.filter(
+          (c) => !["Text", "YYYYMMDD", "YYYYMM", "YYYY", "^", "-"].includes(c),
+        );
+        changes[b.itemCode] =
+          codes.includes("YYYYMMDD") || /date/i.test(item.cmsItemTypeCode)
+            ? ANSWER_DATE
+            : codes.includes("Text")
+              ? "Test"
+              : (real[0] ?? "0");
+      }
+      if (Object.keys(changes).length === 0) {
+        throw new Error(
+          `HOPE ${id} is not sign-ready: ${JSON.stringify(review.readiness.blockers)}`,
+        );
+      }
+      await patch(changes);
+    }
+    throw new Error(`HOPE ${id} did not reach sign readiness`);
+  }
+
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
     await admin.connect();
@@ -104,6 +186,8 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
       [ORG],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'hope2b@x.test')`, [USER]);
+    // A real M5 patient, so the admission prefill has facts to copy (A0220 admission date, demographics).
+    await seedM5Patient(admin, ORG, PATIENT);
     membershipId = (
       await admin.query<{ id: string }>(
         "INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id",
@@ -126,6 +210,33 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
     ).rows[0]!.id;
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
+    // The seams production boot registers that `recordTimepoint` reads: M6's AdmissionStatusReader
+    // (the 01/02/03/05 RFAs resolve the admission's patient, siting and admission date through it) and
+    // M5's HOPE-admission prefill readers. This suite's admissions are synthetic ids backed only by
+    // schedule rows, all for one PATIENT — which the one-open-admission index forbids as real admission
+    // rows — so M6's reader is stood in for with the summary those schedule rows imply. M5's are the real
+    // Drizzle adapters (PATIENT is a seeded M5 row, so prefill copies A0220 and the demographics).
+    registerSeam("AdmissionStatusReader", {
+      async getAdmissionSummary(organizationId, admissionId) {
+        return {
+          admissionId,
+          organizationId,
+          patientId: PATIENT,
+          providerEntityId,
+          locationId,
+          status: "active",
+          admissionAt: "2025-10-15",
+          activatedAt: "2025-10-15",
+          dischargedAt: null,
+          currentElectionPeriodId: null,
+          currentLevelOfCare: null,
+        } as never;
+      },
+      async getAdmissionSiting() {
+        return null;
+      },
+    });
+    registerPatientSeams({ db: handle.db });
     svc = createDbHopeBackend(handle.db);
     answers = createHopeAssessmentAnswerService(handle.db);
   }, 120_000);
@@ -174,7 +285,10 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
     const a = await draft();
     await answers.patchAnswers(ORG, membershipId, a.id, {
       ifVersion: a.version,
-      changes: [{ itemCode: "J2051A", action: "set", value: "9" }],
+      changes: [
+        { itemCode: "J2050A", action: "set", value: "1" },
+        { itemCode: "J2051A", action: "set", value: "9" },
+      ],
     });
     expect(await dbAnswer(a.id, "J2051A")).toMatchObject({ state: "answered", value: "9" });
   });
@@ -186,7 +300,10 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
         ifVersion: a.version,
         changes: [{ itemCode: "J2051A", action: "set", value: "^" }],
       }),
-    ).rejects.toThrow(/skipped \+ null/);
+    ).rejects.toMatchObject({
+      name: HopeInvalidAnswerValueError.name,
+      details: [{ field: "J2051A", message: expect.stringMatching(/skipped \+ null/) }],
+    });
     expect(await dbAnswer(a.id, "J2051A")).toBeNull();
   });
 
@@ -198,13 +315,13 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
         ifVersion: a.version,
         changes: [{ itemCode: "A0050", action: "set", value: "2" }],
       }),
-    ).rejects.toThrow(/workflow-controlled/);
+    ).rejects.toThrow(HopeProtectedItemWriteError);
     await expect(
       answers.patchAnswers(ORG, membershipId, a.id, {
         ifVersion: a.version,
         changes: [{ itemCode: "Z0500B", action: "set", value: "2025-10-15" }],
       }),
-    ).rejects.toThrow(/workflow-controlled/);
+    ).rejects.toThrow(HopeProtectedItemWriteError);
   });
 
   it("clears an answer back to unanswered by deleting the row", async () => {
@@ -242,7 +359,10 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
         ifVersion: a.version,
         changes: [{ itemCode: "J2051A", action: "set", value: null as never }],
       }),
-    ).rejects.toThrow(/null|validation/i);
+    ).rejects.toMatchObject({
+      name: HopeInvalidAnswerValueError.name,
+      details: [{ field: "J2051A", message: expect.stringMatching(/null/) }],
+    });
     await expect(
       answers.patchAnswers(ORG, membershipId, a.id, {
         ifVersion: a.version,
@@ -258,6 +378,7 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
         changes: [{ itemCode: "J2051A", action: "set", value: "1" }],
       }),
     ).rejects.toThrow(/stale/);
+    await answerForSign(a.id);
     await svc.signTimepoint(ORG, membershipId, a.id);
     await expect(
       answers.patchAnswers(ORG, membershipId, a.id, {
@@ -296,11 +417,24 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
       ifVersion: a.version,
       changes: [
         { itemCode: "J2050A", action: "set", value: "1" },
+        // On/after the admission date (A0220 = 2025-10-15): CMS edit -3032 refuses a sign otherwise.
+        { itemCode: "J2050B", action: "set", value: "2025-10-15" },
         { itemCode: "J2051A", action: "set", value: "3" },
       ],
     });
     expect(patched.version).toBe(a.version + 1);
-    const signed = await svc.signTimepoint(ORG, membershipId, a.id);
+    // A fired trigger opens the SFV at patch time, and readiness refuses to sign it until the SFV's
+    // regulatory J2052/J2053 branch is complete: answer → SFV open → RFA-04 completion → sign.
+    await svc.recordSfv(ORG, membershipId, a.admissionId, {
+      triggeringAssessmentId: a.id,
+      targetDate: "2025-10-16T12:00:00.000Z", // inside the 2-day SFV window from J2050B
+      authorDiscipline: "RN",
+      data: SFV_DATA,
+    });
+    await answerForSign(a.id);
+    const { assessmentId } = await svc.signTimepoint(ORG, membershipId, a.id);
+    // The sign result is a receipt; the J2051 derivation lands on the signed record.
+    const signed = await svc.getAssessment(ORG, assessmentId);
     expect(signed.j2051MaxSeverity).toBe("severe");
     expect(signed.j2051TriggerFired).toBe(true);
   });
@@ -412,7 +546,7 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
         { itemCode: "J2051A", action: "set", value: "2" },
       ],
     });
-    expect(trueResult.answers.find((x) => x.itemCode === "J2052A")).toMatchObject({
+    expect(await workspaceItem(trueDraft.id, "J2052A")).toMatchObject({
       state: "unanswered",
       applicability: "applicable",
     });
@@ -434,14 +568,14 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2B canonical answer engine — LIVE Pos
 
   it("evaluates multiple opioid parent changes from the final patched answer set", async () => {
     const a = await draft();
-    const result = await answers.patchAnswers(ORG, membershipId, a.id, {
+    await answers.patchAnswers(ORG, membershipId, a.id, {
       ifVersion: a.version,
       changes: [
         { itemCode: "N0500A", action: "set", value: "0" },
         { itemCode: "N0510A", action: "set", value: "1" },
       ],
     });
-    expect(result.answers.find((x) => x.itemCode === "N0520A")).toMatchObject({
+    expect(await workspaceItem(a.id, "N0520A")).toMatchObject({
       state: "unanswered",
       applicability: "applicable",
     });

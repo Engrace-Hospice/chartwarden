@@ -187,8 +187,11 @@ describe("§3.3–§3.7 owned tables ↔ the manifest", () => {
     expect([...M28_TABLE_NAMES].sort()).toEqual([...(m28?.ownedTables ?? [])].sort());
   });
 
-  it("owns eight tables", () => {
-    expect(M28_TABLE_NAMES).toHaveLength(8);
+  it("owns nine tables", () => {
+    // Eight until F-035 (#95) added `fhir_read_disclosure`, the §164.528 accounting ledger the bound
+    // read path writes. The count is asserted separately from the manifest mirror above so that adding
+    // a table is a DELIBERATE edit here rather than a number that follows whatever the manifest says.
+    expect(M28_TABLE_NAMES).toHaveLength(9);
   });
 
   it("declares a tenancy, denylist, retention class and cipher set per table", () => {

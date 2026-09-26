@@ -141,6 +141,25 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    # F-038/#98 — the worker had no healthcheck, so `docker compose ps` reported it "running" the instant
+    # the process started and a worker that booted then died left the deploy green while every background
+    # job silently stopped. It publishes no port (it serves no public traffic), so the check runs inside
+    # the container against its own WORKER_PORT /ready — the same real probe the api uses, covering the
+    # database, Valkey and the object store from the container that would actually use them.
+    # The `$$` is a Compose escape, not a typo: Compose interpolates `${...}` in healthcheck.test before
+    # the container ever sees it, and an unescaped `$` here fails `docker compose config` outright.
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "bun",
+          "-e",
+          "process.exit((await fetch(`http://localhost:$${process.env.WORKER_PORT ?? 3001}/ready`)).ok ? 0 : 1)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 30s
 
   web:
     image: ${WARDENX_WEB_IMAGE:?set immutable GHCR image in .env.production}
@@ -148,6 +167,15 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:8080:8080"
+    # F-038/#98 — likewise unchecked before. This is the static-asset tier, so the check is that nginx
+    # answers for the SPA document itself; a container that starts with an empty or mis-built web root
+    # is otherwise indistinguishable from a working one.
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/ || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 10s
 
 volumes:
   postgres-data:

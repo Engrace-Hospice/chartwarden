@@ -181,12 +181,18 @@ function readContextOf(context: AbacContext): M23AbacReadContext {
 }
 
 /**
- * Is this a service-to-service principal (the M25 Remittance / M26 Cap seam calls into M23)? The route layer
- * marks such callers with a server-assembled `systemPrincipal` attribute; a request-borne actor never sets
- * it. Absent / non-true ⇒ false (fail-closed: an interactive actor is scoped by provider/caseload).
+ * Is this a service-to-service principal (the M25 Remittance / M26 Cap seam calls into M23)?
+ *
+ * Reads `actorKind`, the PRINCIPAL-KIND attribute the authenticate hook stamps — and which only the
+ * verified shared-secret branch can ever set to `"system"`. This used to read a `systemPrincipal`
+ * attribute instead, which nothing in the codebase has ever written (F-030): one fact, two names, and
+ * the name that was checked was not the name that was set. It failed CLOSED — an interactive actor is
+ * scoped by provider/caseload, which is the safe end — but the seam arm could never be taken, so the
+ * service-to-service path this predicate exists to allow was unreachable. `requireSystemPrincipal()`
+ * in M15 and M23's own `guards.ts` already read `actorKind`; this now agrees with them.
  */
 function isSystemPrincipal(context: AbacContext): boolean {
-  return context.attributes.systemPrincipal === true;
+  return context.attributes.actorKind === "system";
 }
 
 /**

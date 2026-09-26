@@ -159,7 +159,9 @@ export function createDrizzleTenantBackend(deps: DrizzleTenantRouteDeps): {
         // GAP-048: the worker's own `withOrgContext` needs `orgId` BEFORE it can read anything under RLS,
         // so the job payload carries the full DsarExportJobInput shape rather than a bare jobId — resolved
         // here, inside the SAME already-open org-context tx (tenant_account is org-scoped, RLS-safe read).
-        const tenantAccount = await new TenantAccountRepository(tx).findByOrganizationId(organizationId);
+        const tenantAccount = await new TenantAccountRepository(tx).findByOrganizationId(
+          organizationId,
+        );
         if (!tenantAccount) {
           throw new WardenXError("TENANT_ACCOUNT_NOT_FOUND", "no tenant_account for this org", 500);
         }

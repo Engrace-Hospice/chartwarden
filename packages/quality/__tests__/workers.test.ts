@@ -64,7 +64,11 @@ function baseMeasurePorts(overrides: {
     registrations: new Map([[registration.code, registration]]),
     hope: {
       timepointCompletionRollup: async () => ({ onTime: 0, late: 0 }),
-      submissionPostureRollup: async () => ({ submissions: 0, acceptedSubmissions: 0 }),
+      submissionPostureRollup: async () => ({
+        submissions: 0,
+        acceptedSubmissions: 0,
+        queuedSubmissions: 0,
+      }),
       sfvTimelinessRollup: async () => ({ sfvDue: 0, sfvOnTime: 0 }),
       j2051FollowUpRollup: async () => ({
         painTriggers: 0,
@@ -115,7 +119,9 @@ describe("measureRecomputeProcessor", () => {
   it("inserts a fresh value, reaches the live HOPE seam, and emits value_emitted (no prior)", async () => {
     const { ports, calls } = baseMeasurePorts({ current: null });
     const result = await handleMeasureRecompute(makeMeasureJob(), ports);
-    expect(result.outcome).toBe("recomputed");
+    // `MeasureRecomputeResult` is a union whose skip arm carries no `outcome`, so this reads it
+    // through a match rather than off the union.
+    expect(result).toMatchObject({ outcome: "recomputed" });
     expect(calls).toContain("seam:hope");
     expect(calls).toContain("insert:value-NEW");
     expect(calls).toContain("valueEmitted:value-NEW:green");
@@ -232,7 +238,11 @@ describe("outbreakDetectionProcessor", () => {
           return {} as schema.InfectionOutbreakCase;
         },
       },
-      outbox: { emitOutbreakOpened: async () => calls.push("emit") },
+      outbox: {
+        emitOutbreakOpened: async () => {
+          calls.push("emit");
+        },
+      },
     };
     const result = await handleOutbreakDetection(
       { jobId: "j2", organizationId: "org-1", surveillanceEventId: "e3" },
@@ -263,14 +273,22 @@ describe("cahpsExportProcessor terminal-failure path", () => {
       },
       samples: {
         listPendingForCycle: async () => [{ id: "s1" }] as unknown as schema.CahpsDecedentSample[],
-        markExported: async () => calls.push("markExported"),
-        markExportFailed: async (id) => calls.push(`markExportFailed:${id}`),
+        markExported: async () => {
+          calls.push("markExported");
+        },
+        markExportFailed: async (id) => {
+          calls.push(`markExportFailed:${id}`);
+        },
       },
       decrypt: { toVendorRow: async () => ({}) as never },
       bindingConfig: { load: async () => ({}) },
       outbox: {
-        emitExportCompleted: async () => calls.push("completed"),
-        emitExportFailed: async () => calls.push("failed"),
+        emitExportCompleted: async () => {
+          calls.push("completed");
+        },
+        emitExportFailed: async () => {
+          calls.push("failed");
+        },
       },
       maxAttempts: 4,
       now: () => new Date("2026-04-02T02:00:00Z"),

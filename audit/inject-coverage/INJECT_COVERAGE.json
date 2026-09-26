@@ -2,14 +2,14 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1276,
-    "coveredRoutes": 1276,
-    "directRoutesReferenced": 1220
+    "routes": 1299,
+    "coveredRoutes": 1299,
+    "directRoutesReferenced": 1243
   },
   "modules": [
     {
       "module": "02-identity",
-      "routes": 20,
+      "routes": 24,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/audit-accounting.test.ts",
@@ -18,10 +18,12 @@
         "apps/backend/__tests__/authz-idor.test.ts",
         "apps/backend/__tests__/authz-routes.test.ts",
         "apps/backend/__tests__/authz-validation.test.ts",
+        "apps/backend/__tests__/device-attestation-routes.test.ts",
         "apps/backend/__tests__/identity-routes.test.ts",
-        "apps/backend/__tests__/session-step-up.test.ts"
+        "apps/backend/__tests__/session-step-up.test.ts",
+        "apps/backend/__tests__/step-up-mount.test.ts"
       ],
-      "directRoutesReferenced": 20
+      "directRoutesReferenced": 24
     },
     {
       "module": "03-authorization",
@@ -56,13 +58,14 @@
         "apps/backend/__tests__/auth.live.test.ts",
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
+        "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
       "directRoutesReferenced": 15
     },
     {
       "module": "06-admission",
-      "routes": 67,
+      "routes": 68,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
@@ -70,7 +73,7 @@
         "apps/backend/__tests__/admission-intake.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts"
       ],
-      "directRoutesReferenced": 67
+      "directRoutesReferenced": 68
     },
     {
       "module": "07-care-plan",
@@ -80,28 +83,30 @@
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/care-plan-conformance.live.test.ts",
         "apps/backend/__tests__/care-plan-routes.test.ts",
-        "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts"
+        "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts",
+        "apps/backend/__tests__/patient-routes.test.ts"
       ],
       "directRoutesReferenced": 21
     },
     {
       "module": "08-encounters",
-      "routes": 31,
+      "routes": 37,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/encounter-authoring.test.ts",
         "apps/backend/__tests__/encounter-routes.test.ts"
       ],
-      "directRoutesReferenced": 26
+      "directRoutesReferenced": 33
     },
     {
       "module": "09-assessments",
-      "routes": 18,
+      "routes": 19,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/assessment-routes.test.ts"
+        "apps/backend/__tests__/assessment-routes.test.ts",
+        "apps/backend/__tests__/m9-assessments-write.live.test.ts"
       ],
-      "directRoutesReferenced": 13
+      "directRoutesReferenced": 14
     },
     {
       "module": "10-hope",
@@ -142,13 +147,13 @@
     },
     {
       "module": "14-idg",
-      "routes": 27,
+      "routes": 30,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/idg-inject.test.ts",
         "apps/backend/__tests__/idg-routes.test.ts"
       ],
-      "directRoutesReferenced": 27
+      "directRoutesReferenced": 30
     },
     {
       "module": "15-discipline-care-plans",
@@ -190,7 +195,7 @@
     },
     {
       "module": "19-oncall",
-      "routes": 38,
+      "routes": 39,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/oncall-inject.test.ts"
@@ -217,14 +222,14 @@
     },
     {
       "module": "22-documents",
-      "routes": 39,
+      "routes": 40,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/document-doclens.test.ts",
         "apps/backend/__tests__/document-routes.test.ts",
         "apps/backend/__tests__/document-workflow-acceptance.test.ts"
       ],
-      "directRoutesReferenced": 34
+      "directRoutesReferenced": 35
     },
     {
       "module": "23-billing-medicare",
@@ -277,7 +282,8 @@
       "routes": 35,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/fhir-inject.test.ts"
+        "apps/backend/__tests__/fhir-inject.test.ts",
+        "apps/backend/__tests__/m28-fhir-gateway.live.test.ts"
       ],
       "directRoutesReferenced": 35
     },
@@ -357,12 +363,12 @@
     },
     {
       "module": "37-ipu",
-      "routes": 45,
+      "routes": 51,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/ipu-inject.test.ts"
       ],
-      "directRoutesReferenced": 45
+      "directRoutesReferenced": 51
     },
     {
       "module": "38-terminology",

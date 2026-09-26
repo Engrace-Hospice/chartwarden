@@ -194,6 +194,18 @@ export const AdmissionListQuerySchema = Type.Object({
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
 });
 
+/** F-065 — the patient's admissions, newest first (`GET /patients/:patientId/admissions`). */
+export const PatientAdmissionsResponseSchema = Type.Object({
+  items: Type.Array(
+    Type.Object({
+      id: Uuid(),
+      state: Type.String(),
+      admissionAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+      dischargedAt: Type.Union([Type.String({ format: "date-time" }), Type.Null()]),
+    }),
+  ),
+});
+
 export const AdmissionUpdateSchema = Type.Object({
   intakeMethod: Type.Optional(Type.Union(INTAKE_METHODS.map((m) => Type.Literal(m)))),
   hospicePhysicianId: Type.Optional(Uuid()),
@@ -206,7 +218,13 @@ export const AdmissionUpdateSchema = Type.Object({
   ifVersion: Version(),
 });
 
-export const AdmissionActivateSchema = Type.Object({ ifVersion: Version() });
+export const AdmissionActivateSchema = Type.Object({
+  ifVersion: Version(),
+  // #50 — the service location this admission is served from. Optional because it is DERIVED when the
+  // elected provider entity has exactly one active location; required (422 `M6_LOCATION_REQUIRED`) when
+  // it has more than one, since `location` carries no primary flag and there is no defensible pick.
+  locationId: Type.Optional(Uuid()),
+});
 export const AdmissionHoldSchema = Type.Object({ reason: Reason(10, 500), ifVersion: Version() });
 export const AdmissionResumeSchema = Type.Object({ ifVersion: Version() });
 const UploadedEvidenceBaseSchema = {

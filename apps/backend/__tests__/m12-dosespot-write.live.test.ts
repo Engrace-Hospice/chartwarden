@@ -235,7 +235,7 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
     expect(edited.refillsRemaining).toBe(2);
   });
 
-  it("requestSignature (prescriber-eligible) → pending_signature; sign → signed", async () => {
+  it("F-058: requestSignature → pending_signature; sign → ACTIVE when nothing is e-prescribed", async () => {
     const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
     const pending = await svc.requestSignature(ORG_A, draft.id, "hospice_physician");
     expect(pending.status).toBe("pending_signature");
@@ -244,9 +244,37 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
       signerDiscipline: "hospice_physician",
       signedAtClient: new Date().toISOString(),
     });
-    expect(signed.status).toBe("signed");
+    // This used to assert `signed`, and `signed` is where the order then stayed forever: no transmission
+    // worker, no webhook handler, and `signed` had one exit. `dosespot_send_state` defaults to
+    // `not_required` — nothing is being e-prescribed — so there is nothing left to wait for.
+    expect(signed.status).toBe("active");
     expect(signed.signedAt).not.toBeNull();
-    expect(await eventsFor(draft.id)).toContain("m12.medication_order.signed");
+    const events = await eventsFor(draft.id);
+    expect(events).toContain("m12.medication_order.signed");
+    expect(events).toContain("m12.medication_order.active");
+    const { rows } = await admin.query("SELECT activated_at FROM medication_order WHERE id=$1", [
+      draft.id,
+    ]);
+    expect(rows[0].activated_at).not.toBeNull();
+    // …and it is finally visible on the read every downstream surface uses.
+    const active = await svc.activeMedications(ORG_A, PATIENT);
+    expect(active.orders.map((o) => o.id)).toContain(draft.id);
+  });
+
+  it("F-058: an order that OWES a transmission stays signed on signature", async () => {
+    const draft = await svc.createDraft(ORG_A, memberOf[ORG_A], draftArgs());
+    await svc.requestSignature(ORG_A, draft.id, "hospice_physician");
+    // The e-prescribing path: this order has a NewRx queued, so it activates on the pharmacy
+    // acknowledgment and not before. The `signed → active` arm is guarded on exactly this.
+    await admin.query("UPDATE medication_order SET dosespot_send_state='queued' WHERE id=$1", [
+      draft.id,
+    ]);
+    const signed = await svc.signOrder(ORG_A, memberOf[ORG_A], draft.id, {
+      signerDiscipline: "hospice_physician",
+      signedAtClient: new Date().toISOString(),
+    });
+    expect(signed.status).toBe("signed");
+    expect(await eventsFor(draft.id)).not.toContain("m12.medication_order.active");
   });
 
   it("requestSignature by an ineligible discipline (MSW) → PRESCRIBER_NOT_ELIGIBLE", async () => {
@@ -284,7 +312,9 @@ describe.skipIf(!DB_URL)("M12 DoseSpot write lifecycle — LIVE Postgres (M12L)"
       signedAtClient: new Date().toISOString(),
       signerIsOrderingPhysician: true,
     });
-    expect(signed.status).toBe("signed");
+    // F-058 — the verbal follow-up signature activates too; the drug was already being given under the
+    // verbal order (M12 §2.3: a verbal order "is active for clinical execution during this window").
+    expect(signed.status).toBe("active");
   });
 
   it("EPCS is OFF (D18): a controlled order fails at requestSignature and signControlledInitiate", async () => {

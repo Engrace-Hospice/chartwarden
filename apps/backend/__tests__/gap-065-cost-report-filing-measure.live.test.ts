@@ -41,7 +41,7 @@ const ORG = "65656565-6565-6565-6565-656565656565";
 const PROVIDER_ENTITY = "00000000-0000-0000-0000-0000000000e1";
 const MEASURE = "cost_report_filing_compliance";
 
-function parseRedisUrl(url: string): ConnectionOptions {
+function parseRedisUrl(url: string): { host: string; port: number } {
   const u = new URL(url);
   return { host: u.hostname, port: Number(u.port || 6379) };
 }
@@ -151,8 +151,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
 
     // Narrowed to the ONE measure under test, using the REAL production registration (the calculator from
     // `buildMeasureRegistry()`), so nothing else competes for the queue.
-    const registrations = () =>
-      new Map([[MEASURE, buildMeasureRegistry().get(MEASURE)!]]);
+    const registrations = () => new Map([[MEASURE, buildMeasureRegistry().get(MEASURE)!]]);
 
     const deps = () =>
       buildM30WorkerDeps({
@@ -191,7 +190,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
           return await job.waitUntilFinished(queueEvents, 20_000);
         } catch (err) {
           const reloaded = await q.getJob(job.id!);
-          throw new Error(`job did not complete cleanly: ${reloaded?.failedReason}`, { cause: err });
+          throw new Error(`job did not complete cleanly: ${reloaded?.failedReason}`, {
+            cause: err,
+          });
         }
       } finally {
         await q.close();

@@ -1,9 +1,9 @@
+import { PROVISION_MINIO_PREFIXES } from "@wardenx/saas-tenant-platform";
 import { Client } from "pg";
 import {
   createS3TenantStorageProvisioner,
   s3ObjectStoreConfigFromEnv,
 } from "../../apps/backend/src/modules/22-documents/index";
-import { PROVISION_MINIO_PREFIXES } from "../../packages/saas-tenant-platform/src/services/provision-worker";
 
 export interface TenantStorageReconcilePort {
   listTenantOrganizationIds(): Promise<readonly string[]>;

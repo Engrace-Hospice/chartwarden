@@ -288,7 +288,14 @@ function initialsOf(name: string): string {
 }
 
 // Deterministic avatar tint per person — the mockups give each care-team member a soft color.
-const AVATAR_TINTS = ["var(--color-viz-green)", "var(--color-viz-blue)", "var(--color-viz-violet)", "var(--color-viz-amber)", "var(--color-viz-cyan)", "var(--color-viz-pink)"];
+const AVATAR_TINTS = [
+  "var(--color-viz-green)",
+  "var(--color-viz-blue)",
+  "var(--color-viz-violet)",
+  "var(--color-viz-amber)",
+  "var(--color-viz-cyan)",
+  "var(--color-viz-pink)",
+];
 function avatarTint(seed: string): string {
   let h = 0;
   for (const c of seed) h = (h * 31 + c.charCodeAt(0)) >>> 0;

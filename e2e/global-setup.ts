@@ -9,7 +9,7 @@ async function main(): Promise<void> {
     }
   } catch (err) {
     throw new Error(
-      `e2e global-setup: ${baseURL} is not reachable (${(err as Error).message}). Bring up the local stack first: \`bun run db:reset\` (or the individual \`db:up\`/\`db:migrate\`/\`db:seed*\` steps it composes — see package.json), then \`bun run dev\` — see docs/DEVELOPMENT.md.`,
+      `e2e global-setup: ${baseURL} is not reachable (${(err as Error).message}). Bring up the local stack first: \`bun run db:reset\` (or the individual \`db:up\`/\`db:migrate\`/\`db:seed:all\` steps it composes — see package.json), then \`bun run dev\` — see docs/START_PROJECT.md.`,
     );
   }
 }

@@ -50,7 +50,7 @@ export function registerCapabilityRoutes(app: FastifyInstance, deps: CapabilityR
     "/api/v1/ai/capabilities",
     { preHandler: [P("ai.capability.create"), ABAC_SAFETY_OWNER("ai.capability.create")] },
     async (request, reply) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const body = parse(RegisterCapabilityBody, request.body);
       const { actorRole, rationaleText, stageArtifacts, ...capability } = body;
       const row = await registerAiCapability(governance, {
@@ -114,7 +114,7 @@ export function registerCapabilityRoutes(app: FastifyInstance, deps: CapabilityR
       ],
     },
     async (request, reply) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const { capabilityId } = parse(CapabilityIdParams, request.params);
       const body = parse(TransitionCapabilityBody, request.body);
       const row = await transitionAiCapability(governance, {

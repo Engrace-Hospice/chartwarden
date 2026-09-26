@@ -16,12 +16,7 @@ export type CalendarEventType =
   | "task"
   | "other";
 
-export type CalendarEventStatus =
-  | "scheduled"
-  | "due"
-  | "completed"
-  | "overdue"
-  | "cancelled";
+export type CalendarEventStatus = "scheduled" | "due" | "completed" | "overdue" | "cancelled";
 
 export interface CalendarEvent {
   id: string;
@@ -93,15 +88,11 @@ export function ClinicalCalendar({
   onDateChange,
   onOpenEvent,
 }: ClinicalCalendarProps): JSX.Element {
-  const [selectedEvent, setSelectedEvent] =
-    useState<CalendarEvent | null>(null);
+  const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
 
-  const [typeFilter, setTypeFilter] = useState<CalendarEventType | "all">(
-    "all",
-  );
+  const [typeFilter, setTypeFilter] = useState<CalendarEventType | "all">("all");
 
-  const [statusFilter, setStatusFilter] =
-    useState<CalendarEventStatus | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<CalendarEventStatus | "all">("all");
 
   const filteredEvents = useMemo(
     () =>
@@ -110,10 +101,7 @@ export function ClinicalCalendar({
           return false;
         }
 
-        if (
-          statusFilter !== "all" &&
-          event.status !== statusFilter
-        ) {
+        if (statusFilter !== "all" && event.status !== statusFilter) {
           return false;
         }
 
@@ -154,20 +142,11 @@ export function ClinicalCalendar({
             ←
           </button>
 
-          <button
-            type="button"
-            style={todayButton}
-            onClick={() => onDateChange(startOfToday())}
-          >
+          <button type="button" style={todayButton} onClick={() => onDateChange(startOfToday())}>
             Today
           </button>
 
-          <button
-            type="button"
-            style={iconButton}
-            onClick={() => move(1)}
-            aria-label="Next period"
-          >
+          <button type="button" style={iconButton} onClick={() => move(1)} aria-label="Next period">
             →
           </button>
 
@@ -186,11 +165,7 @@ export function ClinicalCalendar({
               }}
               aria-pressed={view === item}
             >
-              {item === "day"
-                ? "Day"
-                : item === "week"
-                  ? "Week"
-                  : "Month"}
+              {item === "day" ? "Day" : item === "week" ? "Week" : "Month"}
             </button>
           ))}
         </div>
@@ -202,22 +177,16 @@ export function ClinicalCalendar({
 
           <select
             value={typeFilter}
-            onChange={(event) =>
-              setTypeFilter(
-                event.target.value as CalendarEventType | "all",
-              )
-            }
+            onChange={(event) => setTypeFilter(event.target.value as CalendarEventType | "all")}
             style={selectStyle}
           >
             <option value="all">All events</option>
 
-            {Object.entries(EVENT_TYPE_LABELS).map(
-              ([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ),
-            )}
+            {Object.entries(EVENT_TYPE_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
           </select>
         </label>
 
@@ -226,22 +195,16 @@ export function ClinicalCalendar({
 
           <select
             value={statusFilter}
-            onChange={(event) =>
-              setStatusFilter(
-                event.target.value as CalendarEventStatus | "all",
-              )
-            }
+            onChange={(event) => setStatusFilter(event.target.value as CalendarEventStatus | "all")}
             style={selectStyle}
           >
             <option value="all">All statuses</option>
 
-            {Object.entries(STATUS_LABELS).map(
-              ([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ),
-            )}
+            {Object.entries(STATUS_LABELS).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
           </select>
         </label>
 
@@ -262,25 +225,14 @@ export function ClinicalCalendar({
               onViewChange={onViewChange}
             />
           ) : view === "week" ? (
-            <WeekView
-              date={date}
-              events={filteredEvents}
-              onSelect={selectEvent}
-            />
+            <WeekView date={date} events={filteredEvents} onSelect={selectEvent} />
           ) : (
-            <DayView
-              date={date}
-              events={filteredEvents}
-              onSelect={selectEvent}
-            />
+            <DayView date={date} events={filteredEvents} onSelect={selectEvent} />
           )}
         </div>
 
         {selectedEvent ? (
-          <EventDetailPanel
-            event={selectedEvent}
-            onClose={() => setSelectedEvent(null)}
-          />
+          <EventDetailPanel event={selectedEvent} onClose={() => setSelectedEvent(null)} />
         ) : null}
       </div>
     </div>
@@ -306,13 +258,11 @@ function MonthView({
   return (
     <div>
       <div style={monthWeekHeader}>
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
-          (label) => (
-            <div key={label} style={monthWeekDay}>
-              {label}
-            </div>
-          ),
-        )}
+        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label) => (
+          <div key={label} style={monthWeekDay}>
+            {label}
+          </div>
+        ))}
       </div>
 
       <div style={monthGridStyle}>
@@ -323,8 +273,7 @@ function MonthView({
             .filter((event) => dateKey(new Date(event.startAt)) === key)
             .sort(sortByStart);
 
-          const outsideMonth =
-            day.getMonth() !== date.getMonth();
+          const outsideMonth = day.getMonth() !== date.getMonth();
 
           return (
             <div
@@ -350,12 +299,7 @@ function MonthView({
 
               <div style={monthEventList}>
                 {dayEvents.slice(0, 4).map((event) => (
-                  <EventCard
-                    key={event.id}
-                    event={event}
-                    compact
-                    onClick={() => onSelect(event)}
-                  />
+                  <EventCard key={event.id} event={event} compact onClick={() => onSelect(event)} />
                 ))}
 
                 {dayEvents.length > 4 ? (
@@ -421,11 +365,7 @@ function WeekView({
             <div style={weekEvents}>
               {dayEvents.length > 0 ? (
                 dayEvents.map((event) => (
-                  <EventCard
-                    key={event.id}
-                    event={event}
-                    onClick={() => onSelect(event)}
-                  />
+                  <EventCard key={event.id} event={event} onClick={() => onSelect(event)} />
                 ))
               ) : (
                 <span style={emptyDay}>No events</span>
@@ -480,17 +420,10 @@ function DayView({
         <div style={agendaList}>
           {dayEvents.map((event) => (
             <div key={event.id} style={agendaRow}>
-              <div style={agendaTime}>
-                {event.allDay
-                  ? "All day"
-                  : formatTime(event.startAt)}
-              </div>
+              <div style={agendaTime}>{event.allDay ? "All day" : formatTime(event.startAt)}</div>
 
               <div style={agendaEvent}>
-                <EventCard
-                  event={event}
-                  onClick={() => onSelect(event)}
-                />
+                <EventCard event={event} onClick={() => onSelect(event)} />
               </div>
             </div>
           ))}
@@ -515,24 +448,16 @@ function EventCard({
       style={{
         ...eventCard,
         ...(compact ? compactEventCard : {}),
-        ...(event.status === "completed"
-          ? completedEventCard
-          : {}),
-        ...(event.status === "overdue"
-          ? overdueEventCard
-          : {}),
+        ...(event.status === "completed" ? completedEventCard : {}),
+        ...(event.status === "overdue" ? overdueEventCard : {}),
       }}
       onClick={onClick}
     >
       <div style={eventTopLine}>
-        <span style={eventType}>
-          {EVENT_TYPE_LABELS[event.type]}
-        </span>
+        <span style={eventType}>{EVENT_TYPE_LABELS[event.type]}</span>
 
         {!compact && event.status ? (
-          <span style={eventStatus}>
-            {STATUS_LABELS[event.status]}
-          </span>
+          <span style={eventStatus}>{STATUS_LABELS[event.status]}</span>
         ) : null}
       </div>
 
@@ -540,9 +465,7 @@ function EventCard({
 
       {!compact ? (
         <>
-          {event.patient ? (
-            <span style={eventMeta}>{event.patient.name}</span>
-          ) : null}
+          {event.patient ? <span style={eventMeta}>{event.patient.name}</span> : null}
 
           <span style={eventMeta}>
             {event.allDay
@@ -568,9 +491,7 @@ function EventDetailPanel({
     <aside style={detailPanel}>
       <div style={detailHeader}>
         <div>
-          <span style={detailEyebrow}>
-            {EVENT_TYPE_LABELS[event.type]}
-          </span>
+          <span style={detailEyebrow}>{EVENT_TYPE_LABELS[event.type]}</span>
 
           <h2 style={detailTitle}>{event.title}</h2>
         </div>
@@ -587,18 +508,13 @@ function EventDetailPanel({
 
       {event.status ? (
         <div>
-          <StatusPill
-            label={STATUS_LABELS[event.status]}
-            tone={STATUS_TONES[event.status]}
-          />
+          <StatusPill label={STATUS_LABELS[event.status]} tone={STATUS_TONES[event.status]} />
         </div>
       ) : null}
 
       <dl style={detailGrid}>
         <dt style={dt}>Date</dt>
-        <dd style={dd}>
-          {new Date(event.startAt).toLocaleDateString()}
-        </dd>
+        <dd style={dd}>{new Date(event.startAt).toLocaleDateString()}</dd>
 
         <dt style={dt}>Time</dt>
         <dd style={dd}>
@@ -644,8 +560,7 @@ function EventDetailPanel({
         </a>
       ) : (
         <div style={backendNotice}>
-          Navigation will be connected when calendar events are backed by
-          their source modules.
+          Navigation will be connected when calendar events are backed by their source modules.
         </div>
       )}
     </aside>
@@ -653,11 +568,7 @@ function EventDetailPanel({
 }
 
 function monthGrid(value: Date): Date[] {
-  const first = new Date(
-    value.getFullYear(),
-    value.getMonth(),
-    1,
-  );
+  const first = new Date(value.getFullYear(), value.getMonth(), 1);
 
   const start = new Date(first);
   start.setDate(first.getDate() - first.getDay());
@@ -697,10 +608,7 @@ function dateKey(value: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function periodLabel(
-  date: Date,
-  view: CalendarView,
-): string {
+function periodLabel(date: Date, view: CalendarView): string {
   if (view === "month") {
     return date.toLocaleDateString(undefined, {
       month: "long",
@@ -744,14 +652,8 @@ function formatTime(value: string): string {
   });
 }
 
-function sortByStart(
-  a: CalendarEvent,
-  b: CalendarEvent,
-): number {
-  return (
-    new Date(a.startAt).getTime() -
-    new Date(b.startAt).getTime()
-  );
+function sortByStart(a: CalendarEvent, b: CalendarEvent): number {
+  return new Date(a.startAt).getTime() - new Date(b.startAt).getTime();
 }
 
 const calendarShell: CSSProperties = {
@@ -913,8 +815,7 @@ const monthCell: CSSProperties = {
 };
 
 const todayCell: CSSProperties = {
-  background:
-    "color-mix(in srgb, var(--color-primary) 5%, transparent)",
+  background: "color-mix(in srgb, var(--color-primary) 5%, transparent)",
 };
 
 const dayNumberButton: CSSProperties = {
@@ -966,8 +867,7 @@ const completedEventCard: CSSProperties = {
 
 const overdueEventCard: CSSProperties = {
   borderLeftColor: t.error,
-  background:
-    "color-mix(in srgb, var(--color-error) 8%, transparent)",
+  background: "color-mix(in srgb, var(--color-error) 8%, transparent)",
 };
 
 const eventTopLine: CSSProperties = {
@@ -1020,8 +920,7 @@ const weekColumn: CSSProperties = {
 };
 
 const todayWeekColumn: CSSProperties = {
-  background:
-    "color-mix(in srgb, var(--color-primary) 4%, transparent)",
+  background: "color-mix(in srgb, var(--color-primary) 4%, transparent)",
 };
 
 const weekColumnHeader: CSSProperties = {

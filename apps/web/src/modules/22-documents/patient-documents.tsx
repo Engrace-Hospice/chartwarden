@@ -8,8 +8,8 @@ import { useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
+import { type DocumentRow, PatientDocumentWorkspace } from "../../shell/document-workflows";
 import { ChartBanner, PatientSummaryPanel, useChartIdentity } from "../../shell/patient-context";
-import { type DocumentRow, PatientDocumentWorkspace } from "./document-workflows";
 
 const KEY_DOCUMENTS = [
   { type: "election_statement", label: "Election Statement" },

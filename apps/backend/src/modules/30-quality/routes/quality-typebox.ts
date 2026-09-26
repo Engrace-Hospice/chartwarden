@@ -465,6 +465,10 @@ export const MeasureValueViewSchema = Type.Object({
   rate: m30Nullable(Type.Number()),
   thresholdMet: m30Nullable(Type.Boolean()),
   bandColor: lit(MEASURE_BAND_COLOR),
+  // Non-null ONLY for a measure whose input the platform structurally cannot assemble — see
+  // `MeasureValueView.unavailableReason`. A low-N suppression leaves this null, which is how a consumer
+  // tells "too few patients" from "not computable here".
+  unavailableReason: m30Nullable(Type.String()),
   computedAt: Type.String(),
   computeVersion: Type.String(),
   snapshotContentHash: Type.String(),

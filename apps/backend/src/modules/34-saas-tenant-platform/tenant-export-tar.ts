@@ -31,7 +31,9 @@ function writeOctalField(header: Buffer, offset: number, length: number, value: 
 function buildHeader(entry: TarEntry, mtimeSeconds: number): Buffer {
   const nameBytes = Buffer.from(entry.path, "utf8");
   if (nameBytes.byteLength > 100) {
-    throw new Error(`tenant-export tar entry path exceeds the ustar 100-byte name limit: ${entry.path}`);
+    throw new Error(
+      `tenant-export tar entry path exceeds the ustar 100-byte name limit: ${entry.path}`,
+    );
   }
   const header = Buffer.alloc(BLOCK_SIZE);
   nameBytes.copy(header, 0);

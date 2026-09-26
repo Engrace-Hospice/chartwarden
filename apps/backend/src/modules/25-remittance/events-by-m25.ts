@@ -40,6 +40,11 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       minioObjectKey: str,
       fileSha256: str,
     }),
+    // F-020 (#49) — NOT record-only: `m25.parse-and-post` (outbox-consumers/live-binding.ts) binds
+    // this event live and drives the parse + transactional-post + denial-seed half of the pipeline.
+    // M25 is its own consumer here (the self-pull posture the file header describes — no other module
+    // produces an 835 receipt). Catalogued `[]`, the dispatcher would have marked every 835 dispatched
+    // WITHOUT delivering it, so it fails boot instead; either way nothing ever parsed an 835.
     declaredConsumers: ["m25"],
     isOutboxOnly: true,
   },
@@ -65,7 +70,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       unmatchedLineCount: Type.Integer(),
       postedAt: isoInstant,
     }),
-    declaredConsumers: ["m26", "m33"],
+    declaredConsumers: ["m26"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -152,7 +158,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       source: str,
       dollarValue: money,
     }),
-    declaredConsumers: ["m30", "m33", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -161,7 +168,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "An appeal decided favorably; the underlying denial resolved and M23 may re-post the original line.",
     payloadSchema: Type.Object({ denialCaseId: id, appealCaseId: id, claimId: id, tier: str }),
-    declaredConsumers: ["m23", "m33"],
+    declaredConsumers: ["m23"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -175,7 +183,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       providerEntityId: id,
       denialCaseId: id,
     }),
-    declaredConsumers: ["m23", "m36"],
+    declaredConsumers: ["m23"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── patient responsibility (Phase-2 forward seam, §2.4 / D8) ────────────────────────────────────────
@@ -200,7 +209,8 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       tier: str,
       submittedAt: isoInstant,
     }),
-    declaredConsumers: ["m22", "m33"],
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {

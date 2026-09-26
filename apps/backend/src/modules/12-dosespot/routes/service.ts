@@ -617,7 +617,8 @@ export function createInMemoryDoseSpotBackend(
     fromExtraction: boolean,
   ): Promise<OrderRecord> {
     const draftFindings = validateMedicationOrderData(args.medClass, undefined, args.data, false);
-    if (draftFindings.length) throw new ValidationError("medication draft validation failed", draftFindings);
+    if (draftFindings.length)
+      throw new ValidationError("medication draft validation failed", draftFindings);
     await bindCrossModuleRefs(organizationId, args);
     const controlled = isControlled(args.medClass, args.containsControlled ?? false);
     const id = nextId();
@@ -681,9 +682,15 @@ export function createInMemoryDoseSpotBackend(
           (!filter.prescriberId || r.prescriberMembershipId === filter.prescriberId) &&
           (!filter.medClass || r.medClass === filter.medClass),
       );
-      const statusCounts = Object.fromEntries(scoped.map((r) => [r.status, 0])) as Record<string, number>;
+      const statusCounts = Object.fromEntries(scoped.map((r) => [r.status, 0])) as Record<
+        string,
+        number
+      >;
       for (const r of scoped) statusCounts[r.status] = (statusCounts[r.status] ?? 0) + 1;
-      return { orders: scoped.filter((r) => !filter.status || r.status === filter.status).map(view), statusCounts };
+      return {
+        orders: scoped.filter((r) => !filter.status || r.status === filter.status).map(view),
+        statusCounts,
+      };
     },
     async getOrder(organizationId, id) {
       return view(find(organizationId, id));
@@ -697,7 +704,8 @@ export function createInMemoryDoseSpotBackend(
         throw new NotFoundError(`medication order ${id} is not a draft and cannot be edited`);
       if (patch.data !== undefined) {
         const findings = validateMedicationOrderData(r.medClass, undefined, patch.data, false);
-        if (findings.length) throw new ValidationError("medication draft validation failed", findings);
+        if (findings.length)
+          throw new ValidationError("medication draft validation failed", findings);
         r.data = patch.data;
       }
       if (patch.drugName !== undefined) r.drugName = patch.drugName;
@@ -712,7 +720,8 @@ export function createInMemoryDoseSpotBackend(
     async requestSignature(organizationId, id, _signerDiscipline) {
       const r = find(organizationId, id);
       const findings = validateMedicationOrderData(r.medClass, undefined, r.data, true);
-      if (findings.length) throw new ValidationError("medication order is not ready for signature", findings);
+      if (findings.length)
+        throw new ValidationError("medication order is not ready for signature", findings);
       const t = transitionMedicationOrder(r.status, {
         type: "requestSignature",
         medClass: r.medClass,

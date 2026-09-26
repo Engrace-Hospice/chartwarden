@@ -59,7 +59,7 @@ export function registerKillSwitchRoutes(app: FastifyInstance, deps: KillSwitchR
       ],
     },
     async (request, reply) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const { capabilityId } = parse(CapabilityIdParams, request.params);
       const body = parse(ActivateKillSwitchBody, request.body);
       const outcome = await activateAiKillSwitch(safety, {
@@ -90,7 +90,7 @@ export function registerKillSwitchRoutes(app: FastifyInstance, deps: KillSwitchR
       ],
     },
     async (request) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const { capabilityId } = parse(CapabilityIdParams, request.params);
       const body = parse(DeactivateKillSwitchBody, request.body);
       return deactivateAiKillSwitch(safety, {
@@ -111,7 +111,7 @@ export function registerKillSwitchRoutes(app: FastifyInstance, deps: KillSwitchR
     "/api/v1/ai/kill-switches",
     { preHandler: [P("ai.kill_switch.read"), ABAC_SAFETY_OWNER_OR_IN_ORG("ai.kill_switch.read")] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = await actorOf(request);
       return { killSwitches: await listActiveAiKillSwitches(safety, actor.organizationId) };
     },
   );

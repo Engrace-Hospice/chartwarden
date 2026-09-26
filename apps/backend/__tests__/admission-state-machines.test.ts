@@ -199,29 +199,26 @@ describe("ElectionPeriod state machine (§2.3.2)", () => {
     expect(outboxEvents(t.effects)).toContain("m6.election.signed");
   });
 
+  // F-089 — these were `try { transition(...) } catch (e) { expect(e.code)... }`, which asserts nothing
+  // when the call does NOT throw: the catch never runs and the test passes. Every refusal in this file
+  // was written that way, so a guard that stopped firing would have been reported green. That is not a
+  // hypothetical here — it is why the R-EL-01 case below did not notice the fail-open F-089 fixes.
+  // `toThrowError` fails when nothing is thrown, which is the half that was missing.
+  const refuses = (event: Parameters<typeof transitionElectionPeriod>[1], code: string) =>
+    expect(() => transitionElectionPeriod("pending", event)).toThrowError(
+      expect.objectContaining({ code }),
+    );
+
   it("R-EL-04 curative-care ack required; R-EL-02 concurrent election blocked", () => {
-    try {
-      transitionElectionPeriod("pending", { ...sign, curativeCareAcknowledgment: false });
-    } catch (e) {
-      expect((e as AdmissionStateError).code).toBe("CURATIVE_CARE_ACK_REQUIRED");
-    }
-    try {
-      transitionElectionPeriod("pending", { ...sign, existingActiveElectionElsewhere: true });
-    } catch (e) {
-      expect((e as AdmissionStateError).code).toBe("PATIENT_ALREADY_ELECTED");
-    }
+    refuses({ ...sign, curativeCareAcknowledgment: false }, "CURATIVE_CARE_ACK_REQUIRED");
+    refuses({ ...sign, existingActiveElectionElsewhere: true }, "PATIENT_ALREADY_ELECTED");
   });
 
   it("R-EL-01 representative signer needs an active DPOA consent", () => {
-    try {
-      transitionElectionPeriod("pending", {
-        ...sign,
-        signerKind: "representative",
-        hasActiveDpoaConsent: false,
-      });
-    } catch (e) {
-      expect((e as AdmissionStateError).code).toBe("REPRESENTATIVE_AUTHORITY_MISSING");
-    }
+    refuses(
+      { ...sign, signerKind: "representative", hasActiveDpoaConsent: false },
+      "REPRESENTATIVE_AUTHORITY_MISSING",
+    );
     expect(
       transitionElectionPeriod("pending", {
         ...sign,
@@ -231,12 +228,27 @@ describe("ElectionPeriod state machine (§2.3.2)", () => {
     ).toBe("signed");
   });
 
+  // F-089 — the case that was actually reachable, and was not covered. `signerKind` is produced by
+  // `SIGNER_KIND_BY_ROLE[input.signingRole]`, an index into a two-key map that exists because the wire
+  // vocabulary (`legal_representative`) and the column enum (`representative`) differ. A miss yields
+  // `undefined`, and the validator's old `!== "representative"` early return let it straight through:
+  // the election signed, with no DPOA consult, for a signer whose kind the platform could not name.
+  // An unrecognised kind must be treated as a representative — the direction an authority control has
+  // to fail in. The cast is the point of the test: the type says this cannot happen, and the map's
+  // index signature is exactly where it does.
+  it("R-EL-01 an UNRECOGNISED signer kind is refused, not waved through (fail-closed)", () => {
+    refuses(
+      {
+        ...sign,
+        signerKind: undefined as unknown as "representative",
+        hasActiveDpoaConsent: false,
+      },
+      "REPRESENTATIVE_AUTHORITY_MISSING",
+    );
+  });
+
   it("overlap guard mirrors the DB GIST EXCLUDE", () => {
-    try {
-      transitionElectionPeriod("pending", { ...sign, wouldOverlap: true });
-    } catch (e) {
-      expect((e as AdmissionStateError).code).toBe("ELECTION_PERIOD_OVERLAP");
-    }
+    refuses({ ...sign, wouldOverlap: true }, "ELECTION_PERIOD_OVERLAP");
   });
 
   it("setActive: recert (seq ≥ 3) requires an attested F2F (R-F2F-04)", () => {
@@ -248,11 +260,9 @@ describe("ElectionPeriod state machine (§2.3.2)", () => {
       f2fAttested: false,
       effectiveAt: "2026-06-21",
     };
-    try {
-      transitionElectionPeriod("signed", base);
-    } catch (e) {
-      expect((e as AdmissionStateError).code).toBe("F2F_REQUIRED_FOR_RECERT");
-    }
+    expect(() => transitionElectionPeriod("signed", base)).toThrowError(
+      expect.objectContaining({ code: "F2F_REQUIRED_FOR_RECERT" }),
+    );
     expect(transitionElectionPeriod("signed", { ...base, f2fAttested: true }).to).toBe("active");
     // period 1 needs no F2F
     expect(transitionElectionPeriod("signed", { ...base, sequence: 1 }).to).toBe("active");

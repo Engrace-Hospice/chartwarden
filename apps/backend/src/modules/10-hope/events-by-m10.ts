@@ -61,7 +61,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       j2051TriggerFired: Type.Boolean(),
       wasLate: Type.Boolean(),
     }),
-    declaredConsumers: ["m14", "m28", "m30", "m33"],
+    declaredConsumers: ["m14", "m28", "m30"],
+    seamConsumers: ["m33"],
     // ALSO live: server → patient room `hope:assessment:signed` (§4.5).
     isOutboxOnly: false,
   },
@@ -75,7 +76,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       rfaKind,
       expiredAt: isoInstant,
     }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── J2051 trigger + SFV chain (§2.4 / §4.9) ─────────────────────────────────────────────────────────
@@ -91,7 +93,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       triggeredAt: isoInstant,
       dueAt: isoInstant,
     }),
-    declaredConsumers: ["m14", "m30", "m33"],
+    declaredConsumers: ["m14", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -104,7 +107,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       triggeringAssessmentId: Type.String({ minLength: 1 }),
       dueAt: isoInstant,
     }),
-    declaredConsumers: ["m14", "m36"],
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m36"],
     // ALSO live: server → org room `hope:sfv:created` (§4.5).
     isOutboxOnly: false,
   },
@@ -118,7 +122,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       completingAssessmentId: Type.String({ minLength: 1 }),
       completedAt: isoInstant,
     }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -130,7 +135,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       sfvId: Type.String({ minLength: 1 }),
       hoursPastDue: Type.Number(),
     }),
-    declaredConsumers: ["m30", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m36"],
     isOutboxOnly: false,
   },
   {
@@ -141,7 +147,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       sfvId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── correction-of-record (§2.4 / D7) ────────────────────────────────────────────────────────────────
@@ -154,7 +161,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       correctionAssessmentId: Type.String({ minLength: 1 }),
       originalAssessmentId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m28", "m33"],
+    declaredConsumers: ["m28"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── iQIES submission lifecycle (§2.4 / §4.10) ───────────────────────────────────────────────────────
@@ -168,7 +176,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       providerEntityId: Type.String({ minLength: 1 }),
       itemCount: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -181,7 +190,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       transmittedAt: isoInstant,
       envelopeSha256: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: false,
   },
   {
@@ -194,7 +204,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       acceptedCount: Type.Integer({ minimum: 0 }),
       rejectedCount: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: false,
   },
   {
@@ -209,7 +220,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
         Type.Object({ ruleId: Type.String({ minLength: 1 }), count: Type.Integer({ minimum: 1 }) }),
       ),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: false,
   },
   // ── printable summary (§2.4 — M22 renders when it lands) ──────────────────────────────────────────────
@@ -221,6 +233,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       assessmentId: Type.String({ minLength: 1 }),
       requestedBy: Type.String({ minLength: 1 }),
+      /** The chart target M22 files the rendered summary against (F-099). */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m22"],
     isOutboxOnly: true,

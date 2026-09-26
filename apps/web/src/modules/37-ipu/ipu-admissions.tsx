@@ -1,6 +1,22 @@
 // apps/web/src/modules/37-ipu — M37 IPU admissions worklist (§5). Lists the org's IPU admissions with
-// their level of care + lifecycle state. GET /api/v1/ipu-admissions (RLS-scoped server-side). Lantern:
-// UI components + CSS-var tokens only.
+// their level of care + lifecycle state, and moves them through it. GET /api/v1/ipu-admissions
+// (RLS-scoped server-side). Lantern: UI components + CSS-var tokens only.
+//
+// #91 — this screen rendered a `state` column with nothing that could change it, on a module with 48
+// write routes and zero mutations anywhere in `apps/web`. `request-bed → assign-bed → confirm →
+// discharge`, plus the transfer pair, IS the admission lifecycle (§2.2); an IPU admission opened by the
+// API sat in `pending` for the life of the deployment because no screen could take a single one of
+// those transitions.
+//
+// The Discharge action is the one worth naming. Until #172 its request body carried
+// `dischargeEventExists` — a REQUIRED boolean asserting that M6 had recorded the discharge — so this
+// dialog would have had to either send `true` unconditionally (asserting a fact the browser cannot
+// know) or ask a nurse to tick a checkbox about another module's table. The server resolves it now, and
+// the refusal copy says what to go and do.
+//
+// WHAT THE SERVER OWNS (ADR-0030): every transition is `transitionAdmission`'s, the D3 RN-coverage
+// precondition is resolved inside the write transaction, and `admissionActions()` below only narrows
+// which BUTTON a row offers — a state this build does not recognise keeps all of them.
 import {
   Button,
   EmptyState,
@@ -15,6 +31,9 @@ import {
 } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import { useNavigate } from "react-router-dom";
+import { admissionActions } from "./ipu-api";
+import { type AdmissionAction, AdmissionActionModal } from "./ipu-modals";
 
 interface Admission {
   id: string;
@@ -74,6 +93,9 @@ export function IpuAdmissions(): JSX.Element {
   const [locationFilter, setLocationFilter] = useState<LocationFilter>("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const navigate = useNavigate();
+  const [action, setAction] = useState<AdmissionAction | null>(null);
+  const [actionTarget, setActionTarget] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     const res = await client.GET("/api/v1/ipu-admissions");
@@ -137,188 +159,277 @@ export function IpuAdmissions(): JSX.Element {
   };
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader title="IPU admissions" breadcrumb="IPU / Admissions">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Track General Inpatient and Inpatient Respite stays by lifecycle state and placement.
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <Glyph name="alert" size={16} />
-                <span>{error}</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => setError(null)}
-                style={dismissButtonStyle}
-                aria-label="Dismiss error"
-              >
-                x
-              </button>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader title="IPU admissions" breadcrumb="IPU / Admissions">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Track General Inpatient and Inpatient Respite stays by lifecycle state and placement.
             </div>
-          ) : null}
-          <div style={toolbarStyle}>
-            <div style={searchBoxStyle}>
-              <Glyph name="eye" size={14} />
-              <input
-                type="search"
-                placeholder="Search level, state, location, ID..."
-                value={searchQuery}
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Glyph name="alert" size={16} />
+                  <span>{error}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setError(null)}
+                  style={dismissButtonStyle}
+                  aria-label="Dismiss error"
+                >
+                  x
+                </button>
+              </div>
+            ) : null}
+            <div style={toolbarStyle}>
+              <div style={searchBoxStyle}>
+                <Glyph name="eye" size={14} />
+                <input
+                  type="search"
+                  placeholder="Search level, state, location, ID..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Search IPU admissions"
+                  style={searchInputStyle}
+                />
+              </div>
+              <select
+                value={kindFilter}
                 onChange={(e) => {
-                  setSearchQuery(e.target.value);
+                  setKindFilter(e.target.value);
                   setPage(1);
                 }}
-                aria-label="Search IPU admissions"
-                style={searchInputStyle}
+                aria-label="Filter admissions by level of care"
+                style={selectStyle}
+              >
+                <option value="all">Level: All</option>
+                {kindOptions.map((kind) => (
+                  <option key={kind} value={kind}>
+                    {kind.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={stateFilter}
+                onChange={(e) => {
+                  setStateFilter(e.target.value);
+                  setPage(1);
+                }}
+                aria-label="Filter admissions by state"
+                style={selectStyle}
+              >
+                <option value="all">State: All</option>
+                {stateOptions.map((state) => (
+                  <option key={state} value={state}>
+                    {titleCase(state)}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={locationFilter}
+                onChange={(e) => {
+                  setLocationFilter(e.target.value as LocationFilter);
+                  setPage(1);
+                }}
+                aria-label="Filter admissions by location"
+                style={selectStyle}
+              >
+                <option value="all">Location: All</option>
+                <option value="own">Own unit</option>
+                <option value="arranged">Arranged</option>
+                <option value="unplaced">Unplaced</option>
+              </select>
+              {hasActiveFilters ? (
+                <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                  Clear
+                </Button>
+              ) : null}
+            </div>
+          </div>
+        }
+        table={
+          rows === null ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : filteredRows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={hasActiveFilters ? "No matching admissions" : "No admissions"}
+                description={
+                  hasActiveFilters
+                    ? "Adjust the search or clear filters to return to the full admissions worklist."
+                    : "No active IPU admissions."
+                }
+                action={
+                  hasActiveFilters ? (
+                    <Button tone="secondary" size="sm" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
               />
             </div>
-            <select
-              value={kindFilter}
-              onChange={(e) => {
-                setKindFilter(e.target.value);
-                setPage(1);
-              }}
-              aria-label="Filter admissions by level of care"
-              style={selectStyle}
-            >
-              <option value="all">Level: All</option>
-              {kindOptions.map((kind) => (
-                <option key={kind} value={kind}>
-                  {kind.toUpperCase()}
-                </option>
-              ))}
-            </select>
-            <select
-              value={stateFilter}
-              onChange={(e) => {
-                setStateFilter(e.target.value);
-                setPage(1);
-              }}
-              aria-label="Filter admissions by state"
-              style={selectStyle}
-            >
-              <option value="all">State: All</option>
-              {stateOptions.map((state) => (
-                <option key={state} value={state}>
-                  {titleCase(state)}
-                </option>
-              ))}
-            </select>
-            <select
-              value={locationFilter}
-              onChange={(e) => {
-                setLocationFilter(e.target.value as LocationFilter);
-                setPage(1);
-              }}
-              aria-label="Filter admissions by location"
-              style={selectStyle}
-            >
-              <option value="all">Location: All</option>
-              <option value="own">Own unit</option>
-              <option value="arranged">Arranged</option>
-              <option value="unplaced">Unplaced</option>
-            </select>
-            {hasActiveFilters ? (
-              <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                Clear
-              </Button>
-            ) : null}
-          </div>
-        </div>
-      }
-      table={
-        rows === null ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : filteredRows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title={hasActiveFilters ? "No matching admissions" : "No admissions"}
-              description={
-                hasActiveFilters
-                  ? "Adjust the search or clear filters to return to the full admissions worklist."
-                  : "No active IPU admissions."
-              }
-              action={
-                hasActiveFilters ? (
-                  <Button tone="secondary" size="sm" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
-              }
-            />
-          </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "22%" }}>Admission</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Level</th>
-                  <th style={{ ...thStyle, width: "18%" }}>State</th>
-                  <th style={{ ...thStyle, width: "24%" }}>Location</th>
-                  <th style={{ ...thStyle, width: "20%" }}>Opened</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedRows.map((admission) => (
-                  <tr key={admission.id} style={rowStyle}>
-                    <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {admission.id}
-                      </code>
-                    </td>
-                    <td style={tdStyle}>
-                      <span style={levelBadgeStyle}>{admission.kind.toUpperCase()}</span>
-                    </td>
-                    <td style={tdStyle}>
-                      <StatusPill tone={tone(admission.state)} label={titleCase(admission.state)} />
-                    </td>
-                    <td style={tdStyle}>
-                      <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
-                        <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
-                          {locationLabel(admission)}
-                        </span>
-                        {admission.unitId || admission.remoteFacilityId ? (
-                          <code className="wx-data-md" style={codeStyle}>
-                            {admission.unitId ?? admission.remoteFacilityId}
-                          </code>
-                        ) : null}
-                      </div>
-                    </td>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                      {formatDate(admission.openedAt)}
-                    </td>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "20%" }}>Admission</th>
+                    <th style={{ ...thStyle, width: "10%" }}>Level</th>
+                    <th style={{ ...thStyle, width: "14%" }}>State</th>
+                    <th style={{ ...thStyle, width: "18%" }}>Location</th>
+                    <th style={{ ...thStyle, width: "12%" }}>Opened</th>
+                    <th style={{ ...thStyle, width: "26%" }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={filteredRows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={IPU_ADMISSION_PAGE_SIZES}
-              noun="admissions"
-            />
-          </div>
-        )
-      }
-      fullPageScroll
-    />
+                </thead>
+                <tbody>
+                  {pagedRows.map((admission) => (
+                    <tr key={admission.id} style={rowStyle}>
+                      <td style={tdStyle}>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {admission.id}
+                        </code>
+                      </td>
+                      <td style={tdStyle}>
+                        <span style={levelBadgeStyle}>{admission.kind.toUpperCase()}</span>
+                      </td>
+                      <td style={tdStyle}>
+                        <StatusPill
+                          tone={tone(admission.state)}
+                          label={titleCase(admission.state)}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "0.15rem" }}>
+                          <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
+                            {locationLabel(admission)}
+                          </span>
+                          {admission.unitId || admission.remoteFacilityId ? (
+                            <code className="wx-data-md" style={codeStyle}>
+                              {admission.unitId ?? admission.remoteFacilityId}
+                            </code>
+                          ) : null}
+                        </div>
+                      </td>
+                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                        {formatDate(admission.openedAt)}
+                      </td>
+                      <td style={tdStyle}>
+                        <AdmissionRowActions
+                          admission={admission}
+                          onAction={(next) => {
+                            setActionTarget(admission.id);
+                            setAction(next);
+                          }}
+                          onOpenBedside={() => navigate(`/ipu/admissions/${admission.id}`)}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={filteredRows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={IPU_ADMISSION_PAGE_SIZES}
+                noun="admissions"
+              />
+            </div>
+          )
+        }
+        fullPageScroll
+      />
+      <AdmissionActionModal
+        open={action !== null}
+        action={action}
+        admissionId={actionTarget}
+        onClose={() => {
+          setAction(null);
+          setActionTarget(null);
+        }}
+        onDone={() => void load()}
+      />
+    </>
   );
 }
+
+/**
+ * The §2.2 transitions this row offers, plus the way into the bedside pane.
+ *
+ * The buttons an unrecognised state shows are ALL of them, not none — `admissionActions()` is an
+ * affordance over the machine's graph and not a copy of it, and a state this build has not heard of is
+ * the one case where guessing "no" hides a real action behind a stale frontend. Bedside is always
+ * reachable: a closed admission is a record someone still has to read.
+ */
+function AdmissionRowActions({
+  admission,
+  onAction,
+  onOpenBedside,
+}: {
+  admission: Admission;
+  onAction: (action: AdmissionAction) => void;
+  onOpenBedside: () => void;
+}): JSX.Element {
+  const actions = admissionActions(admission.state);
+  return (
+    <div style={rowActionsStyle}>
+      <Button size="sm" tone="tertiary" onClick={onOpenBedside}>
+        Bedside
+      </Button>
+      {actions.requestBed ? (
+        <Button size="sm" tone="secondary" onClick={() => onAction("requestBed")}>
+          Request bed
+        </Button>
+      ) : null}
+      {actions.assignBed ? (
+        <Button size="sm" tone="secondary" onClick={() => onAction("assignBed")}>
+          Assign bed
+        </Button>
+      ) : null}
+      {actions.confirm ? (
+        <Button size="sm" tone="primary" onClick={() => onAction("confirm")}>
+          Confirm
+        </Button>
+      ) : null}
+      {actions.initiateTransfer ? (
+        <Button size="sm" tone="tertiary" onClick={() => onAction("initiateTransfer")}>
+          Transfer
+        </Button>
+      ) : null}
+      {actions.confirmTransfer ? (
+        <Button size="sm" tone="primary" onClick={() => onAction("confirmTransfer")}>
+          Confirm transfer
+        </Button>
+      ) : null}
+      {actions.discharge ? (
+        <Button size="sm" tone="danger" onClick={() => onAction("discharge")}>
+          Discharge
+        </Button>
+      ) : null}
+    </div>
+  );
+}
+
+const rowActionsStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: "0.35rem",
+};
 
 const filterShellStyle: CSSProperties = {
   display: "flex",

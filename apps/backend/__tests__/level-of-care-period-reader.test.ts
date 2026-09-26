@@ -72,7 +72,14 @@ describe("LevelOfCarePeriodReader (M30 HCI indicator 1)", () => {
 
   it("does NOT count a LOC day that ended before the election period even started", async () => {
     const db = makeFakeDb(
-      [{ admissionId: "adm-1", effectiveAt: "2026-01-05", actualEndAt: null, scheduledEndAt: null }],
+      [
+        {
+          admissionId: "adm-1",
+          effectiveAt: "2026-01-05",
+          actualEndAt: null,
+          scheduledEndAt: null,
+        },
+      ],
       [
         {
           admissionId: "adm-1",
@@ -87,7 +94,14 @@ describe("LevelOfCarePeriodReader (M30 HCI indicator 1)", () => {
 
   it("counts a STILL-OPEN LOC period (no endedAt) against a STILL-OPEN election period (no end dates)", async () => {
     const db = makeFakeDb(
-      [{ admissionId: "adm-1", effectiveAt: "2026-01-05", actualEndAt: null, scheduledEndAt: null }],
+      [
+        {
+          admissionId: "adm-1",
+          effectiveAt: "2026-01-05",
+          actualEndAt: null,
+          scheduledEndAt: null,
+        },
+      ],
       [{ admissionId: "adm-1", effectiveAt: new Date("2026-03-01T00:00:00.000Z"), endedAt: null }],
     );
     const out = await createLevelOfCarePeriodReader(db).chcOrGipCoverageCounts("org-1", period);
@@ -96,7 +110,14 @@ describe("LevelOfCarePeriodReader (M30 HCI indicator 1)", () => {
 
   it("a LOC row on a DIFFERENT admission never counts toward this election period", async () => {
     const db = makeFakeDb(
-      [{ admissionId: "adm-1", effectiveAt: "2026-01-05", actualEndAt: null, scheduledEndAt: null }],
+      [
+        {
+          admissionId: "adm-1",
+          effectiveAt: "2026-01-05",
+          actualEndAt: null,
+          scheduledEndAt: null,
+        },
+      ],
       [
         {
           admissionId: "adm-OTHER",

@@ -124,8 +124,8 @@ describe("M5-T08 — PatientReader + PatientMutator close the boot-gate (§4.8, 
       sourceRef: { kind: "hl7_inbound_proposal", id: "prop-1" },
       actorMembershipId: "mem-1",
     });
-    expect(result.strippedFields.sort()).toEqual(["mrn", "ssn", "status"]);
-    expect(result.appliedFields.sort()).toEqual(["legalLastName", "preferredLanguage"]);
+    expect([...result.strippedFields].sort()).toEqual(["mrn", "ssn", "status"]);
+    expect([...result.appliedFields].sort()).toEqual(["legalLastName", "preferredLanguage"]);
     expect(applied[0]?.fields).toEqual({ legalLastName: "Byron", preferredLanguage: "en" });
     expect(events).toEqual([
       { patientId: SURVIVOR, changed: ["legalLastName", "preferredLanguage"] },
@@ -145,7 +145,7 @@ describe("M5-T08 — PatientReader + PatientMutator close the boot-gate (§4.8, 
       actorMembershipId: "mem-1",
     });
     expect(result.appliedFields).toEqual([]);
-    expect(result.strippedFields.sort()).toEqual(["mbi", "ssn"]);
+    expect([...result.strippedFields].sort()).toEqual(["mbi", "ssn"]);
     expect(events).toEqual([]);
   });
 

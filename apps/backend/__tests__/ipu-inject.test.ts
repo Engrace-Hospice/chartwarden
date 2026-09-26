@@ -71,6 +71,7 @@ import type {
   ShiftView,
   StaffAssignmentView,
   UnitView,
+  VisitorRestrictionDetailView,
 } from "../src/modules/37-ipu/routes/service";
 
 // ── the M11/M15/M19/M21/M26 header-auth shim, extended with `x-test-membership` (`writeActorOf` in
@@ -136,6 +137,8 @@ function createIpuTestBackend(): IpuRouteService {
   >(); // keyed by admissionId
   const shifts = new Map<string, ShiftView & { organizationId: string }>();
   const staffAssignments = new Map<string, StaffAssignmentView & { organizationId: string }>();
+  /** F-071 — unitId → the override's expiry epoch ms. */
+  const breakGlass = new Map<string, number>();
   const restraints = new Map<string, RestraintView & { organizationId: string }>();
   const visitors = new Map<
     string,
@@ -149,15 +152,12 @@ function createIpuTestBackend(): IpuRouteService {
       checkedOutAt: string | null;
     }
   >();
+  // `VisitorRestrictionDetailView & { organizationId }` (the `equipment` map's idiom below): the
+  // hand-written subset here named five of the view's thirteen fields, so the F-070 list read could not
+  // filter on `unitId`/`patientId` — the two narrowings that route actually applies.
   const visitorRestrictions = new Map<
     string,
-    {
-      organizationId: string;
-      id: string;
-      scope: string;
-      restrictionKind: string;
-      liftedAt: string | null;
-    }
+    VisitorRestrictionDetailView & { organizationId: string }
   >();
   const meals = new Map<
     string,
@@ -394,7 +394,16 @@ function createIpuTestBackend(): IpuRouteService {
       return row;
     },
     async listShifts(actor) {
-      return [...shifts.values()].filter((s) => s.organizationId === actor.organizationId);
+      // F-070 — the list carries each shift's assignments, so an `assignmentId` is reachable by
+      // somebody other than the session that created it.
+      return [...shifts.values()]
+        .filter((s) => s.organizationId === actor.organizationId)
+        .map((s) => ({
+          ...s,
+          assignments: [...staffAssignments.values()]
+            .filter((a) => a.shiftId === s.id && a.organizationId === actor.organizationId)
+            .map(({ organizationId: _o, ...a }) => a),
+        }));
     },
     async createShift(actor, body) {
       const id = randomUUID();
@@ -405,6 +414,7 @@ function createIpuTestBackend(): IpuRouteService {
         shiftStartAt: body.shiftStartAt,
         shiftEndAt: body.shiftEndAt,
         displayLabel: body.displayLabel ?? null,
+        assignments: [],
         version: 1,
       };
       shifts.set(id, row);
@@ -424,12 +434,21 @@ function createIpuTestBackend(): IpuRouteService {
       return row;
     },
     async unassignStaff(actor, shiftId, body) {
-      void shiftId;
       const row = staffAssignments.get(body.assignmentId);
-      if (!row || row.organizationId !== actor.organizationId) {
+      // F-070 — the path's shift id is part of the identity of what is being cancelled.
+      if (!row || row.organizationId !== actor.organizationId || row.shiftId !== shiftId) {
         throw new NotFoundError("ipu_staff_assignment", body.assignmentId);
       }
       const updated = { ...row, state: "unassigned" };
+      staffAssignments.set(body.assignmentId, updated);
+      return updated;
+    },
+    async confirmStaff(actor, shiftId, body) {
+      const row = staffAssignments.get(body.assignmentId);
+      if (!row || row.organizationId !== actor.organizationId || row.shiftId !== shiftId) {
+        throw new NotFoundError("ipu_staff_assignment", body.assignmentId);
+      }
+      const updated = { ...row, state: "confirmed" };
       staffAssignments.set(body.assignmentId, updated);
       return updated;
     },
@@ -437,9 +456,27 @@ function createIpuTestBackend(): IpuRouteService {
       void actor;
       return { unitId, items: [{ hourStartAt: NOW, isCovered: true }] };
     },
-    async invokeRnBreakGlass(actor, unitId) {
+    async invokeRnBreakGlass(actor, unitId, body) {
       void actor;
-      return { unitId, invoked: true };
+      // F-071 — the fake mirrors the production shape: an override has a bounded window and reports
+      // whether one was already live rather than stacking a second.
+      const existing = breakGlass.get(unitId);
+      if (existing && existing > Date.now()) {
+        return {
+          unitId,
+          invoked: true,
+          expiresAt: new Date(existing).toISOString(),
+          alreadyActive: true,
+        };
+      }
+      const expiresAt = Date.now() + body.durationMinutes * 60_000;
+      breakGlass.set(unitId, expiresAt);
+      return {
+        unitId,
+        invoked: true,
+        expiresAt: new Date(expiresAt).toISOString(),
+        alreadyActive: false,
+      };
     },
     async transitionBed(actor, bedId, body) {
       const row = beds.get(bedId);
@@ -465,6 +502,64 @@ function createIpuTestBackend(): IpuRouteService {
     async getCensus(actor, serviceDate) {
       void actor;
       return { serviceDate, items: [] };
+    },
+    // F-069 (read side) — the four bedside reads. `reassess`/`release`/`check-out` are keyed by ids no
+    // read route returned, so the only way to hold one was to be the session that did the POST.
+    async listRestraints(actor, admissionId) {
+      return [...restraints.values()]
+        .filter(
+          (r) => r.organizationId === actor.organizationId && r.ipuAdmissionId === admissionId,
+        )
+        .map((r) => ({
+          id: r.id,
+          ipuAdmissionId: r.ipuAdmissionId,
+          restraintKind: r.restraintKind,
+          category: "behavioral" as const,
+          state: r.state,
+          reassessmentIntervalMinutes: r.reassessmentIntervalMinutes,
+          appliedAt: "2026-08-27T09:00:00.000Z",
+          appliedByMembershipId: MEMBERSHIP,
+          orderingOrderId: randomUUID(),
+          orderingPhysicianId: randomUUID(),
+          releasedAt: null,
+          nextDueAt: null,
+          reassessmentCount: 0,
+          version: r.version,
+        }));
+    },
+    async listGipCriteria(actor, admissionId) {
+      void actor;
+      return [
+        {
+          id: randomUUID(),
+          ipuAdmissionId: admissionId,
+          criterionKind: "acute_symptom_management",
+          attestedAt: "2026-08-27T09:00:00.000Z",
+          attestingPhysicianId: randomUUID(),
+          reassessments: [],
+          version: 1,
+        },
+      ];
+    },
+    async listIrcEpisodes(actor, admissionId) {
+      void actor;
+      return [
+        {
+          id: randomUUID(),
+          ipuAdmissionId: admissionId,
+          state: "active",
+          consecutiveDayCount: 3,
+          capOverrideInvoked: false,
+          version: 1,
+        },
+      ];
+    },
+    async listVisitors(actor, admissionId) {
+      return [...visitors.values()]
+        .filter(
+          (v) => v.organizationId === actor.organizationId && v.ipuAdmissionId === admissionId,
+        )
+        .map(({ organizationId: _o, ...v }) => v);
     },
     async applyRestraint(actor, admissionId, body) {
       const id = randomUUID();
@@ -519,14 +614,31 @@ function createIpuTestBackend(): IpuRouteService {
       visitors.set(visitorId, updated);
       return updated;
     },
+    async listVisitorRestrictions(actor, query) {
+      // F-070 — the read that makes `restrictionId` obtainable. `active` defaults to true.
+      return [...visitorRestrictions.values()]
+        .filter((r) => r.organizationId === actor.organizationId)
+        .filter((r) => (query.active === "false" ? true : r.liftedAt === null))
+        .filter((r) => (query.unitId ? r.unitId === query.unitId : true))
+        .filter((r) => (query.patientId ? r.patientId === query.patientId : true))
+        .map(({ organizationId: _o, ...r }) => r);
+    },
     async applyVisitorRestriction(actor, body) {
       const id = randomUUID();
       const row = {
         organizationId: actor.organizationId,
         id,
         scope: body.scope,
+        unitId: body.unitId ?? null,
+        patientId: body.patientId ?? null,
         restrictionKind: body.restrictionKind,
-        liftedAt: null,
+        rationale: body.rationale,
+        sourceKind: body.sourceKind,
+        appliedAt: NOW,
+        appliedBy: actor.membershipId,
+        appliedUntil: null,
+        liftedAt: null as string | null,
+        version: 1,
       };
       visitorRestrictions.set(id, row);
       return row;
@@ -901,7 +1013,6 @@ describe("M37-T11 §4.1 admission open → bed → transfer → restraint (route
       payload: {
         restraintKind: "soft_limb",
         restraintJustificationText: "x".repeat(110),
-        orderingPhysicianId: randomUUID(),
         orderingOrderId: randomUUID(),
         category: "medical",
         reassessmentIntervalMinutes: 15,
@@ -1025,7 +1136,7 @@ describe("M37-T11 §4.1 admission-adjacent routes (routes 9, 10, 12, 15, 17-21)"
       method: "POST",
       url: `/api/v1/ipu-admissions/${admission.id}/discharge`,
       headers: SUPER,
-      payload: { reason: "to_home", dischargeEventExists: true },
+      payload: { reason: "to_home" },
     });
     expect(discharged.statusCode).toBe(200);
     expect(discharged.json().state).toBe("discharged");
@@ -1044,7 +1155,6 @@ describe("M37-T11 §4.1 restraint reassess/release (routes 23-24)", () => {
     const restraint = await service.applyRestraint(SEED_ACTOR, admissionId, {
       restraintKind: "mitt",
       restraintJustificationText: "x".repeat(110),
-      orderingPhysicianId: randomUUID(),
       orderingOrderId: randomUUID(),
       category: "medical",
       reassessmentIntervalMinutes: 30,
@@ -1127,15 +1237,83 @@ describe("M37-T11 §4.1 shifts + staff + RN coverage (routes 25-28)", () => {
     expect(coverage.statusCode).toBe(200);
     expect(coverage.json().unitId).toBe(unitId);
 
-    // 28 — break-glass override (step-up)
-    const breakGlass = await app.inject({
+    // 28 — break-glass override (step-up). F-071 — a reason and a bounded window are REQUIRED now.
+    const breakGlassRes = await app.inject({
       method: "POST",
       url: `/api/v1/ipu-units/${unitId}/rn-coverage/break-glass`,
       headers: SUPER,
+      payload: {
+        reason: "Night RN called out; charge nurse covering from the adjacent unit until 06:00.",
+        durationMinutes: 120,
+      },
     });
-    expect(breakGlass.statusCode).toBe(200);
-    expect(breakGlass.json().invoked).toBe(true);
+    expect(breakGlassRes.statusCode).toBe(200);
+    expect(breakGlassRes.json().invoked).toBe(true);
+    expect(breakGlassRes.json().alreadyActive).toBe(false);
+    expect(typeof breakGlassRes.json().expiresAt).toBe("string");
 
+    await app.close();
+  });
+
+  // ── F-071 ──────────────────────────────────────────────────────────────────────────────────────────
+
+  it("break-glass REFUSES a bare POST — it used to take no body because it did nothing", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-units/${randomUUID()}/rn-coverage/break-glass`,
+      headers: SUPER,
+    });
+    // Before F-071 this was a 200. The route now writes the row the coverage gate reads, so a caller
+    // overriding the CoP 418.110(e) 24-hour-RN requirement has to say why and for how long.
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("break-glass refuses a reason below the 40-character floor and a window past 4 hours", async () => {
+    const { app } = makeServer();
+    const unitId = randomUUID();
+    const short = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-units/${unitId}/rn-coverage/break-glass`,
+      headers: SUPER,
+      payload: { reason: "short", durationMinutes: 60 },
+    });
+    expect(short.statusCode).toBe(422);
+    const tooLong = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-units/${unitId}/rn-coverage/break-glass`,
+      headers: SUPER,
+      payload: { reason: "x".repeat(60), durationMinutes: 300 },
+    });
+    expect(tooLong.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("a second break-glass while one is live REPORTS it rather than stacking a second window", async () => {
+    const { app } = makeServer();
+    const unitId = randomUUID();
+    const body = {
+      reason: "Night RN called out; charge nurse covering from the adjacent unit until 06:00.",
+      durationMinutes: 120,
+    };
+    const first = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-units/${unitId}/rn-coverage/break-glass`,
+      headers: SUPER,
+      payload: body,
+    });
+    expect(first.json().alreadyActive).toBe(false);
+    const second = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-units/${unitId}/rn-coverage/break-glass`,
+      headers: SUPER,
+      payload: { ...body, durationMinutes: 240 },
+    });
+    // "Break glass again" must not silently become an unbounded window — the 4-hour cap exists to deny
+    // exactly that, and the DB's partial unique index makes a second live row impossible anyway.
+    expect(second.json().alreadyActive).toBe(true);
+    expect(second.json().expiresAt).toBe(first.json().expiresAt);
     await app.close();
   });
 });
@@ -1336,6 +1514,241 @@ describe("M37-T11 §4.1 census (route 38)", () => {
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().serviceDate).toBe("2026-08-04");
+    await app.close();
+  });
+});
+
+// ── F-069 · the bedside reads ─────────────────────────────────────────────────────────────────────────
+//
+// `POST /ipu-restraint/:id/reassess`, `/release` and `POST /ipu-visitors/:id/check-out` are keyed by ids
+// that no read route returned. Holding one meant BEING the browser session that performed the create —
+// and a behavioral restraint is reassessed every 15 minutes, by whoever is on shift.
+
+describe("M37 §4.1 bedside reads (F-069)", () => {
+  it("an applied restraint is reachable by a LATER caller through the admission's list", async () => {
+    const { app } = makeServer();
+    const admissionId = randomUUID();
+    const applied = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-admissions/${admissionId}/restraint`,
+      headers: SUPER,
+      payload: {
+        restraintKind: "soft_limb",
+        restraintJustificationText: "x".repeat(120),
+        orderingOrderId: randomUUID(),
+        category: "behavioral",
+        reassessmentIntervalMinutes: 15,
+      },
+    });
+    expect(applied.statusCode).toBe(201);
+    const restraintId = applied.json().id as string;
+
+    // The list is the ONLY other way to this id. Without it the 15-minute reassessment below could be
+    // recorded by nobody but the caller that applied the restraint, for as long as they kept the tab.
+    const listed = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-admissions/${admissionId}/restraints`,
+      headers: SUPER,
+    });
+    expect(listed.statusCode).toBe(200);
+    const items = listed.json().items as { id: string; reassessmentIntervalMinutes: number }[];
+    expect(items.map((r) => r.id)).toContain(restraintId);
+    expect(items[0]?.reassessmentIntervalMinutes).toBe(15);
+
+    const reassessed = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-restraint/${items[0]?.id}/reassess`,
+      headers: SUPER,
+      payload: { outcome: "continue", nextDueAt: "2026-08-27T10:00:00.000Z" },
+    });
+    expect(reassessed.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("a checked-in visitor is reachable by a LATER shift through the admission's list", async () => {
+    const { app } = makeServer();
+    const ipuAdmissionId = randomUUID();
+    const checkedIn = await app.inject({
+      method: "POST",
+      url: "/api/v1/ipu-visitors",
+      headers: SUPER,
+      payload: {
+        ipuAdmissionId,
+        visitorName: "Jordan Lee",
+        relationship: "spouse",
+        screeningOutcome: { feverFree: true },
+      },
+    });
+    expect(checkedIn.statusCode).toBe(201);
+
+    const listed = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-visitors?ipuAdmissionId=${ipuAdmissionId}`,
+      headers: SUPER,
+    });
+    expect(listed.statusCode).toBe(200);
+    const items = listed.json().items as { id: string; checkedOutAt: string | null }[];
+    expect(items.map((v) => v.id)).toContain(checkedIn.json().id);
+
+    const out = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-visitors/${items[0]?.id}/check-out`,
+      headers: SUPER,
+    });
+    expect(out.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("the GIP criteria and IRC episode lists are readable for the bedside pane", async () => {
+    const { app } = makeServer();
+    const admissionId = randomUUID();
+    for (const path of ["gip-criteria", "irc-episodes"]) {
+      const res = await app.inject({
+        method: "GET",
+        url: `/api/v1/ipu-admissions/${admissionId}/${path}`,
+        headers: SUPER,
+      });
+      expect(res.statusCode).toBe(200);
+      expect(Array.isArray(res.json().items)).toBe(true);
+    }
+    await app.close();
+  });
+
+  // ── F-070 ────────────────────────────────────────────────────────────────────────────────────────
+
+  it("discharge no longer asks the caller whether the M6 discharge happened", async () => {
+    const { app } = makeServer();
+    const open = async () =>
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/v1/ipu-admissions",
+          headers: SUPER,
+          payload: {
+            patientId: randomUUID(),
+            admissionId: randomUUID(),
+            levelOfCarePeriodId: randomUUID(),
+            providerEntityId: randomUUID(),
+            kind: "gip",
+          },
+        })
+      ).json().id as string;
+
+    // `dischargeEventExists` was a REQUIRED boolean, so this exact payload was a 422 before F-070.
+    const withoutField = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-admissions/${await open()}/discharge`,
+      headers: SUPER,
+      payload: { reason: "to_home" },
+    });
+    expect(withoutField.statusCode).toBe(200);
+
+    // A stale client still sending it is IGNORED, not honoured — the schema is non-strict (the repo
+    // convention), so the property is dropped rather than rejected. Either way it reaches no gate:
+    // the real service resolves the fact from M6's `AdmissionStatusReader`, which is what
+    // `m37-ipu-write.live.test.ts` proves against a database.
+    const withField = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-admissions/${await open()}/discharge`,
+      headers: SUPER,
+      payload: { reason: "to_home", dischargeEventExists: false },
+    });
+    expect(withField.statusCode).toBe(200);
+    await app.close();
+  });
+
+  it("a shift's staff assignments are listed, and unassign is scoped to the shift in the path", async () => {
+    const { app } = makeServer();
+    const unitId = randomUUID();
+    const shift = await app.inject({
+      method: "POST",
+      url: "/api/v1/ipu-shifts",
+      headers: SUPER,
+      payload: { unitId, shiftStartAt: NOW, shiftEndAt: NOW },
+    });
+    expect(shift.statusCode).toBe(201);
+    const shiftId = shift.json().id as string;
+    const assigned = await app.inject({
+      method: "POST",
+      url: `/api/v1/ipu-shifts/${shiftId}/staff`,
+      headers: SUPER,
+      payload: { membershipId: randomUUID(), role: "charge_rn" },
+    });
+    expect(assigned.statusCode).toBe(201);
+
+    // The assignment id is reachable WITHOUT the 201 body — this is the whole point.
+    const listed = await app.inject({ method: "GET", url: "/api/v1/ipu-shifts", headers: SUPER });
+    const row = (listed.json().items as { id: string; assignments: { id: string }[] }[]).find(
+      (s) => s.id === shiftId,
+    );
+    expect(row?.assignments.map((a) => a.id)).toEqual([assigned.json().id]);
+
+    // A different shift in the path must not cancel this shift's assignment.
+    const wrongShift = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/ipu-shifts/${randomUUID()}/staff`,
+      headers: SUPER,
+      payload: { assignmentId: assigned.json().id },
+    });
+    expect(wrongShift.statusCode).toBe(404);
+
+    const ok = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/ipu-shifts/${shiftId}/staff`,
+      headers: SUPER,
+      payload: { assignmentId: assigned.json().id },
+    });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().state).toBe("unassigned");
+    await app.close();
+  });
+
+  it("an applied visitor restriction is listed, so it can be lifted by someone else's session", async () => {
+    const { app } = makeServer();
+    const unitId = randomUUID();
+    const applied = await app.inject({
+      method: "POST",
+      url: "/api/v1/ipu-visitor-restrictions",
+      headers: SUPER,
+      payload: {
+        scope: "unit",
+        unitId,
+        restrictionKind: "mask_required",
+        rationale: "Respiratory outbreak on the unit.",
+        sourceKind: "outbreak_surveillance",
+      },
+    });
+    expect(applied.statusCode).toBe(201);
+
+    const active = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-visitor-restrictions?unitId=${unitId}`,
+      headers: SUPER,
+    });
+    expect(active.statusCode).toBe(200);
+    expect((active.json().items as { id: string }[]).map((r) => r.id)).toEqual([applied.json().id]);
+
+    const lifted = await app.inject({
+      method: "DELETE",
+      url: "/api/v1/ipu-visitor-restrictions",
+      headers: SUPER,
+      payload: { restrictionId: applied.json().id },
+    });
+    expect(lifted.statusCode).toBe(200);
+
+    // Lifted rows leave the default (in-force) board and are readable through `active=false`.
+    const afterLift = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-visitor-restrictions?unitId=${unitId}`,
+      headers: SUPER,
+    });
+    expect(afterLift.json().items).toEqual([]);
+    const all = await app.inject({
+      method: "GET",
+      url: `/api/v1/ipu-visitor-restrictions?unitId=${unitId}&active=false`,
+      headers: SUPER,
+    });
+    expect((all.json().items as { id: string }[]).map((r) => r.id)).toEqual([applied.json().id]);
     await app.close();
   });
 });

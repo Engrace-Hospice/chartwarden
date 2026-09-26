@@ -157,7 +157,7 @@ reads the same way.
 ### 1. The manifest is the single source of truth
 
 `architecture/module-manifest.ts` declares, per module: its code paths, its `dependsOn` list, and
-the Postgres tables it owns (460 tables across 40 modules). The `apps/` + `packages/` tree is
+the Postgres tables it owns (461 tables across 40 modules). The `apps/` + `packages/` tree is
 **generated from this manifest** via `bun run scaffold`; `arch:parity` fails the build if the tree
 and manifest drift apart. A module boundary violation (importing another module's internals
 directly) is caught by `dependency-cruiser` (`architecture/.dependency-cruiser.cjs`), not just by
@@ -168,7 +168,10 @@ convention.
 Every PHI-bearing table carries an org-scoping column and `FORCE ROW LEVEL SECURITY`; the app sets
 `app.org_id` per request/transaction and Postgres itself refuses cross-tenant reads/writes — this
 is enforced at the database layer, not just in application code. `scripts/check-tenancy.ts`
-enforces the three-column tenancy shape and forbids dangerous RLS patterns at the schema level.
+enforces the three-column tenancy shape and forbids dangerous RLS patterns at the schema level. It
+also reads the RLS policies the migrations leave BEHIND — replayed in apply order, so a policy a
+later migration drops and replaces stops counting — and reports any surviving predicate that keys
+on a session variable other than `app.org_id` without it, whatever else its migration contains.
 Cross-tenant platform operations (tenant provisioning, support sessions, billing ops) run through
 an explicit `withPlatformContext` runner rather than ever bypassing RLS silently.
 

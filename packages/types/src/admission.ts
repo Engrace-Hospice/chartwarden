@@ -66,11 +66,7 @@ export type AdmissionStatusValue =
   | "closed";
 
 /** The §3.2 compliance-window lifecycle status (mirrors `compliance_window_status`). */
-export type ComplianceWindowStatusValue =
-  | "open"
-  | "closing_soon"
-  | "overdue"
-  | "closed";
+export type ComplianceWindowStatusValue = "open" | "closing_soon" | "overdue" | "closed";
 
 /** The §3.2 compliance-window severity (mirrors `compliance_window_severity`; `info` = D15 signals). */
 export type ComplianceWindowSeverity = "warning" | "alert" | "info";
@@ -146,10 +142,7 @@ export interface ExternalSignalWindowPayload {
   readonly source: "m29_proposal_accept";
   readonly proposalId: string;
   readonly sourceMessageId: string;
-  readonly resourceKind:
-    | "discharge_event"
-    | "admission_event"
-    | "cancel_admission";
+  readonly resourceKind: "discharge_event" | "admission_event" | "cancel_admission";
   readonly reasonCode: string;
   readonly summary: string;
 }
@@ -185,6 +178,9 @@ export const M6_EVENT_NAMES = [
   "m6.cti.late_flagged",
   "m6.cti.voided",
   "m6.f2f.scheduled",
+  // F-100 — completion used to re-emit `m6.f2f.scheduled`, which this union happily accepted: it pins
+  // NAMES, and a real name emitted from the wrong transition with the wrong payload is still a real name.
+  "m6.f2f.completed",
   "m6.f2f.attested",
   "m6.f2f.window_overridden",
   "m6.f2f.window_missed",
@@ -335,9 +331,7 @@ export interface ElectionPeriodReader {
     patientId: PatientId,
     on: LocalDate,
   ): Promise<ActiveElectionPeriod | null>;
-  listPeriodsForAdmission(
-    admissionId: AdmissionId,
-  ): Promise<ReadonlyArray<ElectionPeriodSummary>>;
+  listPeriodsForAdmission(admissionId: AdmissionId): Promise<ReadonlyArray<ElectionPeriodSummary>>;
 }
 
 /**
@@ -346,10 +340,7 @@ export interface ElectionPeriodReader {
  * per the plan's split — M6-T05 picks the canonical home.)
  */
 export interface AdmissionStatusReader {
-  getAdmissionSummary(
-    organizationId: string,
-    admissionId: AdmissionId,
-  ): Promise<AdmissionSummary>;
+  getAdmissionSummary(organizationId: string, admissionId: AdmissionId): Promise<AdmissionSummary>;
   /**
    * The admission's raw siting + anchor instants (M17 care-plan visit proposals site each proposal on
    * the admission's provider entity/location and anchor the frequency calendar on activation/admission).
@@ -377,38 +368,25 @@ export interface AdmissionSiting {
 
 /** §4.7 — M26 (cost reporting) reads LOC days by period; current-LOC lookups for clinical screens. */
 export interface LevelOfCareReader {
-  getCurrentLevelOfCare(
-    admissionId: AdmissionId,
-  ): Promise<LevelOfCarePeriodSummary | null>;
-  getLevelOfCareDays(
-    admissionId: AdmissionId,
-    range: DateRange,
-  ): Promise<LevelOfCareDays>;
+  getCurrentLevelOfCare(admissionId: AdmissionId): Promise<LevelOfCarePeriodSummary | null>;
+  getLevelOfCareDays(admissionId: AdmissionId, range: DateRange): Promise<LevelOfCareDays>;
 }
 
 /** §4.7 — recert gating reads: the active CTI for a period and whether it is signed. */
 export interface CertificationReader {
-  getActiveCertification(
-    electionPeriodId: ElectionPeriodId,
-  ): Promise<CertificationSummary | null>;
-  isCertificationSignedForPeriod(
-    electionPeriodId: ElectionPeriodId,
-  ): Promise<boolean>;
+  getActiveCertification(electionPeriodId: ElectionPeriodId): Promise<CertificationSummary | null>;
+  isCertificationSignedForPeriod(electionPeriodId: ElectionPeriodId): Promise<boolean>;
 }
 
 /** §4.7 — recert gating reads: the attested F2F for a period and whether one exists. */
 export interface FaceToFaceReader {
-  getAttestedF2fForPeriod(
-    electionPeriodId: ElectionPeriodId,
-  ): Promise<FaceToFaceSummary | null>;
+  getAttestedF2fForPeriod(electionPeriodId: ElectionPeriodId): Promise<FaceToFaceSummary | null>;
   isF2fAttestedForPeriod(electionPeriodId: ElectionPeriodId): Promise<boolean>;
 }
 
 /** §4.7 — active-admission census/list reads (M30 dashboards, M22 form prep). */
 export interface AdmissionCensusReader {
-  listActiveAdmissions(
-    scope: AdmissionReaderScope,
-  ): Promise<ReadonlyArray<AdmissionCensusEntry>>;
+  listActiveAdmissions(scope: AdmissionReaderScope): Promise<ReadonlyArray<AdmissionCensusEntry>>;
 }
 
 /** §4.7 — referral existence/visibility check for modules that attach artifacts to Referral Inbox rows. */
@@ -422,9 +400,7 @@ export interface ReferralReader {
 
 /** §4.7 — M30 dashboard pulls open compliance windows. */
 export interface ComplianceReader {
-  listOpenWindows(
-    scope: AdmissionReaderScope,
-  ): Promise<ReadonlyArray<ComplianceWindowSummary>>;
+  listOpenWindows(scope: AdmissionReaderScope): Promise<ReadonlyArray<ComplianceWindowSummary>>;
 }
 
 // ── HVLDL measure-input read seam (§4.11 / M30 HQRP) ────────────────────────────────────────────────
@@ -476,6 +452,54 @@ export interface LevelOfCarePeriodReader {
     organizationId: string,
     period: { from: string; to: string },
   ): Promise<{ readonly numerator: number; readonly denominator: number }>;
+
+  /**
+   * M30 HCI indicators 8 and 9 — every level-of-care span overlapping `[period.from, period.to)`, CLIPPED
+   * to it. Indicator 8's denominator is routine-home-care DAYS, indicator 9's is weekend CARE days, and
+   * both numerators need those days joined to per-day skilled-nursing minutes M8 holds — so the day sets
+   * cannot be reduced to counts on either side of the module boundary. Spans (not day lists) keep the
+   * payload proportional to LOC CHANGES rather than to census × 365.
+   *
+   * Admission-linked within one org, like the death census {@link DeathDischargeReader} returns: no patient
+   * identifier, no diagnosis, no narrative. The admission id is the join key M30 needs to intersect these
+   * spans with M8's per-admission day totals, and nothing else crosses.
+   */
+  levelOfCareDaySpans(
+    organizationId: string,
+    period: { from: string; to: string },
+  ): Promise<ReadonlyArray<LevelOfCareDaySpan>>;
+
+  /**
+   * M30 HCI indicator 2 — every election period overlapping `[period.from, period.to)`, CLIPPED to it.
+   * The indicator counts elections containing a skilled-nursing visit GAP longer than the CMS interval,
+   * which is a within-election sequence question: the span bounds are what makes the leading and trailing
+   * gaps (election start → first SN visit, last SN visit → election end) measurable at all.
+   */
+  electionPeriodSpans(
+    organizationId: string,
+    period: { from: string; to: string },
+  ): Promise<ReadonlyArray<ElectionPeriodSpan>>;
+}
+
+/**
+ * One level-of-care span, clipped to the requested window. `from` is INCLUSIVE and `to` is EXCLUSIVE, both
+ * `YYYY-MM-DD` — the same half-open convention as {@link import("./quality").MeasurePeriod}, so the day
+ * count is a plain date difference and a same-day span (`from === to`) is legitimately zero days.
+ */
+export interface LevelOfCareDaySpan {
+  readonly admissionId: AdmissionId;
+  /** The `level_of_care` enum value (`routine_home_care` | `continuous_home_care` | …). */
+  readonly levelOfCare: string;
+  readonly from: LocalDate;
+  readonly to: LocalDate;
+}
+
+/** One election period, clipped to the requested window (half-open `[from, to)`, `YYYY-MM-DD`). */
+export interface ElectionPeriodSpan {
+  readonly admissionId: AdmissionId;
+  readonly electionPeriodId: string;
+  readonly from: LocalDate;
+  readonly to: LocalDate;
 }
 
 /**

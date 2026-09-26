@@ -1,26 +1,88 @@
 import { describe, expect, it } from "vitest";
 import { createHopeApplicabilityEngine } from "../src/modules/10-hope/spec/applicability-registry";
-import { createHopeValidationEngine } from "../src/modules/10-hope/spec/validation-registry";
 import type { HopeValidationContext } from "../src/modules/10-hope/spec/validation";
+import { createHopeValidationEngine } from "../src/modules/10-hope/spec/validation-registry";
 
 const applicabilityEngine = createHopeApplicabilityEngine("1.00.1");
 const validationEngine = createHopeValidationEngine("1.00.1");
 const active = [
-  "A0050", "A0220", "A0250", "A0900", "A1005A", "A1005B", "A1010A", "A1010Z", "A1400A", "A1400B", "A1400C", "A1400D",
-  "F2000A", "F2000B", "F2100A", "F2100B", "F2200A", "F2200B", "F3000A", "F3000B",
-  "J0900A", "J0900B", "J0900C", "J0900D", "J0905", "J0910A", "J0910B", "J0910C1", "J0910C9",
-  "J2030A", "J2030B", "J2030C", "J2040A", "J2040B", "J2050A", "J2050B",
-  "J2051A", "J2051B", "J2051C", "J2051D", "J2051E", "J2051F", "J2051G", "J2051H",
-  "J2052A", "J2052B", "J2052C", "J2053A", "J2053H",
-  "M1190", "M1195A", "M1195Z", "M1200A", "M1200Z",
-  "N0500A", "N0500B", "N0510A", "N0510B", "N0520A", "N0520B", "Z0350", "Z0500B",
+  "A0050",
+  "A0220",
+  "A0250",
+  "A0900",
+  "A1005A",
+  "A1005B",
+  "A1010A",
+  "A1010Z",
+  "A1400A",
+  "A1400B",
+  "A1400C",
+  "A1400D",
+  "F2000A",
+  "F2000B",
+  "F2100A",
+  "F2100B",
+  "F2200A",
+  "F2200B",
+  "F3000A",
+  "F3000B",
+  "J0900A",
+  "J0900B",
+  "J0900C",
+  "J0900D",
+  "J0905",
+  "J0910A",
+  "J0910B",
+  "J0910C1",
+  "J0910C9",
+  "J2030A",
+  "J2030B",
+  "J2030C",
+  "J2040A",
+  "J2040B",
+  "J2050A",
+  "J2050B",
+  "J2051A",
+  "J2051B",
+  "J2051C",
+  "J2051D",
+  "J2051E",
+  "J2051F",
+  "J2051G",
+  "J2051H",
+  "J2052A",
+  "J2052B",
+  "J2052C",
+  "J2053A",
+  "J2053H",
+  "M1190",
+  "M1195A",
+  "M1195Z",
+  "M1200A",
+  "M1200Z",
+  "N0500A",
+  "N0500B",
+  "N0510A",
+  "N0510B",
+  "N0520A",
+  "N0520B",
+  "Z0350",
+  "Z0500B",
 ];
 
 function answerMap(values: Record<string, string>) {
-  return new Map(Object.entries(values).map(([itemCode, value]) => [itemCode, { state: "answered" as const, value }]));
+  return new Map(
+    Object.entries(values).map(([itemCode, value]) => [
+      itemCode,
+      { state: "answered" as const, value },
+    ]),
+  );
 }
 
-function ctx(values: Record<string, string>, mode: "draft" | "final" = "draft"): HopeValidationContext {
+function ctx(
+  values: Record<string, string>,
+  mode: "draft" | "final" = "draft",
+): HopeValidationContext {
   const answers = answerMap(values);
   return {
     mode,
@@ -72,7 +134,15 @@ describe("HOPE v1.00.1 validation engine", () => {
   it("detects pain and SFV branch validation without trusting persisted projections", () => {
     expect(ruleIds({ J0900C: "2", J0905: "0" })).toContain("-3076");
     expect(ruleIds({ J2050A: "1", J2051A: "2" }, "final")).toContain("-3108");
-    expect(ruleIds({ J2050A: "1", J2051A: "2", J2052A: "1", J2052B: "2025-10-05", J2050B: "2025-10-01" })).toContain("-3105");
+    expect(
+      ruleIds({
+        J2050A: "1",
+        J2051A: "2",
+        J2052A: "1",
+        J2052B: "2025-10-05",
+        J2050B: "2025-10-01",
+      }),
+    ).toContain("-3105");
   });
 
   it("detects opioid / bowel-regimen consistency and warnings", () => {

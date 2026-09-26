@@ -12,6 +12,7 @@
  * Run:     bun run db:seed:clinical
  */
 import { Client } from "pg";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const ORG_SLUG = "wardenx-demo";
@@ -149,11 +150,31 @@ async function main(): Promise<void> {
   if (!org) throw new Error("demo org not found — run db:seed first");
 
   const users = await db.query<{ email: string; id: string }>(
-    `SELECT email, id FROM "user" WHERE email IN ('admin@wardenx.local','casey@wardenx.local')`,
+    `SELECT email, id FROM "user"
+      WHERE email IN ('admin@wardenx.local','casey@wardenx.local','rita@wardenx.local')`,
   );
-  const rn = users.rows.find((u) => u.email === "casey@wardenx.local")?.id; // primary RN = clinician
+  // F-014 (#39) — the caseload anchor decides who `caseload_or_scope` lets through, and every
+  // scenario seed acts as the RN Case Manager persona. `caseload_or_scope` (M7 §6, and the ~nine
+  // other modules that bind the name) is satisfied by an OPEN `patient_assignment` row for the
+  // CALLING user, so a caseload anchored to one clinician while seed-scenario-clinical-core.ts
+  // signs in as another denies every M7/M8/M9/M10 write — and `notFoundOnDeny: true` reports it as
+  // NOT_FOUND rather than a denial.
+  //
+  // Prefer rita when she exists; fall back to `casey@wardenx.local` (the base demo Clinician) when
+  // she does not. In the `db:seed:all` chain `db:seed:staff` runs immediately BEFORE this script
+  // (#39 moved it there precisely so rita exists by now), so the persona branch is the one that
+  // runs and the caseload is anchored to her in one pass. The fallback is what keeps this script
+  // working when it is run STANDALONE against a tenant that has no personas yet.
+  //
+  // `db:seed:staff` also re-anchors on its own (`anchorDemoCaseload`, seed-staff-personas.ts), which
+  // it must regardless of order: it drops and re-creates rita's user row on every run, so a caseload
+  // anchored to a previous run's rita would point at a user id that no longer exists.
+  const personaRn = users.rows.find((u) => u.email === "rita@wardenx.local")?.id;
+  const baseRn = users.rows.find((u) => u.email === "casey@wardenx.local")?.id;
+  const rn = personaRn ?? baseRn;
   const md = users.rows.find((u) => u.email === "admin@wardenx.local")?.id; // attending = admin
   if (!rn || !md) throw new Error("demo users not found — run db:seed first");
+  const rnEmail = personaRn ? "rita@wardenx.local" : "casey@wardenx.local";
 
   const pats = await db.query<{ id: string }>(
     "SELECT id FROM patient WHERE organization_id = $1 ORDER BY legal_last_name",
@@ -201,6 +222,17 @@ async function main(): Promise<void> {
   for (let i = 0; i < Math.min(ids.length, DETAIL.length); i++) {
     const pid = ids[i];
     const d = DETAIL[i];
+    // The loop bound guarantees `pid` and `d`. `a` is guaranteed only because ADDR and DETAIL happen
+    // to be the same length — an implicit coupling between two hand-maintained arrays that nothing
+    // stated until this guard. Adding a seventh patient to one and not the other now stops here with
+    // a named reason instead of writing a row of `undefined`s.
+    const a = ADDR[i];
+    if (!pid || !d || !a) {
+      throw new Error(
+        `seed-clinical: row ${i} is incomplete — patient=${!!pid} detail=${!!d} address=${!!a}. ` +
+          `DETAIL (${DETAIL.length}) and ADDR (${ADDR.length}) must stay the same length.`,
+      );
+    }
 
     // Demographics (UPDATE the patient spine)
     await db.query(
@@ -209,8 +241,7 @@ async function main(): Promise<void> {
       [pid, d.gi, d.pr, d.ms, d.race, d.eth],
     );
 
-    // Primary home address
-    const a = ADDR[i];
+    // Primary home address (`a` resolved and checked at the top of the loop)
     await db.query(
       `INSERT INTO patient_address (patient_id, organization_id, kind, line1, city, state, postal_code,
          country, is_primary, effective_from)
@@ -240,7 +271,15 @@ async function main(): Promise<void> {
       `INSERT INTO patient_caregiver (patient_id, caregiver_id, organization_id, relationship, is_primary,
          is_legal_representative, lr_authority, portal_invitation_consented, involvement_from)
        VALUES ($1,$2,$3,$4,true,$5,$6,false,$7)`,
-      [pid, cg.rows[0].id, org, d.cg.rel, d.cg.lr !== "none", d.cg.lr, today],
+      [
+        pid,
+        firstRow(cg, "seed-clinical: caregiver insert").id,
+        org,
+        d.cg.rel,
+        d.cg.lr !== "none",
+        d.cg.lr,
+        today,
+      ],
     );
     for (const e of d.ec) {
       await db.query(
@@ -279,7 +318,7 @@ async function main(): Promise<void> {
   await db.end();
   console.log(
     `✓ clinical seed: enriched ${n} patients (demographics, MBI, care team, payers; ` +
-      `${DETAIL.filter((d) => d.flags.length).length} with a privacy flag). Caseload RN = casey@wardenx.local.`,
+      `${DETAIL.filter((d) => d.flags.length).length} with a privacy flag). Caseload RN = ${rnEmail}.`,
   );
 }
 

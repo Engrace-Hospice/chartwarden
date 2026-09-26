@@ -95,8 +95,14 @@ export interface ReferralListQuery {
 }
 
 type DynamicClient = {
-  POST: (path: string, init?: unknown) => Promise<{ data?: unknown; error?: unknown; response?: Response }>;
-  PATCH: (path: string, init?: unknown) => Promise<{ data?: unknown; error?: unknown; response?: Response }>;
+  POST: (
+    path: string,
+    init?: unknown,
+  ) => Promise<{ data?: unknown; error?: unknown; response?: Response }>;
+  PATCH: (
+    path: string,
+    init?: unknown,
+  ) => Promise<{ data?: unknown; error?: unknown; response?: Response }>;
 };
 
 export async function listReferrals(
@@ -161,7 +167,10 @@ export async function listReferralNotes(client: ApiClient, id: string): Promise<
   return ((data as { items?: ReferralNote[] } | undefined)?.items ?? []) as ReferralNote[];
 }
 
-export async function listReferralActivity(client: ApiClient, id: string): Promise<ReferralActivity[]> {
+export async function listReferralActivity(
+  client: ApiClient,
+  id: string,
+): Promise<ReferralActivity[]> {
   const { data, error } = await client.GET("/api/v1/referrals/{id}/activity", {
     params: { path: { id } },
   });

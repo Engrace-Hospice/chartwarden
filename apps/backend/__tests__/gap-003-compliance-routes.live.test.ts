@@ -24,8 +24,8 @@ import type { FastifyRequest } from "fastify";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import { mountAuditRoutes } from "../src/modules/04-audit/index";
 import { wireModuleSeams } from "../src/index";
+import { mountAuditRoutes } from "../src/modules/04-audit/index";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -128,6 +128,9 @@ describe.skipIf(!DB_URL)("GAP-003 compliance routes — LIVE Postgres", () => {
     // Real step_up_recent evaluation (not a stub): a fresh totp step-up on SESSION.
     const { store: sessionStore } = createInMemorySessionContextStore([
       {
+        sessionClass: "staff",
+        portalAccountId: null,
+        sessionPatientId: null,
         sessionId: SESSION,
         userId: USER,
         membershipId: null,
@@ -160,7 +163,9 @@ describe.skipIf(!DB_URL)("GAP-003 compliance routes — LIVE Postgres", () => {
 
   const HEADERS = { "x-test-user": USER };
 
-  async function seedDisclosureEvent(overrides: Partial<{ patientId: string; resourceKind: string }> = {}) {
+  async function seedDisclosureEvent(
+    overrides: Partial<{ patientId: string; resourceKind: string }> = {},
+  ) {
     await admin.query(
       `INSERT INTO audit_event (organization_id, actor_user_id, actor_kind, event_type, resource_kind,
          resource_id, outcome, severity, before, after, context, correlation_id, retention_class)
@@ -190,7 +195,11 @@ describe.skipIf(!DB_URL)("GAP-003 compliance routes — LIVE Postgres", () => {
       const created = create.json();
       expect(created.matchedRecordCount).toBe(2); // only the 2 events for PATIENT match
 
-      const list = await app.inject({ method: "GET", url: "/api/v1/legal-holds", headers: HEADERS });
+      const list = await app.inject({
+        method: "GET",
+        url: "/api/v1/legal-holds",
+        headers: HEADERS,
+      });
       expect(list.statusCode).toBe(200);
       expect(list.json().items).toHaveLength(1);
       expect(list.json().items[0].status).toBe("active");
@@ -250,9 +259,10 @@ describe.skipIf(!DB_URL)("GAP-003 compliance routes — LIVE Postgres", () => {
       });
       expect(res.statusCode).toBe(200);
       expect(res.json()).toEqual({ status: "approved" });
-      const row = await admin.query("SELECT status, approved_by FROM destruction_certificate WHERE id=$1", [
-        certId,
-      ]);
+      const row = await admin.query(
+        "SELECT status, approved_by FROM destruction_certificate WHERE id=$1",
+        [certId],
+      );
       expect(row.rows[0].status).toBe("approved");
       expect(row.rows[0].approved_by).toBe(USER);
     });

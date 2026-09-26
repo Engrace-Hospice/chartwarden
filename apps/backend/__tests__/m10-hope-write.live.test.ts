@@ -15,6 +15,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
+import type { LatestAssessment, ScaleType } from "@wardenx/types";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
@@ -432,6 +433,59 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     });
   });
 
+  // #48 (restored from the lost Aug 25–30 history) — the window a capture is gated against. Naming the
+  // `scheduleId` makes the RFA-mismatch guard real, and an EXPIRED window is gated rather than read as
+  // "unscheduled" (the recording path used to look at `open` rows only).
+  it("recordTimepoint gates a named scheduleId (404 unknown, 409 RFA mismatch) and an EXPIRED window", async () => {
+    const adm = await admitted();
+    await expect(
+      svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, {
+        ...recordArgs(QUIET_DATA),
+        scheduleId: "77000000-0000-4000-8000-0000000fffff",
+      }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+
+    const huv1 = await seedSchedule(ORG_A, adm, "02_huv1");
+    await expect(
+      svc.recordTimepoint(ORG_A, memberOf[ORG_A], adm, {
+        ...recordArgs(QUIET_DATA),
+        scheduleId: huv1,
+      }),
+    ).rejects.toMatchObject({ code: "M10_RFA_KIND_MISMATCH", statusCode: 409 });
+
+    const expiredAdm = await admitted();
+    const expired = await seedSchedule(ORG_A, expiredAdm, "01_admission", {
+      opensAt: "2026-06-01T00:00:00.000Z",
+      closesAt: "2026-06-05T23:59:59.999Z",
+      lateDeadlineAt: "2026-06-12T23:59:59.999Z",
+    });
+    await admin.query("UPDATE hope_timepoint_schedule SET status='expired' WHERE id=$1", [expired]);
+    await expect(
+      svc.recordTimepoint(ORG_A, memberOf[ORG_A], expiredAdm, {
+        ...recordArgs(QUIET_DATA),
+        targetDate: "2026-06-20T12:00:00.000Z",
+        lateCompletionReasonCode: "hospitalization",
+      }),
+    ).rejects.toMatchObject({ code: "M10_TIMEPOINT_EXPIRED", statusCode: 409 });
+  });
+
+  it("route 20 regenerate actually regenerates, idempotently (#48 — it used to be a count)", async () => {
+    const adm = await admitted();
+    const count = async () =>
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM hope_timepoint_schedule WHERE admission_id=$1",
+          [adm],
+        )
+      ).rows[0].n as number;
+    expect(await count()).toBe(0);
+    const first = await svc.regenerateSchedules(ORG_A, adm);
+    expect(first.scheduleCount).toBe(3);
+    const second = await svc.regenerateSchedules(ORG_A, adm);
+    expect(second.scheduleCount).toBe(3); // no duplicates
+    expect(await count()).toBe(3);
+  });
+
   it("a J2051 moderate answer opens the SFV; recordSfv completes it; the signed admission carries the trigger", async () => {
     // The SFV obligation now opens while the draft is ANSWERED (hope-sfv-service
     // reconcileTriggeringAssessment, on J2050/J2051 patch), and readiness refuses to sign a fired
@@ -483,11 +537,39 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
      */
     function seams(scores: { pps: number | null; esas_r: number | null } | "unavailable"): void {
       registerSeam("LatestAssessmentProvider", {
-        latestBatch: async (_patientId: string, scaleTypes: readonly string[]) => {
+        latest: async () => {
+          throw new Error("single-scale `latest` is not exercised by this suite");
+        },
+        // (#211, restored) The M9 seam publishes the WHOLE `LatestAssessment`, not the two fields M10
+        // reads off it; a `{ scaleType, score }` fake satisfies nothing but its own consumer.
+        latestBatch: async (_patientId: string, scaleTypes: readonly ScaleType[]) => {
           if (scores === "unavailable") throw new Error("M9 seam unavailable");
-          return scaleTypes.flatMap((scaleType) => {
+          return scaleTypes.flatMap<LatestAssessment>((scaleType) => {
             const score = scores[scaleType as "pps" | "esas_r"];
-            return score === null ? [] : [{ scaleType, score }];
+            if (score === null) return [];
+            return [
+              {
+                assessmentId: `assess-${scaleType}`,
+                patientId: PATIENT,
+                admissionId: "adm-1",
+                scaleType,
+                scaleVersion: "1",
+                score,
+                scoreInterpretation: null,
+                capturedAt: "2026-01-05T00:00:00.000Z",
+                capture: {
+                  capturedByMembershipId: "mem-1",
+                  capturedByDiscipline: "rn",
+                  providerEntityId: "pe-1",
+                  locationId: "loc-1",
+                },
+                sourceEncounterId: null,
+                cosignRequired: false,
+                cosignedAt: null,
+                status: "active",
+                redacted: false,
+              } as LatestAssessment,
+            ];
           });
         },
       });
@@ -711,6 +793,125 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     const res = await svc.requestSummaryPdf(ORG_A, memberOf[ORG_A], draft.id);
     expect(res).toEqual({ assessmentId: draft.id, requested: true });
     expect(await eventsFor(draft.id)).toContain("m10.hope.summary_requested");
+    // F-099 (restored) — the chart target M22 files the render against rides on the payload.
+    const { rows } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m10.hope.summary_requested'",
+      [draft.id],
+    );
+    expect(rows[0].payload).toMatchObject({ patientId: patientOf[adm] });
+  });
+
+  it("the compliance dashboard reports null rates + counts, and a non-terminal batch is not a non-acceptance", async () => {
+    // #48 / F-058 (restored) — a rate over an empty denominator is `null` (no data), never 1, and only
+    // terminal batches (accepted / rejected / partially_accepted) enter the acceptance ratio.
+    const before = await svc.complianceDashboard(ORG_B, providerOf[ORG_B]);
+    expect(before.submissionAcceptanceRate).toBeNull();
+    expect(before.submissionAcceptanceCounts).toEqual({ accepted: 0, total: 0 });
+    await admin.query(
+      `INSERT INTO hope_submission (organization_id, provider_entity_id, submission_period, status, item_count)
+       VALUES ($1,$2,'2026-06','queued',1)`,
+      [ORG_B, providerOf[ORG_B]],
+    );
+    const after = await svc.complianceDashboard(ORG_B, providerOf[ORG_B]);
+    expect(after.submissionAcceptanceRate).toBeNull();
+    expect(after.submissionAcceptanceCounts.total).toBe(0);
+  });
+
+  // ── #45 (restored) — migration 0217, the repair of rows the pre-fix record path already wrote ───────
+  describe("#45 — migration 0217 repairs hope_assessment.patient_id rows already written", () => {
+    const REPAIR_SQL = readFileSync(
+      join(MIGRATIONS_DIR, "0217_m10_hope_patient_id_repair.sql"),
+      "utf8",
+    );
+    /** Seed a real `admission` row (its patient_id is the truth the repair reads). */
+    async function seedRepairAdmission(org: string, patientId: string): Promise<string> {
+      return (
+        await admin.query(
+          `INSERT INTO admission (organization_id, provider_entity_id, location_id, patient_id,
+             admitted_by_physician_id, status, admission_at)
+           VALUES ($1,$2,$3,$4,$5,'active', now()) RETURNING id`,
+          [org, providerOf[org], locationOf[org], patientId, USER],
+        )
+      ).rows[0].id as string;
+    }
+    /** Write the corrupt shape the pre-fix service produced: patient_id := admission_id. */
+    async function seedCorruptAssessment(org: string, admissionId: string): Promise<string> {
+      return (
+        await admin.query(
+          `INSERT INTO hope_assessment (organization_id, patient_id, admission_id, rfa_kind, status,
+             data, target_date, created_by_membership_id)
+           VALUES ($1,$2,$2,'01_admission','draft','{}'::jsonb, now(), $3) RETURNING id`,
+          [org, admissionId, memberOf[org]],
+        )
+      ).rows[0].id as string;
+    }
+
+    it("repoints a corrupted assessment (and its SFV) at the admission's real patient", async () => {
+      const realPatient = "44444444-0000-4000-8000-000000000045";
+      const adm = await seedRepairAdmission(ORG_A, realPatient);
+      const assessmentId = await seedCorruptAssessment(ORG_A, adm);
+      await admin.query(
+        `INSERT INTO symptom_follow_up_visit (organization_id, provider_entity_id, location_id,
+           patient_id, admission_id, triggering_assessment_id, triggered_at, due_at, alert_cadence)
+         VALUES ($1,$2,$3,$4,$4,$5, now(), now() + interval '2 days', '{}'::jsonb)`,
+        [ORG_A, providerOf[ORG_A], locationOf[ORG_A], adm, assessmentId],
+      );
+
+      await admin.query(REPAIR_SQL);
+
+      expect(
+        (await admin.query("SELECT patient_id FROM hope_assessment WHERE id=$1", [assessmentId]))
+          .rows[0].patient_id,
+      ).toBe(realPatient);
+      expect(
+        (
+          await admin.query(
+            "SELECT patient_id FROM symptom_follow_up_visit WHERE triggering_assessment_id=$1",
+            [assessmentId],
+          )
+        ).rows[0].patient_id,
+      ).toBe(realPatient);
+    });
+
+    it("leaves a row whose admission cannot be resolved, and is a no-op on re-run", async () => {
+      const orphanAdmission = "77000000-0000-4000-8000-0000000f0045";
+      const orphanId = await seedCorruptAssessment(ORG_A, orphanAdmission);
+      // Cross-org: the admission exists, but in ORG_B. The repair joins on organization_id too.
+      const crossOrgAdmission = await seedRepairAdmission(
+        ORG_B,
+        "44444444-0000-4000-8000-0000000000b0",
+      );
+      const crossOrgId = await seedCorruptAssessment(ORG_A, crossOrgAdmission);
+
+      await admin.query(REPAIR_SQL);
+      expect(
+        (await admin.query("SELECT patient_id FROM hope_assessment WHERE id=$1", [orphanId]))
+          .rows[0].patient_id,
+      ).toBe(orphanAdmission);
+      expect(
+        (await admin.query("SELECT patient_id FROM hope_assessment WHERE id=$1", [crossOrgId]))
+          .rows[0].patient_id,
+      ).toBe(crossOrgAdmission);
+
+      // Re-running touches nothing: a repaired row can never match `patient_id = admission_id` again.
+      const realPatient = "44444444-0000-4000-8000-000000000046";
+      const adm = await seedRepairAdmission(ORG_A, realPatient);
+      const repaired = await seedCorruptAssessment(ORG_A, adm);
+      await admin.query(REPAIR_SQL);
+      const before = (
+        await admin.query("SELECT patient_id, updated_at FROM hope_assessment WHERE id=$1", [
+          repaired,
+        ])
+      ).rows[0];
+      await admin.query(REPAIR_SQL);
+      const after = (
+        await admin.query("SELECT patient_id, updated_at FROM hope_assessment WHERE id=$1", [
+          repaired,
+        ])
+      ).rows[0];
+      expect(after.patient_id).toBe(realPatient);
+      expect(after.updated_at).toEqual(before.updated_at);
+    });
   });
 
   it("RLS — org B cannot sign or correct org A's assessment (non-leaking 404)", async () => {

@@ -269,7 +269,10 @@ export const CreateAssessmentBody = Type.Object({
 });
 
 /** Route 13 — signing carries no body beyond the `If-Match` version (step-up is a session fact). */
-export const SignAssessmentBody = Type.Object({});
+// Route 13 (sign) carries NO request body: the signature is the act, and the actor, timestamp and
+// expected version all come from the session, the server clock and If-Match. It used to `parse` an
+// empty `Type.Object({})` here, which validated nothing and made the route read as payload-bearing
+// to every reader and to the published contract (#94).
 
 /** Route 14 — append-only correction of record (M9 D9). */
 export const AmendAssessmentBody = Type.Object({
@@ -291,7 +294,8 @@ export const CreateSupervisoryVisitBody = Type.Object({
 });
 
 /** Route 16. */
-export const SignSupervisoryVisitBody = Type.Object({});
+// Route 4 (aide-supervisory sign) carries NO request body, for the same reason as the assessment
+// sign above — the empty-object parse it used to perform validated nothing.
 
 /** Route 17 — the §8.6 documented override rides here; the pure guard enforces the ≥40-char floor. */
 export const CreateVolunteerAssignmentBody = Type.Object({

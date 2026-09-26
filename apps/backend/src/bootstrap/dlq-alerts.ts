@@ -24,6 +24,7 @@
 // this module owns mechanism).
 
 /** One DLQ-promotion event — a job/row that will NEVER be retried again. */
+import { safeErrorMessage } from "./redact-database-error";
 export interface DlqPromotionEvent {
   /** The queue/source this promotion came from, e.g. "m7.gates", "outbox", "m25.denial_aging_scan". */
   readonly source: string;
@@ -63,9 +64,7 @@ export function buildDlqPromotionSink(opts?: {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(event),
     }).catch((err) => {
-      log(
-        `⚠️  DLQ alert webhook delivery failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      log(`⚠️  DLQ alert webhook delivery failed: ${safeErrorMessage(err)}`);
     });
   };
 }
@@ -110,7 +109,10 @@ export function attachDlqPromotionAlert(
       jobId: job.id,
       organizationId,
       attempts: attemptsMade,
-      error: err instanceof Error ? err.message : String(err),
+      // This field is sent OUTBOUND to the alert webhook, so it leaves the trust boundary
+      // altogether — a stricter case than the log sinks, not a looser one. A failing job is often
+      // failing on a database write, whose wrapper message embeds the bound parameters (F-027 / #65).
+      error: safeErrorMessage(err, { bare: true }),
       occurredAt: new Date().toISOString(),
     });
   });

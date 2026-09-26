@@ -208,9 +208,7 @@ describe.skipIf(!DB_URL)("GAP-097 — M34 SEC-052 oversized-export approval, LIV
       [jobId],
     );
     expect(jobRows[0].status).toBe("fulfilled");
-    expect(jobRows[0].bundle_minio_object_key).toBe(
-      `exports/tenant/${jobId}.tar.gz`,
-    );
+    expect(jobRows[0].bundle_minio_object_key).toBe(`exports/tenant/${jobId}.tar.gz`);
     expect(jobRows[0].bundle_sha256).toBe("deadbeef");
     expect(Number(jobRows[0].bundle_size_bytes)).toBe(60 * 1024 * 1024 * 1024);
     expect(jobRows[0].fulfilled_at).not.toBeNull();

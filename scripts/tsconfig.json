@@ -1,0 +1,22 @@
+{
+  "_comment": "F-012 (#34) — scripts/ is 71 files and ~24.7k lines that decide whether the architecture gates pass, plus openapi/enrichments.ts, which defines every request/response contract in docs/api/openapi.json. It was in no tsconfig project and no referenced project's `include` covered it, so `tsc -b` never compiled it and `bun run typecheck` exited 0 over a tree containing a real TS2300. Same strictness as everything else — deliberately NOT a loosened `strict`, which would defeat the point.",
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "..",
+    "outDir": "../node_modules/.cache/tsc-scripts",
+    "lib": ["ES2023", "DOM"],
+    "noEmit": false
+  },
+  "include": ["**/*.ts", "**/*.tsx", "../architecture/**/*.ts"],
+  "exclude": ["__fixtures__"],
+  "references": [
+    { "path": "../apps/backend" },
+    { "path": "../packages/types" },
+    { "path": "../packages/db" },
+    { "path": "../packages/auth" },
+    { "path": "../packages/billing" },
+    { "path": "../packages/ui" },
+    { "path": "../packages/ai-platform" },
+    { "path": "../packages/saas-tenant-platform" }
+  ]
+}

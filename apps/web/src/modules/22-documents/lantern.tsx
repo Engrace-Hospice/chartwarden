@@ -21,24 +21,8 @@ export function StatusPill({
   return <UiStatusPill label={children} tone={tone} />;
 }
 
-/**
- * Map an M22 document/render/intake lifecycle status to a §6.6 status tone (§6.6 "document/render"
- * lifecycle: queued → rendering → rendered → failed; plus the intake batch + review states). The
- * server is authoritative for the status string; this is only the visual tone.
- */
-export function lifecycleTone(status: string): StatusTone {
-  const s = status.toLowerCase();
-  if (/(fail|error|parse_failed|stalled)/.test(s)) return "error";
-  if (/(rendered|complete|writeback_complete|active|signed|posted)/.test(s)) return "success";
-  if (
-    /(rendering|classif|extract|review|awaiting|pending|uploaded|in_progress|queued|docling)/.test(
-      s,
-    )
-  )
-    return "progress";
-  if (/(discard|void|superseded|abandoned|split_resolved)/.test(s)) return "neutral";
-  return "neutral";
-}
+/** Moved to `apps/web/src/shell/document-lifecycle-tone.ts` with the shared document workspace. */
+export { lifecycleTone } from "../../shell/document-lifecycle-tone";
 
 /** The §6.2 Lantern Card: white (surface-lowest), radius-xl, shadow-soft, no border (No-Line §10.1). */
 export function Card({

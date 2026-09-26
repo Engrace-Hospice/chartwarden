@@ -79,3 +79,19 @@ export function createSafetyClinicianSignalCache(): SafetyClinicianSignalCache {
     },
   };
 }
+
+/**
+ * The ONE process-local badge cache the composition root shares between the §4.2 dashboard provider (which
+ * READS the badge) and `m20.gps-spoof-badge` (which WRITES it).
+ *
+ * A singleton rather than a constructed dep because the two ends are wired in different scopes — the seam
+ * registration runs inside `buildServer`, the consumer binding beside the outbox dispatcher — and a cache
+ * whose reader and writer were different instances would record every suspicion and show none: working
+ * code, passing tests, a badge that never appears. Process-local is the specification (§7.7), so a
+ * module-level instance is the honest expression of it rather than a leak.
+ */
+let sharedCache: SafetyClinicianSignalCache | undefined;
+export function safetyClinicianSignalCache(): SafetyClinicianSignalCache {
+  sharedCache ??= createSafetyClinicianSignalCache();
+  return sharedCache;
+}

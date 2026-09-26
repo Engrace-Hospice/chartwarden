@@ -104,6 +104,10 @@ export type { ConfirmDialogProps } from "./system/confirm-dialog";
 // the Guardrail ceremonies above already compose it.
 export { Modal } from "./system/modal";
 export type { ModalProps } from "./system/modal";
+// The activatable data row (#32) — a <tr> that opens a drawer is a control, and must be reachable
+// by keyboard, not only by pointer.
+export { interactiveRowProps } from "./system/interactive-row";
+export type { InteractiveRowProps } from "./system/interactive-row";
 export { ToastProvider, useToast } from "./system/toast";
 export type { ToastContextValue, ToastOptions, ToastTone } from "./system/toast";
 
@@ -111,4 +115,8 @@ export type { ToastContextValue, ToastOptions, ToastTone } from "./system/toast"
 export { sharedTailwindConfig } from "./theme/tailwind.config";
 export type { SharedTailwindConfig } from "./theme/tailwind.config";
 // Theme — Lantern token pointers (CSS-var references) + No-Line helpers (R0.2, DESIGN.md §2/§3/§10)
-export { cardSurface, ghostBorder, t } from "./theme/tokens";
+// `tint` is exported (F-077) because it was not: the care-plan guard chip hand-rolled
+// `color-mix(… 14% …)` at a call site that could not import the 12% helper, and that 2-point
+// deviation is what pushed it under the WCAG AA floor. A shared helper nothing can import is a
+// shared helper that gets re-implemented slightly differently.
+export { cardSurface, ghostBorder, t, tint } from "./theme/tokens";

@@ -135,7 +135,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       toStatus: Str,
       occurredAt: Iso,
     }),
-    declaredConsumers: ["m11", "m33"],
+    declaredConsumers: ["m11"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -150,7 +151,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       createdByMembershipId: Id,
       occurredAt: Iso,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -164,7 +166,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: Str,
       courierAttestation,
     }),
-    declaredConsumers: ["m22", "m33"],
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -180,7 +183,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       cancelledAt: Iso,
       requiredVendorConfirmation: Bool,
     }),
-    declaredConsumers: ["m11", "m33"],
+    declaredConsumers: ["m11"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -225,7 +229,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       windowHours: Type.Number(),
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -239,7 +244,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       deliveryWindowLatest: Iso,
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -292,7 +298,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       dispatchedByMembershipId: Id,
       dispatchedAt: Iso,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -311,7 +318,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       contents: Type.Array(dispatchedContent),
       bolDocumentId: IdN,
     }),
-    declaredConsumers: ["m13", "m33"],
+    declaredConsumers: ["m13"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -327,7 +335,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       replenishedAt: Iso,
       contents: Type.Array(dispatchedContent),
     }),
-    declaredConsumers: ["m13", "m33"],
+    declaredConsumers: ["m13"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -345,7 +354,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       disposalWitnessMembershipId: IdN,
       reconciledAt: Iso,
     }),
-    declaredConsumers: ["m13", "m33"],
+    declaredConsumers: ["m13"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -362,7 +372,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       perMedicationReconciliation: Type.Array(returnedContent),
       reconciledAt: Iso,
     }),
-    declaredConsumers: ["m13", "m30", "m33"],
+    declaredConsumers: ["m13", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -380,7 +391,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       containsControlledSubstance: Bool,
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m30", "m33", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -403,7 +415,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       }),
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m30", "m33", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
 
@@ -414,7 +427,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "§2.7 — the nightly per-Location par monitor found stock at or below the reorder point. The CRON emits; a mid-day dispatch decrement does not, so a busy Location raises one alert a night rather than one per kit.",
     payloadSchema: parThreshold,
-    declaredConsumers: ["m30", "m33", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -423,7 +437,8 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "§2.7 — stock fell to or below `min_safety_stock`, the band under `below_threshold`. Distinct event rather than a severity field: a depleted hub cannot fill the next dispatch at all, and M36 routes it to a different recipient set.",
     payloadSchema: parThreshold,
-    declaredConsumers: ["m30", "m33", "m36"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
 ];

@@ -18,7 +18,7 @@
 // extra infra: `justification` is a required, min-length TypeBox field (enforced below), and the
 // "1 export/hour/user" rate limit is a live COUNT against the very table this route writes to — no
 // Redis, no estimate.
-import { audit, type AuditContext } from "@wardenx/audit";
+import { type AuditContext, audit } from "@wardenx/audit";
 import { requirePermission, requireStepUp } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
@@ -49,7 +49,11 @@ const EXPORT_TTL_DAYS = 7;
 /** M04-F04 / SEC-052 — one export request per user per rolling hour. */
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string; roles: readonly string[] } {
+function actorOf(request: FastifyRequest): {
+  organizationId: string;
+  userId: string;
+  roles: readonly string[];
+} {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
   return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
@@ -93,7 +97,10 @@ function toExportView(row: typeof EXPORT.$inferSelect) {
  * Mount the §4.2 audit-export routes: request + retrieve. Behind `audit.export` + a fresh step-up
  * (M04-F04 / SEC-052). See the file header for what `POST` does and deliberately does not do.
  */
-export function registerAuditExportsRoutes(app: FastifyInstance, deps: AuditExportsRouteDeps): void {
+export function registerAuditExportsRoutes(
+  app: FastifyInstance,
+  deps: AuditExportsRouteDeps,
+): void {
   const now = deps.now ?? (() => new Date());
 
   app.post(

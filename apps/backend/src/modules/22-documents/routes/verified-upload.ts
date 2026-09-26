@@ -117,16 +117,29 @@ export function createVerifiedUploadService(deps: {
   const inOrg = <T>(organizationId: string, userId: string, fn: (tx: DbClient) => Promise<T>) =>
     withOrgContext(deps.db, { organizationId, userId }, (tx) => fn(tx as DbClient));
 
-  async function validateReferralAccess(organizationId: string, userId: string, input: InitiateVerifiedUploadInput) {
+  async function validateReferralAccess(
+    organizationId: string,
+    userId: string,
+    input: InitiateVerifiedUploadInput,
+  ) {
     if (input.aggregateType !== "referral") return;
     if (!input.aggregateId) {
-      throw new WardenXError("VALIDATION_FAILED", "aggregateId is required for referral documents", 422);
+      throw new WardenXError(
+        "VALIDATION_FAILED",
+        "aggregateId is required for referral documents",
+        422,
+      );
     }
     const reader = deps.referralReader;
     if (!reader) {
-      throw new DegradedError("referral-reader", "referral document uploads require the M6 ReferralReader seam");
+      throw new DegradedError(
+        "referral-reader",
+        "referral document uploads require the M6 ReferralReader seam",
+      );
     }
-    if (!(await reader.canAccessReferral({ organizationId, userId, referralId: input.aggregateId }))) {
+    if (
+      !(await reader.canAccessReferral({ organizationId, userId, referralId: input.aggregateId }))
+    ) {
       throw new NotFoundError("referral");
     }
   }
@@ -338,7 +351,9 @@ export function createVerifiedUploadService(deps: {
               patientId: current.patientId,
               admissionId: current.admissionId,
               retentionClass: current.retentionClass,
-              sourceKind: documentSourceKind(current.sourceMetadata as DocumentProvenanceMetadata | undefined),
+              sourceKind: documentSourceKind(
+                current.sourceMetadata as DocumentProvenanceMetadata | undefined,
+              ),
               aggregateType: current.aggregateType,
               aggregateId: current.aggregateId,
               title: current.title,

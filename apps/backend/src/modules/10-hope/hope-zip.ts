@@ -40,7 +40,7 @@ function assertSafeFilename(filename: string): void {
 
 function dosDateTime(): { date: number; time: number } {
   // Fixed timestamp for deterministic package bytes.
-  return { date: (2025 - 1980) << 9 | 1 << 5 | 1, time: 0 };
+  return { date: ((2025 - 1980) << 9) | (1 << 5) | 1, time: 0 };
 }
 
 export function buildDeterministicZip(entries: readonly ZipEntryInput[]): BuiltZip {
@@ -52,7 +52,8 @@ export function buildDeterministicZip(entries: readonly ZipEntryInput[]): BuiltZ
 
   for (const entry of [...entries].sort((a, b) => a.filename.localeCompare(b.filename))) {
     assertSafeFilename(entry.filename);
-    if (seen.has(entry.filename)) throw new Error(`Duplicate ZIP entry filename: ${entry.filename}`);
+    if (seen.has(entry.filename))
+      throw new Error(`Duplicate ZIP entry filename: ${entry.filename}`);
     seen.add(entry.filename);
     const name = Buffer.from(entry.filename, "utf8");
     const crc = crc32(entry.content);

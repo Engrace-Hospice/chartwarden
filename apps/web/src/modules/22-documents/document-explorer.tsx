@@ -12,11 +12,14 @@ import {
 // actor can see: category tabs over the document type, a filter bar (type · retention · status · source),
 // and a table of name · patient · category · date · source · status. GET /api/v1/documents pages by cursor
 // (200 at a time, "Load more"); patient names come from the patient read for the loaded rows. Uploads
-// happen on a patient's or referral's Documents tab, so this page links there rather than uploading. The
+// happen on a patient's or referral's Documents tab, so this page links there; the one upload offered here
+// (#91) files a document with NO patient linkage — a compliance or operational record that belongs to the
+// agency, not a chart — through the checksum-enforced `DocumentUploadDialog`. The
 // server enforces every scope (ADR-0030); Part 2 records only appear for actors cleared to see them.
 import { useEffect, useMemo, useState } from "react";
 import type { JSX, ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { DocumentUploadDialog } from "./document-upload-dialog";
 import { lifecycleTone } from "./lantern";
 
 interface DocumentRow {
@@ -117,6 +120,7 @@ export function DocumentExplorer(): JSX.Element {
   const [cursor, setCursor] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const [uploading, setUploading] = useState(false);
   const [patients, setPatients] = useState<Map<string, PatientName>>(new Map());
 
   const [tab, setTab] = useState<Tab>("");
@@ -253,10 +257,20 @@ export function DocumentExplorer(): JSX.Element {
           <h1 style={{ fontSize: "1.875rem" }}>Documents</h1>
           <p>Clinical, administrative and patient documents across the organization.</p>
         </div>
-        <Link to="/patients" className="wx-btn-primary">
-          <Glyph name="upload" size={16} /> Upload to a Patient
-        </Link>
+        <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+          <button type="button" className="wx-btn-secondary" onClick={() => setUploading(true)}>
+            <Glyph name="upload" size={16} /> Upload document
+          </button>
+          <Link to="/patients" className="wx-btn-primary">
+            <Glyph name="upload" size={16} /> Upload to a Patient
+          </Link>
+        </div>
       </header>
+      <DocumentUploadDialog
+        open={uploading}
+        onClose={() => setUploading(false)}
+        onDone={() => setRetryKey((k) => k + 1)}
+      />
 
       <fieldset className="wx-seg">
         <legend className="wx-sr-only">Document category</legend>

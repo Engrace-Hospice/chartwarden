@@ -24,7 +24,9 @@ export interface HopeRecordInitialization {
 
 export class HopeUnsupportedOfficialRecordKindError extends Error {
   constructor(readonly rfaKind: HopeRfaKind) {
-    super(`HOPE rfaKind ${rfaKind} is not an official CMS HOPE record kind for Phase 2A initialization`);
+    super(
+      `HOPE rfaKind ${rfaKind} is not an official CMS HOPE record kind for Phase 2A initialization`,
+    );
     this.name = "HopeUnsupportedOfficialRecordKindError";
   }
 }
@@ -174,12 +176,7 @@ export function deriveHopeWorkflowControlAnswers(input: {
 }[] {
   const mapped = officialMappingFor(input.rfaKind);
 
-  const a0050 =
-    input.isc === "XX"
-      ? "3"
-      : input.correctsAssessmentId
-        ? "2"
-        : "1";
+  const a0050 = input.isc === "XX" ? "3" : input.correctsAssessmentId ? "2" : "1";
 
   return [
     {

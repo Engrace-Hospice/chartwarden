@@ -1,8 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { ApiClientProvider } from "@wardenx/ui";
-import { describe, expect, it, vi } from "vitest";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import type { ReactNode } from "react";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
+import { describe, expect, it, vi } from "vitest";
 import { SessionProvider } from "../../../shell/session";
 import { MyVisits } from "../my-visits";
 import { NewVisitModal, VisitActionPanel } from "../scheduling-workflow";
@@ -42,7 +42,10 @@ function renderMyVisits(client: { GET: ReturnType<typeof vi.fn>; POST: ReturnTyp
         >
           <Routes>
             <Route path="/me/visits" element={<MyVisits />} />
-            <Route path="/patients/:patientId/encounters/:encounterId" element={<LocationProbe />} />
+            <Route
+              path="/patients/:patientId/encounters/:encounterId"
+              element={<LocationProbe />}
+            />
           </Routes>
         </SessionProvider>
       </ApiClientProvider>
@@ -131,7 +134,11 @@ describe("MyVisits web workflow", () => {
     await screen.findByText("Scheduled visit");
     fireEvent.click(screen.getByRole("button", { name: /^open encounter/i }));
 
-    await waitFor(() => expect(screen.getByLabelText("location").textContent).toBe(`/patients/${visit.patientId}/encounters/enc-1`));
+    await waitFor(() =>
+      expect(screen.getByLabelText("location").textContent).toBe(
+        `/patients/${visit.patientId}/encounters/enc-1`,
+      ),
+    );
     expect(post).not.toHaveBeenCalled();
   });
 
@@ -152,8 +159,20 @@ describe("MyVisits web workflow", () => {
             ],
           },
         };
-      if (path === "/api/v1/admissions")
-        return { data: { items: [{ id: visit.admissionId, patientId: visit.patientId, state: "active" }] } };
+      // F-066 (#161): the admission lookup reads the PATIENT's admissions, never the org-wide census.
+      if (path === "/api/v1/patients/{patientId}/admissions")
+        return {
+          data: {
+            items: [
+              {
+                id: visit.admissionId,
+                state: "active",
+                admissionAt: "2026-01-02T00:00:00.000Z",
+                dischargedAt: null,
+              },
+            ],
+          },
+        };
       if (path === "/api/v1/orgs/{id}/members")
         return {
           data: {
@@ -182,13 +201,17 @@ describe("MyVisits web workflow", () => {
       expect((screen.getByLabelText(/active admission/i) as HTMLInputElement).disabled).toBe(false),
     );
     fireEvent.focus(screen.getByLabelText(/active admission/i));
-    await waitFor(() => expect(screen.getByText(/Admission 00000000/i)).toBeTruthy());
-    fireEvent.click(screen.getByText(/Admission 00000000/i));
+    await waitFor(() => expect(screen.getByText(/Admitted 2026-01-02/i)).toBeTruthy());
+    fireEvent.click(screen.getByText(/Admitted 2026-01-02/i));
     fireEvent.focus(screen.getByLabelText(/assigned clinician/i));
     await waitFor(() => expect(screen.getByText("Nurse One")).toBeTruthy());
     fireEvent.click(screen.getByText("Nurse One"));
-    fireEvent.change(screen.getByLabelText(/scheduled start/i), { target: { value: "2026-08-31T10:00" } });
-    fireEvent.change(screen.getByLabelText(/scheduled end/i), { target: { value: "2026-08-31T11:00" } });
+    fireEvent.change(screen.getByLabelText(/scheduled start/i), {
+      target: { value: "2026-08-31T10:00" },
+    });
+    fireEvent.change(screen.getByLabelText(/scheduled end/i), {
+      target: { value: "2026-08-31T11:00" },
+    });
     fireEvent.click(screen.getByRole("button", { name: /create visit/i }));
 
     await waitFor(() =>
@@ -238,23 +261,39 @@ describe("MyVisits web workflow", () => {
     await waitFor(() => expect(screen.getByText("Nurse Two")).toBeTruthy());
     fireEvent.click(screen.getByText("Nurse Two"));
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/visits/{visitId}/reassign", expect.any(Object)));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/visits/{visitId}/reassign", expect.any(Object)),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
-    fireEvent.change(screen.getByLabelText(/^reason$/i), { target: { value: "Patient cancelled due to appointment conflict." } });
+    fireEvent.change(screen.getByLabelText(/^reason$/i), {
+      target: { value: "Patient cancelled due to appointment conflict." },
+    });
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/visits/{visitId}/cancel", expect.any(Object)));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/visits/{visitId}/cancel", expect.any(Object)),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /no-show/i }));
-    fireEvent.change(screen.getByLabelText(/^reason$/i), { target: { value: "Patient was not available at scheduled time." } });
+    fireEvent.change(screen.getByLabelText(/^reason$/i), {
+      target: { value: "Patient was not available at scheduled time." },
+    });
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/visits/{visitId}/no-show", expect.any(Object)));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/visits/{visitId}/no-show", expect.any(Object)),
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /reschedule/i }));
-    fireEvent.change(screen.getByLabelText(/new start/i), { target: { value: "2026-09-01T10:00" } });
+    fireEvent.change(screen.getByLabelText(/new start/i), {
+      target: { value: "2026-09-01T10:00" },
+    });
     fireEvent.change(screen.getByLabelText(/new end/i), { target: { value: "2026-09-01T11:00" } });
-    fireEvent.change(screen.getByLabelText(/^reason$/i), { target: { value: "Patient requested a different time." } });
+    fireEvent.change(screen.getByLabelText(/^reason$/i), {
+      target: { value: "Patient requested a different time." },
+    });
     fireEvent.click(screen.getByRole("button", { name: /confirm/i }));
-    await waitFor(() => expect(post).toHaveBeenCalledWith("/api/v1/visits/{visitId}/reschedule", expect.any(Object)));
+    await waitFor(() =>
+      expect(post).toHaveBeenCalledWith("/api/v1/visits/{visitId}/reschedule", expect.any(Object)),
+    );
   });
 });

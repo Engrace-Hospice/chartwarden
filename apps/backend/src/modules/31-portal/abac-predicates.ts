@@ -22,7 +22,7 @@
 //        patient must carry an explicit recording consent, else the Record button is refused.
 //
 // PORTAL SESSION IS THE SUBJECT ANCHOR. The portal predicates take `portalAccountId` / `patientId` from
-// the SERVER-assembled session (`context.attributes.portalAccountId` / `.portalPatientId`), never from the
+// the SERVER-assembled session (`context.attributes.portalAccountId` / `.sessionPatientId`), never from the
 // query string — §8.3.1's threat (b) is exactly a caregiver with a valid session naming another patient's
 // id, and sourcing both ids from the session makes the mismatch unrepresentable rather than merely refused.
 // The telehealth predicates take a `telehealthVisitId` and resolve the patient from the visit row, so a
@@ -34,7 +34,12 @@
 //
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) guards on
 // `abacRegistry.has`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  PORTAL_SESSION_CLASSES as AUTH_PORTAL_SESSION_CLASSES,
+  type AbacContext,
+  type AbacTarget,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import type { PortalAccessGrantKind, PortalAccountStatus } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
 import { consentTypeForGrantKind, portalSessionClass } from "./lifecycle/portal-access-gate";
@@ -52,12 +57,15 @@ export const M31_ABAC_PREDICATES = [
 
 export type M31RegisteredAbacPredicate = (typeof M31_ABAC_PREDICATES)[number];
 
-/** The three portal session classes M2 mints; a non-portal class denies every `portal.*` predicate. */
-export const PORTAL_SESSION_CLASSES = [
-  "patient_portal",
-  "caregiver_portal",
-  "bereaved_portal",
-] as const;
+/**
+ * The three portal session classes M2 mints; a non-portal class denies every `portal.*` predicate.
+ *
+ * Re-exported from @wardenx/auth rather than redefined. M16, M19 and M31 each kept their own copy of
+ * this list, all three comparing against `session_class` values the enum did not contain until
+ * migration 0219 (F-030) — three independent copies of a vocabulary that matched nothing, which is
+ * exactly how a fourth copy would have drifted once the enum finally gained the values.
+ */
+export const PORTAL_SESSION_CLASSES = AUTH_PORTAL_SESSION_CLASSES;
 
 // ── the facts the six predicates decide over (M31's three owned tables) ────────────────────────────────
 

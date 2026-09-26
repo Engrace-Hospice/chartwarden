@@ -13,8 +13,15 @@
 //     NOT reuse `decideInboundTrigger`: a delivery failure describes a MESSAGE, not a visit, and when the
 //     undelivered alert named an M19 call the response is to escalate THAT call rather than fork the
 //     narrative of one 2 a.m. event across two records.
+// F-043/#103 — the live bindings and the production ports. Until they landed, every decider in this
+// directory was called only by `oncall-consumers.test.ts`, so the relay deferred both triggers forever and
+// `triage_call.source` could only ever hold `manual` or `paper_origin`: no proactive welfare check had
+// ever been opened, and `source_outbox_event_id` — the column D10's redelivery guard is built on — had
+// never been written by anything.
+export * from "./bindings";
 export * from "./inbound-trigger";
 export * from "./m17-no-show";
 export * from "./m18-late-checkout";
 export * from "./m36-delivery-failed";
 export * from "./trigger-context";
+export * from "./trigger-ports-drizzle";

@@ -7,6 +7,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { evaluateVisitorCheckIn } from "@wardenx/inpatient";
 import { withOrgContext } from "@wardenx/tenancy";
 import type {
+  AdmissionId,
   IpuAdmissionReader,
   IpuBedAssignmentProvider,
   IpuCensusProvider,
@@ -22,7 +23,11 @@ import type {
 } from "@wardenx/types";
 import { and, eq, isNull, lte, ne, sql } from "drizzle-orm";
 import { getSeam } from "../../bootstrap/index";
-import type { VisitorConsentGate } from "./routes/service-drizzle";
+import type {
+  AdmissionDischargeReader,
+  RestraintOrderReader,
+  VisitorConsentGate,
+} from "./routes/service-drizzle";
 
 type RegisterSeam = <K extends SeamName>(name: K, impl: SeamContracts[K]) => void;
 
@@ -308,6 +313,37 @@ export function getIpuRoomingFactsReader(): PatientPrivacyFlagReader {
  */
 export function getIpuVisitorConsentGate(): VisitorConsentGate {
   return getSeam("ConsentEvaluator") as VisitorConsentGate;
+}
+
+/**
+ * F-069 — M11's `OrderProvider`, narrowed to the one method §2.10's restraint gate calls.
+ *
+ * `validateRestraintApply` takes `hasOrderingOrder: boolean` and refuses without it, quoting CoP
+ * 418.110 ("even in emergency"). The service used to answer that question with
+ * `body.orderingOrderId.length > 0` — whether the caller typed anything into the field — so the one
+ * control the regulation is explicit about was satisfied by any non-empty string, and the physician
+ * order the row claims to rest on was never looked for. M37 already `dependsOn` 11 and this seam has
+ * been registered the whole time.
+ */
+export function getIpuOrderReader(): RestraintOrderReader {
+  return getSeam("OrderProvider") as unknown as RestraintOrderReader;
+}
+
+/**
+ * F-070 — M6's `AdmissionStatusReader`, narrowed to the one method §2.2's discharge gate calls.
+ *
+ * `transitionAdmission`'s `discharge` case refuses unless the M6 admission has itself been discharged.
+ * The service used to read that boolean off the request body, so the guard has never refused anything.
+ * M37 already `dependsOn` 6 and M6 registers this seam for real (`06-admission/seams/index.ts`).
+ */
+export function getIpuAdmissionStatusReader(): AdmissionDischargeReader {
+  const reader = getSeam("AdmissionStatusReader");
+  return {
+    async getAdmissionSummary(organizationId, admissionId) {
+      const summary = await reader.getAdmissionSummary(organizationId, admissionId as AdmissionId);
+      return { status: summary.status, dischargedAt: summary.dischargedAt };
+    },
+  };
 }
 
 /** Register M37's eight §4.11 published seams over the Phase-0 deny-stubs (composition-root hook). */

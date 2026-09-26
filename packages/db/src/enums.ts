@@ -92,6 +92,15 @@ export const sessionClass = pgEnum("session_class", [
   "auditor", // magic-link + 2FA within an engagement window; read-only, no concurrency
   "external_collaborator", // one-time 30-min magic-link; scoped to one patient
   "funeral_home", // magic-link issued at/after death; scoped to one deceased patient
+  // The five classes M16/M19/M31's ABAC predicates have always compared against (migration 0219).
+  // They were absent for as long as those predicates have existed, so every one of them denied
+  // unconditionally — indistinguishable from a correct refusal, because the readers default an absent
+  // class to `staff` and then deny that too.
+  "patient_portal", // M31 — the patient's own portal session (grant kind `patient_self`)
+  "caregiver_portal", // M31 — a family caregiver / DPOA acting for the patient
+  "bereaved_portal", // M31/M16 — the post-death bereavement surface (grant `bereaved_mode`)
+  "external_triage_vendor", // M19 — an answering-service organization's session
+  "external_triage_operator", // M19 — one operator within that vendor
 ]);
 
 export const invitationStatus = pgEnum("invitation_status", [
@@ -222,6 +231,11 @@ export const codeSystemId = pgEnum("code_system_id", [
   "revenue",
   "carc",
   "rarc",
+  // CMS HOPE assessment-instrument items (J2030 / J2050 / J2051 …) — the authority that publishes the
+  // HOPE item roster, so `hope_j_codes` has a system to be curated under (F-059, mig 0229). Sits beside
+  // `revenue` / `carc` / `rarc` rather than the clinical terminologies: all four are administrative code
+  // lists published by a body, not concept graphs.
+  "cms_hope",
   // 'cpt' — reserved; not in enum until D4 unlocks (§7.8).
 ]);
 
@@ -348,7 +362,10 @@ export const alertRecipientResolver = pgEnum("alert_recipient_resolver", [
 ]);
 
 // `alert_outcome` — terminal fan-out outcome of a dispatched alert (§2.4.3).
-export const alertOutcome = pgEnum("alert_outcome", ["delivered", "partial", "failed"]);
+// F-109 (migration 0240): `pending` is the state §2.4.3's machine OPENS in and the enum never had, which
+// is why `alert.outcome` was `NOT NULL DEFAULT 'delivered'` — a column that cannot say "not settled yet"
+// says the most flattering thing it can, and nothing ever corrected it.
+export const alertOutcome = pgEnum("alert_outcome", ["pending", "delivered", "partial", "failed"]);
 
 // `notification_channel` — the per-recipient delivery channels (§3.6). `in_app` is the always-
 // available floor; `voice` is SOS-only (§2.5).
@@ -2006,6 +2023,17 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   "report_export", // M33 — an ad-hoc "export now" PDF/XLSX render (mig 0197)
   "report_schedule_run", // M33 — one scheduled-report OCCURRENCE's rendered artifact (mig 0197)
   "referral", // M6 — referral inbox artifact (mig 0219)
+  // F-099 (mig 0239) — the artifacts behind six render requests that were emitted from production write
+  // paths and consumed by nothing. M16's welcome packet files against `bereavement_letter` below, so it
+  // needs no value of its own; M27's three artifact kinds are three types because they are separately
+  // retained and separately superseded.
+  "hope_summary", // M10 — the printable HOPE assessment summary
+  "safety_incident_report", // M20 — the incident report PDF (M20 ships no PDF code)
+  "appeal_packet", // M25 — the tier-specific denial-appeal letter
+  "cost_report_ecr", // M27 — the electronic cost report itself
+  "cost_report_pi", // M27 — the provider-information supplement
+  "cost_report_supporting_doc", // M27 — a supporting document filed with the submission
+  "body_release_authorization", // M37 — `ipu_body_release.release_document_id`'s target
   "idg_patient_packet",
   "idg_minutes",
   "aide_poc",
@@ -3648,8 +3676,15 @@ export const credentialDiscipline = pgEnum("credential_discipline", [
   "msw",
   "chaplain",
   "volunteer",
+  /** PHYSICIAN — MD *or* DO. The two are the same level with the same scope, and this codebase has
+   *  always treated them as one value (`VISIT_PURPOSE_DISCIPLINES` documents its physician-intent
+   *  purposes as "MD/DO or NP" while listing `md`). `issuing_body` records which board issued it. */
   "md",
   "np",
+  /** Physician Assistant — a distinct licence BELOW MD/DO, added by 0221 (F-030). Not in any
+   *  `VISIT_PURPOSE_DISCIPLINES` list: holding the licence is not visit authority, and the Medicare
+   *  hospice face-to-face encounter is physician-or-NP only (42 CFR 418.22(a)(4)). */
+  "pa",
 ]);
 
 /** `credential_status` — GAP-093. `active` is the only status the D8 gate accepts; `suspended`/
@@ -3664,3 +3699,28 @@ export const credentialStatus = pgEnum("credential_status", ["active", "suspende
  *  because certifying a CMS-1984-14 filing is a named-officer act, not something every membership
  *  holding `cost_report.approve_for_submit` should inherit. Additive: a new authority adds a member. */
 export const elevatedApprovalKind = pgEnum("elevated_approval_kind", ["cost_report_approval"]);
+
+/** `device_attestation_platform` — the §12.1 mobile platform an attestation covers. Web is not a member:
+ *  a browser offers no hardware-backed posture assertion, so a browser session simply carries no
+ *  attestation and the §12.4 gate denies it, which is the intended answer rather than a missing value. */
+export const deviceAttestationPlatform = pgEnum("device_attestation_platform", ["ios", "android"]);
+
+/** `device_attestation_provider` — WHAT the platform's verdict rests on (SecHardening §12.4). The value is
+ *  the evidence class, not the outcome: it records how the assertion was proved so a later reviewer can
+ *  tell a hardware-backed attestation from a managed-fleet one. `managed_enrollment` is the org-secret
+ *  HMAC path M2 verifies itself; the two vendor providers are the hardware paths whose signature check
+ *  runs in the `DeviceAttestationVerifier` adapter. */
+export const deviceAttestationProvider = pgEnum("device_attestation_provider", [
+  "managed_enrollment",
+  "apple_app_attest",
+  "google_play_integrity",
+]);
+
+/** `device_attestation_verdict` — the platform's OWN answer about the device. `failed` rows are retained
+ *  rather than dropped: a device that repeatedly fails the §12.4 posture check is exactly the signal the
+ *  server-side audit complement is supposed to surface. */
+export const deviceAttestationVerdict = pgEnum("device_attestation_verdict", [
+  "attested",
+  "failed",
+  "revoked",
+]);

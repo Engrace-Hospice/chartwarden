@@ -104,11 +104,17 @@ export function ReferralNew(): JSX.Element {
             </Button>
           }
         >
-          <div style={muted}>Capture the referral quickly. The patient can be resolved after review.</div>
+          <div style={muted}>
+            Capture the referral quickly. The patient can be resolved after review.
+          </div>
         </PageHeader>
       }
     >
-      {error ? <div role="alert" style={alert}>{error}</div> : null}
+      {error ? (
+        <div role="alert" style={alert}>
+          {error}
+        </div>
+      ) : null}
       <div style={grid}>
         <section style={section}>
           <h2 style={heading}>Patient information</h2>
@@ -151,11 +157,17 @@ export function ReferralNew(): JSX.Element {
           </label>
           <label style={label}>
             Referrer name
-            <input value={form.referrerName} onChange={(ev) => setField("referrerName", ev.target.value)} />
+            <input
+              value={form.referrerName}
+              onChange={(ev) => setField("referrerName", ev.target.value)}
+            />
           </label>
           <label style={label}>
             Referrer phone
-            <input value={form.referrerPhone} onChange={(ev) => setField("referrerPhone", ev.target.value)} />
+            <input
+              value={form.referrerPhone}
+              onChange={(ev) => setField("referrerPhone", ev.target.value)}
+            />
           </label>
           <label style={label}>
             External referral ID

@@ -157,26 +157,55 @@ export const PLATFORM_OPS_ROLE_GRANTS = Object.fromEntries(
  * The `system_locked` permission floor (spec §3.4.1, M03-F06). Each CoP-required role
  * maps to the minimum permission set it must always retain. A tenant may rename or
  * *extend* a locked role but may not delete it or remove any of these keys.
+ *
+ * EVERY ENTRY MUST BE A KEY THE PERMISSION CATALOG ACTUALLY REGISTERS. Eight of the original
+ * twenty-seven were not (F-093) — they were written from the spec's illustrative names before the
+ * owning modules registered their real ones, and nothing ever compared the two. That is not a naming
+ * blemish: `role_permission.permission_key` REFERENCES `permission.key`, so a floor key with no
+ * catalog row cannot be GRANTED at all (the insert dies on the foreign key), which means the CoP floor
+ * for four of the six locked roles was unsatisfiable — and once §3.4.1 is genuinely enforced (it was
+ * not; see `role-store.ts`), `floorViolations` reports an ungrantable key as stripped on every edit, so
+ * a locked role becomes permanently uneditable. `permission-catalog.test.ts` now pins the invariant.
+ *
+ * The corrections, each a mapping onto the key the owning module registers rather than an invention:
+ *   `cti.sign`           → `cti.sign_hospice_md`  M6 splits the CTI signature into the hospice-MD and
+ *                                                 attending arms because 42 CFR 418.22(c)(1) requires
+ *                                                 both; the Medical Director's is the hospice-MD one.
+ *   `idg.participate`    → `idg.attend`           M14's participation key (CoP 418.56(a)(1)).
+ *   `order.cosign`       → `orders.cosign`        M11 registers the `orders.*` namespace, not `order.*`.
+ *   `care_plan.manage`   → `care_plan.finalize`   Of M7's seven `care_plan.*` keys this is the one that
+ *                                                 expresses AUTHORITY over the plan — `author` is
+ *                                                 per-discipline, `sign` fills one signer slot, and
+ *                                                 `idg_revise` belongs to the group, not the DON.
+ *   `assignment.manage`  → `patient.assign`       M5's caseload-assignment key — CoP 418.64(a)'s
+ *                                                 "assigns nursing staff to patients", exactly.
+ *   `report.read`        → `report.dashboard.read` There is no two-part `report.*` key; this is M33's
+ *                                                 read entry point.
+ *   `security_event.read`→ `incident.read`        No `security_event` resource exists anywhere in the
+ *                                                 platform — no table, no route, no key. §164.308's
+ *                                                 information-system-activity review is audit (already
+ *                                                 floored here twice) plus SECURITY-INCIDENT TRACKING,
+ *                                                 which is M30's `incident.*` surface.
  */
 export const SYSTEM_LOCKED_FLOORS = {
   // Medical Director — CoP 418.102.
   medical_director: [
     "patient.read",
-    "cti.sign",
-    "idg.participate",
-    "order.cosign",
+    "cti.sign_hospice_md",
+    "idg.attend",
+    "orders.cosign",
     "breakglass.invoke",
   ],
   // Director of Nursing (DON) — CoP 418.64(a).
   director_of_nursing: [
     "patient.read",
-    "care_plan.manage",
-    "idg.participate",
-    "assignment.manage",
+    "care_plan.finalize",
+    "idg.attend",
+    "patient.assign",
     "breakglass.invoke",
   ],
   // Administrator — CoP 418.100.
-  administrator: ["org.manage", "member.manage", "role.read", "report.read"],
+  administrator: ["org.manage", "member.manage", "role.read", "report.dashboard.read"],
   // Compliance Officer — CoP 418.52 / HIPAA.
   compliance_officer: [
     "audit.read",
@@ -194,7 +223,7 @@ export const SYSTEM_LOCKED_FLOORS = {
     "legalhold.read",
   ],
   // HIPAA Security Officer — §164.308(a)(2).
-  hipaa_security_officer: ["audit.read", "audit.integrity", "security_event.read"],
+  hipaa_security_officer: ["audit.read", "audit.integrity", "incident.read"],
 } as const satisfies Record<string, readonly string[]>;
 
 /** Union of the `system_locked` role keys (the CoP-required floor-bearing roles). */

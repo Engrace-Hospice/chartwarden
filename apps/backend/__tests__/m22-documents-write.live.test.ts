@@ -317,7 +317,9 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
     });
 
     const activeBefore = (
-      await admin.query("SELECT active_version_id FROM document WHERE id=$1", [completed.documentId])
+      await admin.query("SELECT active_version_id FROM document WHERE id=$1", [
+        completed.documentId,
+      ])
     ).rows[0].active_version_id;
     const linked = await svc.linkDocument(ORG_A, ACTOR, completed.documentId, {
       patientId: PATIENT,
@@ -332,20 +334,25 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
       versionsCount: 1,
     });
     const activeAfter = (
-      await admin.query("SELECT active_version_id FROM document WHERE id=$1", [completed.documentId])
+      await admin.query("SELECT active_version_id FROM document WHERE id=$1", [
+        completed.documentId,
+      ])
     ).rows[0].active_version_id;
     expect(activeAfter).toBe(activeBefore);
     expect(
-      (await admin.query("SELECT count(*)::int AS n FROM document_version WHERE document_id=$1", [
-        completed.documentId,
-      ])).rows[0].n,
+      (
+        await admin.query("SELECT count(*)::int AS n FROM document_version WHERE document_id=$1", [
+          completed.documentId,
+        ])
+      ).rows[0].n,
     ).toBe(1);
   });
 
   it("verified upload keeps PDF/images accepted and rejects unsupported MIME", async () => {
     const accepted = ["application/pdf", "image/jpeg", "image/png", "image/tiff"] as const;
     for (const [i, mimeType] of accepted.entries()) {
-      const aggregateType = i === 0 ? "code_status_directive" : i === 1 ? "consent_record" : "other";
+      const aggregateType =
+        i === 0 ? "code_status_directive" : i === 1 ? "consent_record" : "other";
       const sha256Hex = `${i + 1}`.repeat(64);
       const initiated = await verifiedUpload.initiate({
         organizationId: ORG_A,
@@ -436,9 +443,11 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
       }),
     ).rejects.toMatchObject({ statusCode: 404 });
     expect(
-      (await admin.query("SELECT count(*)::int AS n FROM document_upload WHERE title=$1", [
-        "Blocked referral upload",
-      ])).rows[0].n,
+      (
+        await admin.query("SELECT count(*)::int AS n FROM document_upload WHERE title=$1", [
+          "Blocked referral upload",
+        ])
+      ).rows[0].n,
     ).toBe(0);
   });
 
@@ -637,6 +646,93 @@ describe.skipIf(!DB_URL)("M22 Documents write lifecycle — LIVE Postgres (M22L)
       expect(rows.length).toBeGreaterThan(0);
       for (const row of rows) expect(row.v).toBe(MEMBERSHIP);
     }
+  });
+
+  // F-060 (#153) — `document_tag` had an INSERT, a DELETE-by-id and no SELECT anywhere in the
+  // codebase. The write half above has always been live-proven; what was never proven is that the
+  // row can be read BACK, because nothing could read it. Both queries the table's two indexes were
+  // built for run here for the first time.
+  it("F-060: tags are readable — listTags round-trips the row addTag wrote, and the DELETE is reachable from it", async () => {
+    const docId = await seedDocument(ORG_A);
+    const written = await svc.addTag(ORG_A, ACTOR, docId, {
+      tagKind: "structured",
+      tagKey: "phase",
+      tagValue: "IIA",
+    });
+    // The reload: nothing of the POST response survives it, so the id must come from the read.
+    const page = await svc.listTags(ORG_A, docId, undefined, undefined);
+    expect(page.items).toHaveLength(1);
+    expect(page.items[0]).toMatchObject({
+      id: written.id,
+      tagKind: "structured",
+      tagKey: "phase",
+      tagValue: "IIA",
+    });
+    // addTag's returned instant is the one the row actually carries — not a client-side guess.
+    expect(page.items[0]?.addedAt).toBe(written.addedAt);
+    await svc.removeTag(ORG_A, ACTOR, docId, page.items[0]!.id);
+    expect((await svc.listTags(ORG_A, docId, undefined, undefined)).items).toHaveLength(0);
+  });
+
+  it("F-060: a bare key round-trips as a null value, and newest-first ordering holds", async () => {
+    const docId = await seedDocument(ORG_A);
+    await svc.addTag(ORG_A, ACTOR, docId, { tagKind: "free", tagKey: "first", tagValue: null });
+    await svc.addTag(ORG_A, ACTOR, docId, { tagKind: "free", tagKey: "second", tagValue: "v" });
+    const { items } = await svc.listTags(ORG_A, docId, undefined, undefined);
+    expect(items.map((t) => t.tagKey)).toEqual(["second", "first"]);
+    expect(items.find((t) => t.tagKey === "first")?.tagValue).toBeNull();
+  });
+
+  it("F-060: listDocuments filters by tag — the cross-document query document_tag_org_key_idx exists for", async () => {
+    const match = await seedDocument(ORG_A);
+    const otherValue = await seedDocument(ORG_A);
+    const untagged = await seedDocument(ORG_A);
+    await svc.addTag(ORG_A, ACTOR, match, {
+      tagKind: "structured",
+      tagKey: "campaign",
+      tagValue: "hit",
+    });
+    await svc.addTag(ORG_A, ACTOR, otherValue, {
+      tagKind: "structured",
+      tagKey: "campaign",
+      tagValue: "miss",
+    });
+    // A document matching a key TWICE must stay one row — EXISTS, never a join.
+    await svc.addTag(ORG_A, ACTOR, match, {
+      tagKind: "structured",
+      tagKey: "campaign",
+      tagValue: "hit-again",
+    });
+
+    const byKey = await svc.listDocuments(ORG_A, { tagKey: "campaign" }, undefined, undefined);
+    const byKeyIds = byKey.items.map((d) => d.id);
+    expect(byKeyIds).toContain(match);
+    expect(byKeyIds).toContain(otherValue);
+    expect(byKeyIds).not.toContain(untagged);
+    expect(byKeyIds.filter((id) => id === match)).toHaveLength(1);
+
+    const byValue = await svc.listDocuments(
+      ORG_A,
+      { tagKey: "campaign", tagValue: "hit" },
+      undefined,
+      undefined,
+    );
+    expect(byValue.items.map((d) => d.id)).toEqual([match]);
+  });
+
+  it("F-060: RLS — org B cannot list org A's tags, and its tag filter never crosses the tenant", async () => {
+    const docId = await seedDocument(ORG_A);
+    await svc.addTag(ORG_A, ACTOR, docId, {
+      tagKind: "free",
+      tagKey: "private",
+      tagValue: "org A only",
+    });
+    // The document itself is a non-leaking 404 for org B, so its tags cannot even be asked for.
+    await expect(svc.listTags(ORG_B, docId, undefined, undefined)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    const crossTenant = await svc.listDocuments(ORG_B, { tagKey: "private" }, undefined, undefined);
+    expect(crossTenant.items).toHaveLength(0);
   });
 
   it("RLS: org B cannot patch or read org A's document (404 under the wardenx_app policy)", async () => {

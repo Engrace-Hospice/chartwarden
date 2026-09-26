@@ -160,12 +160,10 @@ describe.skipIf(!DB_URL)("GAP-060 M40 §7.6 governance writes — LIVE Postgres"
   it("still refuses a DIRECT merge_request read from wardenx_app (§3.6 posture unchanged)", async () => {
     // The function is the door; the table itself stays off the tenant pool entirely. If this ever
     // starts passing, someone widened the grant instead of using the writer surface.
-    const err = await handle.db
-      .execute("SELECT count(*) FROM merge_request" as never)
-      .then(
-        () => null,
-        (e: unknown) => e,
-      );
+    const err = await handle.db.execute("SELECT count(*) FROM merge_request" as never).then(
+      () => null,
+      (e: unknown) => e,
+    );
     const cause = (err as { cause?: { message?: string } } | null)?.cause;
     expect(`${cause?.message ?? err}`).toMatch(/permission denied/i);
   });
@@ -235,9 +233,9 @@ describe.skipIf(!DB_URL)("GAP-060 M40 §7.6 governance writes — LIVE Postgres"
     await svc.approveMerge(id, ACTOR);
     // Rejecting an executed merge would leave the canonical redirect in place while the paperwork said
     // the merge was refused — the worst of both records.
-    await expect(svc.rejectMerge(id, "changed my mind after execution", ACTOR)).rejects.toMatchObject(
-      { statusCode: 404 },
-    );
+    await expect(
+      svc.rejectMerge(id, "changed my mind after execution", ACTOR),
+    ).rejects.toMatchObject({ statusCode: 404 });
     expect((await physician(DUPLICATE)).status).toBe("merged");
   });
 
@@ -268,14 +266,17 @@ describe.skipIf(!DB_URL)("GAP-060 M40 §7.6 governance writes — LIVE Postgres"
       await seedProvisional("facility", { name: "Mercy Hospital", kind: "hospital" }),
       ACTOR,
     );
-    const facRow = (
-      await admin.query("SELECT * FROM facility WHERE id = $1", [fac.canonicalId])
-    ).rows[0];
+    const facRow = (await admin.query("SELECT * FROM facility WHERE id = $1", [fac.canonicalId]))
+      .rows[0];
     expect(facRow.name).toBe("Mercy Hospital");
     expect(facRow.kind).toBe("hospital");
 
     const pay = await svc.promoteProvisional(
-      await seedProvisional("payer", { name: "Oregon Medicaid", kind: "medicaid", stateCode: "OR" }),
+      await seedProvisional("payer", {
+        name: "Oregon Medicaid",
+        kind: "medicaid",
+        stateCode: "OR",
+      }),
       ACTOR,
     );
     const payRow = (await admin.query("SELECT * FROM payer WHERE id = $1", [pay.canonicalId]))

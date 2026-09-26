@@ -5,6 +5,15 @@
 // consumers (M5/M7/M8/M11/M13/M14/M16/M22/M23/M26/M27/M28/M30/M33/M36/M37) subscribe when they land;
 // M6 publishes the events now. Per §4.7 ("No webhook/Socket.IO") every M6 event is outbox-only.
 //
+// SPEC DIVERGENCE (F-101): M6 §4.4's own event table names M22 as a consumer of seven events M22's
+// §4.11 consumer table does not name — `referral.accepted`, `admission.draft_created`,
+// `admission.activated`, `admission.discharged`, `election.drafted`, `election.period_started`,
+// `loc.changed`. `declaredConsumers` is a ROUTING input, not a record of interest, so the two specs
+// disagreeing was not documentary: `buildOutboxRoutingPlan` defers an event while ANY declared
+// consumer is unbound, and M22 was never going to bind these. This file follows M22's table, which is
+// the one the consuming module owns. The per-event comments say which sibling event renders the
+// artifact each of the seven was presumably reaching for.
+//
 // Provenance marker (§4.4): `m6.discharge.created`, `m6.discharge.death` and
 // `m6.compliance.window.opened` are reused by the `AdmissionEventApplier` (M6-T11), which publishes
 // them with `source='m29_proposal_accept'` — modelled as an OPTIONAL payload field so route-emitted and
@@ -42,7 +51,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       source: Type.String({ minLength: 1 }),
       receivedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -53,7 +63,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       referralId: Type.String({ minLength: 1 }),
       outcome: Type.Optional(Type.Literal("eligible")),
     }),
-    declaredConsumers: ["m36"],
+    // Record-only, like every other referral transition: no M36 (or, for `converted`, M22) outbox
+    // consumer exists for these five — declaring one deferred every emission forever. M36 reads
+    // referral state through its notification seam; M22 renders from `m6.election.signed`.
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -61,7 +75,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m6",
     description: "Referral was placed in pending_information while intake waits for more data.",
     payloadSchema: Type.Object({ referralId: Type.String({ minLength: 1 }) }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -72,7 +87,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       referralId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -80,7 +96,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m6",
     description: "Referral was marked as duplicate.",
     payloadSchema: Type.Object({ referralId: Type.String({ minLength: 1 }) }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -92,7 +109,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36", "m22"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -106,7 +124,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       referralId: Type.String({ minLength: 1 }),
       outcome: Type.Union([Type.Literal("eligible"), Type.Literal("ineligible")]),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -119,7 +138,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36", "m22"],
+    // F-101 — `["m22"]` until now. M6 §4.4's table says "M36 …, M22" and the description says the
+    // acceptance "seeds the … election form prep", but M22 renders the election statement on
+    // `m6.election.signed`, and a form prepared for a draft that may never be signed is not a
+    // document. Record-only: the row IS the durable record of the acceptance.
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -131,7 +155,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       referralId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -146,7 +171,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       originalReferralReceivedAt: Type.String({ minLength: 1 }),
       withdrawnAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── admission ─────────────────────────────────────────────────────────────────────────────────
@@ -161,7 +187,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       referralId: Type.Optional(Type.String({ minLength: 1 })),
     }),
-    declaredConsumers: ["m22"],
+    // F-101 — `["m22"]` until now, which M6 §4.4 glosses as "(election form prep)". M22 publishes no
+    // blank-form template and its §4.11 consumer table does not name this event; the election
+    // statement is rendered from `m6.election.signed`, on the signed artifact.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -183,20 +212,31 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m5",
       "m7",
       "m8",
+      // #48 — M10 materializes the three admission-anchored HOPE timepoint windows here. It was absent
+      // from this list for the same reason nothing ever inserted a `hope_timepoint_schedule` row: the
+      // handshake the planners were written for had no consumer end.
       "m10",
       "m11",
       "m14",
+      // F-103 — M15 bootstraps the three CoP discipline plans here (§1.1 D10), and this list did not name
+      // it, so the consumer could not be bound and NOTHING in the repository has ever inserted a
+      // `discipline_care_plan` row. Every M15 write route is `/discipline-plans/:planId/…`, so that
+      // consumer is the only creation path there is.
+      "m15",
       "m16",
-      "m22",
+      // F-101 — `m22` was here. The activation is the platform's broadest clinical fan-out and it
+      // renders nothing: M22's §4.11 consumer table names six M6 events (election.signed, cti.signed,
+      // f2f.attested, nor.acknowledged, revocation.created, discharge.created) plus the two still
+      // deferred below, and this is not among them. Unlike the three that went record-only, this entry
+      // still defers — on the other twelve unbound consumers, which is the true reason.
       "m23",
       "m26",
       "m27",
       "m28",
       "m30",
-      "m33",
-      "m36",
       "m37",
     ],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -232,21 +272,33 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       dischargeDate: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: [
+      // #48 — M10 materializes the single 7-day Discharge RFA window here (D9 keeps it out of the
+      // admission plan because its `discharge_reason` branch is unknown until discharge happens).
+      "m10",
+      // F-102 — M11 and M12 each ship a complete, unit-tested discharge-cascade decider
+      // (`consumers/admission-discharged-discontinue.ts` / `consumers/admission-discharged-cascade.ts`)
+      // that nothing could bind, because this list did not name them and
+      // `assertBindableAgainstCatalog` refuses a binding whose module the catalog does not declare. Two
+      // one-sided absences that hid each other: every order and every medication order in flight when a
+      // patient was discharged stayed in flight forever.
+      "m11",
+      "m12",
       "m14",
       "m7",
       "m16",
       "m17",
-      "m22",
+      // F-101 — `m22` was here. The discharge SUMMARY is rendered from `m6.discharge.created`, which
+      // carries the `discharge_event` id M22 back-refs; this event carries the ADMISSION id and no
+      // renderable artifact. Still defers, on the other eight.
       "m23",
       "m26",
       "m27",
       "m28",
-      "m10",
       "m30",
-      "m33",
-      "m36",
       "m37",
+      "m36",
     ],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── election ──────────────────────────────────────────────────────────────────────────────────
@@ -266,7 +318,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       startDate: Type.Optional(Type.String({ minLength: 1 })),
       endDate: Type.Optional(Type.String({ minLength: 1 })),
     }),
-    declaredConsumers: ["m22"],
+    // F-101 — `["m22"]` until now. The statement M22 renders is the SIGNED one (`m6.election.signed`,
+    // just below, which is bound); a draft has no signature block to render and the CMS artifact is
+    // the executed election. Record-only.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -277,8 +332,18 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       electionStatementId: Type.String({ minLength: 1 }),
       electionPeriodId: Type.String({ minLength: 1 }),
       signedAt: Type.String({ minLength: 1 }),
+      /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
+       *  artifacts is patient-scoped by definition — there is no defensible null. */
+      patientId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m23"],
+    // F-106 — m23 REMOVED. M23's §4.4 map routes its NOE draft off this topic, but the two NOT NULL
+    // date columns a `noe_record` needs (`election_effective_date`, `window_target_at`) have no source
+    // at signing: the election's effective date lives only on `election_period.effective_at`, written
+    // by the `setActive` transition at admission ACTIVATION, and the statement carries only `signed_at`.
+    // M23 consumes `m6.election.period_started` instead — emitted from the transaction that writes that
+    // very column. `declaredConsumers` is a ROUTING input, so naming a module that does not consume the
+    // topic defers every emission forever (the F-101 reasoning, same file).
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   {
@@ -297,7 +362,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       endDate: Type.Optional(Type.String({ minLength: 1 })),
       admissionId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m23", "m26", "m27"],
+    // F-101 — `m22` was first in this list. A recertification period starting is a billing and cap
+    // fact, not a document: the recert artifact is the CTI, rendered from `m6.cti.signed`. Still
+    // defers, on m23/m26/m27.
+    declaredConsumers: ["m23", "m26", "m27"],
     isOutboxOnly: true,
   },
   {
@@ -334,6 +402,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       ctiId: Type.String({ minLength: 1 }),
       electionPeriodId: Type.String({ minLength: 1 }),
       signedAt: Type.String({ minLength: 1 }),
+      /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
+       *  artifacts is patient-scoped by definition — there is no defensible null. */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m22", "m23"],
     isOutboxOnly: true,
@@ -374,6 +445,25 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    // F-100 — the event the completion transition should always have emitted. It emitted
+    // `m6.f2f.scheduled` instead, which no schema could satisfy from the completion path and which said
+    // the wrong thing to every consumer. Record-only: completion is an internal step of the §2.3.4 chain
+    // and no module acts on it — `m6.f2f.attested` is the CoP-significant moment, and inventing a
+    // consumer here would put a permanently-pending row on every completion.
+    eventName: "m6.f2f.completed",
+    moduleOwner: "m6",
+    description:
+      "A scheduled face-to-face encounter was recorded as completed (route 30), with the CMS-418.22 window verdict.",
+    payloadSchema: Type.Object({
+      f2fId: Type.String({ minLength: 1 }),
+      electionPeriodId: Type.String({ minLength: 1 }),
+      encounterDate: Type.String({ minLength: 1 }),
+      withinWindow: Type.Boolean(),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m6.f2f.attested",
     moduleOwner: "m6",
     description: "A face-to-face encounter was attested (route 31); may back-ref an encounter.",
@@ -382,6 +472,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       electionPeriodId: Type.String({ minLength: 1 }),
       attestedAt: Type.String({ minLength: 1 }),
       encounterId: Type.Optional(Type.String({ minLength: 1 })),
+      /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
+       *  artifacts is patient-scoped by definition — there is no defensible null. */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m22", "m23"],
     isOutboxOnly: true,
@@ -418,7 +511,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       effectiveStart: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m23", "m26", "m27", "m30"],
+    // F-101 — `m22` was first in this list. A level-of-care change is a revenue and quality fact with
+    // no M22 template behind it. Still defers, on m23/m26/m27/m30.
+    declaredConsumers: ["m23", "m26", "m27", "m30"],
     isOutboxOnly: true,
   },
   // ── revocation / transfer ───────────────────────────────────────────────────────────────────────
@@ -430,6 +525,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       revocationEventId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
       revocationDate: Type.String({ minLength: 1 }),
+      /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
+       *  artifacts is patient-scoped by definition — there is no defensible null. */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m22", "m23", "m26"],
     isOutboxOnly: true,
@@ -442,6 +540,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       transferEventId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
       direction: Type.Union([Type.Literal("in"), Type.Literal("out")]),
+      /** F-107 — the transfer's own effective date (`transfer_event.effective_at`, NOT NULL). A
+       *  transfer-OUT ends the hospice benefit, and 42 CFR 418.26 dates the 5-day NOTR window from
+       *  THIS date. It is not derivable downstream: `transferOut` discharges the admission through
+       *  `dischargeAdmissionTx`, which stamps `admission.discharged_at = now()` — the instant the
+       *  paperwork was filed, not the day the transfer took effect. Both emit sites have it in hand. */
+      effectiveAt: Type.String({ minLength: 1 }),
       otherHospiceCcn: Type.Optional(Type.String({ minLength: 1 })),
     }),
     declaredConsumers: ["m13", "m22", "m23", "m26"],
@@ -458,6 +562,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Type.String({ minLength: 1 }),
       dischargeDate: Type.String({ minLength: 1 }),
       requiresMedicalDirectorCosign: Type.Boolean(),
+      /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
+       *  artifacts is patient-scoped by definition — there is no defensible null. */
+      patientId: Type.String({ minLength: 1 }),
       source: applierSource,
     }),
     declaredConsumers: ["m14", "m22", "m23", "m26"],
@@ -486,7 +593,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       dischargeEventId: Type.String({ minLength: 1 }),
       medicalDirectorCosignedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22"],
+    // F-094/#205 — M16's `consumers/m6-eligibility.ts` carries `decideCosignReceipt`, the D18
+    // gate-release decider for exactly this topic, and the catalog named only m22.
+    declaredConsumers: ["m16", "m22"],
     isOutboxOnly: true,
   },
   // ── notice of rights ────────────────────────────────────────────────────────────────────────────
@@ -498,6 +607,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       norAcknowledgmentId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
       acknowledgedAt: Type.String({ minLength: 1 }),
+      /** The chart M22 files the rendered CoP document against (F-100). Every one of these six
+       *  artifacts is patient-scoped by definition — there is no defensible null. */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m22", "m23"],
     isOutboxOnly: true,

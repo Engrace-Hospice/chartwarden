@@ -13,6 +13,7 @@
 import type {
   BillableEncounterReader,
   CarePlanReader,
+  CareTeamProvider,
   EncounterCreator,
   EvvBracketResolver,
   MileagePayrollReader,
@@ -85,6 +86,16 @@ export function getEncounterCreator(): EncounterCreator {
 /** M8 CONSUMES M7's §7.8 CarePlanReader (encounter authoring picker + the overdue sign-gate). */
 export function getCarePlanReader(): CarePlanReader {
   return getSeam("CarePlanReader");
+}
+
+/**
+ * M8 CONSUMES M5's CareTeamProvider — specifically its `primaryRnMembershipId` half, which answers the
+ * one question §2.4 D3 and §2.6 check 10 both turn on: WHO is this patient's RN case manager, as a
+ * membership in this org? A `cosignature_request` is routed to that membership, and an LPN/CHHA note
+ * with no such membership has no eligible cosigner and must not sign (#124).
+ */
+export function getCareTeamProvider(): CareTeamProvider {
+  return getSeam("CareTeamProvider");
 }
 
 /**

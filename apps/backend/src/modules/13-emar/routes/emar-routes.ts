@@ -162,6 +162,11 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
         scheduledDoseId: b.scheduledDoseId,
         comfortKitDeploymentId: b.comfortKitDeploymentId,
         encounterId: b.encounterId,
+        ivSessionId: b.ivSessionId,
+        // F-031 — the per-mode body reaches the service now. It used to stop at this boundary: the route
+        // lifted `route`/`administeredAmount`/`administeredUnit` out of it for the §5.11 rights and dropped
+        // the rest, so an IV rate or a titration reason a caller sent was parsed, validated, and discarded.
+        data: b.data,
         prn: b.prn
           ? {
               triggeringPrnReason: b.prn.triggeringPrnReason,
@@ -343,6 +348,8 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
             scheduledDoseId: r.scheduledDoseId,
             comfortKitDeploymentId: r.comfortKitDeploymentId,
             encounterId: r.encounterId,
+            ivSessionId: r.ivSessionId,
+            data: r.data,
             offlineCapture: r.offlineCapture,
             barcodeScan: r.barcodeScan,
             route: data.route,
@@ -466,6 +473,7 @@ export function registerEmarRoutes(app: FastifyInstance, deps: EmarRouteDeps): v
         id,
         lineId,
         b.decision as ReconciliationDecisionKind,
+        b.resultingMedicationOrderId,
       );
     },
   );

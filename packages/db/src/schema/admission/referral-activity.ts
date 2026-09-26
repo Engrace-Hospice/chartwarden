@@ -22,7 +22,10 @@ export const referralActivities = pgTable(
     version: bigint("version", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
-    referralCreatedIdx: index("referral_activity_referral_created_idx").on(t.referralId, t.createdAt),
+    referralCreatedIdx: index("referral_activity_referral_created_idx").on(
+      t.referralId,
+      t.createdAt,
+    ),
     orgCreatedIdx: index("referral_activity_org_created_idx").on(t.organizationId, t.createdAt),
   }),
 );

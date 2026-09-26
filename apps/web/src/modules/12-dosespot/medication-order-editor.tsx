@@ -1,23 +1,20 @@
 import { Button, PageHeader, PatientWorkspaceLayout, useApiClient } from "@wardenx/ui";
-import {
-  AdmissionLookupField,
-  MdmEntityLookupField,
-} from "../../shared/entity-lookups";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { useBlocker, useLocation, useNavigate, useParams } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
-import {
-  medicationFindingKey,
-  medicationFindings,
-  isMedicationFindingMapped,
-  type MedicationFinding,
-} from "./medication-validation";
+import { AdmissionLookupField, MdmEntityLookupField } from "../../shell/entity-lookups";
 import {
   emptyMedicationData,
   hydrateMedicationData,
   serializeMedicationData,
 } from "./medication-editor-model";
+import {
+  type MedicationFinding,
+  isMedicationFindingMapped,
+  medicationFindingKey,
+  medicationFindings,
+} from "./medication-validation";
 
 type Kind = "standard" | "controlled_substance" | "compounded";
 type Data = Record<string, any>;
@@ -35,8 +32,7 @@ const componentPlaceholders: Record<string, string> = {
   componentStrength: "Enter strength",
   quantityRatio: "Enter ratio",
 };
-const numberOrEmpty = (value: string): number | "" =>
-  value === "" ? "" : Number(value);
+const numberOrEmpty = (value: string): number | "" => (value === "" ? "" : Number(value));
 const emptyData = (): Data => emptyMedicationData();
 function Finding({
   path,
@@ -62,8 +58,7 @@ function Sig({
   findings: MedicationFinding[];
 }): JSX.Element {
   const sig = data.sigStructured ?? {};
-  const put = (k: string, v: unknown) =>
-    update({ ...data, sigStructured: { ...sig, [k]: v } });
+  const put = (k: string, v: unknown) => update({ ...data, sigStructured: { ...sig, [k]: v } });
   return (
     <fieldset>
       <legend>Directions for use (SIG)</legend>
@@ -79,9 +74,7 @@ function Sig({
               type="number"
               value={sig.doseQuantity ?? ""}
               placeholder="Enter amount"
-              onChange={(e) =>
-                put("doseQuantity", numberOrEmpty(e.target.value))
-              }
+              onChange={(e) => put("doseQuantity", numberOrEmpty(e.target.value))}
             />
           </label>
           <Finding path="sig.doseQuantity" findings={findings} />
@@ -199,48 +192,54 @@ function Components({
   findings: MedicationFinding[];
 }): JSX.Element {
   const parts = data.components ?? [];
+  // Components carry no id and every field is user-editable, so neither identity nor content is a
+  // stable key. Keep a parallel list of editor-local keys (never serialized into the payload),
+  // grown on render for hydrated/added rows and spliced on removal, so removing a middle component
+  // does not re-bind its neighbours' inputs.
+  const keysRef = useRef<string[]>([]);
+  const nextKeyRef = useRef(0);
+  const keys = keysRef.current;
+  while (keys.length < parts.length) keys.push(`component-${nextKeyRef.current++}`);
+  if (keys.length > parts.length) keys.length = parts.length;
   return (
     <fieldset>
       <legend>Compound components</legend>
       <p className="med-editor-help">Add each ingredient separately.</p>
       <Finding path="components" findings={findings} />
       {parts.map((part: Data, index: number) => (
-        <fieldset key={index} className="med-editor-component">
+        <fieldset key={keys[index]} className="med-editor-component">
           <legend>Component {index + 1}</legend>
-          {[
-            "componentName",
-            "rxnormRxcui",
-            "ndc",
-            "componentStrength",
-            "quantityRatio",
-          ].map((key) => (
-            <label key={key}>
-              {componentLabels[key] ?? key}
-              <input
-                value={part[key] ?? ""}
-                placeholder={componentPlaceholders[key] ?? "Enter value"}
-                onChange={(e) =>
-                  update({
-                    ...data,
-                    components: parts.map((p: Data, i: number) =>
-                      i === index ? { ...p, [key]: e.target.value } : p,
-                    ),
-                  })
-                }
-              />
-              <Finding path={`component.${index}.${key}`} findings={findings} />
-            </label>
-          ))}
+          {["componentName", "rxnormRxcui", "ndc", "componentStrength", "quantityRatio"].map(
+            (key) => (
+              <label key={key}>
+                {componentLabels[key] ?? key}
+                <input
+                  value={part[key] ?? ""}
+                  placeholder={componentPlaceholders[key] ?? "Enter value"}
+                  onChange={(e) =>
+                    update({
+                      ...data,
+                      components: parts.map((p: Data, i: number) =>
+                        i === index ? { ...p, [key]: e.target.value } : p,
+                      ),
+                    })
+                  }
+                />
+                <Finding path={`component.${index}.${key}`} findings={findings} />
+              </label>
+            ),
+          )}
           <button
             type="button"
             className="med-editor-secondary"
             aria-label={`Remove component ${index + 1}`}
-            onClick={() =>
+            onClick={() => {
+              keys.splice(index, 1);
               update({
                 ...data,
                 components: parts.filter((_: Data, i: number) => i !== index),
-              })
-            }
+              });
+            }}
           >
             Remove component
           </button>
@@ -251,10 +250,7 @@ function Components({
         onClick={() =>
           update({
             ...data,
-            components: [
-              ...parts,
-              { componentName: "", componentStrength: "", quantityRatio: "" },
-            ],
+            components: [...parts, { componentName: "", componentStrength: "", quantityRatio: "" }],
           })
         }
       >
@@ -264,36 +260,39 @@ function Components({
   );
 }
 export function MedicationOrderEditor(): JSX.Element {
-  const api = useApiClient(),
-    navigate = useNavigate(),
-    location = useLocation(),
-    { patientId: routePatientId, id } = useParams<{ patientId: string; id: string }>();
+  const api = useApiClient();
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { patientId: routePatientId, id } = useParams<{ patientId: string; id: string }>();
   const editing = !!id;
-  const [kind, setKind] = useState<Kind>("standard"),
-    [admission, setAdmission] = useState(""),
-    [data, setData] = useState<Data>(emptyData()),
-    [findings, setFindings] = useState<MedicationFinding[]>([]),
-    [name, setName] = useState(""),
-    [strength, setStrength] = useState(""),
-    [form, setForm] = useState(""),
-    [route, setRoute] = useState(""),
-    [rxcui, setRxcui] = useState(""),
-    [ndc, setNdc] = useState(""),
-    [physician, setPhysician] = useState(""),
-    [pharmacy, setPharmacy] = useState(""),
-    [discipline, setDiscipline] = useState("hospice_physician"),
-    [patientId, setPatientId] = useState(routePatientId ?? ""),
-    [query, setQuery] = useState(""),
-    [results, setResults] = useState<any[]>([]),
-    [searching, setSearching] = useState(false),
-    [searched, setSearched] = useState(false),
-    [searchError, setSearchError] = useState<string | null>(null),
-    [saving, setSaving] = useState(false),
-    [saveError, setSaveError] = useState<string | null>(null),
-    [loadingDraft, setLoadingDraft] = useState(!!id),
-    [dirty, setDirty] = useState(false),
-    [confirmDiscard, setConfirmDiscard] = useState(false);
-  const parent = editing && id ? `/medication-orders/${id}${location.search}` : `/patients/${patientId}/medications${location.search}`;
+  const [kind, setKind] = useState<Kind>("standard");
+  const [admission, setAdmission] = useState("");
+  const [data, setData] = useState<Data>(emptyData());
+  const [findings, setFindings] = useState<MedicationFinding[]>([]);
+  const [name, setName] = useState("");
+  const [strength, setStrength] = useState("");
+  const [form, setForm] = useState("");
+  const [route, setRoute] = useState("");
+  const [rxcui, setRxcui] = useState("");
+  const [ndc, setNdc] = useState("");
+  const [physician, setPhysician] = useState("");
+  const [pharmacy, setPharmacy] = useState("");
+  const [discipline, setDiscipline] = useState("hospice_physician");
+  const [patientId, setPatientId] = useState(routePatientId ?? "");
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<any[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searched, setSearched] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadingDraft, setLoadingDraft] = useState(!!id);
+  const [dirty, setDirty] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const parent =
+    editing && id
+      ? `/medication-orders/${id}${location.search}`
+      : `/patients/${patientId}/medications${location.search}`;
   const blocker = useBlocker(dirty && !saving);
   useEffect(() => {
     if (blocker.state === "blocked") setConfirmDiscard(true);
@@ -302,7 +301,7 @@ export function MedicationOrderEditor(): JSX.Element {
     if (blocker.state === "blocked") blocker.proceed();
     else navigate(parent);
   };
-  const requestCancel = () => dirty ? setConfirmDiscard(true) : navigate(parent);
+  const requestCancel = () => (dirty ? setConfirmDiscard(true) : navigate(parent));
   useEffect(() => {
     if (!id) return;
     let active = true;
@@ -313,14 +312,12 @@ export function MedicationOrderEditor(): JSX.Element {
         });
         if (!active) return;
         if (!r.data) {
-          setSaveError(
-            "Could not load this draft. Please return to the order and try again.",
-          );
+          setSaveError("Could not load this draft. Please return to the order and try again.");
           return;
         }
         const o = r.data;
-      setKind(o.medClass);
-      setPatientId(o.patientId);
+        setKind(o.medClass);
+        setPatientId(o.patientId);
         setAdmission(o.admissionId);
         setData(hydrateMedicationData(o.data, o.medClass));
         setName(o.drugName);
@@ -333,8 +330,7 @@ export function MedicationOrderEditor(): JSX.Element {
         setPharmacy(o.dispensingPharmacyMdmId ?? "");
         setDiscipline(o.prescriberDiscipline || "hospice_physician");
       } catch {
-        if (active)
-          setSaveError("Could not load this draft. Please try again.");
+        if (active) setSaveError("Could not load this draft. Please try again.");
       } finally {
         if (active) setLoadingDraft(false);
       }
@@ -382,9 +378,7 @@ export function MedicationOrderEditor(): JSX.Element {
         const nextFindings = medicationFindings(r.error);
         setFindings(nextFindings);
         if (!nextFindings.length)
-          setSaveError(
-            "Draft could not be saved. Please check the fields and try again.",
-          );
+          setSaveError("Draft could not be saved. Please check the fields and try again.");
         window.scrollTo({ top: 0, behavior: "smooth" });
         return;
       }
@@ -398,528 +392,536 @@ export function MedicationOrderEditor(): JSX.Element {
     }
   };
   return (
-    <PatientWorkspaceLayout banner={<PageHeader title={editing ? "Edit medication draft" : "New medication order"} breadcrumb={<button type="button" onClick={requestCancel}>← {editing ? "Medication order" : "Medications"}</button>} actions={<Button tone="secondary" onClick={requestCancel}>Cancel</Button>} />}>
+    <PatientWorkspaceLayout
+      banner={
+        <PageHeader
+          title={editing ? "Edit medication draft" : "New medication order"}
+          breadcrumb={
+            <button type="button" onClick={requestCancel}>
+              ← {editing ? "Medication order" : "Medications"}
+            </button>
+          }
+          actions={
+            <Button tone="secondary" onClick={requestCancel}>
+              Cancel
+            </Button>
+          }
+        />
+      }
+    >
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
         {patientId ? <ChartModuleRail patientId={patientId} current="medications" /> : null}
         <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
           <style>{editorStyles}</style>
           <div className="med-editor">
-        <p className="med-editor-intro">
-          {editing
-            ? "Update this draft before it is submitted for signature."
-            : "Complete the prescription details, then save a draft for review."}
-        </p>
-        <form
-          onChangeCapture={() => setDirty(true)}
-          onSubmit={(e) => {
-            e.preventDefault();
-            void save();
-          }}
-        >
-          {loadingDraft ? (
-            <p role="status" className="med-editor-message">
-              Loading draft…
+            <p className="med-editor-intro">
+              {editing
+                ? "Update this draft before it is submitted for signature."
+                : "Complete the prescription details, then save a draft for review."}
             </p>
-          ) : null}
-          {saveError ? (
-            <p role="alert" className="med-editor-error">
-              {saveError}
-            </p>
-          ) : null}
-          {confirmDiscard ? <div role="alert" className="med-editor-error">Discard unsaved changes? <button type="button" className="med-editor-secondary" onClick={() => { if (blocker.state === "blocked") blocker.reset(); setConfirmDiscard(false); }}>Keep editing</button> <button type="button" onClick={discardChanges}>Discard changes</button></div> : null}
-          {findings.length ? (
-            <p role="alert" className="med-editor-error">
-              Review {findings.length} issue{findings.length === 1 ? "" : "s"}{" "}
-              below before saving.
-            </p>
-          ) : null}
-          {findings.some((f) => !isMedicationFindingMapped(f.field)) ? (
-            <div role="alert" className="med-editor-error">
-              {findings
-                .filter((f) => !isMedicationFindingMapped(f.field))
-                .map((f, i) => (
-                  <p key={i}>{f.message}</p>
-                ))}
-            </div>
-          ) : null}
-          {!editing ? (
-            <AdmissionLookupField
-              label="Active admission"
-              patientId={patientId}
-              state="active"
-              value={admission}
-              onChange={setAdmission}
-            />
-          ) : null}
-          <Finding path="admissionId" findings={findings} />
-          <fieldset>
-            <legend>Medication and prescriber</legend>
-            <p className="med-editor-help">
-              Search the catalog to prefill the drug name and RxNorm code, or
-              enter the details manually.
-            </p>
-            <label>
-              RxNorm search
-              <input
-                value={query}
-                onKeyDown={(e) => {
-                  // The search control lives in the draft form; Enter must never submit a draft.
-                  if (e.key === "Enter") e.preventDefault();
-                }}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  setResults([]);
-                  setSearched(false);
-                  setSearchError(null);
-                }}
-                placeholder="Search by medication name"
-              />
-              <button
-                type="button"
-                disabled={searching || !query.trim()}
-                onClick={() =>
-                  void (async () => {
-                    setSearching(true);
-                    setSearchError(null);
-                    setResults([]);
-                    setSearched(false);
-                    try {
-                      const r = await api.GET("/api/v1/terminology/{system}/search", {
-                        params: {
-                          path: { system: "rxnorm" },
-                          query: { q: query.trim(), mode: "fuzzy", limit: 10 },
-                        },
-                      });
-                      if (r.error) throw new Error("Search unavailable");
-                      setResults(r.data?.results ?? []);
-                      setSearched(true);
-                    } catch {
-                      setSearchError(
-                        "RxNorm search is unavailable. You can enter the medication manually.",
-                      );
-                    } finally {
-                      setSearching(false);
-                    }
-                  })
-                }
-              >
-                {searching ? "Searching…" : "Search"}
-              </button>
-            </label>
-            {!editing ? (
-              <>
-                <label>
-                  RxNorm RxCUI
-                  <input
-                    value={rxcui}
-                    placeholder="Enter RxCUI"
-                    onChange={(e) => setRxcui(e.target.value)}
-                  />
-                </label>
-                <Finding path="rxnormRxcui" findings={findings} />
-              </>
-            ) : null}
-            {!editing ? (
-              <>
-                <label>
-                  NDC
-                  <input
-                    value={ndc}
-                    placeholder="Enter NDC"
-                    onChange={(e) => setNdc(e.target.value)}
-                  />
-                </label>
-                <Finding path="ndc" findings={findings} />
-              </>
-            ) : null}
-            {searchError ? (
-              <span role="alert" className="med-editor-finding">
-                {searchError}
-              </span>
-            ) : null}
-            {searched && !results.length ? (
-              <span role="status" className="med-editor-help">
-                No matches found. Enter the details manually.
-              </span>
-            ) : null}
-            {results.length ? (
-              <div
-                className="med-editor-results"
-                aria-label="RxNorm search results"
-              >
-                <p className="med-editor-help">
-                  Choose a result to fill the name and code:
+            <form
+              onChangeCapture={() => setDirty(true)}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void save();
+              }}
+            >
+              {loadingDraft ? (
+                <p className="med-editor-message">
+                  <output>Loading draft…</output>
                 </p>
-                {results.map((r) => (
+              ) : null}
+              {saveError ? (
+                <p role="alert" className="med-editor-error">
+                  {saveError}
+                </p>
+              ) : null}
+              {confirmDiscard ? (
+                <div role="alert" className="med-editor-error">
+                  Discard unsaved changes?{" "}
                   <button
                     type="button"
-                    key={r.code}
+                    className="med-editor-secondary"
                     onClick={() => {
-                      setRxcui(r.code);
-                      setName(r.display);
-                      setResults([]);
-                      setSearched(false);
+                      if (blocker.state === "blocked") blocker.reset();
+                      setConfirmDiscard(false);
                     }}
                   >
-                    {r.display} <small>({r.code})</small>
+                    Keep editing
+                  </button>{" "}
+                  <button type="button" onClick={discardChanges}>
+                    Discard changes
                   </button>
-                ))}
-              </div>
-            ) : null}
-            <div className="med-editor-pair">
-              <div className="med-editor-pair-field">
+                </div>
+              ) : null}
+              {findings.length ? (
+                <p role="alert" className="med-editor-error">
+                  Review {findings.length} issue{findings.length === 1 ? "" : "s"} below before
+                  saving.
+                </p>
+              ) : null}
+              {findings.some((f) => !isMedicationFindingMapped(f.field)) ? (
+                <div role="alert" className="med-editor-error">
+                  {findings
+                    .filter((f) => !isMedicationFindingMapped(f.field))
+                    .map((f) => (
+                      // Findings carry no id; field + code + message identifies one uniquely.
+                      <p key={`${f.field ?? ""}|${f.code}|${f.message}`}>{f.message}</p>
+                    ))}
+                </div>
+              ) : null}
+              {!editing ? (
+                <AdmissionLookupField
+                  label="Active admission"
+                  patientId={patientId}
+                  state="active"
+                  value={admission}
+                  onChange={setAdmission}
+                />
+              ) : null}
+              <Finding path="admissionId" findings={findings} />
+              <fieldset>
+                <legend>Medication and prescriber</legend>
+                <p className="med-editor-help">
+                  Search the catalog to prefill the drug name and RxNorm code, or enter the details
+                  manually.
+                </p>
                 <label>
-                  Drug name
+                  RxNorm search
                   <input
-                    value={name}
-                    placeholder="Enter medication name"
-                    onChange={(e) => setName(e.target.value)}
+                    value={query}
+                    onKeyDown={(e) => {
+                      // The search control lives in the draft form; Enter must never submit a draft.
+                      if (e.key === "Enter") e.preventDefault();
+                    }}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setResults([]);
+                      setSearched(false);
+                      setSearchError(null);
+                    }}
+                    placeholder="Search by medication name"
                   />
+                  <button
+                    type="button"
+                    disabled={searching || !query.trim()}
+                    onClick={() =>
+                      void (async () => {
+                        setSearching(true);
+                        setSearchError(null);
+                        setResults([]);
+                        setSearched(false);
+                        try {
+                          const r = await api.GET("/api/v1/terminology/{system}/search", {
+                            params: {
+                              path: { system: "rxnorm" },
+                              query: { q: query.trim(), mode: "fuzzy", limit: 10 },
+                            },
+                          });
+                          if (r.error) throw new Error("Search unavailable");
+                          setResults(r.data?.results ?? []);
+                          setSearched(true);
+                        } catch {
+                          setSearchError(
+                            "RxNorm search is unavailable. You can enter the medication manually.",
+                          );
+                        } finally {
+                          setSearching(false);
+                        }
+                      })
+                    }
+                  >
+                    {searching ? "Searching…" : "Search"}
+                  </button>
                 </label>
-                <Finding path="drugName" findings={findings} />
-              </div>
-              <div className="med-editor-pair-field">
-                <label>
-                  Strength
-                  <input
-                    value={strength}
-                    placeholder="Enter strength"
-                    onChange={(e) => setStrength(e.target.value)}
-                  />
-                </label>
-                <Finding path="strength" findings={findings} />
-              </div>
-            </div>
-            {!editing ? (
-              <>
+                {!editing ? (
+                  <>
+                    <label>
+                      RxNorm RxCUI
+                      <input
+                        value={rxcui}
+                        placeholder="Enter RxCUI"
+                        onChange={(e) => setRxcui(e.target.value)}
+                      />
+                    </label>
+                    <Finding path="rxnormRxcui" findings={findings} />
+                  </>
+                ) : null}
+                {!editing ? (
+                  <>
+                    <label>
+                      NDC
+                      <input
+                        value={ndc}
+                        placeholder="Enter NDC"
+                        onChange={(e) => setNdc(e.target.value)}
+                      />
+                    </label>
+                    <Finding path="ndc" findings={findings} />
+                  </>
+                ) : null}
+                {searchError ? (
+                  <span role="alert" className="med-editor-finding">
+                    {searchError}
+                  </span>
+                ) : null}
+                {searched && !results.length ? (
+                  <output className="med-editor-help">
+                    No matches found. Enter the details manually.
+                  </output>
+                ) : null}
+                {results.length ? (
+                  <div className="med-editor-results" aria-label="RxNorm search results">
+                    <p className="med-editor-help">Choose a result to fill the name and code:</p>
+                    {results.map((r) => (
+                      <button
+                        type="button"
+                        key={r.code}
+                        onClick={() => {
+                          setRxcui(r.code);
+                          setName(r.display);
+                          setResults([]);
+                          setSearched(false);
+                        }}
+                      >
+                        {r.display} <small>({r.code})</small>
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 <div className="med-editor-pair">
                   <div className="med-editor-pair-field">
                     <label>
-                      Dose form
+                      Drug name
                       <input
-                        value={form}
-                        placeholder="Enter dose form"
-                        onChange={(e) => setForm(e.target.value)}
+                        value={name}
+                        placeholder="Enter medication name"
+                        onChange={(e) => setName(e.target.value)}
                       />
                     </label>
-                    <Finding path="doseForm" findings={findings} />
+                    <Finding path="drugName" findings={findings} />
                   </div>
                   <div className="med-editor-pair-field">
                     <label>
-                      Route
+                      Strength
                       <input
-                        value={route}
-                        placeholder="Enter route"
-                        onChange={(e) => setRoute(e.target.value)}
+                        value={strength}
+                        placeholder="Enter strength"
+                        onChange={(e) => setStrength(e.target.value)}
                       />
                     </label>
-                    <Finding path="route" findings={findings} />
+                    <Finding path="strength" findings={findings} />
                   </div>
                 </div>
-                <MdmEntityLookupField
-                  kind="physician"
-                  label="Prescribing physician"
-                  value={physician}
-                  onChange={setPhysician}
-                />
-                <Finding path="prescribingPhysicianMdmId" findings={findings} />
-                <MdmEntityLookupField
-                  kind="pharmacy"
-                  label="Dispensing pharmacy"
-                  value={pharmacy}
-                  onChange={setPharmacy}
-                />
-                <Finding path="dispensingPharmacyMdmId" findings={findings} />
-                <label>
-                  Prescriber discipline
-                  <input
-                    value={discipline}
-                    placeholder="Enter discipline"
-                    onChange={(e) => setDiscipline(e.target.value)}
-                  />
-                </label>
-                <Finding path="prescriberDiscipline" findings={findings} />
-              </>
-            ) : null}
-          </fieldset>
-          <div className="med-editor-kind">
-            <label>
-              Medication class
-              <select
-                disabled={editing}
-                value={kind}
-                onChange={(e) => {
-                  const next = e.target.value as Kind;
-                  setKind(next);
-                  setData(emptyMedicationData(next));
-                }}
-              >
-                {["standard", "controlled_substance", "compounded"].map((x) => (
-                  <option key={x}>{x}</option>
-                ))}
-              </select>
-            </label>
-            <Finding path="medClass" findings={findings} />
-            {!editing ? (
-              <p className="med-editor-help">
-                Changing the class resets directions and dispensing fields
-                already entered.
-              </p>
-            ) : null}
-          </div>
-          {kind === "controlled_substance" ? (
-            <fieldset>
-              <legend>Controlled requirements</legend>
-              <div className="med-editor-pair">
-                <div className="med-editor-pair-field">
-                  <label>
-                    DEA schedule
-                    <select
-                      value={data.deaSchedule ?? ""}
-                      onChange={(e) =>
-                        setData({
-                          ...data,
-                          deaSchedule: e.target.value,
-                          refillsAuthorized:
-                            e.target.value === "II"
-                              ? 0
-                              : data.refillsAuthorized,
-                        })
-                      }
-                    >
-                      <option value="">Select schedule</option>
-                      {["II", "III", "IV", "V"].map((x) => (
-                        <option key={x}>{x}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <Finding path="deaSchedule" findings={findings} />
-                </div>
-                <div className="med-editor-pair-field">
-                  <label>
-                    Prescriber DEA
-                    <input
-                      value={data.prescriberDea ?? ""}
-                      placeholder="Enter DEA identifier"
-                      onChange={(e) =>
-                        setData({ ...data, prescriberDea: e.target.value })
-                      }
+                {!editing ? (
+                  <>
+                    <div className="med-editor-pair">
+                      <div className="med-editor-pair-field">
+                        <label>
+                          Dose form
+                          <input
+                            value={form}
+                            placeholder="Enter dose form"
+                            onChange={(e) => setForm(e.target.value)}
+                          />
+                        </label>
+                        <Finding path="doseForm" findings={findings} />
+                      </div>
+                      <div className="med-editor-pair-field">
+                        <label>
+                          Route
+                          <input
+                            value={route}
+                            placeholder="Enter route"
+                            onChange={(e) => setRoute(e.target.value)}
+                          />
+                        </label>
+                        <Finding path="route" findings={findings} />
+                      </div>
+                    </div>
+                    <MdmEntityLookupField
+                      kind="physician"
+                      label="Prescribing physician"
+                      value={physician}
+                      onChange={setPhysician}
                     />
-                  </label>
-                  <Finding path="prescriberDea" findings={findings} />
-                </div>
-              </div>
-            </fieldset>
-          ) : null}
-          {kind === "compounded" ? (
-            <>
-              <MdmEntityLookupField
-                kind="pharmacy"
-                label="Compounding pharmacy"
-                value={data.compoundingPharmacyMdmId ?? ""}
-                onChange={(v) =>
-                  setData({ ...data, compoundingPharmacyMdmId: v })
-                }
-              />
-              <Finding path="compoundingPharmacyMdmId" findings={findings} />
-              <label>
-                Formulation description
-                <textarea
-                  value={data.formulationDescription ?? ""}
-                  placeholder="Describe the formulation"
-                  onChange={(e) =>
-                    setData({ ...data, formulationDescription: e.target.value })
-                  }
-                />
-              </label>
-              <Finding path="formulationDescription" findings={findings} />
-              <label>
-                <input
-                  type="checkbox"
-                  checked={data.containsControlled ?? false}
-                  onChange={(e) =>
-                    setData(
-                      e.target.checked
-                        ? { ...data, containsControlled: true }
-                        : (() => {
-                            const { deaSchedule: _dea, ...withoutDea } = data;
-                            return { ...withoutDea, containsControlled: false };
-                          })(),
-                    )
-                  }
-                />{" "}
-                Contains controlled substance
-              </label>
-              <Finding path="containsControlled" findings={findings} />
-              {data.containsControlled === true ? (
+                    <Finding path="prescribingPhysicianMdmId" findings={findings} />
+                    <MdmEntityLookupField
+                      kind="pharmacy"
+                      label="Dispensing pharmacy"
+                      value={pharmacy}
+                      onChange={setPharmacy}
+                    />
+                    <Finding path="dispensingPharmacyMdmId" findings={findings} />
+                    <label>
+                      Prescriber discipline
+                      <input
+                        value={discipline}
+                        placeholder="Enter discipline"
+                        onChange={(e) => setDiscipline(e.target.value)}
+                      />
+                    </label>
+                    <Finding path="prescriberDiscipline" findings={findings} />
+                  </>
+                ) : null}
+              </fieldset>
+              <div className="med-editor-kind">
                 <label>
-                  DEA schedule
+                  Medication class
                   <select
-                    value={data.deaSchedule ?? ""}
-                    onChange={(e) =>
-                      setData({ ...data, deaSchedule: e.target.value })
-                    }
+                    disabled={editing}
+                    value={kind}
+                    onChange={(e) => {
+                      const next = e.target.value as Kind;
+                      setKind(next);
+                      setData(emptyMedicationData(next));
+                    }}
                   >
-                    <option value="">Select schedule</option>
-                    {["II", "III", "IV", "V"].map((x) => (
+                    {["standard", "controlled_substance", "compounded"].map((x) => (
                       <option key={x}>{x}</option>
                     ))}
                   </select>
-                  <Finding path="deaSchedule" findings={findings} />
                 </label>
+                <Finding path="medClass" findings={findings} />
+                {!editing ? (
+                  <p className="med-editor-help">
+                    Changing the class resets directions and dispensing fields already entered.
+                  </p>
+                ) : null}
+              </div>
+              {kind === "controlled_substance" ? (
+                <fieldset>
+                  <legend>Controlled requirements</legend>
+                  <div className="med-editor-pair">
+                    <div className="med-editor-pair-field">
+                      <label>
+                        DEA schedule
+                        <select
+                          value={data.deaSchedule ?? ""}
+                          onChange={(e) =>
+                            setData({
+                              ...data,
+                              deaSchedule: e.target.value,
+                              refillsAuthorized:
+                                e.target.value === "II" ? 0 : data.refillsAuthorized,
+                            })
+                          }
+                        >
+                          <option value="">Select schedule</option>
+                          {["II", "III", "IV", "V"].map((x) => (
+                            <option key={x}>{x}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <Finding path="deaSchedule" findings={findings} />
+                    </div>
+                    <div className="med-editor-pair-field">
+                      <label>
+                        Prescriber DEA
+                        <input
+                          value={data.prescriberDea ?? ""}
+                          placeholder="Enter DEA identifier"
+                          onChange={(e) => setData({ ...data, prescriberDea: e.target.value })}
+                        />
+                      </label>
+                      <Finding path="prescriberDea" findings={findings} />
+                    </div>
+                  </div>
+                </fieldset>
               ) : null}
-              <Components data={data} update={setData} findings={findings} />
-            </>
-          ) : null}
-          <Sig data={data} update={setData} findings={findings} />
-          <fieldset>
-            <legend>Dispensing and context</legend>
-            <div className="med-editor-pair med-editor-pair--value-unit">
-              <div className="med-editor-pair-field">
+              {kind === "compounded" ? (
+                <>
+                  <MdmEntityLookupField
+                    kind="pharmacy"
+                    label="Compounding pharmacy"
+                    value={data.compoundingPharmacyMdmId ?? ""}
+                    onChange={(v) => setData({ ...data, compoundingPharmacyMdmId: v })}
+                  />
+                  <Finding path="compoundingPharmacyMdmId" findings={findings} />
+                  <label>
+                    Formulation description
+                    <textarea
+                      value={data.formulationDescription ?? ""}
+                      placeholder="Describe the formulation"
+                      onChange={(e) => setData({ ...data, formulationDescription: e.target.value })}
+                    />
+                  </label>
+                  <Finding path="formulationDescription" findings={findings} />
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={data.containsControlled ?? false}
+                      onChange={(e) =>
+                        setData(
+                          e.target.checked
+                            ? { ...data, containsControlled: true }
+                            : (() => {
+                                const { deaSchedule: _dea, ...withoutDea } = data;
+                                return { ...withoutDea, containsControlled: false };
+                              })(),
+                        )
+                      }
+                    />{" "}
+                    Contains controlled substance
+                  </label>
+                  <Finding path="containsControlled" findings={findings} />
+                  {data.containsControlled === true ? (
+                    <label>
+                      DEA schedule
+                      <select
+                        value={data.deaSchedule ?? ""}
+                        onChange={(e) => setData({ ...data, deaSchedule: e.target.value })}
+                      >
+                        <option value="">Select schedule</option>
+                        {["II", "III", "IV", "V"].map((x) => (
+                          <option key={x}>{x}</option>
+                        ))}
+                      </select>
+                      <Finding path="deaSchedule" findings={findings} />
+                    </label>
+                  ) : null}
+                  <Components data={data} update={setData} findings={findings} />
+                </>
+              ) : null}
+              <Sig data={data} update={setData} findings={findings} />
+              <fieldset>
+                <legend>Dispensing and context</legend>
+                <div className="med-editor-pair med-editor-pair--value-unit">
+                  <div className="med-editor-pair-field">
+                    <label>
+                      Dispense quantity
+                      <input
+                        type="number"
+                        value={data.dispenseQuantity?.value ?? ""}
+                        placeholder="Enter quantity"
+                        onChange={(e) =>
+                          setData({
+                            ...data,
+                            dispenseQuantity: {
+                              ...(data.dispenseQuantity ?? {}),
+                              value: numberOrEmpty(e.target.value),
+                            },
+                          })
+                        }
+                      />
+                    </label>
+                    <Finding path="quantity" findings={findings} />
+                    <Finding path="quantity.value" findings={findings} />
+                  </div>
+                  <div className="med-editor-pair-field">
+                    <label>
+                      Dispense quantity unit
+                      <input
+                        value={data.dispenseQuantity?.unit ?? ""}
+                        placeholder="Enter unit"
+                        onChange={(e) =>
+                          setData({
+                            ...data,
+                            dispenseQuantity: {
+                              ...(data.dispenseQuantity ?? {}),
+                              unit: e.target.value,
+                            },
+                          })
+                        }
+                      />
+                    </label>
+                    <Finding path="quantity.unit" findings={findings} />
+                  </div>
+                </div>
+                <div className="med-editor-pair">
+                  <div className="med-editor-pair-field">
+                    <label>
+                      Days supply
+                      <input
+                        type="number"
+                        value={data.daysSupply ?? ""}
+                        placeholder="Enter days"
+                        onChange={(e) =>
+                          setData({
+                            ...data,
+                            daysSupply: numberOrEmpty(e.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <Finding path="daysSupply" findings={findings} />
+                  </div>
+                  <div className="med-editor-pair-field">
+                    <label>
+                      Refills
+                      <input
+                        type="number"
+                        disabled={data.deaSchedule === "II"}
+                        value={data.deaSchedule === "II" ? 0 : (data.refillsAuthorized ?? 0)}
+                        onChange={(e) =>
+                          setData({
+                            ...data,
+                            refillsAuthorized: numberOrEmpty(e.target.value),
+                          })
+                        }
+                      />
+                    </label>
+                    <Finding path="refillsAuthorized" findings={findings} />
+                  </div>
+                </div>
                 <label>
-                  Dispense quantity
                   <input
-                    type="number"
-                    value={data.dispenseQuantity?.value ?? ""}
-                    placeholder="Enter quantity"
-                    onChange={(e) =>
-                      setData({
-                        ...data,
-                        dispenseQuantity: {
-                          ...(data.dispenseQuantity ?? {}),
-                          value: numberOrEmpty(e.target.value),
-                        },
-                      })
-                    }
+                    type="checkbox"
+                    disabled={kind === "compounded"}
+                    checked={kind === "compounded" ? true : (data.daw ?? false)}
+                    onChange={(e) => setData({ ...data, daw: e.target.checked })}
+                  />{" "}
+                  Dispense as written (DAW)
+                </label>
+                <Finding path="daw" findings={findings} />
+                <label>
+                  Indication
+                  <textarea
+                    value={data.indication ?? ""}
+                    placeholder="Document the indication"
+                    onChange={(e) => setData({ ...data, indication: e.target.value })}
                   />
                 </label>
-                <Finding path="quantity" findings={findings} />
-                <Finding path="quantity.value" findings={findings} />
-              </div>
-              <div className="med-editor-pair-field">
+                <Finding path="indication" findings={findings} />
                 <label>
-                  Dispense quantity unit
-                  <input
-                    value={data.dispenseQuantity?.unit ?? ""}
-                    placeholder="Enter unit"
-                    onChange={(e) =>
-                      setData({
-                        ...data,
-                        dispenseQuantity: {
-                          ...(data.dispenseQuantity ?? {}),
-                          unit: e.target.value,
-                        },
-                      })
-                    }
+                  Clinical justification
+                  <textarea
+                    value={data.clinicalJustification ?? ""}
+                    placeholder="Document the clinical rationale"
+                    onChange={(e) => setData({ ...data, clinicalJustification: e.target.value })}
                   />
                 </label>
-                <Finding path="quantity.unit" findings={findings} />
-              </div>
-            </div>
-            <div className="med-editor-pair">
-              <div className="med-editor-pair-field">
+                <Finding path="clinicalJustification" findings={findings} />
                 <label>
-                  Days supply
-                  <input
-                    type="number"
-                    value={data.daysSupply ?? ""}
-                    placeholder="Enter days"
-                    onChange={(e) =>
-                      setData({
-                        ...data,
-                        daysSupply: numberOrEmpty(e.target.value),
-                      })
-                    }
+                  Notes
+                  <textarea
+                    value={data.notes ?? ""}
+                    placeholder="Additional notes, if needed"
+                    onChange={(e) => setData({ ...data, notes: e.target.value })}
                   />
                 </label>
-                <Finding path="daysSupply" findings={findings} />
+                <Finding path="notes" findings={findings} />
+              </fieldset>
+              <div className="med-editor-footer">
+                <span className="med-editor-help">Saving keeps this order as a draft.</span>
+                <div className="med-editor-footer-actions">
+                  <button
+                    type="button"
+                    className="med-editor-secondary"
+                    onClick={requestCancel}
+                    disabled={saving}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={saving || loadingDraft || (editing && !admission)}
+                  >
+                    {saving ? "Saving…" : "Save draft"}
+                  </button>
+                </div>
               </div>
-              <div className="med-editor-pair-field">
-                <label>
-                  Refills
-                  <input
-                    type="number"
-                    disabled={data.deaSchedule === "II"}
-                    value={
-                      data.deaSchedule === "II"
-                        ? 0
-                        : (data.refillsAuthorized ?? 0)
-                    }
-                    onChange={(e) =>
-                      setData({
-                        ...data,
-                        refillsAuthorized: numberOrEmpty(e.target.value),
-                      })
-                    }
-                  />
-                </label>
-                <Finding path="refillsAuthorized" findings={findings} />
-              </div>
-            </div>
-            <label>
-              <input
-                type="checkbox"
-                disabled={kind === "compounded"}
-                checked={kind === "compounded" ? true : (data.daw ?? false)}
-                onChange={(e) => setData({ ...data, daw: e.target.checked })}
-              />{" "}
-              Dispense as written (DAW)
-            </label>
-            <Finding path="daw" findings={findings} />
-            <label>
-              Indication
-              <textarea
-                value={data.indication ?? ""}
-                placeholder="Document the indication"
-                onChange={(e) =>
-                  setData({ ...data, indication: e.target.value })
-                }
-              />
-            </label>
-            <Finding path="indication" findings={findings} />
-            <label>
-              Clinical justification
-              <textarea
-                value={data.clinicalJustification ?? ""}
-                placeholder="Document the clinical rationale"
-                onChange={(e) =>
-                  setData({ ...data, clinicalJustification: e.target.value })
-                }
-              />
-            </label>
-            <Finding path="clinicalJustification" findings={findings} />
-            <label>
-              Notes
-              <textarea
-                value={data.notes ?? ""}
-                placeholder="Additional notes, if needed"
-                onChange={(e) => setData({ ...data, notes: e.target.value })}
-              />
-            </label>
-            <Finding path="notes" findings={findings} />
-          </fieldset>
-          <div className="med-editor-footer">
-            <span className="med-editor-help">
-              Saving keeps this order as a draft.
-            </span>
-            <div className="med-editor-footer-actions">
-              <button
-                type="button"
-                className="med-editor-secondary"
-                onClick={requestCancel}
-                disabled={saving}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={saving || loadingDraft || (editing && !admission)}
-              >
-                {saving ? "Saving…" : "Save draft"}
-              </button>
-            </div>
-          </div>
-        </form>
+            </form>
           </div>
         </div>
       </div>

@@ -9,6 +9,7 @@
  * Run:     bun run db:seed:patients
  */
 import { readFileSync } from "node:fs";
+import { group } from "../lib/strict";
 import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
 
 const API = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
@@ -70,7 +71,7 @@ function adminPassword(): string {
   const m = line?.match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
   if (!m)
     throw new Error("could not read admin password from CREDENTIALS.local.md (run db:seed first)");
-  return m[2];
+  return group(m, 2, "CREDENTIALS.local.md password cell");
 }
 
 /** Minimal cookie jar over fetch (Better Auth uses a session cookie). */
@@ -79,7 +80,10 @@ function cookieHeader(store: Map<string, string>): string {
 }
 function absorb(store: Map<string, string>, res: Response): void {
   for (const c of res.headers.getSetCookie?.() ?? []) {
-    const [pair] = c.split(";");
+    // `split(";")` always yields at least one element, so `pair` is always a string — but the
+    // type cannot say so. `?? ""` costs nothing and makes the empty-header case a no-op rather
+    // than a throw.
+    const pair = c.split(";")[0] ?? "";
     const idx = pair.indexOf("=");
     if (idx > 0) store.set(pair.slice(0, idx).trim(), pair.slice(idx + 1).trim());
   }
@@ -113,8 +117,7 @@ async function main(): Promise<void> {
     headers: { cookie: cookieHeader(jar) },
   });
   absorb(jar, mem);
-  if (!mem.ok)
-    throw new Error(`list memberships failed: ${mem.status} ${await mem.text()}`);
+  if (!mem.ok) throw new Error(`list memberships failed: ${mem.status} ${await mem.text()}`);
   const memBody = (await mem.json()) as {
     memberships: Array<{ organizationId: string; organizationName: string }>;
   };

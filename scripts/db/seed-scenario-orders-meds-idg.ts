@@ -39,7 +39,8 @@
  * Run:     bun run db:seed:scenario-orders-idg
  */
 import { Client } from "pg";
-import { findPatientIdByLastName, ScenarioLog, signIn } from "./lib/api-session";
+import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const LOCATION_MAIN_ID = "55555555-0000-4000-8000-000000000001"; // db:seed:org-structure
@@ -56,7 +57,7 @@ async function membershipIdFor(email: string): Promise<string> {
   );
   await db.end();
   if (!r.rows[0]) throw new Error(`no membership found for ${email} — run db:seed:staff first`);
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-orders-meds-idg: id lookup").id;
 }
 
 async function wipePriorOrdersMedsIdg(patientId: string): Promise<void> {
@@ -65,9 +66,10 @@ async function wipePriorOrdersMedsIdg(patientId: string): Promise<void> {
   await db.connect();
   await db.query("SET session_replication_role = replica");
 
-  const orders = await db.query<{ id: string }>("SELECT id FROM order_record WHERE patient_id = $1", [
-    patientId,
-  ]);
+  const orders = await db.query<{ id: string }>(
+    "SELECT id FROM order_record WHERE patient_id = $1",
+    [patientId],
+  );
   const orderIds = orders.rows.map((r) => r.id);
 
   const meds = await db.query<{ id: string }>(
@@ -86,7 +88,9 @@ async function wipePriorOrdersMedsIdg(patientId: string): Promise<void> {
     await db.query("DELETE FROM order_record WHERE id = ANY($1)", [orderIds]);
   }
   if (medIds.length) {
-    await db.query("DELETE FROM administration_record WHERE medication_order_id = ANY($1)", [medIds]);
+    await db.query("DELETE FROM administration_record WHERE medication_order_id = ANY($1)", [
+      medIds,
+    ]);
     await db.query("DELETE FROM medication_order WHERE id = ANY($1)", [medIds]);
   }
 
@@ -109,7 +113,10 @@ async function wipePriorOrdersMedsIdg(patientId: string): Promise<void> {
 }
 
 /** The documented M14 workaround: seed one `idg_meeting` row directly at status='live'. */
-async function seedLiveIdgMeeting(organizationId: string, coordinatorMembershipId: string): Promise<string> {
+async function seedLiveIdgMeeting(
+  organizationId: string,
+  coordinatorMembershipId: string,
+): Promise<string> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
   await db.connect();
@@ -128,7 +135,7 @@ async function seedLiveIdgMeeting(organizationId: string, coordinatorMembershipI
     ],
   );
   await db.end();
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-orders-meds-idg: id lookup").id;
 }
 
 /**
@@ -209,9 +216,10 @@ async function main(): Promise<void> {
   const cert = await rn.client.GET("/api/v1/patients/{patientId}/election-certification", {
     params: { path: { patientId } },
   });
-  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)?.admission
-    ?.id;
-  if (!admissionId) throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
+  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)
+    ?.admission?.id;
+  if (!admissionId)
+    throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
 
   console.log("wiping any prior orders/meds/IDG data for a clean re-run...");
   await wipePriorOrdersMedsIdg(patientId);
@@ -230,13 +238,15 @@ async function main(): Promise<void> {
       },
     });
     const draftData = draft.data as unknown as { id: string } | undefined;
-    if (draft.error || !draftData) throw new Error(`order draft failed: ${JSON.stringify(draft.error)}`);
+    if (draft.error || !draftData)
+      throw new Error(`order draft failed: ${JSON.stringify(draft.error)}`);
 
     const reqSig = await lpn.client.POST("/api/v1/orders/{id}/request-signature", {
       params: { path: { id: draftData.id } },
       body: { signerDiscipline: "rn_case_manager" },
     });
-    if (reqSig.error) throw new Error(`order request-signature failed: ${JSON.stringify(reqSig.error)}`);
+    if (reqSig.error)
+      throw new Error(`order request-signature failed: ${JSON.stringify(reqSig.error)}`);
 
     const cosign = await rn.client.POST("/api/v1/orders/{id}/cosign", {
       params: { path: { id: draftData.id } },
@@ -259,6 +269,58 @@ async function main(): Promise<void> {
     log.fail(`M11 orders: ${String(err)}`);
   }
   void signedOrderId;
+
+  // ── M11 — a SECOND order, deliberately left AWAITING SIGNATURE (#91) ──────────────────────────
+  //
+  // The order above is driven all the way to `signed`, which is the right shape for a chart but leaves
+  // M11's Signature Inbox — the queue four of its seven screens are built around — permanently EMPTY on
+  // a seeded stack. An E2E spec written against that seed can only assert the empty state, which is the
+  // exact failure #106/F-046 names in the billing spec: a test that passes because there is nothing to
+  // act on tells you nothing about whether acting works.
+  //
+  // Same LPN-draft → RN-cosign path, stopping one step short. The §2.5 cosignature is ATTACHED (an
+  // LPN-drafted clinical order requires one before it can be signed), so the row the inbox renders is
+  // genuinely signable rather than one that would 409 on the ceremony the queue offers.
+  try {
+    const draft = await lpn.client.POST("/api/v1/orders", {
+      body: {
+        patientId,
+        admissionId,
+        kind: "dme",
+        drafterDiscipline: "lpn",
+        data: {
+          itemDescription: "Hospital bed with trapeze bar",
+          reason: "Patient no longer able to transfer independently",
+        },
+        orderingPhysicianMdmId: "11111111-0000-4000-8000-000000000001",
+      },
+    });
+    const draftData = draft.data as unknown as { id: string } | undefined;
+    if (draft.error || !draftData)
+      throw new Error(`pending-signature draft failed: ${JSON.stringify(draft.error)}`);
+
+    const reqSig = await lpn.client.POST("/api/v1/orders/{id}/request-signature", {
+      params: { path: { id: draftData.id } },
+      body: { signerDiscipline: "rn_case_manager" },
+    });
+    if (reqSig.error)
+      throw new Error(`pending-signature request failed: ${JSON.stringify(reqSig.error)}`);
+
+    const cosign = await rn.client.POST("/api/v1/orders/{id}/cosign", {
+      params: { path: { id: draftData.id } },
+      body: {
+        cosignerRole: "rn_case_manager",
+        attestationText:
+          "Reviewed the LPN-drafted DME request against the current plan of care and cosigned it.",
+      },
+    });
+    if (cosign.error)
+      throw new Error(`pending-signature cosign failed: ${JSON.stringify(cosign.error)}`);
+
+    log.ok("Orders: a second DME order left AWAITING SIGNATURE (the inbox has something to sign)");
+  } catch (err) {
+    log.fail(`M11 pending-signature order: ${String(err)}`);
+  }
 
   // ── M12 — DoseSpot (standard medication order, no EPCS) ───────────────────────────────────────
   let signedMedOrderId: string | null = null;
@@ -291,17 +353,25 @@ async function main(): Promise<void> {
 
     const sign = await md.client.POST("/api/v1/medication-orders/{id}/sign", {
       params: { path: { id: draftData.id } },
-      body: { signerDiscipline: "hospice_physician", signedAtClient: nowIso(), signerIsOrderingPhysician: true },
+      body: {
+        signerDiscipline: "hospice_physician",
+        signedAtClient: nowIso(),
+        signerIsOrderingPhysician: true,
+      },
     });
     if (sign.error) throw new Error(`medication order sign failed: ${JSON.stringify(sign.error)}`);
     signedMedOrderId = draftData.id;
 
-    log.ok("DoseSpot: standard comfort-medication order drafted + signed (no EPCS)");
+    // F-058 — the signature ACTIVATES this order, because `dosespot_send_state` is `not_required`:
+    // nothing is being e-prescribed, so there is no NewRx to send and no pharmacy ack to wait for. It
+    // used to stop at `signed`, where it was invisible to `/medications/active`, refused by M13's D6
+    // administrability gate, and impossible to complete or discontinue.
+    log.ok("DoseSpot: standard comfort-medication order drafted + signed → active (no EPCS)");
   } catch (err) {
     log.fail(`M12 DoseSpot: ${String(err)}`);
   }
 
-  // ── M13 — eMAR (administration against the signed standard medication order) ─────────────────
+  // ── M13 — eMAR (administration against the now-ACTIVE standard medication order) ──────────────
   try {
     if (!signedMedOrderId) throw new Error("no signed medication order to administer against");
     const admin = await rn.client.POST("/api/v1/administrations", {
@@ -314,7 +384,8 @@ async function main(): Promise<void> {
         notes: "Patient reported pain 5/10; administered per PRN order, reassessed at 30 minutes.",
       },
     });
-    if (admin.error) throw new Error(`administration record failed: ${JSON.stringify(admin.error)}`);
+    if (admin.error)
+      throw new Error(`administration record failed: ${JSON.stringify(admin.error)}`);
     log.ok("eMAR: one PRN administration recorded (standard med, no witness token needed)");
   } catch (err) {
     log.fail(`M13 eMAR: ${String(err)}`);
@@ -328,7 +399,11 @@ async function main(): Promise<void> {
 
     const agenda = await rn.client.POST("/api/v1/idg/meetings/{id}/agenda", {
       params: { path: { id: meetingId } },
-      body: { kind: "patient_review", patientId, noteText: "Routine IDG review — RHC, stable symptom burden." },
+      body: {
+        kind: "patient_review",
+        patientId,
+        noteText: "Routine IDG review — RHC, stable symptom burden.",
+      },
     });
     if (agenda.error) throw new Error(`agenda item failed: ${JSON.stringify(agenda.error)}`);
 
@@ -338,8 +413,16 @@ async function main(): Promise<void> {
 
     const attendees: Array<{ email: string; membershipId: string; discipline: string }> = [
       { email: "rita@wardenx.local", membershipId: coordinatorId, discipline: "rn_case_manager" },
-      { email: "mira@wardenx.local", membershipId: await membershipIdFor("mira@wardenx.local"), discipline: "msw" },
-      { email: "cole@wardenx.local", membershipId: await membershipIdFor("cole@wardenx.local"), discipline: "chaplain" },
+      {
+        email: "mira@wardenx.local",
+        membershipId: await membershipIdFor("mira@wardenx.local"),
+        discipline: "msw",
+      },
+      {
+        email: "cole@wardenx.local",
+        membershipId: await membershipIdFor("cole@wardenx.local"),
+        discipline: "chaplain",
+      },
       {
         email: "drharris@wardenx.local",
         membershipId: await membershipIdFor("drharris@wardenx.local"),
@@ -365,16 +448,25 @@ async function main(): Promise<void> {
         },
       },
     });
-    if (decision.error) throw new Error(`decision record failed: ${JSON.stringify(decision.error)}`);
+    if (decision.error)
+      throw new Error(`decision record failed: ${JSON.stringify(decision.error)}`);
 
-    const adjourn = await rn.client.POST("/api/v1/idg/meetings/{id}/adjourn", {
-      params: { path: { id: meetingId }, header: { "X-Step-Up": "fresh" } },
-      body: {},
-    });
-    if (adjourn.error) throw new Error(`adjourn failed: ${JSON.stringify(adjourn.error)}`);
-
+    // F-081 — THE MEETING IS LEFT IN SESSION, DELIBERATELY. This script used to adjourn it here, via
+    // `grantFreshStepUp` (a DB-direct stamp of `session.last_step_up_at`, because no script can perform
+    // a WebAuthn or TOTP ceremony). That left a seeded stack whose only IDG meeting was already at its
+    // terminal state, so the §2.2 D13 commit point — the one write in M14 that matters, the one that
+    // emits every open decision, freezes the packets and resets the 42 CFR 418.56(d) 15-day review
+    // floor — had nothing left to act on and no browser test could ever drive it. Same shape as
+    // #106/F-046 (a queue whose only seeded row is terminal) and as the EVV device roster this pass
+    // already fixed.
+    //
+    // It is drivable NOW because step-up itself is: `e2e/specs/idg.spec.ts` enrols a passkey through
+    // the real `/security/passkeys` screen and completes the real `/step-up` ceremony. Three defects
+    // stood in the way of that and are fixed (the passkey origin, `passkey.name` NOT NULL, and a
+    // WebAuthn challenge that was compared in a different encoding than it was signed in), which is
+    // why this shortcut can be retired rather than merely moved.
     log.ok(
-      "IDG: meeting + packet seeded (documented DB-direct workarounds), quorate attendance, 1 decision, adjourned",
+      "IDG: meeting + packet seeded (documented DB-direct workarounds), quorate attendance, 1 decision, LEFT IN SESSION for the D13 adjourn ceremony (see F-081)",
     );
   } catch (err) {
     log.fail(`M14 IDG: ${String(err)}`);

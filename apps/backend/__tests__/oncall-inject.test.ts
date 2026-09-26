@@ -845,7 +845,7 @@ function headerAuth(request: FastifyRequest): void {
   }
   const portalPatient = request.headers["x-test-portal-patient"];
   if (typeof portalPatient === "string" && portalPatient.length > 0) {
-    request.context.attributes.portalPatientId = portalPatient;
+    request.context.attributes.sessionPatientId = portalPatient;
   }
 }
 

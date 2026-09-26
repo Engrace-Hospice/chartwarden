@@ -13,8 +13,9 @@
 // through the meeting-specific predicate.
 import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
 import type { IdgActionItemStatus, IdgAttendanceStatus } from "@wardenx/types";
-import { UnauthorizedError } from "@wardenx/types";
+import { UnauthorizedError, ValidationError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { requestStepUpFresh } from "../../../bootstrap/index";
 import { REVIEW_FLOOR_OVERRIDE_ATTRIBUTE } from "../abac-predicates";
 import {
   ActionItemListQuerySchema,
@@ -102,11 +103,18 @@ const ABAC_REVIEW_FLOOR = requireAbac("idg.schedule", "per_patient_review_floor_
 const reviewFloorOverrideOf = (request: FastifyRequest): boolean =>
   request.context?.attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE] === true;
 
-/** The fresh step-up assertion the ADJOURN route requires (§2.2 D13). The header is set by the M2 step-up flow;
- * the in-mem slice treats its presence as the fresh-step-up signal (the pure machine raises STEP_UP_REQUIRED
- * when absent). */
-const stepUpFreshOf = (request: FastifyRequest): boolean =>
-  request.headers["x-step-up"] === "fresh";
+/**
+ * The fresh step-up assertion the ADJOURN route requires (§2.2 D13).
+ *
+ * This used to read `request.headers["x-step-up"] === "fresh"` — a CLIENT-SUPPLIED string, so any caller
+ * who could reach the commit point could satisfy D13 by typing the header (F-028). It now resolves the
+ * REAL session state through M2's `SessionContextResolver` seam, the same server-verified mechanism M3's
+ * `step_up_recent` predicate uses and the one this module's own §4.7 predicate already called "the SAME
+ * real, server-verified mechanism ... never a client-supplied header". The boolean (rather than a
+ * `requireStepUp` preHandler) is kept because the pure `transitionMeeting` machine raises its own
+ * `STEP_UP_REQUIRED` for it — a preHandler would move the refusal off the state machine that owns it.
+ */
+const ADJOURN_STEP_UP_OPERATION = "idg.meeting.adjourn";
 
 export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): void {
   const { service } = deps;
@@ -220,7 +228,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       parse(AdjournMeetingRequest, request.body);
-      return service.adjournMeeting(organizationId, userId, id, stepUpFreshOf(request));
+      return service.adjournMeeting(
+        organizationId,
+        userId,
+        id,
+        await requestStepUpFresh(request, ADJOURN_STEP_UP_OPERATION),
+      );
     },
   );
 
@@ -256,6 +269,23 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     const { id } = parse(IdParamsSchema, request.params);
     return service.removeAttendance(organizationId, userId, id);
   });
+
+  // 12b — list the meeting's attendance roster (F-062). The three attendance WRITES shipped without
+  // one, so the §2.7 participation the `quorate_decision` predicate evaluates could be written, amended
+  // and excused, and read back by nothing — no source for the live quorum gauge §5 is specified around,
+  // and no way to evidence the §418.56 group composition the roster exists to record.
+  app.get(
+    "/api/v1/idg/meetings/:id/attendance",
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.listAttendance(organizationId, id);
+    },
+  );
 
   // 13 — list a meeting's packets.
   app.get(
@@ -332,6 +362,20 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     return service.removeAgendaItem(organizationId, userId, id);
   });
 
+  // 17b — list the meeting's agenda in `sort_order` (F-062; add/update/remove had no reader).
+  app.get(
+    "/api/v1/idg/meetings/:id/agenda",
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.listAgenda(organizationId, id);
+    },
+  );
+
   // 18 — record a decision (quorate_decision ABAC; target = meeting :id).
   app.post(
     "/api/v1/idg/meetings/:id/decisions",
@@ -371,6 +415,24 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     },
   );
 
+  // 20b — the meeting's decision ledger, newest first (F-062). record/update/supersede all wrote to
+  // `idg_decision` and the module's only reader was the PATIENT-scoped history tab, which answers "what
+  // was decided about this patient across meetings". Nothing could answer "what did THIS meeting
+  // decide" — the question the live surface exists to ask and the one an adjournment commits to.
+  // Metadata only (see `DecisionViewSchema`): the D4 payload stays off the wire.
+  app.get(
+    "/api/v1/idg/meetings/:id/decisions",
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_decision", resourceIdParam: "id", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.listDecisions(organizationId, id);
+    },
+  );
+
   // 21 — create an action item.
   app.post(
     "/api/v1/idg/meetings/:id/action-items",
@@ -379,12 +441,30 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(CreateActionItemRequest, request.body);
+      // F-104 — the two D8 link fields travel together or not at all. A kind with no id can never be
+      // matched when the artifact closes, and an id with no kind is matched by nothing: either alone
+      // produces an item that LOOKS linked and will stay open forever, which is the failure the
+      // auto-close engine exists to prevent. 422 rather than a silent null.
+      if ((b.linkedArtifactKind === undefined) !== (b.linkedArtifactId === undefined)) {
+        throw new ValidationError(
+          "linkedArtifactKind and linkedArtifactId must be supplied together",
+          [
+            {
+              field: b.linkedArtifactId === undefined ? "linkedArtifactId" : "linkedArtifactKind",
+              code: "LINKED_ARTIFACT_INCOMPLETE",
+              message:
+                "a half-linked action item can never auto-close: the kind is what the D8 consumer matches on and the id is what it confirms",
+            },
+          ],
+        );
+      }
       const res = await service.createActionItem(organizationId, userId, id, {
         decisionId: b.decisionId,
         patientId: b.patientId,
         assignedToMembershipId: b.assignedToMembershipId,
         dueDate: b.dueDate,
         linkedArtifactKind: b.linkedArtifactKind,
+        linkedArtifactId: b.linkedArtifactId,
       });
       return reply.code(201).send(res);
     },

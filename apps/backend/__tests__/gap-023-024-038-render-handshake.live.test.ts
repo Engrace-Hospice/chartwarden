@@ -19,6 +19,7 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m22:render-handshake:live
  * For a local PG without pgvector: also set WARDENX_TEST_NO_PGVECTOR=1.
  */
+import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
@@ -28,6 +29,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
+import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS, buildM11DocumentBackrefConsumer } from "../src/modules/11-orders/index";
 import {
   type OrderWriteOutboxPort,
@@ -42,6 +45,8 @@ import {
   buildM12DocumentBackrefConsumer,
 } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS, buildM13DocumentBackrefConsumer } from "../src/modules/13-emar/index";
+import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
+import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import {
   M21_OUTBOX_EVENTS,
   buildM21DocumentBackrefConsumer,
@@ -55,10 +60,13 @@ import {
   createInMemoryObjectStore,
 } from "../src/modules/22-documents/index";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
+import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import {
   M33_OUTBOX_EVENTS,
   buildM33DocumentBackrefConsumer,
 } from "../src/modules/33-reporting/index";
+import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -71,6 +79,24 @@ const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 const PHYSICIAN_MDM = "66666666-6666-6666-6666-666666666666";
 const ABN_ID = "77777777-7777-7777-7777-777777777777";
+/** Every `document_aggregate_type` this suite renders — the tenancy assertion must cover all of them,
+ *  or a new render silently escapes the only cross-tenant check in the file. */
+const RENDERED_TYPES = [
+  "order_record",
+  "medication_order",
+  "abn",
+  "supply_bill_of_lading",
+  "comfort_kit_return_receipt",
+  // F-099
+  "hope_summary",
+  "bereavement_letter",
+  "safety_incident_report",
+  "appeal_packet",
+  "cost_report_ecr",
+  "body_release_authorization",
+]
+  .map((t) => `'${t}'`)
+  .join(",");
 const LOCATION = "99999999-9999-4999-8999-999999999991";
 const PROVIDER_ENTITY = "99999999-9999-4999-8999-999999999992";
 
@@ -199,6 +225,21 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       M33_OUTBOX_EVENTS,
       M22_OUTBOX_EVENTS,
       M23_OUTBOX_EVENTS,
+      // F-099 — the six modules whose render REQUEST was being emitted with nothing draining it. Present
+      // here for the same two reasons M33 is: the dispatcher refuses to construct on an event its catalog
+      // does not know, and `buildTxOutboxPublisher` validates each payload against the catalog schema —
+      // which is what makes the `patientId` these payloads gained a checked fact rather than a comment.
+      // F-100 — M6's six CoP events, which M22's ONE render consumer now also binds. The dispatcher
+      // refuses to CONSTRUCT on an event its catalog does not carry, so this contribution is not
+      // optional: without it every test in the file reports "skipped" beside a failed suite, which is a
+      // read this suite's `describe.skipIf(!DB_URL)` guard makes easy to mistake for "no database".
+      M6_OUTBOX_EVENTS,
+      M10_OUTBOX_EVENTS,
+      M16_OUTBOX_EVENTS,
+      M20_OUTBOX_EVENTS,
+      M25_OUTBOX_EVENTS,
+      M27_OUTBOX_EVENTS,
+      M37_OUTBOX_EVENTS,
     ]);
     const txPublisher = buildTxOutboxPublisher(catalog);
     publisher = txPublisher;
@@ -596,11 +637,155 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
     expect(await documentsFor(ghost)).toHaveLength(0);
   });
 
+  // ── F-099 — the six render requests that were emitted and drained by nothing ─────────────────────────
+
+  /** The six, as their producers publish them. `patientId` is the F-099 addition on four of them. */
+  const F099_REQUESTS = [
+    {
+      label: "M10 HOPE summary",
+      eventType: "m10.hope.summary_requested",
+      aggregateKind: "hope_assessment",
+      payload: (id: string) => ({ assessmentId: id, requestedBy: USER, patientId: PATIENT }),
+      aggregateType: "hope_summary",
+      retentionClass: "clinical_record",
+      patientId: PATIENT,
+    },
+    {
+      label: "M16 bereavement welcome packet",
+      eventType: "m16.bereavement.outreach_artifact_requested",
+      aggregateKind: "bereavement_plan",
+      payload: (id: string) => ({
+        planId: id,
+        patientId: PATIENT,
+        contactId: LOCATION,
+        outreachId: null,
+        templateKey: "bereavement_welcome_packet",
+        payloadJsonb: { deathDate: "2026-08-01" },
+      }),
+      aggregateType: "bereavement_letter",
+      retentionClass: "bereavement",
+      patientId: PATIENT,
+    },
+    {
+      label: "M20 staff-safety incident report",
+      eventType: "m20.safety.incident_report_requested",
+      aggregateKind: "safety_incident",
+      payload: (id: string) => ({
+        orgId: ORG_A,
+        providerEntityId: PROVIDER_ENTITY,
+        occurredAt: "2026-08-01T00:00:00.000Z",
+        incidentId: id,
+        patientId: null,
+        renderTargetKind: "pdf",
+      }),
+      aggregateType: "safety_incident_report",
+      retentionClass: "compliance",
+      // Deliberately NULL, and the whole reason the column is nullable: a vehicle accident has no
+      // patient, and filing that report on someone's chart is worse than filing it on none.
+      patientId: null,
+    },
+    {
+      label: "M25 appeal packet",
+      eventType: "m25.appeal_packet.render_requested",
+      aggregateKind: "appeal_case",
+      payload: (id: string) => ({ appealCaseId: id, tier: "redetermination", payload: {} }),
+      aggregateType: "appeal_packet",
+      retentionClass: "compliance",
+      patientId: null,
+    },
+    {
+      label: "M27 electronic cost report",
+      eventType: "m27.artifact.render_requested",
+      aggregateKind: "ecr_submission",
+      payload: (id: string) => ({
+        costReportId: ABN_ID,
+        submissionId: id,
+        artifactKind: "ecr",
+        payloadRef: ADMISSION,
+        retentionClass: "compliance",
+      }),
+      aggregateType: "cost_report_ecr",
+      retentionClass: "compliance",
+      patientId: null,
+    },
+    {
+      label: "M37 body-release authorization",
+      eventType: "m37.body_release.document_requested",
+      aggregateKind: "ipu_body_release",
+      payload: (id: string) => ({
+        organizationId: ORG_A,
+        bodyReleaseId: id,
+        patientId: PATIENT,
+      }),
+      aggregateType: "body_release_authorization",
+      retentionClass: "compliance",
+      patientId: PATIENT,
+    },
+  ] as const;
+
+  it.each(F099_REQUESTS)(
+    "$label: the request is delivered and rendered into document/document_version",
+    async (req) => {
+      const id = randomUUID();
+      // Published through the REAL transactional publisher, not a raw INSERT: it Value.Check's the
+      // payload against the boot catalog, so a `patientId` the producer's schema does not declare would
+      // fail here rather than silently riding along.
+      await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        publisher.publish(tx as never, {
+          eventName: req.eventType,
+          payload: req.payload(id),
+          organizationId: ORG_A,
+          aggregateKind: req.aggregateKind,
+          aggregateId: id,
+          callerModule: req.eventType.split(".")[0] as string,
+        }),
+      );
+      expect(await documentsFor(id)).toHaveLength(0); // nothing rendered until the relay runs
+
+      await dispatcher.tick();
+
+      const docs = await documentsFor(id);
+      expect(docs).toHaveLength(1);
+      // The aggregate type is the migration-0239 enum value: a `document_aggregate_type` the database
+      // does not know is a write error, so this row existing IS the migration's proof.
+      expect(docs[0].aggregate_type).toBe(req.aggregateType);
+      expect(docs[0].retention_class).toBe(req.retentionClass);
+      expect(docs[0].patient_id).toBe(req.patientId);
+      expect(docs[0].organization_id).toBe(ORG_A);
+      expect(Number(docs[0].byte_size)).toBeGreaterThan(0);
+      // The relay finalized it: a declared-but-unbound consumer leaves the row `pending` forever, which
+      // is exactly the state all six were in.
+      expect((await outboxFor(id)).find((e) => e.type === req.eventType)?.status).toBe(
+        "dispatched",
+      );
+    },
+  );
+
+  it("re-delivery of a request renders no second document (D14 idempotency)", async () => {
+    const id = randomUUID();
+    const seed = () =>
+      withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        publisher.publish(tx as never, {
+          eventName: "m37.body_release.document_requested",
+          payload: { organizationId: ORG_A, bodyReleaseId: id, patientId: PATIENT },
+          organizationId: ORG_A,
+          aggregateKind: "ipu_body_release",
+          aggregateId: id,
+          callerModule: "m37",
+        }),
+      );
+    await seed();
+    await dispatcher.tick();
+    await seed();
+    await dispatcher.tick();
+    expect(await documentsFor(id)).toHaveLength(1);
+  });
+
   // ── tenancy ──────────────────────────────────────────────────────────────────────────────────────────
 
   it("renders under the requesting org only — org B never sees org A's rendered documents", async () => {
     const { rows } = await admin.query(
-      "SELECT DISTINCT organization_id FROM document WHERE aggregate_type IN ('order_record','medication_order','abn','supply_bill_of_lading','comfort_kit_return_receipt')",
+      `SELECT DISTINCT organization_id FROM document WHERE aggregate_type IN (${RENDERED_TYPES})`,
     );
     expect(rows.map((r) => r.organization_id)).toEqual([ORG_A]);
 
@@ -612,7 +797,7 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       await b.query("BEGIN");
       await b.query("SELECT set_config('app.org_id', $1, true)", [ORG_B]);
       const { rows: seen } = await b.query(
-        "SELECT count(*)::int AS n FROM document WHERE aggregate_type IN ('order_record','medication_order','abn','supply_bill_of_lading','comfort_kit_return_receipt')",
+        `SELECT count(*)::int AS n FROM document WHERE aggregate_type IN (${RENDERED_TYPES})`,
       );
       expect(seen[0].n).toBe(0);
       await b.query("COMMIT");

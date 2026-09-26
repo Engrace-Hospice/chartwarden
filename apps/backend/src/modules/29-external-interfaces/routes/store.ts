@@ -487,7 +487,9 @@ export interface InMemoryM29Seed {
 }
 
 /** A seedable unmatched-lab queue item (the link row + its persisted OBX values). */
-export type MemUnmatchedLab = UnmatchedLabQueueItem & { readonly obrPlacerOrderNumber: string | null };
+export type MemUnmatchedLab = UnmatchedLabQueueItem & {
+  readonly obrPlacerOrderNumber: string | null;
+};
 
 /** A deterministic in-memory {@link M29Store} — the route/abac tests seed it and pin the clock. */
 export function createInMemoryM29Store(
@@ -503,7 +505,10 @@ export function createInMemoryM29Store(
   const creds = new Map<string, MemCredential & { organizationId: string }>();
   const proposals = new Map<string, MemProposal & { organizationId: string }>();
   const observations = new Map<string, LabObservationDetail & { organizationId: string }>();
-  const unmatched = new Map<string, { -readonly [K in keyof MemUnmatchedLab]: MemUnmatchedLab[K] }>();
+  const unmatched = new Map<
+    string,
+    { -readonly [K in keyof MemUnmatchedLab]: MemUnmatchedLab[K] }
+  >();
 
   const feedDetailOf = (f: MemFeed): FeedDetail => ({ ...f });
 
@@ -947,7 +952,8 @@ export function createInMemoryM29Store(
 
     async bindUnmatchedObservation(orgId, membershipId, observationId, args) {
       const item = requireUnmatched(orgId, observationId);
-      const patient = (await opts.patients?.findById({ organizationId: orgId, id: args.patientId })) ?? null;
+      const patient =
+        (await opts.patients?.findById({ organizationId: orgId, id: args.patientId })) ?? null;
       if (patient === null) {
         throwReviewRefusal({
           kind: "refused",

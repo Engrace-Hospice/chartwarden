@@ -13,6 +13,7 @@ import type {
   BedCleaningBody,
   CheckInVisitorBody,
   ConfirmBody,
+  ConfirmStaffBody,
   ConfirmTransferBody,
   CreateBedBody,
   CreateEquipmentBody,
@@ -21,6 +22,7 @@ import type {
   CreateUnitBody,
   DischargeBody,
   InitiateTransferBody,
+  InvokeRnBreakGlassBody,
   IrcOverrideBody,
   LiftVisitorRestrictionBody,
   LogInspectionBody,
@@ -34,6 +36,7 @@ import type {
   UpdateBedBody,
   UpdateRoomBody,
   UpdateUnitBody,
+  VisitorRestrictionListQuery,
 } from "./ipu-typebox";
 
 export interface UnitView {
@@ -108,6 +111,21 @@ export interface VisitorRestrictionView {
   readonly restrictionKind: string;
   readonly liftedAt: string | null;
 }
+/** One restriction with enough context to decide whether to lift it (F-070). */
+export interface VisitorRestrictionDetailView {
+  readonly id: string;
+  readonly scope: string;
+  readonly unitId: string | null;
+  readonly patientId: string | null;
+  readonly restrictionKind: string;
+  readonly rationale: string;
+  readonly sourceKind: string;
+  readonly appliedAt: string;
+  readonly appliedBy: string;
+  readonly appliedUntil: string | null;
+  readonly liftedAt: string | null;
+  readonly version: number;
+}
 export interface MealView {
   readonly id: string;
   readonly ipuAdmissionId: string;
@@ -129,6 +147,41 @@ export interface BodyReleaseView {
   readonly version: number;
 }
 
+/** The bedside read of one restraint: enough to decide whether it is due, and to reach it (F-069). */
+export interface RestraintDetailView {
+  readonly id: string;
+  readonly ipuAdmissionId: string;
+  readonly restraintKind: string;
+  readonly category: "behavioral" | "medical";
+  readonly state: string;
+  readonly reassessmentIntervalMinutes: number;
+  readonly appliedAt: string;
+  readonly appliedByMembershipId: string;
+  readonly orderingOrderId: string;
+  readonly orderingPhysicianId: string;
+  readonly releasedAt: string | null;
+  /** The latest reassessment's `next_due_at`; null until the first one, when the interval runs from
+   *  `appliedAt` instead. The bedside board counts down to whichever applies. */
+  readonly nextDueAt: string | null;
+  readonly reassessmentCount: number;
+  readonly version: number;
+}
+
+/** One attested GIP criterion plus its reassessment trail (§2.4 — GIP is reassessed daily). */
+export interface GipCriteriaDetailView {
+  readonly id: string;
+  readonly ipuAdmissionId: string;
+  readonly criterionKind: string;
+  readonly attestedAt: string;
+  readonly attestingPhysicianId: string;
+  readonly reassessments: readonly {
+    readonly id: string;
+    readonly reassessedAt: string;
+    readonly criterionStillMet: boolean;
+  }[];
+  readonly version: number;
+}
+
 export interface RestraintView {
   readonly id: string;
   readonly ipuAdmissionId: string;
@@ -138,20 +191,32 @@ export interface RestraintView {
   readonly version: number;
 }
 
-export interface ShiftView {
-  readonly id: string;
-  readonly unitId: string;
-  readonly shiftStartAt: string;
-  readonly shiftEndAt: string;
-  readonly displayLabel: string | null;
-  readonly version: number;
-}
 export interface StaffAssignmentView {
   readonly id: string;
   readonly shiftId: string;
   readonly membershipId: string;
   readonly role: string;
   readonly state: string;
+}
+export interface ShiftView {
+  readonly id: string;
+  readonly unitId: string;
+  readonly shiftStartAt: string;
+  readonly shiftEndAt: string;
+  readonly displayLabel: string | null;
+  /** F-070 — the shift's staff assignments. Without them an `assignmentId` existed only in the 201 of
+   *  the POST that created it, so nobody but that session could unassign. */
+  readonly assignments: readonly StaffAssignmentView[];
+  readonly version: number;
+}
+/** F-071 — what an override invocation returns now that it writes one. */
+export interface RnBreakGlassView {
+  readonly unitId: string;
+  readonly invoked: boolean;
+  /** When the override stops passing the coverage gate. */
+  readonly expiresAt: string | null;
+  /** True when a LIVE override already existed; the call reported it rather than stacking a second. */
+  readonly alreadyActive: boolean;
 }
 export interface RnCoverageView {
   readonly unitId: string;
@@ -233,11 +298,17 @@ export interface IpuRouteService {
     shiftId: string,
     body: UnassignStaffBody,
   ): Promise<StaffAssignmentView>;
+  confirmStaff(
+    actor: IpuWriteActor,
+    shiftId: string,
+    body: ConfirmStaffBody,
+  ): Promise<StaffAssignmentView>;
   getRnCoverage(actor: IpuReadActor, unitId: string): Promise<RnCoverageView>;
   invokeRnBreakGlass(
     actor: IpuWriteActor,
     unitId: string,
-  ): Promise<{ unitId: string; invoked: boolean }>;
+    body: InvokeRnBreakGlassBody,
+  ): Promise<RnBreakGlassView>;
   transitionBed(actor: IpuWriteActor, bedId: string, body: BedCleaningBody): Promise<BedView>;
   getCensus(actor: IpuReadActor, serviceDate: string): Promise<CensusView>;
   applyRestraint(
@@ -245,6 +316,21 @@ export interface IpuRouteService {
     admissionId: string,
     body: ApplyRestraintBody,
   ): Promise<RestraintView>;
+  // F-069 (read side) — the four reads a bedside pane needs. `reassessRestraint`/`releaseRestraint`/
+  // `checkOutVisitor` are keyed by an id that, until these existed, was returned ONLY by the POST that
+  // created it: reload the page and an active restraint became unreachable, so a 15-minute reassessment
+  // could be recorded only by whoever applied it and kept the tab open.
+  listRestraints(actor: IpuReadActor, admissionId: string): Promise<readonly RestraintDetailView[]>;
+  listGipCriteria(
+    actor: IpuReadActor,
+    admissionId: string,
+  ): Promise<readonly GipCriteriaDetailView[]>;
+  listIrcEpisodes(actor: IpuReadActor, admissionId: string): Promise<readonly IrcEpisodeView[]>;
+  listVisitorRestrictions(
+    actor: IpuReadActor,
+    query: VisitorRestrictionListQuery,
+  ): Promise<readonly VisitorRestrictionDetailView[]>;
+  listVisitors(actor: IpuReadActor, admissionId: string): Promise<readonly VisitorView[]>;
   reassessRestraint(
     actor: IpuWriteActor,
     restraintId: string,

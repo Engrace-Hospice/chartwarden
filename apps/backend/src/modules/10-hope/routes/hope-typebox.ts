@@ -10,7 +10,7 @@
 import { type Static, type TSchema, Type } from "@sinclair/typebox";
 import { FormatRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import { HOPE_RFA_KINDS } from "@wardenx/types";
+import { HOPE_J2051_SYMPTOM_CODES, HOPE_RFA_KINDS } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
 import type {
   HopeAnswerPatchResult as ServiceAnswerPatchResult,
@@ -56,7 +56,12 @@ const DISCHARGE_REASON = Type.Union([
 
 /** §4.3 Section-J J2051 entries — the symptom-impact readings the D4 trigger evaluates. */
 const J2051Entry = Type.Object({
-  symptomCode: Type.String({ minLength: 1, maxLength: 64 }),
+  // Closed to the §2.1 CMS roster (`HOPE_J2051_SYMPTOM_CODES`). It was `Type.String({maxLength: 64})`,
+  // while `j2051.ts`'s header described it as "the closed CMS list at the route boundary" — so the list
+  // was closed in prose and open in code, and the emitted contract enumerated nothing a client could
+  // pick from. Every symptomCode literal in the repo is already a member, so this closes a gap rather
+  // than narrowing behaviour.
+  symptomCode: lit(HOPE_J2051_SYMPTOM_CODES),
   severity: J2051_SEVERITY,
   otherSymptomLabel: Type.Optional(Type.String({ maxLength: 100 })),
 });
@@ -83,27 +88,62 @@ const J2053Data = Type.Object(
     additionalProperties: false,
   },
 );
-/** The per-section `data` payload. Section J's J2051 entries are typed (the trigger reads them); other
- * sections are carried opaquely and narrowed by the server-side per-section validators (§4.3). */
+/** A CMS Yes/No screening item. Typed as a union rather than a bare boolean because the payload the
+ * mobile client and the recording modal produce is form data — `projectHopeSections` accepts all three
+ * spellings, and the contract enumerates them so a client can see which ones are meant. */
+const YesNo = Type.Union([Type.Boolean(), Type.Literal("yes"), Type.Literal("no")]);
+
+/** §4.3 Section-J screening item (J2030 pain / J2050 shortness of breath): the Yes/No screen plus the
+ * characteristics the §86 cross-field rule requires whenever the screen is Yes. `characteristics` is
+ * deliberately open — CMS captures a different item set per symptom and the rule only asks whether
+ * ANYTHING was documented. */
+const JScreeningItem = Type.Object(
+  {
+    screened: Type.Optional(YesNo),
+    characteristics: Type.Optional(Type.Unknown()),
+  },
+  { additionalProperties: true },
+);
+
+/**
+ * The per-section `data` payload. Four sections are typed — the ones the CMS pre-submission rule set
+ * reads (F-057): Section I's primary diagnosis, Section J's J2030/J2050/J2051 items, and Section N's
+ * opioid / bowel-regimen triple. Every other section stays opaque and is narrowed by the server-side
+ * per-section validators (§4.3).
+ *
+ * They are typed HERE, and not only in `@wardenx/hope`'s projection, because the emitted OpenAPI is
+ * what the generated client can express: a field the contract does not declare is one no caller can
+ * send (F-031's M11 finding, one module over). The projection stays TOLERANT of anything — these types
+ * describe the intended payload, they are not a second validation layer.
+ */
 const HopeData = Type.Object(
   {
+    I: Type.Optional(
+      Type.Object(
+        {
+          primaryDiagnosisIcd10: Type.Optional(Type.String({ maxLength: 16 })),
+        },
+        { additionalProperties: true },
+      ),
+    ),
     J: Type.Optional(
       Type.Object(
         {
-          J2051: Type.Optional(
-            Type.Object({
-              entries: Type.Array(
-                J2051Entry,
-                {
-                  maxItems: 8,
-                },
-              ),
-            }),
-          ),
+          J2030: Type.Optional(JScreeningItem),
+          J2050: Type.Optional(JScreeningItem),
+          J2051: Type.Optional(Type.Object({ entries: Type.Array(J2051Entry, { maxItems: 8 }) })),
         },
+        { additionalProperties: true },
+      ),
+    ),
+    N: Type.Optional(
+      Type.Object(
         {
-          additionalProperties: true,
+          opioidPrescribed: Type.Optional(YesNo),
+          scheduledBowelRegimen: Type.Optional(YesNo),
+          bowelRegimenContraindication: Type.Optional(Type.String({ maxLength: 500 })),
         },
+        { additionalProperties: true },
       ),
     ),
   },
@@ -143,6 +183,10 @@ export const RecordTimepointSchema = Type.Object({
   dischargeReason: Type.Optional(DISCHARGE_REASON),
   lateCompletionReasonCode: Type.Optional(Type.String({ minLength: 1, maxLength: 64 })),
   adminOverride: Type.Optional(Type.Boolean()),
+  // #48 — the window this capture completes, as the timepoint worklist hands it to the clinician.
+  // (`lateCompletionReasonCode` stays a free string at the boundary: the §4.4 capture gate enforces the
+  // CMS codelist exactly when the capture is late, and the capture workspace sends free text.)
+  scheduleId: Type.Optional(Type.String({ format: "uuid" })),
   data: HopeData,
 });
 export const RecordSfvSchema = Type.Object({
@@ -197,7 +241,9 @@ export const AssembleSubmissionSchema = Type.Object({
 });
 export const MarkSubmissionUploadedSchema = Type.Object({
   submittedAt: Type.Optional(Type.String({ format: "date-time" })),
-  iqiesSubmissionReference: Type.Optional(Type.Union([Type.String({ maxLength: 200 }), Type.Null()])),
+  iqiesSubmissionReference: Type.Optional(
+    Type.Union([Type.String({ maxLength: 200 }), Type.Null()]),
+  ),
 });
 export const ImportSubmissionResultSchema = Type.Object({
   reportReference: Type.Optional(Type.Union([Type.String({ maxLength: 500 }), Type.Null()])),
@@ -281,6 +327,7 @@ const WORKFLOW_ITEM_STATUS = lit([
   "workflow_not_initialized",
 ] as const);
 const NullableString = () => Type.Union([Type.String(), Type.Null()]);
+const NullableNumber = () => Type.Union([Type.Number(), Type.Null()]);
 
 /** One HOPE assessment view (sections snapshot + J2051 trigger verdict + correction chain). */
 export const HopeAssessmentResponseSchema = Type.Object({
@@ -528,6 +575,11 @@ export const HopeScheduleResponseSchema = Type.Object({
 export const HopeSfvResponseSchema = Type.Object({
   id: Type.String(),
   patientId: Type.String(),
+  // #91 — the SFV worklist is the queue whose reason to exist is COMPLETING the follow-up, and
+  // `POST /admissions/:admissionId/hope/sfv` is keyed by admission. The column has always been on the
+  // row (`symptom_follow_up_visit.admission_id`); it just never reached the wire, so the one screen
+  // that must act on an SFV had no way to name the admission it belongs to.
+  admissionId: Type.String(),
   triggeringAssessmentId: Type.String(),
   status: SFV_STATUS,
   triggeredAt: Type.String(),
@@ -554,12 +606,35 @@ export const HopeSubmissionResponseSchema = Type.Object({
   acceptedAt: NullableString(),
   iqiesSubmissionReference: Type.Optional(NullableString()),
 });
+/**
+ * F-058 (#150) — what one force-assemble pass did.
+ *
+ * The route used to answer with a single {@link HopeSubmissionResponseSchema}, because it always created
+ * exactly one batch: an EMPTY one, with no `hope_submission_item` rows behind it. A real pass groups the
+ * provider entity's eligible signed assessments by CMS submission period, so it yields one batch per
+ * period and may legitimately yield none — and the three counts are what let the caller tell "nothing
+ * to do" apart from "nothing happened".
+ */
+export const HopeAssembleResponseSchema = Type.Object({
+  submissions: Type.Array(HopeSubmissionResponseSchema),
+  assessmentsConsidered: Type.Integer(),
+  /** Already on a `pending` item — the §4.10 idempotency skip, so a second press is legible. */
+  skippedAlreadyBatched: Type.Integer(),
+  /** No `provider_entity_id`, so no CCN to batch under. Never silent. */
+  skippedUnsited: Type.Integer(),
+});
+
 /** Org-level HQRP compliance posture (on-time + acceptance rates). */
+/** #48 — every rate is nullable (`null` = no data, which is NOT 100%) and ships beside the count pair it
+ * was computed from, so a consumer can suppress a small-N rate instead of rendering a fragile one. */
 export const HopeComplianceResponseSchema = Type.Object({
   providerEntityId: NullableString(),
-  hopeOnTimeRate: Type.Number(),
-  sfvOnTimeRate: Type.Number(),
-  submissionAcceptanceRate: Type.Number(),
+  hopeOnTimeRate: NullableNumber(),
+  hopeOnTimeCounts: Type.Object({ onTime: Type.Integer(), total: Type.Integer() }),
+  sfvOnTimeRate: NullableNumber(),
+  sfvOnTimeCounts: Type.Object({ onTime: Type.Integer(), total: Type.Integer() }),
+  submissionAcceptanceRate: NullableNumber(),
+  submissionAcceptanceCounts: Type.Object({ accepted: Type.Integer(), total: Type.Integer() }),
 });
 const HopeWorkflowTimepointResponseSchema = Type.Object({
   kind: Type.Union([

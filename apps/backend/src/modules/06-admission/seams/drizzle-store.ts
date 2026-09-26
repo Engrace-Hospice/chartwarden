@@ -62,11 +62,145 @@ export function admissionIsActiveForOrg(
       const [row] = await tx
         .select({ status: ADM.status })
         .from(ADM)
-        .where(
-          and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)),
-        )
+        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
         .limit(1);
       return row?.status === "active";
+    },
+  );
+}
+
+/**
+ * The siting + anchor facts a BACKGROUND consumer needs about one admission (#48).
+ *
+ * Shaped like the §4.7 `AdmissionSummary` but org-EXPLICIT, because the seam's id-keyed reads open
+ * `withOrgContextFromRequest` and a relay tick is not a request: an outbox consumer calling the seam
+ * gets `no ambient request context (call inside runWithRequestContext)` and the row dead-letters. The
+ * org-explicit shape is the established answer for exactly this — `activeAdmissionDraftContextForPatient`
+ * (M11/M12 IDG consumers) and `admissionIsActiveForOrg` (the M8 visit-published consumer) are the same
+ * pattern. Fabricating a request scope inside the relay instead would put the tenant pin somewhere no
+ * reviewer looks for it.
+ *
+ * Nothing here throws on a missing fact: the caller decides what an unsited admission means to it, so
+ * the refusal message stays where the reason lives.
+ */
+export interface AdmissionSchedulingContext {
+  readonly admissionId: string;
+  readonly patientId: string;
+  readonly providerEntityId: string | null;
+  readonly locationId: string | null;
+  /** Org-local `yyyy-mm-dd`, coalescing `admission_at` the way the seam's own projection does. */
+  readonly admissionAt: string | null;
+  readonly activatedAt: string | null;
+  readonly dischargedAt: string | null;
+}
+
+/** One admission's siting + anchors, org-explicit and worker-callable. `null` when the id is unknown in
+ * `organizationId` — indistinguishable from another tenant's, which is the point. */
+export function admissionSchedulingContextForOrg(
+  db: DbClient,
+  organizationId: string,
+  admissionId: string,
+): Promise<AdmissionSchedulingContext | null> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const [row] = await tx
+        .select({
+          id: ADM.id,
+          patientId: ADM.patientId,
+          providerEntityId: ADM.providerEntityId,
+          locationId: ADM.locationId,
+          admissionAt: ADM.admissionAt,
+          activatedAt: ADM.activatedAt,
+          dischargedAt: ADM.dischargedAt,
+        })
+        .from(ADM)
+        // The explicit organization_id predicate is the second wall behind RLS (the `activeAdmissions`
+        // precedent above), so a misconfigured GUC cannot widen this read.
+        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+        .limit(1);
+      if (!row) return null;
+      return {
+        admissionId: row.id,
+        patientId: row.patientId,
+        providerEntityId: row.providerEntityId,
+        locationId: row.locationId,
+        admissionAt: localDateN(row.admissionAt ?? row.activatedAt),
+        activatedAt: localDateN(row.activatedAt),
+        dischargedAt: localDateN(row.dischargedAt),
+      };
+    },
+  );
+}
+
+/**
+ * The facts a BACKGROUND consumer needs about one ELECTION PERIOD, org-explicit (F-106).
+ *
+ * The `AdmissionSchedulingContext` sibling, and needed for the same reason: the §4.7 seam's id-keyed reads
+ * open `withOrgContextFromRequest` and a relay tick is not a request. It joins through to the admission
+ * because `election_period` carries neither the patient nor the provider entity, and a consumer creating a
+ * federally-filed notice needs both.
+ *
+ * `effectiveAt` is nullable and the caller must treat it as load-bearing, not decorative: it is written by
+ * the `setActive` transition at admission activation and by NOTHING else, so it is NULL for every period
+ * that has not started. That is precisely why M23's NOE draft cannot be created from `m6.election.signed`
+ * — see `23-billing-medicare/outbox-consumers/m6-election-period-started.ts`.
+ */
+export interface ElectionPeriodContext {
+  readonly electionPeriodId: string;
+  readonly admissionId: string;
+  readonly patientId: string;
+  readonly providerEntityId: string | null;
+  readonly locationId: string | null;
+  readonly sequenceNumber: number;
+  readonly status: string;
+  /** Org-local `yyyy-mm-dd`. NULL until the period is activated — see the interface note. */
+  readonly effectiveAt: string | null;
+  readonly scheduledEndAt: string | null;
+}
+
+/** One election period's identity + window, org-explicit and worker-callable. `null` when the id is
+ *  unknown in `organizationId` — indistinguishable from another tenant's, which is the point. */
+export function electionPeriodContextForOrg(
+  db: DbClient,
+  organizationId: string,
+  electionPeriodId: string,
+): Promise<ElectionPeriodContext | null> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const [row] = await tx
+        .select({
+          id: EP.id,
+          admissionId: EP.admissionId,
+          sequenceNumber: EP.sequenceNumber,
+          status: EP.status,
+          effectiveAt: EP.effectiveAt,
+          scheduledEndAt: EP.scheduledEndAt,
+          patientId: ADM.patientId,
+          providerEntityId: ADM.providerEntityId,
+          locationId: ADM.locationId,
+        })
+        .from(EP)
+        .innerJoin(ADM, eq(ADM.id, EP.admissionId))
+        // The explicit organization_id predicate is the second wall behind RLS (the
+        // `admissionSchedulingContextForOrg` precedent), so a misconfigured GUC cannot widen this read.
+        .where(and(eq(EP.organizationId, organizationId), eq(EP.id, electionPeriodId)))
+        .limit(1);
+      if (!row) return null;
+      return {
+        electionPeriodId: row.id,
+        admissionId: row.admissionId,
+        patientId: row.patientId,
+        providerEntityId: row.providerEntityId,
+        locationId: row.locationId,
+        sequenceNumber: Number(row.sequenceNumber),
+        status: String(row.status),
+        effectiveAt: localDateN(row.effectiveAt),
+        scheduledEndAt: localDateN(row.scheduledEndAt),
+      };
     },
   );
 }
@@ -113,30 +247,17 @@ export function activeAdmissionDraftContextForPatient(
       if (!row) return null;
       const providerEntityId = row.providerEntityId;
       const locationId = row.locationId;
-      const orderingPhysicianMdmId =
-        row.attendingPhysicianId ?? row.admittedByPhysicianId;
+      const orderingPhysicianMdmId = row.attendingPhysicianId ?? row.admittedByPhysicianId;
       const missing = [
         providerEntityId === null ? "provider_entity_id" : null,
         locationId === null ? "location_id" : null,
-        orderingPhysicianMdmId === null
-          ? "attending_physician_id|admitted_by_physician_id"
-          : null,
+        orderingPhysicianMdmId === null ? "attending_physician_id|admitted_by_physician_id" : null,
       ].filter((value): value is string => value !== null);
       if (missing.length > 0) {
-        throw new AdmissionSeamDataGapError(
-          "admission",
-          row.admissionId,
-          missing,
-        );
+        throw new AdmissionSeamDataGapError("admission", row.admissionId, missing);
       }
-      if (
-        providerEntityId === null ||
-        locationId === null ||
-        orderingPhysicianMdmId === null
-      ) {
-        throw new Error(
-          "unreachable admission draft context narrowing failure",
-        );
+      if (providerEntityId === null || locationId === null || orderingPhysicianMdmId === null) {
+        throw new Error("unreachable admission draft context narrowing failure");
       }
       return {
         admissionId: row.admissionId,
@@ -185,8 +306,7 @@ export class AdmissionSeamDataGapError extends Error {
 
 const localDate = (d: Date | string): string =>
   d instanceof Date ? d.toISOString().slice(0, 10) : d.slice(0, 10);
-const localDateN = (d: Date | string | null): string | null =>
-  d === null ? null : localDate(d);
+const localDateN = (d: Date | string | null): string | null => (d === null ? null : localDate(d));
 
 /** The joined election-period row shape both period reads project from. */
 interface PeriodRow {
@@ -214,9 +334,7 @@ const periodCols = {
 } as const;
 
 /** Build the production Drizzle-backed {@link AdmissionReaderStore}. */
-export function createDrizzleAdmissionReaderStore(
-  db: DbClient,
-): AdmissionReaderStore {
+export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReaderStore {
   /** Current LOC per admission for a batch (ONE query, never N+1): the open period, else the most
    *  recent by `effective_at` — the `getCurrentLevelOfCare` rule. Admissions absent from the map have
    *  no LOC ledger row at all. `assigning` (IRC/GIP awaiting M37 bed confirmation, confirm-handshake
@@ -235,12 +353,7 @@ export function createDrizzleAdmissionReaderStore(
         endedAt: LOC.endedAt,
       })
       .from(LOC)
-      .where(
-        and(
-          inArray(LOC.admissionId, admissionIds as string[]),
-          ne(LOC.status, "assigning"),
-        ),
-      )
+      .where(and(inArray(LOC.admissionId, admissionIds as string[]), ne(LOC.status, "assigning")))
       .orderBy(asc(LOC.effectiveAt));
     const open = new Map<string, LevelOfCare>();
     for (const r of rows) {
@@ -257,9 +370,7 @@ export function createDrizzleAdmissionReaderStore(
     tx: Tx,
     rows: readonly PeriodRow[],
   ): Promise<ElectionPeriodRecord[]> {
-    const locBy = await currentLocByAdmission(tx, [
-      ...new Set(rows.map((r) => r.admissionId)),
-    ]);
+    const locBy = await currentLocByAdmission(tx, [...new Set(rows.map((r) => r.admissionId))]);
     const records: ElectionPeriodRecord[] = [];
     for (const r of rows) {
       if (r.effectiveAt === null || r.scheduledEndAt === null) continue;
@@ -303,11 +414,9 @@ export function createDrizzleAdmissionReaderStore(
   ): AdmissionSummary {
     const admissionAt = row.admissionAt ?? row.activatedAt;
     const missing: string[] = [];
-    if (admissionAt === null)
-      missing.push("admission_at (and no activated_at fallback)");
+    if (admissionAt === null) missing.push("admission_at (and no activated_at fallback)");
     if (row.providerEntityId === null) missing.push("provider_entity_id");
-    if (missing.length > 0)
-      throw new AdmissionSeamDataGapError("admission", row.id, missing);
+    if (missing.length > 0) throw new AdmissionSeamDataGapError("admission", row.id, missing);
     return {
       admissionId: row.id,
       patientId: row.patientId,
@@ -345,12 +454,7 @@ export function createDrizzleAdmissionReaderStore(
     const rows = await tx
       .select({ id: EP.id, admissionId: EP.admissionId })
       .from(EP)
-      .where(
-        and(
-          inArray(EP.admissionId, admissionIds as string[]),
-          eq(EP.status, "active"),
-        ),
-      )
+      .where(and(inArray(EP.admissionId, admissionIds as string[]), eq(EP.status, "active")))
       .orderBy(asc(EP.sequenceNumber));
     // ≤1 active period per admission by the §2.3.2 machine; ascending order makes a violation stable.
     return new Map(rows.map((r) => [r.admissionId, r.id] as const));
@@ -405,38 +509,38 @@ export function createDrizzleAdmissionReaderStore(
           await activePeriodByAdmission(tx, [row.id]),
           await currentLocByAdmission(tx, [row.id]),
         ];
-        return summaryOf(
-          row,
-          periodBy.get(row.id) ?? null,
-          locBy.get(row.id) ?? null,
-        );
+        return summaryOf(row, periodBy.get(row.id) ?? null, locBy.get(row.id) ?? null);
       });
     },
 
     async admissionSiting(organizationId, admissionId) {
-      return withOrgContext(db, { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID }, async (tx) => {
-        const [row] = await tx
-          .select({
-            admissionId: ADM.id,
-            organizationId: ADM.organizationId,
-            providerEntityId: ADM.providerEntityId,
-            locationId: ADM.locationId,
-            admissionAt: ADM.admissionAt,
-            activatedAt: ADM.activatedAt,
-          })
-          .from(ADM)
-          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
-          .limit(1);
-        if (!row) return null; // unknown id / not visible under RLS
-        return {
-          admissionId: row.admissionId,
-          organizationId: row.organizationId,
-          providerEntityId: row.providerEntityId,
-          locationId: row.locationId,
-          admissionAt: row.admissionAt?.toISOString() ?? null,
-          activatedAt: row.activatedAt?.toISOString() ?? null,
-        };
-      });
+      return withOrgContext(
+        db,
+        { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+        async (tx) => {
+          const [row] = await tx
+            .select({
+              admissionId: ADM.id,
+              organizationId: ADM.organizationId,
+              providerEntityId: ADM.providerEntityId,
+              locationId: ADM.locationId,
+              admissionAt: ADM.admissionAt,
+              activatedAt: ADM.activatedAt,
+            })
+            .from(ADM)
+            .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+            .limit(1);
+          if (!row) return null; // unknown id / not visible under RLS
+          return {
+            admissionId: row.admissionId,
+            organizationId: row.organizationId,
+            providerEntityId: row.providerEntityId,
+            locationId: row.locationId,
+            admissionAt: row.admissionAt?.toISOString() ?? null,
+            activatedAt: row.activatedAt?.toISOString() ?? null,
+          };
+        },
+      );
     },
 
     async levelOfCarePeriods(admissionId) {
@@ -468,84 +572,74 @@ export function createDrizzleAdmissionReaderStore(
     },
 
     async activeCertification(electionPeriodId) {
-      return withOrgContextFromRequest(
-        db,
-        async (tx): Promise<CertificationSummary | null> => {
-          // The partial unique `cti_period_active_idx` guarantees ≤1 non-voided CTI per period. The
-          // in-memory reference prefers a non-terminal CTI and falls back to the latest row; here
-          // "latest" is newest by created_at (rows come back ascending, `.at(-1)` is the newest).
-          const rows = await tx
-            .select({
-              id: CTI.id,
-              electionPeriodId: CTI.electionPeriodId,
-              status: CTI.status,
-              hospiceMdSignedAt: CTI.hospiceMdSignedAt,
-              signedLate: CTI.signedLate,
-              sequenceNumber: EP.sequenceNumber,
-            })
-            .from(CTI)
-            .innerJoin(EP, eq(CTI.electionPeriodId, EP.id))
-            .where(eq(CTI.electionPeriodId, electionPeriodId))
-            .orderBy(asc(CTI.createdAt));
-          const pick =
-            rows.find(
-              (r) => r.status !== "voided" && r.status !== "superseded",
-            ) ?? rows.at(-1);
-          if (!pick) return null;
-          return {
-            certificationId: pick.id,
-            electionPeriodId: pick.electionPeriodId,
-            status: pick.status,
-            hospiceMdSignedAt: localDateN(pick.hospiceMdSignedAt),
-            signedLate: pick.signedLate,
-            // No stored is_recert column — derived from the CMS definition: the first benefit period is
-            // the initial certification, every subsequent sequence is a recertification (§2.2).
-            isRecert: Number(pick.sequenceNumber) > 1,
-          } as CertificationSummary;
-        },
-      );
+      return withOrgContextFromRequest(db, async (tx): Promise<CertificationSummary | null> => {
+        // The partial unique `cti_period_active_idx` guarantees ≤1 non-voided CTI per period. The
+        // in-memory reference prefers a non-terminal CTI and falls back to the latest row; here
+        // "latest" is newest by created_at (rows come back ascending, `.at(-1)` is the newest).
+        const rows = await tx
+          .select({
+            id: CTI.id,
+            electionPeriodId: CTI.electionPeriodId,
+            status: CTI.status,
+            hospiceMdSignedAt: CTI.hospiceMdSignedAt,
+            signedLate: CTI.signedLate,
+            sequenceNumber: EP.sequenceNumber,
+          })
+          .from(CTI)
+          .innerJoin(EP, eq(CTI.electionPeriodId, EP.id))
+          .where(eq(CTI.electionPeriodId, electionPeriodId))
+          .orderBy(asc(CTI.createdAt));
+        const pick =
+          rows.find((r) => r.status !== "voided" && r.status !== "superseded") ?? rows.at(-1);
+        if (!pick) return null;
+        return {
+          certificationId: pick.id,
+          electionPeriodId: pick.electionPeriodId,
+          status: pick.status,
+          hospiceMdSignedAt: localDateN(pick.hospiceMdSignedAt),
+          signedLate: pick.signedLate,
+          // No stored is_recert column — derived from the CMS definition: the first benefit period is
+          // the initial certification, every subsequent sequence is a recertification (§2.2).
+          isRecert: Number(pick.sequenceNumber) > 1,
+        } as CertificationSummary;
+      });
     },
 
     async attestedF2f(electionPeriodId) {
-      return withOrgContextFromRequest(
-        db,
-        async (tx): Promise<FaceToFaceSummary | null> => {
-          // The partial unique `f2f_period_attested_idx` guarantees ≤1 attested F2F per period. The
-          // in-memory reference prefers the attested row and falls back to any row for the period
-          // (the reader's `?.status === "attested"` check is the actual gate).
-          const rows = await tx
-            .select({
-              id: F2F.id,
-              electionPeriodId: F2F.electionPeriodId,
-              status: F2F.status,
-              performerRole: F2F.performerRole,
-              encounterDate: F2F.encounterDate,
-              attestationSignedAt: F2F.attestationSignedAt,
-              windowOverride: F2F.windowOverride,
-            })
-            .from(F2F)
-            .where(eq(F2F.electionPeriodId, electionPeriodId))
-            .orderBy(asc(F2F.createdAt));
-          const pick = rows.find((r) => r.status === "attested") ?? rows[0];
-          if (!pick) return null;
-          if (pick.encounterDate === null) {
-            throw new AdmissionSeamDataGapError(
-              "face_to_face_encounter",
-              pick.id,
-              ["encounter_date"],
-            );
-          }
-          return {
-            faceToFaceEncounterId: pick.id,
-            electionPeriodId: pick.electionPeriodId,
-            status: pick.status,
-            performerRole: pick.performerRole,
-            encounterDate: localDate(pick.encounterDate),
-            attestedAt: localDateN(pick.attestationSignedAt),
-            windowOverride: pick.windowOverride,
-          } as FaceToFaceSummary;
-        },
-      );
+      return withOrgContextFromRequest(db, async (tx): Promise<FaceToFaceSummary | null> => {
+        // The partial unique `f2f_period_attested_idx` guarantees ≤1 attested F2F per period. The
+        // in-memory reference prefers the attested row and falls back to any row for the period
+        // (the reader's `?.status === "attested"` check is the actual gate).
+        const rows = await tx
+          .select({
+            id: F2F.id,
+            electionPeriodId: F2F.electionPeriodId,
+            status: F2F.status,
+            performerRole: F2F.performerRole,
+            encounterDate: F2F.encounterDate,
+            attestationSignedAt: F2F.attestationSignedAt,
+            windowOverride: F2F.windowOverride,
+          })
+          .from(F2F)
+          .where(eq(F2F.electionPeriodId, electionPeriodId))
+          .orderBy(asc(F2F.createdAt));
+        const pick = rows.find((r) => r.status === "attested") ?? rows[0];
+        if (!pick) return null;
+        if (pick.encounterDate === null) {
+          throw new AdmissionSeamDataGapError("face_to_face_encounter", pick.id, [
+            "encounter_date",
+          ]);
+        }
+        return {
+          faceToFaceEncounterId: pick.id,
+          electionPeriodId: pick.electionPeriodId,
+          status: pick.status,
+          performerRole: pick.performerRole,
+          encounterDate: localDate(pick.encounterDate),
+          attestedAt: localDateN(pick.attestationSignedAt),
+          windowOverride: pick.windowOverride,
+        } as FaceToFaceSummary;
+      });
     },
 
     async activeAdmissions(scope) {
@@ -576,9 +670,7 @@ export function createDrizzleAdmissionReaderStore(
           const locBy = await currentLocByAdmission(tx, ids);
           // summaryOf THROWS on an unprojectable active row rather than silently dropping a patient
           // from the census (an invisible active patient is the worse failure for M30 dashboards).
-          return rows.map((r) =>
-            summaryOf(r, periodBy.get(r.id) ?? null, locBy.get(r.id) ?? null),
-          );
+          return rows.map((r) => summaryOf(r, periodBy.get(r.id) ?? null, locBy.get(r.id) ?? null));
         },
       );
     },

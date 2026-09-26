@@ -48,7 +48,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       authoredByMembershipId: Type.String({ minLength: 1 }),
       serviceDate: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -61,7 +62,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       layer2Involved: Type.Boolean(),
       lateEntryTier,
     }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -106,7 +108,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
         ),
       }),
     }),
-    declaredConsumers: ["m9", "m10", "m14", "m17", "m22", "m28", "m30", "m31", "m33", "m36"],
+    declaredConsumers: ["m9", "m10", "m14", "m17", "m22", "m28", "m30", "m31", "m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -119,7 +122,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       cosignedByMembershipId: Type.String({ minLength: 1 }),
       cosignedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m23", "m24", "m33"],
+    declaredConsumers: ["m23", "m24"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -134,7 +138,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       signedAt: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m28", "m33"],
+    declaredConsumers: ["m22", "m28"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── cosignature SLA chain (§2.4 D3) ───────────────────────────────────────────────────────────────
@@ -147,7 +152,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       routedToMembershipId: Type.String({ minLength: 1 }),
       signedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -159,7 +165,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       routedToMembershipId: Type.String({ minLength: 1 }),
       hoursOverdue: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -171,7 +178,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       routedToMembershipId: Type.String({ minLength: 1 }),
       supervisorMembershipId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -184,7 +192,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       routedToMembershipId: Type.String({ minLength: 1 }),
       supervisorMembershipId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── late-entry overrides (§2.5 D4) ────────────────────────────────────────────────────────────────
@@ -198,7 +207,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       overrideReason: Type.String({ minLength: 1 }),
       daysLate: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -212,7 +222,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       overrideReason: Type.String({ minLength: 1 }),
       daysLate: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -225,7 +236,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       voidedBy: Type.String({ minLength: 1 }),
       voidedReason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m33"],
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -258,7 +270,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       hardBlockedCount: Type.Integer({ minimum: 0 }),
       softWarnCount: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m30", "m32", "m33"],
+    declaredConsumers: ["m30", "m32"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── vitals / mileage capture (§2.2 D10) ───────────────────────────────────────────────────────────
@@ -272,7 +285,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       fieldsCaptured: Type.Array(Type.String({ minLength: 1 })),
       abnormalFlags: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     }),
-    declaredConsumers: ["m9", "m36"],
+    declaredConsumers: ["m9"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -285,7 +299,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       milesDriven: Type.String({ minLength: 1 }),
       source: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m27", "m33"],
+    declaredConsumers: ["m27"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
 ];

@@ -20,6 +20,17 @@ import {
   createDbAdmissionRouteService,
 } from "../src/modules/06-admission/admission-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
+
+/** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
+const CTI_CLINICAL = {
+  terminalDiagnosisIcd10: "C34.90",
+  prognosisStatement:
+    "Life expectancy of 6 months or less if the terminal illness runs its normal course.",
+  narrative:
+    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care.",
+  clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
+};
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -29,144 +40,174 @@ const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const MD = "55555555-5555-5555-5555-555555555555";
 const ATTENDING = "77777777-7777-7777-7777-777777777777";
+// #44 — the elected hospice this suite's setup admission elects. `draftElectionStatement` now
+// PERSISTS the election (it used to validate its fields and forward one) and fails CLOSED when the
+// org-check port is unbound, so the id has to be a real row of ORG_A's rather than a free uuid.
+const PROVIDER_ENTITY = "99999999-9999-4999-8999-999999999999";
+const DRAFT = {
+  electedProviderEntityId: PROVIDER_ENTITY,
+  electedAttendingPhysicianId: ATTENDING,
+  waiverAcknowledged: true,
+} as const;
+const SIGN = { signingPatientName: "Pat Patient", signingRole: "patient" } as const;
 
-describe.skipIf(!DB_URL)("M6 admission.scope child-resource resolvers — LIVE Postgres (GAP-011)", () => {
-  let admin: Client;
-  let handle: ReturnType<typeof createDbClient>;
-  let svc: ReturnType<typeof createDbAdmissionRouteService>;
-  let resolver: ReturnType<typeof createDbAdmissionAbacResolver>;
+describe.skipIf(!DB_URL)(
+  "M6 admission.scope child-resource resolvers — LIVE Postgres (GAP-011)",
+  () => {
+    let admin: Client;
+    let handle: ReturnType<typeof createDbClient>;
+    let svc: ReturnType<typeof createDbAdmissionRouteService>;
+    let resolver: ReturnType<typeof createDbAdmissionAbacResolver>;
 
-  async function resetSchema() {
-    await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
-    await admin.query("CREATE SCHEMA public");
-    for (const r of ROLES)
-      await admin.query(
-        `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
-          `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
+    async function resetSchema() {
+      await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
+      await admin.query("CREATE SCHEMA public");
+      for (const r of ROLES)
+        await admin.query(
+          `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
+            `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
+        );
+    }
+    async function applyMigrations() {
+      for (const f of readdirSync(MIGRATIONS_DIR)
+        .filter((x) => x.endsWith(".sql"))
+        .sort())
+        await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
+    }
+
+    /**
+     * Referral → triage → qualify → accept → NOR ack → election sign → CTI hospice+attending sign → activate: a
+     * FULLY ACTIVE admission (the `changeLoc` write below requires active/on_hold — the m6-discharge-
+     * f2f-loc-write.live.test.ts `activeAdmission` precedent, condensed to what THIS suite needs: the
+     * election-statement/CTI/LOC ids to resolve scope through, not a fresh CTI/F2F/LOC state-machine
+     * proof of its own).
+     */
+    async function activeAdmission(
+      patientId: string,
+    ): Promise<{ admissionId: string; periodId: string; electionStatementId: string }> {
+      // Main's intake: triage → qualify → accept (+ admission details) — see _m6-admit.ts.
+      const { admissionId } = await admitViaQualifiedReferral(svc, admin, {
+        hospicePhysicianId: MD,
+        organizationId: ORG_A,
+        actorUserId: USER,
+        patientId,
+      });
+      const periods = await svc.listElectionPeriods(ORG_A, admissionId);
+      const periodId = periods![0].id;
+      const nor = await svc.acknowledgeNor(
+        ORG_A,
+        admissionId,
+        { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
+        USER,
       );
-  }
-  async function applyMigrations() {
-    for (const f of readdirSync(MIGRATIONS_DIR)
-      .filter((x) => x.endsWith(".sql"))
-      .sort())
-      await admin.query(readFileSync(join(MIGRATIONS_DIR, f), "utf8"));
-  }
+      const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId, DRAFT);
+      await svc.signElection(ORG_A, es.id, es.version, USER, SIGN);
+      const cti = await svc.draftCti(
+        ORG_A,
+        {
+          electionPeriodId: periodId,
+          hospiceMedicalDirectorId: MD,
+          attendingPhysicianId: ATTENDING,
+          ...CTI_CLINICAL,
+          isRecert: false,
+        },
+        USER,
+      );
+      await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
+      const active = await svc.activateAdmission(ORG_A, admissionId, nor.version);
+      expect(active.state).toBe("active");
+      return { admissionId, periodId, electionStatementId: es.id };
+    }
 
-  /**
-   * Referral → triage → accept → NOR ack → election sign → CTI hospice+attending sign → activate: a
-   * FULLY ACTIVE admission (the `changeLoc` write below requires active/on_hold — the m6-discharge-
-   * f2f-loc-write.live.test.ts `activeAdmission` precedent, condensed to what THIS suite needs: the
-   * election-statement/CTI/LOC ids to resolve scope through, not a fresh CTI/F2F/LOC state-machine
-   * proof of its own).
-   */
-  async function activeAdmission(
-    patientId: string,
-  ): Promise<{ admissionId: string; periodId: string; electionStatementId: string }> {
-    const ref = await svc.createReferral(
-      ORG_A,
-      { source: "phone", receivedAt: new Date().toISOString(), receivingUserId: USER, patientNameAtReceipt: "P" },
-      USER,
-    );
-    await svc.triageReferral(ORG_A, ref.id, "eligible", 0);
-    const { admissionId } = await svc.acceptReferral(
-      ORG_A,
-      ref.id,
-      { primaryDiagnosisIcd10: "C34.90", patientId },
-      1,
-      USER,
-    );
-    const periods = await svc.listElectionPeriods(ORG_A, admissionId);
-    const periodId = periods![0].id;
-    const nor = await svc.acknowledgeNor(
-      ORG_A,
-      admissionId,
-      { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
-      USER,
-    );
-    const es = await svc.draftElectionStatement(ORG_A, admissionId, periodId);
-    await svc.signElection(ORG_A, es.id, es.version, USER);
-    const cti = await svc.draftCti(
-      ORG_A,
-      { electionPeriodId: periodId, hospiceMedicalDirectorId: MD, attendingPhysicianId: ATTENDING, isRecert: false },
-      USER,
-    );
-    await svc.signCtiHospiceMd(ORG_A, cti.id, cti.version, USER);
-    await svc.signCtiAttending(ORG_A, cti.id, cti.version + 1, USER);
-    const active = await svc.activateAdmission(ORG_A, admissionId, nor.version);
-    expect(active.state).toBe("active");
-    return { admissionId, periodId, electionStatementId: es.id };
-  }
+    beforeAll(async () => {
+      admin = new Client({ connectionString: DB_URL });
+      await admin.connect();
+      await resetSchema();
+      await applyMigrations();
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
+        [ORG_A, ORG_B],
+      );
+      await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m6gap011@x.test')`, [USER]);
+      await admin.query(
+        `INSERT INTO provider_entity (id, organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+       VALUES ($1,$2,'CCN-GAP011','GAP-011 Hospice','NPI-GAP011','enc','12-31')`,
+        [PROVIDER_ENTITY, ORG_A],
+      );
+      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      handle = createDbClient({
+        connectionString: appRoleUrl(DB_URL as string),
+      });
+      registerM5IntakeSeams(handle.db); // M5 intake seams M6 conversion + readiness consult
+      // Bound to the REAL predicate over the seeded entity, exactly as the T3/T4 suites do. The
+      // deliberately-unbound 503 stays asserted in T3, where it is the subject rather than setup.
+      svc = createDbAdmissionRouteService(handle.db, undefined, undefined, {
+        async belongsToOrg(organizationId, providerEntityId) {
+          const { rows } = await admin.query(
+            "SELECT 1 FROM provider_entity WHERE id=$1 AND organization_id=$2",
+            [providerEntityId, organizationId],
+          );
+          return rows.length > 0;
+        },
+      });
+      resolver = createDbAdmissionAbacResolver(handle.db);
+    }, 120_000);
 
-  beforeAll(async () => {
-    admin = new Client({ connectionString: DB_URL });
-    await admin.connect();
-    await resetSchema();
-    await applyMigrations();
-    await admin.query(
-      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
-      [ORG_A, ORG_B],
-    );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'m6gap011@x.test')`, [USER]);
-    await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
-    handle = createDbClient({
-      connectionString: appRoleUrl(DB_URL as string),
+    afterAll(async () => {
+      await handle?.close();
+      if (admin) await admin.end();
     });
-    svc = createDbAdmissionRouteService(handle.db);
-    resolver = createDbAdmissionAbacResolver(handle.db);
-  }, 120_000);
 
-  afterAll(async () => {
-    await handle?.close();
-    if (admin) await admin.end();
-  });
+    it("resolves the SAME {patientId, providerEntityId} as loadAdmission for every child resource kind", async () => {
+      const { admissionId, periodId, electionStatementId } = await activeAdmission(randomUUID());
+      // The CTI activation used above is voided/superseded by nothing — draft a SECOND (recert) CTI on a
+      // fresh period so this test also proves the cti/f2f/loc loaders independently of the activation CTI.
+      const p2 = await svc.createElectionPeriod(ORG_A, admissionId);
+      const cti = await svc.draftCti(
+        ORG_A,
+        { electionPeriodId: p2.id, hospiceMedicalDirectorId: MD, ...CTI_CLINICAL, isRecert: true },
+        USER,
+      );
+      const f2f = await svc.scheduleF2f(ORG_A, {
+        admissionId: "ignored-by-the-write-service",
+        electionPeriodId: periodId,
+        scheduledClinicianId: USER,
+        clinicianRole: "hospice_md",
+      });
+      const loc = await svc.changeLoc(ORG_A, admissionId, "routine_home_care");
 
-  it("resolves the SAME {patientId, providerEntityId} as loadAdmission for every child resource kind", async () => {
-    const { admissionId, periodId, electionStatementId } = await activeAdmission(randomUUID());
-    // The CTI activation used above is voided/superseded by nothing — draft a SECOND (recert) CTI on a
-    // fresh period so this test also proves the cti/f2f/loc loaders independently of the activation CTI.
-    const p2 = await svc.createElectionPeriod(ORG_A, admissionId);
-    const cti = await svc.draftCti(
-      ORG_A,
-      { electionPeriodId: p2.id, hospiceMedicalDirectorId: MD, isRecert: true },
-      USER,
-    );
-    const f2f = await svc.scheduleF2f(ORG_A, {
-      admissionId: "ignored-by-the-write-service",
-      electionPeriodId: periodId,
-      scheduledClinicianId: USER,
-      clinicianRole: "hospice_md",
+      const admissionFacts = await resolver.loadAdmission(ORG_A, admissionId);
+      expect(admissionFacts).not.toBeNull();
+
+      await expect(resolver.loadElectionPeriodScope(ORG_A, periodId)).resolves.toEqual(
+        admissionFacts,
+      );
+      await expect(
+        resolver.loadElectionStatementScope(ORG_A, electionStatementId),
+      ).resolves.toEqual(admissionFacts);
+      await expect(resolver.loadCtiScope(ORG_A, cti.id)).resolves.toEqual(admissionFacts);
+      await expect(resolver.loadF2fScope(ORG_A, f2f.id)).resolves.toEqual(admissionFacts);
+      await expect(resolver.loadLocScope(ORG_A, loc.id)).resolves.toEqual(admissionFacts);
     });
-    const loc = await svc.changeLoc(ORG_A, admissionId, "routine_home_care");
 
-    const admissionFacts = await resolver.loadAdmission(ORG_A, admissionId);
-    expect(admissionFacts).not.toBeNull();
+    it("fails closed (null) for an absent id and for a cross-tenant id (RLS-backstopped)", async () => {
+      const { admissionId } = await activeAdmission(randomUUID());
+      const p2 = await svc.createElectionPeriod(ORG_A, admissionId);
+      const cti = await svc.draftCti(
+        ORG_A,
+        { electionPeriodId: p2.id, hospiceMedicalDirectorId: MD, ...CTI_CLINICAL, isRecert: true },
+        USER,
+      );
 
-    await expect(resolver.loadElectionPeriodScope(ORG_A, periodId)).resolves.toEqual(admissionFacts);
-    await expect(resolver.loadElectionStatementScope(ORG_A, electionStatementId)).resolves.toEqual(
-      admissionFacts,
-    );
-    await expect(resolver.loadCtiScope(ORG_A, cti.id)).resolves.toEqual(admissionFacts);
-    await expect(resolver.loadF2fScope(ORG_A, f2f.id)).resolves.toEqual(admissionFacts);
-    await expect(resolver.loadLocScope(ORG_A, loc.id)).resolves.toEqual(admissionFacts);
-  });
+      const missing = randomUUID();
+      await expect(resolver.loadElectionPeriodScope(ORG_A, missing)).resolves.toBeNull();
+      await expect(resolver.loadElectionStatementScope(ORG_A, missing)).resolves.toBeNull();
+      await expect(resolver.loadCtiScope(ORG_A, missing)).resolves.toBeNull();
+      await expect(resolver.loadF2fScope(ORG_A, missing)).resolves.toBeNull();
+      await expect(resolver.loadLocScope(ORG_A, missing)).resolves.toBeNull();
 
-  it("fails closed (null) for an absent id and for a cross-tenant id (RLS-backstopped)", async () => {
-    const { admissionId } = await activeAdmission(randomUUID());
-    const p2 = await svc.createElectionPeriod(ORG_A, admissionId);
-    const cti = await svc.draftCti(
-      ORG_A,
-      { electionPeriodId: p2.id, hospiceMedicalDirectorId: MD, isRecert: true },
-      USER,
-    );
-
-    const missing = randomUUID();
-    await expect(resolver.loadElectionPeriodScope(ORG_A, missing)).resolves.toBeNull();
-    await expect(resolver.loadElectionStatementScope(ORG_A, missing)).resolves.toBeNull();
-    await expect(resolver.loadCtiScope(ORG_A, missing)).resolves.toBeNull();
-    await expect(resolver.loadF2fScope(ORG_A, missing)).resolves.toBeNull();
-    await expect(resolver.loadLocScope(ORG_A, missing)).resolves.toBeNull();
-
-    // A real CTI id, but resolved under ORG_B's tenant context — RLS hides it, same as absent.
-    await expect(resolver.loadCtiScope(ORG_B, cti.id)).resolves.toBeNull();
-  });
-});
+      // A real CTI id, but resolved under ORG_B's tenant context — RLS hides it, same as absent.
+      await expect(resolver.loadCtiScope(ORG_B, cti.id)).resolves.toBeNull();
+    });
+  },
+);

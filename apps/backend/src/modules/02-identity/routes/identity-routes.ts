@@ -42,6 +42,7 @@ import {
   auditMembershipAccepted,
   auditMembershipRevoked,
   auditMembershipStatusChanged,
+  auditRolesAttachedOnAccept,
   auditUserDeactivated,
   auditUserInvited,
 } from "../audit/identity-audit";
@@ -84,6 +85,32 @@ async function resolveActor(deps: IdentityRouteDeps, request: FastifyRequest): P
   const actor = await deps.actors.resolve(request);
   if (!actor) throw new UnauthorizedError();
   return actor;
+}
+
+/**
+ * The org's display name, for the invitation the invitee actually reads (TASK-030).
+ *
+ * Both invitation routes used to take this from `request.context.attributes.organizationName` and
+ * fall back to the literal `"Organization"`. Nothing has ever written that attribute (F-030), so the
+ * fallback was not a fallback — it was the only branch. Every WardenX invitation row was stored with
+ * the name `Organization`, the pre-auth `GET /invitations/:token` preview served that back to the
+ * invitee's browser, and the email said "You've been invited to join your organization".
+ *
+ * Resolved instead from the INVITER's own active membership in the org they are inviting into. They
+ * necessarily have one: `member.invite` was granted in this org and `assertOrgMatch` has already
+ * bound the route's `:id` to the session's org. That makes the lookup org-scoped by construction —
+ * no cross-tenant read, and no new dependency; the same `findActive` the `/auth/context` projection
+ * already reads the name through.
+ */
+async function organizationNameFor(
+  deps: IdentityRouteDeps,
+  userId: string,
+  organizationId: string,
+): Promise<string | undefined> {
+  const membership = await deps.memberships.findActive(userId, organizationId);
+  // Undefined rather than a placeholder: the callers decide what an unresolvable name means, and
+  // neither of them may fail a durably-recorded invite over a display string.
+  return membership?.organizationName || undefined;
 }
 
 /** Build the audit context for an identity event from the request + scope. */
@@ -158,7 +185,7 @@ function assertOrgMatch(request: FastifyRequest, pathOrgId: string): void {
  */
 async function deliverInvite(
   deps: IdentityRouteDeps,
-  organizationNameAttr: unknown,
+  organizationName: string | undefined,
   email: string,
   token: string,
 ): Promise<string | undefined> {
@@ -166,8 +193,7 @@ async function deliverInvite(
     ? `${deps.webAppBaseUrl.replace(/\/$/, "")}/invite/${token}`
     : undefined;
   if (deps.emailTransport && inviteUrl) {
-    const orgName =
-      typeof organizationNameAttr === "string" ? organizationNameAttr : "your organization";
+    const orgName = organizationName ?? "your organization";
     try {
       await deps.emailTransport.send({
         to: email,
@@ -248,10 +274,10 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
 
     if (await deps.invitations.pendingExists(orgId, email)) throw pendingInviteExists();
 
-    const orgName = request.context.attributes.organizationName;
+    const orgName = await organizationNameFor(deps, actor.userId, orgId);
     const created = await deps.invitations.create({
       organizationId: orgId,
-      organizationName: typeof orgName === "string" ? orgName : "Organization",
+      organizationName: orgName ?? "Organization",
       email,
       proposedRoleKeys,
       defaultLocationIds: proposedDefaultLocationIds,
@@ -299,7 +325,7 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       auditContextFor(request, { organizationId: orgId, userId: actor.userId }),
       { invitationId: invId, organizationId: orgId, email: target.email },
     );
-    const orgName = request.context.attributes.organizationName;
+    const orgName = await organizationNameFor(deps, actor.userId, orgId);
     const inviteUrl = await deliverInvite(deps, orgName, target.email, reminted.token);
     return reply.code(200).send({
       invitationId: reminted.invitationId,
@@ -351,11 +377,52 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
         userId: actor.userId,
       },
     );
-    // proposedRoleKeys are carried to M3 on accept (role attach is M3-owned, §7.1).
+
+    // F-097 — the §D3 handshake, performed. This line used to be the comment
+    // "proposedRoleKeys are carried to M3 on accept (role attach is M3-owned, §7.1)" followed by a
+    // return: the keys reached here and went nowhere, so every invitation produced a membership with no
+    // grants at all. There is no event path to fall back on — M2 contributes no outbox catalog, so
+    // `m2.membership.accepted` is an audit action and nothing can subscribe to it.
+    //
+    // AFTER the membership audit, deliberately: the membership exists whether or not the grants land,
+    // and an attach failure must not roll back an invitation that has already been atomically consumed
+    // (the token is one-time — a thrown accept would leave the invitee with no membership and no way to
+    // retry). A failure is audited and reported, not swallowed and not escalated into losing the seat.
+    const rolesAttached = deps.roleAttacher
+      ? await deps.roleAttacher.attach({
+          organizationId: detail.organizationId,
+          membershipId: membership.membershipId,
+          roleKeys: detail.proposedRoleKeys,
+          grantedByUserId: actor.userId,
+        })
+      : null;
+
+    if (
+      rolesAttached &&
+      (rolesAttached.attached.length > 0 || rolesAttached.unresolved.length > 0)
+    ) {
+      await auditRolesAttachedOnAccept(
+        deps.audit,
+        auditContextFor(request, { organizationId: detail.organizationId, userId: actor.userId }),
+        {
+          membershipId: membership.membershipId,
+          organizationId: detail.organizationId,
+          attached: rolesAttached.attached,
+          unresolved: rolesAttached.unresolved,
+        },
+      );
+    }
+
+    // `rolesAttached` is on the wire so the caller can tell the three states apart: roles granted, roles
+    // REQUESTED BUT UNRESOLVABLE (the org has no such role — which is every key in a freshly provisioned
+    // tenant, since nothing materializes ROLE_TEMPLATES), and no attacher bound at all. Reporting only
+    // the membership id, as before, is what made an invitation that granted nothing indistinguishable
+    // from one that worked.
     return reply.code(200).send({
       membershipId: membership.membershipId,
       organizationId: detail.organizationId,
       status: membership.status,
+      rolesAttached,
     });
   });
 
@@ -526,39 +593,40 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     return reply.code(201).send(grant);
   });
 
-  app.delete(
-    "/api/v1/orgs/:id/members/:mId/elevated-approvals/:kind",
-    async (request, reply) => {
-      await requirePermission("member.manage")(request);
-      const service = requireElevatedApprovals();
-      const { id: orgId, mId, kind } = request.params as {
-        id: string;
-        mId: string;
-        kind: string;
-      };
-      await targetMembership(request, orgId, mId);
-      const actor = await resolveActor(deps, request);
-      const revokedReason = readString(request.body, "revokedReason");
-      if (revokedReason.trim().length < 10) {
-        throw new ValidationError("revokedReason too short", [
-          {
-            field: "revokedReason",
-            code: "TOO_SHORT",
-            message: "revokedReason must be at least 10 characters (the CHECK constraint agrees)",
-          },
-        ]);
-      }
-      if (!actor.membershipId) throw new UnauthorizedError();
-      const revoked = await service.revoke({
-        organizationId: orgId,
-        membershipId: mId,
-        kind,
-        revokedByMembershipId: actor.membershipId,
-        revokedReason,
-      });
-      return reply.code(200).send(revoked);
-    },
-  );
+  app.delete("/api/v1/orgs/:id/members/:mId/elevated-approvals/:kind", async (request, reply) => {
+    await requirePermission("member.manage")(request);
+    const service = requireElevatedApprovals();
+    const {
+      id: orgId,
+      mId,
+      kind,
+    } = request.params as {
+      id: string;
+      mId: string;
+      kind: string;
+    };
+    await targetMembership(request, orgId, mId);
+    const actor = await resolveActor(deps, request);
+    const revokedReason = readString(request.body, "revokedReason");
+    if (revokedReason.trim().length < 10) {
+      throw new ValidationError("revokedReason too short", [
+        {
+          field: "revokedReason",
+          code: "TOO_SHORT",
+          message: "revokedReason must be at least 10 characters (the CHECK constraint agrees)",
+        },
+      ]);
+    }
+    if (!actor.membershipId) throw new UnauthorizedError();
+    const revoked = await service.revoke({
+      organizationId: orgId,
+      membershipId: mId,
+      kind,
+      revokedByMembershipId: actor.membershipId,
+      revokedReason,
+    });
+    return reply.code(200).send(revoked);
+  });
 
   app.post("/api/v1/users/:id/deactivate", async (request, reply) => {
     // §4.7: org_admin (own org) or platform_ops (any) hold `user.deactivate`; the resolver

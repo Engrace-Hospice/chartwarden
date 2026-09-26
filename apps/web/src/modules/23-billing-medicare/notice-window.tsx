@@ -162,36 +162,43 @@ export function NoticeWindowQueue({ config }: { config: NoticeWindowConfig }): J
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (cursor: string | null, append: boolean) => {
-    if (append) setLoadingMore(true);
-    else {
-      setLoading(true);
-      setError(null);
-    }
-    // The list path is config-chosen at runtime, so the typed GET collapses to `never`; cast the read. The
-    // server (re)parses the request and remains the authoritative org-scoped (RLS) + authz boundary.
-    const init = { params: { query: { limit: 50, ...(cursor ? { cursor } : {}) } } };
-    const { data, error: err } = (await client.GET(config.listPath as never, init as never)) as {
-      data?: unknown;
-      error?: unknown;
-    };
-    if (err) {
-      if (append) setLoadingMore(false);
+  const load = useCallback(
+    async (cursor: string | null, append: boolean) => {
+      if (append) setLoadingMore(true);
       else {
-        setError(
-          `${config.acronym} queue unavailable — the billing read seam is not bound, or you lack scope.`,
-        );
-        setLoading(false);
+        setLoading(true);
+        setError(null);
       }
-      return;
-    }
-    const page = (data as ListPage<NoticeRecord>) ?? { items: [], nextCursor: null, hasMore: false };
-    setRecords((prev) => (append ? [...prev, ...page.items] : page.items));
-    setNextCursor(page.nextCursor);
-    setHasMore(page.hasMore);
-    if (append) setLoadingMore(false);
-    else setLoading(false);
-  }, [client, config]);
+      // The list path is config-chosen at runtime, so the typed GET collapses to `never`; cast the read. The
+      // server (re)parses the request and remains the authoritative org-scoped (RLS) + authz boundary.
+      const init = { params: { query: { limit: 50, ...(cursor ? { cursor } : {}) } } };
+      const { data, error: err } = (await client.GET(config.listPath as never, init as never)) as {
+        data?: unknown;
+        error?: unknown;
+      };
+      if (err) {
+        if (append) setLoadingMore(false);
+        else {
+          setError(
+            `${config.acronym} queue unavailable — the billing read seam is not bound, or you lack scope.`,
+          );
+          setLoading(false);
+        }
+        return;
+      }
+      const page = (data as ListPage<NoticeRecord>) ?? {
+        items: [],
+        nextCursor: null,
+        hasMore: false,
+      };
+      setRecords((prev) => (append ? [...prev, ...page.items] : page.items));
+      setNextCursor(page.nextCursor);
+      setHasMore(page.hasMore);
+      if (append) setLoadingMore(false);
+      else setLoading(false);
+    },
+    [client, config],
+  );
 
   useEffect(() => {
     void load(null, false);
@@ -244,7 +251,8 @@ export function NoticeWindowQueue({ config }: { config: NoticeWindowConfig }): J
           }
         >
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Track filing-window status, submit ready records, and cancel active notices with a reason.
+            Track filing-window status, submit ready records, and cancel active notices with a
+            reason.
           </div>
         </PageHeader>
       }
@@ -345,7 +353,11 @@ export function NoticeWindowQueue({ config }: { config: NoticeWindowConfig }): J
             onClose={() => setSelected(null)}
             hideScrollbar
           >
-            <NoticePreview record={selected} config={config} onChanged={() => void load(null, false)} />
+            <NoticePreview
+              record={selected}
+              config={config}
+              onChanged={() => void load(null, false)}
+            />
           </RightDetailPanel>
         ) : null
       }
@@ -377,7 +389,9 @@ function NoticeTable({
   const orderedStates = Array.from(groups.keys()).sort();
 
   return (
-    <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+    <table
+      style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}
+    >
       <thead>
         <tr
           style={{

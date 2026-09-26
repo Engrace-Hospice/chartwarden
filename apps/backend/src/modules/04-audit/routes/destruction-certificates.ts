@@ -1,3 +1,4 @@
+import { type AuditContext, audit, decodeCursor, encodeCursor, resolveLimit } from "@wardenx/audit";
 // apps/backend/src/modules/04-audit/routes/destruction-certificates.ts — GAP-003 the §6
 // destruction-certificate surface (M4 spec §4.2-4.3, §6, §10.5).
 //
@@ -19,15 +20,14 @@
 import { requirePermission, requireStepUp } from "@wardenx/auth";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { NotFoundError, WardenXError, UnauthorizedError } from "@wardenx/types";
+import { NotFoundError, UnauthorizedError, WardenXError } from "@wardenx/types";
 import { and, desc, eq, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
-import { decodeCursor, encodeCursor, resolveLimit, audit, type AuditContext } from "@wardenx/audit";
 import type { LegalHoldCriteria } from "./audit-typebox";
 import {
   DestructionCertificateIdParamsSchema,
-  DestructionCertificateListQuerySchema,
   type DestructionCertificateListQuery,
+  DestructionCertificateListQuerySchema,
   HoldDestructionCertificateBodySchema,
   parse,
 } from "./audit-typebox";
@@ -43,7 +43,11 @@ export interface DestructionCertificatesRouteDeps {
 const CERT = schema.destructionCertificates;
 const HOLD = schema.legalHolds;
 
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string; roles: readonly string[] } {
+function actorOf(request: FastifyRequest): {
+  organizationId: string;
+  userId: string;
+  roles: readonly string[];
+} {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
   return { organizationId: ctx.organizationId, userId: ctx.userId, roles: ctx.roles };
@@ -104,34 +108,42 @@ export function registerDestructionCertificatesRoutes(
   app: FastifyInstance,
   deps: DestructionCertificatesRouteDeps,
 ): void {
-  app.get("/api/v1/destruction-certificates", { preHandler: [destructionRead] }, async (request) => {
-    const { organizationId, userId } = actorOf(request);
-    const q = parse(
-      DestructionCertificateListQuerySchema,
-      request.query,
-    ) as DestructionCertificateListQuery;
-    return withOrgContext(deps.db, { organizationId, userId }, async (tx) => {
-      const limit = resolveLimit(q.limit);
-      const where = [eq(CERT.organizationId, organizationId)];
-      if (q.status) where.push(eq(CERT.status, q.status));
-      const cur = q.cursor ? decodeCursor(q.cursor) : null;
-      if (cur) {
-        where.push(sql`(${CERT.createdAt}, ${CERT.id}) < (${cur.createdAt}::timestamptz, ${cur.id})`);
-      }
-      const rows = await tx
-        .select()
-        .from(CERT)
-        .where(and(...where))
-        .orderBy(desc(CERT.createdAt), desc(CERT.id))
-        .limit(limit + 1);
-      const hasMore = rows.length > limit;
-      const page = rows.slice(0, limit);
-      const last = page[page.length - 1];
-      const nextCursor =
-        hasMore && last ? encodeCursor({ createdAt: last.createdAt.toISOString(), id: last.id }) : null;
-      return { items: page.map(toCertificateView), nextCursor };
-    });
-  });
+  app.get(
+    "/api/v1/destruction-certificates",
+    { preHandler: [destructionRead] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const q = parse(
+        DestructionCertificateListQuerySchema,
+        request.query,
+      ) as DestructionCertificateListQuery;
+      return withOrgContext(deps.db, { organizationId, userId }, async (tx) => {
+        const limit = resolveLimit(q.limit);
+        const where = [eq(CERT.organizationId, organizationId)];
+        if (q.status) where.push(eq(CERT.status, q.status));
+        const cur = q.cursor ? decodeCursor(q.cursor) : null;
+        if (cur) {
+          where.push(
+            sql`(${CERT.createdAt}, ${CERT.id}) < (${cur.createdAt}::timestamptz, ${cur.id})`,
+          );
+        }
+        const rows = await tx
+          .select()
+          .from(CERT)
+          .where(and(...where))
+          .orderBy(desc(CERT.createdAt), desc(CERT.id))
+          .limit(limit + 1);
+        const hasMore = rows.length > limit;
+        const page = rows.slice(0, limit);
+        const last = page[page.length - 1];
+        const nextCursor =
+          hasMore && last
+            ? encodeCursor({ createdAt: last.createdAt.toISOString(), id: last.id })
+            : null;
+        return { items: page.map(toCertificateView), nextCursor };
+      });
+    },
+  );
 
   app.post(
     "/api/v1/destruction-certificates/:id/approve",

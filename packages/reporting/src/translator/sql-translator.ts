@@ -160,7 +160,10 @@ export function translateSpec(
   // 5. WHERE = filters (start at $2) AND scope (D8). Both parameterized; scope columns are constants.
   const filterWhere: CompiledWhere = compileFilters(spec.filters, dimTypes, 2);
   params.push(...filterWhere.params);
-  const scopeClause = injectScope(scope, filterWhere.nextIndex);
+  const scopeClause = injectScope(scope, filterWhere.nextIndex, {
+    membership: base.scopeMembershipColumn ?? null,
+    location: base.scopeLocationColumn ?? null,
+  });
   params.push(...scopeClause.params);
 
   const wherePieces: string[] = [];

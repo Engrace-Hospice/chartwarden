@@ -10,7 +10,9 @@ const LegalHolds = lazy(() => import("./legal-holds").then((m) => ({ default: m.
 const AuditIntegrityReport = lazy(() =>
   import("./audit-integrity-report").then((m) => ({ default: m.AuditIntegrityReport })),
 );
-const AuditExports = lazy(() => import("./audit-exports").then((m) => ({ default: m.AuditExports })));
+const AuditExports = lazy(() =>
+  import("./audit-exports").then((m) => ({ default: m.AuditExports })),
+);
 
 export const auditScreens: ScreenRegistryModule<ComponentType> = {
   moduleId: 4,

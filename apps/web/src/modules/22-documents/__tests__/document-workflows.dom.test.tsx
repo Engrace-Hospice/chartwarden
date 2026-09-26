@@ -149,12 +149,20 @@ describe("M22 document workflows", () => {
     const client = {
       GET: vi.fn(async (path: string) => {
         if (path === "/api/v1/patients/{id}") return ok(patient);
-        if (path === "/api/v1/documents") return ok({ items: uploaded ? [documentRow()] : [], nextCursor: null, hasMore: false });
-        if (path === "/api/v1/documents/{id}/versions") return ok({ items: [versionRow()], nextCursor: null, hasMore: false });
+        if (path === "/api/v1/documents")
+          return ok({ items: uploaded ? [documentRow()] : [], nextCursor: null, hasMore: false });
+        if (path === "/api/v1/documents/{id}/versions")
+          return ok({ items: [versionRow()], nextCursor: null, hasMore: false });
         return ok(null);
       }),
       POST: vi.fn(async (path: string) => {
-        if (path === "/api/v1/document-uploads") return ok({ uploadId: "66666666-6666-4666-8666-666666666666", uploadUrl: "https://storage.example/upload", requiredHeaders: {}, expiresAt: "2026-08-30T10:05:00.000Z" });
+        if (path === "/api/v1/document-uploads")
+          return ok({
+            uploadId: "66666666-6666-4666-8666-666666666666",
+            uploadUrl: "https://storage.example/upload",
+            requiredHeaders: {},
+            expiresAt: "2026-08-30T10:05:00.000Z",
+          });
         if (path === "/api/v1/document-uploads/{id}/complete") {
           uploaded = true;
           return ok({ documentId: docId, versionId: v1, versionNumber: 1 });
@@ -168,9 +176,13 @@ describe("M22 document workflows", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: /upload document/i }));
     const file = new File(["%PDF-1.7"], "polst.pdf", { type: "application/pdf" });
-    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } });
+    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, {
+      target: { files: [file] },
+    });
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: /^upload (document|new version)$/i }),
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: /^upload (document|new version)$/i,
+      }),
     );
 
     await waitFor(() =>
@@ -180,7 +192,10 @@ describe("M22 document workflows", () => {
           body: expect.objectContaining({
             patientId,
             aggregateType: "code_status_directive",
-            sourceMetadata: expect.objectContaining({ documentType: "code_status_directive", sourceChannel: "manual_upload" }),
+            sourceMetadata: expect.objectContaining({
+              documentType: "code_status_directive",
+              sourceChannel: "manual_upload",
+            }),
           }),
         }),
       ),
@@ -194,17 +209,30 @@ describe("M22 document workflows", () => {
     const client = {
       GET: vi.fn(async (path: string) => {
         if (path === "/api/v1/patients/{id}") return ok(patient);
-        if (path === "/api/v1/documents") return ok({ items: [documentRow({ version: upgraded ? 2 : 1 })], nextCursor: null, hasMore: false });
+        if (path === "/api/v1/documents")
+          return ok({
+            items: [documentRow({ version: upgraded ? 2 : 1 })],
+            nextCursor: null,
+            hasMore: false,
+          });
         if (path === "/api/v1/documents/{id}/versions")
           return ok({
-            items: upgraded ? [versionRow({ id: v2, versionNumber: 2 }), versionRow()] : [versionRow()],
+            items: upgraded
+              ? [versionRow({ id: v2, versionNumber: 2 }), versionRow()]
+              : [versionRow()],
             nextCursor: null,
             hasMore: false,
           });
         return ok(null);
       }),
       POST: vi.fn(async (path: string) => {
-        if (path === "/api/v1/document-uploads") return ok({ uploadId: "66666666-6666-4666-8666-666666666666", uploadUrl: "https://storage.example/upload", requiredHeaders: {}, expiresAt: "2026-08-30T10:05:00.000Z" });
+        if (path === "/api/v1/document-uploads")
+          return ok({
+            uploadId: "66666666-6666-4666-8666-666666666666",
+            uploadUrl: "https://storage.example/upload",
+            requiredHeaders: {},
+            expiresAt: "2026-08-30T10:05:00.000Z",
+          });
         if (path === "/api/v1/document-uploads/{id}/complete") {
           upgraded = true;
           return ok({ documentId: docId, versionId: v2, versionNumber: 2 });
@@ -219,9 +247,13 @@ describe("M22 document workflows", () => {
     fireEvent.click(await screen.findByRole("button", { name: /more actions for/i }));
     fireEvent.click(screen.getByRole("button", { name: /upload new version/i }));
     const file = new File(["%PDF-1.7 version 2"], "polst-v2.pdf", { type: "application/pdf" });
-    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } });
+    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, {
+      target: { files: [file] },
+    });
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: /^upload (document|new version)$/i }),
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: /^upload (document|new version)$/i,
+      }),
     );
 
     await waitFor(() =>
@@ -251,18 +283,29 @@ describe("M22 document workflows", () => {
                     aggregateType: "referral",
                     aggregateId: referralId,
                     title: "Referral packet",
-                    metadata: { documentType: "referral", sourceChannel: "fax", faxReference: "FX-9" },
+                    metadata: {
+                      documentType: "referral",
+                      sourceChannel: "fax",
+                      faxReference: "FX-9",
+                    },
                   }),
                 ]
               : [],
             nextCursor: null,
             hasMore: false,
           });
-        if (path === "/api/v1/documents/{id}/versions") return ok({ items: [versionRow()], nextCursor: null, hasMore: false });
+        if (path === "/api/v1/documents/{id}/versions")
+          return ok({ items: [versionRow()], nextCursor: null, hasMore: false });
         return ok(null);
       }),
       POST: vi.fn(async (path: string) => {
-        if (path === "/api/v1/document-uploads") return ok({ uploadId: "66666666-6666-4666-8666-666666666666", uploadUrl: "https://storage.example/upload", requiredHeaders: {}, expiresAt: "2026-08-30T10:05:00.000Z" });
+        if (path === "/api/v1/document-uploads")
+          return ok({
+            uploadId: "66666666-6666-4666-8666-666666666666",
+            uploadUrl: "https://storage.example/upload",
+            requiredHeaders: {},
+            expiresAt: "2026-08-30T10:05:00.000Z",
+          });
         if (path === "/api/v1/document-uploads/{id}/complete") {
           uploaded = true;
           return ok({ documentId: docId, versionId: v1, versionNumber: 1 });
@@ -278,9 +321,13 @@ describe("M22 document workflows", () => {
     fireEvent.click(await screen.findByRole("button", { name: /upload document/i }));
     fireEvent.change(screen.getByLabelText("Fax reference"), { target: { value: "FX-9" } });
     const file = new File(["%PDF-1.7"], "referral.pdf", { type: "application/pdf" });
-    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } });
+    fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, {
+      target: { files: [file] },
+    });
     fireEvent.click(
-      within(screen.getByRole("dialog")).getByRole("button", { name: /^upload (document|new version)$/i }),
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: /^upload (document|new version)$/i,
+      }),
     );
 
     await waitFor(() =>
@@ -291,7 +338,11 @@ describe("M22 document workflows", () => {
             patientId: undefined,
             aggregateType: "referral",
             aggregateId: referralId,
-            sourceMetadata: expect.objectContaining({ documentType: "referral", sourceChannel: "fax", faxReference: "FX-9" }),
+            sourceMetadata: expect.objectContaining({
+              documentType: "referral",
+              sourceChannel: "fax",
+              faxReference: "FX-9",
+            }),
           }),
         }),
       ),

@@ -65,10 +65,7 @@ export function createHopeDischargePrefillService(): HopeDischargePrefillService
       )
       .limit(1);
     if (!row) return false;
-    const options = await input.tx
-      .select()
-      .from(OPTION)
-      .where(eq(OPTION.specItemId, row.item.id));
+    const options = await input.tx.select().from(OPTION).where(eq(OPTION.specItemId, row.item.id));
     const value = normalizeHopeAnswerValue({
       item: row.item,
       options,
@@ -106,7 +103,11 @@ export function createHopeDischargePrefillService(): HopeDischargePrefillService
 
   return {
     async prefillDischarge({ tx, organizationId, assessment, dischargeDate, dischargeReason }) {
-      if (assessment.rfaKind !== "05_discharge" || assessment.isc !== "HD" || assessment.status !== "draft") {
+      if (
+        assessment.rfaKind !== "05_discharge" ||
+        assessment.isc !== "HD" ||
+        assessment.status !== "draft"
+      ) {
         return { assessmentId: assessment.id, prefilledItemCodes: [] };
       }
       const at = new Date();

@@ -31,10 +31,13 @@ export {
   seamPortalAbacPorts,
 } from "./abac-predicates";
 export {
+  type PortalReasonCipher,
   type PortalRouteDeps,
   type PortalStore,
+  type PortalTenantKeyProvider,
   type TelehealthAdapterPort,
   buildDrizzlePortalStore,
   buildPortalAbacResolverFromStore,
+  createPortalReasonCipher,
 } from "./routes/index";
 export { mountM31Routes } from "./routes/mount";

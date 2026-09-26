@@ -288,9 +288,7 @@ describe("M7 Care Plan workspace", () => {
     });
     renderWorkspace(client);
 
-    await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Plan of Care" })).toBeTruthy(),
-    );
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Plan of Care" })).toBeTruthy());
     expect(screen.getAllByText("June Rivera").length).toBeGreaterThan(0);
     expect(screen.getAllByText(/Active terminal problem required/).length).toBeGreaterThan(0);
     expect(screen.getByText("Scheduled review is due")).toBeTruthy();

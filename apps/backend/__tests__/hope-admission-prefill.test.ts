@@ -1,8 +1,5 @@
+import type { PatientCoverage, PatientHopeAdmissionPrefillFacts } from "@wardenx/types";
 import { describe, expect, it } from "vitest";
-import type {
-  PatientCoverage,
-  PatientHopeAdmissionPrefillFacts,
-} from "@wardenx/types";
 import {
   buildHopeAdmissionPrefillAnswers,
   isHopeCoverageInForceOn,
@@ -62,6 +59,8 @@ function answerMap(
       postalCode: "02139",
       residenceSite: "01",
       coverages,
+      providerNpi: null,
+      providerCcn: null,
     }).map((answer) => [answer.itemCode, answer]),
   );
 }
@@ -227,12 +226,8 @@ describe("HOPE Admission prefill mappings", () => {
   it("does not prefill Section F or diagnosis-category Section I answers from unrelated structured facts", () => {
     const answers = answerMap(patient(), [coverage({})]);
 
-    expect(
-      [...answers.keys()].filter((itemCode) => itemCode.startsWith("F")),
-    ).toEqual([]);
-    expect(
-      [...answers.keys()].filter((itemCode) => itemCode.startsWith("I")),
-    ).toEqual([]);
+    expect([...answers.keys()].filter((itemCode) => itemCode.startsWith("F"))).toEqual([]);
+    expect([...answers.keys()].filter((itemCode) => itemCode.startsWith("I"))).toEqual([]);
   });
 
   it("prefills only the Medicare number for a Medicare-only patient", () => {

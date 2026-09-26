@@ -44,17 +44,11 @@ export function OrderEditor({
 }): JSX.Element {
   const client = useApiClient();
   const [admissionId, setAdmissionId] = useState(draft?.admissionId ?? "");
-  const [physicianId, setPhysicianId] = useState(
-    draft?.orderingPhysicianMdmId ?? "",
-  );
+  const [physicianId, setPhysicianId] = useState(draft?.orderingPhysicianMdmId ?? "");
   const [kind, setKind] = useState<OrderKind>(draft?.kind ?? "lab");
-  const [discipline, setDiscipline] = useState(
-    draft?.drafterDiscipline ?? "rn_case_manager",
-  );
+  const [discipline, setDiscipline] = useState(draft?.drafterDiscipline ?? "rn_case_manager");
   const [priority, setPriority] = useState(draft?.priority ?? "routine");
-  const [data, setData] = useState<Record<string, unknown>>(() =>
-    asData(draft?.data),
-  );
+  const [data, setData] = useState<Record<string, unknown>>(() => asData(draft?.data));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -100,13 +94,9 @@ export function OrderEditor({
           path: string,
           init: unknown,
         ) => Promise<{ data?: unknown; error?: unknown }>;
-        const path = replacesOrderId
-          ? "/api/v1/orders/{id}/correct"
-          : "/api/v1/orders";
+        const path = replacesOrderId ? "/api/v1/orders/{id}/correct" : "/api/v1/orders";
         result = await post(path, {
-          params: replacesOrderId
-            ? { path: { id: replacesOrderId } }
-            : undefined,
+          params: replacesOrderId ? { path: { id: replacesOrderId } } : undefined,
           body: {
             patientId,
             admissionId,
@@ -133,19 +123,10 @@ export function OrderEditor({
     }
   };
 
-  const title = draft
-    ? "Edit draft"
-    : replacesOrderId
-      ? "Create corrected order"
-      : "New order";
+  const title = draft ? "Edit draft" : replacesOrderId ? "Create corrected order" : "New order";
 
   return (
-    <Modal
-      open={open}
-      onClose={busy ? undefined : onClose}
-      ariaLabel={title}
-      width="42rem"
-    >
+    <Modal open={open} onClose={busy ? undefined : onClose} ariaLabel={title} width="42rem">
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -183,9 +164,7 @@ export function OrderEditor({
               >
                 <option value="lab">Lab</option>
                 <option value="dme">DME</option>
-                <option value="level_of_care_change">
-                  Level of care change
-                </option>
+                <option value="level_of_care_change">Level of care change</option>
                 <option value="recertification">Recertification</option>
                 <option value="comfort_kit">Comfort kit</option>
                 <option value="supply">Supply</option>
@@ -234,26 +213,14 @@ export function OrderEditor({
           ) : null}
         </div>
 
-        <CanonicalOrderFields
-          kind={kind}
-          value={data}
-          onChange={setData}
-          errors={fieldErrors}
-        />
+        <CanonicalOrderFields kind={kind} value={data} onChange={setData} errors={fieldErrors} />
 
         <div style={footer}>
           <span style={saveHint}>
-            {draft
-              ? "Saving updates this Draft only."
-              : "This will be saved as a Draft."}
+            {draft ? "Saving updates this Draft only." : "This will be saved as a Draft."}
           </span>
           <div style={{ display: "flex", gap: ".75rem" }}>
-            <Button
-              type="button"
-              tone="secondary"
-              onClick={onClose}
-              disabled={busy}
-            >
+            <Button type="button" tone="secondary" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
             <Button type="submit" disabled={busy}>
@@ -281,11 +248,7 @@ function message(error: unknown): string {
 }
 function findings(error: unknown): Record<string, string> {
   const details =
-    (
-      error as
-        | { details?: Array<{ field?: string; message?: string }> }
-        | undefined
-    )?.details ?? [];
+    (error as { details?: Array<{ field?: string; message?: string }> } | undefined)?.details ?? [];
   return Object.fromEntries(
     details
       .filter((x) => x.field && x.message)

@@ -138,11 +138,17 @@ export function buildM11IdgDecisionConsumer(deps: {
 
           const orderIds: string[] = [];
           for (const request of requests) {
+            // M14 sends `null` for an absent timeframe / triggering problem; the M11 registry types both as
+            // optional (absent), not nullable, so a null is left out rather than stored.
             const data = {
               requestedKind: request.kindHint,
               narrative: request.narrative,
-              recommendedTimeframe: request.recommendedTimeframe,
-              triggeringProblemId: request.triggeringProblemId,
+              ...(request.recommendedTimeframe !== null
+                ? { recommendedTimeframe: request.recommendedTimeframe }
+                : {}),
+              ...(request.triggeringProblemId !== null
+                ? { triggeringProblemId: request.triggeringProblemId }
+                : {}),
             };
             const findings = validateOrderData(
               "idg_requested",

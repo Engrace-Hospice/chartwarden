@@ -9,7 +9,7 @@ import {
 const ORG = "org-1";
 const PAT = "pat-1";
 
-function consent(over: Partial<StoredConsent>): StoredConsent {
+function consent(over: Partial<StoredConsent> = {}): StoredConsent {
   return {
     id: "c1",
     organizationId: ORG,

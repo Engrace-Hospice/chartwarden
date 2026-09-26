@@ -11,6 +11,12 @@
 //     the actor for the audit trail.
 //   • AuditorSessionMinter   — M3 owns the `auditor_engagement`; M2 mints its time-boxed
 //     magic-link session (D4).
+//   • PortalSessionBinder    — M31 owns the portal account + grant; M2 writes the resulting session
+//     CLASS and scope onto the `session` row (F-030). Until this existed, no session could carry a
+//     portal class, so every `portal.*` ABAC predicate denied unconditionally.
+//   • VendorSessionBinder    — the same seam one module over: M19 owns the `external_triage_vendor`
+//     row and the shift that puts it on call; M2 writes the class + `scope.externalActorId` (F-030).
+//     Until this existed, `external_triage_actor` compared the shift's vendor against `undefined`.
 //
 // The composition root (apps/backend/src/index.ts `wireModuleSeams`) invokes this inside the
 // boot gate, AFTER M1's wireSeams() no-op and BEFORE validateSeams(), so the real seams stand
@@ -22,12 +28,18 @@
 // inside withOrgContext) and `AuditorMagicLinkIssuer` (Valkey one-time token) through `deps`.
 import {
   type AuditorMagicLinkIssuer,
+  type PortalSessionStore,
   type SessionContextStore,
   type StepUpOverrideStore,
+  type VendorSessionStore,
   createAuditorSessionMinter,
   createInMemoryAuditorMagicLinkIssuer,
+  createInMemoryPortalSessionStore,
   createInMemorySessionContextStore,
+  createInMemoryVendorSessionStore,
+  createPortalSessionBinder,
   createSessionContextResolver,
+  createVendorSessionBinder,
 } from "@wardenx/auth";
 import type { DbClient } from "@wardenx/db";
 import { registerSeam } from "../../bootstrap/index";
@@ -37,6 +49,10 @@ import {
   createInMemoryElevatedApprovalStore,
 } from "./elevated-approvals";
 import { createOrganizationReader } from "./organization-reader";
+import {
+  createDrizzlePortalSessionStore,
+  createDrizzleVendorSessionStore,
+} from "./portal-session-store";
 import { createDrizzleStepUpOverrideStore } from "./step-up-override-store";
 import { createTenantOrgCreationProvider } from "./tenant-org-creation-provider";
 
@@ -46,6 +62,10 @@ export interface IdentitySeamDeps {
   sessions?: SessionContextStore;
   /** Mints the one-time auditor magic-link token (Valkey TTL store in production). */
   auditorLinks?: AuditorMagicLinkIssuer;
+  /** Writes the portal class + scope onto the `session` row (Drizzle store in production). */
+  portalSessions?: PortalSessionStore;
+  /** Writes the M19 vendor class + scope onto the `session` row (Drizzle store in production). */
+  vendorSessions?: VendorSessionStore;
   /** Per-tenant step-up policy overrides (§4.3.2, D9). Defaults to the Drizzle store when a `db`
    *  is present, and to absent otherwise — absent means "every operation resolves to the floor". */
   stepUpOverrides?: StepUpOverrideStore;
@@ -65,9 +85,31 @@ export function registerIdentitySeams(deps: IdentitySeamDeps = {}): void {
   // `step_up_recent` predicate already resolves, so no new seam and no new dependsOn edge. Without
   // a db the store is absent and every operation resolves to the platform floor: an override may
   // only ever TIGHTEN, so having none is the strict end, not a fail-open default.
-  const stepUpOverrides = deps.stepUpOverrides ?? (deps.db ? createDrizzleStepUpOverrideStore(deps.db) : undefined);
+  const stepUpOverrides =
+    deps.stepUpOverrides ?? (deps.db ? createDrizzleStepUpOverrideStore(deps.db) : undefined);
   registerSeam("SessionContextResolver", createSessionContextResolver(sessions, stepUpOverrides));
   registerSeam("AuditorSessionMinter", createAuditorSessionMinter(auditorLinks));
+  // F-030 — the portal class + scope writer. With a db this writes the real `session` row org-scoped;
+  // without one the in-memory store answers for a slice, the same shape as every other seam here.
+  registerSeam(
+    "PortalSessionBinder",
+    createPortalSessionBinder(
+      deps.portalSessions ??
+        (deps.db
+          ? createDrizzlePortalSessionStore(deps.db)
+          : createInMemoryPortalSessionStore().store),
+    ),
+  );
+  // F-030 — the M19 vendor class + scope writer, the `PortalSessionBinder` shape one module over.
+  registerSeam(
+    "VendorSessionBinder",
+    createVendorSessionBinder(
+      deps.vendorSessions ??
+        (deps.db
+          ? createDrizzleVendorSessionStore(deps.db)
+          : createInMemoryVendorSessionStore().store),
+    ),
+  );
   // GAP-043 — the per-membership named-approval-authority reader M27's §4.7 approver predicate keys on.
   // With a db it reads `membership_elevated_approval` under RLS; without one the in-memory store answers
   // `false` for everything, which is the same fail-closed shape the slice gets from every other seam here.

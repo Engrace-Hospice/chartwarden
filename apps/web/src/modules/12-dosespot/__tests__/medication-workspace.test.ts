@@ -7,7 +7,13 @@ describe("M12 medication workspace filters", () => {
     expect(workspaceStatus("not-a-status")).toBe("all");
   });
   it("uses server lifecycle totals for KPI counts", () => {
-    const counts = { draft: 2, pending_signature: 1, active: 4, verbal_pending: 1, nack_received: 1 };
+    const counts = {
+      draft: 2,
+      pending_signature: 1,
+      active: 4,
+      verbal_pending: 1,
+      nack_received: 1,
+    };
     expect(workspaceCount("all", counts)).toBe(9);
     expect(workspaceCount("draft", counts)).toBe(2);
     expect(workspaceCount("needs_attention", counts)).toBe(2);

@@ -17,8 +17,8 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import {
-  createPredicateRegistry,
   createInMemoryEffectivePermissionStore,
+  createPredicateRegistry,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAuthorizationContract,
@@ -236,7 +236,10 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
   });
 
   describe("sud_disclosure_allowed — §7.6 SUD-problem redaction", () => {
-    async function seedPlanWithSudProblem(app: ReturnType<typeof bootApp>, auth: Record<string, string>) {
+    async function seedPlanWithSudProblem(
+      app: ReturnType<typeof bootApp>,
+      auth: Record<string, string>,
+    ) {
       const boot = await app.inject({
         method: "POST",
         url: `/api/v1/patients/${patientId}/care-plan`,
@@ -248,7 +251,12 @@ describe.skipIf(!DB_URL)("GAP-013 — M7 care-plan consent wiring — LIVE Postg
         method: "POST",
         url: `/api/v1/care-plans/${planId}/problems`,
         headers: auth,
-        payload: { description: "Opioid use disorder", kind: "related", source: "clinical", sudRelated: true },
+        payload: {
+          description: "Opioid use disorder",
+          kind: "related",
+          source: "clinical",
+          sudRelated: true,
+        },
       });
       await app.inject({
         method: "POST",

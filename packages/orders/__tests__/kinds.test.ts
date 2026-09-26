@@ -14,13 +14,16 @@ describe("M11 transitional order-payload contracts", () => {
     expect(ORDER_KIND_REGISTRY[kind].contractStatus).toBe("contract_not_published");
   });
 
-  it.each(TRANSITIONAL_KINDS)("accepts an extensible object for %s without inventing required fields", (kind) => {
-    expect(
-      validateOrderData(kind, ORDER_KIND_VERSION[kind], {
-        localWorkflowExtension: { value: true },
-      }),
-    ).toEqual([]);
-  });
+  it.each(TRANSITIONAL_KINDS)(
+    "accepts an extensible object for %s without inventing required fields",
+    (kind) => {
+      expect(
+        validateOrderData(kind, ORDER_KIND_VERSION[kind], {
+          localWorkflowExtension: { value: true },
+        }),
+      ).toEqual([]);
+    },
+  );
 
   it.each(TRANSITIONAL_KINDS)("still rejects a non-object %s payload", (kind) => {
     expect(validateOrderData(kind, ORDER_KIND_VERSION[kind], [])).not.toEqual([]);

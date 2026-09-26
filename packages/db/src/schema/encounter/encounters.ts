@@ -77,7 +77,10 @@ export const encounters = pgTable(
     }),
     administrativeOverrideReason: text("administrative_override_reason"),
 
-    vocabVersionId: uuid("vocab_version_id"), // M38 code_system_version (logical); set at first finalize; immutable thereafter (D11)
+    // The D11 pin: a `@wardenx/narrative-vocab` corpus-release uuid (`NARRATIVE_VOCAB_RELEASES`), set at
+    // first finalize and immutable thereafter. NOT an M38 `code_system_version` id — ADR-0046 overrides
+    // the spec on that: Layer-1 assembly resolves no M38 concept, so pinning M38 would guard nothing.
+    vocabVersionId: uuid("vocab_version_id"),
 
     faceToFaceEncounterId: uuid("face_to_face_encounter_id"), // M6 face_to_face_encounter for F2F dual-write (D1)
     bereavementPlanId: uuid("bereavement_plan_id"), // M16 bereavement_plan for bereavement_contact

@@ -5,6 +5,7 @@ import {
   LoadingSpinner,
   OffsetPagination,
   StatusPill,
+  interactiveRowProps,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -434,14 +435,21 @@ export function AdmissionCensus(): JSX.Element {
                   const d = details[a.id];
                   const isSelected = selected?.id === a.id;
                   return (
-                    // biome-ignore lint/a11y/useKeyWithClickEvents: whole-row click is a mouse shortcut; the patient link and "…" are the keyboard paths.
                     <tr
                       key={a.id}
-                      className={isSelected ? "is-selected" : undefined}
-                      onClick={() => {
-                        setSelectedId(a.id);
-                        setDrawerOpen(true);
-                      }}
+                      className={
+                        isSelected
+                          ? "is-selected wx-data-row-interactive"
+                          : "wx-data-row-interactive"
+                      }
+                      {...interactiveRowProps(
+                        () => {
+                          setSelectedId(a.id);
+                          setDrawerOpen(true);
+                        },
+                        isSelected,
+                        true,
+                      )}
                     >
                       <td>
                         <span style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}>

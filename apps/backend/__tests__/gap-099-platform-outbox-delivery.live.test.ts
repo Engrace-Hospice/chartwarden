@@ -335,9 +335,10 @@ describe.skipIf(!DB_URL)("GAP-099 platform outbox delivery + M40 canonical write
     // A skip is the SPECIFIED outcome, not a failure — the row completes and no canonical appears.
     expect(summary.delivered).toBe(1);
     expect(summary.retried).toBe(0);
-    const created = await admin.query("SELECT count(*)::int AS n FROM external_physician WHERE npi = $1", [
-      NPI_UNKNOWN,
-    ]);
+    const created = await admin.query(
+      "SELECT count(*)::int AS n FROM external_physician WHERE npi = $1",
+      [NPI_UNKNOWN],
+    );
     expect(created.rows[0].n).toBe(0);
     expect(await eventsOf("m40.canonical.updated")).toHaveLength(0);
   });

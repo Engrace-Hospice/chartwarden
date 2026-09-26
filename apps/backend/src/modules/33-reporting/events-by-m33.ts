@@ -34,7 +34,8 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
       organizationId: id,
       publishedByMembershipId: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── saved-view sharing (§4.10) ─────────────────────────────────────────────────────────────────
@@ -49,7 +50,8 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
       sharedByMembershipId: id,
       organizationId: id,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── scheduled reports (§4.10) ──────────────────────────────────────────────────────────────────
@@ -66,7 +68,8 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
       recipientCount: Type.Integer({ minimum: 0 }),
       organizationId: id,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -125,7 +128,8 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
       recipientCount: Type.Integer({ minimum: 0 }),
       organizationId: id,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -139,7 +143,8 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
       organizationId: id,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── materialized-view refresh (§4.10) ──────────────────────────────────────────────────────────
@@ -155,7 +160,8 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
       rowsAffected: Type.Union([Type.Integer({ minimum: 0 }), Type.Null()]),
       refreshedAt: isoInstant,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -169,7 +175,8 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
       attempts: Type.Integer({ minimum: 1 }),
       reason: Type.String(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── replica-lag probe (§4.10) ──────────────────────────────────────────────────────────────────
@@ -183,7 +190,8 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
       threshold: Type.Number({ minimum: 0 }),
       sampledAt: isoInstant,
     }),
-    declaredConsumers: ["m1", "m36"],
+    declaredConsumers: ["m1"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -195,7 +203,8 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
       lagSeconds: Type.Number({ minimum: 0 }),
       durationDownSeconds: Type.Number({ minimum: 0 }),
     }),
-    declaredConsumers: ["m1", "m36"],
+    declaredConsumers: ["m1"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── drilldown emit (§4.10) ─────────────────────────────────────────────────────────────────────
@@ -212,7 +221,8 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
       isConsentNarrowed: Type.Boolean(),
       organizationId: id,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   // ── CSV export counter (§4.10) ─────────────────────────────────────────────────────────────────
@@ -227,7 +237,8 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
       rowCount: Type.Integer({ minimum: 0 }),
       organizationId: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── tenant eraser (§4.10) ──────────────────────────────────────────────────────────────────────
@@ -241,7 +252,8 @@ export const M33_OUTBOX_EVENTS: ModuleEventContribution = [
       tableCounts: Type.Record(Type.String(), Type.Integer({ minimum: 0 })),
       complianceClassRefused: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
 ];

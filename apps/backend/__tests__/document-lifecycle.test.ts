@@ -312,7 +312,7 @@ describe("Document status machine: destruction-tombstone (§2.2.1 / D12)", () =>
     expect(t.to).toBe("destroyed_tombstone");
     const destroy = t.effects.find((e) => e.kind === "destroy_objects");
     expect(destroy).toBeDefined();
-    expect((destroy as { objectKeys: string[] }).objectKeys.length).toBe(2);
+    expect(destroy?.kind === "destroy_objects" ? destroy.objectKeys.length : -1).toBe(2);
     expect(t.effects.some((e) => e.kind === "shred_dek")).toBe(true);
     expect(t.effects.some((e) => e.kind === "null_active_version")).toBe(true);
     // §164.528: an access-log row is APPENDED for the destruction cert (never a delete).

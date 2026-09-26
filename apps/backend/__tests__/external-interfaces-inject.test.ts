@@ -29,10 +29,11 @@
 //     the in-memory store never claims to.
 //   - `GET /nppes/providers/:npi` answers 404 — `getNppesProvider` is likewise an honest always-null stub.
 //   - `POST /nppes/sync-runs` answers 403 for a normal tenant actor — `nppes_platform_job_caller` is
-//     platform-only by design (W-XI-12; a tenant session carries no platform-operator fact). This file also
-//     proves the guard chain is wired past that ABAC gate (not merely closed by accident): with a
-//     test-local `isPlatformOperator` attribute set, the SAME request reaches the handler and — since
-//     GAP-045 — ENQUEUES a real sync run (202), or 503s when this deployment has no queue connection.
+//     platform-only by design (W-XI-12). This file also proves the guard chain is wired past that ABAC gate
+//     (not merely closed by accident): the SAME request from a session carrying a platform-ops role reaches
+//     the handler and — since GAP-045 — ENQUEUES a real sync run (202), or 503s when this deployment has no
+//     queue connection. That allow arm used to be driven by a test-local `isPlatformOperator` attribute no
+//     producer in the repo ever wrote, so it demonstrated the shim rather than the gate (F-030).
 // None of these is a guessed status: each is read off the route/store source before being asserted.
 //
 // GAP-044/045 moved three routes off that list. `POST /nppes/sync-runs` now enqueues (above), and the two
@@ -54,11 +55,11 @@ import {
   type M29AbacResolver,
   type M29Store,
   M29_PERMISSION_KEY_LIST,
+  type NppesSyncTriggerPort,
   buildM29AbacPredicates,
   createInMemoryM29Store,
   denyStubM29AbacResolver,
   mountM29Routes,
-  type NppesSyncTriggerPort,
 } from "../src/modules/29-external-interfaces/index";
 
 // ── header-auth shim (the M11/M19/M28 precedent) ─────────────────────────────────────────────────────
@@ -76,12 +77,6 @@ function headerAuth(request: FastifyRequest): void {
   }
   if (request.headers["x-step-up"] === "fresh") {
     request.context.attributes.stepUpRecent = true;
-  }
-  // A test-local stand-in for the platform-operator fact `withPlatformContext` carries in production — no
-  // tenant HTTP session ever sets this for real; it exists here only to prove the ABAC gate on
-  // `POST /nppes/sync-runs` is wired past 403 into the real (501, deferred) handler — see the file header.
-  if (request.headers["x-test-platform-operator"] === "1") {
-    request.context.attributes.isPlatformOperator = true;
   }
 }
 
@@ -269,6 +264,8 @@ const SUPER = {
   "x-test-membership": MEMBER_SUPER,
   "x-step-up": "fresh",
 };
+/** SUPER plus a platform-ops role — the ONLY difference, so a 403→202 flip can only be the ABAC gate. */
+const PLATFORM_OP = { ...SUPER, "x-test-roles": "administrator,platform_ops" };
 const SUPER2 = {
   "x-test-user": "super_2",
   "x-test-org": ORG,
@@ -628,7 +625,7 @@ describe("M29-external-interfaces-inject — §4.1.4 NPPES administration (route
     const res = await app.inject({
       method: "POST",
       url: "/api/admin/external-interfaces/nppes/sync-runs",
-      headers: { ...SUPER, "x-test-platform-operator": "1" },
+      headers: PLATFORM_OP,
       payload: {},
     });
     // 202, not 200: an NPPES walk is thousands of rate-limited CMS requests — the route enqueues and
@@ -653,7 +650,7 @@ describe("M29-external-interfaces-inject — §4.1.4 NPPES administration (route
     const res = await app.inject({
       method: "POST",
       url: "/api/admin/external-interfaces/nppes/sync-runs",
-      headers: { ...SUPER, "x-test-platform-operator": "1" },
+      headers: PLATFORM_OP,
       payload: { kind: "weekly_dissemination" },
     });
     expect(res.statusCode).toBe(202);
@@ -666,7 +663,7 @@ describe("M29-external-interfaces-inject — §4.1.4 NPPES administration (route
     const res = await app.inject({
       method: "POST",
       url: "/api/admin/external-interfaces/nppes/sync-runs",
-      headers: { ...SUPER, "x-test-platform-operator": "1" },
+      headers: PLATFORM_OP,
       payload: {},
     });
     expect(res.statusCode).toBe(503);

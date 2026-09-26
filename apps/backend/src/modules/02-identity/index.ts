@@ -63,6 +63,103 @@ export {
   createInMemoryStepUpChallengeStore,
 } from "./step-up-ports";
 export { registerSessionStepUpRoutes } from "./routes/session-step-up";
+
+// M2 §4.4 — the PRODUCTION step-up adapters + the mount. `registerSessionStepUpRoutes` existed with
+// slice adapters and exactly one caller (its own test), so `session.last_step_up_at` was written by
+// nothing in production and every step-up gate on the platform answered "not fresh" forever.
+export {
+  createContextSessionResolver,
+  createDbMfaEnrollmentReader,
+  createDbMfaVerifier,
+  createDbSessionStepUpWriter,
+} from "./step-up-adapters-db";
+
+/**
+ * Mount the step-up routes with the production adapters.
+ *
+ * The challenge + lockout store is a per-process Map with TTL/window eviction rather than Valkey. Both
+ * halves fail CLOSED across replicas — a challenge minted on one instance cannot be spent on another
+ * (the caller retries), and the consecutive-failure counter is per-instance, so a distributed attacker
+ * gets the threshold per replica rather than once. That second half is a real weakening and is why it
+ * is registered as an in-memory binding at the composition root rather than left for someone to find.
+ * Moving it to Valkey is a store swap behind `StepUpChallengeStore`.
+ */
+export function mountSessionStepUpRoutes(app: FastifyInstance, db: DbClient): void {
+  _registerSessionStepUpRoutes(app, {
+    sessions: _contextSessionResolver(),
+    writer: _dbSessionStepUpWriter(db),
+    enrollment: _dbMfaEnrollmentReader(db),
+    verifier: _dbMfaVerifier(db),
+    challenges: createInMemoryStepUpChallengeStore(),
+    audit: db,
+  });
+}
+
+// ADR-0023 D2 / SecHardening §12.2/§12.4 — the device-attestation surface. Exported AND mounted from the
+// composition root below: an unmounted write path would leave `device_attestation` a table nothing can
+// ever put a row in, which is the same shape as the dead attribute this closes (F-030).
+export type {
+  DeviceAttestationAssertion,
+  DeviceAttestationChallenge,
+  DeviceAttestationChallengeStore,
+  DeviceAttestationPlatform,
+  DeviceAttestationProvider,
+  DeviceAttestationRecord,
+  DeviceAttestationSession,
+  DeviceAttestationStore,
+  DeviceAttestationVerdict,
+  DeviceAttestationVerifier,
+} from "./device-attestation-ports";
+export {
+  DEVICE_ENROLLMENT_SECRET_ENV,
+  attestationMacPayload,
+  createManagedEnrollmentVerifier,
+  orgEnrollmentKey,
+  posturePolicyFailure,
+} from "./device-attestation-verifier";
+export { createDbDeviceAttestationStore } from "./device-attestation-store-db";
+export {
+  type DeviceAttestationRouteDeps,
+  registerDeviceAttestationRoutes,
+} from "./routes/device-attestation";
+
+/**
+ * Mount the device-attestation routes with the production adapters.
+ *
+ * The challenge store is a per-process Map with TTL eviction rather than Redis. That is a real
+ * limitation and it is stated rather than hidden: a challenge minted on one backend instance cannot be
+ * spent on another, so a multi-instance deployment behind a round-robin balancer will see enrolment
+ * attempts fail with `challenge_expired_or_invalid` until the device retries onto the same instance.
+ * It FAILS CLOSED, which is why it ships this way rather than blocking on a Redis dependency the boot
+ * path does not require — the same call the collaborator magic-link store makes two functions up, and
+ * for the same reason. Moving it to Valkey is a store swap behind `DeviceAttestationChallengeStore`.
+ */
+export function mountDeviceAttestationRoutes(app: FastifyInstance, db: DbClient): void {
+  _registerDeviceAttestationRoutes(app, {
+    challenges: createInMemoryDeviceAttestationChallengeStore(),
+    verifier: _managedEnrollmentVerifier(),
+    store: _dbDeviceAttestationStore(db),
+    audit: db,
+  });
+}
+
+/** A per-process, TTL-evicting challenge store. Single-use by construction: `take` deletes. */
+export function createInMemoryDeviceAttestationChallengeStore(): _DeviceAttestationChallengeStore {
+  const rows = new Map<string, { challenge: _DeviceAttestationChallenge; expiresAt: number }>();
+  return {
+    async put(id: string, challenge: _DeviceAttestationChallenge, ttlSec: number) {
+      rows.set(id, { challenge, expiresAt: Date.now() + ttlSec * 1000 });
+    },
+    async take(id: string) {
+      const row = rows.get(id);
+      // Delete on ANY read, hit or miss-by-expiry. A challenge that has been looked at is spent, which
+      // is what makes a captured assertion unreplayable even if it is replayed inside the TTL.
+      rows.delete(id);
+      if (!row || row.expiresAt <= Date.now()) return null;
+      return row.challenge;
+    },
+  };
+}
 export {
   type LoginMfaCompletedContext,
   type LoginMfaCompletedDeps,
@@ -113,6 +210,16 @@ export { createDbMembershipRepository } from "./membership-repository";
 import type { DbClient } from "@wardenx/db";
 import type { AdminMembershipReader } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
+import type {
+  DeviceAttestationChallenge as _DeviceAttestationChallenge,
+  DeviceAttestationChallengeStore as _DeviceAttestationChallengeStore,
+} from "./device-attestation-ports";
+import { createDbDeviceAttestationStore as _dbDeviceAttestationStore } from "./device-attestation-store-db";
+import { createManagedEnrollmentVerifier as _managedEnrollmentVerifier } from "./device-attestation-verifier";
+import {
+  createDrizzleElevatedApprovalStore as _drizzleElevatedApprovalStore,
+  createElevatedApprovalService as _elevatedApprovalService,
+} from "./elevated-approvals";
 import {
   type IdentityRouteDeps,
   createInMemoryCollaboratorLinkStore as _collabStore,
@@ -122,13 +229,18 @@ import {
   createDbInvitationStore as _dbInvitations,
   createDbUserDirectory as _dbUserDirectory,
 } from "./identity-stores-db";
-import {
-  createDrizzleElevatedApprovalStore as _drizzleElevatedApprovalStore,
-  createElevatedApprovalService as _elevatedApprovalService,
-} from "./elevated-approvals";
 import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
+import { registerDeviceAttestationRoutes as _registerDeviceAttestationRoutes } from "./routes/device-attestation";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
+import { registerSessionStepUpRoutes as _registerSessionStepUpRoutes } from "./routes/session-step-up";
 import { createDbSessionWriter as _dbSessionWriter } from "./session-writer-db";
+import {
+  createContextSessionResolver as _contextSessionResolver,
+  createDbMfaEnrollmentReader as _dbMfaEnrollmentReader,
+  createDbMfaVerifier as _dbMfaVerifier,
+  createDbSessionStepUpWriter as _dbSessionStepUpWriter,
+} from "./step-up-adapters-db";
+import { createInMemoryStepUpChallengeStore } from "./step-up-ports";
 
 /**
  * Mount the M2 identity REST routes on a server (composition root, via buildServer's
@@ -161,7 +273,15 @@ export function mountIdentityRoutes(
   // TASK-030 — the M36 transactional-email transport + the web app's origin, threaded from the
   // composition root so the invite-create/resend routes can deliver (or admin-visibly echo) the
   // accept link. Both optional: omitted, invites still record — they just stay copy-link-only.
-  invite?: { emailTransport?: IdentityRouteDeps["emailTransport"]; webAppBaseUrl?: string },
+  // F-097 — `roleAttacher` is M3's implementation, threaded from the composition root rather than
+  // constructed here: M2 is `dependsOn: [1]`, so importing `03-authorization` from this file is an
+  // import-boundary violation. Same reason `emailTransport` arrives as a parameter instead of an M36
+  // import. Omitted → the accept route reports `rolesAttached: null` rather than an empty grant set.
+  invite?: {
+    emailTransport?: IdentityRouteDeps["emailTransport"];
+    webAppBaseUrl?: string;
+    roleAttacher?: IdentityRouteDeps["roleAttacher"];
+  },
 ): void {
   const deps: IdentityRouteDeps = {
     actors: _ctxActor(),
@@ -177,6 +297,7 @@ export function mountIdentityRoutes(
     elevatedApprovals: _elevatedApprovalService(_drizzleElevatedApprovalStore(db)),
     ...(invite?.emailTransport ? { emailTransport: invite.emailTransport } : {}),
     ...(invite?.webAppBaseUrl ? { webAppBaseUrl: invite.webAppBaseUrl } : {}),
+    ...(invite?.roleAttacher ? { roleAttacher: invite.roleAttacher } : {}),
   };
   _registerIdentityRoutes(app, deps);
 }

@@ -8,8 +8,15 @@
 // Tier-2 — no external dependency blocks the write path). Every state transition records the §2.4 outbox
 // event the relay publishes (drainable for tests).
 import {
+  type CaptureDecision,
   type HopeAttention,
+  HopeStateError,
+  type HopeValidationFindingDescriptor,
   type J2051SymptomReading,
+  assertAdmissionActiveAtTarget,
+  assertCaptureAllowed,
+  assertRfaMatchesSchedule,
+  assertSectionQForDischarge,
   evaluateFixedHopeAttention,
   evaluateJ2051Trigger,
   evaluateSfvAttention,
@@ -18,6 +25,7 @@ import {
   require_,
 } from "@wardenx/hope";
 import type {
+  HopeDischargeReason,
   HopeRfaKind,
   HopeScheduleGeneratedBy,
   HopeScheduleStatus,
@@ -36,6 +44,7 @@ import type {
 } from "../hope-answer-service";
 import type { HopeReviewReadModel } from "../hope-readiness-service";
 import type { HopeValidationRunView } from "../hope-validation-service";
+import { submissionPeriodFor } from "../jobs/submission";
 
 export type { HopeReviewReadModel } from "../hope-readiness-service";
 export type { HopeAnswerPatchResult, HopeAssessmentWorkspace } from "../hope-answer-service";
@@ -86,6 +95,8 @@ export interface HopeScheduleView {
 export interface HopeSfvView {
   readonly id: string;
   readonly patientId: string;
+  /** The admission the follow-up belongs to — the key `POST …/hope/sfv` is addressed by (#91). */
+  readonly admissionId: string;
   readonly triggeringAssessmentId: string;
   readonly status: HopeSfvStatus;
   readonly triggeredAt: string;
@@ -111,11 +122,49 @@ export interface HopeSubmissionView {
   readonly acceptedAt: string | null;
   readonly iqiesSubmissionReference?: string | null;
 }
+
+/**
+ * What one force-assemble pass did (F-058 / #150).
+ *
+ * The route used to return a single `HopeSubmissionView` because it always created exactly one batch —
+ * an EMPTY one, whose `itemCount` was the literal `0` and whose `hope_submission_item` rows were never
+ * written at all. A real pass groups the provider entity's eligible signed assessments by CMS submission
+ * period, so it produces one batch PER period and may legitimately produce none.
+ *
+ * The three counts are not telemetry. `skippedAlreadyBatched` is what makes the §4.10 idempotency
+ * OBSERVABLE — a second press returns zero submissions and a non-zero skip count, rather than looking
+ * like a failure — and `skippedUnsited` is the one outcome that must never be silent: an assessment
+ * whose `provider_entity_id` is NULL has no CCN to be batched under and is excluded by arithmetic, not
+ * by a rule anyone wrote down.
+ */
+export interface HopeAssembleResultView {
+  readonly submissions: readonly HopeSubmissionView[];
+  /** Signed, unsuperseded, not-yet-iQIES-accepted assessments the pass looked at. */
+  readonly assessmentsConsidered: number;
+  /** Already carried by a `pending` submission item — the idempotency skip. */
+  readonly skippedAlreadyBatched: number;
+  /** No `provider_entity_id`, so no batch key. See {@link HopeAssembleResultView}. */
+  readonly skippedUnsited: number;
+}
+/**
+ * The §7 HQRP compliance posture.
+ *
+ * #48 — every rate is NULLABLE and ships beside the count pair it was computed from. They used to be
+ * plain numbers that fell back to `1` on an empty denominator, so an agency with no closed timepoint
+ * windows at all — which was EVERY agency, because nothing ever wrote a `hope_timepoint_schedule` row —
+ * was shown a perfect on-time rate on the screen it would use to decide it did not need to act. "No
+ * data" is not "100%", and it is the compliance officer's call which one they are looking at. Exposing
+ * the counts beside the rate follows the M15 `supervisoryOnTimeCounts` precedent (a pre-divided rate
+ * cannot be suppressed for small N, because the denominator is gone by the time anyone sees it).
+ */
 export interface HopeComplianceView {
   readonly providerEntityId: string | null;
-  readonly hopeOnTimeRate: number;
-  readonly sfvOnTimeRate: number;
-  readonly submissionAcceptanceRate: number;
+  readonly hopeOnTimeRate: number | null;
+  readonly hopeOnTimeCounts: { readonly onTime: number; readonly total: number };
+  readonly sfvOnTimeRate: number | null;
+  readonly sfvOnTimeCounts: { readonly onTime: number; readonly total: number };
+  readonly submissionAcceptanceRate: number | null;
+  readonly submissionAcceptanceCounts: { readonly accepted: number; readonly total: number };
 }
 export type HopeWorkflowItemStatus =
   | "upcoming"
@@ -181,6 +230,12 @@ export interface RecordTimepointArgs {
   readonly dischargeReason?: string;
   readonly lateCompletionReasonCode?: string | null;
   readonly adminOverride?: boolean;
+  /**
+   * #48 — the `hope_timepoint_schedule` window this capture completes, as handed to the clinician by the
+   * timepoint worklist. Naming it is what makes `M10_RFA_KIND_MISMATCH` reachable: the payload's RFA and
+   * the window that was clicked can disagree. Omitted, the window is resolved by `rfa_kind` instead.
+   */
+  readonly scheduleId?: string;
 }
 export interface RecordSfvArgs {
   readonly triggeringAssessmentId: string;
@@ -336,7 +391,15 @@ export interface HopeRouteService extends HopeAbacResolver {
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 interface AssessmentRecord extends Mutable<HopeAssessmentView> {
   organizationId: string;
+  /** F-058 — the CCN batch key. Not on the view (the wire shape is unchanged); the DB backend stamps
+   *  the real column from the M6 admission summary at insert. */
+  providerEntityId: string | null;
   data: Record<string, unknown>;
+  /** F-057 — kept because the D9 Section-Q rules read it at validation time. Not on the view: the wire
+   * shape is unchanged, and `recordTimepoint` already takes it. */
+  dischargeReason: string | null;
+  /** F-057 — the CMS pre-submission findings persisted at sign, mirroring `hope_validation_finding`. */
+  findings: HopeValidationFindingDescriptor[];
 }
 interface ScheduleRecord extends Mutable<HopeScheduleView> {
   organizationId: string;
@@ -379,6 +442,7 @@ export interface HopeRouteSeed {
       id: string;
       organizationId: string;
       patientId: string;
+      admissionId: string;
       triggeringAssessmentId: string;
       dueAt: string;
     }
@@ -392,10 +456,31 @@ export interface HopeRouteSeed {
   readonly now?: () => string;
   /** Injected M9 `LatestAssessmentProvider` seam for the D8 PPS/ESAS-r snapshot (absent ⇒ snapshot skipped). */
   readonly latestAssessments?: LatestAssessmentProvider;
+  /**
+   * #45 — admissionId → patientId, the M6 `AdmissionStatusReader` seam the DB backend resolves the
+   * subject of a recorded timepoint through. The slice takes a plain map because it stands in for the
+   * whole seam. An admission absent from it is a projection gap: `recordTimepoint` REFUSES rather than
+   * inventing a subject (which is what this backend used to do — it wrote the `admissionId`).
+   */
+  readonly admissionPatients?: Readonly<Record<string, string>>;
+  /**
+   * #48 — admissionId → M6 admission status, the fact the §2.3 active-admission guard turns on.
+   * Defaults to `active` for any admission in {@link admissionPatients}, so a seed that does not care
+   * about the guard is unaffected and one that does states the closed status explicitly.
+   */
+  readonly admissionStatuses?: Readonly<Record<string, string>>;
 }
 
 /** The §D8 scales snapshotted at HOPE sign (PPS + ESAS-r) — read from M9's `LatestAssessmentProvider`. */
 const SNAPSHOT_SCALES = ["pps", "esas_r"] as const;
+
+/**
+ * #48 — a rate over an empty denominator is NOT 1. `null` means "no data"; the caller renders that
+ * distinctly from a perfect score. Shared by both M10 backends so the slice and Drizzle paths cannot
+ * drift on the one behaviour a compliance officer reads off the screen.
+ */
+export const rateOf = (numerator: number, denominator: number): number | null =>
+  denominator === 0 ? null : numerator / denominator;
 
 let idCounter = 0x10a00000;
 function nextId(): string {
@@ -633,10 +718,27 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
   const submissions = new Map<string, SubmissionRecord>();
   const events: RecordedHopeEvent[] = [];
   const latest = seed.latestAssessments;
+  const admissionPatients = seed.admissionPatients ?? {};
+  const admissionStatuses = seed.admissionStatuses ?? {};
+  const statusOfAdmission = (admissionId: string): string =>
+    admissionStatuses[admissionId] ?? "active";
+  /** #45 — the subject of a HOPE record, never guessed. Mirrors the DB backend's `admissionPatient`. */
+  const patientOfAdmission = (admissionId: string): string => {
+    const patientId = admissionPatients[admissionId];
+    if (!patientId)
+      throw new HopeStateError(
+        "M10_ADMISSION_PROJECTION_GAP",
+        `Admission ${admissionId} could not be projected by the M6 status seam, so the subject of this HOPE record is unknown`,
+      );
+    return patientId;
+  };
 
   for (const s of seed.assessments ?? [])
     assessments.set(s.id, {
       status: "draft",
+      // F-058 — explicit, so an unseeded row is UNSITED (null) rather than `undefined`. The assembler
+      // distinguishes the two, and a cast-away `undefined` would read as neither.
+      providerEntityId: null,
       targetDate: now(),
       authorDiscipline: "RN",
       j2051MaxSeverity: null,
@@ -671,7 +773,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     } as SfvRecord);
   for (const s of seed.submissions ?? [])
     submissions.set(s.id, {
-      submissionPeriod: now().slice(0, 7),
+      submissionPeriod: submissionPeriodFor(now()),
       status: "queued",
       itemCount: 0,
       acceptedCount: 0,
@@ -774,18 +876,64 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     },
 
     async recordTimepoint(organizationId, userId, admissionId, args) {
-      const sched = [...schedules.values()].find(
+      const patientId = patientOfAdmission(admissionId);
+      // #48 — the §4.4 recording gate, mirroring the Drizzle backend exactly (see its `recordTimepoint`
+      // for why each of these guards had zero callers until now).
+      if (args.rfaKind !== "05_discharge") {
+        assertAdmissionActiveAtTarget(statusOfAdmission(admissionId) === "active");
+      } else {
+        require_(
+          args.dischargeReason != null && args.dischargeReason !== "",
+          "M10_REQUIRED_SECTION_MISSING",
+          "rfa_kind '05_discharge' requires a discharge_reason (D9 decides Section Q from it).",
+        );
+        assertSectionQForDischarge(
+          args.dischargeReason as HopeDischargeReason,
+          Object.hasOwn(args.data, "Q") && args.data.Q != null,
+        );
+      }
+      // ANY status, `open` first — an EXPIRED window must not read as an unscheduled one. A named
+      // `scheduleId` selects the row directly, which is the branch that makes the RFA-mismatch guard real.
+      const candidates = [...schedules.values()].filter(
         (s) =>
           s.organizationId === organizationId &&
           s.admissionId === admissionId &&
-          s.rfaKind === args.rfaKind &&
-          s.status === "open",
+          (args.scheduleId ? s.id === args.scheduleId : s.rfaKind === args.rfaKind),
       );
+      const sched = candidates.find((s) => s.status === "open") ?? candidates[0];
+      if (args.scheduleId && !sched) {
+        throw new NotFoundError(
+          `HOPE schedule ${args.scheduleId} not found on admission ${admissionId}`,
+        );
+      }
+      let capture: CaptureDecision = { wasLate: false, lateReasonCode: null };
+      if (sched) {
+        assertRfaMatchesSchedule(args.rfaKind, {
+          rfaKind: sched.rfaKind,
+          generatedBy: sched.generatedBy,
+        });
+        capture = assertCaptureAllowed(
+          args.targetDate,
+          {
+            windowOpensAt: sched.windowOpensAt,
+            windowClosesAt: sched.windowClosesAt,
+            lateDeadlineAt: sched.lateDeadlineAt,
+          },
+          {
+            lateReasonCode: args.lateCompletionReasonCode ?? null,
+            adminOverride: args.adminOverride === true,
+          },
+        );
+      }
       const id = nextId();
       const rec: AssessmentRecord = {
         id,
         organizationId,
-        patientId: sched?.patientId ?? admissionId,
+        // F-058 — the slice has no M6 admission seam to site from, so a slice-recorded assessment is
+        // UNSITED unless the seed supplies it. That is the same state the DB backend reports as
+        // `skippedUnsited`, which is what makes the count testable without a database.
+        providerEntityId: null,
+        patientId,
         admissionId,
         rfaKind: args.rfaKind,
         status: "draft",
@@ -793,7 +941,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         authorDiscipline: args.authorDiscipline,
         j2051MaxSeverity: null,
         j2051TriggerFired: false,
-        wasLate: false,
+        wasLate: capture.wasLate,
         signedAt: null,
         signedBy: null,
         correctsAssessmentId: null,
@@ -802,6 +950,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
         regulatory: { specVersionId: null, isc: null },
         version: 1,
         data: args.data,
+        dischargeReason: args.dischargeReason ?? null,
+        findings: [],
       };
       assessments.set(id, rec);
       return viewA(rec);
@@ -824,10 +974,16 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       const rec: AssessmentRecord = {
         id,
         organizationId,
+        // F-058 — the slice has no M6 admission seam to site from, so a slice-recorded assessment is
+        // UNSITED unless the seed supplies it. That is the same state the DB backend reports as
+        // `skippedUnsited`, which is what makes the count testable without a database.
+        providerEntityId: null,
         patientId: sfv.patientId,
         admissionId,
         rfaKind: "04_sfv",
         status: "signed",
+        dischargeReason: null,
+        findings: [],
         targetDate: args.targetDate,
         authorDiscipline: args.authorDiscipline,
         j2051MaxSeverity: null,
@@ -933,7 +1089,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
                       s.rfaKind === r.rfaKind,
                   )?.lateDeadlineAt ?? null,
                 timingState: r.status === "signed" ? "completed" : "unknown",
-                z0350: (canonicalAnswers.get(id)?.get("Z0350")?.value as string | undefined) ?? null,
+                z0350:
+                  (canonicalAnswers.get(id)?.get("Z0350")?.value as string | undefined) ?? null,
               }
             : null,
       };
@@ -1131,6 +1288,8 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       r.j2051MaxSeverity = verdict.maxSeverity;
       r.j2051TriggerFired = verdict.triggerFired;
       r.snapshot = await snapshotFor(r.patientId); // D8 / §7.13
+      // (Recovery merge: the lost F-057 legacy `runHopeAssessmentValidation` pass is not mirrored here —
+      // the Drizzle backend validates through the spec-registry readiness/validation services instead.)
       r.version += 1;
       if (r.correctsAssessmentId) {
         const original = assessments.get(r.correctsAssessmentId);
@@ -1177,6 +1336,7 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
           id: sfvId,
           organizationId,
           patientId: r.patientId,
+          admissionId: r.admissionId,
           triggeringAssessmentId: id,
           status: "open",
           triggeredAt: descriptor.triggeredAt,
@@ -1245,10 +1405,15 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       const correction: AssessmentRecord = {
         id: correctionId,
         organizationId,
+        // F-058 — copied, never re-resolved (the DB backend's rule): a correction is submitted under the
+        // CCN the ORIGINAL was captured under.
+        providerEntityId: original.providerEntityId,
         patientId: original.patientId,
         admissionId: original.admissionId,
         rfaKind: original.rfaKind,
         status: "draft",
+        dischargeReason: original.dischargeReason,
+        findings: [],
         targetDate: original.targetDate,
         authorDiscipline: args.authorDiscipline,
         j2051MaxSeverity: original.j2051MaxSeverity,
@@ -1470,6 +1635,15 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       );
       return viewSub(r);
     },
+    /**
+     * F-058 — the slice mirrors the DB backend's real assembler: group this provider entity's signed,
+     * unsuperseded, not-yet-accepted assessments by CMS submission period and create one batch per
+     * period, each carrying its items. It used to mint one EMPTY batch per call, keyed on the wall
+     * clock, which is what the route published as work done.
+     *
+     * The slice has no `hope_submission_item` table, so the items live on the record — enough for the
+     * route contract and the idempotency skip to be exercised without a database.
+     */
     async assembleSubmission(organizationId, providerEntityId) {
       const ready = [...assessments.values()].filter(
         (a) =>
@@ -1479,10 +1653,15 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
           !a.supersededByAssessmentId,
       );
       if (ready.length === 0) {
-        throw new ConflictError("No signed HOPE assessments are eligible for iQIES package generation.");
+        throw new ConflictError(
+          "No signed HOPE assessments are eligible for iQIES package generation.",
+        );
       }
       const id = nextId();
-      const content = Buffer.from(`HOPE manual_iqies_upload package ${id}\n${ready.map((a) => a.id).join("\n")}\n`, "utf8");
+      const content = Buffer.from(
+        `HOPE manual_iqies_upload package ${id}\n${ready.map((a) => a.id).join("\n")}\n`,
+        "utf8",
+      );
       const rec: SubmissionRecord = {
         id,
         organizationId,
@@ -1507,7 +1686,12 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       submissions.set(id, rec);
       emit(
         "m10.hope.submission_queued",
-        { submissionId: id, providerEntityId, itemCount: ready.length, transportMode: "manual_iqies_upload" },
+        {
+          submissionId: id,
+          providerEntityId,
+          itemCount: ready.length,
+          transportMode: "manual_iqies_upload",
+        },
         `${id}:queued`,
       );
       return viewSub(rec);
@@ -1527,25 +1711,51 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
     async markSubmissionUploaded(organizationId, userId, id, args) {
       const r = findSub(organizationId, id);
       if (r.status !== "packaged" && r.status !== "exported") {
-        throw new ConflictError(`Submission ${id} must be packaged/exported before it can be marked uploaded.`);
+        throw new ConflictError(
+          `Submission ${id} must be packaged/exported before it can be marked uploaded.`,
+        );
       }
       const at = args.submittedAt ?? now();
       r.status = "submitted_pending_result";
       r.transmittedAt = at;
       r.submittedAt = at;
       r.iqiesSubmissionReference = args.iqiesSubmissionReference ?? null;
-      emit("m10.hope.submission_transmitted", { submissionId: id, submittedAt: at, submittedBy: userId }, `${id}:manual-uploaded`);
+      emit(
+        "m10.hope.submission_transmitted",
+        { submissionId: id, submittedAt: at, submittedBy: userId },
+        `${id}:manual-uploaded`,
+      );
       return viewSub(r);
     },
     async importSubmissionResult(organizationId, userId, id, args) {
       const r = findSub(organizationId, id);
-      const rejected = args.results.filter((raw) => String(raw.status ?? raw.result ?? raw.outcome ?? raw.severity ?? "").toLowerCase().includes("reject") || String(raw.severity ?? "").toLowerCase() === "fatal").length;
-      const warnings = args.results.filter((raw) => String(raw.status ?? raw.result ?? raw.outcome ?? raw.severity ?? "").toLowerCase().includes("warning")).length;
+      const rejected = args.results.filter(
+        (raw) =>
+          String(raw.status ?? raw.result ?? raw.outcome ?? raw.severity ?? "")
+            .toLowerCase()
+            .includes("reject") || String(raw.severity ?? "").toLowerCase() === "fatal",
+      ).length;
+      const warnings = args.results.filter((raw) =>
+        String(raw.status ?? raw.result ?? raw.outcome ?? raw.severity ?? "")
+          .toLowerCase()
+          .includes("warning"),
+      ).length;
       r.rejectedCount = rejected;
       r.acceptedCount = Math.max(0, r.itemCount - rejected);
-      r.status = rejected > 0 && r.acceptedCount > 0 ? "partially_accepted" : rejected > 0 ? "rejected" : warnings > 0 ? "accepted_with_warnings" : "accepted";
+      r.status =
+        rejected > 0 && r.acceptedCount > 0
+          ? "partially_accepted"
+          : rejected > 0
+            ? "rejected"
+            : warnings > 0
+              ? "accepted_with_warnings"
+              : "accepted";
       r.acceptedAt = rejected === 0 ? now() : null;
-      emit(rejected > 0 ? "m10.hope.submission_rejected" : "m10.hope.submission_accepted", { submissionId: id, importedBy: userId }, `${id}:result-imported`);
+      emit(
+        rejected > 0 ? "m10.hope.submission_rejected" : "m10.hope.submission_accepted",
+        { submissionId: id, importedBy: userId },
+        `${id}:result-imported`,
+      );
       return viewSub(r);
     },
     async complianceDashboard(organizationId, providerEntityId) {
@@ -1558,7 +1768,13 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
           s.organizationId === organizationId &&
           (!providerEntityId || s.providerEntityId === providerEntityId),
       );
-      const accepted = subs.filter((s) => s.status === "accepted").length;
+      // F-058 (#150) — terminal batches only; a `queued` batch has no acceptance outcome and counting
+      // it as a failed one reads as 0% acceptance (the §1.3 APU-penalty band) for work merely awaiting
+      // transmit. Mirrors the DB backend.
+      const terminal = subs.filter((s) =>
+        ["accepted", "rejected", "partially_accepted"].includes(s.status),
+      );
+      const accepted = terminal.filter((s) => s.status === "accepted").length;
       const sfvAll = [...sfvs.values()].filter((s) => s.organizationId === organizationId);
       const sfvOnTime = sfvAll.filter((s) => s.status === "completed").length;
       const sfvDenom = sfvAll.filter(
@@ -1566,9 +1782,12 @@ export function createInMemoryHopeBackend(seed: HopeRouteSeed = {}): HopeRouteSe
       ).length;
       return {
         providerEntityId: providerEntityId ?? null,
-        hopeOnTimeRate: denom === 0 ? 1 : completed / denom,
-        sfvOnTimeRate: sfvDenom === 0 ? 1 : sfvOnTime / sfvDenom,
-        submissionAcceptanceRate: subs.length === 0 ? 1 : accepted / subs.length,
+        hopeOnTimeRate: rateOf(completed, denom),
+        hopeOnTimeCounts: { onTime: completed, total: denom },
+        sfvOnTimeRate: rateOf(sfvOnTime, sfvDenom),
+        sfvOnTimeCounts: { onTime: sfvOnTime, total: sfvDenom },
+        submissionAcceptanceRate: rateOf(accepted, terminal.length),
+        submissionAcceptanceCounts: { accepted, total: terminal.length },
       };
     },
     async getWorkflowState(organizationId, admissionId) {

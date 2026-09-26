@@ -182,6 +182,8 @@ export type SeamName =
   | "ConsentEvaluator" // M39 — disclosure/redaction gate
   | "SessionContextResolver" // M2 — authenticated, org-scoped request context (actor + step-up state)
   | "AuditorSessionMinter" // M2 — mint a time-boxed auditor magic-link session (M3 calls it)
+  | "PortalSessionBinder" // M2 — stamp class + scope on an M31 portal session (M31 calls it)
+  | "VendorSessionBinder" // M2 — stamp class + vendor scope on an M19 answering-service session (M19 calls it)
   | "TenantOrgCreationProvider" // M2 — create/attach the per-tenant org M34's provision worker needs (§7.1)
   | "OrganizationReader" // M2 — resolve org display metadata by id (M35 admin lists label cross-tenant rows)
   | "TerminologyProvider" // M38 — version-aware code/value-set resolution (every clinical/billing module)
@@ -513,6 +515,23 @@ export interface CareTeamProvider {
    * patient, so this is single-valued by construction.
    */
   primaryRnUserId(input: { organizationId: string; patientId: string }): Promise<string | null>;
+  /**
+   * The same RN case manager as {@link primaryRnUserId}, resolved to their ACTIVE MEMBERSHIP in
+   * `organizationId` — or null when the patient has no open `primary_rn` assignment, or the clinician on
+   * it no longer holds an active membership in that org.
+   *
+   * The two id spaces are both real and neither converts the other. `patient_assignment` stores a USER
+   * id, which is what M13's D10 gate compares against an ABAC context's `userId`; M8's
+   * `cosignature_request.routed_to_membership_id` is a NOT NULL FK to `membership`, and a cosignature is
+   * routed to someone acting IN AN ORG, not to a user account. Resolving it here rather than handing the
+   * user id out for the caller to join keeps the "which membership counts as current" rule in one place
+   * — and makes a lapsed membership answer null, which is the fail-closed direction for a gate that asks
+   * whether an eligible cosigner EXISTS (M8 §2.6 check 10). Leaf-safe (ids only).
+   */
+  primaryRnMembershipId(input: {
+    organizationId: string;
+    patientId: string;
+  }): Promise<string | null>;
 }
 
 /**
@@ -595,6 +614,82 @@ export interface ResolvedActor {
   readonly roles: readonly string[];
   readonly providerEntityIds: readonly string[];
   readonly locationIds: readonly string[];
+  /**
+   * The §2.2.4 session class (`staff` / `auditor` / `external_collaborator` / `funeral_home` / the
+   * three M31 portal classes / the two M19 vendor classes). Carried here because M16/M19/M31's ABAC
+   * predicates gate on it and nothing produced it — every one of them denied unconditionally (F-030).
+   * Typed as `string` rather than the enum union so this leaf stays decoupled from M2's internals,
+   * the same reasoning `ConsentSessionClass` gives.
+   */
+  readonly sessionClass: string;
+  /** M31 portal sessions — the portal account the session acts for; null on every other class. */
+  readonly portalAccountId: string | null;
+  /**
+   * The ONE patient this session is pinned to, or null on an org-scoped class.
+   *
+   * Deliberately NOT named for a class. Three different modules read this same fact under three
+   * different names — M31/M19 as `portalPatientId`, M19's portal-triage guard as a `patientId`
+   * fallback beside it, and M7's `caseload_or_scope` as a `scopePatientIds` array — and all three
+   * resolved to `undefined`, because the one thing none of the names described was the fact itself:
+   * `session.scope.patientId`, which a PORTAL session carries after `select-patient` and an
+   * `external_collaborator` / `funeral_home` session carries from the moment it is minted (F-030).
+   * M7's readers are collaborator sessions, so a key named `portal…` would have been the fourth
+   * name rather than the last one.
+   *
+   * Sourced through `sessionPinnedPatientId`, so an org-scoped class reads null even if its `scope`
+   * jsonb somehow carries a patient id — the class decides, not the column.
+   */
+  readonly sessionPatientId: string | null;
+  /**
+   * The platform's own verdict on the device this session runs on (SecHardening §12.2/§12.4), or null
+   * when the session is bound to no attested device — a browser session, or a mobile session whose
+   * attestation has expired or been revoked.
+   *
+   * Resolved from M2's `device_attestation` row through the session's `device_attestation_id` pointer,
+   * and RE-CHECKED there rather than trusted: the pointer is a lookup key, so a stale or dangling one
+   * yields null and the gate denies. Never assembled from anything the request carries — a
+   * device-integrity claim supplied by the device being judged is not evidence (§8.3.1's argument, one
+   * layer down).
+   *
+   * `valid` is the whole contract M3's `device_attestation_valid` predicate reads; `verifiedAt` is
+   * diagnostics. Structural, not an enum, so this leaf stays decoupled from M2's provider vocabulary.
+   */
+  readonly deviceAttestation: { readonly valid: boolean; readonly verifiedAt?: string } | null;
+  /**
+   * The `external_triage_vendor` row an M19 answering-service session acts for, or null on every other
+   * class (F-030 / #75).
+   *
+   * This is the authorization SUBJECT of M19's `external_triage_actor`, which compares it against the
+   * shift's vendor — so it is class-gated at the source (`sessionExternalActorId`) rather than read off
+   * the `scope` jsonb. M19's own predicate header states the risk that gating buys: folding the vendor
+   * arm into the owner predicate "would let any staff session that happened to carry an
+   * `externalActorId` attribute reach a vendor-scoped call".
+   */
+  readonly externalActorId: string | null;
+}
+
+/**
+ * The SecHardening §12.2 device-posture facts an attestation reports.
+ *
+ * Every field is what the DEVICE said about itself. The server does not — and for a jailbreak check
+ * cannot — independently observe any of them; what it does is refuse to accept them unless they arrive
+ * under a MAC it can recompute over a nonce it minted (see M2's `DeviceAttestationVerifier`), and then
+ * apply the §12.2 policy to them itself. So the facts are reported and the DECISION is the platform's.
+ *
+ * Optional throughout: a provider that cannot report a field must be able to say nothing rather than
+ * guess, and the policy treats an unreported requirement as unmet.
+ */
+export interface DeviceAttestationPosture {
+  /** The OS version string as the device reports it (§12.2 floor: iOS 16+, Android 12+). */
+  readonly osVersion?: string;
+  /** The §12.4 detector's verdict. `true` fails the check outright — that is the whole control. */
+  readonly jailbrokenOrRooted?: boolean;
+  /** Whether a biometric factor is enrolled and available (§12.2). */
+  readonly biometricAvailable?: boolean;
+  /** Whether the OS screen lock is on (§12.2). */
+  readonly screenLockEnabled?: boolean;
+  /** Whether the app is running on an emulator (§12.4 refuses these). */
+  readonly emulator?: boolean;
 }
 
 /** The membership + active role keys for an actor in one org (the actor-context fields M3 owns). */
@@ -686,6 +781,77 @@ export interface AuditorSessionMinter {
     identity: { name: string; email: string };
     window: { start: Date; end: Date };
   }): Promise<{ magicLinkToken: string }>;
+}
+
+/** The three M31 portal session classes, as the minter names them. */
+export type PortalSessionClass = "patient_portal" | "caregiver_portal" | "bereaved_portal";
+
+/**
+ * M2 — stamps the class + scope onto an M31 portal session (M31 §2.3 / D2; F-030).
+ *
+ * Named `Binder`, not `Minter`, on purpose: M31 already publishes a `PortalSessionMinter`
+ * (packages/types/src/portal.ts) for M28's SMART user-launch, which is a different surface owned by a
+ * different module. This one does not create a session — it writes the class and scope onto a session
+ * M2 already authenticated.
+ *
+ * M31 owns the portal ACCOUNT and the access GRANT; M2 owns the `session` row, so the class and the
+ * scope are written here. Split from `AuditorSessionMinter` because the shapes differ: an auditor
+ * session is minted whole from an engagement window, whereas a portal session is minted BEFORE its
+ * patient is known and bound to one later by `select-patient` — which is exactly why
+ * `session_scope_chk` requires the account on a portal session and not the patient.
+ *
+ * Both operations are org-scoped and fail closed: a session id that is not in `scope.orgId`, or is not
+ * a portal session, is refused rather than silently rescoped. `bindPatient` is the only writer of
+ * `scope.patientId` on a portal session — the value never comes from a request parameter (§8.3.1).
+ */
+export interface PortalSessionBinder {
+  /** Stamp an authenticated session as a portal session for one account. Returns the class written. */
+  bindPortalSession(input: {
+    scope: OrgScope;
+    sessionId: string;
+    portalAccountId: string;
+    sessionClass: PortalSessionClass;
+  }): Promise<{ sessionClass: PortalSessionClass }>;
+  /**
+   * Bind the session's ONE patient (§2.3 / D2). The caller must have already proven an active grant
+   * for (account, patient); this writes the binding the request context is then assembled from.
+   */
+  bindPortalPatient(input: {
+    scope: OrgScope;
+    sessionId: string;
+    patientId: string;
+  }): Promise<void>;
+}
+
+/** The two M19 answering-service session classes (mirrors the `session_class` enum members). */
+export type VendorSessionClass = "external_triage_vendor" | "external_triage_operator";
+
+/**
+ * M2 — stamp the class + vendor scope on an M19 answering-service session (F-030 / #75).
+ *
+ * The `PortalSessionBinder` shape, one module over and for the same reason: M19 owns the vendor
+ * (`external_triage_vendor`) and the shift that puts it on call; M2 owns the `session` row. Nothing
+ * connected the two, so no session ever carried a vendor class or a `scope.externalActorId`, M19's
+ * `external_triage_actor` predicate compared the shift's vendor against `undefined`, and every
+ * vendor-scoped call was refused.
+ *
+ * ONE operation, not two. A portal session is minted before its patient is known, which is why that
+ * binder splits account-binding from patient-binding — a vendor session has no equivalent gap: it is
+ * minted BY the vendor binding, so the vendor is known at the only moment the session exists.
+ */
+export interface VendorSessionBinder {
+  /**
+   * Stamp an authenticated session as an M19 vendor session for one `external_triage_vendor` row.
+   *
+   * The caller must have already proven the vendor is real, active, and BAA-covered for this org —
+   * this writes the binding the request context is then assembled from, it does not authorize it.
+   */
+  bindVendorSession(input: {
+    scope: OrgScope;
+    sessionId: string;
+    externalActorId: string;
+    sessionClass: VendorSessionClass;
+  }): Promise<{ sessionClass: VendorSessionClass }>;
 }
 
 /** The intent M34's `tenant.provision` worker hands M2 to create / attach the per-tenant organization
@@ -780,6 +946,8 @@ export interface SeamContracts {
   ConsentEvaluator: unknown;
   SessionContextResolver: SessionContextResolver;
   AuditorSessionMinter: AuditorSessionMinter;
+  PortalSessionBinder: PortalSessionBinder;
+  VendorSessionBinder: VendorSessionBinder;
   // M2 — LEAF-TYPED: M34's provision worker (CONSUMER) and M2 (PRODUCER) can't import each other's
   // package, so the contract lives here. M2 registers the real Drizzle-backed provider over the deny-stub.
   TenantOrgCreationProvider: TenantOrgCreationProvider;

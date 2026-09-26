@@ -35,9 +35,9 @@ export function PrescriberRoster(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
-  const [enrollmentFilter, setEnrollmentFilter] = useState<
-    "all" | "enrolled" | "not_enrolled"
-  >("all");
+  const [enrollmentFilter, setEnrollmentFilter] = useState<"all" | "enrolled" | "not_enrolled">(
+    "all",
+  );
   const [ial2Filter, setIal2Filter] = useState("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -45,10 +45,7 @@ export function PrescriberRoster(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await client.GET(
-      "/api/v1/admin/dosespot-prescribers",
-      {},
-    );
+    const { data, error: err } = await client.GET("/api/v1/admin/dosespot-prescribers", {});
     if (err) {
       setError("Could not load the prescriber roster.");
       setLoading(false);
@@ -62,45 +59,34 @@ export function PrescriberRoster(): JSX.Element {
     void load();
   }, [load]);
 
-  const ial2Options = Array.from(
-    new Set(items.map((p) => p.ial2Status)),
-  ).sort();
+  const ial2Options = Array.from(new Set(items.map((p) => p.ial2Status))).sort();
   const filtered = items.filter((prescriber) => {
     const q = query.trim().toLowerCase();
-    const matchesQuery =
-      !q || prescriber.membershipId.toLowerCase().includes(q);
+    const matchesQuery = !q || prescriber.membershipId.toLowerCase().includes(q);
     const matchesEnrollment =
       enrollmentFilter === "all" ||
       (enrollmentFilter === "enrolled" && prescriber.enrolled) ||
       (enrollmentFilter === "not_enrolled" && !prescriber.enrolled);
-    const matchesIal2 =
-      ial2Filter === "all" || prescriber.ial2Status === ial2Filter;
+    const matchesIal2 = ial2Filter === "all" || prescriber.ial2Status === ial2Filter;
     return matchesQuery && matchesEnrollment && matchesIal2;
   });
-  const hasActiveFilters =
-    query !== "" || enrollmentFilter !== "all" || ial2Filter !== "all";
+  const hasActiveFilters = query !== "" || enrollmentFilter !== "all" || ial2Filter !== "all";
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const activePage = Math.min(page, pageCount);
-  const paged = filtered.slice(
-    (activePage - 1) * pageSize,
-    activePage * pageSize,
-  );
+  const paged = filtered.slice((activePage - 1) * pageSize, activePage * pageSize);
 
   return (
     <WorkQueueLayout
       header={
-        <PageHeader
-          title="DoseSpot Prescriber Roster"
-          breadcrumb="Admin / Medications"
-        >
+        <PageHeader title="DoseSpot Prescriber Roster" breadcrumb="Admin / Medications">
           <div
             style={{
               color: "var(--color-on-surface-variant)",
               fontSize: "0.875rem",
             }}
           >
-            Review tenant prescriber enrollment, DEA schedule authorization, and
-            IAL2 identity-proofing state.
+            Review tenant prescriber enrollment, DEA schedule authorization, and IAL2
+            identity-proofing state.
           </div>
         </PageHeader>
       }
@@ -108,17 +94,11 @@ export function PrescriberRoster(): JSX.Element {
         <div style={filterShellStyle}>
           {error ? (
             <div role="alert" style={errorBannerStyle}>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-              >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
                 <Glyph name="alert" size={16} />
                 <span>{error}</span>
               </div>
-              <button
-                type="button"
-                onClick={() => setError(null)}
-                style={dismissButtonStyle}
-              >
+              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
                 x
               </button>
             </div>
@@ -296,9 +276,7 @@ export function PrescriberRoster(): JSX.Element {
                     </td>
                     <td style={tdStyle}>
                       <StatusPill
-                        label={
-                          prescriber.enrolled ? "Enrolled" : "Not enrolled"
-                        }
+                        label={prescriber.enrolled ? "Enrolled" : "Not enrolled"}
                         tone={prescriber.enrolled ? "success" : "neutral"}
                       />
                     </td>
@@ -321,11 +299,7 @@ export function PrescriberRoster(): JSX.Element {
                           ))}
                         </span>
                       ) : (
-                        <span
-                          style={{ color: "var(--color-on-surface-variant)" }}
-                        >
-                          —
-                        </span>
+                        <span style={{ color: "var(--color-on-surface-variant)" }}>—</span>
                       )}
                     </td>
                     <td style={tdStyle}>
@@ -433,14 +407,12 @@ const tableStyle = {
 const tableHeaderRowStyle = {
   textAlign: "left" as const,
   color: "var(--color-on-surface-variant)",
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
   background: "var(--color-surface-low)",
 };
 
 const tableRowStyle = {
-  borderBottom:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
 
 const thStyle = {

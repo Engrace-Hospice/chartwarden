@@ -38,8 +38,10 @@ const goodGate: RecordAdministrationInput = {
   lateEntryTierResolved: true,
 };
 
+// The commit event's PAYLOAD only. `type` used to live here too, so every call site's explicit
+// `{ type: "commit", ...goodCommit }` was silently overwritten by the spread — harmless while both said
+// "commit", and it would have quietly discarded any call site that meant a different event.
 const goodCommit = {
-  type: "commit" as const,
   isControlled: false,
   hasWastage: false,
   isPrn: false,

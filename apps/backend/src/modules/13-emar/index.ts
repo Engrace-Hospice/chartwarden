@@ -26,12 +26,43 @@ export function mountEmarRoutes(
   // CareTeamProvider seam. `getSeam` is the M1 registry (M13 dependsOn 1) and the seam INTERFACE is a
   // @wardenx/types leaf, so this adds no M13→M5 compile edge. Passed as a thunk so it resolves per call,
   // after wireModuleSeams() has registered M5's provider.
-  const backend = createDbEmarBackend(db, outbox, () => getSeam("CareTeamProvider"));
+  // F-031 — M12's already-published `MedicationOrderProvider` seam, narrowed to the identity facts an
+  // administration is FILED under (patient / admission / drug name / route). Thunked for the same reason as
+  // the case-manager reader above: seams register after the route mount. Adds no M13->M12 compile edge (the
+  // seam interface is a @wardenx/types leaf) and no new manifest dependency — M13 already dependsOn 12.
+  const backend = createDbEmarBackend(
+    db,
+    outbox,
+    () => getSeam("CareTeamProvider"),
+    () => ({
+      async administrationIdentity({ organizationId, medicationOrderId }) {
+        const ctx = await getSeam("MedicationOrderProvider").getAdministrationContext(
+          organizationId,
+          medicationOrderId,
+        );
+        if (ctx === null) return null;
+        const policy = ctx.order.sigStructured.ivContinuousPolicy;
+        return {
+          patientId: ctx.order.patientId,
+          admissionId: ctx.order.admissionId,
+          drugName: ctx.order.drugName,
+          route: ctx.order.route,
+          ivContinuousPolicy: policy ? { minRate: policy.minRate, maxRate: policy.maxRate } : null,
+          allowAdministration: ctx.allowAdministration,
+          blockedReasons: ctx.blockedReasons,
+        };
+      },
+    }),
+  );
   _registerM13Abac({ resolver: backend });
   _registerM13Routes(app, { service: backend });
 }
 
-export { type EmarWriteOutboxPort, createDbEmarBackend } from "./emar-route-service-db";
+export {
+  type EmarMedicationOrderPort,
+  type EmarWriteOutboxPort,
+  createDbEmarBackend,
+} from "./emar-route-service-db";
 export {
   type ComfortKitAdministrationTimeline,
   type DoseScheduleRow,

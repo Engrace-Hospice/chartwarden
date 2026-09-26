@@ -80,7 +80,7 @@ export function registerSafetyOpsRoutes(app: FastifyInstance, deps: SafetyOpsRou
     "/api/v1/ai/evaluations",
     { preHandler: [P("ai.evaluation.run"), ABAC_SAFETY_OWNER("ai.evaluation.run")] },
     async (request, reply) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const body = parse(QueueEvaluationRunBody, request.body);
       const run = await queueAiEvaluationRun(safety, {
         capabilityId: body.capabilityId,
@@ -169,7 +169,7 @@ export function registerSafetyOpsRoutes(app: FastifyInstance, deps: SafetyOpsRou
       ],
     },
     async (request, reply) => {
-      const actor = writeActorOf(request);
+      const actor = await writeActorOf(request);
       const { capabilityKey } = parse(CapabilityKeyParams, request.params);
       const body = parse(ActivatePromptTemplateBody, request.body);
       const row = await activateAiPromptTemplate(prompts, {
@@ -189,7 +189,7 @@ export function registerSafetyOpsRoutes(app: FastifyInstance, deps: SafetyOpsRou
     "/api/v1/ai/drift/recent",
     { preHandler: [P("ai.drift.read"), ABAC_SAFETY_OWNER("ai.drift.read")] },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = await actorOf(request);
       const query = parseQuery(DriftQuery, request.query);
       const withinHours = query.withinHours ?? M32_DEFAULT_DRIFT_WINDOW_HOURS;
       return {

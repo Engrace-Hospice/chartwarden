@@ -4,11 +4,8 @@ import { ConflictError, NotFoundError } from "@wardenx/types";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import type { HopeIsc } from "./hope-spec-registry";
 import { createHopeApplicabilityEngine } from "./spec/applicability-registry";
+import type { HopeRuleFinding, HopeValidationMode } from "./spec/validation";
 import { createHopeValidationEngine } from "./spec/validation-registry";
-import type {
-  HopeRuleFinding,
-  HopeValidationMode,
-} from "./spec/validation";
 
 type FindingRow = typeof schema.hopeValidationFindings.$inferSelect;
 type SpecItemRow = typeof schema.hopeSpecItems.$inferSelect;
@@ -46,7 +43,9 @@ export interface HopeValidationService {
 
 export class HopeValidationFindingSitingError extends ConflictError {
   constructor(readonly assessmentId: string) {
-    super(`HOPE assessment ${assessmentId} cannot materialize validation findings without provider/location siting`);
+    super(
+      `HOPE assessment ${assessmentId} cannot materialize validation findings without provider/location siting`,
+    );
     this.name = "HopeValidationFindingSitingError";
   }
 }
@@ -62,7 +61,8 @@ function answerMapByCode(input: {
   const out = new Map<string, { state: "answered" | "skipped"; value: unknown | null }>();
   for (const [itemId, answer] of input.answersByItem) {
     const item = input.itemsById.get(itemId);
-    if (item) out.set(item.itemCode, { state: answer.state, value: answer.value as unknown | null });
+    if (item)
+      out.set(item.itemCode, { state: answer.state, value: answer.value as unknown | null });
   }
   return out;
 }
@@ -107,7 +107,11 @@ export function createHopeValidationService(db: DbClient): HopeValidationService
   const ANS = schema.hopeAssessmentAnswers;
   const F = schema.hopeValidationFindings;
 
-  async function loadActiveItems(tx: DbClient, specVersionId: string, isc: HopeIsc): Promise<SpecItemRow[]> {
+  async function loadActiveItems(
+    tx: DbClient,
+    specVersionId: string,
+    isc: HopeIsc,
+  ): Promise<SpecItemRow[]> {
     const rows = await tx
       .select({ item: I })
       .from(I)
@@ -139,7 +143,9 @@ export function createHopeValidationService(db: DbClient): HopeValidationService
       .select()
       .from(F)
       .where(and(eq(F.hopeAssessmentId, assessment.id), eq(F.resolved, false)));
-    const byFingerprint = new Map(existing.flatMap((row) => (row.fingerprint ? [[row.fingerprint, row] as const] : [])));
+    const byFingerprint = new Map(
+      existing.flatMap((row) => (row.fingerprint ? [[row.fingerprint, row] as const] : [])),
+    );
     const present = new Set(findings.map((finding) => finding.fingerprint));
 
     for (const row of existing) {
@@ -196,78 +202,96 @@ export function createHopeValidationService(db: DbClient): HopeValidationService
 
   return {
     async validateAssessment(input) {
-      return withOrgContext(db, { organizationId: input.organizationId, userId: "" }, async (tx) => {
-        const t = tx as unknown as DbClient;
-        const [loaded] = await t
-          .select({ assessment: A, specCode: V.code })
-          .from(A)
-          .leftJoin(V, eq(V.id, A.specVersionId))
-          .where(and(eq(A.id, input.assessmentId), eq(A.organizationId, input.organizationId)))
-          .limit(1);
-        if (!loaded) throw new NotFoundError("HOPE assessment", input.assessmentId);
-        const assessment = loaded.assessment;
-        if (!assessment.specVersionId || !assessment.isc || !loaded.specCode) {
-          throw new ConflictError(`HOPE assessment ${input.assessmentId} has no frozen spec version / ISC`);
-        }
-        const isc = assessment.isc as HopeIsc;
-        const activeItems = await loadActiveItems(t, assessment.specVersionId, isc);
-        const itemsById = new Map(activeItems.map((item) => [item.id, item]));
-        const answers = activeItems.length === 0
-          ? []
-          : await t.select().from(ANS).where(and(eq(ANS.hopeAssessmentId, input.assessmentId), inArray(ANS.specItemId, activeItems.map((item) => item.id))));
-        const answersByItem = new Map(answers.map((answer) => [answer.specItemId, answer]));
-        const answerMap = answerMapByCode({ itemsById, answersByItem });
-        const applicability = createHopeApplicabilityEngine(loaded.specCode).evaluate({
-          isc,
-          activeItemCodes: activeItems.map((item) => item.itemCode),
-          answers: answerMap,
-        });
-        const mode = input.mode ?? "final";
-        const evaluatedAt = new Date();
-        const findings = createHopeValidationEngine(loaded.specCode).evaluate({
-          mode,
-          assessment: {
-            id: assessment.id,
-            rfaKind: assessment.rfaKind,
-            status: assessment.status,
-            targetDate: assessment.targetDate.toISOString().slice(0, 10),
-            specVersionId: assessment.specVersionId,
-            specVersionCode: loaded.specCode,
+      return withOrgContext(
+        db,
+        { organizationId: input.organizationId, userId: "" },
+        async (tx) => {
+          const t = tx as unknown as DbClient;
+          const [loaded] = await t
+            .select({ assessment: A, specCode: V.code })
+            .from(A)
+            .leftJoin(V, eq(V.id, A.specVersionId))
+            .where(and(eq(A.id, input.assessmentId), eq(A.organizationId, input.organizationId)))
+            .limit(1);
+          if (!loaded) throw new NotFoundError("HOPE assessment", input.assessmentId);
+          const assessment = loaded.assessment;
+          if (!assessment.specVersionId || !assessment.isc || !loaded.specCode) {
+            throw new ConflictError(
+              `HOPE assessment ${input.assessmentId} has no frozen spec version / ISC`,
+            );
+          }
+          const isc = assessment.isc as HopeIsc;
+          const activeItems = await loadActiveItems(t, assessment.specVersionId, isc);
+          const itemsById = new Map(activeItems.map((item) => [item.id, item]));
+          const answers =
+            activeItems.length === 0
+              ? []
+              : await t
+                  .select()
+                  .from(ANS)
+                  .where(
+                    and(
+                      eq(ANS.hopeAssessmentId, input.assessmentId),
+                      inArray(
+                        ANS.specItemId,
+                        activeItems.map((item) => item.id),
+                      ),
+                    ),
+                  );
+          const answersByItem = new Map(answers.map((answer) => [answer.specItemId, answer]));
+          const answerMap = answerMapByCode({ itemsById, answersByItem });
+          const applicability = createHopeApplicabilityEngine(loaded.specCode).evaluate({
             isc,
-            correctsAssessmentId: assessment.correctsAssessmentId ?? null,
-          },
-          activeItems: activeItems.map((item) => ({
-            itemCode: item.itemCode,
-            sectionLabel: item.sectionLabel,
-            kind: item.kind,
-            cmsItemTypeCode: item.cmsItemTypeCode,
-          })),
-          answers: answerMap,
-          applicability,
-          submissionDate: input.submissionDate,
-        });
-        if (mode === "draft") {
+            activeItemCodes: activeItems.map((item) => item.itemCode),
+            answers: answerMap,
+          });
+          const mode = input.mode ?? "final";
+          const evaluatedAt = new Date();
+          const findings = createHopeValidationEngine(loaded.specCode).evaluate({
+            mode,
+            assessment: {
+              id: assessment.id,
+              rfaKind: assessment.rfaKind,
+              status: assessment.status,
+              targetDate: assessment.targetDate.toISOString().slice(0, 10),
+              specVersionId: assessment.specVersionId,
+              specVersionCode: loaded.specCode,
+              isc,
+              correctsAssessmentId: assessment.correctsAssessmentId ?? null,
+            },
+            activeItems: activeItems.map((item) => ({
+              itemCode: item.itemCode,
+              sectionLabel: item.sectionLabel,
+              kind: item.kind,
+              cmsItemTypeCode: item.cmsItemTypeCode,
+            })),
+            answers: answerMap,
+            applicability,
+            submissionDate: input.submissionDate,
+          });
+          if (mode === "draft") {
+            return {
+              assessmentId: assessment.id,
+              mode,
+              evaluatedAt: evaluatedAt.toISOString(),
+              findings: findings.map((finding) => findingToView(finding, evaluatedAt)),
+            };
+          }
+          const rows = await reconcileValidationFindings({
+            tx: t,
+            assessment,
+            specVersionId: assessment.specVersionId,
+            findings,
+            evaluatedAt,
+          });
           return {
             assessmentId: assessment.id,
             mode,
             evaluatedAt: evaluatedAt.toISOString(),
-            findings: findings.map((finding) => findingToView(finding, evaluatedAt)),
+            findings: rows.map(toFindingView),
           };
-        }
-        const rows = await reconcileValidationFindings({
-          tx: t,
-          assessment,
-          specVersionId: assessment.specVersionId,
-          findings,
-          evaluatedAt,
-        });
-        return {
-          assessmentId: assessment.id,
-          mode,
-          evaluatedAt: evaluatedAt.toISOString(),
-          findings: rows.map(toFindingView),
-        };
-      });
+        },
+      );
     },
   };
 }

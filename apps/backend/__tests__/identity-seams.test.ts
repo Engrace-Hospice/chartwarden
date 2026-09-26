@@ -35,6 +35,11 @@ describe("M2-T07 — published seams register over the M1 deny-stubs (§4.7)", (
     const at = new Date("2026-06-14T12:00:00Z");
     const { store } = createInMemorySessionContextStore([
       {
+        providerEntityIds: [],
+        locationIds: [],
+        sessionClass: "staff",
+        portalAccountId: null,
+        sessionPatientId: null,
         sessionId: "sess_1",
         userId: "user_1",
         membershipId: "mem_1",
@@ -49,11 +54,28 @@ describe("M2-T07 — published seams register over the M1 deny-stubs (§4.7)", (
     const resolver = getSeam("SessionContextResolver");
 
     const actor = await resolver.resolveActor({ orgId: ORG }, "sess_1");
+    // The FULL `ResolvedActor` shape, not the four fields this seeded row happens to set. It used to
+    // assert only those four and passed because `toEqual` reads an absent property and an `undefined`
+    // one as equal — so every field the actor gained after this test was written (the PE/location
+    // scopes, the session class, the portal anchors, the device attestation) went unasserted here, and
+    // one of them silently disappearing would not have failed anything.
     expect(actor).toEqual({
       userId: "user_1",
       membershipId: "mem_1",
       organizationId: ORG,
       roles: ["clinical_rn"],
+      // These five used to be asserted as `undefined`, which is what the seeded row produced while it
+      // omitted them — a shape the real store can never return (F-098). The seed now carries them, so
+      // the assertion is the actor a staff session actually resolves to.
+      providerEntityIds: [],
+      locationIds: [],
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
+      // Explicitly null rather than undefined: a session with no attested device behind it must read
+      // as a decided "no device", which is what the §12.4 gate denies on.
+      deviceAttestation: null,
+      externalActorId: null,
     });
     const stepUp = await resolver.resolveStepUpState({ orgId: ORG }, "sess_1");
     expect(stepUp).toEqual({ lastStepUpAt: at, lastStepUpFactor: "webauthn" });

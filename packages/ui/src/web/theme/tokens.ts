@@ -26,6 +26,10 @@ export const t = {
   // darker text-only variant for that one failing case. Dark mode's `--color-success` already
   // passes comfortably (~7.35:1) so its pill-fg value is identical to `success`, not a new color.
   successPillFg: "var(--color-success-pill-fg)",
+  // F-077 — the same variant for `warning`. `warning` on the shared 12% tint measures 4.59:1: it
+  // passes, by 0.09, which is why no axe scan had caught it; the care-plan guard chip tinted at 14%
+  // instead and measured 4.47:1, which does not. Dark mode's `--color-warning` already passes.
+  warningPillFg: "var(--color-warning-pill-fg)",
 
   // Surfaces — warm paper hierarchy (§2.5)
   background: "var(--color-background)",

@@ -247,18 +247,20 @@ export function createDbMessagingProvider(
             .limit(1)) as Array<{ id: string }>;
           const channelId = existing[0]
             ? existing[0].id
-            : ((
-                await tx
-                  .insert(CH)
-                  .values({
-                    organizationId: orgId,
-                    channelKind: "care_team",
-                    subjectId: patientId,
-                    title: defaultTitle("care_team"),
-                    retentionClass: shape.retentionClass,
-                  })
-                  .returning({ id: CH.id })
-              )[0] as { id: string }).id;
+            : (
+                (
+                  await tx
+                    .insert(CH)
+                    .values({
+                      organizationId: orgId,
+                      channelKind: "care_team",
+                      subjectId: patientId,
+                      title: defaultTitle("care_team"),
+                      retentionClass: shape.retentionClass,
+                    })
+                    .returning({ id: CH.id })
+                )[0] as { id: string }
+              ).id;
 
           const activeMembers = (await tx
             .select({ id: CM.id, userId: CM.userId, source: CM.source })

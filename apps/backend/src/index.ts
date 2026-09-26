@@ -20,17 +20,22 @@ import {
 } from "@wardenx/auth";
 import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
+import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
 import type { AlertEmitter } from "@wardenx/messaging";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import { registerPlatformJob, withOrgContext, withPlatformContext } from "@wardenx/tenancy";
 import { DegradedError, WardenXError } from "@wardenx/types";
 import type { AdmissionStatusReader } from "@wardenx/types";
 import { createX12835Client } from "@wardenx/x12-835-client";
-import { type ConnectionOptions, Queue, type Worker } from "bullmq";
+import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
 import Redis, { type RedisOptions } from "ioredis";
 import { buildActiveOrgEnumerator } from "./bootstrap/active-org-enumerator";
 import { attachDlqPromotionAlert, buildDlqPromotionSink } from "./bootstrap/dlq-alerts";
+import {
+  createDrizzleFeatureFlagAdmin,
+  createDrizzleFeatureFlagReader,
+} from "./bootstrap/feature-flag-store";
 import {
   DEFAULT_RATE_LIMIT_TIERS,
   assertNoInMemoryBindingsOnDbBoot,
@@ -43,6 +48,15 @@ import {
   registerSeam,
 } from "./bootstrap/index";
 import {
+  PARTITION_ROTATION_CRON,
+  PARTITION_ROTATION_QUEUE,
+  classifyPartitionCoverage,
+  readPartitionCoverage,
+  runPartitionRotation,
+  summarizeRotation,
+  wirePartitionRotationTenancy,
+} from "./bootstrap/jobs/partition-rotation";
+import {
   m34ActiveMembershipUserId,
   m34SoleTenantUserIds,
 } from "./bootstrap/m34-identity-shred-subjects";
@@ -52,6 +66,7 @@ import {
   registerBullMQQueueMetrics,
   registerHttpMetrics,
   registerOutboxMetrics,
+  registerPartitionMetrics,
 } from "./bootstrap/metrics";
 import { wireOrganizationSettingsRegistry } from "./bootstrap/organization-settings-persister";
 import {
@@ -76,11 +91,15 @@ import {
 import {
   buildOrgProviderEntityLister,
   buildPrimaryProviderEntityResolver,
+  buildProviderEntityCcnResolver,
+  buildProviderEntityLocationLister,
+  buildProviderEntityOrgCheck,
 } from "./bootstrap/provider-entity-resolver";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
+import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
@@ -111,11 +130,14 @@ import type { QualityHopeConsumer } from "@wardenx/quality";
 import type { DsarDocumentUploadRequest } from "@wardenx/saas-tenant-platform";
 import {
   createDrizzleIdentityEraserStore,
+  mountDeviceAttestationRoutes,
   mountIdentityRoutes,
+  mountSessionStepUpRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
 } from "./modules/02-identity/index";
 import {
+  createDbProposedRoleAttacher,
   mountAuthorizationRoutes,
   registerAuthorizationAbacPredicates,
 } from "./modules/03-authorization/index";
@@ -148,9 +170,12 @@ import {
   M6_OUTBOX_EVENTS,
   activeAdmissionDraftContextForPatient,
   admissionIsActiveForOrg,
+  admissionSchedulingContextForOrg,
+  buildM6DocumentBackrefConsumer,
   buildM6ProposalAcceptedConsumer,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
+  electionPeriodContextForOrg,
   mountAdmissionRoutes,
   registerAdmissionAbacPredicates,
   registerAdmissionErasers,
@@ -183,6 +208,7 @@ import {
   buildM8WorkerDeps,
   createDrizzleEncounterEraseStore,
   createDrizzleEncounterReaderStore,
+  createHearthnoteCiphers,
   mountEncounterRoutes,
   registerEncounterAbacPredicates,
   registerEncounterErasers,
@@ -224,6 +250,7 @@ import {
 import {
   M11_OUTBOX_EVENTS,
   M11_PLATFORM_JOB_ID,
+  buildM11DischargeCascadeConsumer,
   buildM11DocumentBackrefConsumer,
   buildM11IdgDecisionConsumer,
   createDbOrderBackend,
@@ -231,15 +258,16 @@ import {
   createDrizzleOrderSeamStore,
   createMedicationOrderSignatureCascade,
   mountOrderRoutes,
+  registerM11StandingSpawnWorker,
   registerOrderAbacPredicates,
   registerOrderErasers,
   registerOrderRoutes,
   registerOrderSeams,
-  registerM11StandingSpawnWorker,
   scheduleM11StandingSpawn,
 } from "./modules/11-orders/index";
 import {
   M12_OUTBOX_EVENTS,
+  buildM12DischargeCascadeConsumer,
   buildM12DocumentBackrefConsumer,
   buildM12IdgDecisionConsumer,
   createDrizzleDoseSpotSeamStore,
@@ -264,6 +292,7 @@ import {
 import {
   M14_OUTBOX_EVENTS,
   M14_PLATFORM_JOB_ID,
+  buildM14ActionItemAutoCloseConsumer,
   buildM14WorkerDeps,
   createDrizzleIdgEraseStore,
   createDrizzleIdgSeamStore,
@@ -281,6 +310,7 @@ import {
   buildDrizzleDisciplinePlanAbacResolver,
   buildDrizzleM15ReadService,
   buildDrizzleM15WriteService,
+  buildM15PlanBootstrapConsumer,
   createDrizzleDisciplinePlanEraseStore,
   createDrizzleDisciplinePlanSeamStore,
   denyStubDisciplinePlanAbacResolver,
@@ -294,6 +324,7 @@ import {
   buildDrizzleBereavementAbacResolver,
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
+  buildM16BereavementIntakeConsumer,
   buildM16IdgDecisionConsumer,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
@@ -333,6 +364,9 @@ import {
   buildDrizzleM19WriteService,
   buildDrizzleOncallAbacResolver,
   buildDrizzleOncallSeamStore,
+  buildDrizzleVendorSessionBindReader,
+  buildOncallTriggerConsumers,
+  createDrizzleInboundTriggerPorts,
   createDrizzleTriageEraseStore,
   denyStubOncallAbacResolver,
   mountM19Routes,
@@ -346,12 +380,15 @@ import {
   buildDrizzleM20WriteService,
   buildDrizzleSafetyAbacResolver,
   buildDrizzleSafetySeamStore,
+  buildFieldSafetyConsumers,
   createDrizzleSafetyEraseStore,
+  createSafetyPolicyProvider,
   denyStubSafetyAbacResolver,
   mountM20Routes,
   registerFieldSafetyAbacPredicates,
   registerFieldSafetySeams,
   registerSafetyErasers,
+  safetyClinicianSignalCache,
 } from "./modules/20-field-safety/index";
 import {
   M21_OUTBOX_EVENTS,
@@ -400,6 +437,8 @@ import {
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
   buildM23BootAssemblyService,
+  buildM23NoeDraftConsumer,
+  buildM23NotrDraftConsumer,
   buildM23OutboxBackedSubmissionGate,
   buildM23RemittanceConsumer,
   buildM23SubmissionQueuePort,
@@ -496,6 +535,7 @@ import {
   buildDrizzleM27ReadService,
   buildDrizzleM27WriteService,
   buildM27AllocationInputs,
+  buildM27DocumentBackrefConsumer,
   buildM27RecomputeEnqueue,
   buildM27ValidationContext,
   buildM27WorkerDeps,
@@ -518,6 +558,9 @@ import {
   createDrizzleFhirGatewayEraseStore,
   createDrizzleFhirGatewayStore,
   createDrizzleFhirPublishedSeamStore,
+  createHttpFhirJwksFetcher,
+  createInMemoryFhirReplayGuard,
+  createRedisFhirReplayGuard,
   denyStubFhirGatewayAbacResolver,
   mountM28Routes,
   registerFhirGatewayAbacPredicates,
@@ -563,6 +606,7 @@ import {
   buildDrizzlePortalStore,
   buildPortalAbacResolverFromStore,
   createM31PublishedSeamImpls,
+  createPortalReasonCipher,
   denyStubPortalAbacResolver,
   mountM31Routes,
   registerM31PublishedSeams,
@@ -601,6 +645,7 @@ import {
   buildDrizzleM33ExportDrilldownService,
   buildDrizzleM33ReadService,
   buildDrizzleM33WriteService,
+  buildDrizzleReportingAbacResolver,
   buildM33DocumentBackrefConsumer,
   buildM33MvRefreshEnqueue,
   buildM33ReadEnqueue,
@@ -676,14 +721,21 @@ import {
 import {
   type IpuAiPromptRegistryPort,
   M37_OUTBOX_EVENTS,
+  M37_PLATFORM_JOB_ID,
   buildDrizzleIpuRouteService,
+  buildM37WorkerDeps,
+  getIpuAdmissionStatusReader,
+  getIpuOrderReader,
   getIpuRoomingFactsReader,
   getIpuVisitorConsentGate,
   mountM37Routes,
   registerIpuErasers,
   registerIpuSeams,
   registerM37AbacPredicates,
+  registerM37CronWorkers,
+  scheduleM37Jobs,
   validateIpuAIBlock,
+  wireM37Tenancy,
 } from "./modules/37-ipu/index";
 import {
   createDbTerminologyStore,
@@ -750,6 +802,13 @@ export function wireModuleSeams(
     sessionContextStore?: SessionContextStore;
     db?: DbClient;
     organizationDb?: DbClient;
+    /**
+     * The PLATFORM-pooled client (`DATABASE_PLATFORM_URL`). Distinct from `organizationDb` even though
+     * the composition root happens to pass the same handle to both: this one is here because M34's D5
+     * key provider needs a credential that may SELECT `tenant_key_ring`, which migration 0052 §5 revokes
+     * from `wardenx_app` (#105). Absent ⇒ the key provider refuses with a stated reason.
+     */
+    platformDb?: DbClient;
     /** The catalog-validating tx outbox publisher (TASK-002) — the M5 PatientMutator's §4.6
      * `m5.patient.updated` emit rides it. Absent on slice/test boots (mutator stays in-memory). */
     outboxPublisher?: OutboxPublishPort;
@@ -1047,10 +1106,15 @@ export function wireModuleSeams(
   // `SAFETY_COORDINATE_DECIPHER_UNBOUND` rather than reporting every incident as having no geography. The
   // org IANA time zone lands with the same task — until then `getAfterHoursSosCount` refuses rather than
   // counting a Pacific agency's 22:30 presses as business hours. The §7.7 GPS-spoof signal cache is
-  // process-local and is bound by the consumer that fills it (T06's `m18.evv.gps_spoof_suspected`
-  // subscriber); absent, the board shows no spoof badge, which is the documented cost of holding that
-  // suspicion in memory (a MISSING caveat, never a missing alert).
-  if (deps.db) registerFieldSafetySeams({ store: buildDrizzleSafetySeamStore(deps.db) });
+  // process-local, and F-043/#103 bound the consumer that fills it — `m20.gps-spoof-badge`, which shares
+  // THIS instance through `safetyClinicianSignalCache()`. The two ends are wired in different scopes (the
+  // seam registration here, the binding beside the outbox dispatcher), and separate instances would record
+  // every suspicion and show none.
+  if (deps.db)
+    registerFieldSafetySeams({
+      store: buildDrizzleSafetySeamStore(deps.db),
+      signals: safetyClinicianSignalCache(),
+    });
   // M21-T05 — the two §4.4 ABAC predicates M21 OWNS (controlled_substance_dispatcher_eligible /
   // comfort_kit_return_reconciler_eligible) into M3's named-predicate registry. Both guard a
   // controlled-substance movement, so unlike M15's and M16's per-seam split the fail direction here is
@@ -1216,10 +1280,19 @@ export function wireModuleSeams(
         },
   });
   // M33 — the two §4.7 ABAC predicate resolvers (`reportable_scope` D8 cross-cutting read scope +
-  // `dashboard_visibility` §4.7.2 saved-view ladder). Defaults to the deny-stub resolver until P2C binds
-  // the real M2 `SupervisorReader` / M5 `CaseloadProvider` reach + the Drizzle `report_view` facts — with
-  // the deny-stub every actor collapses to `self` scope (fail-closed), which is the correct posture.
-  registerM33AbacPredicates();
+  // `dashboard_visibility` §4.7.2 saved-view ladder), over the PRODUCTION Drizzle resolver when a db is
+  // present (F-044). This used to be called with no argument at all, so `dashboard_visibility` ran against
+  // the deny-stub in production: `loadReportView` returned null for every view, the predicate read that as
+  // "absent / cross-tenant" and denied, and `GET /reporting/dashboards/:id` — which mounts it with
+  // `notFoundOnDeny: true` — answered 404 for every caller including a dashboard's own owner.
+  //
+  // The team/location reach behind `reportable_scope` STAYS fail-closed and that is a declared absence:
+  // M2 publishes no `SupervisorReader` seam in this build. Without it every actor lacking org-wide
+  // authority resolves to `self`, the narrowest scope, which is the right answer to a question the
+  // platform cannot yet ask.
+  registerM33AbacPredicates(
+    deps.db ? { resolver: buildDrizzleReportingAbacResolver(deps.db) } : undefined,
+  );
   // M30 — the eleven §4.7 / §6.7 ABAC predicate resolvers (`incidentVisibility`, `ownsIncident`,
   // `assignedToIncident`, `abuseAllegationAccess`, `capVerifyAuthority`, `ownsQapiProject`,
   // `qapiCloseAuthority`, `ownsSraCycle`, `sraCloseAuthority`, `assignedToMortality`, `part2Redisclosure`).
@@ -1287,6 +1360,14 @@ export function wireModuleSeams(
   wireM10Tenancy();
   wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
   registerPlatformJob(M11_PLATFORM_JOB_ID);
+  // F-071/#174 — allowlist M37's cron job id so ipu.rn-coverage-watchdog may enter withPlatformContext.
+  // Without the watchdog nothing ever wrote `ipu_rn_coverage_window`, and the four write paths that read
+  // it treat an absent row as uncovered — so every GIP and respite admission was refused at open.
+  wireM37Tenancy();
+  // F-033/#93 — allowlist the platform partition-rotation job. Unlike the module crons above this one
+  // belongs to no module: the 43 time-RANGE tables it keeps ahead are spread across ~20 modules and no
+  // module can see the others', so it is registered here with them rather than from a module wiring file.
+  wirePartitionRotationTenancy();
   // M34 — the 8 §4.6 ABAC predicate resolvers (the platform-ops tenant surface gates on
   // `tenant_lifecycle_platform_ops`, role-only; `dsar_export_*` composes the M5 CaseloadProvider seam,
   // registered above). The grant/flag/onboarding-task resolver methods are exercised by the tenant-scoped
@@ -1358,10 +1439,13 @@ export function wireModuleSeams(
   // M28-T06 (§4.3) — publish M28's three read seams (FhirGatewayMetricsProvider / FhirClientReader /
   // FhirInboundProposalReader) over their M1 deny-stubs so M33 (utilization) / M30 (§164.528 disclosure
   // scorecard) / M34 (SaaS console) / M5 + M12 (inbound-proposal review queues) can resolve them via
-  // getSeam. Registration is STORE-GATED: M28's Drizzle store lands with its routes/repos (T08), so this
-  // wave passes NO store and the call is a no-op — the fail-closed deny-stubs stand, exactly like M19/M20's
-  // db-less boot. A consumer reaching an unbound M28 seam denies LOUDLY rather than reading a fabricated
-  // empty projection (a zero-disclosure scorecard minted from an unwired store).
+  // getSeam. Registration is STORE-GATED: with a db the Drizzle store binds all three; a db-less boot
+  // passes none and the fail-closed deny-stubs stand, exactly like M19/M20. A consumer reaching an
+  // unbound M28 seam denies LOUDLY rather than reading a fabricated empty projection.
+  //
+  // (The comment here used to say this wave passed NO store and the call was a no-op. It has passed the
+  // store on every db boot for as long as the store has existed; an external audit read the comment,
+  // not the argument, and filed "registers none of its three published seams" — F-035/#95.)
   registerFhirPublishedSeams(
     deps.db ? { store: createDrizzleFhirPublishedSeamStore(deps.db) } : {},
   );
@@ -1412,10 +1496,19 @@ export function wireModuleSeams(
   if (deps.db) {
     const gatewayConfig = m34ProvisionGatewayConfigFromEnv(process.env);
     const gateway = gatewayConfig ? createM34ProvisionGateway(gatewayConfig) : null;
+    // #105 — the platform KEK. Preferred over the gateway's `/dek/unwrap` because a KEK held by this
+    // process is a key this deployment actually has, where the provision gateway is an HTTP service that
+    // is unspecified and undeployed (#115): the whole per-tenant DEK chain hung off a call to nothing.
+    // A KMS/HSM deployment replaces this one binding and nothing else (ADR-0045; the port is unchanged).
+    const platformKek = loadPlatformKekRing(process.env);
+    const kek = platformKek ? createPlatformKekAdapter(platformKek) : null;
     registerLiveM34Seams({
       db: deps.db,
       auditBypass: m34PlatformBypassAuditor,
-      kekUnwrap: gateway?.kekUnwrap,
+      kekUnwrap: kek ?? gateway?.kekUnwrap,
+      // NOT `deps.db`: migration 0052 §5 revokes wardenx_app's SELECT on tenant_key_ring, so the request
+      // path's credential cannot read a wrapped DEK at all. The platform login holds the grant.
+      keyRingDb: deps.platformDb,
     });
   } else {
     bootstrapModule34(SLICE_MODULE_34_SEAM_DEPS);
@@ -1487,10 +1580,9 @@ export const m34PlatformBypassAuditor: PlatformBypassAuditor<DbClient> = async (
  * slice/local boot, so a resolve is a programming error, not a silent fail-open. This satisfies the mandatory
  * D5 registration without handing out a real key.
  *
- * TODO(Phase 2D — TenantKeyProvider adapter): replace with M34's key-ring service backed by the real KEK/KMS
- * (the §3.3 tenant-key-destruction-log + per-tenant DEK wrap/unwrap). It is the ONLY seam that hard-fails boot;
- * the lifecycle/onboarding/support providers + the M35 subscription-entitlement reader bind their real adapters
- * in the same phase (until then they fail-closed via their typed resolvers).
+ * This is the DB-LESS boot only. The db-present path binds the real key-ring provider over the platform KEK
+ * (`registerLiveM34Seams` above, #105 / ADR-0045); a comment in M27 spent a while citing THIS stub as the
+ * reason the per-tenant DEK was unavailable in production, which sent readers to the wrong branch entirely.
  */
 const SLICE_MODULE_34_SEAM_DEPS: BootstrapModule34Deps = {
   tenantKeyProvider: {
@@ -2004,6 +2096,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m34TenantStorage = m34TenantStorageConfig
     ? createS3TenantStorageProvisioner(m34TenantStorageConfig)
     : null;
+  // #105 — the same platform KEK the D5 seam resolves DEKs through (bound in wireModuleSeams above),
+  // rebuilt here for the WRAP half: `tenant.provision` mints a tenant's first DEK and `tenant.dek_rotate`
+  // mints its successors. Wrap and unwrap MUST come from the same adapter — a DEK wrapped by the gateway
+  // and unwrapped by this process (or the reverse) is a key nobody can open. Falls back to the gateway
+  // when no KEK is configured, so a KMS-fronted deployment keeps working unchanged.
+  const m34PlatformKekRing = loadPlatformKekRing(process.env);
+  const m34KeyMaterial = m34PlatformKekRing
+    ? createPlatformKekAdapter(m34PlatformKekRing)
+    : m34ProvisionGateway?.keyMaterial;
   const m34ProvisionQueue =
     queueConnection && platformDbHandle && m34ProvisionGateway && m34TenantStorage
       ? buildM34ProvisionQueue(queueConnection)
@@ -2350,7 +2451,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           organizationId: string,
           patientId: string,
           asOfDate: string,
-        ): Promise<{ kind: PlaceOfServiceResidenceKind; facilityId: string | null; postalCode: string | null } | null>;
+        ): Promise<{
+          kind: PlaceOfServiceResidenceKind;
+          facilityId: string | null;
+          postalCode: string | null;
+        } | null>;
       };
       return reader.residenceAt(organizationId, patientId, asOfDate);
     },
@@ -2439,9 +2544,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // omits the check entirely (reporting "ok") rather than failing a deployment that has no MinIO.
   const readinessS3Config = s3ObjectStoreConfigFromEnv(process.env);
   const readinessObjectStore = readinessS3Config ? createS3ObjectStore(readinessS3Config) : null;
+  // F-091 — the M1 `feature_flag` reader. Nothing had ever bound one, so `createDefaultFeatureFlagReader()`
+  // stood in every deployment and answered `{}` for every org: `GET /api/v1/system/feature-flags` served an
+  // empty map, and every capability gate reading the same fact through a structurally identical port (M22's
+  // `documents.doclens`, M38's §7.7 `ai.full`) resolved permanently off. Built once here and passed to the
+  // three surfaces that consume it, so the tenant read route and the module gates cannot disagree about
+  // what a tenant's flags are. Undefined on a no-db boot, where the empty default remains correct.
+  const featureFlagReader = dbHandle ? createDrizzleFeatureFlagReader(dbHandle.db) : undefined;
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
+    ...(featureFlagReader ? { featureFlagReader } : {}),
     // WX-PR-017 — SD-055 rate-limit tiers enforced cluster-wide over the dedicated Valkey connection
     // above when REDIS_URL is set; falls back to the M1 baseline's own per-process default otherwise
     // (a slice/test/no-Redis boot, where a single process IS the whole "cluster").
@@ -2529,9 +2642,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M2 — member roster on the real MembershipRepository; isAdmin via the M3 admin reader.
           // TASK-030 — invite delivery: the SAME M36 transport bound to Better Auth's reset/magic-link
           // above, reused here so the invite-create/resend routes can email the accept link too.
+          // F-097 — the §D3 M2→M3 handshake. M2's spec records it as Decided and nothing performed it:
+          // the accept route consumed the invitation, created the membership, dropped `proposedRoleKeys`
+          // and returned, so every invitation the platform has ever issued produced a membership with no
+          // role grants. M3 owns the grant, so M3's attacher is bound here rather than imported inside
+          // M2 (which is `dependsOn: [1]`).
           mountIdentityRoutes(app, dbHandle.db, createDbAdminMembershipReader(dbHandle.db), {
             emailTransport,
             webAppBaseUrl,
+            roleAttacher: createDbProposedRoleAttacher(dbHandle.db),
           });
           // TASK-001 ledger — the external-collaborator magic-link store is process-local: there is
           // no M2 table for pending tokens (see mountIdentityRoutes' header), so a minted link exists
@@ -2542,16 +2661,65 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               "M2 mountIdentityRoutes — external-collaborator magic-link store is a per-process Map (no M2-owned pending-token table exists)",
             task: "new M2-owned token table + RLS + audit trigger (audit report 07 §M2)",
           });
+          // M2 (ADR-0023 D2 / SecHardening §12.2/§12.4) — the device-attestation write path. This is what
+          // puts rows in `device_attestation`, which is what lets the authenticate hook stamp
+          // `attributes.deviceAttestation`, which is what M3's `device_attestation_valid` predicate has
+          // been denying on for want of a producer since it was written (F-030).
+          // M2 §4.4 — the step-up routes (initiate + verify). This is the ONLY production path that
+          // writes `session.last_step_up_at`: the routes existed with slice adapters and one caller
+          // (their own test), and `onLoginMfaCompleted` — the other writer — is exported and called by
+          // nobody, so the column was populated by nothing and every step-up gate on the platform
+          // answered "not fresh" for every caller, forever. Fail-closed, and therefore invisible.
+          mountSessionStepUpRoutes(app, dbHandle.db);
+          noteInMemoryBinding({
+            kind: "route-dep",
+            label:
+              "M2 mountSessionStepUpRoutes — the step-up challenge AND consecutive-failure store is a per-process Map, so the lockout threshold is per-replica rather than per-session",
+            task: "move the challenge + lockout store to Valkey behind StepUpChallengeStore",
+          });
+          mountDeviceAttestationRoutes(app, dbHandle.db);
+          noteInMemoryBinding({
+            kind: "route-dep",
+            label:
+              "M2 mountDeviceAttestationRoutes — the attestation CHALLENGE store is a per-process Map, so a challenge minted on one replica cannot be spent on another",
+            task: "move the challenge store to Valkey behind DeviceAttestationChallengeStore",
+          });
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
-          registerLocationLookupRoutes(app, dbHandle.db); // M1 — service-location selector lookup scoped by provider entity
-          mountAdmissionRoutes(app, dbHandle.db, m6OutboxPublisher, m6IpuBedAssignmentReader); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
+          registerLocationLookupRoutes(app, dbHandle.db); // M1 (#50) — location selector for the admission activation ceremony
+          mountAdmissionRoutes(
+            app,
+            dbHandle.db,
+            m6OutboxPublisher,
+            m6IpuBedAssignmentReader,
+            // #44 — lets the election-statement draft verify the elected hospice is THIS org's before
+            // it persists the id onto two tables whose FKs carry no organization.
+            buildProviderEntityOrgCheck(dbHandle.db),
+            // #50 — lets activation SITE the admission at a service location. `admission.location_id`
+            // was never written by any code path, so every admission was unsited at the location level
+            // and M10 refused to create its NOT NULL-sited HOPE timepoint windows.
+            { activeLocationsFor: buildProviderEntityLocationLister(dbHandle.db) },
+          ); // M6 — reads + the T02 referral/admission write lifecycle over Drizzle+RLS, m6.* transactional outbox
           // Clinical core (M7–M14, M17, M18, M22) — reads mounted over the real Drizzle route services under
           // RLS, replacing the retired in-memory scaffold. Writes fail-closed 501 until each module's write
           // lifecycle lands. See each module's `*-route-service-db.ts`.
           mountCarePlanRoutes(app, dbHandle.db, m7OutboxPublisher); // M7 — reads + the T02 write lifecycle over Drizzle+RLS, m7.* transactional outbox
-          mountEncounterRoutes(app, dbHandle.db, m8OutboxPublisher); // M8 — reads + the T02 write lifecycle over Drizzle+RLS, m8.* transactional outbox
+          // M8 — reads + the T02 write lifecycle over Drizzle+RLS, m8.* transactional outbox. Two DEK
+          // envelopes over the SAME M34 key ring M39's consent notes and M31's status reasons use:
+          // `hearthnote_selection.free_text_cipher` (§3.6, #114) and
+          // `hearthnote_assembled_output.layer1_cipher` / `final_cipher` (§2.6, #122). The key ring is a
+          // deny-stub until the Phase-2D KMS-backed provider binds (#105), so both refuse with
+          // 503 HEARTHNOTE_CIPHER_UNBOUND rather than storing PHI in the clear. That means: a selection
+          // tree carrying clinician prose refuses, and — since an assembled narrative is prose by
+          // construction and its columns are NOT NULL — FINALIZE refuses for every encounter. A tree with
+          // no prose still writes, so authoring a structured draft does not depend on the key ring.
+          mountEncounterRoutes(
+            app,
+            dbHandle.db,
+            m8OutboxPublisher,
+            createHearthnoteCiphers(getTenantKeyProvider()),
+          );
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox
           mountHopeRoutes(app, dbHandle.db, m10OutboxPublisher); // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox
           mountOrderRoutes(app, dbHandle.db, m11OutboxPublisher); // M11 — reads + the write lifecycle over Drizzle+RLS, m11.order.* transactional outbox
@@ -2560,8 +2728,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
           mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
-          mountDocumentRoutes(app, dbHandle.db); // M22 — reads + the write lifecycle over Drizzle+RLS (no producer outbox: M22's outbox is the consumer-side render handshake)
-          mountTerminologyRoutes(app, dbHandle.db); // M38 — terminology read surface + tenant value-set extensions (FB-T01), the §4.1 value-set catalog + §7.3 remediation report + the platform-ops admin surface (GAP-063)
+          mountDocumentRoutes(app, dbHandle.db, featureFlagReader); // M22 — reads + the write lifecycle over Drizzle+RLS (no producer outbox: M22's outbox is the consumer-side render handshake); the reader is the `documents.doclens` DocLens gate (F-091)
+          mountTerminologyRoutes(app, dbHandle.db, featureFlagReader); // M38 — terminology read surface + tenant value-set extensions (FB-T01), the §4.1 value-set catalog + §7.3 remediation report + the platform-ops admin surface (GAP-063); the reader is the §7.7 `ai.full` semantic-search gate (F-091)
           mountMdmRoutes(app, dbHandle.db); // M40 — MDM entity directory + overlay/BAA + platform-ops (FB-T02)
           mountConsentRoutes(app, dbHandle.db, {
             outbox: m39OutboxPublisher,
@@ -2584,6 +2752,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               enqueue: m34PlatformEnqueue.enqueue,
               auditBypass: m34PlatformBypassAuditor,
               outbox: m34OutboxPublisher,
+              // F-091 — M1 owns the `feature_flag` schema, so the §4.7 admin seam is built here and
+              // injected rather than constructed inside M34 (which would create a schema import edge the
+              // route file's own header says must not exist). On the PLATFORM pool: migration 0001's write
+              // policies never admit a NULL org, so a platform-global flag is uncreatable from a tenant
+              // connection by design.
+              featureFlags: createDrizzleFeatureFlagAdmin(platformDbHandle?.db ?? dbHandle.db),
             }),
             tenant: buildDrizzleTenantService({
               db: dbHandle.db,
@@ -2730,6 +2904,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               rooming: getIpuRoomingFactsReader,
               // GAP-062 — the §2.7 non-immediate-family visitor consent gate's M39 read (same thunk reason).
               consent: getIpuVisitorConsentGate,
+              // F-069 — the §2.10 restraint gate's M11 order read (same thunk reason). Without it the
+              // CoP 418.110 physician-order requirement was satisfied by any non-empty string.
+              orders: getIpuOrderReader,
+              // F-070 — the §2.2 discharge gate's M6 admission-state read (same thunk reason). Without
+              // it the "the M6 discharge has happened" precondition was a boolean the client sent.
+              admissions: getIpuAdmissionStatusReader,
             }),
           });
           // M23 (Billing — Medicare) — mount the §4.1 route plugins over the Drizzle READ + WRITE services +
@@ -2958,6 +3138,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             writeService: buildDrizzleM19WriteService(dbHandle.db, m19ReadService, {
               outbox: m19OutboxPublisher,
             }),
+            // F-030 — the vendor-session bind gate's read. Mounting this is what makes
+            // `attributes.externalActorId` producible: without a bound session, M19's
+            // `external_triage_actor` compares the shift's vendor against nothing, which is how that
+            // predicate came to refuse every caller.
+            vendorSessionBindReader: buildDrizzleVendorSessionBindReader(dbHandle.db),
           });
           // M20 (Field Safety) — mount the §4.1 route plugins over the Drizzle READ + WRITE services.
           // Every read opens its own withOrgContext (RLS scopes each statement to app.org_id); every
@@ -2994,7 +3179,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // Record button denies and join mints an empty token rather than reaching a vendor with an
           // unconfigured key. Every lay READ route composes the upstream portal-summary seams and fails
           // CLOSED; the owned-table reads/writes (accounts, grants, telehealth lifecycle) are live over RLS.
-          mountM31Routes(app, { store: buildDrizzlePortalStore(dbHandle.db) });
+          // The reason cipher seals the operator's suspend/reinstate reason (#117); it composes over the
+          // SAME M34 key ring M39's consent notes use, which is a slice deny-stub until the Phase-2D
+          // KMS-backed provider lands — so those two routes refuse with 503 until then rather than
+          // recording an account status change with no reason. Every other admin route is unaffected.
+          mountM31Routes(app, {
+            store: buildDrizzlePortalStore(dbHandle.db),
+            reasonCipher: createPortalReasonCipher(getTenantKeyProvider()),
+          });
           // M32 (AI Platform) — mount the thirty-two §4.1 routes over the T03/T04/T05 command services
           // plus T07's read port. `ai.full` stays OFF: these routes GOVERN a platform that is not yet
           // serving inference, which is the order §2.2 requires (a capability reaches APPROVED only
@@ -3074,10 +3266,26 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M28 (FHIR Gateway) — mount the thirty-nine §4.1 routes over the Drizzle route store. The
           // FHIR-spec bearer surface (R1-R22) resolves its own SMART token; the admin console (R23-R39)
           // composes the §4.6 permission + §4.7 ABAC preHandlers. `fhir.write` stays OFF: read-only US
-          // Core R4. The disclosure-audit sink stays unbound this wave (no served-read log table yet), so
-          // the bearer read path runs its scope-enforcement + OperationOutcome shape without persisting a
-          // row — the fail-closed Phase-1 posture (no external client is provisioned).
-          mountM28Routes(app, { store: createDrizzleFhirGatewayStore(dbHandle.db) });
+          // Core R4.
+          //
+          // F-035 (#95) — the read path is BOUND. The three things this call used to leave unwired were
+          // each load-bearing: the JWKS fetcher (without it the SMART assertion path cannot verify a
+          // signature), the token-endpoint URL (the `aud` an assertion must carry — without it the mint
+          // refuses the assertion path outright rather than accepting an unbound audience), and the
+          // replay guard. The disclosure sink is deliberately NOT passed: absent, the routes default to
+          // `store.recordDisclosure`, which is the §164.528 ledger. It used to default to a no-op.
+          //
+          // The replay guard goes cluster-wide over Valkey when REDIS_URL is set and per-process
+          // otherwise — the same posture as the credential throttle and the signup limiter above, and
+          // for the same reason: on a single-replica deployment one replica IS the cluster.
+          mountM28Routes(app, {
+            store: createDrizzleFhirGatewayStore(dbHandle.db),
+            jwks: createHttpFhirJwksFetcher(),
+            replay: rateLimitRedisClient
+              ? createRedisFhirReplayGuard(rateLimitRedisClient)
+              : createInMemoryFhirReplayGuard(),
+            tokenEndpointUrl: process.env.FHIR_TOKEN_ENDPOINT_URL,
+          });
 
           // M29 (External Interfaces) — mount the §4.1 operator + §4.2 clinician routes over the Drizzle
           // route store. Feed lifecycle (dual-approval + BAA gate), ADT proposal review (propose-then-review),
@@ -3108,6 +3316,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           : undefined,
         db: dbHandle?.db,
         organizationDb: platformDbHandle?.db,
+        platformDb: platformDbHandle?.db,
         outboxPublisher: txOutboxPublisher,
       }),
     registerModuleErasers: () =>
@@ -3140,6 +3349,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   registerHttpMetrics(app, metricsRegistry);
   const outboxMetrics = registerOutboxMetrics(metricsRegistry, {
     pendingDepth: outboxPendingDepth,
+  });
+  // F-033/#93 — partition-coverage gauges. Registered for EVERY role, like the outbox ones: the read is
+  // a catalog scan of ~43 relations, and an API-only replica answering it is exactly as correct as the
+  // worker answering it. Deliberately NOT folded into `/ready`: a table running low on partition
+  // headroom is a maintenance signal, and taking an otherwise-healthy replica out of the load balancer
+  // for it would turn a scheduling problem into an outage.
+  registerPartitionMetrics(metricsRegistry, {
+    coverage: dbHandle ? () => readPartitionCoverage(dbHandle.db) : undefined,
   });
   mountMetricsRoute(app, metricsRegistry);
   // TASK-040D (OPS-012) — DLQ-promotion alerting, shared by BOTH the BullMQ worker-runner block and the
@@ -3325,11 +3542,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           auditBypass: m34PlatformBypassAuditor,
           ...m34ProvisionGateway,
           storage: m34TenantStorage,
+          // AFTER the spread: the platform KEK wins over the gateway's `/dek/wrap` (see m34KeyMaterial).
+          ...(m34KeyMaterial ? { keyMaterial: m34KeyMaterial } : {}),
           outbox: m34OutboxPublisher,
         },
         keyLifecycle: {
           auditBypass: m34PlatformBypassAuditor,
-          keyMaterial: m34ProvisionGateway.keyMaterial,
+          keyMaterial: m34KeyMaterial ?? m34ProvisionGateway.keyMaterial,
           storage: m34ProvisionGateway.destructionStorage,
           outbox: m34OutboxPublisher,
           async destroyTenantKeyRing(input) {
@@ -3459,6 +3678,63 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.log.error(err, "M33 cron-schedule registration failed");
     }
     app.log.info({ queues: m33Workers.length }, "M33 §4.8 BullMQ reporting workers constructed");
+
+    // ── platform.partition_rotate — the time-partition rotation cron (F-033 / #93) ─────────────────────
+    //
+    // Keeps the current + 3 following months of partitions created for every time-RANGE partitioned
+    // table, discovered from `pg_catalog` (migration 0224). Runs on the 1st, 8th and 15th: the work is a
+    // no-op once the window is covered, so three cheap chances beat one tick that a restart can eat.
+    //
+    // It uses the PLATFORM credential, not the tenant pool. Partition DDL needs ownership of the parent
+    // table and `wardenx_app` has none — the definer-rights `rotate_time_partitions` bridges that, and
+    // `scripts/db/provision-runtime-roles.ts` grants EXECUTE on it to `wardenx_platform`. Falling back to
+    // `dbHandle.db` keeps dev/CI (no DATABASE_PLATFORM_URL) working, where the connected role is usually
+    // the owner anyway.
+    const partitionRotateWorker = new Worker(
+      PARTITION_ROTATION_QUEUE,
+      async () => {
+        const rows = await runPartitionRotation({
+          platformDb: platformDbHandle?.db ?? dbHandle.db,
+          auditBypass: m34PlatformBypassAuditor,
+        });
+        const summary = summarizeRotation(rows);
+        // A blocked table is not a job failure to retry — retrying cannot help, because the partition is
+        // refused for as long as DEFAULT holds those rows. It is an operator task, so it is logged at
+        // error level with the table names and the job still completes.
+        if (!summary.healthy) {
+          app.log.error(
+            { blocked: summary.blocked, noCreator: summary.noCreator },
+            "partition rotation completed with tables that need manual repair",
+          );
+        } else {
+          app.log.info(
+            { created: summary.created, alreadyCovered: summary.ok },
+            "partition rotation complete",
+          );
+        }
+        return summary;
+      },
+      { connection: queueConnection, concurrency: 1 },
+    );
+    attachDlqAlertsToAll([partitionRotateWorker], "platform");
+    app.addHook("onClose", async () => {
+      await partitionRotateWorker.close();
+    });
+    try {
+      const partitionRotateQueue = new Queue(PARTITION_ROTATION_QUEUE, {
+        connection: queueConnection,
+      });
+      await partitionRotateQueue.add(
+        "scheduled",
+        {},
+        { repeat: { pattern: PARTITION_ROTATION_CRON }, removeOnComplete: true },
+      );
+      app.addHook("onClose", async () => {
+        await partitionRotateQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "partition-rotation cron registration failed");
+    }
 
     // ── M30 §4.8 HQRP/quality workers + cron schedules (the same worker-runner shape) ───────────────────
     // Construct the four §4.8 WORK-queue Workers (measure_recompute / cahps_export / outbreak_detection /
@@ -3907,9 +4183,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     }
     app.log.info({ queues: m9Workers.length }, "M9 §4.8 BullMQ compliance-scan crons constructed");
 
-    // ── M10 §4.8 HOPE watchdog crons (TASK-040D — the M25 worker-runner shape) ───────────────────────────
-    // `hope-window-watchdog` + `sfv-watchdog` only (`alerts`/`scheduling`/`validation`/`submission`/
-    // `retention` are out of scope — see jobs/cron-workers.ts's own header for why).
+    // ── M10 §4.8 HOPE crons (TASK-040D — the M25 worker-runner shape) ────────────────────────────────────
+    // `hope-window-watchdog` + `sfv-watchdog`, plus (F-058 / F-072) the three §4.10 submission stages on
+    // the shared `hope.submission` queue: `assemble-hope-submission`, `iqies-submit-worker` and
+    // `iqies-reconcile-worker`. `alerts`/`scheduling`/`validation`/`retention` are still out of scope —
+    // see jobs/cron-workers.ts's own header.
+    //
+    // The iQIES adapter is bound to `createUnboundIqiesAdapter` because there is no live transport in
+    // this codebase: the CMS endpoint, its auth flow and the HOPE submission XML schema are not here
+    // (#177). That binding is DELIBERATE and is not the same as leaving the port unbound — the deny-stub
+    // raises a typed `retryable: false` DegradedError, so the job DLQs immediately (no retry storm) and
+    // `attachDlqAlertsToAll` surfaces it, while Tier-2 capture is untouched (§5.6 / §7.10).
     const m10ActiveOrgs = buildActiveOrgEnumerator({
       platformDb: dbHandle.db,
       auditBypass: m34PlatformBypassAuditor,
@@ -3932,6 +4216,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           },
         ): Promise<{ alertId: string; resolvedRecipientCount: number }>;
       },
+      iqies: createUnboundIqiesAdapter(),
+      providerEntityCcn: buildProviderEntityCcnResolver(dbHandle.db),
     });
     const m10Workers = registerM10CronWorkers(m10WorkerDeps);
     attachDlqAlertsToAll(m10Workers, "m10");
@@ -3946,7 +4232,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M10 cron-schedule registration failed");
     }
-    app.log.info({ queues: m10Workers.length }, "M10 §4.8 BullMQ HOPE watchdog crons constructed");
+    app.log.info(
+      { queues: m10Workers.length },
+      "M10 §4.8 BullMQ HOPE crons constructed (watchdogs; iQIES submission is the manual package flow)",
+    );
 
     // ── M14 §4.8 `idg.review-clock-sweep` cron (GAP-092 — the M9/M10/M25 worker-runner shape) ────────────
     const m14ActiveOrgs = buildActiveOrgEnumerator({
@@ -3982,19 +4271,66 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // M11 D5 — one repeatable hourly trigger enumerates active org ids under the audited platform
     // context; each delegated service call opens its own tenant/RLS transaction before touching PHI.
     const m11StandingActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db, auditBypass: m34PlatformBypassAuditor, jobId: M11_PLATFORM_JOB_ID,
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M11_PLATFORM_JOB_ID,
       reason: "M11 D5 standing-order hourly spawn fan-out",
     });
     const m11StandingWorker = registerM11StandingSpawnWorker({
-      connection: queueConnection, activeOrgs: m11StandingActiveOrgs,
+      connection: queueConnection,
+      activeOrgs: m11StandingActiveOrgs,
       service: createDbOrderBackend(dbHandle.db, m11OutboxPublisher),
     });
     attachDlqAlertsToAll([m11StandingWorker], "m11");
-    app.addHook("onClose", async () => { await m11StandingWorker.close(); });
+    app.addHook("onClose", async () => {
+      await m11StandingWorker.close();
+    });
     try {
       const m11StandingQueue = await scheduleM11StandingSpawn(queueConnection);
-      app.addHook("onClose", async () => { await m11StandingQueue.close(); });
-    } catch (err) { app.log.error(err, "M11 standing-spawn schedule registration failed"); }
+      app.addHook("onClose", async () => {
+        await m11StandingQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M11 standing-spawn schedule registration failed");
+    }
+    // ── M37 §4.8 `ipu.rn-coverage-watchdog` cron (F-071/#174 — the M14 worker-runner shape) ──────────────
+    //
+    // The producer that did not exist. `ipu_rn_coverage_window` is a MATERIALIZED invariant that
+    // `openAdmission`, `requestBed`, `initiateTransfer` and `applyRestraint` all read, each treating an
+    // absent row as uncovered (correctly, fail-closed). Nothing ever wrote a row, and
+    // `planOpenAdmission` refuses every non-`arranged` admission on that flag — so no GIP and no
+    // inpatient-respite admission could be opened on any deployment. The pure grid builder
+    // (`@wardenx/inpatient` `buildCoverageWindows`) has existed and been unit-tested since M37-T07; this
+    // is the worker its own header named and that was never built.
+    const m37ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M37_PLATFORM_JOB_ID,
+      reason: "M37 §4.8 ipu.rn-coverage-watchdog cron fan-out (active-org enumeration)",
+    });
+    const m37WorkerDeps = buildM37WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m37OutboxPublisher,
+      activeOrgs: m37ActiveOrgs,
+    });
+    const m37Workers = registerM37CronWorkers(m37WorkerDeps);
+    attachDlqAlertsToAll(m37Workers, "m37");
+    app.addHook("onClose", async () => {
+      await Promise.all(m37Workers.map((w) => w.close()));
+    });
+    try {
+      const m37ScheduleQueues = await scheduleM37Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m37ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M37 cron-schedule registration failed");
+    }
+    app.log.info(
+      { queues: m37Workers.length },
+      "M37 §4.8 BullMQ rn-coverage-watchdog cron constructed",
+    );
 
     // ── M29 D11 — the platform NPPES sync worker + its 02:30 UTC nightly repeatable (GAP-045) ────────────
     // `NPPES_SYNC_SCHEDULE` shipped as pure data whose own comment promised "the M29-T08 worker binds this
@@ -4120,6 +4456,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               activeAdmissionDraftContextForPatient(dbHandle.db, organizationId, patientId),
           }),
           buildM16IdgDecisionConsumer({ db: dbHandle.db }),
+          // F-105 — the §4.3.1 bereavement intake. The ONLY path by which a `bereavement_plan` row can
+          // exist: M16 publishes no create route (the collection path is a GET worklist; all fifteen plan
+          // writes are `/plans/:planId/…`), so before this binding the CoP 418.64(d) 13-month program was
+          // unreachable in every deployment. The admission siting comes from M6's ORG-EXPLICIT reader —
+          // the §4.7 seam pins the tenant from the ambient request scope and a relay tick is not a request.
+          buildM16BereavementIntakeConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+            resolveAdmission: async (organizationId, admissionId) =>
+              admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
+          }),
           buildM8VisitPublishedConsumer({
             db: dbHandle.db,
             outbox: m8OutboxPublisher,
@@ -4137,6 +4484,52 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             admissions: getSeam("AdmissionStatusReader") as AdmissionStatusReader,
           }),
           buildM18VisitPublishedConsumer({ db: dbHandle.db }),
+          // M20 §4.8 / §7.1 (F-043, #103) — the field-safety visit consumers. Six deciders and a badge
+          // cache had been complete, exported and unit-tested since M20-T04 with NO factory yielding a
+          // binding, so the relay deferred every m20 event and — one layer down — NOTHING in the whole
+          // repository ever inserted a `safety_check_in_schedule` row. The §4.2 supervisor board, the §4.3
+          // badge trio, the §4.8 overdue detector and the clinician's own `/me/today` were therefore all
+          // reading an empty set: the board answered "nobody is overdue" because nobody had ever been
+          // OBLIGED, which is indistinguishable from everyone being fine.
+          //
+          // Unlike M10's admission consumer above, these DO reach through a §4.3 seam: M17 publishes no
+          // org-explicit visit reader, and `VisitReader.visitForEncounter(orgId, visitId)` already takes
+          // the org — it just resolves the tenant from the ambient scope rather than from the argument.
+          // So each handler opens `runWithRequestContext` first, which makes the argument and the scope
+          // agree and lets `assertCallerOrg` verify it. Without that the read would not dead-letter, it
+          // would silently answer null: `seam-context`'s `readVisitAnchors` collapses "no such visit" and
+          // "the seam threw" so the §4.2 board cannot leak another tenant's visit, so the bindings read
+          // the seam directly and let a failure fail the delivery.
+          // M19 §4.8 / §7.6 / D10 (F-043, #103) — the two proactive-triage triggers. Both deciders and
+          // their shared core have been complete since M19-T04 with NO factory yielding a binding, so the
+          // relay deferred them forever and `triage_call.source` could only ever hold `manual` or
+          // `paper_origin`: NO proactive welfare check had ever been opened, and `source_outbox_event_id`
+          // — the column D10's redelivery guard `triage_call_source_dedupe_uq` is built on — had never
+          // been written by anything. A clinician who never arrived at a dying patient's home, and one
+          // who never checked out of it, each raised an event delivered to nobody.
+          //
+          // Also the first producer of `m19.oncall_shift.coverage_gap`, which `events-by-m19.ts` records
+          // as declared and never published: when no shift covers the trigger instant the consumer emits
+          // the gap rather than opening a call it cannot anchor (`on_call_shift_id` is NOT NULL) or
+          // throwing, which would park a patient welfare check in a DLQ.
+          ...buildOncallTriggerConsumers({
+            db: dbHandle.db,
+            ports: createDrizzleInboundTriggerPorts(dbHandle.db),
+            outbox: m19OutboxPublisher,
+            // No `alerts` port, matching M19's own route path: the §4.9 pages ride the outbox events,
+            // which M36 resolves through its seam. Binding one here and not there would give the same
+            // alert two carriers with different retry semantics.
+          }),
+          ...buildFieldSafetyConsumers({
+            db: dbHandle.db,
+            policy: createSafetyPolicyProvider(buildDrizzleSafetySeamStore(dbHandle.db)),
+            outbox: m20OutboxPublisher,
+            // No `alerts` port: M36's emitter is not bound to M20's write path either, so the §4.9
+            // warn-severity inquiry rides the `m20.safety.check_in_overdue` OUTBOX event, which M36
+            // resolves through its own seam. Binding one here and not on the route path would give the
+            // same alert two carriers with different retry semantics.
+            signals: safetyClinicianSignalCache(),
+          }),
           ...(m23SubmissionQueues
             ? [buildM23SubmissionRequestConsumer(m23SubmissionQueues.port)]
             : []),
@@ -4151,6 +4544,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // DeathDischargeReader seam and flips patient.status='deceased' + emits
           // m5.patient.deceased (seeds M16 bereavement / M23 final claim / M28 FHIR / M36 IDG alert).
           buildM5DeathCascadeConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          // M10 §2.2.1 (#48): the HOPE timepoint-schedule write path is `buildM10AdmissionWorkflowConsumer`
+          // above. The lost-history `buildM10AdmissionSchedulingConsumer` handled the same two events and
+          // wrote the same rows; only one may be bound (restored 2026-09-25, see the force-push recovery audit).
           // M6 §4.8.3 — the LIVE admission-event applier (task-15): resolves facts + executes
           // through the Drizzle gateway (external death / HL7 withdrawal / compliance windows),
           // records refusals durably + emits m6.applier.refused. Second consumer on the event so
@@ -4191,17 +4587,55 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 }),
               ),
           }),
-          // The four requesting modules' back-ref consumers — the columns each built for exactly this
+          // The requesting modules' back-ref consumers — the columns each built for exactly this
           // (`order_record.document_id`, `medication_order.document_id`,
           // `medication_reconciliation_worksheet.document_id`, `comfort_kit_dispatch.bol_document_id` /
           // `comfort_kit_return.receipt_document_id`) and never had an event to fill. Each ignores every
           // document it did not request. They must ALL be bound: `m22.document.rendered` declares exactly
-          // these four consumers, and the dispatcher holds a row `pending` while any declared consumer
+          // these consumers, and the dispatcher holds a row `pending` while any declared consumer
           // module has no live binding.
+          // F-100 — M6's is the sixth, and the one with the most columns behind it: the CTI, the election
+          // statement, the face-to-face, the notice of rights, the revocation and the discharge summary,
+          // all six commented "M22 document" since M6's schema landed and all six NULL in every database.
+          buildM6DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM11DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM12DocumentBackrefConsumer({ db: dbHandle.db }),
+          // F-102 — the M6 discharge cascade, both halves. Each decider has been complete, exported and
+          // unit-tested since M11-T07 / M12-T08 with no caller but its own test, and neither COULD be
+          // bound: `m6.admission.discharged` did not declare m11 or m12, and
+          // `assertBindableAgainstCatalog` refuses a binding whose module the catalog does not name. Every
+          // order and every medication order in flight when a patient was discharged stayed in flight —
+          // including `queued_for_transmission`, an order waiting to reach the e-prescribing vendor.
+          buildM11DischargeCascadeConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
+          buildM12DischargeCascadeConsumer({ db: dbHandle.db, outbox: m12OutboxPublisher }),
+          // F-103 — the §1.1 D10 discipline-plan bootstrap, and the ONLY path by which a
+          // `discipline_care_plan` row has ever been created: `bootstrapDisciplinePlan`'s own doc names
+          // "the `m6.admission.activated` consumer" and there was none, m15 was not declared on the
+          // event, and no INSERT into that table existed anywhere in the repository. Every M15 write
+          // route is `/discipline-plans/:planId/…`, so the aide plan of care, the MSW plan and the
+          // spiritual plan were unreachable in every deployment.
+          // F-104 — M14's §4.5 D8 action-item auto-close. The pure decider, the transition graph, the
+          // `auto_closed` status, the `close_reason` value and the outbox event all shipped with M14-T06
+          // and NOTHING bound them — and `idg_action_item.linked_artifact_id`, the column the engine
+          // matches on, was written by no code path at all, so binding alone would have matched nothing
+          // forever. An action item saying "sign this care plan" stayed open after the plan was signed.
+          buildM14ActionItemAutoCloseConsumer({ db: dbHandle.db, outbox: m14OutboxPublisher }),
+          buildM15PlanBootstrapConsumer({
+            db: dbHandle.db,
+            outbox: m15OutboxPublisher,
+            // Same reason as M10's scheduling consumer above: M6's §4.7 seam pins the tenant from the
+            // ambient REQUEST scope, and a relay tick is not a request.
+            resolveSiting: (organizationId, admissionId) =>
+              admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
+          }),
           buildM13DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM21DocumentBackrefConsumer({ db: dbHandle.db }),
+          // F-108 — M27's. Unlike the five clinical ones it stamps THREE columns off one event, resolved
+          // from `aggregateType`: M27 fans the ECR file, the Print Image and the supporting-doc bundle out
+          // under ONE request event name, so the aggregate type is the only discriminator on the wire —
+          // and the pure handler's declared payload named an `artifactKind` M22 does not publish, so a
+          // binding written to its stated shape would have no-op'd on every delivery.
+          buildM27DocumentBackrefConsumer({ db: dbHandle.db, outbox: m27OutboxPublisher }),
           // GAP-051 — M33's half. Unlike the four above it does more than stamp a column: a rendered
           // scheduled report settles its occurrence `delivered` and emits the §4.9 fan-out, which is why
           // it composes the package's own decider/applier rather than a one-line UPDATE. The ad-hoc
@@ -4260,6 +4694,75 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // declaring `m23` as a consumer. M23 had none: every posting row sat `pending` and no claim
           // ever left ACK_ACCEPTED when the MAC paid it. This drives the real lifecycle transition,
           // appends `claim_state_history`, and emits M23's own §4.10 adjudication events.
+          // F-106 — the NOE draft. `NoeRepository.create` had no caller anywhere in the repository and
+          // `/api/v1/noe-records` is a GET, so no Notice of Election has ever been created: the CMS 5-day
+          // filing window (42 CFR 418.24(b)) was never started for any election, and the watchdog cron
+          // has always scanned an empty table. Subscribed to `period_started`, not `election.signed` —
+          // the effective date the deadline is computed from is written at ACTIVATION and does not exist
+          // at signing. Both M6 facts come from the org-explicit reader: the §4.7 seam pins the tenant
+          // from the ambient request scope and a relay tick is not a request.
+          buildM23NoeDraftConsumer({
+            db: dbHandle.db,
+            outbox: m23OutboxPublisher,
+            resolveElectionPeriod: async (organizationId, electionPeriodId) =>
+              electionPeriodContextForOrg(dbHandle.db, organizationId, electionPeriodId),
+            resolveCcn: async (organizationId, providerEntityId) => {
+              const [provider] = await dbHandle.db
+                .select({ ccn: schema.providerEntities.ccn })
+                .from(schema.providerEntities)
+                .where(
+                  and(
+                    eq(schema.providerEntities.id, providerEntityId),
+                    eq(schema.providerEntities.organizationId, organizationId),
+                  ),
+                )
+                .limit(1);
+              if (!provider) throw new DegradedError("provider-entity", "provider CCN unavailable");
+              return provider.ccn;
+            },
+            onSkipped: (info) =>
+              app.log.info(
+                {
+                  reason: info.reason,
+                  org: info.organizationId,
+                  electionPeriod: info.electionPeriodId,
+                },
+                "M23 NOE draft skipped",
+              ),
+          }),
+          // F-107 — the NOTR draft, the NOE's sibling. `NotrRepository.create` had no caller either, so
+          // no notice of a hospice election ENDING has ever been drafted and the 42 CFR 418.26 5-day
+          // window was never started for any revocation, transfer-out or discharge.
+          buildM23NotrDraftConsumer({
+            db: dbHandle.db,
+            outbox: m23OutboxPublisher,
+            resolveAdmission: async (organizationId, admissionId) =>
+              admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
+            resolveCcn: async (organizationId, providerEntityId) => {
+              const [provider] = await dbHandle.db
+                .select({ ccn: schema.providerEntities.ccn })
+                .from(schema.providerEntities)
+                .where(
+                  and(
+                    eq(schema.providerEntities.id, providerEntityId),
+                    eq(schema.providerEntities.organizationId, organizationId),
+                  ),
+                )
+                .limit(1);
+              if (!provider) throw new DegradedError("provider-entity", "provider CCN unavailable");
+              return provider.ccn;
+            },
+            onSkipped: (info) =>
+              app.log.info(
+                {
+                  reason: info.reason,
+                  event: info.eventType,
+                  org: info.organizationId,
+                  admission: info.admissionId,
+                },
+                "M23 NOTR draft skipped",
+              ),
+          }),
           buildM23RemittanceConsumer({
             db: dbHandle.db,
             outbox: m23OutboxPublisher,

@@ -220,13 +220,9 @@ export const AddPatientPayerBodySchema = Type.Object({
     minLength: 1,
   }),
 
-  groupNumber: Type.Optional(
-    Type.Union([Type.String(), Type.Null()]),
-  ),
+  groupNumber: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 
-  binPcn: Type.Optional(
-    Type.Union([Type.String(), Type.Null()]),
-  ),
+  binPcn: Type.Optional(Type.Union([Type.String(), Type.Null()])),
 
   effectiveFrom: Type.String({
     minLength: 1,

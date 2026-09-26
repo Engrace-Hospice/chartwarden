@@ -107,7 +107,7 @@ describe("§5.11 five-rights", () => {
       order,
       NOW,
     );
-    expect(r.failedRights.sort()).toEqual(["dose", "patient", "route"]);
+    expect([...r.failedRights].sort()).toEqual(["dose", "patient", "route"]);
   });
 
   it("assertFiveRights throws FIVE_RIGHTS_VIOLATION (422) naming the failed rights", () => {

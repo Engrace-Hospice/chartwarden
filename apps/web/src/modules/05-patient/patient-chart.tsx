@@ -27,7 +27,7 @@ import type { paths } from "@wardenx/ui";
 
 // GET /api/v1/patients/:id (+ /demographics, /identifiers) via the typed client.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Link, useParams, useSearchParams } from "react-router-dom";
 
@@ -417,6 +417,7 @@ function FieldLabel({
   children: ReactNode;
 }): JSX.Element {
   return (
+    // biome-ignore lint/a11y/noLabelWithoutControl: the control arrives through `children` (every caller passes an <input>/<select>), so the implicit label association holds; the rule cannot see through the slot.
     <label style={fieldGroup}>
       <span style={fieldLabel}>
         {label}
@@ -765,21 +766,24 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  async function load(active = { v: true }) {
-    setStatus("loading");
-    const res = await client.GET("/api/v1/patients/{id}/addresses", {
-      params: { path: { id: patientId } },
-    });
+  const load = useCallback(
+    async (active = { v: true }) => {
+      setStatus("loading");
+      const res = await client.GET("/api/v1/patients/{id}/addresses", {
+        params: { path: { id: patientId } },
+      });
 
-    if (!active.v) return;
-    if (res.error || !res.data) {
-      setStatus("error");
-      return;
-    }
+      if (!active.v) return;
+      if (res.error || !res.data) {
+        setStatus("error");
+        return;
+      }
 
-    setAddresses((res.data as { addresses: Address[] }).addresses);
-    setStatus("ready");
-  }
+      setAddresses((res.data as { addresses: Address[] }).addresses);
+      setStatus("ready");
+    },
+    [client, patientId],
+  );
 
   useEffect(() => {
     const active = { v: true };
@@ -787,8 +791,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
     return () => {
       active.v = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [client, patientId]);
+  }, [load]);
 
   async function submit(e: FormEvent) {
     e.preventDefault();

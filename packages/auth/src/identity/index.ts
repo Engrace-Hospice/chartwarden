@@ -4,6 +4,9 @@
 // cross-module seams (M2-T07) in ./session-seam + ./auditor-session.
 export {
   createIdentityAuth,
+  resolvePasskeyOrigins,
+  resolveTrustedOrigins,
+  resolvePasskeyRpId,
   type IdentityAuth,
   type IdentityAuthDb,
   type IdentityAuthOptions,
@@ -36,8 +39,26 @@ export { argon2idHash, argon2idVerify } from "./password-hash";
 export { loadTwoFactorKey, seal, open, isSealed } from "./two-factor-crypto";
 export { withTwoFactorEncryption, type EncryptableAdapter } from "./two-factor-adapter";
 export {
+  type StoredTotpEnrolment,
+  type TotpEnrolmentStore,
+  type TotpVerifier,
+  type TotpVerifierOptions,
+  type TotpVerifyResult,
+  createDbTotpEnrolmentStore,
+  createTotpStepUpVerifier,
+} from "./totp-verifier";
+export {
+  type VendorSessionRow,
+  type VendorSessionStore,
+  VendorSessionBindError,
+  createInMemoryVendorSessionStore,
+  createVendorSessionBinder,
+} from "./vendor-session-binder";
+export {
   createDbSessionContextStore,
+  liveDeviceAttestation,
   toSessionContextRecord,
+  type DeviceAttestationRow,
   type SessionRow,
 } from "./db-session-store";
 export {
@@ -46,6 +67,13 @@ export {
   createSessionContextResolver,
   createInMemorySessionContextStore,
 } from "./session-seam";
+export {
+  PortalSessionBindError,
+  type PortalSessionRow,
+  type PortalSessionStore,
+  createPortalSessionBinder,
+  createInMemoryPortalSessionStore,
+} from "./portal-session-binder";
 export {
   type CredentialOutcome,
   type CredentialThrottle,
@@ -87,6 +115,11 @@ export {
   type SessionScopeFields,
   isSessionScopeValid,
   assertSessionScope,
+  sessionExternalActorId,
   sessionPinnedPatientId,
   sessionAllowsConcurrent,
+  PORTAL_SESSION_CLASSES,
+  VENDOR_SESSION_CLASSES,
+  isPortalSessionClass,
+  isVendorSessionClass,
 } from "./session-classes";

@@ -46,7 +46,9 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       gpsQuality: id,
       geofenceDecision: id,
     }),
-    declaredConsumers: ["m8", "m17"],
+    // F-043/#103 — M20 re-anchors the mid-visit cadence to the ARRIVAL (§7.1); it was subscribed in
+    // `M20_SUBSCRIBED_EVENT_NAMES` and declared nowhere.
+    declaredConsumers: ["m8", "m17", "m20"],
     isOutboxOnly: true,
   },
   {
@@ -66,7 +68,9 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       pairedCheckInEventId: nullableId,
       serviceDurationMinutes: Type.Number(),
     }),
-    declaredConsumers: ["m8", "m17"],
+    // F-043/#103 — M20 opens the post-visit window from the check-out (§7.1), materializing it when the
+    // visit predates the cadence materializer.
+    declaredConsumers: ["m8", "m17", "m20"],
     isOutboxOnly: true,
   },
   {
@@ -110,7 +114,13 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       appliedRadiusM: Type.Integer(),
       kind: Type.Union([Type.Literal("check_in"), Type.Literal("check_out")]),
     }),
-    declaredConsumers: ["m20", "m36"],
+    // F-043/#103 — `m20` was declared here and NOWHERE in M20 answers it: the topic is absent from
+    // `M20_SUBSCRIBED_EVENT_NAMES` and there is no handler, so the declaration deferred every emission
+    // forever. The "M20 field-safety awareness" the description names is the M36 supervisor alert below,
+    // which is a seam and not an outbox subscription — the same shape as `gps_spoof_suspected`, where
+    // M18 owns the response and M20 renders a caveat (M18 §1.2 / M20 §7.7).
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -141,7 +151,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       postingMembershipId: id,
       detectionSignals: Type.Array(Type.String()),
     }),
-    declaredConsumers: ["m20", "m36"],
+    declaredConsumers: ["m20"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── missing-EVV resolution (§2.2.4 D6 / §4.10) ──────────────────────────────────────────────────────────
@@ -156,7 +167,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       hoursPastGrace: Type.Number(),
       hasCheckIn: Type.Boolean(),
     }),
-    declaredConsumers: ["m19", "m36"],
+    declaredConsumers: ["m19"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -185,7 +197,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       membershipId: id,
       platform: Type.Union([Type.Literal("ios"), Type.Literal("android")]),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -211,7 +224,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       membershipId: id,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m2", "m36"],
+    declaredConsumers: ["m2"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -228,7 +242,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       newMaxAccuracyM: Type.Integer(),
       setByMembershipId: id,
     }),
-    declaredConsumers: ["m4"],
+    declaredConsumers: [],
+    seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
   // ── per-state aggregator submission (§2.2.5 D7 / §7.8 / §7.9 / §4.10) ────────────────────────────────────
@@ -274,7 +289,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectionCode: id,
       rejectionReason: Type.String(),
     }),
-    declaredConsumers: ["m25", "m36"],
+    declaredConsumers: ["m25"],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -288,7 +304,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       stateCode: id,
       attemptCount: Type.Integer(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

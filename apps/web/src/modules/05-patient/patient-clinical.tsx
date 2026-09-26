@@ -251,7 +251,14 @@ const ENCOUNTER_LABEL: Record<string, string> = {
   idg_followup: "IDG Follow-up",
 };
 
-const DX_DOTS = ["var(--color-viz-rose)", "var(--color-viz-teal)", "var(--color-viz-yellow)", "var(--color-viz-orange)", "var(--color-error)", "var(--color-viz-violet)"];
+const DX_DOTS = [
+  "var(--color-viz-rose)",
+  "var(--color-viz-teal)",
+  "var(--color-viz-yellow)",
+  "var(--color-viz-orange)",
+  "var(--color-error)",
+  "var(--color-viz-violet)",
+];
 
 function num(v: unknown): number | null {
   return typeof v === "number" && Number.isFinite(v) ? v : null;

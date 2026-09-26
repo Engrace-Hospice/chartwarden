@@ -1,12 +1,16 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createDbClient } from "@wardenx/db";
+import { type DbClient, createDbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
+import { registerSeam } from "../src/bootstrap/seams/registry";
+import { registerPatientSeams } from "../src/modules/05-patient/index";
 import { createDbHopeBackend } from "../src/modules/10-hope/hope-route-service-db";
 import { createHopeSpecRegistry } from "../src/modules/10-hope/hope-spec-registry";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+import { seedM5Patient } from "./_m6-admit";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -14,6 +18,9 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "22222222-2222-2222-2222-222222222222";
 const PATIENT = "33333333-3333-3333-3333-333333333333";
+const WORKFLOW_ITEMS = /^(A0050|A0220|A0250|A0270|J2052[A-C]|J2053[A-H]|Z0350|Z0500B)$/;
+/** The drafts' target date, used for every date answer `answerForSign` fills. */
+const ANSWER_DATE = "2025-10-15";
 
 describe.skipIf(!DB_URL)("M10 HOPE Phase 2A record initialization — LIVE Postgres", () => {
   let admin: Client;
@@ -37,7 +44,9 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2A record initialization — LIVE Postg
 
   async function applyMigrations() {
     const strip = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((x) => x.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((x) => x.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (strip) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- vector stripped");
@@ -91,6 +100,60 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2A record initialization — LIVE Postg
     return Object.fromEntries(rows.map((r) => [r.item_code, r]));
   }
 
+  /**
+   * Answer a draft until the server's sign-readiness review passes (the same completion
+   * m10-hope-write.live.test.ts does): `signTimepoint` refuses (HopeAssessmentNotReadyToSignError) any
+   * record whose active, applicable items are unanswered or that carries an error finding. Every
+   * UNANSWERED_APPLICABLE_ITEM blocker gets its first CMS option (No / Not at all for gates, so skip
+   * branches resolve), a date, or text. A1400A (Medicare payer) is always set — CMS rule -3081.
+   */
+  async function answerForSign(id: string): Promise<void> {
+    const patch = async (changes: Record<string, string>) => {
+      const ws = await svc.getAssessmentWorkspace(ORG, id);
+      await svc.patchAssessmentAnswers(ORG, membershipId, id, {
+        ifVersion: ws.assessment.version,
+        changes: Object.entries(changes).map(([itemCode, value]) => ({
+          itemCode,
+          action: "set" as const,
+          value,
+        })),
+      });
+    };
+    await patch({ A1400A: "1" });
+    for (let round = 0; round < 6; round++) {
+      const review = await svc.getAssessmentReview(ORG, id);
+      if (review.readiness.readyToSign) return;
+      const ws = await svc.getAssessmentWorkspace(ORG, id);
+      const items = new Map(ws.sections.flatMap((s) => s.items).map((i) => [i.itemCode, i]));
+      const changes: Record<string, string> = {};
+      for (const b of review.readiness.blockers) {
+        if (b.code !== "UNANSWERED_APPLICABLE_ITEM" || !b.itemCode) continue;
+        if (WORKFLOW_ITEMS.test(b.itemCode)) continue;
+        const item = items.get(b.itemCode);
+        if (!item) continue;
+        const codes = [...item.options]
+          .sort((x, y) => x.sortOrder - y.sortOrder)
+          .map((o) => o.valueCode);
+        const real = codes.filter(
+          (c) => !["Text", "YYYYMMDD", "YYYYMM", "YYYY", "^", "-"].includes(c),
+        );
+        changes[b.itemCode] =
+          codes.includes("YYYYMMDD") || /date/i.test(item.cmsItemTypeCode)
+            ? ANSWER_DATE
+            : codes.includes("Text")
+              ? "Test"
+              : (real[0] ?? "0");
+      }
+      if (Object.keys(changes).length === 0) {
+        throw new Error(
+          `HOPE ${id} is not sign-ready: ${JSON.stringify(review.readiness.blockers)}`,
+        );
+      }
+      await patch(changes);
+    }
+    throw new Error(`HOPE ${id} did not reach sign readiness`);
+  }
+
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });
     await admin.connect();
@@ -102,6 +165,8 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2A record initialization — LIVE Postg
       [ORG],
     );
     await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'hope2a@x.test')`, [USER]);
+    // A real M5 patient, so the admission prefill has facts to copy (A0220 admission date, demographics).
+    await seedM5Patient(admin, ORG, PATIENT);
     membershipId = (
       await admin.query<{ id: string }>(
         "INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id",
@@ -124,6 +189,33 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2A record initialization — LIVE Postg
     ).rows[0].id;
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
+    // The seams production boot registers that `recordTimepoint` reads: M6's AdmissionStatusReader
+    // (the 01/02/03/05 RFAs resolve the admission's patient, siting and admission date through it) and
+    // M5's HOPE-admission prefill readers. This suite's admissions are synthetic ids backed only by
+    // schedule rows, all for one PATIENT — which the one-open-admission index forbids as real admission
+    // rows — so M6's reader is stood in for with the summary those schedule rows imply. M5's are the real
+    // Drizzle adapters (PATIENT is a seeded M5 row, so prefill copies A0220 and the demographics).
+    registerSeam("AdmissionStatusReader", {
+      async getAdmissionSummary(organizationId, admissionId) {
+        return {
+          admissionId,
+          organizationId,
+          patientId: PATIENT,
+          providerEntityId,
+          locationId,
+          status: "active",
+          admissionAt: "2025-10-15",
+          activatedAt: "2025-10-15",
+          dischargedAt: null,
+          currentElectionPeriodId: null,
+          currentLevelOfCare: null,
+        } as never;
+      },
+      async getAdmissionSiting() {
+        return null;
+      },
+    });
+    registerPatientSeams({ db: handle.db });
     svc = createDbHopeBackend(handle.db);
   }, 120_000);
 
@@ -137,32 +229,48 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2A record initialization — LIVE Postg
     ["02_huv1", "HUV", "2"],
     ["03_huv2", "HUV", "3"],
     ["05_discharge", "HD", "9"],
-  ] as const)("initializes %s with frozen spec, ISC, A0050, and A0250", async (rfaKind, isc, a0250) => {
-    const assessment = await record(rfaKind);
-    expect(assessment.regulatory.isc).toBe(isc);
-    expect(assessment.regulatory.specVersionId).toMatch(/^[0-9a-f-]{36}$/);
-    const answers = await controlAnswers(assessment.id);
-    expect(answers.A0050).toMatchObject({ state: "answered", value: "1", source: "derived" });
-    expect(answers.A0250).toMatchObject({ state: "answered", value: a0250, source: "derived" });
+  ] as const)(
+    "initializes %s with frozen spec, ISC, A0050, and A0250",
+    async (rfaKind, isc, a0250) => {
+      const assessment = await record(rfaKind);
+      expect(assessment.regulatory.isc).toBe(isc);
+      expect(assessment.regulatory.specVersionId).toMatch(/^[0-9a-f-]{36}$/);
+      const answers = await controlAnswers(assessment.id);
+      expect(answers.A0050).toMatchObject({ state: "answered", value: "1", source: "derived" });
+      expect(answers.A0250).toMatchObject({ state: "answered", value: a0250, source: "derived" });
 
-    const registry = createHopeSpecRegistry(handle.db);
-    await expect(registry.requireAllowedValue(assessment.regulatory.specVersionId!, "A0050", "1")).resolves.toBeUndefined();
-    await expect(registry.requireAllowedValue(assessment.regulatory.specVersionId!, "A0250", a0250)).resolves.toBeUndefined();
-    if (isc === "HA") {
-      const active = await registry.getActiveItemsForAssessment(assessment.id);
-      const sectionCounts = active
-        .filter((item) => item.kind === "assessment")
-        .reduce<Record<string, number>>((acc, item) => {
-          acc[item.sectionLabel] = (acc[item.sectionLabel] ?? 0) + 1;
-          return acc;
-        }, {});
-      expect(sectionCounts).toEqual({ A: 56, F: 8, I: 16, J: 43, M: 21, N: 6, Z: 1 });
-    }
-  });
+      const registry = createHopeSpecRegistry(handle.db);
+      await expect(
+        registry.requireAllowedValue(assessment.regulatory.specVersionId!, "A0050", "1"),
+      ).resolves.toBeUndefined();
+      await expect(
+        registry.requireAllowedValue(assessment.regulatory.specVersionId!, "A0250", a0250),
+      ).resolves.toBeUndefined();
+      if (isc === "HA") {
+        // `hope_assessment` is RLS-scoped: production builds the registry on an org-context tx
+        // (hope-route-service-db), never on the bare pool.
+        const active = await withOrgContext(handle.db, { organizationId: ORG, userId: "" }, (tx) =>
+          createHopeSpecRegistry(tx as unknown as DbClient).getActiveItemsForAssessment(
+            assessment.id,
+          ),
+        );
+        const sectionCounts = active
+          .filter((item) => item.kind === "assessment")
+          .reduce<Record<string, number>>((acc, item) => {
+            acc[item.sectionLabel] = (acc[item.sectionLabel] ?? 0) + 1;
+            return acc;
+          }, {});
+        expect(sectionCounts).toEqual({ A: 56, F: 8, I: 16, J: 43, M: 21, N: 6, Z: 1 });
+      }
+    },
+  );
 
   it("initializes an Admission correction as A0050=2, preserving original spec/ISC and target date", async () => {
     const draft = await record("01_admission");
-    const signed = await svc.signTimepoint(ORG, membershipId, draft.id);
+    await answerForSign(draft.id);
+    const { assessmentId } = await svc.signTimepoint(ORG, membershipId, draft.id);
+    // The sign result is a receipt; the correction is compared against the signed record itself.
+    const signed = await svc.getAssessment(ORG, assessmentId);
     const correction = await svc.correctTimepoint(ORG, membershipId, signed.id, {
       correctionReason: "fix control",
       targetDate: "2026-01-01T00:00:00.000Z",

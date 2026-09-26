@@ -31,7 +31,15 @@ export interface SectionJInput {
   readonly dyspneaScreenedYes: boolean;
   /** Dyspnea characteristics captured (required when J2050 = Yes). */
   readonly dyspneaCharacteristicsPresent: boolean;
-  /** The J-item / symptom codes recorded in J2051 (validated against the M38 HOPE J-code value set). */
+  /**
+   * The CMS HOPE Section-J ITEM identifiers the payload carries (J2030, J2050, J2051 …), validated
+   * against M38's `hope_j_codes` value set. These are the instrument's QUESTIONS.
+   *
+   * NOT the J2051 symptom severities — those are its answers, drawn from a WardenX-internal vocabulary
+   * (`HOPE_J2051_SYMPTOM_CODES`) that M10's route boundary already closes, so checking them here would
+   * be a weaker asynchronous copy of a synchronous absolute check, incapable of failing (F-059). This
+   * doc line used to read "J-item / symptom codes", and that slash is where the confusion came from.
+   */
   readonly jCodes: readonly string[];
 }
 
@@ -68,7 +76,15 @@ export interface HopeAssessmentValidationInput {
   readonly sectionI: SectionIInput;
   readonly sectionJ: SectionJInput;
   readonly sectionN: SectionNInput;
-  readonly envelope: IqiesEnvelopeInput;
+  /**
+   * The iQIES envelope being transmitted, or `null` when there is none yet (F-057). Rule 8 compares an
+   * ENVELOPE against the admission / patient snapshots, so it is answerable only at submission assembly;
+   * at capture time there is no envelope to check and no column stores `ccn_at_election` or the
+   * election-time MBI snapshot. Passing two empty strings would have made the rule pass on every
+   * assessment forever, which is the failure mode this whole finding is about — `null` says the check
+   * belongs to a stage that has not happened, and rule 8 is skipped rather than silently satisfied.
+   */
+  readonly envelope: IqiesEnvelopeInput | null;
   /** Optional — supplied for HUV1/HUV2 cross-RFA temporal checks. */
   readonly temporal?: TemporalContextInput;
 }
@@ -102,33 +118,59 @@ export function validateHopeAssessment(
   // comprehensive + discharge instruments carry a diagnosis section (the focused SFV does not).
   if (sectionIIsRelevant(input.rfaKind)) {
     const dx = input.sectionI.primaryDiagnosisIcd10;
-    if (dx != null && dx.trim() !== "" && !oracle.isHospiceTerminalDiagnosis(dx)) {
-      findings.push(
-        finding(
-          HOPE_VALIDATION_RULES.SECTION_I_DIAGNOSIS_NOT_IN_VALUE_SET,
-          "error",
-          "I",
-          `Section I primary diagnosis '${norm(dx)}' is not in the active hospice terminal diagnosis value set at the assessment target date.`,
-          norm(dx),
-        ),
-      );
+    if (dx != null && dx.trim() !== "") {
+      if (!oracle.available.hospiceTerminalDiagnosis) {
+        findings.push(
+          finding(
+            HOPE_VALIDATION_RULES.VALUE_SET_UNAVAILABLE,
+            "warning",
+            "I",
+            "Section I diagnosis could not be checked: M38 holds no members for the hospice terminal diagnosis value set at the assessment target date.",
+            norm(dx),
+          ),
+        );
+      } else if (!oracle.isHospiceTerminalDiagnosis(dx)) {
+        findings.push(
+          finding(
+            HOPE_VALIDATION_RULES.SECTION_I_DIAGNOSIS_NOT_IN_VALUE_SET,
+            "error",
+            "I",
+            `Section I primary diagnosis '${norm(dx)}' is not in the active hospice terminal diagnosis value set at the assessment target date.`,
+            norm(dx),
+          ),
+        );
+      }
     }
   }
 
-  // 3. Section J — every recorded J-code ∈ the M38 CMS HOPE J-code value set (M10-F07: transposed codes
-  // are corrected against the CMS value set). Advisory: the server-authoritative J2051 trigger already
-  // fired on severity regardless of the code label, so an unrecognised code is a warning, not a blocker.
-  for (const jCode of input.sectionJ.jCodes) {
-    if (jCode.trim() !== "" && !oracle.isRecognizedHopeJCode(jCode)) {
-      findings.push(
-        finding(
-          HOPE_VALIDATION_RULES.SECTION_J_CODE_NOT_IN_VALUE_SET,
-          "warning",
-          "J",
-          `Section J code '${norm(jCode)}' is not in the CMS HOPE J-code value set.`,
-          norm(jCode),
-        ),
-      );
+  // 3. Section J — every J ITEM present ∈ the M38 CMS HOPE J-code value set (M10-F07: transposed codes
+  // are corrected against the CMS value set — you transpose the DIGITS of an item number). Advisory:
+  // the server-authoritative J2051 trigger fires on severity regardless of which items were recorded,
+  // so an unrecognised item is a data-quality warning, not a blocker.
+  const jCodesToCheck = input.sectionJ.jCodes.filter((c) => c.trim() !== "");
+  if (jCodesToCheck.length > 0 && !oracle.available.hopeJCodes) {
+    // ONE finding for the section, not one per code: the codes are not what failed, the set is.
+    findings.push(
+      finding(
+        HOPE_VALIDATION_RULES.VALUE_SET_UNAVAILABLE,
+        "warning",
+        "J",
+        "Section J items could not be checked: M38 holds no members for the CMS HOPE J-code value set at the assessment target date.",
+      ),
+    );
+  } else {
+    for (const jCode of jCodesToCheck) {
+      if (!oracle.isRecognizedHopeJCode(jCode)) {
+        findings.push(
+          finding(
+            HOPE_VALIDATION_RULES.SECTION_J_CODE_NOT_IN_VALUE_SET,
+            "warning",
+            "J",
+            `Section J item '${norm(jCode)}' is not in the CMS HOPE J-code value set.`,
+            norm(jCode),
+          ),
+        );
+      }
     }
   }
 
@@ -232,7 +274,10 @@ export function validateHopeAssessment(
   }
 
   // 8. iQIES envelope-level constraints (§2.3): CCN + MBI match the admission / patient snapshots.
-  if (norm(input.envelope.assessmentCcn) !== norm(input.envelope.admissionCcnAtElection)) {
+  // Skipped entirely when there is no envelope — see `HopeAssessmentValidationInput.envelope`.
+  const envelope = input.envelope;
+  if (envelope === null) return findings;
+  if (norm(envelope.assessmentCcn) !== norm(envelope.admissionCcnAtElection)) {
     findings.push(
       finding(
         HOPE_VALIDATION_RULES.ENVELOPE_CCN_MISMATCH,
@@ -242,7 +287,7 @@ export function validateHopeAssessment(
       ),
     );
   }
-  if (norm(input.envelope.assessmentMbi) !== norm(input.envelope.patientMbiSnapshot)) {
+  if (norm(envelope.assessmentMbi) !== norm(envelope.patientMbiSnapshot)) {
     findings.push(
       finding(
         HOPE_VALIDATION_RULES.ENVELOPE_MBI_MISMATCH,

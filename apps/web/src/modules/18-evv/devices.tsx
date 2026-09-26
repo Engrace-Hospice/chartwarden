@@ -9,12 +9,21 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/18-evv — EVV Devices (M18 §5.1 `/app/evv/devices/pending`, Track B / ADR-0030).
-// Spec: docs/design/screens — "Use Work Queue". The team device roster (devices awaiting approval surface first):
-// one row per `evv_device` with platform / model / integrity status. The approve / reject / suspend / retire
-// write CTAs fill in as those write paths harden; the SERVER owns the device lifecycle + RLS (ADR-0030 — no
-// frontend authz). Reads GET /api/v1/evv/devices via the typed client. Leaves only (@wardenx/ui).
+// Spec: docs/design/screens — "Use Work Queue". The team device roster (devices awaiting approval surface
+// first): one row per `evv_device` with platform / model / integrity status.
+//
+// #91 — the approve / reject / suspend / retire CTAs are here now. This was not a cosmetic gap: EVV capture
+// REQUIRES an approved device (D8 — `resolveApprovedDevice` refuses the check-in outright without one), so a
+// clinician who self-registered from their handset sat in `pending_approval` and could not verify a single
+// visit until someone approved them. Nothing on this platform could.
+//
+// Which actions a row OFFERS comes from `deviceActions` — an affordance, not a gate. The SERVER owns the D8
+// lifecycle and RLS (ADR-0030 — no frontend authz); a status this build does not recognise keeps its actions
+// rather than losing them to a stale frontend. Reads GET /api/v1/evv/devices via the typed client.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
+import { type DeviceView, deviceActions } from "./evv-api";
+import { type DeviceAction, DeviceActionModal } from "./evv-modals";
 import { EVV_DEVICE_TONE, stateLabel } from "./evv-shared";
 
 interface DeviceRow {
@@ -40,6 +49,8 @@ export function EvvDeviceRoster({
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ action: DeviceAction; row: DeviceRow } | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -97,174 +108,242 @@ export function EvvDeviceRoster({
     setPage(1);
   };
 
+  const applyDevice = (updated: DeviceView): void => {
+    setItems((prev) =>
+      prev.map((d) => (d.id === updated.id ? { ...d, status: updated.status } : d)),
+    );
+    setNotice(`Device ${updated.id.slice(0, 8)} is now ${stateLabel(updated.status)}.`);
+  };
+
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title={title.replace("—", "-")}
-          breadcrumb={isMine ? "Field / EVV" : "Admin / EVV"}
-        >
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            {isMine
-              ? "Review your registered EVV devices and approval status."
-              : "Review EVV devices awaiting approval and lifecycle follow-up."}
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
-              </button>
+    <>
+      {pending ? (
+        <DeviceActionModal
+          open
+          action={pending.action}
+          deviceId={pending.row.id}
+          modelDescription={pending.row.modelDescription}
+          onClose={() => setPending(null)}
+          onDone={applyDevice}
+        />
+      ) : null}
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title={title.replace("—", "-")}
+            breadcrumb={isMine ? "Field / EVV" : "Admin / EVV"}
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              {isMine
+                ? "Review your registered EVV devices and approval status."
+                : "Review EVV devices awaiting approval and lifecycle follow-up."}
             </div>
-          ) : null}
-          <div style={toolbarStyle}>
-            <div style={toolbarTitleStyle}>
-              <span style={toolbarEyebrowStyle}>Roster</span>
-              <strong>{rows.length} matching devices</strong>
-            </div>
-            <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
-                <input
-                  type="search"
-                  placeholder="Search device, clinician, model..."
-                  value={searchQuery}
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <span>{error}</span>
+                <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                  x
+                </button>
+              </div>
+            ) : null}
+            <div style={toolbarStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>Roster</span>
+                <strong>{rows.length} matching devices</strong>
+                {notice ? (
+                  <output style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+                    {notice}
+                  </output>
+                ) : null}
+              </div>
+              <div style={controlGroupStyle}>
+                <div style={searchWrapStyle}>
+                  <input
+                    type="search"
+                    placeholder="Search device, clinician, model..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Search EVV devices"
+                    style={searchInputStyle}
+                  />
+                </div>
+                <select
+                  aria-label="Device status"
+                  value={status}
                   onChange={(e) => {
-                    setSearchQuery(e.target.value);
+                    setStatus(e.target.value);
                     setPage(1);
                   }}
-                  aria-label="Search EVV devices"
-                  style={searchInputStyle}
-                />
+                  style={selectStyle}
+                >
+                  <option value="">Status: All</option>
+                  <option value="pending_approval">Pending approval</option>
+                  <option value="approved">Approved</option>
+                  <option value="suspended">Suspended</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="retired">Retired</option>
+                </select>
+                <select
+                  aria-label="Device platform"
+                  value={platform}
+                  onChange={(e) => {
+                    setPlatform(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">Platform: All</option>
+                  {platformOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {stateLabel(option)}
+                    </option>
+                  ))}
+                </select>
+                {activeFilters > 0 ? (
+                  <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                    Clear
+                  </Button>
+                ) : null}
               </div>
-              <select
-                aria-label="Device status"
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Status: All</option>
-                <option value="pending_approval">Pending approval</option>
-                <option value="approved">Approved</option>
-                <option value="suspended">Suspended</option>
-                <option value="rejected">Rejected</option>
-                <option value="retired">Retired</option>
-              </select>
-              <select
-                aria-label="Device platform"
-                value={platform}
-                onChange={(e) => {
-                  setPlatform(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Platform: All</option>
-                {platformOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {stateLabel(option)}
-                  </option>
-                ))}
-              </select>
-              {activeFilters > 0 ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
             </div>
           </div>
-        </div>
-      }
-      table={
-        error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading && items.length === 0 ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : rows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title={activeFilters > 0 ? "No matching devices" : "No devices"}
-              description={
-                activeFilters > 0
-                  ? "Try adjusting the device filters."
-                  : "No EVV devices are registered."
-              }
-              action={
-                activeFilters > 0 ? (
-                  <Button size="sm" tone="secondary" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
-              }
-            />
-          </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "30%" }}>Device</th>
-                  <th style={{ ...thStyle, width: "22%" }}>Clinician</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Platform</th>
-                  <th style={{ ...thStyle, width: "20%" }}>Model</th>
-                  <th style={{ ...thStyle, width: "14%", textAlign: "right" }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedRows.map((d) => (
-                  <tr key={d.id} style={rowStyle}>
-                    <td style={tdStyle}>
-                      <div style={primaryCellStyle}>
-                        <span style={primaryTextStyle}>EVV device</span>
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(d.id)}
-                        </code>
-                      </div>
-                    </td>
-                    <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(d.membershipId)}
-                      </code>
-                    </td>
-                    <td style={tdStyle}>{stateLabel(d.platform)}</td>
-                    <td style={tdStyle}>{d.modelDescription}</td>
-                    <td style={{ ...tdStyle, textAlign: "right" }}>
-                      <StatusPill
-                        label={stateLabel(d.status)}
-                        tone={EVV_DEVICE_TONE[d.status] ?? "neutral"}
-                      />
-                    </td>
+        }
+        table={
+          error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : loading && items.length === 0 ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : rows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={activeFilters > 0 ? "No matching devices" : "No devices"}
+                description={
+                  activeFilters > 0
+                    ? "Try adjusting the device filters."
+                    : "No EVV devices are registered."
+                }
+                action={
+                  activeFilters > 0 ? (
+                    <Button size="sm" tone="secondary" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "22%" }}>Device</th>
+                    <th style={{ ...thStyle, width: "18%" }}>Clinician</th>
+                    <th style={{ ...thStyle, width: "10%" }}>Platform</th>
+                    <th style={{ ...thStyle, width: "18%" }}>Model</th>
+                    <th style={{ ...thStyle, width: "12%" }}>Status</th>
+                    <th style={{ ...thStyle, width: "20%", textAlign: "right" }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={rows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={EVV_PAGE_SIZES}
-              noun="devices"
-            />
-          </div>
-        )
-      }
-      fullPageScroll
-    />
+                </thead>
+                <tbody>
+                  {pagedRows.map((d) => (
+                    <tr key={d.id} style={rowStyle}>
+                      <td style={tdStyle}>
+                        <div style={primaryCellStyle}>
+                          <span style={primaryTextStyle}>EVV device</span>
+                          <code className="wx-data-md" style={codeStyle}>
+                            {shortId(d.id)}
+                          </code>
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {shortId(d.membershipId)}
+                        </code>
+                      </td>
+                      <td style={tdStyle}>{stateLabel(d.platform)}</td>
+                      <td style={tdStyle}>{d.modelDescription}</td>
+                      <td style={tdStyle}>
+                        <StatusPill
+                          label={stateLabel(d.status)}
+                          tone={EVV_DEVICE_TONE[d.status] ?? "neutral"}
+                        />
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        {isMine ? (
+                          <span style={{ color: "var(--color-on-surface-variant)" }}>—</span>
+                        ) : (
+                          <DeviceRowActions
+                            row={d}
+                            onPick={(action) => setPending({ action, row: d })}
+                          />
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={rows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={EVV_PAGE_SIZES}
+                noun="devices"
+              />
+            </div>
+          )
+        }
+        fullPageScroll
+      />
+    </>
+  );
+}
+
+/**
+ * The D8 transitions a row can take. `deviceActions` narrows which to OFFER; the server decides whether
+ * each is legal. A device on the clinician's own `/me/evv/devices` list shows none of these — approval is
+ * a supervisor's act, and the nav permission (`evv.device.approve`) is not what gates the roster read.
+ */
+function DeviceRowActions({
+  row,
+  onPick,
+}: { row: DeviceRow; onPick: (action: DeviceAction) => void }): JSX.Element {
+  const can = deviceActions(row.status);
+  const buttons: Array<[DeviceAction, string]> = [];
+  if (can.approve) buttons.push(["approve", "Approve"]);
+  if (can.reject) buttons.push(["reject", "Reject"]);
+  if (can.suspend) buttons.push(["suspend", "Suspend"]);
+  if (can.retire) buttons.push(["retire", "Retire"]);
+  if (buttons.length === 0)
+    return <span style={{ color: "var(--color-on-surface-variant)" }}>—</span>;
+  return (
+    <div style={{ display: "flex", gap: "0.35rem", justifyContent: "flex-end" }}>
+      {buttons.map(([action, label]) => (
+        <Button
+          key={action}
+          size="sm"
+          tone={action === "approve" ? "primary" : "tertiary"}
+          onClick={() => onPick(action)}
+        >
+          {label}
+        </Button>
+      ))}
+    </div>
   );
 }
 

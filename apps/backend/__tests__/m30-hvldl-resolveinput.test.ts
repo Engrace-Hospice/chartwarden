@@ -101,6 +101,12 @@ function fakeEncounters(byPatient: Record<string, ReadonlyArray<SignedEncounterD
       sinceByPatient[patientId] = since;
       return byPatient[patientId] ?? [];
     },
+    async lateEntryCountsForOrg() {
+      throw new Error("lateEntryCountsForOrg is not used on the HVLDL path");
+    },
+    async skilledNursingDayTotalsForOrg() {
+      throw new Error("skilledNursingDayTotalsForOrg is not used on the HVLDL path");
+    },
     async renderPayloadFor() {
       throw new Error("renderPayloadFor is not used on the HVLDL path");
     },

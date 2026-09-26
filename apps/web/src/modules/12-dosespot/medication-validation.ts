@@ -20,18 +20,47 @@ export function medicationFindingKey(field?: string): string | null {
 /** True only when the editor owns a control for this canonical/wire finding. */
 export function isMedicationFindingMapped(field?: string): boolean {
   const key = medicationFindingKey(field);
-  return key !== null && (
-    [
-      "admissionId", "medClass", "rxnormRxcui", "ndc", "drugName",
-      "strength", "doseForm", "route", "prescriberDiscipline",
-      "prescribingPhysicianMdmId", "dispensingPharmacyMdmId", "refillsAuthorized",
-      "sigStructured", "sig.doseQuantity", "sig.doseUnit", "sig.route",
-      "sig.frequencyCode", "sig.duration.durationValue", "sig.duration.durationUnit",
-      "sig.asNeeded", "sig.asNeededReasonCode", "sigFreeText", "indication",
-      "clinicalJustification", "notes", "quantity", "quantity.value", "quantity.unit",
-      "daysSupply", "daw", "deaSchedule", "prescriberDea", "compoundingPharmacyMdmId",
-      "formulationDescription", "containsControlled", "components",
-    ].includes(key) || /^component\.\d+\.(rxnormRxcui|ndc|componentName|componentStrength|quantityRatio)$/.test(key)
+  return (
+    key !== null &&
+    ([
+      "admissionId",
+      "medClass",
+      "rxnormRxcui",
+      "ndc",
+      "drugName",
+      "strength",
+      "doseForm",
+      "route",
+      "prescriberDiscipline",
+      "prescribingPhysicianMdmId",
+      "dispensingPharmacyMdmId",
+      "refillsAuthorized",
+      "sigStructured",
+      "sig.doseQuantity",
+      "sig.doseUnit",
+      "sig.route",
+      "sig.frequencyCode",
+      "sig.duration.durationValue",
+      "sig.duration.durationUnit",
+      "sig.asNeeded",
+      "sig.asNeededReasonCode",
+      "sigFreeText",
+      "indication",
+      "clinicalJustification",
+      "notes",
+      "quantity",
+      "quantity.value",
+      "quantity.unit",
+      "daysSupply",
+      "daw",
+      "deaSchedule",
+      "prescriberDea",
+      "compoundingPharmacyMdmId",
+      "formulationDescription",
+      "containsControlled",
+      "components",
+    ].includes(key) ||
+      /^component\.\d+\.(rxnormRxcui|ndc|componentName|componentStrength|quantityRatio)$/.test(key))
   );
 }
 

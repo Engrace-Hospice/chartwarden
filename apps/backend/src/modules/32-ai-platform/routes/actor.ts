@@ -15,9 +15,11 @@
 //
 // ── `phiFullRead` IS READ HERE AND NOWHERE ELSE ────────────────────────────────────────────────────
 //
-// §4.1's R16 masks unless `wardenx.phi.full_read` is granted. It rides the assembled context's role /
-// attribute set, and the read service applies it (read-service.ts's `maskInvocationForActor`). Extracting
-// it once, server-side, is what keeps "may see the patient" from becoming a query parameter.
+// §4.1's R16 masks unless `wardenx.phi.full_read` is granted. It is resolved through
+// `resolveActorPermissions` — the check-don't-gate seam, the same resolver `requirePermission` gates on —
+// and the read service applies it (read-service.ts's `maskInvocationForActor`). Extracting it once,
+// server-side, is what keeps "may see the patient" from becoming a query parameter.
+import { resolveActorPermissions } from "@wardenx/auth";
 import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyReply, FastifyRequest } from "fastify";
 
@@ -26,28 +28,39 @@ import type { AiPlatformReadActor } from "./read-service";
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
 export type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
-/**
- * The permission key M3/M5 grant for unmasked PHI reads.
- *
- * Checked as BOTH a role token and an `attributes` flag because M2 assembles the two differently
- * depending on whether the grant came from a role template or from a per-session elevation — and a check
- * that looked at only one would silently mask the compliance officer whose grant arrived the other way.
- */
+/** The M5-contributed permission key that unmasks PHI in the §164.528 disclosure ledger. */
 export const PHI_FULL_READ_GRANT = "phi.full_read";
 
 function str(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-function hasPhiFullRead(request: FastifyRequest): boolean {
-  const ctx = request.context;
-  if (ctx?.roles.includes(PHI_FULL_READ_GRANT)) return true;
-  const attr = ctx?.attributes?.[PHI_FULL_READ_GRANT] ?? ctx?.attributes?.phiFullRead;
-  return attr === true;
+/**
+ * Does this session hold the unmasking grant?
+ *
+ * BOTH previous arms were dead, so R16/R17 masked every caller, always — including the compliance
+ * officer the disclosure ledger exists for (F-030):
+ *
+ *   · `context.roles.includes("phi.full_read")` asked a list of ROLE keys (`compliance_officer`,
+ *     `medical_director`, …) for a `resource.action` PERMISSION key. Nothing can put that string in
+ *     that list, so the check could not become true — a namespace error, not a missing grant.
+ *   · `context.attributes.phi.full_read ?? .phiFullRead` read a key nothing has ever written.
+ *
+ * Its doc comment justified checking both by saying M2 assembles a role-template grant and a
+ * per-session elevation differently. M2 does not: `resolveActorPermissions` is the one resolver, it
+ * answers from the actor's effective grants however the role granting them was assembled, and it is
+ * the same resolver `requirePermission` gates on. Fail-safe either way (absent ⇒ masked), which is
+ * why nothing surfaced it — a permanently masked ledger and a correctly masked one look identical.
+ */
+async function hasPhiFullRead(context: {
+  organizationId: string;
+  userId: string;
+}): Promise<boolean> {
+  return (await resolveActorPermissions(context)).has(PHI_FULL_READ_GRANT);
 }
 
 /** Extract the org-scoped read actor from `request.context` (server-assembled), or 401. */
-export function actorOf(request: FastifyRequest): AiPlatformReadActor {
+export async function actorOf(request: FastifyRequest): Promise<AiPlatformReadActor> {
   const ctx = request.context;
   if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
   return {
@@ -55,7 +68,7 @@ export function actorOf(request: FastifyRequest): AiPlatformReadActor {
     userId: ctx.userId,
     membershipId: str(ctx.attributes?.membershipId),
     roles: ctx.roles,
-    phiFullRead: hasPhiFullRead(request),
+    phiFullRead: await hasPhiFullRead({ organizationId: ctx.organizationId, userId: ctx.userId }),
   };
 }
 
@@ -77,8 +90,8 @@ export interface M32WriteActor extends AiPlatformReadActor {
  * AUTOMATED activations §3.2.12 allows with a NULL membership come from the §4.8 workers, which attribute
  * to an `automated_*` actor kind and never reach this file.
  */
-export function writeActorOf(request: FastifyRequest): M32WriteActor {
-  const actor = actorOf(request);
+export async function writeActorOf(request: FastifyRequest): Promise<M32WriteActor> {
+  const actor = await actorOf(request);
   if (actor.membershipId === null) {
     throw new ForbiddenError(
       "an M32 AI-platform mutation must be attributed to an active membership; this session carries none",

@@ -49,7 +49,7 @@ async function main(): Promise<void> {
              '[{"line1":"100 Hospice Way","city":"Asheville","state":"NC","postalCode":"28801"}]'::jsonb,
              -- Demo iQIES facility ID (HOPE FAC_ID); a real one is assigned by CMS at iQIES registration.
              'DEMO341234', 'active', now(), now())
-     ON CONFLICT (id) DO NOTHING`
+     ON CONFLICT (id) DO NOTHING`,
     [PROVIDER_ENTITY_ID, orgId],
   );
 

@@ -1,14 +1,51 @@
+// F-081 (#91 AC5) — `e2e/specs/idg.spec.ts` drives the §2.2 D13 adjournment in a real browser: the
+// commit point refuses a session with no fresh step-up, the coordinator re-authenticates with a passkey,
+// and the same action then commits. Writing it found that step-up could not be satisfied by ANY user in
+// ANY deployment (three defects, recorded in `02-identity/screens.ts`) and two things specific to here:
+//
+//   • THE DIALOG TOLD A COORDINATOR TO RE-AUTHENTICATE AND OFFERED NO WAY TO. `/step-up` is chromeless,
+//     absent from nav, and reached only by a redirect — which M6, M8, M23, M27 and M39 all perform from
+//     their own `authFailureRedirect` and M14 did not. So the D13 commit point had no path through it
+//     from the UI at all. The lifecycle dialog now offers "Re-authenticate" on the 412, and only after
+//     one has happened: a permanent step-up button beside a commit point would train people to
+//     re-authenticate before being asked, which is the opposite of what a freshness window is for.
+//   • THE SCHEDULE COULD NOT SHOW A MEETING IN SESSION. Its window was `now → now + 8 weeks` and the
+//     server filters `scheduled_start >= from`, so a meeting VANISHED from the schedule the moment it
+//     went live — a meeting in session started in the past by definition — along with everything that
+//     finished earlier today. The screen's own status filter offers `Live` and `Adjourned`, neither of
+//     which could ever match a row. It is anchored at the start of today now.
+//
+// LEFT AS A FINDING: `/idg/schedule` is a per-location read that takes its location from `?location=`,
+// the nav entry points at the bare path, and the screen's answer to a missing location is an EmptyState
+// with no picker in it. Followed as a user follows it, the IDG Schedule nav item is permanently empty
+// on every deployment, whatever is on the calendar. Which locations a coordinator may pick from — and
+// whether the shell should carry a location context at all — is a design decision, not a bug fix.
 import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/14-idg — M14 IDG screen registration (Track B, ADR-0030, M14-T07).
 // The §5 IDG read screens that have a backing M14 read route on the generated client: the IDG Schedule
 // (per-location), the pre-meeting Meeting Detail, the Live Meeting Surface, the per-patient Packet (chart
 // embed), My Action Items, and the per-meeting Minutes. Nav visibility is gated by the matching M14 permission
 // key; the SERVER stays the only enforcement point (no frontend authz, ADR-0030 — out-of-scope resources 404,
-// never 403; SUD-flagged packet blocks redacted server-side per §7.2/W-SUD-01). The decision-recording panel,
-// attendance tracker, action-item assignment, adjourn control (D13 fresh step-up), build-packets, and the
-// minutes amendment-request write surfaces — plus the Socket.IO real-time decision/action-item propagation and
-// the Capacitor Mobile Live variant — fill in as those write paths harden. The M22 minutes/packet PDF render and
-// the M28 FHIR CareTeam/Encounter projection are deferred (Wave F/H handshakes).
+// never 403; SUD-flagged packet blocks redacted server-side per §7.2/W-SUD-01).
+//
+// #91 / F-062 — THE MEETING IS NOW CONDUCTABLE. The decision-recording panel, the attendance tracker, the
+// action-item assignment and status transitions, the adjourn control (D13 fresh step-up), build-packets,
+// start, cancel, reschedule, and the §7.8 minutes amendment request are all built and DOM-covered
+// (`idg-writes.dom.test.tsx`). This header used to say they would "fill in as those write paths harden";
+// the write paths were mounted, guarded and contract-enriched the whole time — but SIX of them wrote rows
+// no read route in the module returned (`idg_attendance`, `idg_agenda_item`, `idg_decision`), and
+// adjournment stamped the minutes `final` while writing none of the three snapshot columns that make them
+// a record. Both were fixed on the server in the same change.
+//
+// STILL DEFERRED, and each for a reason rather than a schedule:
+//   • Remove an agenda item — `DELETE /idg/agenda/:id` is a tenant-checked NO-OP (no delete grant, no
+//     tombstone column). A control over it would report a removal that did not happen (the F-007 rule).
+//   • The `care_plan_update` decision beyond `problem_add` — its other five mutation ops address M7 plan
+//     elements by uuid and need the care-plan element picker on the M07 surface.
+//   • Socket.IO real-time decision/action-item propagation, and the Capacitor Mobile Live variant. The
+//     live surface reloads its three ledgers after each write, which is correct if less live.
+//   • The action-item link-artifact / add-note surfaces — no route mints either.
+//   • The M22 minutes/packet PDF render and the M28 FHIR CareTeam/Encounter projection (Wave F/H).
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const IdgSchedule = lazy(() => import("./idg-schedule").then((m) => ({ default: m.IdgSchedule })));

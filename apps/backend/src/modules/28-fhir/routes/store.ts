@@ -6,7 +6,7 @@
 // `fhirDualApprovalSatisfied`, `FHIR_CLIENT_CASCADE_ON_ENTRY`) so the in-memory path and the real path
 // enforce the SAME dual-approval and cascade rules — a test that passes here is testing the rule, not a
 // second spelling of it.
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   FHIR_CLIENT_CASCADE_ON_ENTRY,
@@ -25,6 +25,7 @@ import {
   type FhirClientType,
   type FhirInboundOwnerModule,
   type FhirInboundStatus,
+  type FhirReadDisclosureEnvelope,
   WardenXError,
 } from "@wardenx/types";
 
@@ -33,6 +34,10 @@ import {
   type FhirRevocationCascadeResult,
   cascadeClientRevocation,
 } from "./revocation-cascade";
+
+/** sha256 hex — what `fhir_client_credential.secret_digest_sha256` holds (never the plaintext). */
+const sha256Hex = (value: string): string =>
+  createHash("sha256").update(value, "utf8").digest("hex");
 
 // ── DTOs ──────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -98,6 +103,40 @@ export interface FhirBearerContext {
   readonly clientId: string;
   readonly scopesGranted: readonly string[];
   readonly clientStatus: FhirClientStatus;
+}
+
+/**
+ * What `/fhir/oauth2/token` needs to know about the presenting client BEFORE it can trust anything the
+ * request said (F-035). Resolved from the `client_id` alone, because a SMART Backend Services token
+ * request carries no tenant — the org on this view is what the mint then enters `withOrgContext` on.
+ *
+ * `apiKeyDigests` holds the sha256 digests of every credential currently able to authenticate this
+ * client: the `active` one, plus any `retired` row still inside its §2.2 30-day rotation overlap. A list,
+ * not a value, because rotation's whole purpose is a window where BOTH verify — collapsing it to one
+ * would make every rotation an outage for whichever half the partner had not deployed yet. Empty for a
+ * `smart_backend_services` client, which authenticates by signature and holds no shared secret at all.
+ */
+export interface FhirTokenClientView {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly type: FhirClientType;
+  readonly status: FhirClientStatus;
+  readonly jwksUri: string | null;
+  readonly allowedScopes: readonly string[];
+  readonly apiKeyDigests: readonly string[];
+}
+
+/** The `fhir_client_session` row the token route writes once an auth path has succeeded (§2.2). */
+export interface FhirSessionMintArgs {
+  readonly organizationId: string;
+  readonly clientId: string;
+  readonly jti: string;
+  readonly scopesGranted: readonly string[];
+  readonly issuedAt: string;
+  readonly expiresAt: string;
+  /** sha256 of the credential that minted this token — the assertion's `kid`, or the api-key digest. */
+  readonly tokenKeyFingerprint: string;
+  readonly ipAtIssue?: string | null;
 }
 
 export interface CreateClientArgs {
@@ -212,6 +251,15 @@ export interface FhirGatewayStore {
   rotateCursorKey(orgId: string): Promise<{ fingerprint: string }>;
   // FHIR bearer path
   resolveBearer(token: string): Promise<FhirBearerContext | null>;
+  // token mint (R3) — both halves are TENANT-UNKNOWN at call time; see `fhir_resolve_client_org` (0233)
+  resolveClientForToken(clientId: string): Promise<FhirTokenClientView | null>;
+  mintSession(args: FhirSessionMintArgs): Promise<void>;
+  /**
+   * §164.528 — record one SERVED read in the disclosure ledger (F-035). Called after the response body is
+   * assembled, so `resultCount` is the number of resources that actually crossed, and never before: a
+   * read that 403s or 404s disclosed nothing and must not appear in an accounting.
+   */
+  recordDisclosure(envelope: FhirReadDisclosureEnvelope): Promise<void>;
 }
 
 /**
@@ -248,6 +296,8 @@ interface MemClient {
   approvedByComplianceMembershipId: string | null;
   approvedAt: string | null;
   fingerprint: string | null;
+  /** sha256 digests of the credentials that can authenticate this client (active + rotation overlap). */
+  secretDigests: string[];
   createdAt: string;
 }
 
@@ -309,6 +359,13 @@ export interface InMemoryFhirGatewaySeed {
   })[];
   readonly jobs?: readonly (Partial<MemJob> & { clientId: string; organizationId: string })[];
   readonly now?: () => string;
+  /**
+   * Where `recordDisclosure` appends. Supplied by a test that needs to assert an accounting row was
+   * written; omitted, the store keeps its own list. It is an OUT parameter rather than a getter on the
+   * port because the port is the production contract and reading the ledger back is not part of it —
+   * §164.528 accountings are served from the M30 scorecard seam, not from the route store.
+   */
+  readonly disclosureSink?: FhirReadDisclosureEnvelope[];
 }
 
 function toSummary(c: MemClient): FhirClientSummary {
@@ -378,6 +435,11 @@ export function createInMemoryFhirGatewayStore(
   const jobs = new Map<string, MemJob>();
   const proposals = new Map<string, MemProposal>();
   const configs = new Map<string, MemConfig>();
+  // The §164.528 accounting ledger. In Postgres this is `fhir_read_disclosure` (0233); here it is a list
+  // the §7 suites read back through `readDisclosures`, so a test can assert that a served read WAS
+  // accounted for — the assertion that matters, since a missing accounting looks exactly like a correct
+  // one from the response side.
+  const disclosures: FhirReadDisclosureEnvelope[] = seed.disclosureSink ?? [];
 
   for (const c of seed.clients ?? []) {
     const id = c.id ?? randomUUID();
@@ -397,6 +459,7 @@ export function createInMemoryFhirGatewayStore(
       approvedByComplianceMembershipId: c.approvedByComplianceMembershipId ?? null,
       approvedAt: c.approvedAt ?? null,
       fingerprint: c.fingerprint ?? null,
+      secretDigests: [...(c.secretDigests ?? [])],
       createdAt: c.createdAt ?? now(),
     });
   }
@@ -502,6 +565,10 @@ export function createInMemoryFhirGatewayStore(
         plaintextSecret = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
         fingerprint = plaintextSecret.slice(0, 8);
       }
+      // The DIGEST, never the plaintext — this in-memory store mirrors what `fhir_client_credential`
+      // persists (`secret_digest_sha256`), so an api-key token mint exercises the same compare here as
+      // it does against Postgres.
+      const secretDigests = plaintextSecret === null ? [] : [sha256Hex(plaintextSecret)];
       const c: MemClient = {
         id,
         organizationId: orgId,
@@ -518,6 +585,7 @@ export function createInMemoryFhirGatewayStore(
         approvedByComplianceMembershipId: null,
         approvedAt: null,
         fingerprint,
+        secretDigests,
         createdAt: now(),
       };
       clients.set(id, c);
@@ -562,6 +630,10 @@ export function createInMemoryFhirGatewayStore(
       const c = clientInOrg(orgId, clientId);
       const plaintextSecret = randomUUID().replace(/-/g, "") + randomUUID().replace(/-/g, "");
       c.fingerprint = plaintextSecret.slice(0, 8);
+      // §2.2 rotation opens a 30-day overlap in which BOTH secrets authenticate; the prior digest stays
+      // in the list rather than being replaced, or every rotation would be an outage for whichever half
+      // the partner had not deployed yet.
+      c.secretDigests = [sha256Hex(plaintextSecret), ...c.secretDigests];
       return { fingerprint: c.fingerprint, plaintextSecret };
     },
 
@@ -760,6 +832,40 @@ export function createInMemoryFhirGatewayStore(
         scopesGranted: s.scopesGranted,
         clientStatus: c.status,
       };
+    },
+
+    async resolveClientForToken(clientId) {
+      const c = clients.get(clientId);
+      if (!c) return null;
+      return {
+        id: c.id,
+        organizationId: c.organizationId,
+        type: c.type,
+        status: c.status,
+        jwksUri: c.jwksUri,
+        allowedScopes: c.allowedScopes,
+        apiKeyDigests: c.secretDigests,
+      };
+    },
+
+    async mintSession(args) {
+      sessions.set(args.jti, {
+        jti: args.jti,
+        organizationId: args.organizationId,
+        clientId: args.clientId,
+        scopesGranted: [...args.scopesGranted],
+        issuedAt: args.issuedAt,
+        expiresAt: args.expiresAt,
+        revokedAt: null,
+        // The in-memory store keeps token and jti as separate fields (a test may seed an opaque token);
+        // the mint path sets them equal, which is what the Drizzle store does structurally — there, the
+        // bearer IS the jti and there is no second column to disagree with it.
+        token: args.jti,
+      });
+    },
+
+    async recordDisclosure(envelope) {
+      disclosures.push(envelope);
     },
   };
 }

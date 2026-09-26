@@ -85,12 +85,12 @@ export const OUTBOX_SUBSCRIPTION_MAP: Readonly<Record<string, readonly string[]>
 
   // ── M17 scheduling ──────────────────────────────────────────────────────────────────────────────
   "m17.visit.completed": ["mv_visit_completion_org_day"],
-  "m17.visit.no_show": ["mv_visit_completion_org_day"],
+  "m17.visit.no_show_detected": ["mv_visit_completion_org_day"],
   "m17.route_optimized": ["mv_route_efficiency_org_day"],
 
   // ── M18 EVV ─────────────────────────────────────────────────────────────────────────────────────
-  "m18.evv.check_in": ["mv_evv_compliance_org_week"],
-  "m18.evv.check_out": ["mv_evv_compliance_org_week"],
+  "m18.evv.check_in_recorded": ["mv_evv_compliance_org_week"],
+  "m18.evv.check_out_recorded": ["mv_evv_compliance_org_week"],
   "m18.evv.late_check_resolved": ["mv_evv_compliance_org_week"],
   "m18.evv.aggregator_accepted": ["mv_evv_aggregator_acceptance_org_state_month"],
   "m18.evv.aggregator_rejected": ["mv_evv_aggregator_acceptance_org_state_month"],
@@ -131,9 +131,9 @@ export const OUTBOX_SUBSCRIPTION_MAP: Readonly<Record<string, readonly string[]>
   "m25.appeal.decided": ["mv_appeal_outcomes_org_month"],
 
   // ── M26 cap management ──────────────────────────────────────────────────────────────────────────
-  "m26.cap.accrual_recorded.v1": ["mv_cap_watch_org_period", "mv_cap_projection_patient_org"],
-  "m26.cap.projection_updated.v1": ["mv_cap_watch_org_period", "mv_cap_projection_patient_org"],
-  "m26.cap.threshold_crossed.v1": ["mv_cap_watch_org_period"],
+  "m26.cap.accrual_recorded": ["mv_cap_watch_org_period", "mv_cap_projection_patient_org"],
+  "m26.cap.projection_updated": ["mv_cap_watch_org_period", "mv_cap_projection_patient_org"],
+  "m26.cap.threshold_crossed": ["mv_cap_watch_org_period"],
 
   // ── M27 cost report ─────────────────────────────────────────────────────────────────────────────
   "m27.cost_report.created": ["mv_cost_report_status_org_fy"],

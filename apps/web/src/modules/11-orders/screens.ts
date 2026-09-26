@@ -5,9 +5,29 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 // Workspace"), the Order Detail (§5), the Verbal-Expiring queue (§5, 48h countdown), the Cosign-Pending
 // queue (§5 §2.5), the Lab Results-Pending-Review queue (§5 D17), and the Standing-Order admin (§5 §2.4 D5).
 // Nav visibility is gated by the matching M11 permission key; the SERVER stays the only enforcement point
-// (no frontend authz, ADR-0030). The draft modal (all 8 kinds), the sign step-up, the record-verbal /
-// cosign / discontinue / mark-reviewed / correct write surfaces, and the verbal-policy admin fill in as
-// those write paths harden.
+// (no frontend authz, ADR-0030).
+//
+// WRITE SURFACES (#91). The five §2.2/§2.3/§2.5/§2.6 ceremonies are BUILT: sign, cosign, record-verbal,
+// discontinue and mark-reviewed, shared by the four queues and the detail pane through
+// `order-action-modal.tsx` and committing to the real routes via `orders-api.ts`. Each queue now offers
+// the action it exists for — before this, all seven screens together issued ZERO mutations, so a physician
+// could open "orders awaiting your signature" and have no way to sign one.
+//
+// "The sign step-up" used to be listed here as deferred. There is none to defer:
+// `POST /api/v1/orders/:id/sign` mounts `[SIGN, ABAC_SIGN]` and nothing else, `requireStepUp` appears
+// nowhere in M11, and the module spec (v0_4) does not mention step-up at all — M8's encounter signature is
+// the one that requires it, which is the likely source of the assumption. A re-authentication ceremony the
+// server never asks for would be client-side theatre; if M11 SHOULD require one, that is a spec decision
+// and a server change, not a modal.
+//
+// STILL DEFERRED, named so the corpus stays the accurate inventory: the AUTHORING draft modal (all 8
+// kinds, `POST /api/v1/orders`), `correct`, and the standing-order + verbal-policy admin writes.
+//
+// E2E (#91 AC5): `e2e/specs/orders.spec.ts` drives the signature round trip in a real browser — the
+// order appears in the inbox, the RN signs it from the row, and it LEAVES the inbox. Writing it required
+// changing the seed: `db:seed:scenario-orders-idg` drove its only order all the way to `signed`, so this
+// queue was permanently empty on a seeded stack and the only spec anyone could have written would have
+// asserted the empty state, passing forever and proving nothing (the #106/F-046 shape).
 import { lazy } from "react";
 import type { ComponentType } from "react";
 const CosignQueue = lazy(() => import("./cosign-queue").then((m) => ({ default: m.CosignQueue })));

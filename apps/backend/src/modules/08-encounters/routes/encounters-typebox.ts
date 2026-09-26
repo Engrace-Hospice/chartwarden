@@ -92,9 +92,37 @@ export const CreateEncounterSchema = Type.Object({
   bereavementPlanId: Type.Optional(Type.String({ format: "uuid" })),
 });
 
+// §2.6 — the HearthNote selection tree a clinician builds against the template for their
+// (encounterType × discipline) pair. This used to be `{ selections: Record<string, unknown>, freeText?:
+// Record<string, string> }`: a shape that validated nothing, imported by `scripts/openapi/enrichments.ts`
+// and by NO route file, and parsed by neither PATCH — it existed to be published, not to be read (#114).
+// It is now the real shape, because the note is a legal clinical record and `Type.Unknown()` in a jsonb
+// column is how a record becomes unreadable later. Widening the validation is free here: the routes
+// discarded every body ever sent, so there is no caller whose payload this newly rejects.
+//
+// The client sends SECTIONS only. `templateKey`, `vocabVersion`, `encounterType` and `discipline` are
+// server-derived from the encounter row — a client that could name its own template key could assemble a
+// note against a template the encounter's discipline is not allowed to use.
+const SelectionEntrySchema = Type.Object({
+  /** A `@wardenx/narrative-vocab` entry code; assembly rejects one that is not in the shipped corpus. */
+  code: Type.String({ minLength: 1, maxLength: 64 }),
+  /** Values for the phrase template's `${slot}`s (numeric-direct vitals, grades, scores). */
+  params: Type.Optional(
+    Type.Record(
+      Type.String({ maxLength: 64 }),
+      Type.Union([Type.String({ maxLength: 200 }), Type.Number()]),
+    ),
+  ),
+});
+const SelectionSectionSchema = Type.Object({
+  /** Must name a section of the resolved template (§2.6); an unknown id is a 422. */
+  sectionId: Type.String({ minLength: 1, maxLength: 64 }),
+  entries: Type.Array(SelectionEntrySchema, { maxItems: 200 }),
+  /** Verbatim clinician prose. Sealed per-tenant DEK at rest — never stored in the clear (§3.6). */
+  freeText: Type.Optional(Type.String({ maxLength: 20_000 })),
+});
 export const UpdateSelectionsSchema = Type.Object({
-  selections: Type.Record(Type.String(), Type.Unknown()),
-  freeText: Type.Optional(Type.Record(Type.String(), Type.String())),
+  sections: Type.Array(SelectionSectionSchema, { maxItems: 100 }),
 });
 
 // §2.2 — numeric-direct vitals (the `vitals` row shape; numerics-as-text preserve their unit). "Clinically
@@ -303,6 +331,45 @@ export const VitalsResultResponseSchema = Type.Object({
   bmi: Type.Union([Type.String(), Type.Null()]),
 });
 
+/**
+ * Route 5b — one stored vitals set read back (#92). Nullable rather than optional on every field:
+ * the row exists and the measurement is genuinely absent, which is a different clinical statement
+ * from "this key was not sent" — a `null` spo2 on a signed encounter says nobody recorded it.
+ */
+const NullableInt = Type.Union([Type.Integer(), Type.Null()]);
+const NullableStr = Type.Union([Type.String(), Type.Null()]);
+const NullableUnit = Type.Union([lit(VITAL_UNIT), Type.Null()]);
+export const VitalsViewResponseSchema = Type.Object({
+  id: Type.String(),
+  encounterId: Type.String(),
+  capturedAt: Type.String(),
+  bpSystolic: NullableInt,
+  bpDiastolic: NullableInt,
+  heartRate: NullableInt,
+  respiratoryRate: NullableInt,
+  temperature: NullableStr,
+  temperatureUnit: NullableUnit,
+  spo2: NullableInt,
+  painScore: NullableInt,
+  painScale: Type.Union([lit(PAIN_SCALE), Type.Null()]),
+  weight: NullableStr,
+  weightUnit: NullableUnit,
+  height: NullableStr,
+  heightUnit: NullableUnit,
+  bmi: NullableStr,
+  bloodGlucose: NullableInt,
+  bloodGlucoseUnit: NullableUnit,
+  clinicallyNotIndicatedFields: Type.Union([Type.Array(Type.String()), Type.Null()]),
+  clinicallyNotIndicatedReason: NullableStr,
+  abnormalFlags: Type.Array(Type.String()),
+});
+
+/** Route 5b — the `{ encounterId, vitals }` envelope, newest capture first. */
+export const VitalsListResponseSchema = Type.Object({
+  encounterId: Type.String(),
+  vitals: Type.Array(VitalsViewResponseSchema),
+});
+
 /** Routes 6/7 — the authoritative mileage figure (D10). */
 export const MileageResultResponseSchema = Type.Object({
   mileageId: Type.String(),
@@ -316,12 +383,101 @@ export const SelectionsUpdateResponseSchema = Type.Object({
   layer1Preview: Type.String(),
 });
 
-/** Route 8 — care-plan link created. */
+/** Routes 3b / 23b — read the stored selection tree back, with its assembled Layer-1 narrative (#114). */
+export const SelectionsViewResponseSchema = Type.Object({
+  templateKey: Type.String(),
+  vocabVersion: Type.String(),
+  sections: Type.Array(
+    Type.Object({
+      sectionId: Type.String(),
+      entries: Type.Array(
+        Type.Object({
+          code: Type.String(),
+          params: Type.Optional(
+            Type.Record(Type.String(), Type.Union([Type.String(), Type.Number()])),
+          ),
+        }),
+      ),
+      /** Absent when the section carries no prose, or when no cipher is bound to open it. */
+      freeText: Type.Optional(Type.String()),
+    }),
+  ),
+  /** The Layer-1 assembly of the stored tree — the note as it currently reads. */
+  layer1Preview: Type.String(),
+  version: Type.Integer(),
+});
+
+/**
+ * Route 3c — the authoring MENU (F-063): the resolved HearthNote template with the vocabulary entries
+ * each section accepts for this encounter's (type × discipline) pair.
+ *
+ * `slots` is what the client must supply as `params` on a selected entry — the phrase's `${…}`
+ * placeholders minus the two the assembly context fills (`patient`, `serviceDate`). Derived from the
+ * phrase rather than declared, so a corpus edit cannot leave the client asking for a slot that is gone.
+ */
+export const EncounterTemplateResponseSchema = Type.Object({
+  encounterId: Type.String({ format: "uuid" }),
+  templateKey: Type.String(),
+  vocabVersion: Type.String(),
+  encounterType: lit(ENCOUNTER_TYPE),
+  discipline: lit(ENCOUNTER_DISCIPLINE),
+  sections: Type.Array(
+    Type.Object({
+      sectionId: Type.String(),
+      heading: Type.String(),
+      /** A required section must carry ≥1 selection before the §2.6 Layer-3 gate lets the note finalize. */
+      required: Type.Boolean(),
+      /** Empty when the section accepts any entry the pair is eligible for. */
+      allowedCategories: Type.Array(Type.String()),
+      entries: Type.Array(
+        Type.Object({
+          code: Type.String(),
+          label: Type.String(),
+          category: Type.String(),
+          bodySystem: Type.Union([Type.String(), Type.Null()]),
+          slots: Type.Array(Type.String()),
+        }),
+      ),
+    }),
+  ),
+});
+
+/** Route 7b — the mileage row as recorded (F-063); `null` when none was captured. */
+export const MileageViewResponseSchema = Type.Union([
+  Type.Object({
+    mileageId: Type.String(),
+    encounterId: Type.String({ format: "uuid" }),
+    odometerStart: Type.Union([Type.Integer(), Type.Null()]),
+    odometerEnd: Type.Union([Type.Integer(), Type.Null()]),
+    milesDriven: Type.String(),
+    source: Type.String(),
+    manualOverrideReason: Type.Union([Type.String(), Type.Null()]),
+    routeProposedMiles: Type.Union([Type.String(), Type.Null()]),
+    recordedAt: Type.String({ format: "date-time" }),
+  }),
+  Type.Null(),
+]);
+
+/**
+ * Route 8 — the care-plan link, as created.
+ *
+ * F-064 (#159) — this was `{ linkId: string }`, and the value under that name was the ENCOUNTER's own
+ * id: nothing was inserted, so there was no link id to return. The shape is the link now, and `id`
+ * rather than `linkId` because a caller that stored the old field held an encounter id under a
+ * link-shaped name and nothing distinguished it from a working create.
+ */
 export const CarePlanLinkResponseSchema = Type.Object({
-  linkId: Type.String(),
-  problemId: Type.Union([Type.String(), Type.Null()]),
-  goalId: Type.Union([Type.String(), Type.Null()]),
-  interventionId: Type.Union([Type.String(), Type.Null()]),
+  id: Type.String(),
+  encounterId: Type.String(),
+  problemId: NullableStr,
+  goalId: NullableStr,
+  interventionId: NullableStr,
+  createdAt: Type.String(),
+});
+
+/** Route 8b — the live care-plan links on an encounter (F-064). Removed links are not projected. */
+export const CarePlanLinkListResponseSchema = Type.Object({
+  links: Type.Array(CarePlanLinkResponseSchema),
 });
 
 /** Route 10 — EVV-missing documented (D9 bracket state). */
@@ -333,8 +489,37 @@ export const FinalizeResponseSchema = Type.Object({
   version: Type.Integer(),
 });
 
-/** Routes 12/13 — HearthNote enhancement / per-passage modification decision. */
+/** Route 13 — per-passage modification decision. A `modId` naming no `hearthnote_llm_modification`
+ *  row is a 404, not an echo (#123). */
 export const ModificationResponseSchema = Type.Object({ modificationId: Type.String() });
+
+/** The §2.6 D5 eligibility ladder's verdicts (mirrors the `layer2_eligibility_reason` enum). */
+const LAYER2_ELIGIBILITY_REASON = [
+  "eligible",
+  "tenant_flag_off",
+  "clinician_opted_out",
+  "encounter_type_excluded",
+  "token_budget_exceeded",
+  "baa_not_executed",
+  "routing_preference_blocks_cloud",
+  "kill_switch_active",
+] as const;
+
+/**
+ * Route 12 — HearthNote Layer-2 enhancement.
+ *
+ * `enhanced` is published as the literal `false`, which is the point: the Layer-2 dispatch to M32's
+ * `narrativeEnhancement` is unbuilt and the platform `hearthnote.layer2` flag is off, so this endpoint
+ * never enhances anything today — and an integrator learns that from the contract rather than from the
+ * source. `reason` carries the first D5 gate that refused; in Phase 1 that is always `kill_switch_active`.
+ * The `enhanced: true` arm, with a real `hearthnote_llm_modification` id, is added when there is a code
+ * path that can return it. There is deliberately no id here: the route used to answer 200 with the
+ * ENCOUNTER's own id in a `modificationId` field (#123).
+ */
+export const HearthnoteEnhanceResponseSchema = Type.Object({
+  enhanced: Type.Literal(false),
+  reason: lit(LAYER2_ELIGIBILITY_REASON),
+});
 
 /** Route 14 — sign result (signed or routed to cosignature). */
 export const SignResponseSchema = Type.Object({
@@ -369,8 +554,11 @@ export const CreateAddendumResponseSchema = Type.Object({
   status: Type.Literal("draft"),
 });
 
-/** Route 23 — addendum selections update (version bump). */
-export const AddendumSelectionsResponseSchema = Type.Object({ version: Type.Integer() });
+/** Route 23 — addendum selections update (version bump + Layer-1 preview). */
+export const AddendumSelectionsResponseSchema = Type.Object({
+  version: Type.Integer(),
+  layer1Preview: Type.String(),
+});
 
 /** Route 24 — addendum finalize. */
 export const AddendumFinalizeResponseSchema = Type.Object({ status: Type.Literal("finalized") });
@@ -390,6 +578,8 @@ export const BillableResponseSchema = Type.Object({
 export const RenderPayloadResponseSchema = Type.Object({
   encounterId: Type.String(),
   final: Type.String(),
+  /** True when `final` is the narrative pinned at finalize; false when it is a live re-assembly (#122). */
+  pinned: Type.Boolean(),
 });
 
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
@@ -399,12 +589,20 @@ type _Created = Conforms<Static<typeof CreatedEncounterResponseSchema>, ServiceC
 type _View = Conforms<Static<typeof EncounterViewResponseSchema>, ServiceEncounterView>;
 type _List = Conforms<Static<typeof EncounterListResponseSchema>, Ret<"listEncounters">>;
 type _Vitals = Conforms<Static<typeof VitalsResultResponseSchema>, ServiceVitalsResult>;
+// F-063 — the two reads that had no counterpart write... the other way round: two WRITES that had no read.
+type _Template = Conforms<Static<typeof EncounterTemplateResponseSchema>, Ret<"getTemplate">>;
+type _MileageView = Conforms<Static<typeof MileageViewResponseSchema>, Ret<"getMileage">>;
+type _VitalsList = Conforms<Static<typeof VitalsListResponseSchema>, Ret<"listVitals">>;
 type _Mileage = Conforms<Static<typeof MileageResultResponseSchema>, ServiceMileageResult>;
 type _Selections = Conforms<Static<typeof SelectionsUpdateResponseSchema>, Ret<"updateSelections">>;
 type _CarePlanLink = Conforms<Static<typeof CarePlanLinkResponseSchema>, Ret<"addCarePlanLink">>;
+type _CarePlanLinks = Conforms<
+  Static<typeof CarePlanLinkListResponseSchema>,
+  Ret<"listCarePlanLinks">
+>;
 type _Evv = Conforms<Static<typeof EvvReconcileResponseSchema>, Ret<"documentEvvMissing">>;
 type _Finalize = Conforms<Static<typeof FinalizeResponseSchema>, Ret<"finalize">>;
-type _Enhance = Conforms<Static<typeof ModificationResponseSchema>, Ret<"enhanceHearthnote">>;
+type _Enhance = Conforms<Static<typeof HearthnoteEnhanceResponseSchema>, Ret<"enhanceHearthnote">>;
 type _ModDecision = Conforms<
   Static<typeof ModificationResponseSchema>,
   Ret<"recordModificationDecision">
@@ -438,6 +636,11 @@ type _AddendumFinalize = Conforms<
 type _AddendumSign = Conforms<Static<typeof AddendumSignResponseSchema>, Ret<"signAddendum">>;
 type _Billable = Conforms<Static<typeof BillableResponseSchema>, Ret<"billable">>;
 type _RenderPayload = Conforms<Static<typeof RenderPayloadResponseSchema>, Ret<"renderPayload">>;
+type _SelectionsView = Conforms<Static<typeof SelectionsViewResponseSchema>, Ret<"getSelections">>;
+type _AddendumSelectionsView = Conforms<
+  Static<typeof SelectionsViewResponseSchema>,
+  Ret<"getAddendumSelections">
+>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {

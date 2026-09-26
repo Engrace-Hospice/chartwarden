@@ -42,7 +42,8 @@ export interface WebauthnVerifyInput {
   readonly userId: string;
   readonly expectedChallenge: string; // base64url, issued at /step-up/initiate
   readonly assertion: unknown; // AuthenticationResponseJSON from the browser
-  readonly expectedOrigin: string;
+  /** One origin or the allowlist of browser origins a ceremony may run on (F-081). */
+  readonly expectedOrigin: string | readonly string[];
   readonly expectedRPID: string;
 }
 
@@ -83,7 +84,7 @@ export function createWebauthnAssertionVerifier(store: PasskeyCredentialStore): 
         result = await verifyAuthenticationResponse({
           response: response as AuthenticationResponseJSON,
           expectedChallenge,
-          expectedOrigin,
+          expectedOrigin: typeof expectedOrigin === "string" ? expectedOrigin : [...expectedOrigin],
           expectedRPID,
           credential: {
             id: stored.credentialId,

@@ -32,6 +32,8 @@ export { eraseIpuRecord, registerIpuErasers } from "./eraser";
 // §4.11 — the eight published IPU reader seams (registered over the deny-stubs by the composition root).
 export {
   buildIpuSeams,
+  getIpuAdmissionStatusReader,
+  getIpuOrderReader,
   getIpuRoomingFactsReader,
   getIpuVisitorConsentGate,
   registerIpuSeams,
@@ -44,3 +46,24 @@ export {
   IpuAIBlockViolation,
   validateIpuAIBlock,
 } from "@wardenx/inpatient";
+
+// F-071 (#174) — the §4.8 `ipu.rn-coverage-watchdog` cron: the producer for the `ipu_rn_coverage_window`
+// materialized invariant that four write paths read and nothing ever wrote.
+export {
+  COVERAGE_LOOKAHEAD_HOURS,
+  COVERAGE_LOOKBACK_HOURS,
+  COVERAGE_WINDOW_HOURS,
+  M37_JOB_SCHEDULES,
+  M37_QUEUES,
+  M37_QUEUE_PARAMS,
+  planCoverageAlerts,
+  resolveAlertHorizonHours,
+} from "./jobs/index";
+export {
+  type M37WorkerDeps,
+  buildM37WorkerDeps,
+  registerM37CronWorkers,
+  runRnCoverageWatchdogCron,
+  scheduleM37Jobs,
+} from "./jobs/cron-workers";
+export { M37_PLATFORM_JOB_ID, wireM37Tenancy } from "./wiring";

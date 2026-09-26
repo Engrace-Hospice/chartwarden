@@ -1,11 +1,5 @@
 // @vitest-environment jsdom
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -261,8 +255,7 @@ function clientFor(
 ): ApiClient {
   return {
     GET: vi.fn(async (path: string) => {
-      if (path.includes("/workspace"))
-        return ok(input.workspace ?? workspace());
+      if (path.includes("/workspace")) return ok(input.workspace ?? workspace());
       if (path.includes("/review")) return ok(input.review ?? review());
       if (path.includes("/patients/{patientId}/hope/assessments"))
         return ok({ assessments: [assessment] });
@@ -297,10 +290,7 @@ function renderWorkspace(client: ApiClient): void {
     <MemoryRouter initialEntries={["/hope/assessments/hope-1"]}>
       <ApiClientProvider client={client}>
         <Routes>
-          <Route
-            path="/hope/assessments/:id"
-            element={<HopeAssessmentDetail />}
-          />
+          <Route path="/hope/assessments/:id" element={<HopeAssessmentDetail />} />
         </Routes>
       </ApiClientProvider>
     </MemoryRouter>,
@@ -311,14 +301,10 @@ describe("Admission HOPE workspace", () => {
   it("renders backend-driven section navigation, prefill badges, and applicability states", async () => {
     renderWorkspace(clientFor());
     await waitFor(() =>
-      expect(
-        screen.getByRole("heading", { name: "Admission Workspace" }),
-      ).toBeTruthy(),
+      expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
     );
 
-    expect(
-      screen.getByRole("button", { name: /A Administrative/ }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /A Administrative/ })).toBeTruthy();
     expect(screen.getByText("From admission")).toBeTruthy();
     expect(screen.getByText("From patient chart")).toBeTruthy();
     const middleInitial = screen.queryByLabelText(/^Patient middle initial/) as HTMLInputElement;
@@ -329,9 +315,7 @@ describe("Admission HOPE workspace", () => {
     fireEvent.click(screen.getByRole("button", { name: /F Preferences/ }));
     expect(screen.getByText("Skipped")).toBeTruthy();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: /J Health Conditions/ }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: /J Health Conditions/ }));
     expect(
       screen.getByText(
         "This item is conditionally required and will open when the related answer is saved.",
@@ -343,9 +327,7 @@ describe("Admission HOPE workspace", () => {
     const client = clientFor();
     renderWorkspace(client);
     await waitFor(() =>
-      expect(
-        screen.getByRole("heading", { name: "Admission Workspace" }),
-      ).toBeTruthy(),
+      expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /F Preferences/ }));
@@ -390,9 +372,7 @@ describe("Admission HOPE workspace", () => {
     });
     renderWorkspace(client);
     await waitFor(() =>
-      expect(
-        screen.getByRole("heading", { name: "Admission Workspace" }),
-      ).toBeTruthy(),
+      expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
     );
 
     fireEvent.change(screen.getByLabelText(/^Ethnicity/), { target: { value: "^" } });
@@ -412,9 +392,7 @@ describe("Admission HOPE workspace", () => {
   it("shows a reload path on optimistic concurrency conflict", async () => {
     renderWorkspace(clientFor({ patchError: "version is stale" }));
     await waitFor(() =>
-      expect(
-        screen.getByRole("heading", { name: "Admission Workspace" }),
-      ).toBeTruthy(),
+      expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /F Preferences/ }));
@@ -427,9 +405,7 @@ describe("Admission HOPE workspace", () => {
         ).length,
       ).toBeGreaterThan(0),
     );
-    expect(
-      screen.getByRole("button", { name: "Reload assessment" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Reload assessment" })).toBeTruthy();
   });
 
   it("uses backend readiness for Review and Sign", async () => {
@@ -446,21 +422,15 @@ describe("Admission HOPE workspace", () => {
     });
     renderWorkspace(client);
     await waitFor(() =>
-      expect(
-        screen.getByRole("heading", { name: "Admission Workspace" }),
-      ).toBeTruthy(),
+      expect(screen.getByRole("heading", { name: "Admission Workspace" })).toBeTruthy(),
     );
 
-    fireEvent.click(
-      screen.getAllByRole("button", { name: "Sign & complete" })[0]!,
-    );
+    fireEvent.click(screen.getAllByRole("button", { name: "Sign & complete" })[0]!);
     const dialog = screen.getByRole("dialog", {
       name: "Complete Admission",
     });
     expect(dialog).toBeTruthy();
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "Sign & complete" }),
-    );
+    fireEvent.click(within(dialog).getByRole("button", { name: "Sign & complete" }));
 
     await waitFor(() =>
       expect(client.POST).toHaveBeenCalledWith(

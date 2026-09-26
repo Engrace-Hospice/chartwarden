@@ -278,19 +278,41 @@ export const M16_EVENT_IDEMPOTENCY_KEYS = {
  * §4.5 — the events M16 SUBSCRIBES to. Listed here (not just in the worker files) so M16-T03's consumer
  * wiring and the §9 tests share one source of truth, and so a rename upstream breaks the build rather than
  * silently orphaning a handler. M16 owns none of these prefixes; consuming them needs no `dependsOn` edge.
+ *
+ * F-094/#205 — that last clause was a claim about a check nobody had written. Rule 6 of
+ * `check-outbox-bindings.ts` is now that check, both ways: every name here resolves to a boot-catalogued
+ * event that declares `m16`, and every catalogued event declaring `m16` is here. Before it the two
+ * disagreed on 16 facts — including `idg.decision_recorded`, the ONE event M16 binds live, which this list
+ * did not name.
  */
 export const M16_SUBSCRIBED_EVENT_NAMES = [
+  // The two topics M16's `consumers/` actually decides on today.
   "m6.bereavement.eligible",
   "m6.discharge.cosigned",
+  // Catalogued AND declaring `m16`, so the relay routes each of these here the day a binding lands.
+  // `idg.decision_recorded` is the one M16 already binds LIVE — and the one this list did not name.
+  "idg.decision_recorded",
+  "m5.patient.deceased",
+  "m6.admission.activated",
   "m6.admission.discharged",
-  "m8.encounter.signed",
-  "m22.document.rendered",
+  "m6.discharge.death",
+  "m7.care_plan.discharged",
+  "m15.plan.discharged",
+  "m37.ipu_admission.death_recorded",
   "m39.consent.revoked",
-  "m39.consent.created",
+  "m39.consent.signed",
+  "m39.consent.renewed",
+  "m5.patient.bereavement_opt_out_changed",
+  // §4.5 subscriptions the catalog does NOT declare `m16` on. Each is registered in
+  // `scripts/outbox-subscription-exceptions.ts` with the reason, because the relay routes none of them
+  // here and a handler written against these names would never run. `m17.shift_changed` used to sit in
+  // this group and is gone instead: M17 emits no shift topic under any name, so there was nothing to
+  // except.
   "m4.legal_hold.applied",
   "m4.legal_hold.released",
-  "m5.patient.bereavement_opt_out_changed",
-  "m17.shift_changed",
+  "m8.encounter.signed",
+  "m22.document.rendered",
+  "m39.consent.created",
 ] as const;
 
 /** One §4.5 subscribed event name. */

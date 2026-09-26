@@ -86,7 +86,9 @@ function errorResponse(message = "nope") {
 function clientFor(map: Record<string, unknown>, failures: readonly string[] = []): ApiClient {
   return {
     GET: vi.fn(async (path: string) =>
-      failures.includes(path) ? errorResponse() : response(map[path] ?? { items: [], nextCursor: null }),
+      failures.includes(path)
+        ? errorResponse()
+        : response(map[path] ?? { items: [], nextCursor: null }),
     ),
   } as unknown as ApiClient;
 }
@@ -124,7 +126,12 @@ describe("RoleHome operational dashboard", () => {
         },
         "/api/v1/safety/dashboard": {
           clinicians: [
-            { membershipId: "m1", displayName: "Nurse One", overdueState: "ok", activeSosAlert: null },
+            {
+              membershipId: "m1",
+              displayName: "Nurse One",
+              overdueState: "ok",
+              activeSosAlert: null,
+            },
             {
               membershipId: "m2",
               displayName: "Nurse Two",

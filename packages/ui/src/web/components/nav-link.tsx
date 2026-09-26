@@ -2,8 +2,8 @@
 import React, { useId, useState, useEffect } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { NavLink as RouterNavLink, useLocation } from "react-router-dom";
-import { t } from "../theme/tokens";
 import { Glyph, type GlyphName } from "../system/glyphs";
+import { t } from "../theme/tokens";
 
 export interface NavLinkProps {
   to: string;
@@ -56,23 +56,26 @@ export function NavGroup({ label, children, defaultOpen = true }: NavGroupProps)
   const isChildActive = React.Children.toArray(children).some((child) => {
     if (React.isValidElement(child) && child.props && typeof child.props.to === "string") {
       const to = child.props.to;
-      return (
-        location.pathname === to ||
-        (to !== "/" && location.pathname.startsWith(to))
-      );
+      return location.pathname === to || (to !== "/" && location.pathname.startsWith(to));
     }
     return false;
   });
 
   const [open, setOpen] = useState(isChildActive || defaultOpen);
 
-  // Automatically open the active group, and close it when we switch to another active group
+  // Automatically open the active group, and close it when we switch to another active group.
+  // `location.pathname` is NOT a dependency: `isChildActive` is recomputed from it on every render,
+  // so it is already the signal. Listing both only re-ran the effect on pathname changes that left
+  // the boolean alone, where `setOpen(sameValue)` is a no-op React bails out of.
   useEffect(() => {
     setOpen(isChildActive);
-  }, [location.pathname, isChildActive]);
+  }, [isChildActive]);
 
   return (
-    <div className={`wx-nav-group ${isChildActive ? "active" : ""}`} style={{ transition: "all 0.2s ease" }}>
+    <div
+      className={`wx-nav-group ${isChildActive ? "active" : ""}`}
+      style={{ transition: "all 0.2s ease" }}
+    >
       <button
         type="button"
         aria-expanded={open}
@@ -107,14 +110,18 @@ export function NavGroup({ label, children, defaultOpen = true }: NavGroupProps)
           />
           <span>{label}</span>
         </div>
-        <span aria-hidden style={{ fontSize: "0.65rem", transition: "transform 0.2s ease", transform: open ? "rotate(0deg)" : "rotate(-90deg)" }}>
+        <span
+          aria-hidden
+          style={{
+            fontSize: "0.65rem",
+            transition: "transform 0.2s ease",
+            transform: open ? "rotate(0deg)" : "rotate(-90deg)",
+          }}
+        >
           ▾
         </span>
       </button>
-      <div
-        id={contentId}
-        className={`wx-nav-group-content ${open ? "open" : ""}`}
-      >
+      <div id={contentId} className={`wx-nav-group-content ${open ? "open" : ""}`}>
         <div style={{ display: "flex", flexDirection: "column", paddingLeft: "0.5rem" }}>
           {children}
         </div>

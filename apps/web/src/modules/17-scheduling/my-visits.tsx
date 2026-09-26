@@ -18,6 +18,8 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";
+import { useSession } from "../../shell/session";
+import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import {
   NewVisitModal,
   SchedulingNav,
@@ -25,8 +27,6 @@ import {
   findLinkedEncounter,
   hasPermission,
 } from "./scheduling-workflow";
-import { useSession } from "../../shell/session";
-import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import type { VisitRow } from "./visit-table";
 
 export function MyVisits(): JSX.Element {
@@ -118,14 +118,18 @@ export function MyVisits(): JSX.Element {
     setPage(1);
   };
 
-  async function visitAction(visit: VisitRow, action: "start" | "arrive" | "encounter"): Promise<void> {
+  async function visitAction(
+    visit: VisitRow,
+    action: "start" | "arrive" | "encounter",
+  ): Promise<void> {
     setBusyVisitId(visit.id);
     setActionNotice(null);
     if (action === "encounter") {
       const linked = await findLinkedEncounter(client, visit);
       setBusyVisitId(null);
       if (linked) navigate(`/patients/${linked.patientId}/encounters/${linked.id}`);
-      else setActionNotice("Encounter draft is still being created. Refresh the visit in a moment.");
+      else
+        setActionNotice("Encounter draft is still being created. Refresh the visit in a moment.");
       return;
     }
     const { error: err } =
@@ -140,7 +144,9 @@ export function MyVisits(): JSX.Element {
           });
     setBusyVisitId(null);
     if (err) {
-      setError(apiErrorMessage(err, action === "start" ? "Could not start visit." : "Could not check in."));
+      setError(
+        apiErrorMessage(err, action === "start" ? "Could not start visit." : "Could not check in."),
+      );
       return;
     }
     await load();
@@ -149,239 +155,237 @@ export function MyVisits(): JSX.Element {
   return (
     <>
       <WorkQueueLayout
-      header={
-        <PageHeader title="My Visits" breadcrumb="Field / Scheduling">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Review your scheduled visits for today and the upcoming week.
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          <SchedulingNav onNewVisit={() => setCreating(true)} />
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
-              </button>
+        header={
+          <PageHeader title="My Visits" breadcrumb="Field / Scheduling">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Review your scheduled visits for today and the upcoming week.
             </div>
-          ) : null}
-          {actionNotice ? (
-            <div role="status" style={noticeBannerStyle}>
-              {actionNotice}
-            </div>
-          ) : null}
-          <div style={toolbarStyle}>
-            <div style={toolbarTitleStyle}>
-              <span style={toolbarEyebrowStyle}>Schedule</span>
-              <strong>{rows.length} matching visits</strong>
-            </div>
-            <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
-                <input
-                  type="search"
-                  placeholder="Search visit, patient, clinician..."
-                  value={searchQuery}
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            <SchedulingNav onNewVisit={() => setCreating(true)} />
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <span>{error}</span>
+                <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                  x
+                </button>
+              </div>
+            ) : null}
+            {actionNotice ? <output style={noticeBannerStyle}>{actionNotice}</output> : null}
+            <div style={toolbarStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>Schedule</span>
+                <strong>{rows.length} matching visits</strong>
+              </div>
+              <div style={controlGroupStyle}>
+                <div style={searchWrapStyle}>
+                  <input
+                    type="search"
+                    placeholder="Search visit, patient, clinician..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Search my visits"
+                    style={searchInputStyle}
+                  />
+                </div>
+                <select
+                  aria-label="Visit status"
+                  value={status}
                   onChange={(e) => {
-                    setSearchQuery(e.target.value);
+                    setStatus(e.target.value);
                     setPage(1);
                   }}
-                  aria-label="Search my visits"
-                  style={searchInputStyle}
-                />
+                  style={selectStyle}
+                >
+                  <option value="">Status: All</option>
+                  <option value="published">Published</option>
+                  <option value="en_route">En route</option>
+                  <option value="in_visit">In visit</option>
+                  <option value="completed">Completed</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="rescheduled">Rescheduled</option>
+                </select>
+                <select
+                  aria-label="Visit purpose"
+                  value={purpose}
+                  onChange={(e) => {
+                    setPurpose(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">Purpose: All</option>
+                  {purposeOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {stateLabel(option)}
+                    </option>
+                  ))}
+                </select>
+                {activeFilters > 0 ? (
+                  <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                    Clear
+                  </Button>
+                ) : null}
               </div>
-              <select
-                aria-label="Visit status"
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Status: All</option>
-                <option value="published">Published</option>
-                <option value="en_route">En route</option>
-                <option value="in_visit">In visit</option>
-                <option value="completed">Completed</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="rescheduled">Rescheduled</option>
-              </select>
-              <select
-                aria-label="Visit purpose"
-                value={purpose}
-                onChange={(e) => {
-                  setPurpose(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Purpose: All</option>
-                {purposeOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {stateLabel(option)}
-                  </option>
-                ))}
-              </select>
-              {activeFilters > 0 ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
             </div>
           </div>
-        </div>
-      }
-      table={
-        error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading && visits.length === 0 ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : rows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title={activeFilters > 0 ? "No matching visits" : "No upcoming visits"}
-              description={
-                activeFilters > 0
-                  ? "Try adjusting the schedule filters."
-                  : "You have no visits scheduled in the next 7 days."
-              }
-              action={
-                activeFilters > 0 ? (
-                  <Button size="sm" tone="secondary" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
-              }
-            />
-          </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "28%" }}>Visit</th>
-                  <th style={{ ...thStyle, width: "18%" }}>Patient</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Purpose</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Start</th>
-                  <th style={{ ...thStyle, width: "14%" }}>End</th>
-                  <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Status</th>
-                  <th style={{ ...thStyle, width: "18%", textAlign: "right" }}>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedRows.map((v) => (
-                  <tr
-                    key={v.id}
-                    // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => navigate(`/scheduling/visits/${v.id}`)}
-                    onKeyDown={(ev) => {
-                      if (ev.key === "Enter" || ev.key === " ") {
-                        ev.preventDefault();
-                        navigate(`/scheduling/visits/${v.id}`);
-                      }
-                    }}
-                    style={rowStyle}
-                    className="wx-data-row-interactive"
-                  >
-                    <td style={tdStyle}>
-                      <div style={primaryCellStyle}>
-                        <span style={primaryTextStyle}>Scheduled visit</span>
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(v.id)}
-                        </code>
-                      </div>
-                    </td>
-                    <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(v.patientId)}
-                      </code>
-                    </td>
-                    <td style={tdStyle}>{stateLabel(v.visitPurpose)}</td>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                      {formatDateTime(v.scheduledStartedAt)}
-                    </td>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                      {formatDateTime(v.scheduledEndedAt)}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right" }}>
-                      <StatusPill
-                        label={stateLabel(v.status)}
-                        tone={VISIT_TONE[v.status] ?? "neutral"}
-                      />
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right" }}>
-                      <div style={rowActionsStyle}>
-                        {v.status === "published" && hasPermission(sessionPermissions, "visit.start") ? (
-                          <Button
-                            size="sm"
-                            tone="secondary"
-                            aria-label={`Start visit ${shortId(v.id)}`}
-                            loading={busyVisitId === v.id}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void visitAction(v, "start");
-                            }}
-                          >
-                            <Glyph name="clock" size={13} /> Start
-                          </Button>
-                        ) : null}
-                        {v.status === "en_route" && hasPermission(sessionPermissions, "visit.start") ? (
-                          <Button
-                            size="sm"
-                            aria-label={`Check in visit ${shortId(v.id)}`}
-                            loading={busyVisitId === v.id}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void visitAction(v, "arrive");
-                            }}
-                          >
-                            <Glyph name="check" size={13} /> Check in
-                          </Button>
-                        ) : null}
-                        {["published", "en_route", "in_visit", "completed"].includes(v.status) ? (
-                          <Button
-                            size="sm"
-                            tone="tertiary"
-                            aria-label={`Open encounter for visit ${shortId(v.id)}`}
-                            loading={busyVisitId === v.id}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void visitAction(v, "encounter");
-                            }}
-                          >
-                            <Glyph name="file-text" size={13} /> Encounter
-                          </Button>
-                        ) : null}
-                      </div>
-                    </td>
+        }
+        table={
+          error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : loading && visits.length === 0 ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : rows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={activeFilters > 0 ? "No matching visits" : "No upcoming visits"}
+                description={
+                  activeFilters > 0
+                    ? "Try adjusting the schedule filters."
+                    : "You have no visits scheduled in the next 7 days."
+                }
+                action={
+                  activeFilters > 0 ? (
+                    <Button size="sm" tone="secondary" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "28%" }}>Visit</th>
+                    <th style={{ ...thStyle, width: "18%" }}>Patient</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Purpose</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Start</th>
+                    <th style={{ ...thStyle, width: "14%" }}>End</th>
+                    <th style={{ ...thStyle, width: "12%", textAlign: "right" }}>Status</th>
+                    <th style={{ ...thStyle, width: "18%", textAlign: "right" }}>Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={rows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={FIELD_PAGE_SIZES}
-              noun="visits"
-            />
-          </div>
-        )
-      }
-      fullPageScroll
+                </thead>
+                <tbody>
+                  {pagedRows.map((v) => (
+                    <tr
+                      key={v.id}
+                      // biome-ignore lint/a11y/useSemanticElements: clickable table row; role="button" makes the <tr> keyboard-actionable.
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => navigate(`/scheduling/visits/${v.id}`)}
+                      onKeyDown={(ev) => {
+                        if (ev.key === "Enter" || ev.key === " ") {
+                          ev.preventDefault();
+                          navigate(`/scheduling/visits/${v.id}`);
+                        }
+                      }}
+                      style={rowStyle}
+                      className="wx-data-row-interactive"
+                    >
+                      <td style={tdStyle}>
+                        <div style={primaryCellStyle}>
+                          <span style={primaryTextStyle}>Scheduled visit</span>
+                          <code className="wx-data-md" style={codeStyle}>
+                            {shortId(v.id)}
+                          </code>
+                        </div>
+                      </td>
+                      <td style={tdStyle}>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {shortId(v.patientId)}
+                        </code>
+                      </td>
+                      <td style={tdStyle}>{stateLabel(v.visitPurpose)}</td>
+                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                        {formatDateTime(v.scheduledStartedAt)}
+                      </td>
+                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                        {formatDateTime(v.scheduledEndedAt)}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        <StatusPill
+                          label={stateLabel(v.status)}
+                          tone={VISIT_TONE[v.status] ?? "neutral"}
+                        />
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        <div style={rowActionsStyle}>
+                          {v.status === "published" &&
+                          hasPermission(sessionPermissions, "visit.start") ? (
+                            <Button
+                              size="sm"
+                              tone="secondary"
+                              aria-label={`Start visit ${shortId(v.id)}`}
+                              loading={busyVisitId === v.id}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void visitAction(v, "start");
+                              }}
+                            >
+                              <Glyph name="clock" size={13} /> Start
+                            </Button>
+                          ) : null}
+                          {v.status === "en_route" &&
+                          hasPermission(sessionPermissions, "visit.start") ? (
+                            <Button
+                              size="sm"
+                              aria-label={`Check in visit ${shortId(v.id)}`}
+                              loading={busyVisitId === v.id}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void visitAction(v, "arrive");
+                              }}
+                            >
+                              <Glyph name="check" size={13} /> Check in
+                            </Button>
+                          ) : null}
+                          {["published", "en_route", "in_visit", "completed"].includes(v.status) ? (
+                            <Button
+                              size="sm"
+                              tone="tertiary"
+                              aria-label={`Open encounter for visit ${shortId(v.id)}`}
+                              loading={busyVisitId === v.id}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void visitAction(v, "encounter");
+                              }}
+                            >
+                              <Glyph name="file-text" size={13} /> Encounter
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={rows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={FIELD_PAGE_SIZES}
+                noun="visits"
+              />
+            </div>
+          )
+        }
+        fullPageScroll
       />
       <NewVisitModal
         open={creating}
@@ -504,6 +508,8 @@ const dismissButtonStyle = {
 };
 
 const noticeBannerStyle = {
+  // Rendered on an <output> (implicit role="status"), which is inline by default.
+  display: "block",
   padding: "0.65rem 0.85rem",
   borderRadius: "var(--radius-md)",
   background: "var(--color-primary-tint)",

@@ -27,11 +27,11 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { buildEmarAbacPredicates } from "../src/modules/13-emar/abac-predicates";
-import { createDbEmarBackend } from "../src/modules/13-emar/emar-route-service-db";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { createCareTeamProvider } from "../src/modules/05-patient/seams/care-team-provider";
 import { createDrizzleCareTeamStore } from "../src/modules/05-patient/seams/drizzle-stores";
-import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { buildEmarAbacPredicates } from "../src/modules/13-emar/abac-predicates";
+import { createDbEmarBackend } from "../src/modules/13-emar/emar-route-service-db";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -129,11 +129,7 @@ describe.skipIf(!DB_URL)("GAP-022 M13 RN case-manager review gate — LIVE Postg
       const pe = await admin.query(
         `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
          VALUES ($1, $2, 'PE', $3, 'x', '12-31') RETURNING id`,
-        [
-          org,
-          org === ORG_A ? "221001" : "221002",
-          org === ORG_A ? "1234567893" : "1000015838",
-        ],
+        [org, org === ORG_A ? "221001" : "221002", org === ORG_A ? "1234567893" : "1000015838"],
       );
       providerOf[org] = pe.rows[0].id;
       const loc = await admin.query(
@@ -208,9 +204,9 @@ describe.skipIf(!DB_URL)("GAP-022 M13 RN case-manager review gate — LIVE Postg
   // ── the seam method itself ───────────────────────────────────────────────────────────────────────
   it("resolves the patient's RN case manager, and only the primary_rn (not the aide)", async () => {
     const careTeam = createCareTeamProvider(createDrizzleCareTeamStore(handle.db));
-    expect(
-      await careTeam.primaryRnUserId({ organizationId: ORG_A, patientId: PATIENT_A }),
-    ).toBe(USER_RN);
+    expect(await careTeam.primaryRnUserId({ organizationId: ORG_A, patientId: PATIENT_A })).toBe(
+      USER_RN,
+    );
     // The aide IS on the roster — proving the two questions are genuinely different.
     const roster = await careTeam.careTeamMembers({ organizationId: ORG_A, patientId: PATIENT_A });
     expect([...roster].sort()).toEqual([USER_RN, USER_AIDE].sort());
@@ -227,6 +223,57 @@ describe.skipIf(!DB_URL)("GAP-022 M13 RN case-manager review gate — LIVE Postg
     );
     expect(
       await careTeam.primaryRnUserId({ organizationId: ORG_A, patientId: PATIENT_A }),
+    ).toBeNull();
+  });
+
+  // ── the membership half (#124) — what M8 routes a cosignature to ─────────────────────────────────
+
+  it("resolves the case manager's ACTIVE membership id, not their user id", async () => {
+    const careTeam = createCareTeamProvider(createDrizzleCareTeamStore(handle.db));
+    const membershipId = await careTeam.primaryRnMembershipId({
+      organizationId: ORG_A,
+      patientId: PATIENT_A,
+    });
+    expect(membershipId).toBe(memberOf[`${ORG_A}:${USER_RN}`]);
+    // Different id spaces, both real: `patient_assignment` stores the USER, `cosignature_request`
+    // references the MEMBERSHIP. A test that only asserted non-null would pass on either.
+    expect(membershipId).not.toBe(USER_RN);
+  });
+
+  it("answers null when the case manager's membership is no longer active", async () => {
+    const careTeam = createCareTeamProvider(createDrizzleCareTeamStore(handle.db));
+    await admin.query(
+      "UPDATE membership SET status='revoked' WHERE user_id=$1 AND organization_id=$2",
+      [USER_RN, ORG_A],
+    );
+    try {
+      // The ASSIGNMENT is still open — the user-id half still answers, so this is specifically the
+      // membership rule and not the assignment being gone.
+      expect(await careTeam.primaryRnUserId({ organizationId: ORG_A, patientId: PATIENT_A })).toBe(
+        USER_RN,
+      );
+      expect(
+        await careTeam.primaryRnMembershipId({ organizationId: ORG_A, patientId: PATIENT_A }),
+      ).toBeNull();
+    } finally {
+      await admin.query(
+        "UPDATE membership SET status='active' WHERE user_id=$1 AND organization_id=$2",
+        [USER_RN, ORG_A],
+      );
+    }
+  });
+
+  it("answers null for an unassigned patient and across tenants", async () => {
+    const careTeam = createCareTeamProvider(createDrizzleCareTeamStore(handle.db));
+    expect(
+      await careTeam.primaryRnMembershipId({
+        organizationId: ORG_A,
+        patientId: PATIENT_UNASSIGNED,
+      }),
+    ).toBeNull();
+    // ORG_B's patient HAS a case manager; asking as ORG_A must still be null.
+    expect(
+      await careTeam.primaryRnMembershipId({ organizationId: ORG_A, patientId: PATIENT_B }),
     ).toBeNull();
   });
 
@@ -248,8 +295,9 @@ describe.skipIf(!DB_URL)("GAP-022 M13 RN case-manager review gate — LIVE Postg
 
   it("reports FALSE for the aide, the outsider, and an unassigned patient's row", async () => {
     const cg = await caregiverAttested(ORG_A, PATIENT_A);
-    expect((await backend.loadCaregiverReviewFacts(ORG_A, cg.id, USER_AIDE))?.actorIsRnCaseManager)
-      .toBe(false);
+    expect(
+      (await backend.loadCaregiverReviewFacts(ORG_A, cg.id, USER_AIDE))?.actorIsRnCaseManager,
+    ).toBe(false);
     expect(
       (await backend.loadCaregiverReviewFacts(ORG_A, cg.id, USER_OUTSIDER))?.actorIsRnCaseManager,
     ).toBe(false);

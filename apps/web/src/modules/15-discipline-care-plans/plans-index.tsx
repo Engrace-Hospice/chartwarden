@@ -7,10 +7,6 @@ import {
   t,
   useApiClient,
 } from "@wardenx/ui";
-import {
-  ChartModuleRail,
-  PatientChartBail,
-} from "../../shell/chart-module-rail";
 // apps/web/src/modules/15-discipline-care-plans — the DISCIPLINE PLANS INDEX (§5.1 #1, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_CARE_PLAN.md (M07 + M15) — "Use Patient Workspace."
 //
@@ -23,6 +19,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { Link, useParams } from "react-router-dom";
+import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 import { type PlanListItem, errorMessage, listPlans } from "./discipline-api";
 import {
   CADENCE_STATUS_TONE,
@@ -47,12 +44,7 @@ import {
 } from "./discipline-ui";
 
 /** The §5.1 grid order — the three admission-bootstrapped plans, then the assignment-bootstrapped one. */
-const KINDS = [
-  "aide_poc",
-  "msw_plan",
-  "spiritual_plan",
-  "volunteer_plan",
-] as const;
+const KINDS = ["aide_poc", "msw_plan", "spiritual_plan", "volunteer_plan"] as const;
 
 /** Each kind's own screen route (the §5.1 #2 / #6 / #8 / #9 views). */
 const KIND_ROUTE: Record<string, string> = {
@@ -78,12 +70,7 @@ export function DisciplinePlansIndex(): JSX.Element {
       limit: 25,
     });
     if (err) {
-      setError(
-        errorMessage(
-          err,
-          "The discipline plans for this patient could not be loaded.",
-        ),
-      );
+      setError(errorMessage(err, "The discipline plans for this patient could not be loaded."));
       setLoading(false);
       return;
     }
@@ -100,10 +87,7 @@ export function DisciplinePlansIndex(): JSX.Element {
       title={<span style={pageTitleStyle}>Discipline plans</span>}
       breadcrumb="Clinical — the four CoP discipline plans of care"
       actions={
-        <Link
-          to={`/patients/${patientId}/discipline-plans/summary`}
-          style={ghostButtonStyle}
-        >
+        <Link to={`/patients/${patientId}/discipline-plans/summary`} style={ghostButtonStyle}>
           Printable summary
         </Link>
       }
@@ -112,11 +96,7 @@ export function DisciplinePlansIndex(): JSX.Element {
 
   if (loading) {
     return (
-      <PatientChartBail
-        banner={banner}
-        patientId={patientId}
-        current="discipline-plans"
-      >
+      <PatientChartBail banner={banner} patientId={patientId} current="discipline-plans">
         <LoadingSpinner />
       </PatientChartBail>
     );
@@ -124,11 +104,7 @@ export function DisciplinePlansIndex(): JSX.Element {
 
   if (error) {
     return (
-      <PatientChartBail
-        banner={banner}
-        patientId={patientId}
-        current="discipline-plans"
-      >
+      <PatientChartBail banner={banner} patientId={patientId} current="discipline-plans">
         <EmptyState title="Unavailable" description={error} />
       </PatientChartBail>
     );
@@ -136,9 +112,7 @@ export function DisciplinePlansIndex(): JSX.Element {
 
   const byKind = new Map(rows.map((r) => [r.kind, r]));
   const overdue = rows.filter(
-    (r) =>
-      r.nextSupervisoryDueAt !== null &&
-      Date.parse(r.nextSupervisoryDueAt) < Date.now(),
+    (r) => r.nextSupervisoryDueAt !== null && Date.parse(r.nextSupervisoryDueAt) < Date.now(),
   );
 
   return (
@@ -150,10 +124,7 @@ export function DisciplinePlansIndex(): JSX.Element {
           minHeight: 0,
         }}
       >
-        <ChartModuleRail
-          patientId={patientId ?? ""}
-          current="discipline-plans"
-        />
+        <ChartModuleRail patientId={patientId ?? ""} current="discipline-plans" />
 
         <main
           style={{
@@ -166,12 +137,9 @@ export function DisciplinePlansIndex(): JSX.Element {
         >
           {overdue.length > 0 ? (
             <Notice tone="error">
-              {overdue.length === 1
-                ? "One plan is"
-                : `${overdue.length} plans are`}{" "}
-              past the 42 CFR §418.76(h) supervisory due date. Past the grace
-              mark a new aide visit cannot be signed without a documented
-              Clinical-Supervisor override.
+              {overdue.length === 1 ? "One plan is" : `${overdue.length} plans are`} past the 42 CFR
+              §418.76(h) supervisory due date. Past the grace mark a new aide visit cannot be signed
+              without a documented Clinical-Supervisor override.
             </Notice>
           ) : null}
 
@@ -221,8 +189,7 @@ export function DisciplinePlansIndex(): JSX.Element {
                                 <StatusPill
                                   label={`${shortDate(plan.nextSupervisoryDueAt)} · ${dueLabel(plan.nextSupervisoryDueAt)}`}
                                   tone={
-                                    Date.parse(plan.nextSupervisoryDueAt) <
-                                    Date.now()
+                                    Date.parse(plan.nextSupervisoryDueAt) < Date.now()
                                       ? toneOf(CADENCE_STATUS_TONE, "overdue")
                                       : toneOf(CADENCE_STATUS_TONE, "on_time")
                                   }
@@ -233,17 +200,13 @@ export function DisciplinePlansIndex(): JSX.Element {
                             }
                           />
                         ) : null}
-                        {kind === "spiritual_plan" &&
-                        plan.spiritualCareDeclinedAt ? (
+                        {kind === "spiritual_plan" && plan.spiritualCareDeclinedAt ? (
                           <Field
                             label="Spiritual care"
                             value={`declined ${shortDate(plan.spiritualCareDeclinedAt)}`}
                           />
                         ) : null}
-                        <Field
-                          label="Last updated"
-                          value={shortDate(plan.updatedAt)}
-                        />
+                        <Field label="Last updated" value={shortDate(plan.updatedAt)} />
                       </SummaryGrid>
                       <div
                         style={{

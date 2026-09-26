@@ -51,7 +51,7 @@
  */
 import { Client } from "pg";
 import type { WxSession } from "./lib/api-session";
-import { findPatientIdByLastName, ScenarioLog, signIn } from "./lib/api-session";
+import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const ORG_SLUG = "wardenx-demo";
@@ -76,9 +76,10 @@ async function wipePriorAdmissions(): Promise<void> {
   const patientIds = pats.rows.map((r) => r.id);
   if (!patientIds.length) return;
 
-  const admRes = await db.query<{ id: string }>("SELECT id FROM admission WHERE patient_id = ANY($1)", [
-    patientIds,
-  ]);
+  const admRes = await db.query<{ id: string }>(
+    "SELECT id FROM admission WHERE patient_id = ANY($1)",
+    [patientIds],
+  );
   const admissionIds = admRes.rows.map((r) => r.id);
   if (admissionIds.length) {
     const epRes = await db.query<{ id: string }>(
@@ -87,12 +88,19 @@ async function wipePriorAdmissions(): Promise<void> {
     );
     const periodIds = epRes.rows.map((r) => r.id);
     if (periodIds.length) {
-      await db.query("DELETE FROM certification_of_terminal_illness WHERE election_period_id = ANY($1)", [
+      await db.query(
+        "DELETE FROM certification_of_terminal_illness WHERE election_period_id = ANY($1)",
+        [periodIds],
+      );
+      await db.query("DELETE FROM election_statement WHERE election_period_id = ANY($1)", [
         periodIds,
       ]);
-      await db.query("DELETE FROM election_statement WHERE election_period_id = ANY($1)", [periodIds]);
-      await db.query("DELETE FROM face_to_face_encounter WHERE election_period_id = ANY($1)", [periodIds]);
-      await db.query("DELETE FROM revocation_event WHERE election_period_id = ANY($1)", [periodIds]);
+      await db.query("DELETE FROM face_to_face_encounter WHERE election_period_id = ANY($1)", [
+        periodIds,
+      ]);
+      await db.query("DELETE FROM revocation_event WHERE election_period_id = ANY($1)", [
+        periodIds,
+      ]);
     }
     for (const t of [
       "notice_of_rights_acknowledgment",
@@ -131,7 +139,11 @@ async function wipePriorAdmissions(): Promise<void> {
  * screen — which reads `patient.status` straight off the row — shows what a real activation/
  * discharge/death actually produced instead of every seeded patient reading "Prospective" forever.
  */
-async function syncPatientStatus(patientId: string, status: string, deceasedDate?: string): Promise<void> {
+async function syncPatientStatus(
+  patientId: string,
+  status: string,
+  deceasedDate?: string,
+): Promise<void> {
   if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
   const db = new Client({ connectionString: ADMIN_URL });
   await db.connect();
@@ -170,7 +182,8 @@ async function admitAndActivate(
       hospiceMedicalDirectorId: HOSPICE_MD,
     },
   });
-  if (adm.error || !adm.data) throw new Error(`admission create failed: ${JSON.stringify(adm.error)}`);
+  if (adm.error || !adm.data)
+    throw new Error(`admission create failed: ${JSON.stringify(adm.error)}`);
   const admissionId = adm.data.id;
 
   await session.client.POST("/api/v1/admissions/{id}/nor", {
@@ -192,7 +205,9 @@ async function admitAndActivate(
     params: { path: { patientId } },
   });
   const period = (
-    cert.data as unknown as { periods?: Array<{ id: string; cti?: { id: string } | null }> } | undefined
+    cert.data as unknown as
+      | { periods?: Array<{ id: string; cti?: { id: string } | null }> }
+      | undefined
   )?.periods?.[0];
   if (!period) throw new Error("no auto-seeded period 1 found after admission create");
   const periodId = period.id;
@@ -211,7 +226,8 @@ async function admitAndActivate(
     },
   });
   const esData = es.data as unknown as { id: string; version: number } | undefined;
-  if (es.error || !esData) throw new Error(`election statement create failed: ${JSON.stringify(es.error)}`);
+  if (es.error || !esData)
+    throw new Error(`election statement create failed: ${JSON.stringify(es.error)}`);
   await session.client.POST("/api/v1/election-statements/{id}/sign", {
     params: { path: { id: esData.id } },
     body: { signingPatientName: patientName, signingRole: "patient", ifVersion: esData.version },
@@ -220,10 +236,15 @@ async function admitAndActivate(
   const signer = physicianSession ?? session;
   const ctiMd = await signer.client.POST("/api/v1/cti/{id}/sign-hospice-md", {
     params: { path: { id: ctiId } },
-    body: { signingPhysicianName: "Eleanor Whitfield MD", signingPhysicianNpi: "1003000001", ifVersion: 0 },
+    body: {
+      signingPhysicianName: "Eleanor Whitfield MD",
+      signingPhysicianNpi: "1003000001",
+      ifVersion: 0,
+    },
   });
   const ctiMdData = ctiMd.data as unknown as { version: number } | undefined;
-  if (ctiMd.error || !ctiMdData) throw new Error(`cti hospice-md sign failed: ${JSON.stringify(ctiMd.error)}`);
+  if (ctiMd.error || !ctiMdData)
+    throw new Error(`cti hospice-md sign failed: ${JSON.stringify(ctiMd.error)}`);
   await signer.client.POST("/api/v1/cti/{id}/sign-attending", {
     params: { path: { id: ctiId } },
     body: {
@@ -233,14 +254,32 @@ async function admitAndActivate(
     },
   });
 
-  const certAfter = await session.client.GET("/api/v1/patients/{patientId}/election-certification", {
-    params: { path: { patientId } },
-  });
+  const certAfter = await session.client.GET(
+    "/api/v1/patients/{patientId}/election-certification",
+    {
+      params: { path: { patientId } },
+    },
+  );
   const admVersion =
     (certAfter.data as { admission?: { version?: number } } | undefined)?.admission?.version ?? 1;
+  // #50 — activation SITES the admission at a service location. The demo hospice has two active sites
+  // (Main Office + Inpatient Unit, db:seed:org-structure), so the server refuses to guess and requires
+  // one to be named. Resolved through the real M1 directory route rather than hardcoding the seeded id,
+  // so this exercises the same lookup the activation ceremony's picker uses.
+  const locations = await session.client.GET("/api/v1/locations", {
+    params: { query: { providerEntityId: PROVIDER_ENTITY_ID, status: "active" } },
+  });
+  const locationId = (
+    locations.data as { items?: Array<{ id: string; name: string }> } | undefined
+  )?.items?.find((l) => l.name.includes("Main Office"))?.id;
+  if (!locationId) {
+    throw new Error(
+      `no active Main Office location under ${PROVIDER_ENTITY_ID} — run db:seed:org-structure first`,
+    );
+  }
   const activate = await session.client.POST("/api/v1/admissions/{id}/activate", {
     params: { path: { id: admissionId } },
-    body: { ifVersion: admVersion },
+    body: { ifVersion: admVersion, locationId },
   });
   if (activate.error) throw new Error(`activate failed: ${JSON.stringify(activate.error)}`);
 
@@ -291,7 +330,9 @@ async function main(): Promise<void> {
     });
     if (loc.error) throw new Error(`GIP level-of-care change failed: ${JSON.stringify(loc.error)}`);
     await syncPatientStatus(patientId, "active");
-    log.ok("Okonkwo: admitted + activated, GIP level of care (assigning → confirm-bed still needed for M37)");
+    log.ok(
+      "Okonkwo: admitted + activated, GIP level of care (assigning → confirm-bed still needed for M37)",
+    );
   } catch (err) {
     log.fail(`Okonkwo: ${String(err)}`);
   }
@@ -305,7 +346,8 @@ async function main(): Promise<void> {
     const adm = await session.client.POST("/api/v1/admissions", {
       body: { patientId, intakeMethod: "transfer_in", hospiceMedicalDirectorId: HOSPICE_MD },
     });
-    if (adm.error || !adm.data) throw new Error(`admission create failed: ${JSON.stringify(adm.error)}`);
+    if (adm.error || !adm.data)
+      throw new Error(`admission create failed: ${JSON.stringify(adm.error)}`);
     const xfer = await session.client.POST("/api/v1/admissions/{id}/transfer-in", {
       params: { path: { id: adm.data.id } },
       body: {
@@ -383,13 +425,16 @@ async function main(): Promise<void> {
       body: {
         reason: "death",
         dischargeDate: today(),
-        narrative: "Patient died peacefully at home with family present; hospice team in attendance.",
+        narrative:
+          "Patient died peacefully at home with family present; hospice team in attendance.",
         deathCertifierId: HOSPICE_MD,
       },
     });
     if (dc.error) throw new Error(`death discharge failed: ${JSON.stringify(dc.error)}`);
     await syncPatientStatus(patientId, "deceased", today());
-    log.ok("Fairbanks: admitted + activated, then death discharge (should seed M16 bereavement eligibility)");
+    log.ok(
+      "Fairbanks: admitted + activated, then death discharge (should seed M16 bereavement eligibility)",
+    );
   } catch (err) {
     log.fail(`Fairbanks: ${String(err)}`);
   }

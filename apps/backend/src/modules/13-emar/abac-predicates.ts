@@ -64,14 +64,16 @@ function disciplineKey(d: string): string {
 }
 
 /**
- * Assemble the actor's clinical-discipline set from session roles/attributes (never client input), normalized
- * to lower-case. Reads `attributes.disciplines` first, then the role tokens — the M12 precedent.
+ * Assemble the actor's clinical-discipline set from the session role keys (never client input), normalized
+ * to lower-case (the M12 precedent).
+ *
+ * Derived from the ROLE KEYS M2 assembled onto the request context. It USED to union in an
+ * `attributes.disciplines` array first; nothing in the platform has ever written that key, so the union was
+ * with the empty set on every request ever served, and the role arm has been the whole answer all along
+ * (F-030). See `07-care-plan/abac-predicates.ts` for the full argument.
  */
 export function actorDisciplinesOf(context: AbacContext): readonly string[] {
-  const fromAttributes = Array.isArray(context.attributes.disciplines)
-    ? context.attributes.disciplines.filter((x): x is string => typeof x === "string")
-    : [];
-  return [...new Set([...fromAttributes, ...context.roles])].map(disciplineKey);
+  return [...new Set(context.roles)].map(disciplineKey);
 }
 
 /** The witness facts the resolver loads about the token-minting caller before `administration_witness` writes. */

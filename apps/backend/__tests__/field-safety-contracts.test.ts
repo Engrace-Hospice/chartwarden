@@ -378,11 +378,19 @@ describe("§4.10 outbox catalog", () => {
 
   it("subscribes to the inbound triggers under their producers' REAL names", () => {
     const subscribed = M20_SUBSCRIBED_EVENT_NAMES as readonly string[];
-    // §4.8 spells this `m36.delivery_failed`; M36 emits the three-segment form.
+    // §4.8 spells this `m36.delivery_failed`; the three-segment form is the one M20 uses. F-094/#205:
+    // M36 emits NEITHER — it contributes no event catalog to the boot dispatcher at all — which is why
+    // the name is a registered `no-producer` entry in `scripts/outbox-subscription-exceptions.ts`. Kept
+    // here because `lifecycle/sos-alert.ts` defines a `delivery_failed` SOS escalation reason for it.
     expect(subscribed).toContain("m36.notification.delivery_failed");
-    // §3.1 names the retired M19-F12 pair (`m19.on_call_shift.opened` / `.closed`).
-    expect(subscribed).toContain("m19.oncall_shift.activated");
+    // §3.1 names the retired M19-F12 pair (`m19.on_call_shift.opened` / `.closed`), and the canonical
+    // topics are `m19.oncall_shift.activated` / `.completed`. F-094/#205 dropped BOTH rather than
+    // correcting the name: `consumers/index.ts` has always said there is nothing to consume — they were
+    // the re-sync trigger for a CACHED on-call resolution and M20 caches none — so a subscription to
+    // either was a claim M20's own consumer barrel contradicts.
     expect(subscribed).not.toContain("m19.on_call_shift.opened");
+    expect(subscribed).not.toContain("m19.oncall_shift.activated");
+    expect(subscribed).not.toContain("m19.oncall_shift.completed");
     for (const name of subscribed) expect(name.split(".")).toHaveLength(3);
   });
 

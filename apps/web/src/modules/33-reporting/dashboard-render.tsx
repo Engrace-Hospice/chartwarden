@@ -28,8 +28,8 @@ import {
 
 interface TileDescriptor {
   tileKey: string;
-  displayName?: string;
-  kind?: string;
+  displayName: string;
+  kind: string;
 }
 
 interface DashboardDetail {
@@ -39,8 +39,11 @@ interface DashboardDetail {
   tileCount: number;
   shareScope: "private" | "role" | "org";
   isOrgDefault: boolean;
-  // Production projects the tile manifest; the in-memory slice exposes only the summary fields.
-  tiles?: TileDescriptor[];
+  // F-044 — the tile manifest. This used to be optional with the note "Production projects the tile
+  // manifest"; no backend projected one, in production or in the slice, and no DTO or OpenAPI response
+  // declared the field — so it was permanently undefined and the "not available in this context" branch
+  // below was the ONLY branch this screen could take. It is now part of the published contract.
+  tiles: TileDescriptor[];
 }
 
 interface TileReadResult {
@@ -90,7 +93,7 @@ export function DashboardRender(): JSX.Element {
   if (error || !detail)
     return <EmptyState title="Unavailable" description={error ?? "No dashboard."} />;
 
-  const tiles = detail.tiles ?? [];
+  const tiles = detail.tiles;
 
   return (
     <DetailPageLayout
@@ -115,7 +118,7 @@ export function DashboardRender(): JSX.Element {
       {tiles.length === 0 ? (
         <EmptyState
           title="No tiles"
-          description={`This dashboard declares ${detail.tileCount} tile(s); the tile manifest is not available in this context.`}
+          description="This dashboard's report definition resolves to no report base, so it has no tile to read."
         />
       ) : (
         <div
@@ -135,6 +138,60 @@ export function DashboardRender(): JSX.Element {
 }
 
 // ── tile frame — reads its own aggregate + freshness, renders the §6.6 freshness pill + drilldown ─────
+/**
+ * The tile's FIGURES — the aggregate the tile was read for.
+ *
+ * This card used to render `result.rowCount` under the label "aggregate rows", and a KPI spec has no
+ * dimensions, so that number is 1 for every tile that returns anything at all. The measures the tile
+ * actually computed sat unread in `result.result[0]`. "A reporting module that cannot return a number is
+ * not a reporting module" was the finding; returning the number and then rendering the row count instead
+ * is the same outcome by a shorter route.
+ *
+ * A tile WITH dimensions returns one row per group, and a single card cannot show a table — those keep the
+ * row count, which is the honest summary of a grouped result, with the drilldown as the way in.
+ */
+function TileFigures({ result }: { result: TileReadResult | null }): JSX.Element {
+  const rows = result?.result ?? [];
+  const single = rows.length === 1 ? (rows[0] as Record<string, unknown>) : null;
+  const figures = single
+    ? Object.entries(single).filter(([, v]) => v !== null && Number.isFinite(Number(v)))
+    : [];
+
+  if (figures.length === 0) {
+    return (
+      <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem" }}>
+        <span
+          className="tabular-nums"
+          style={{ fontFamily: "var(--font-sans)", fontSize: "1.75rem", fontWeight: 600 }}
+        >
+          {result?.rowCount ?? 0}
+        </span>
+        <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
+          aggregate rows
+        </span>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: "1.5rem" }}>
+      {figures.map(([key, value]) => (
+        <div key={key} style={{ display: "flex", flexDirection: "column", gap: "0.125rem" }}>
+          <span
+            className="tabular-nums"
+            style={{ fontFamily: "var(--font-sans)", fontSize: "1.75rem", fontWeight: 600 }}
+          >
+            {Number(value).toLocaleString()}
+          </span>
+          <span style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+            {key.replace(/_/g, " ")}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function TileFrame({ tile }: { tile: TileDescriptor }): JSX.Element {
   const client = useApiClient();
   const [result, setResult] = useState<TileReadResult | null>(null);
@@ -254,17 +311,7 @@ function TileFrame({ tile }: { tile: TileDescriptor }): JSX.Element {
         </div>
       ) : (
         <>
-          <div style={{ display: "flex", alignItems: "baseline", gap: "0.5rem" }}>
-            <span
-              className="tabular-nums"
-              style={{ fontFamily: "var(--font-sans)", fontSize: "1.75rem", fontWeight: 600 }}
-            >
-              {result?.rowCount ?? 0}
-            </span>
-            <span style={{ fontSize: "0.8rem", color: "var(--color-on-surface-variant)" }}>
-              aggregate rows
-            </span>
-          </div>
+          <TileFigures result={result} />
           <div
             style={{
               display: "flex",

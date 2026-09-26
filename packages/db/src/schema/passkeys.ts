@@ -23,7 +23,12 @@ export const passkey = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    name: text("name").notNull(), // user-given label, e.g. "iPhone Face ID"
+    // Nullable (migration 0234, F-081): a user-given label, e.g. "iPhone Face ID". Better Auth's
+    // passkey plugin takes it as OPTIONAL and inserts the column default when absent, and this was
+    // NOT NULL with no default — so every enrolment 23502'd and the platform's only enrollable
+    // step-up factor could not be enrolled at all. The management screen already renders
+    // `name ?? "Passkey"`.
+    name: text("name"),
     credentialId: text("credential_id").notNull(), // base64url
     publicKey: text("public_key").notNull(), // COSE public key, base64url
     counter: bigint("counter", { mode: "number" }).notNull().default(0),

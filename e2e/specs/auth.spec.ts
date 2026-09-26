@@ -10,6 +10,14 @@ test.describe("Authentication", () => {
     await expect(page.getByRole("searchbox", { name: "Global search" })).toBeVisible();
   });
 
+  /**
+   * NOTE FOR LOCAL ITERATION (F-081): this test spends one of `admin@`'s five failed-login attempts,
+   * and `CREDENTIAL_THROTTLE_POLICY` is `perUsernameLimit: 5` over a 10-minute window. Run the whole
+   * suite five times inside ten minutes and the account locks — after which every one of the 24 specs
+   * that signs in as the administrator fails as a bare 30-second timeout with nothing on screen to say
+   * why. That is the control working, not a defect, and CI (one run, fresh Valkey) never sees it; the
+   * local fix is `redis-cli DEL ratelimit:login:user:<sha256(email)[0..32]>` or simply waiting.
+   */
   test("denied path: wrong password shows an inline error, no navigation", async ({ page }) => {
     const account = ADMIN_ACCOUNT();
     await page.goto("/login");

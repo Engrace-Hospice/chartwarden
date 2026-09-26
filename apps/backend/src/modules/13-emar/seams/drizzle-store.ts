@@ -219,7 +219,7 @@ export function createDrizzleEmarSeamStore(db: DbClient): EmarSeamStore {
           .select()
           .from(ADM)
           .where(eq(ADM.patientId, patientId))
-          .orderBy(asc(ADM.administeredAt), asc(ADM.id));
+          .orderBy(asc(ADM.administeredAt), asc(ADM.recordedAt), asc(ADM.id));
         return rows.map(toAdministrationDto);
       });
     },
@@ -230,7 +230,7 @@ export function createDrizzleEmarSeamStore(db: DbClient): EmarSeamStore {
           .select()
           .from(ADM)
           .where(eq(ADM.medicationOrderId, medicationOrderId))
-          .orderBy(asc(ADM.administeredAt), asc(ADM.id));
+          .orderBy(asc(ADM.administeredAt), asc(ADM.recordedAt), asc(ADM.id));
         return rows.map(toAdministrationDto);
       });
     },
@@ -390,7 +390,7 @@ export function createDrizzleEmarSeamStore(db: DbClient): EmarSeamStore {
           .select()
           .from(ADM)
           .where(and(eq(ADM.ivSessionId, ivSessionId), ne(ADM.status, "voided")))
-          .orderBy(asc(ADM.administeredAt), asc(ADM.id));
+          .orderBy(asc(ADM.administeredAt), asc(ADM.recordedAt), asc(ADM.id));
         const first = segs[0];
         if (!first) return null;
         const stop = segs.find((s) => s.mode === "iv_continuous_stop");

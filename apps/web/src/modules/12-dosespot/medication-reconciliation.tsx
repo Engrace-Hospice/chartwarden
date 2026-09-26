@@ -54,9 +54,7 @@ export function MedicationReconciliation(): JSX.Element {
   }, [load]);
 
   return (
-    <PatientWorkspaceLayout
-      banner={<PageHeader title="Medication Reconciliation" />}
-    >
+    <PatientWorkspaceLayout banner={<PageHeader title="Medication Reconciliation" />}>
       {error ? (
         <EmptyState title="Unavailable" description={error} />
       ) : loading && items.length === 0 ? (

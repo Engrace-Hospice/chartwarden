@@ -9,7 +9,9 @@ import { asc, eq } from "drizzle-orm";
 
 const SENSITIVE_IDENTIFIER_KINDS = new Set<PatientIdentifierKind>(["ssn", "state_id"]);
 
-export function buildPatientHopeAdmissionPrefillReader(db: DbClient): PatientHopeAdmissionPrefillReader {
+export function buildPatientHopeAdmissionPrefillReader(
+  db: DbClient,
+): PatientHopeAdmissionPrefillReader {
   const P = schema.patients;
   const ID = schema.patientIdentifiers;
   const COMM = schema.patientCommunicationPreferences;

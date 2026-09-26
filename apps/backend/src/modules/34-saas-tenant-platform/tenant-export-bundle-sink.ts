@@ -13,15 +13,21 @@
 // `sha256OfArchive`, which is only known once the archive is uploaded — see tenant-export-worker.ts's
 // §3.7 D19 comment), so a manifest-inside-the-tar design is structurally impossible under this ordering.
 import { gzipSync } from "node:zlib";
-import type { ExportBundleSink, NdjsonSink, TenantExportManifest } from "@wardenx/saas-tenant-platform";
+import type {
+  ExportBundleSink,
+  NdjsonSink,
+  TenantExportManifest,
+} from "@wardenx/saas-tenant-platform";
 import { moduleNdjsonPath, tenantExportObjectKey } from "@wardenx/saas-tenant-platform";
 import { type TarEntry, buildUstarTarball } from "./tenant-export-tar";
 
-export interface TenantExportBundlePutObject {
-  (args: { readonly organizationId: string; readonly objectKey: string; readonly bytes: Uint8Array }): Promise<{
-    readonly sha256Hex: string;
-  }>;
-}
+export type TenantExportBundlePutObject = (args: {
+  readonly organizationId: string;
+  readonly objectKey: string;
+  readonly bytes: Uint8Array;
+}) => Promise<{
+  readonly sha256Hex: string;
+}>;
 
 /** Injected clock (seconds since epoch) — overridable for deterministic tests; defaults to real time. */
 export type NowSecondsClock = () => number;

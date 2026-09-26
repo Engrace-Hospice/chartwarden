@@ -32,8 +32,7 @@ function headerAuth(request: FastifyRequest): void {
   const org = request.headers["x-test-org"];
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
-  request.context.roles =
-    typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
 }
 
 const ORG = "org_a";
@@ -50,6 +49,15 @@ const PROVIDER_ENTITY = "11111111-1111-4111-8111-111111111111";
 const OTHER_PROVIDER_ENTITY = "22222222-2222-4222-8222-222222222222";
 const LOCATION = "33333333-3333-4333-8333-333333333333";
 const OTHER_LOCATION = "44444444-4444-4444-8444-444444444444";
+// #50 — the activation-siting fixture: an admission whose elected provider entity has TWO active sites.
+const ADMISSION_READY = "adm_ready";
+const PE_MANY = "pe_many";
+const PE_OTHER = "pe_other";
+// Uuid-shaped: the activate body validates `locationId` as a uuid at the route boundary, so a
+// slice-style opaque id would be refused as VALIDATION_FAILED before the siting rule ever runs.
+const LOC_MAIN = "55555555-0000-4000-8000-000000000001";
+const LOC_IPU = "55555555-0000-4000-8000-000000000002";
+const LOC_OTHER = "55555555-0000-4000-8000-000000000009";
 
 // Grants: an intake coordinator (referral/admission writes), a clinician (reads + cti/f2f), a
 // medical director (discharge/cosign), and a compliance officer (override).
@@ -79,13 +87,11 @@ const PERMISSION_SEED = [
   },
   {
     userId: "md_1",
-    permissions: [
-      "f2f.attest",
-      "discharge.for_cause",
-      "discharge.cosign_for_cause",
-    ],
+    permissions: ["f2f.attest", "discharge.for_cause", "discharge.cosign_for_cause"],
   },
   { userId: "co_1", permissions: ["compliance.read", "compliance.override"] },
+  // #50 — an intake user who may activate, for the service-location siting tests below.
+  { userId: "act_1", permissions: ["admission.read", "admission.activate"] },
 ];
 
 function makeServer(
@@ -156,7 +162,54 @@ function makeServer(
         kind: "location",
         providerEntityId: OTHER_PROVIDER_ENTITY,
       },
+      // #50 — a gate-ready admission under a MULTI-location provider entity. The readiness gate requires
+      // a location before activation, so it is already sited (as `updateAdmission` would have done).
+      {
+        id: ADMISSION_READY,
+        organizationId: ORG,
+        kind: "admission",
+        state: "notice_of_rights_acknowledged",
+        patientId: "pat_ready",
+        admissionAt: "2026-06-02T00:00:00Z",
+        providerEntityId: PE_MANY,
+        locationId: LOC_MAIN,
+      },
+      {
+        id: "ep_ready",
+        organizationId: ORG,
+        kind: "election_period",
+        state: "active",
+        admissionId: ADMISSION_READY,
+        sequence: 1,
+      },
+      {
+        id: "es_ready",
+        organizationId: ORG,
+        kind: "election_statement",
+        state: "signed",
+        admissionId: ADMISSION_READY,
+        electionPeriodId: "ep_ready",
+      },
+      {
+        id: "nor_ready",
+        organizationId: ORG,
+        kind: "nor",
+        state: "acknowledged",
+        admissionId: ADMISSION_READY,
+        acknowledgedByRole: "patient",
+        deliveryMethod: "electronic_witnessed",
+      },
+      {
+        id: "cti_ready",
+        organizationId: ORG,
+        kind: "cti",
+        state: "signed",
+        admissionId: ADMISSION_READY,
+        electionPeriodId: "ep_ready",
+      },
     ],
+    // #50 — the M1 location directory the Drizzle backend reads through an injected port.
+    providerEntityLocations: { [PE_MANY]: [LOC_MAIN, LOC_IPU], [PE_OTHER]: [LOC_OTHER] },
   });
 
   const grantStore = createInMemoryEffectivePermissionStore(
@@ -187,8 +240,7 @@ function makeServer(
     resolver: backend.resolver,
     isInCaseload: options.isInCaseload ?? (async () => true),
   });
-  for (const [name, fn] of Object.entries(predicates))
-    registry.register(name, fn);
+  for (const [name, fn] of Object.entries(predicates)) registry.register(name, fn);
   registerAbacRegistry(registry);
 
   const app = buildServer({
@@ -366,9 +418,47 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     expect(body.admission?.id).toBe(ADMISSION);
     expect(Array.isArray(body.periods)).toBe(true);
     // The seeded admission has an open compliance window → it surfaces on the aggregate.
-    expect(
-      body.complianceWindows.some((w: { id: string }) => w.id === WINDOW),
-    ).toBe(true);
+    expect(body.complianceWindows.some((w: { id: string }) => w.id === WINDOW)).toBe(true);
+    await app.close();
+  });
+
+  it("GET /patients/:patientId/admissions resolves the admission every clinical create is keyed by (F-065)", async () => {
+    // Nothing could answer "which admission am I documenting against" for a patient: the org-wide
+    // census takes no patient filter and its items carry `{ id, state, version }` with no `patientId`,
+    // and the patient read carries no admission. So `POST /medication-orders`, `POST /encounters` and
+    // `POST /care-plans` — all keyed by `admissionId` — had no way to obtain one for a first record.
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT_A}/admissions`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items.map((a: { id: string }) => a.id)).toContain(ADMISSION);
+  });
+
+  it("a patient with no admissions gets an EMPTY list, not a 404 (F-065)", async () => {
+    // An empty list is the truthful answer; a 404 would leak whether the patient exists at all.
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/patients/00000000-0000-4000-8000-000000000000/admissions",
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toEqual([]);
+  });
+
+  it("denies /patients/:patientId/admissions without admission.read (403)", async () => {
+    // `CO` (compliance officer) is the seeded actor with no `admission.read` — INTAKE holds it, which
+    // is correct: an intake coordinator reads admissions by definition.
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT_A}/admissions`,
+      headers: CO,
+    });
+    expect(res.statusCode).toBe(403);
     await app.close();
   });
 
@@ -632,7 +722,7 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
       },
     });
     expect(res.statusCode).toBe(201);
-    expect(res.json().state).toBe("active");
+    expect(res.json<{ state: string }>().state).toBe("active");
     await app.close();
   });
 
@@ -694,6 +784,58 @@ describe("M6-T06 — admission routes (§4.1–4.2, §4.5 gating)", () => {
     });
     expect(confirmed.statusCode).toBe(200);
     expect(confirmed.json().state).toBe("active");
+    await app.close();
+  });
+});
+
+// ── #50 — activation sites the admission at a service location ─────────────────────────────────────
+//
+// `admission.location_id` was never written by any code path, so every admission was unsited and M10
+// refused to create its HOPE timepoint windows (`hope_timepoint_schedule.location_id` is NOT NULL).
+// These assert the HTTP surface: the route carries `locationId` through and renders each refusal.
+describe("M6 — #50 the activation route sites the admission", () => {
+  const ACTIVATOR = { "x-test-user": "act_1", "x-test-org": ORG, "x-test-roles": "clinical_rn" };
+  const codeOf = (res: { json(): { error?: { code?: string } } }): string | undefined =>
+    res.json().error?.code;
+  const activate = (
+    app: { inject: (o: unknown) => Promise<{ statusCode: number; json<T = unknown>(): T }> },
+    body: Record<string, unknown>,
+  ) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/admissions/${ADMISSION_READY}/activate`,
+      headers: ACTIVATOR,
+      payload: body,
+    });
+
+  it("keeps the location the admission was already sited at when none is named", async () => {
+    // The hospice has several sites; activation does not re-pick one when the admission-details step
+    // already sited it (the readiness gate requires that before activation).
+    const { app, backend } = makeServer();
+    const res = await activate(app, { ifVersion: 1 });
+    expect(res.statusCode).toBe(200);
+    const detail = await backend.service.getAdmission(ORG, ADMISSION_READY);
+    expect(detail?.locationId).toBe(LOC_MAIN);
+    await app.close();
+  });
+
+  it("activates and sites the admission when a valid location is named", async () => {
+    const { app, backend } = makeServer();
+    const res = await activate(app, { ifVersion: 1, locationId: LOC_IPU });
+    expect(res.statusCode).toBe(200);
+    expect(res.json<{ state: string }>().state).toBe("active");
+    // The route carried `locationId` through to the service — asserted on the record, not the response,
+    // because a route that silently dropped the field would still return 200.
+    const detail = await backend.service.getAdmission(ORG, ADMISSION_READY);
+    expect(detail?.locationId).toBe(LOC_IPU);
+    await app.close();
+  });
+
+  it("refuses a location that belongs to another provider entity", async () => {
+    const { app } = makeServer();
+    const res = await activate(app, { ifVersion: 1, locationId: LOC_OTHER });
+    expect(res.statusCode).toBe(422);
+    expect(codeOf(res)).toBe("M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY");
     await app.close();
   });
 });

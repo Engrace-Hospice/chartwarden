@@ -10,17 +10,13 @@
 // the M1-owned `session` table) and the effective policy for the operation, which is the platform floor
 // `STEP_UP_POLICY` tightened by the tenant's `tenant_step_up_policy_override` row (§4.3.2, D9) — then to
 // the pure `isStepUpRecent` decision (packages/auth · step-up.ts). Fail-closed throughout: no session id
-// on the request, no org, or a missing/stale/non-qualifying step-up all deny. Registered once,
+// on the request, no org, or a missing/stale/non-qualifying step-up all deny — the whole resolution is
+// `stepUpFreshFor` (apps/backend/src/bootstrap/step-up.ts), shared with the routes that need the same
+// answer as a BOOLEAN rather than as a guard (F-028). Registered once,
 // idempotently (the registry is single-owner / no-clear, so re-boot in tests is idempotent via
 // `registerPredicateIdempotent`).
-import {
-  type AbacContext,
-  type AbacTarget,
-  isStepUpRecent,
-  registerPredicateIdempotent,
-} from "@wardenx/auth";
-import { STEP_UP_POLICY } from "@wardenx/types";
-import { getSeam } from "../../bootstrap/index";
+import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import { STEP_UP_FLOOR_KEY, stepUpFreshFor } from "../../bootstrap/index";
 
 /** The single predicate name M3 owns for the step-up ceremony (the §4.2.1 freshness gate). */
 export const M3_STEP_UP_PREDICATE = "step_up_recent";
@@ -32,7 +28,7 @@ export const M3_STEP_UP_PREDICATE = "step_up_recent";
  * own configuration — so it resolves to the platform floor, which is the correct reading of an
  * unnamed operation: unconfigurable, therefore un-tightenable, therefore the floor.
  */
-export const M3_STEP_UP_FLOOR_KEY = "__unspecified__";
+export const M3_STEP_UP_FLOOR_KEY = STEP_UP_FLOOR_KEY;
 
 /** The M3-BASE org-scoping predicate name. The predicate itself is INTRINSIC — seeded into every
  *  registry from `@wardenx/auth` (`M3_INTRINSIC_PREDICATES`), beside provider_entity_scope /
@@ -52,32 +48,22 @@ export function registerAuthorizationAbacPredicates(deps: { now?: () => number }
   registerPredicateIdempotent(
     M3_STEP_UP_PREDICATE,
     async (context: AbacContext, target: AbacTarget) => {
-      const sessionId =
-        typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null;
-      if (!sessionId || !context.organizationId) return false; // fail-closed
-      const scope = { orgId: context.organizationId };
-      const resolver = getSeam("SessionContextResolver");
-      // AC-03 — the per-operation tightening is ON the live path now. `requireStepUp(opKey)` puts
-      // the operation key in the target, M2 resolves `tenant_step_up_policy_override` for it, and
-      // the result is the floor INTERSECTED/MIN'd with the tenant's row. Before this the raw floor
-      // was evaluated and a tenant's tightening was silently ignored — the table has never been
-      // read by anything. An unkeyed call (no operationKey) resolves the floor, same as before.
-      const operationKey =
-        typeof target.operationKey === "string" ? target.operationKey : M3_STEP_UP_FLOOR_KEY;
-      const [state, policy] = await Promise.all([
-        resolver.resolveStepUpState(scope, sessionId),
-        resolver.resolveStepUpPolicy(scope, operationKey),
-      ]);
-      // `isStepUpRecent` reads a `StepUpPolicy`; the resolved policy carries only the two fields
-      // that tighten, so the lockout knobs come from the floor unchanged (they are not per-operation).
-      return isStepUpRecent(
-        state,
+      // AC-03 — the per-operation tightening is ON the live path. `requireStepUp(opKey)` puts the
+      // operation key in the target, M2 resolves `tenant_step_up_policy_override` for it, and the
+      // result is the floor INTERSECTED/MIN'd with the tenant's row. An unkeyed call resolves the
+      // floor. The resolution itself lives in `stepUpFreshFor` (bootstrap/step-up.ts) so that this
+      // predicate and the routes that need the same answer as a BOOLEAN (for a pure domain guard,
+      // where a preHandler cannot express it) cannot drift apart — F-028, which found three routes
+      // answering it from a client-supplied `x-step-up` header instead.
+      return stepUpFreshFor(
         {
-          ...STEP_UP_POLICY,
-          qualifyingFactors: policy.qualifyingFactors,
-          defaultMaxAgeSec: policy.maxAgeSec,
+          organizationId: context.organizationId,
+          sessionId:
+            typeof context.attributes.sessionId === "string" ? context.attributes.sessionId : null,
+          operationKey:
+            typeof target.operationKey === "string" ? target.operationKey : M3_STEP_UP_FLOOR_KEY,
         },
-        now(),
+        now,
       );
     },
   );

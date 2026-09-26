@@ -85,6 +85,7 @@ export {
 
 export {
   type M33ReadDrizzleDeps,
+  type ReportScopeResolverPort,
   type TileSqlExecutor,
   createDrizzleM33ReadBackend,
 } from "./read-service-drizzle";

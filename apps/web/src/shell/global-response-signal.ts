@@ -11,11 +11,39 @@ type Listener = () => void;
 let current: GlobalResponseSignal = null;
 const listeners = new Set<Listener>();
 
-/** Map an observed HTTP status to a shell-level signal, or null for statuses the shell ignores. */
-export function signalForStatus(status: number): GlobalResponseSignal {
-  if (status === 401) return { kind: "session-expired" };
+/**
+ * Routes whose 401 does NOT mean the session is gone (F-081).
+ *
+ * `POST /api/v1/sessions/step-up` answers 401 `step_up_failed` for a factor that did not verify — a
+ * wrong TOTP code, a cancelled passkey. The session behind it is fine; that route has its OWN terminal
+ * answer for the case where it is not (423 `session_locked`, after `STEP_UP_POLICY.lockoutThreshold`
+ * consecutive failures). Treating the 401 as session death bounced the user to `/expired` on their
+ * FIRST mistake, which made the lockout counter unreachable — attempts 2 and 3 could never happen —
+ * and made the screen's own "That code didn't verify. Try again" branch dead code.
+ */
+const NOT_SESSION_DEATH_ON_401 = ["/api/v1/sessions/step-up", "/api/v1/portal/sessions/step-up"];
+
+/** Map an observed HTTP status (and the URL it came from) to a shell-level signal, or null. */
+export function signalForStatus(status: number, url?: string): GlobalResponseSignal {
+  if (status === 401) {
+    // Exact path match, not a prefix: `/step-up/initiate` is a different route and its 401 — which
+    // only a genuinely dead session produces — must still sign the user out.
+    const path = pathOf(url);
+    if (path !== undefined && NOT_SESSION_DEATH_ON_401.includes(path)) return null;
+    return { kind: "session-expired" };
+  }
   if (status === 503) return { kind: "service-unavailable" };
   return null;
+}
+
+/** The pathname of an observed response URL, or undefined when there is nothing parseable. */
+function pathOf(url: string | undefined): string | undefined {
+  if (!url) return undefined;
+  try {
+    return new URL(url, "http://localhost").pathname;
+  } catch {
+    return undefined;
+  }
 }
 
 export function setGlobalResponseSignal(signal: GlobalResponseSignal): void {

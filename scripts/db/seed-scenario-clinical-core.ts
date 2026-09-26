@@ -9,11 +9,19 @@
  * physician-eligible actions and the second care-plan signature.
  *
  * Genuine platform gaps hit and worked around/documented, not silently papered over:
- *   - M8 encounter SIGNING is unreachable — `requireStepUp` gates it, and the step-up routes
- *     (`POST /api/v1/sessions/step-up/initiate` / `/step-up`) are implemented but never mounted in
- *     the composition root (confirmed by reading `apps/backend/src/index.ts` — `registerSessionStepUpRoutes`
- *     is never imported there, unlike every other module's route mount). Encounters here are created
- *     + vitals captured + finalized, but stop at `finalized` rather than `signed`.
+ *   - M8 encounter SIGNING is unreachable from a seed: `requireStepUp` gates it and a step-up is a
+ *     live re-authentication ceremony (WebAuthn assertion or a TOTP code) that a script cannot perform.
+ *     The routes themselves are mounted as of #90 — the older note here that they were never mounted
+ *     is no longer true. Encounters stop at `finalized` rather than `signed`.
+ *   - M8 FINALIZE pins the assembled narrative under the tenant DEK (#122). This used to refuse with
+ *     503 HEARTHNOTE_CIPHER_UNBOUND on every local stack and the note here blamed #105, the unbound
+ *     KEK adapter. That was wrong twice over: #105 was fixed when `bootstrap/tenant-kek.ts` landed,
+ *     and the KEK was never the missing piece. Two things were — a `tenant_key_ring` row, which the
+ *     base seed did not create because it INSERTs its organization directly rather than provisioning
+ *     it through M34 (F-082, now fixed in `seed.ts`), and `DATABASE_PLATFORM_URL`, because migration
+ *     0052 §5 REVOKES `wardenx_app`'s SELECT on that table by design so only the platform credential
+ *     can resolve a wrapped DEK. With both configured the finalize succeeds; the ⊘ branch below is
+ *     kept because a stack with no `M34_TENANT_KEK` still legitimately reaches it.
  *   - M9's scale scorer only implements 4 of 14 scale types (`pps`, `fast`, `painad`, `esas_r`) —
  *     every other `scaleType` 500s (`SCALE_SCORER_UNAVAILABLE`). Only those 4 are used here.
  *     `pps`/`fast` also need an active `scale_license` row first (D3) — created here.
@@ -25,8 +33,9 @@
  * Prereqs: bun run db:seed:staff, db:seed:scenario-admissions (Whitfield must be active).
  * Run:     bun run db:seed:scenario-clinical
  */
+import { resolveTemplate } from "@wardenx/hearthnote";
 import { Client } from "pg";
-import { findPatientIdByLastName, ScenarioLog, signIn } from "./lib/api-session";
+import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const today = (): string => new Date().toISOString().slice(0, 10);
@@ -49,10 +58,13 @@ async function wipePriorCarePlan(patientId: string): Promise<void> {
     );
     const versionIds = versions.rows.map((r) => r.id);
     if (versionIds.length) {
-      await db.query("DELETE FROM care_plan_idg_decision_application WHERE care_plan_version_id = ANY($1)", [
+      await db.query(
+        "DELETE FROM care_plan_idg_decision_application WHERE care_plan_version_id = ANY($1)",
+        [versionIds],
+      );
+      await db.query("DELETE FROM care_plan_signature WHERE care_plan_version_id = ANY($1)", [
         versionIds,
       ]);
-      await db.query("DELETE FROM care_plan_signature WHERE care_plan_version_id = ANY($1)", [versionIds]);
     }
     await db.query("DELETE FROM intervention WHERE care_plan_id = ANY($1)", [planIds]);
     await db.query("DELETE FROM goal WHERE care_plan_id = ANY($1)", [planIds]);
@@ -75,7 +87,13 @@ async function wipePriorEncountersAssessmentsHope(patientId: string): Promise<vo
   ]);
   const encIds = encs.rows.map((r) => r.id);
   if (encIds.length) {
-    for (const t of ["vitals", "mileage", "encounter_addendum", "encounter_care_plan_link", "encounter_signature"]) {
+    for (const t of [
+      "vitals",
+      "mileage",
+      "encounter_addendum",
+      "encounter_care_plan_link",
+      "encounter_signature",
+    ]) {
       await db.query(`DELETE FROM ${t} WHERE encounter_id = ANY($1)`, [encIds]);
     }
     await db.query("DELETE FROM encounter WHERE id = ANY($1)", [encIds]);
@@ -99,9 +117,10 @@ async function main(): Promise<void> {
   const cert = await rn.client.GET("/api/v1/patients/{patientId}/election-certification", {
     params: { path: { patientId } },
   });
-  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)?.admission
-    ?.id;
-  if (!admissionId) throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
+  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)
+    ?.admission?.id;
+  if (!admissionId)
+    throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
 
   console.log("wiping any prior encounters/assessments/HOPE for a clean re-run...");
   await wipePriorEncountersAssessmentsHope(patientId);
@@ -115,81 +134,87 @@ async function main(): Promise<void> {
     });
     if (boot.error) {
       throw new Error(`care-plan bootstrap failed: ${JSON.stringify(boot.error)}`);
-    } else {
-      const bootData = boot.data as unknown as { id: string };
-      const planId = bootData.id;
+    }
+    const bootData = boot.data as unknown as { id: string };
+    const planId = bootData.id;
 
-      const problem = await rn.client.POST("/api/v1/care-plans/{planId}/problems", {
-        params: { path: { planId } },
-        body: {
-          description: "Metastatic non-small cell lung cancer with progressive functional decline.",
-          kind: "terminal",
-          source: "clinical",
-          icd10Code: "C34.90",
-        },
-      });
-      const problemData = problem.data as unknown as { id: string } | undefined;
-      if (problem.error || !problemData) throw new Error(`problem create failed: ${JSON.stringify(problem.error)}`);
+    const problem = await rn.client.POST("/api/v1/care-plans/{planId}/problems", {
+      params: { path: { planId } },
+      body: {
+        description: "Metastatic non-small cell lung cancer with progressive functional decline.",
+        kind: "terminal",
+        source: "clinical",
+        icd10Code: "C34.90",
+      },
+    });
+    const problemData = problem.data as unknown as { id: string } | undefined;
+    if (problem.error || !problemData)
+      throw new Error(`problem create failed: ${JSON.stringify(problem.error)}`);
 
-      const painProblem = await rn.client.POST("/api/v1/care-plans/{planId}/problems", {
-        params: { path: { planId } },
-        body: {
-          description: "Chronic pain related to metastatic disease, poorly controlled.",
-          kind: "related",
-          source: "clinical",
-        },
-      });
-      const painProblemData = painProblem.data as unknown as { id: string } | undefined;
+    const painProblem = await rn.client.POST("/api/v1/care-plans/{planId}/problems", {
+      params: { path: { planId } },
+      body: {
+        description: "Chronic pain related to metastatic disease, poorly controlled.",
+        kind: "related",
+        source: "clinical",
+      },
+    });
+    const painProblemData = painProblem.data as unknown as { id: string } | undefined;
 
-      await rn.client.POST("/api/v1/care-plans/{planId}/goals", {
-        params: { path: { planId } },
-        body: {
-          problemId: problemData.id,
-          originalText: "Patient will report pain at or below 3/10 on a 0-10 scale through end of life.",
-          source: "clinical",
-          measurableOutcome: "Pain score ≤3/10 on daily assessment.",
-        },
-      });
+    await rn.client.POST("/api/v1/care-plans/{planId}/goals", {
+      params: { path: { planId } },
+      body: {
+        problemId: problemData.id,
+        originalText:
+          "Patient will report pain at or below 3/10 on a 0-10 scale through end of life.",
+        source: "clinical",
+        measurableOutcome: "Pain score ≤3/10 on daily assessment.",
+      },
+    });
 
+    await rn.client.POST("/api/v1/care-plans/{planId}/interventions", {
+      params: { path: { planId } },
+      body: {
+        problemId: problemData.id,
+        scopeText:
+          "RN case management visits to assess symptom burden and coordinate the IDG plan of care.",
+        frequencyText: "Twice weekly",
+        frequencyValue: "2x/week",
+        discipline: "rn",
+      },
+    });
+    if (painProblemData) {
       await rn.client.POST("/api/v1/care-plans/{planId}/interventions", {
         params: { path: { planId } },
         body: {
-          problemId: problemData.id,
-          scopeText: "RN case management visits to assess symptom burden and coordinate the IDG plan of care.",
-          frequencyText: "Twice weekly",
-          frequencyValue: "2x/week",
+          problemId: painProblemData.id,
+          scopeText:
+            "Titrate comfort medications per physician orders; reassess pain at every visit.",
+          frequencyText: "Every visit",
+          frequencyValue: "PRN",
           discipline: "rn",
         },
       });
-      if (painProblemData) {
-        await rn.client.POST("/api/v1/care-plans/{planId}/interventions", {
-          params: { path: { planId } },
-          body: {
-            problemId: painProblemData.id,
-            scopeText: "Titrate comfort medications per physician orders; reassess pain at every visit.",
-            frequencyText: "Every visit",
-            frequencyValue: "PRN",
-            discipline: "rn",
-          },
-        });
-      }
+    }
 
-      type PlanRead = {
-        versions?: Array<{ id: string; status: string; version: number }>;
-      };
-      const readDraftVersion = async (): Promise<{ id: string; version: number }> => {
-        const read = await rn.client.GET("/api/v1/patients/{patientId}/care-plan", {
-          params: { path: { patientId } },
-        });
-        const v = (read.data as unknown as PlanRead | undefined)?.versions?.find(
-          (x) => x.status === "draft" || x.status === "in_review",
-        );
-        if (!v) throw new Error("no draft/in_review care-plan version found");
-        return { id: v.id, version: v.version };
-      };
+    type PlanRead = {
+      versions?: Array<{ id: string; status: string; version: number }>;
+    };
+    const readDraftVersion = async (): Promise<{ id: string; version: number }> => {
+      const read = await rn.client.GET("/api/v1/patients/{patientId}/care-plan", {
+        params: { path: { patientId } },
+      });
+      const v = (read.data as unknown as PlanRead | undefined)?.versions?.find(
+        (x) => x.status === "draft" || x.status === "in_review",
+      );
+      if (!v) throw new Error("no draft/in_review care-plan version found");
+      return { id: v.id, version: v.version };
+    };
 
-      const v1 = await readDraftVersion();
-      const finalize = await rn.client.POST("/api/v1/care-plans/{planId}/versions/{versionId}/finalize", {
+    const v1 = await readDraftVersion();
+    const finalize = await rn.client.POST(
+      "/api/v1/care-plans/{planId}/versions/{versionId}/finalize",
+      {
         params: { path: { planId, versionId: v1.id } },
         body: {
           ifVersion: v1.version,
@@ -198,25 +223,34 @@ async function main(): Promise<void> {
             { role: "hospice_physician", count: 1 },
           ],
         },
-      });
-      if (finalize.error) throw new Error(`care-plan finalize failed: ${JSON.stringify(finalize.error)}`);
+      },
+    );
+    if (finalize.error)
+      throw new Error(`care-plan finalize failed: ${JSON.stringify(finalize.error)}`);
 
-      const v2 = await readDraftVersion();
-      const sign1 = await rn.client.POST("/api/v1/care-plans/{planId}/versions/{versionId}/signatures", {
+    const v2 = await readDraftVersion();
+    const sign1 = await rn.client.POST(
+      "/api/v1/care-plans/{planId}/versions/{versionId}/signatures",
+      {
         params: { path: { planId, versionId: v2.id } },
         body: { ifVersion: v2.version, signerRole: "rn_case_manager" },
-      });
-      if (sign1.error) throw new Error(`RN care-plan sign failed: ${JSON.stringify(sign1.error)}`);
+      },
+    );
+    if (sign1.error) throw new Error(`RN care-plan sign failed: ${JSON.stringify(sign1.error)}`);
 
-      const v3 = await readDraftVersion();
-      const sign2 = await md.client.POST("/api/v1/care-plans/{planId}/versions/{versionId}/signatures", {
+    const v3 = await readDraftVersion();
+    const sign2 = await md.client.POST(
+      "/api/v1/care-plans/{planId}/versions/{versionId}/signatures",
+      {
         params: { path: { planId, versionId: v3.id } },
         body: { ifVersion: v3.version, signerRole: "hospice_physician" },
-      });
-      if (sign2.error) throw new Error(`MD care-plan sign failed: ${JSON.stringify(sign2.error)}`);
+      },
+    );
+    if (sign2.error) throw new Error(`MD care-plan sign failed: ${JSON.stringify(sign2.error)}`);
 
-      log.ok("Care plan: bootstrapped, 2 problems, 1 goal, 2 interventions, finalized + fully signed");
-    }
+    log.ok(
+      "Care plan: bootstrapped, 2 problems, 1 goal, 2 interventions, finalized + fully signed",
+    );
   } catch (err) {
     log.fail(`M7 care plan: ${String(err)}`);
   }
@@ -233,7 +267,8 @@ async function main(): Promise<void> {
       },
     });
     const encData = enc.data as unknown as { id: string } | undefined;
-    if (enc.error || !encData) throw new Error(`encounter create failed: ${JSON.stringify(enc.error)}`);
+    if (enc.error || !encData)
+      throw new Error(`encounter create failed: ${JSON.stringify(enc.error)}`);
 
     await rn.client.POST("/api/v1/encounters/{encounterId}/vitals", {
       params: { path: { encounterId: encData.id } },
@@ -250,12 +285,25 @@ async function main(): Promise<void> {
       },
     });
 
+    // Write the HearthNote before finalizing. The §2.6 Layer-3 gate is real now and refuses an encounter
+    // with no documentation — which is correct, and which this seed depended on NOT being true: it
+    // captured vitals and finalized a visit note that said nothing. Without this the finalize is a 422
+    // with four MISSING_SECTION details, `log.fail` sets exit 1, and `db:seed:all`'s && chain stops.
+    const template = resolveTemplate("routine_visit", "rn");
+    if (template === undefined) throw new Error("no HearthNote template for routine_visit × rn");
+    const sel = await rn.client.PATCH("/api/v1/encounters/{encounterId}/selections", {
+      params: { path: { encounterId: encData.id }, header: { "If-Match": "0" } },
+      body: {
+        sections: template.sections
+          .filter((t) => t.required)
+          .map((t) => ({ sectionId: t.id, entries: [{ code: "nv.cv.stable" }] })),
+      },
+    });
+    if (sel.error) throw new Error(`encounter selections failed: ${JSON.stringify(sel.error)}`);
+
     const fin = await rn.client.POST("/api/v1/encounters/{encounterId}/finalize", {
       params: { path: { encounterId: encData.id } },
-      body: {},
     });
-    if (fin.error) throw new Error(`encounter finalize failed: ${JSON.stringify(fin.error)}`);
-
     // A second encounter left in draft, for realism (not every visit note is finalized same-day).
     const enc2 = await rn.client.POST("/api/v1/encounters", {
       body: {
@@ -268,9 +316,22 @@ async function main(): Promise<void> {
     });
     void enc2;
 
-    log.ok(
-      "Encounters: 1 finalized visit (vitals captured), 1 draft visit — sign unreachable (step-up routes unmounted, see file header)",
-    );
+    // Finalize PINS the assembled narrative under the tenant DEK (#122). A deployment that has both
+    // halves of M34's key envelope configured — `M34_TENANT_KEK` and `DATABASE_PLATFORM_URL` — seals it
+    // and succeeds. One that has neither cannot key this tenant's PHI at all, which is a CONFIGURATION
+    // state rather than a seeding bug: name it and carry on rather than failing the whole chain.
+    const finErr = fin.error as { error?: { code?: string } } | undefined;
+    if (finErr?.error?.code === "HEARTHNOTE_CIPHER_UNBOUND") {
+      log.blocked(
+        "Encounters: 2 draft visits (vitals + HearthNote captured) — finalize refused, no tenant DEK could be resolved to seal the assembled narrative (set M34_TENANT_KEK + DATABASE_PLATFORM_URL, then re-run db:seed)",
+      );
+    } else if (fin.error) {
+      throw new Error(`encounter finalize failed: ${JSON.stringify(fin.error)}`);
+    } else {
+      log.ok(
+        "Encounters: 1 finalized visit (vitals + HearthNote captured), 1 draft visit — sign unreachable (step-up requires a live step-up ceremony this seed cannot perform)",
+      );
+    }
   } catch (err) {
     log.fail(`M8 encounters: ${String(err)}`);
   }
@@ -359,12 +420,13 @@ async function main(): Promise<void> {
         },
       },
     });
-    const hopeData = hope.data as unknown as { id: string } | undefined;
-    if (hope.error || !hopeData) throw new Error(`HOPE timepoint create failed: ${JSON.stringify(hope.error)}`);
+    const hopeData = hope.data as unknown as { id: string; version: number } | undefined;
+    if (hope.error || !hopeData)
+      throw new Error(`HOPE timepoint create failed: ${JSON.stringify(hope.error)}`);
 
     const sign = await rn.client.POST("/api/v1/hope/assessments/{id}/sign", {
       params: { path: { id: hopeData.id } },
-      body: { attestationConfirmed: true },
+      body: { ifVersion: hopeData.version, attestationConfirmed: true },
     });
     if (sign.error) throw new Error(`HOPE sign failed: ${JSON.stringify(sign.error)}`);
 

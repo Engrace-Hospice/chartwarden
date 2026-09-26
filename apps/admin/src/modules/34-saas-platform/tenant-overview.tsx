@@ -7,6 +7,7 @@ import {
   PageHeader,
   StatusPill,
   useApiClient,
+  useToast,
 } from "@wardenx/ui";
 // apps/web/src/modules/34-saas — M34 SaaS Tenant Platform, the §5.2 single-page-of-truth (R2).
 // Spec §5.2 (`/tenants/:orgSlug`) — the tenant overview: a context header (identity + lifecycle pill +
@@ -54,13 +55,26 @@ function orgSlugFromPath(): string {
   return segs[segs.length - 1] ?? "";
 }
 
+/** The route requires `destructionCertificateId` as `format: "uuid"`; "" is rejected with a 400. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** `transitionReason` / `reason` both carry a minLength of 8 in the published contract. */
+const MIN_REASON = 8;
+
 export function TenantOverview(): JSX.Element {
   const client = useApiClient();
+  const toast = useToast();
   const [orgSlug] = useState(orgSlugFromPath);
   const [tenant, setTenant] = useState<TenantOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [shredOpen, setShredOpen] = useState(false);
+  // The ceremony used to send `destructionCertificateId: ""` and a canned reason, then ignore the
+  // result — so the shred failed validation every time and the console reported success anyway
+  // (#29). These are the operator inputs the TODO in this file always said it needed.
+  const [certId, setCertId] = useState("");
+  const [shredReason, setShredReason] = useState("");
+  const [shredError, setShredError] = useState<string | null>(null);
+  const [shredBusy, setShredBusy] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,24 +98,59 @@ export function TenantOverview(): JSX.Element {
   const rotateDek = useCallback(async () => {
     const { error: err } = await client.POST("/api/v1/platform/tenants/{orgSlug}/dek-rotate", {
       params: { path: { orgSlug } },
-      // TODO(M34 web): this stub screen should collect the rotation reason from an operator input.
+      // TODO(M34 web, #29): still a canned reason — this should collect the operator's own
+      // justification, so the audit trail records why THIS rotation happened rather than a constant.
+      // Unlike the shred, this payload is valid (it clears the contract's minLength of 8) and the
+      // rotation does succeed, so it is left for the follow-up rather than fixed half-way here.
       body: { reason: "Manual DEK rotation via platform console" },
     });
-    if (!err) void load();
-  }, [client, orgSlug, load]);
+    if (err) {
+      // Previously `if (!err) void load()` — a refused rotation did nothing at all and said nothing,
+      // the same silent-failure shape as the shred (#29).
+      toast.show(errorMessage(err, "The DEK rotation was refused."), { tone: "error" });
+      return;
+    }
+    toast.show("DEK rotation enqueued.", { tone: "success" });
+    void load();
+  }, [client, orgSlug, load, toast]);
 
   const confirmShred = useCallback(async () => {
-    await client.POST("/api/v1/platform/tenants/{orgSlug}/shred", {
+    const cert = certId.trim();
+    const reason = shredReason.trim();
+    // Validated here as well as server-side so the operator gets the reason immediately, in the
+    // ceremony, rather than a silent no-op — which is precisely how the old version failed.
+    if (!UUID_RE.test(cert)) {
+      setShredError("Enter the M4 destruction-certificate id. It must be a UUID.");
+      return;
+    }
+    if (reason.length < MIN_REASON) {
+      setShredError(`Enter a transition reason of at least ${MIN_REASON} characters.`);
+      return;
+    }
+    setShredError(null);
+    setShredBusy(true);
+    const { error: err } = await client.POST("/api/v1/platform/tenants/{orgSlug}/shred", {
       params: { path: { orgSlug } },
-      // TODO(M34 web): this stub screen should collect the transition reason + destruction-certificate id.
-      body: {
-        transitionReason: "Tenant offboarding via platform console",
-        destructionCertificateId: "",
-      },
+      body: { transitionReason: reason, destructionCertificateId: cert },
     });
+    setShredBusy(false);
+    if (err) {
+      // The ceremony STAYS OPEN. A failed shred that closes the dialog is indistinguishable from a
+      // successful one, because success is a 202 that merely enqueues `tenant.shred` and leaves the
+      // tenant in `destruction_pending` — exactly what a failure leaves behind too.
+      setShredError(errorMessage(err, "The shred was refused. The tenant has NOT been shredded."));
+      return;
+    }
+    // Say what actually happened: the destruction is enqueued, not finished.
+    toast.show(
+      `Cryptographic shred enqueued for ${tenant?.legalBusinessName ?? orgSlug}. It is not complete until the job reports done.`,
+      { tone: "success" },
+    );
     setShredOpen(false);
+    setCertId("");
+    setShredReason("");
     void load();
-  }, [client, orgSlug, load]);
+  }, [client, orgSlug, load, certId, shredReason, toast, tenant]);
 
   if (loading) return <LoadingSpinner />;
   if (error || !tenant)
@@ -165,6 +214,40 @@ export function TenantOverview(): JSX.Element {
             This permanently destroys the DEK for <strong>{tenant.legalBusinessName}</strong> (
             <span className="wx-data-md">{tenant.orgSlug}</span>). All tenant PHI becomes
             cryptographically irrecoverable. This cannot be undone.
+            {/* The two values the route REQUIRES. They live in the attestation slot rather than in
+                CeremonyModal itself so the shared component (15 other call sites) is untouched. */}
+            <label htmlFor="shred-cert-id" style={ceremonyLabel}>
+              M4 destruction-certificate id
+              <input
+                id="shred-cert-id"
+                value={certId}
+                onChange={(e) => setCertId(e.target.value)}
+                placeholder="00000000-0000-0000-0000-000000000000"
+                autoComplete="off"
+                spellCheck={false}
+                aria-describedby="shred-cert-help"
+                style={ceremonyInput}
+              />
+            </label>
+            <span id="shred-cert-help" style={ceremonyHelp}>
+              The approved certificate this destruction is recorded against.
+            </span>
+            <label htmlFor="shred-reason" style={ceremonyLabel}>
+              Transition reason
+              <input
+                id="shred-reason"
+                value={shredReason}
+                onChange={(e) => setShredReason(e.target.value)}
+                placeholder="Why this tenant is being shredded now"
+                autoComplete="off"
+                style={ceremonyInput}
+              />
+            </label>
+            {shredError ? (
+              <span role="alert" style={ceremonyError}>
+                {shredError}
+              </span>
+            ) : null}
           </>
         }
         legalText="I confirm the retention period has elapsed, no legal hold is active, and the M4 destruction certificate is approved."
@@ -174,15 +257,23 @@ export function TenantOverview(): JSX.Element {
           label: "Type the legal business name to confirm",
           placeholder: tenant.legalBusinessName,
         }}
-        commitLabel="Shred tenant key"
+        commitLabel={shredBusy ? "Shredding…" : "Shred tenant key"}
         onCommit={(typed) => {
+          if (shredBusy) return;
+          // A mismatched name used to fall through to nothing at all — the same silent no-op this
+          // fix exists to remove. Say so instead.
           if (
-            (typed ?? "").trim().toLowerCase() === tenant.legalBusinessName.trim().toLowerCase()
+            (typed ?? "").trim().toLowerCase() !== tenant.legalBusinessName.trim().toLowerCase()
           ) {
-            void confirmShred();
+            setShredError("The typed name does not match the tenant's legal business name.");
+            return;
           }
+          void confirmShred();
         }}
-        onCancel={() => setShredOpen(false)}
+        onCancel={() => {
+          setShredOpen(false);
+          setShredError(null);
+        }}
       />
     </>
   );
@@ -229,6 +320,52 @@ function Card({
 const fieldLabel = { fontSize: "0.7rem", color: "var(--color-on-surface-variant)" } as const;
 const fieldValue = { fontSize: "0.9rem", color: "var(--color-on-surface)" } as const;
 const ctaButton: React.CSSProperties = { fontSize: "0.75rem" };
+
+// Ceremony inputs. Tokens only (arch:design-tokens) — no raw colour literals.
+const ceremonyLabel: React.CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.25rem",
+  marginTop: "0.75rem",
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface-variant)",
+};
+
+const ceremonyInput: React.CSSProperties = {
+  padding: "0.5rem 0.625rem",
+  borderRadius: "var(--radius-md)",
+  border: "1px solid var(--color-outline-variant)",
+  background: "var(--color-surface)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.8125rem",
+  fontWeight: 400,
+};
+
+const ceremonyHelp: React.CSSProperties = {
+  display: "block",
+  marginTop: "0.25rem",
+  fontSize: "0.7rem",
+  color: "var(--color-on-surface-variant)",
+};
+
+const ceremonyError: React.CSSProperties = {
+  display: "block",
+  marginTop: "0.75rem",
+  fontSize: "0.8125rem",
+  fontWeight: 600,
+  color: "var(--color-error)",
+};
+
+/**
+ * The server's own message when the envelope carries one, else `fallback`. A shred refusal must say
+ * WHY — "it didn't work" is barely better than the silent failure this replaces.
+ */
+function errorMessage(err: unknown, fallback: string): string {
+  const envelope = (err as { error?: { message?: unknown } } | null)?.error;
+  const message = envelope?.message;
+  return typeof message === "string" && message.trim().length > 0 ? message : fallback;
+}
 
 // ── Card 1 — Lifecycle: current status + last status event + Transition CTA ──────────────────────────
 function LifecycleCard({ tenant }: { tenant: TenantOverview }): JSX.Element {

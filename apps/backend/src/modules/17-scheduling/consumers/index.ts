@@ -13,7 +13,12 @@
 // and M14's `idg.decision_recorded` (kind `change_visit_frequency`) flow into the proposal queue and are wired by
 // the proposal task (M17-T04); the EVV `m18.evv.check_in/out_recorded` advance bindings land with M18 (Wave F).
 import { type DbClient, schema } from "@wardenx/db";
-import { transitionVisit, VISIT_GRAPH, type VisitEvent, type VisitState } from "@wardenx/scheduling";
+import {
+  VISIT_GRAPH,
+  type VisitEvent,
+  type VisitState,
+  transitionVisit,
+} from "@wardenx/scheduling";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 import type { DispatchableOutboxEvent } from "../../../bootstrap/outbox-dispatcher";
@@ -79,6 +84,13 @@ export function planVisitCompletionFromEncounter(
 export const M17_OUTBOX_SUBSCRIPTIONS = [
   // M8 bidirectional — encounter sign completes the bracketed visit (§2.2.1, system actor).
   { eventName: "m8.encounter.signed", consumerName: "m17.m8-encounter-signed" },
+  // M6 admission lifecycle — hold/resume/discharge cancel or restore future visits
+  // (`buildM17AdmissionLifecycleConsumer`, consumers/admission-lifecycle.ts).
+  { eventName: "m6.admission.on_hold", consumerName: "m17.m6-admission-lifecycle" },
+  { eventName: "m6.admission.resumed", consumerName: "m17.m6-admission-lifecycle" },
+  { eventName: "m6.admission.discharged", consumerName: "m17.m6-admission-lifecycle" },
+  // M7 signed care-plan version — frequency proposals (`buildM17CarePlanProposalConsumer`).
+  { eventName: "m7.care_plan.version_signed", consumerName: "m17.m7-care-plan-proposals" },
 ] as const;
 
 export interface M17EncounterSignedOutboxPort {
@@ -179,7 +191,9 @@ export function buildM17EncounterSignedConsumer(deps: {
             throw new Error("m17.m8-encounter-signed: encounter admission does not match visit");
           }
           if (visit.encounterId !== null && visit.encounterId !== payload.encounterId) {
-            throw new Error("m17.m8-encounter-signed: visit is already linked to a different encounter");
+            throw new Error(
+              "m17.m8-encounter-signed: visit is already linked to a different encounter",
+            );
           }
           if (visit.status === "completed" && visit.encounterId === payload.encounterId) return;
 

@@ -47,7 +47,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       sourceEncounterId: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
       isCorrection: Type.Boolean(),
     }),
-    declaredConsumers: ["m7", "m14", "m28", "m30", "m33"],
+    declaredConsumers: ["m7", "m14", "m28", "m30"],
+    seamConsumers: ["m33"],
     // ALSO live: server → patient room live chart refresh (§4.4).
     isOutboxOnly: false,
   },
@@ -62,7 +63,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       scaleType,
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m28", "m33"],
+    declaredConsumers: ["m14", "m28"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── significant-change chain (§2.4 / §4.9) ────────────────────────────────────────────────────────────
@@ -81,7 +83,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       thresholdValue: Type.Union([Type.Number(), Type.Null()]),
       severity,
     }),
-    declaredConsumers: ["m7", "m11", "m14", "m36"],
+    declaredConsumers: ["m7", "m11", "m14"],
+    seamConsumers: ["m36"],
     // ALSO live: server → patient room + care-team channel live alert banner (§4.4).
     isOutboxOnly: false,
   },
@@ -95,7 +98,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       ackAt: Type.String({ minLength: 1 }),
       note: Type.Optional(Type.String()),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -108,7 +112,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       originalDetectedAt: Type.String({ minLength: 1 }),
       escalatedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   // ── printable summary (§2.4 — M22 renders when it lands) ──────────────────────────────────────────────
@@ -136,7 +141,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       scaleType,
       expiresAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -148,7 +154,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       scaleType,
       expiredAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -160,7 +167,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       scaleType,
       changedFields: Type.Array(Type.String({ minLength: 1 })),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
 ];

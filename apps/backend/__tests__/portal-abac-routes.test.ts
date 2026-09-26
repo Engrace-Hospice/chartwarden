@@ -34,7 +34,7 @@ function ctx(overrides: Partial<AbacContext> = {}): AbacContext {
     attributes: {
       sessionClass: "caregiver_portal",
       portalAccountId: ACCOUNT,
-      portalPatientId: PATIENT,
+      sessionPatientId: PATIENT,
     },
     ...overrides,
   };
@@ -127,7 +127,7 @@ describe("M31-T07 §4.7 ABAC predicates — fail-closed", () => {
   it("a non-portal session class denies every portal predicate", async () => {
     const p = buildPortalAbacPredicates({ resolver: resolver(), ports: ports(true) });
     const staff = ctx({
-      attributes: { sessionClass: "staff", portalAccountId: ACCOUNT, portalPatientId: PATIENT },
+      attributes: { sessionClass: "staff", portalAccountId: ACCOUNT, sessionPatientId: PATIENT },
     });
     expect(await p.portal_account_active(staff, target)).toBe(false);
     expect(await p.portal_grant_active_for_patient(staff, target)).toBe(false);

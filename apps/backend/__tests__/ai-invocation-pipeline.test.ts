@@ -16,7 +16,7 @@ import {
   createEmptyModelBackendRegistry,
   createModelBackendRegistry,
 } from "@wardenx/ai-platform";
-import type { ModelBackend } from "@wardenx/ai-platform";
+import type { AnthropicDispatch, ModelBackend } from "@wardenx/ai-platform";
 import type { AiConsumerContextRef } from "@wardenx/types";
 import { VENDOR_ADAPTERS } from "../../../architecture/module-manifest";
 
@@ -691,7 +691,9 @@ describe("the Anthropic adapter (D19 / §8.4)", () => {
     probeHealth: async () => "healthy" as const,
   };
 
-  const dispatch = async () => ({
+  // Typed as the real `AnthropicDispatch`, so `transport.mock.calls[0][1]` is the resolved ZDR
+  // contract rather than an element of an empty tuple.
+  const dispatch: AnthropicDispatch = async () => ({
     text: "ok",
     inputTokens: 1,
     outputTokens: 1,

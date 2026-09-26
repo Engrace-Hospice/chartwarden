@@ -297,6 +297,10 @@ describe("compileFilters — every value binds as $n, never interpolated", () =>
 
 describe("injectScope — reportable_scope envelope binds ids, never interpolates", () => {
   const baseEnv: ReportableScopeEnvelope = { scopeKind: "org", organizationId: ORG_ID };
+  // The base's DECLARED scope columns (F-059). These used to be two file-level constants named
+  // `membership_id` / `location_id`; no MV this platform ships has a column of either name, so every
+  // assertion below used to pin SQL that could not have executed anywhere.
+  const cols = { membership: "authored_by_membership_id", location: "location_id" };
 
   it("org scope adds NO predicate (the MV wrapper already scopes to the org)", () => {
     const out = injectScope({ ...baseEnv, scopeKind: "org" }, 5);
@@ -309,16 +313,17 @@ describe("injectScope — reportable_scope envelope binds ids, never interpolate
     const out = injectScope(
       { ...baseEnv, scopeKind: "self", membershipIds: ["mem-1", "mem-2"] },
       5,
+      cols,
     );
-    expect(out.sql).toBe('t."membership_id" IN ($5, $6)');
+    expect(out.sql).toBe('t."authored_by_membership_id" IN ($5, $6)');
     expect(out.params).toEqual(["mem-1", "mem-2"]);
     expect(out.nextIndex).toBe(7);
     expect(out.sql).not.toContain("mem-1");
   });
 
   it("team scope binds the supervised membership set on membership_id", () => {
-    const out = injectScope({ ...baseEnv, scopeKind: "team", membershipIds: ["mem-9"] }, 2);
-    expect(out.sql).toBe('t."membership_id" IN ($2)');
+    const out = injectScope({ ...baseEnv, scopeKind: "team", membershipIds: ["mem-9"] }, 2, cols);
+    expect(out.sql).toBe('t."authored_by_membership_id" IN ($2)');
     expect(out.params).toEqual(["mem-9"]);
   });
 
@@ -326,6 +331,7 @@ describe("injectScope — reportable_scope envelope binds ids, never interpolate
     const out = injectScope(
       { ...baseEnv, scopeKind: "location", locationIds: ["loc-a", "loc-b"] },
       3,
+      cols,
     );
     expect(out.sql).toBe('t."location_id" IN ($3, $4)');
     expect(out.params).toEqual(["loc-a", "loc-b"]);
@@ -333,13 +339,39 @@ describe("injectScope — reportable_scope envelope binds ids, never interpolate
   });
 
   it("fails CLOSED — an empty membership set yields FALSE (deny), never 'match all'", () => {
-    const out = injectScope({ ...baseEnv, scopeKind: "self", membershipIds: [] }, 5);
+    const out = injectScope({ ...baseEnv, scopeKind: "self", membershipIds: [] }, 5, cols);
     expect(out.sql).toBe("FALSE");
     expect(out.params).toEqual([]);
   });
 
+  it("fails CLOSED — a base declaring NO membership column denies rather than naming one", () => {
+    // The F-059 case. `mv_census_org_daily` is org-grain: it has no member column, so a `self` read of it
+    // cannot be narrowed. Emitting a predicate against a column the MV does not have is the alternative,
+    // and that is precisely what the two removed constants did — on every base, in every narrowing scope.
+    const out = injectScope({ ...baseEnv, scopeKind: "self", membershipIds: ["mem-1"] }, 5, {
+      membership: null,
+      location: null,
+    });
+    expect(out.sql).toBe("FALSE");
+    expect(out.params).toEqual([]);
+    expect(out.nextIndex).toBe(5);
+  });
+
+  it("fails CLOSED — a base declaring NO location column denies a location scope", () => {
+    const out = injectScope({ ...baseEnv, scopeKind: "location", locationIds: ["loc-a"] }, 1, {
+      membership: "authored_by_membership_id",
+      location: null,
+    });
+    expect(out.sql).toBe("FALSE");
+  });
+
+  it("defaults to NO columns when the caller passes none — deny, never a guessed column name", () => {
+    const out = injectScope({ ...baseEnv, scopeKind: "self", membershipIds: ["mem-1"] }, 1);
+    expect(out.sql).toBe("FALSE");
+  });
+
   it("fails CLOSED — an empty location set yields FALSE", () => {
-    const out = injectScope({ ...baseEnv, scopeKind: "location", locationIds: [] }, 5);
+    const out = injectScope({ ...baseEnv, scopeKind: "location", locationIds: [] }, 5, cols);
     expect(out.sql).toBe("FALSE");
     expect(out.params).toEqual([]);
   });
@@ -390,15 +422,26 @@ describe("translateSpec — composed parameterized SELECT via the MV wrapper FUN
         filters: [{ dimensionKey: "team_name", comparator: "eq", value: "Alpha" }],
         rowLimit: 50,
       }),
-      makeBase(),
+      makeBase({ scopeMembershipColumn: "authored_by_membership_id" }),
       { scopeKind: "self", organizationId: ORG_ID, membershipIds: ["mem-1"] },
     );
     if (t.kind !== "sql") throw new Error("expected sql");
     // org($1), filter value($2), scope id($3), limit($4)
     expect(t.params).toEqual([ORG_ID, "Alpha", "mem-1", 50]);
     expect(t.sql).toContain('t."team_name" = $2');
-    expect(t.sql).toContain('t."membership_id" IN ($3)');
+    expect(t.sql).toContain('t."authored_by_membership_id" IN ($3)');
     expect(t.sql).toContain("LIMIT $4");
+  });
+
+  it("a base declaring no scope column narrows to FALSE, and binds no id (F-059)", () => {
+    const t = translateSpec(makeSpec({ rowLimit: 50 }), makeBase(), {
+      scopeKind: "self",
+      organizationId: ORG_ID,
+      membershipIds: ["mem-1"],
+    });
+    if (t.kind !== "sql") throw new Error("expected sql");
+    expect(t.sql).toContain("WHERE FALSE");
+    expect(t.params).toEqual([ORG_ID, 50]);
   });
 
   it("returns a forward-seam DENY-STUB (not SQL) when the MV status is 'registered'", () => {

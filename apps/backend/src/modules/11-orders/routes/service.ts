@@ -13,11 +13,11 @@
 // write path never blocks on an external dependency (the M10 §7.13 fail-open convention).
 import {
   DEFAULT_COSIGN_POLICY,
-  assertSpawnAllowed,
   type LevelOfCare,
   ORDER_KIND_VERSION,
-  computeNextSpawnAt,
   type OrderCosignPolicy,
+  assertSpawnAllowed,
+  computeNextSpawnAt,
   computeVerbalDeadline,
   disciplineCanOrder,
   planCosignAttest,
@@ -135,7 +135,18 @@ export const EMPTY_ORDER_DETAIL_ACTOR: OrderDetailActor = Object.freeze({
 });
 
 export function buildOrderWorkflowProjection(
-  order: Pick<OrderDetailView, "kind" | "kindVersion" | "data" | "status" | "cosignRequired" | "cosignStatus" | "verbalDeadlineAt" | "drafterMembershipId" | "signedAt">,
+  order: Pick<
+    OrderDetailView,
+    | "kind"
+    | "kindVersion"
+    | "data"
+    | "status"
+    | "cosignRequired"
+    | "cosignStatus"
+    | "verbalDeadlineAt"
+    | "drafterMembershipId"
+    | "signedAt"
+  >,
   actor: OrderDetailActor,
   cosignerRoleNeeded: "rn_case_manager" | "clinical_supervisor" | "medical_director" | null,
 ): Pick<OrderDetailView, "requirements" | "allowedActions"> {
@@ -143,26 +154,55 @@ export function buildOrderWorkflowProjection(
   const signatureApplies = ["pending_signature", "verbal_pending"].includes(order.status);
   const verbal = order.status === "verbal_pending";
   const lowerRoles = actor.roles.map((x) => x.toLowerCase());
-  const canCosignRole = cosignerRoleNeeded === "medical_director"
-    ? lowerRoles.includes("medical_director")
-    : lowerRoles.some((x) => x === "rn_case_manager" || x === "clinical_supervisor");
+  const canCosignRole =
+    cosignerRoleNeeded === "medical_director"
+      ? lowerRoles.includes("medical_director")
+      : lowerRoles.some((x) => x === "rn_case_manager" || x === "clinical_supervisor");
   const canSign = actor.disciplines.some((d) => signerEligible(d, order.kind));
   const has = (permission: string) => actor.permissions.has(permission);
   return {
     requirements: [
-      { code: "clinical_details", label: "Clinical details", status: clinical ? "satisfied" : "pending" },
-      { code: "rn_cosignature", label: "Required cosignature", status: !order.cosignRequired ? "not_required" : order.cosignStatus === "attached" ? "satisfied" : "pending" },
-      { code: "physician_signature", label: "Required signature", status: !signatureApplies ? "not_required" : order.signedAt ? "satisfied" : "pending" },
-      { code: "verbal_signature", label: "Verbal-order signature", status: !verbal ? "not_required" : order.signedAt ? "satisfied" : "pending", ...(verbal && order.verbalDeadlineAt ? { deadlineAt: order.verbalDeadlineAt } : {}) },
+      {
+        code: "clinical_details",
+        label: "Clinical details",
+        status: clinical ? "satisfied" : "pending",
+      },
+      {
+        code: "rn_cosignature",
+        label: "Required cosignature",
+        status: !order.cosignRequired
+          ? "not_required"
+          : order.cosignStatus === "attached"
+            ? "satisfied"
+            : "pending",
+      },
+      {
+        code: "physician_signature",
+        label: "Required signature",
+        status: !signatureApplies ? "not_required" : order.signedAt ? "satisfied" : "pending",
+      },
+      {
+        code: "verbal_signature",
+        label: "Verbal-order signature",
+        status: !verbal ? "not_required" : order.signedAt ? "satisfied" : "pending",
+        ...(verbal && order.verbalDeadlineAt ? { deadlineAt: order.verbalDeadlineAt } : {}),
+      },
     ],
     allowedActions: {
       edit: order.status === "draft" && has("orders.draft"),
       request_signature: order.status === "draft" && clinical && has("orders.draft"),
       record_verbal: order.status === "pending_signature" && has("orders.verbal.record"),
       sign: signatureApplies && order.cosignStatus !== "pending" && canSign && has("orders.sign"),
-      cosign: order.cosignRequired && order.cosignStatus === "pending" && order.drafterMembershipId !== actor.membershipId && canCosignRole && has("orders.cosign"),
+      cosign:
+        order.cosignRequired &&
+        order.cosignStatus === "pending" &&
+        order.drafterMembershipId !== actor.membershipId &&
+        canCosignRole &&
+        has("orders.cosign"),
       complete: order.status === "active" && has("orders.complete"),
-      discontinue: ["pending_signature", "verbal_pending", "active"].includes(order.status) && has("orders.discontinue"),
+      discontinue:
+        ["pending_signature", "verbal_pending", "active"].includes(order.status) &&
+        has("orders.discontinue"),
       correct: order.status === "active" && has("orders.amend"),
     },
   };
@@ -275,7 +315,12 @@ export interface OrderRouteService extends OrderAbacResolver {
     filter: { patientId?: string; admissionId?: string; kind?: string; status?: string },
   ): Promise<{ orders: OrderView[] }>;
   getOrder(organizationId: string, id: string, actor?: OrderDetailActor): Promise<OrderDetailView>;
-  createDraft(organizationId: string, userId: string, args: CreateOrderArgs, actor?: OrderDetailActor): Promise<OrderDetailView>;
+  createDraft(
+    organizationId: string,
+    userId: string,
+    args: CreateOrderArgs,
+    actor?: OrderDetailActor,
+  ): Promise<OrderDetailView>;
   editDraft(
     organizationId: string,
     id: string,
@@ -289,7 +334,13 @@ export interface OrderRouteService extends OrderAbacResolver {
     args: RequestSignatureArgs,
     actor?: OrderDetailActor,
   ): Promise<OrderDetailView>;
-  signOrder(organizationId: string, userId: string, id: string, args: SignArgs, actor?: OrderDetailActor): Promise<OrderDetailView>;
+  signOrder(
+    organizationId: string,
+    userId: string,
+    id: string,
+    args: SignArgs,
+    actor?: OrderDetailActor,
+  ): Promise<OrderDetailView>;
   signOnBehalf(
     organizationId: string,
     userId: string,
@@ -372,7 +423,10 @@ export interface OrderRouteService extends OrderAbacResolver {
     trigger?: "clinician_request" | "system",
     scheduledFor?: string,
   ): Promise<{ orderId: string }>;
-  spawnDueStandingOrders(organizationId: string, now?: string): Promise<{ spawnedOrderIds: string[] }>;
+  spawnDueStandingOrders(
+    organizationId: string,
+    now?: string,
+  ): Promise<{ spawnedOrderIds: string[] }>;
   getVerbalPolicy(organizationId: string): Promise<VerbalPolicyView>;
   putVerbalPolicy(organizationId: string, args: VerbalPolicyArgs): Promise<VerbalPolicyView>;
   regenerateVerbalTimer(
@@ -702,7 +756,8 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         id,
         args.signerDiscipline,
         args.signedAtClient,
-        false, actor,
+        false,
+        actor,
       );
     },
     async signOnBehalf(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
@@ -712,7 +767,8 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         id,
         args.signerDiscipline,
         args.signedAtClient,
-        true, actor,
+        true,
+        actor,
       );
       emit(
         "m11.order.signed_on_behalf",
@@ -801,11 +857,23 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       });
       const findings = validateOrderData(args.kind, ORDER_KIND_VERSION[args.kind], args.data);
       if (findings.length)
-        throw new ValidationError("Corrected order clinical details are invalid", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
-      const correction = await this.createDraft(organizationId, userId, {
-        ...args,
-        replacesOrderId: id,
-      }, actor);
+        throw new ValidationError(
+          "Corrected order clinical details are invalid",
+          findings.map((finding) => ({
+            field: `data.${finding.field}`,
+            code: "INVALID",
+            message: finding.message,
+          })),
+        );
+      const correction = await this.createDraft(
+        organizationId,
+        userId,
+        {
+          ...args,
+          replacesOrderId: id,
+        },
+        actor,
+      );
       original.status = "discontinued";
       original.discontinuationReason = "replaced_by_corrected_order";
       original.version += 1;
@@ -931,7 +999,8 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       );
       return viewSt(r);
     },
-    async spawnStandingOrder(organizationId, userId, id, trigger = "clinician_request", scheduledFor) {
+    async spawnStandingOrder(organizationId, userId, id, requestedTrigger, scheduledFor) {
+      const trigger = requestedTrigger ?? "clinician_request";
       const r = findSt(organizationId, id);
       if (r.status !== "active")
         throw new NotFoundError(
@@ -958,7 +1027,14 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       });
       const findings = validateOrderData(r.kind, r.kindVersion, r.data);
       if (findings.length)
-        throw new ValidationError("Standing-order template clinical details are invalid", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
+        throw new ValidationError(
+          "Standing-order template clinical details are invalid",
+          findings.map((finding) => ({
+            field: `data.${finding.field}`,
+            code: "INVALID",
+            message: finding.message,
+          })),
+        );
       const orderId = nextId();
       orders.set(orderId, {
         id: orderId,
@@ -992,7 +1068,12 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       r.spawnCount += 1;
       emit(
         "m11.order.standing_spawned",
-        { standingOrderId: id, orderId, spawnedBy: trigger, ...(scheduledFor ? { scheduledFor } : {}) },
+        {
+          standingOrderId: id,
+          orderId,
+          spawnedBy: trigger,
+          ...(scheduledFor ? { scheduledFor } : {}),
+        },
         `${orderId}:standing_spawned`,
       );
       emit("m11.order.signed", { orderId, kind: r.kind }, `${orderId}:signed`);
@@ -1003,8 +1084,13 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       for (const r of standings.values()) {
         if (r.organizationId !== organizationId || !r.nextSpawnAt || r.nextSpawnAt > at) continue;
         try {
-          spawnedOrderIds.push((await this.spawnStandingOrder(organizationId, "system", r.id, "system", r.nextSpawnAt)).orderId);
-        } catch { /* one legacy/invalid template must not poison the org sweep */ }
+          spawnedOrderIds.push(
+            (await this.spawnStandingOrder(organizationId, "system", r.id, "system", r.nextSpawnAt))
+              .orderId,
+          );
+        } catch {
+          /* one legacy/invalid template must not poison the org sweep */
+        }
       }
       return { spawnedOrderIds };
     },

@@ -28,7 +28,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.Optional(Type.String({ minLength: 1 })),
       admissionId: Type.Optional(Type.String({ minLength: 1 })),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -41,7 +42,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: versionKind,
       sequence: Type.Integer({ minimum: 1 }),
     }),
-    declaredConsumers: ["m14", "m33"],
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -57,7 +59,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: versionKind,
       snapshotRef: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m8", "m14", "m17", "m22", "m28", "m30", "m33"],
+    declaredConsumers: ["m8", "m14", "m17", "m22", "m28", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -72,7 +75,10 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       meetingId: Type.String({ minLength: 1 }),
       changeCount: Type.Integer({ minimum: 1 }),
     }),
-    declaredConsumers: ["m14", "m33"],
+    // Record-only: M14 originated the decision and holds no consumer for its M7 echo — declaring m14
+    // deferred every emission forever (a pending row re-claimed every 30 minutes).
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -86,7 +92,11 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       appliedProposalCount: Type.Integer({ minimum: 1 }),
       appliedChangeCount: Type.Integer({ minimum: 1 }),
     }),
-    declaredConsumers: ["m14", "m30", "m33"],
+    // Record-only: neither M14 nor M30 has a consumer (or subscription-list entry) for the applied
+    // proposal — declaring them deferred every emission forever. The signed version that applies it is
+    // announced separately by `m7.care_plan.version_signed`.
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -99,7 +109,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       dueAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -113,7 +124,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       dueAt: Type.String({ minLength: 1 }),
       overdueAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m8", "m33", "m36"],
+    declaredConsumers: ["m8"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: false,
   },
   {
@@ -126,7 +138,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       admissionActivatedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m8", "m33", "m36"],
+    declaredConsumers: ["m8"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -139,7 +152,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m16", "m30", "m33"],
+    declaredConsumers: ["m16", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── problems ────────────────────────────────────────────────────────────────────────────────────

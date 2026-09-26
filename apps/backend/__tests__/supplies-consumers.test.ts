@@ -121,7 +121,11 @@ describe("§4.5.2 — the m21.* outbox catalog", () => {
 
   it("declares a non-empty consumer list and a payload schema on every event", () => {
     for (const entry of M21_OUTBOX_EVENTS) {
-      expect(entry.declaredConsumers.length).toBeGreaterThan(0);
+      // Outbox consumers OR a recorded seam audience — an alert-only event legitimately has no
+      // outbox subscriber, but no event should interest nobody at all (#103).
+      expect(entry.declaredConsumers.length + (entry.seamConsumers?.length ?? 0)).toBeGreaterThan(
+        0,
+      );
       expect(entry.payloadSchema).toBeDefined();
       expect(entry.description.length).toBeGreaterThan(20);
     }

@@ -34,7 +34,7 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 | `bun run arch:parity` | `scaffold --check` — fails on tree↔manifest drift or orphan packages. |
 | `bun run arch:boundaries` | dependency-cruiser: module import boundaries, leaves, vendor-adapter + helper-table rules. |
 | `bun run arch:tables` | table ownership — no cross-module schema access. |
-| `bun run arch:tenancy` | three-column rule, canonical `app.org_id`, no dangerous RLS shapes. |
+| `bun run arch:tenancy` | three-column rule, canonical `app.org_id`, no dangerous RLS shapes. RLS policy predicates are judged on the migrations' **net effect** (replayed in apply order), and the rule's audit/key-ring exemptions are scoped to a single statement — never a policy body. |
 | `bun run arch:ddl` | PostgreSQL DDL legality (partition keys, CHECK subqueries, duplicate enums). |
 | `bun run arch:gaps` | event-catalog `mN.` naming, seam-registry completeness, PHI RLS/audit presence. |
 | `bun run docs:ui` | UI screen-spec corpus consistency. |
@@ -43,7 +43,50 @@ All four are green on a clean checkout, and CI (`.github/workflows/ci.yml`) runs
 | `bun run ui:parity` / `arch:ui-parity` | (re)generate / freshness-check the UI implementation-parity report (`audit/ui-parity/`); hard-fails on duplicate screen id/path, unknown `requiredPermission`, or an unregistered `screens.ts`. |
 | `bun run arch:fitness` | all of the above (parity + every fitness gate, including the report freshness checks). |
 | `bun run test` | Vitest self-tests. |
-| `bun run lint` / `lint:fix` | Biome (advisory; not in the blocking gate path). |
+| `bun run lint` / `lint:fix` | Biome — **blocking** in CI (#33). The repo's only automated a11y enforcement outside the E2E axe scans. |
+
+> **One rule is deliberately off.** `lint/style/noUnusedTemplateLiteral` is disabled in
+> `biome.json`. Backticks mark SQL in this codebase — 1676 statements across 216 files — and the
+> rule fires only on the ~31 that happen to be single-line with no interpolation. Obeying it would
+> make the corpus *less* consistent, and would force backslash-escaping the moment a statement
+> contains a literal (SQL quotes values with single quotes). The rationale lives here because
+> `biome.json` is strict JSON and cannot carry a comment.
+
+
+### Local demo data (`bun run db:reset`)
+
+`bun run db:reset` is `docker compose down -v` → `docker compose up -d postgres redis minio` →
+`db:wait --expect-empty` → `db:migrate` → `db:seed:all`. **Compose is the only local provisioning
+path** (F-016 / #43): there used to be a second one, a standalone `wardenx-postgres` container on
+port 5440, and `db:reset` straddled both — it destroyed the 5440 volume and then migrated and seeded
+the 5432 compose database, which was never reset. `db:wait --expect-empty` now asserts the database
+really is empty before migrations replay, so that class of mismatch fails loudly instead of silently
+seeding on top of existing data.
+
+`cp .env.example .env` is sufficient; the full onboarding runbook is
+[`docs/START_PROJECT.md`](./START_PROJECT.md).
+
+The fourteen seed steps live in `db:seed:all`, their own script, so CI's `e2e` job seeds through
+exactly the chain `db:reset` runs rather than a copy of it that can drift. Two prerequisites are not
+enforced by the chain itself and each one aborts it partway:
+
+- **The backend must already be running** (`bun run dev:backend`). Only the first few steps talk to
+  Postgres directly; the rest drive the real REST API as signed-in demo users, precisely so RLS,
+  ABAC and the state machines are exercised rather than bypassed.
+- **`REDIS_URL` must be set for that backend.** `db:seed:scenario-billing` reaches M27's
+  `refresh-inputs`, which enqueues a trial-balance pull; with no queue connection the port is
+  unbound and the step fails.
+
+CI runs all of this: the `e2e` job migrates, boots the backend, runs `db:seed:all` and drives the
+18-spec Playwright suite against it, so a break in the demo-data path is now reported rather than
+found by the next person who tries to bring the stack up.
+
+Roles matter in the seeds because they matter in the product. `db:seed:staff` creates ten discipline
+personas (`CREDENTIALS.local.md`), and the scenario seeds sign in as whichever one is actually
+entitled to each action — the physician signs the §418.22(c) certifications, the RN case manager
+holds the caseload, the administrator does intake and activation. A seed that signs everything as
+the administrator does not work, and should not: `cti.is_hospice_md` is an attribute gate, and no
+number of permission keys satisfies it.
 
 The fitness gates are **armed-but-inert**: they pass with no source and begin enforcing
 automatically as a module's schema/seams/events land.
@@ -63,9 +106,21 @@ creates `wardenx_platform_login` (inherits the enumerated `wardenx_platform` car
 BYPASSRLS **attribute** — attributes are not inherited, so it sits on the login role) and
 `wardenx_destruction_login` (`IN ROLE wardenx_destruction`, migration 0157, NOBYPASSRLS). Then set
 `DATABASE_PLATFORM_URL` (admin console, platform crons, the outbox relay's org enumeration, the
-M34 offboarding eraser) and `DATABASE_DESTRUCTION_URL` (right-to-erasure over the append-only
-clinical/billing tables + `audit_event`). Without them the affected paths refuse loudly — the
-boot log says exactly what is off. Re-running the script rotates passwords; a missing grant
+M34 offboarding eraser, **and every per-tenant PHI cipher**) and `DATABASE_DESTRUCTION_URL`
+(right-to-erasure over the append-only clinical/billing tables + `audit_event`). Without them the
+affected paths refuse loudly — the boot log says exactly what is off.
+
+**The PHI-cipher half is easy to miss, so it is spelled out (F-082).** Migration 0052 §5 REVOKES
+`wardenx_app`'s SELECT on `tenant_key_ring` by design — the request path reads only the
+ciphertext-free metadata view — so the platform login is the only credential that can resolve a
+wrapped tenant DEK. With `DATABASE_PLATFORM_URL` unset, `dekForOrg` refuses and so does everything
+composed over it: M8's HearthNote narrative (an encounter cannot be FINALIZED, and therefore never
+reaches signing), M27's raw cost-report payloads, M29's stored HL7 payloads, M31's portal contact
+ciphers, M39's consent notes. Each answers a fail-closed 503 naming the DEK, which reads the same
+whether the KEK, the credential, or the key ring itself is what is missing. `M34_TENANT_KEK` (the
+platform key that WRAPS the DEK, `.env.example`) is required alongside it, and `bun run db:seed`
+provisions the demo org's `tenant_account` + `tenant_key_ring` through the same SECURITY DEFINER
+function the production provision worker calls — it skips with a printed note when no KEK is set. Re-running the script rotates passwords; a missing grant
 surfaces as a 42501 and is fixed by one reviewed line in
 `scripts/db/provision-runtime-roles.ts`, never a blanket `ALL`.
 

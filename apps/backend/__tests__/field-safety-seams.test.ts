@@ -507,7 +507,7 @@ describe("M20-T05 §4.3 — SafetyCheckInProvider badge trio", () => {
 describe("M20-T05 §4.3 — SafetyContextReader", () => {
   const incident = {
     incidentId: "inc-1",
-    category: "verbal_threat" as const,
+    category: "verbal_assault" as const,
     severity: "moderate" as const,
     lifecycleState: "under_review",
     occurredAt: "2026-08-04T02:00:00.000Z" as IsoInstant,
@@ -544,7 +544,7 @@ describe("M20-T05 §4.3 — SafetyContextReader", () => {
 describe("M20-T05 §8.6 — SafetyIncidentReader", () => {
   const geo = {
     incidentId: "inc-1",
-    category: "animal_hazard" as const,
+    category: "animal_other" as const,
     severity: "minor" as const,
     occurredAt: "2026-08-04T02:00:00.000Z" as IsoInstant,
     linkedSosCoordinatesCipher: new Uint8Array([1, 2, 3]),

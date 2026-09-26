@@ -74,7 +74,9 @@ export function RuleConfigEditor(): JSX.Element {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [severityFilter, setSeverityFilter] = useState<"" | Severity>("");
-  const [stateFilter, setStateFilter] = useState<"" | "enabled" | "disabled" | "locked" | "custom">("");
+  const [stateFilter, setStateFilter] = useState<"" | "enabled" | "disabled" | "locked" | "custom">(
+    "",
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -142,7 +144,8 @@ export function RuleConfigEditor(): JSX.Element {
           }
         >
           <div style={{ color: t.onSurfaceVariant, fontSize: "0.875rem" }}>
-            Manage tenant validation overlays while regulatory-required rules stay locked server-side.
+            Manage tenant validation overlays while regulatory-required rules stay locked
+            server-side.
           </div>
         </PageHeader>
       }
@@ -191,7 +194,9 @@ export function RuleConfigEditor(): JSX.Element {
               aria-label="Filter by rule status"
               value={stateFilter}
               onChange={(event) =>
-                setStateFilter(event.target.value as "" | "enabled" | "disabled" | "locked" | "custom")
+                setStateFilter(
+                  event.target.value as "" | "enabled" | "disabled" | "locked" | "custom",
+                )
               }
               style={{ ...selectStyle, height: "2.25rem" }}
             >
@@ -462,12 +467,7 @@ function RuleDetail({
       </div>
 
       <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
-        <Button
-          type="button"
-          tone="primary"
-          disabled={busy || locked}
-          onClick={() => void save()}
-        >
+        <Button type="button" tone="primary" disabled={busy || locked} onClick={() => void save()}>
           Save overlay
         </Button>
         <Button

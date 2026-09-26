@@ -3,6 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { Client } from "pg";
+import { firstRow, requireAt } from "./lib/query-rows";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_SOURCE_DIR = join(here, "..", "..", "packages", "db", "reference", "hope", "v1.00.1");
@@ -15,7 +16,34 @@ const SPEC = {
 };
 const ISCS = ["HA", "HUV", "HD", "XX"] as const;
 type Isc = (typeof ISCS)[number];
-type Row = Record<string, string>;
+/** One parsed CMS CSV row. Keyed by the columns this importer reads (a column absent from a file reads as
+ *  `undefined` at runtime exactly as before — the union only states which names are expected). */
+type CsvColumn =
+  | "fixed_rec_end_byte"
+  | "fixed_rec_lngth"
+  | "fixed_rec_srt_id"
+  | "fixed_rec_strt_byte"
+  | "itm_db_id"
+  | "itm_grp_cd"
+  | "itm_id"
+  | "itm_loinc_id"
+  | "itm_mstr_key"
+  | "itm_sect_label"
+  | "itm_sect_srt_id"
+  | "itm_shrt_label"
+  | "itm_srt_id"
+  | "itm_type_cd"
+  | "itm_val_key"
+  | "itm_vrsn_notes"
+  | "val_id"
+  | "val_loinc_id"
+  | "val_srt_id"
+  | "val_txt"
+  | "isc"
+  | "isc_id"
+  | "section_label"
+  | `isc_${Lowercase<Isc>}`;
+type Row = Readonly<Record<CsvColumn, string>>;
 
 export interface ImportHopeSpecOptions {
   readonly databaseUrl?: string;
@@ -33,7 +61,8 @@ export interface ImportHopeSpecReport {
 
 function parseArgs(argv: readonly string[]): ImportHopeSpecOptions {
   const opts: ImportHopeSpecOptions = {};
-  const mutable: { databaseUrl?: string; sourceDir?: string; dryRun?: boolean; replace?: boolean } = {};
+  const mutable: { databaseUrl?: string; sourceDir?: string; dryRun?: boolean; replace?: boolean } =
+    {};
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--dry-run") mutable.dryRun = true;
@@ -85,8 +114,8 @@ function parseCsv(text: string): Row[] {
   }
   const [header, ...body] = rows.filter((r) => r.some((v) => v.length > 0));
   if (!header) return [];
-  return body.map((values) =>
-    Object.fromEntries(header.map((name, index) => [name, values[index] ?? ""])),
+  return body.map(
+    (values) => Object.fromEntries(header.map((name, index) => [name, values[index] ?? ""])) as Row,
   );
 }
 
@@ -95,7 +124,7 @@ function sourceFile(sourceDir: string, prefix: string): string {
   if (matches.length !== 1) {
     throw new Error(`Expected exactly one ${prefix}*.csv in ${sourceDir}, found ${matches.length}`);
   }
-  return join(sourceDir, matches[0]);
+  return join(sourceDir, requireAt(matches, 0, `${prefix}*.csv`));
 }
 
 function intOrNull(value: string): number | null {
@@ -119,11 +148,13 @@ function classifyKind(row: Row): "assessment" | "control" | "calculated" | "fill
   if (section === "control") return "control";
   if (type === "calculated" || section === "calculated" || section === "calc") return "calculated";
   if (["code", "text", "date", "number", "checklist", "a", ""].includes(type)) return "assessment";
-  throw new Error(`Unknown HOPE item category for ${row.itm_id}: section='${section}' type='${type}'`);
+  throw new Error(
+    `Unknown HOPE item category for ${row.itm_id}: section='${section}' type='${type}'`,
+  );
 }
 
 function activeFor(row: Row, isc: Isc): boolean {
-  const value = row[`isc_${isc.toLowerCase()}`]?.trim().toLowerCase();
+  const value = row[`isc_${isc.toLowerCase() as Lowercase<Isc>}`]?.trim().toLowerCase();
   if (value === "x") return true;
   if (value === "") return false;
   throw new Error(`Unknown ISC marker '${value}' for ${row.itm_id}/${isc}`);
@@ -178,7 +209,8 @@ export function buildHopeSpecImport(sourceDir = DEFAULT_SOURCE_DIR) {
   const seenKeys = new Set<string>();
   const seenCodes = new Set<string>();
   const itemRows = source.items.map((row) => {
-    if (seenKeys.has(row.itm_mstr_key)) throw new Error(`Duplicate itm_mstr_key ${row.itm_mstr_key}`);
+    if (seenKeys.has(row.itm_mstr_key))
+      throw new Error(`Duplicate itm_mstr_key ${row.itm_mstr_key}`);
     if (seenCodes.has(row.itm_id)) throw new Error(`Duplicate itm_id ${row.itm_id}`);
     seenKeys.add(row.itm_mstr_key);
     seenCodes.add(row.itm_id);
@@ -200,7 +232,10 @@ export function buildHopeSpecImport(sourceDir = DEFAULT_SOURCE_DIR) {
       fixedRecordLength: intOrNull(row.fixed_rec_lngth),
       versionNotes: row.itm_vrsn_notes || null,
       sourceMetadata: metadata(row, source.sourceNames.itmMstr),
-      isc: Object.fromEntries(ISCS.map((isc) => [isc, activeFor(row, isc)])) as Record<Isc, boolean>,
+      isc: Object.fromEntries(ISCS.map((isc) => [isc, activeFor(row, isc)])) as Record<
+        Isc,
+        boolean
+      >,
     };
   });
 
@@ -208,10 +243,12 @@ export function buildHopeSpecImport(sourceDir = DEFAULT_SOURCE_DIR) {
   const seenValueKeys = new Set<string>();
   const seenItemValueCodes = new Set<string>();
   const optionRows = source.values.map((row) => {
-    if (seenValueKeys.has(row.itm_val_key)) throw new Error(`Duplicate itm_val_key ${row.itm_val_key}`);
+    if (seenValueKeys.has(row.itm_val_key))
+      throw new Error(`Duplicate itm_val_key ${row.itm_val_key}`);
     seenValueKeys.add(row.itm_val_key);
     const item = itemByKey.get(row.itm_mstr_key);
-    if (!item) throw new Error(`itm_val ${row.itm_val_key} references unknown item ${row.itm_mstr_key}`);
+    if (!item)
+      throw new Error(`itm_val ${row.itm_val_key} references unknown item ${row.itm_mstr_key}`);
     const itemValueKey = `${item.itemCode}\0${row.val_id}`;
     if (seenItemValueCodes.has(itemValueKey)) {
       throw new Error(`Duplicate value '${row.val_id}' for item ${item.itemCode}`);
@@ -245,9 +282,7 @@ export function buildHopeSpecImport(sourceDir = DEFAULT_SOURCE_DIR) {
     options: optionRows,
     iscRows: itemRows.length * ISCS.length,
     activeAssessmentCounts,
-    sourceHash: createHash("sha256")
-      .update(JSON.stringify({ itemRows, optionRows }))
-      .digest("hex"),
+    sourceHash: createHash("sha256").update(JSON.stringify({ itemRows, optionRows })).digest("hex"),
   };
 }
 
@@ -259,12 +294,18 @@ async function assertVersion(db: Client): Promise<string> {
     effective_to: string | null;
     source_label: string;
     source_release: string | null;
-  }>("SELECT * FROM hope_spec_version WHERE code=$1", [SPEC.code]);
+  }>(
+    // Dates as text: node-pg parses a `date` column into a JS Date, whose String() never equals yyyy-mm-dd.
+    `SELECT id, item_set_version, effective_from::text AS effective_from, effective_to::text AS effective_to,
+            source_label, source_release
+       FROM hope_spec_version WHERE code=$1`,
+    [SPEC.code],
+  );
   if (existing.rowCount) {
-    const row = existing.rows[0];
+    const row = firstRow(existing, "hope_spec_version");
     const same =
       row.item_set_version === SPEC.itemSetVersion &&
-      String(row.effective_from).slice(0, 10) === SPEC.effectiveFrom &&
+      row.effective_from === SPEC.effectiveFrom &&
       row.effective_to === null &&
       row.source_label === SPEC.sourceLabel &&
       row.source_release === SPEC.sourceRelease;
@@ -277,7 +318,7 @@ async function assertVersion(db: Client): Promise<string> {
      VALUES ($1,$2,$3,NULL,$4,$5) RETURNING id`,
     [SPEC.code, SPEC.itemSetVersion, SPEC.effectiveFrom, SPEC.sourceLabel, SPEC.sourceRelease],
   );
-  return inserted.rows[0].id;
+  return firstRow(inserted, "inserted hope_spec_version").id;
 }
 
 async function versionHasReferences(db: Client, versionId: string): Promise<boolean> {
@@ -289,13 +330,14 @@ async function versionHasReferences(db: Client, versionId: string): Promise<bool
      )::text AS n`,
     [versionId],
   );
-  return Number(rows[0].n) > 0;
+  return Number(requireAt(rows, 0, "reference count").n) > 0;
 }
 
 export async function importHopeSpec(opts: ImportHopeSpecOptions): Promise<ImportHopeSpecReport> {
   const built = buildHopeSpecImport(opts.sourceDir);
   if (opts.dryRun) return reportFromBuilt(built);
-  const databaseUrl = opts.databaseUrl ?? process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
+  const databaseUrl =
+    opts.databaseUrl ?? process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
   if (!databaseUrl) throw new Error("DATABASE_ADMIN_URL or DATABASE_URL is required");
   const db = new Client({ connectionString: databaseUrl });
   await db.connect();
@@ -306,7 +348,7 @@ export async function importHopeSpec(opts: ImportHopeSpecOptions): Promise<Impor
       "SELECT count(*)::text AS n FROM hope_spec_item WHERE spec_version_id=$1",
       [versionId],
     );
-    if (Number(existingItems.rows[0].n) > 0) {
+    if (Number(firstRow(existingItems, "hope_spec_item count").n) > 0) {
       if (!opts.replace) {
         const report = await reportFromDb(db, versionId);
         if (
@@ -322,7 +364,9 @@ export async function importHopeSpec(opts: ImportHopeSpecOptions): Promise<Impor
         return report;
       }
       if (await versionHasReferences(db, versionId)) {
-        throw new Error(`Cannot --replace HOPE spec ${SPEC.code}; it is referenced by runtime rows`);
+        throw new Error(
+          `Cannot --replace HOPE spec ${SPEC.code}; it is referenced by runtime rows`,
+        );
       }
       await db.query(
         "DELETE FROM hope_spec_item_option WHERE spec_item_id IN (SELECT id FROM hope_spec_item WHERE spec_version_id=$1)",
@@ -366,7 +410,7 @@ export async function importHopeSpec(opts: ImportHopeSpecOptions): Promise<Impor
           JSON.stringify(item.sourceMetadata),
         ],
       );
-      const id = inserted.rows[0].id;
+      const id = firstRow(inserted, `inserted hope_spec_item ${item.itemCode}`).id;
       itemIdByCode.set(item.itemCode, id);
       for (const isc of ISCS) {
         await db.query(
@@ -378,7 +422,8 @@ export async function importHopeSpec(opts: ImportHopeSpecOptions): Promise<Impor
 
     for (const option of built.options) {
       const specItemId = itemIdByCode.get(option.itemCode);
-      if (!specItemId) throw new Error(`Option references missing imported item ${option.itemCode}`);
+      if (!specItemId)
+        throw new Error(`Option references missing imported item ${option.itemCode}`);
       await db.query(
         `INSERT INTO hope_spec_item_option
           (spec_item_id, cms_item_value_key, sort_order, value_code, label, loinc_id)
@@ -441,11 +486,13 @@ async function reportFromDb(db: Client, versionId: string): Promise<ImportHopeSp
     Isc,
     Record<string, number>
   >;
-  for (const row of sections.rows) activeAssessmentCounts[row.isc][row.section_label] = Number(row.n);
+  for (const row of sections.rows)
+    activeAssessmentCounts[row.isc][row.section_label] = Number(row.n);
+  const count = firstRow(counts, "hope spec counts");
   return {
-    items: Number(counts.rows[0].items),
-    iscRows: Number(counts.rows[0].isc_rows),
-    options: Number(counts.rows[0].options),
+    items: Number(count.items),
+    iscRows: Number(count.isc_rows),
+    options: Number(count.options),
     activeAssessmentCounts,
   };
 }

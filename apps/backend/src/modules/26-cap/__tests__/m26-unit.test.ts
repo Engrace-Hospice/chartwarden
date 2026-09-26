@@ -91,8 +91,10 @@ describe("M26 §4.10 outbox-event catalog", () => {
     for (const e of M26_OUTBOX_EVENTS) {
       expect(e.eventName).toMatch(/^m26\.cap\.[a-z_]+$/);
       expect(e.moduleOwner).toBe("m26");
-      expect(e.declaredConsumers.length).toBeGreaterThan(0);
+      expect(e.declaredConsumers.length + (e.seamConsumers?.length ?? 0)).toBeGreaterThan(0);
       for (const c of e.declaredConsumers) expect(valid.has(c)).toBe(true);
+      // m33/m36 moved to seamConsumers (#103) — still a real audience, a different mechanism.
+      for (const c of e.seamConsumers ?? []) expect(valid.has(c)).toBe(true);
     }
   });
 });
