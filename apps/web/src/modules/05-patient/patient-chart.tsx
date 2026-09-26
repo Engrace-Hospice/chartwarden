@@ -35,10 +35,15 @@ import type { FormEvent, JSX, ReactNode } from "react";
 
 import { STATUS_TONE, statusLabel } from "./patient-status";
 
+import { ClinicalRail, ClinicalTab, useClinicalData } from "./patient-clinical";
 import {
-  ChartModuleRail,
-  type ChartSection,
-} from "../../shell/chart-module-rail";
+  OverviewRail,
+  OverviewTab,
+  PatientChartHeader,
+  usePatientChartData,
+} from "./patient-overview";
+
+import { ChartModuleRail, type ChartSection } from "../../shell/chart-module-rail";
 
 interface PatientSummary {
   id: string;
@@ -74,7 +79,6 @@ interface PatientSummary {
 
 //  • neither        — a placeholder greyed until its module's patient surface lands (Track B).
 
-
 export function PatientChart(): JSX.Element {
   const client = useApiClient();
 
@@ -95,7 +99,9 @@ export function PatientChart(): JSX.Element {
             ? "care-team"
             : rawView === "privacy"
               ? "privacy"
-              : "summary";
+              : rawView === "clinical"
+                ? "clinical"
+                : "summary";
 
   const [state, setState] = useState<
     | { kind: "loading" }
@@ -110,12 +116,9 @@ export function PatientChart(): JSX.Element {
     (async () => {
       if (!id) return;
 
-      const { data, error, response } = await client.GET(
-        "/api/v1/patients/{id}",
-        {
-          params: { path: { id } },
-        },
-      );
+      const { data, error, response } = await client.GET("/api/v1/patients/{id}", {
+        params: { path: { id } },
+      });
 
       if (!active) return;
 
@@ -151,182 +154,59 @@ export function PatientChart(): JSX.Element {
     );
   }
 
-  const p = state.patient;
+  return <PatientChartReady patient={state.patient} section={currentSection} />;
+}
 
-  const age = ageYears(p.dob);
-
+/** The loaded chart: redesigned header + tab strip, the Overview (with its right rail) or a record sub-view. */
+function PatientChartReady({
+  patient: p,
+  section,
+}: {
+  patient: PatientSummary;
+  section: ChartSection;
+}): JSX.Element {
+  const data = usePatientChartData(p);
+  const clinical = useClinicalData(p.id, data, section === "clinical");
   return (
     <PatientWorkspaceLayout
-      banner={
-        <PatientBanner
-          name={`${p.firstName} ${p.lastName}`}
-          meta={`DOB ${p.dob}${age != null ? ` · ${age}y` : ""}`}
-          chips={
-            <>
-              {/* Identifier in the mono face (§3.1) + the lifecycle status as a §6.6 pill. The frame's
-
-                  clinical flags (allergies, code status, benefit period) graft on as their modules land —
-
-                  shown honestly, never fabricated. */}
-
-              <MonoChip title="Medical record number">{p.mrn}</MonoChip>
-
-              <StatusPill
-                label={statusLabel(p.status)}
-                tone={STATUS_TONE[p.status] ?? "neutral"}
-              />
-            </>
-          }
-          actions={
-            <Link to="/messaging" style={MESSAGE_BTN}>
-              Message
-            </Link>
-          }
-        />
+      banner={<PatientChartHeader patient={p} data={data} />}
+      rail={
+        section === "summary" ? (
+          <OverviewRail patientId={p.id} data={data} />
+        ) : section === "clinical" ? (
+          <ClinicalRail patient={p} data={data} clinical={clinical} />
+        ) : undefined
       }
     >
       <div style={{ display: "flex", minHeight: 0, flex: 1 }}>
-        <ChartModuleRail patientId={p.id} current={currentSection} />
+        <ChartModuleRail patientId={p.id} current={section} />
 
         <div
           style={{
             flex: 1,
             minWidth: 0,
             overflow: "auto",
-            padding: "1.5rem",
+            padding: "1.125rem 1.5rem 1.5rem",
           }}
         >
-          {currentSection === "demographics" ? (
+          {section === "demographics" ? (
             <DemographicsTab patientId={p.id} />
-          ) : currentSection === "addresses" ? (
+          ) : section === "addresses" ? (
             <AddressesTab patientId={p.id} />
-          ) : currentSection === "coverage" ? (
+          ) : section === "coverage" ? (
             <CoverageTab patientId={p.id} />
-          ) : currentSection === "care-team" ? (
+          ) : section === "care-team" ? (
             <CareTeamTab patientId={p.id} />
-          ) : currentSection === "privacy" ? (
+          ) : section === "privacy" ? (
             <PrivacyFlagsTab patientId={p.id} />
+          ) : section === "clinical" ? (
+            <ClinicalTab patient={p} data={data} clinical={clinical} />
           ) : (
-            <SummaryTab patient={p} />
+            <OverviewTab patient={p} data={data} />
           )}
         </div>
       </div>
     </PatientWorkspaceLayout>
-  );
-}
-
-// Summary view — reconciled to the P0 frame (wardenx-P0-foundation.pen `fQjjh`): a main column of
-
-// Lantern §6.2 cards (At a glance · Active problems · Benefit period) beside a right rail of
-
-// Alerts / Open tasks cards. The frame's clinical cards are populated by modules not yet built, so
-
-// they render honest "arrives with module X" states rather than fabricated clinical content — the
-
-// layout matches the design while the data stays truthful.
-
-function SummaryTab({ patient }: { patient: PatientSummary }): JSX.Element {
-  const age = ageYears(patient.dob);
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        gap: "1.5rem",
-        alignItems: "flex-start",
-        flexWrap: "wrap",
-      }}
-    >
-      <div
-        style={{
-          flex: "1 1 24rem",
-
-          display: "flex",
-
-          flexDirection: "column",
-
-          gap: "1rem",
-
-          minWidth: 0,
-        }}
-      >
-        <Card title="At a glance">
-          <dl
-            style={{
-              display: "grid",
-
-              gridTemplateColumns: "max-content 1fr",
-
-              gap: "0.5rem 1.25rem",
-
-              fontSize: "0.875rem",
-
-              margin: 0,
-            }}
-          >
-            <dt style={dt}>Status</dt>
-
-            <dd style={dd}>
-              <StatusPill
-                label={statusLabel(patient.status)}
-                tone={STATUS_TONE[patient.status] ?? "neutral"}
-              />
-            </dd>
-
-            <dt style={dt}>MRN</dt>
-
-            <dd style={{ ...dd, fontFamily: "var(--font-mono)" }}>
-              {patient.mrn}
-            </dd>
-
-            <dt style={dt}>Date of birth</dt>
-
-            <dd style={dd}>
-              {patient.dob}
-
-              {age != null ? ` · ${age}y` : ""}
-            </dd>
-          </dl>
-        </Card>
-
-        <Card title="Active problems">
-          <EmptyNote>
-            The problem list populates with the Care Plan module.
-          </EmptyNote>
-        </Card>
-
-        <Card title="Benefit period & deadlines">
-          <EmptyNote>
-            Certification windows and deadlines populate with the Admission
-            module.
-          </EmptyNote>
-        </Card>
-      </div>
-
-      <aside
-        style={{
-          flex: "0 0 19rem",
-
-          width: "19rem",
-
-          display: "flex",
-
-          flexDirection: "column",
-
-          gap: "1rem",
-        }}
-      >
-        <Card title="Alerts">
-          <EmptyNote>
-            Clinical alerts surface here as their modules ship.
-          </EmptyNote>
-        </Card>
-
-        <Card title="Open tasks">
-          <EmptyNote>Task routing arrives with the Tasks module.</EmptyNote>
-        </Card>
-      </aside>
-    </div>
   );
 }
 
@@ -393,10 +273,7 @@ function Card({
   children: ReactNode;
 }): JSX.Element {
   return (
-    <section
-      className="wx-patient-card"
-      style={{ ...cardSurface, padding: "1.25rem 1.5rem" }}
-    >
+    <section className="wx-patient-card" style={{ ...cardSurface, padding: "1.25rem 1.5rem" }}>
       <h2
         style={{
           margin: "0 0 0.75rem",
@@ -471,13 +348,9 @@ function SubsectionHeader({
       <div>
         <div style={subsectionTitleRow}>
           <h3 style={subsectionTitle}>{title}</h3>
-          {typeof count === "number" ? (
-            <span style={countBadge}>{count}</span>
-          ) : null}
+          {typeof count === "number" ? <span style={countBadge}>{count}</span> : null}
         </div>
-        {description ? (
-          <p style={subsectionDescription}>{description}</p>
-        ) : null}
+        {description ? <p style={subsectionDescription}>{description}</p> : null}
       </div>
     </div>
   );
@@ -557,8 +430,7 @@ function FieldLabel({
 function maskIdentifierTail(value: string | null | undefined): string {
   const normalized = value?.trim();
   if (!normalized) return "Not recorded";
-  if (normalized === "^" || normalized === "+" || normalized === "N")
-    return normalized;
+  if (normalized === "^" || normalized === "+" || normalized === "N") return normalized;
   if (normalized.length <= 4) return normalized;
   return `••••${normalized.slice(-4)}`;
 }
@@ -639,9 +511,7 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
   const client = useApiClient();
   const [demographics, setDemographics] = useState<Demographics | null>(null);
   const [identifiers, setIdentifiers] = useState<Identifier[] | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
     let active = true;
@@ -685,20 +555,12 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
 
   const d = demographics;
   const orDash = (value: string | null) => (value?.trim() ? value : "—");
-  const codeList = (values: string[]) =>
-    values.length ? values.join(", ") : "—";
-  const legalName = [
-    d.legalFirstName,
-    d.legalMiddleName,
-    d.legalLastName,
-    d.legalNameSuffix,
-  ]
+  const codeList = (values: string[]) => (values.length ? values.join(", ") : "—");
+  const legalName = [d.legalFirstName, d.legalMiddleName, d.legalLastName, d.legalNameSuffix]
     .filter(Boolean)
     .join(" ");
   const activeIdentifiers = identifiers.filter((item) => !item.effectiveTo);
-  const historicalIdentifiers = identifiers.filter((item) =>
-    Boolean(item.effectiveTo),
-  );
+  const historicalIdentifiers = identifiers.filter((item) => Boolean(item.effectiveTo));
 
   return (
     <div style={tabPage}>
@@ -711,10 +573,7 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
       <div style={overviewStrip}>
         <InfoField label="Legal name" value={legalName || "—"} />
         <InfoField label="Date of birth" value={dateOnly(d.dob)} />
-        <InfoField
-          label="Preferred language"
-          value={orDash(d.preferredLanguageCode)}
-        />
+        <InfoField label="Preferred language" value={orDash(d.preferredLanguageCode)} />
         <InfoField label="MRN" value={d.mrn} mono />
       </div>
 
@@ -740,34 +599,19 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
 
         <Card title="Demographic profile">
           <InfoGrid>
-            <InfoField
-              label="Sex assigned at birth"
-              value={orDash(d.sexAssignedAtBirth)}
-            />
-            <InfoField
-              label="Gender identity"
-              value={orDash(d.genderIdentityCode)}
-            />
-            <InfoField
-              label="Sexual orientation"
-              value={orDash(d.sexualOrientationCode)}
-            />
+            <InfoField label="Sex assigned at birth" value={orDash(d.sexAssignedAtBirth)} />
+            <InfoField label="Gender identity" value={orDash(d.genderIdentityCode)} />
+            <InfoField label="Sexual orientation" value={orDash(d.sexualOrientationCode)} />
             <InfoField label="Pronouns" value={orDash(d.pronounsCode)} />
-            <InfoField
-              label="Marital status"
-              value={orDash(d.maritalStatusCode)}
-            />
-            <InfoField
-              label="Preferred language"
-              value={orDash(d.preferredLanguageCode)}
-            />
+            <InfoField label="Marital status" value={orDash(d.maritalStatusCode)} />
+            <InfoField label="Preferred language" value={orDash(d.preferredLanguageCode)} />
             <InfoField label="Race" value={codeList(d.raceCodes)} />
             <InfoField label="Ethnicity" value={codeList(d.ethnicityCodes)} />
           </InfoGrid>
 
           <p style={helperNote}>
-            SOGI, race and ethnicity values are stored as USCDI codes until M38
-            display-label resolution is connected.
+            SOGI, race and ethnicity values are stored as USCDI codes until M38 display-label
+            resolution is connected.
           </p>
         </Card>
       </div>
@@ -790,15 +634,11 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
               <div key={identifier.id} style={recordRow}>
                 <div style={recordRowMain}>
                   <div style={recordTitleRow}>
-                    <strong style={recordTitle}>
-                      {identifier.kind.toUpperCase()}
-                    </strong>
+                    <strong style={recordTitle}>{identifier.kind.toUpperCase()}</strong>
                     {identifier.kind === "mrn" ? (
                       <span style={badge("neutral")}>immutable</span>
                     ) : null}
-                    {identifier.sensitive ? (
-                      <span style={badge("warning")}>sensitive</span>
-                    ) : null}
+                    {identifier.sensitive ? <span style={badge("warning")}>sensitive</span> : null}
                   </div>
 
                   <div style={recordValue}>
@@ -814,10 +654,8 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
                   </div>
 
                   <div style={recordMeta}>
-                    {identifier.issuer
-                      ? `Issuer: ${identifier.issuer}`
-                      : "No issuer recorded"}{" "}
-                    · active since {dateOnly(identifier.effectiveFrom)}
+                    {identifier.issuer ? `Issuer: ${identifier.issuer}` : "No issuer recorded"} ·
+                    active since {dateOnly(identifier.effectiveFrom)}
                   </div>
                 </div>
               </div>
@@ -836,8 +674,7 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
                   <div>
                     <strong>{identifier.kind.toUpperCase()}</strong>
                     <div style={recordMeta}>
-                      {dateOnly(identifier.effectiveFrom)} →{" "}
-                      {dateOnly(identifier.effectiveTo)}
+                      {dateOnly(identifier.effectiveFrom)} → {dateOnly(identifier.effectiveTo)}
                     </div>
                   </div>
                   <div style={{ color: "var(--color-on-surface-variant)" }}>
@@ -852,8 +689,7 @@ function DemographicsTab({ patientId }: { patientId: string }): JSX.Element {
         ) : null}
 
         <p style={helperNote}>
-          Sensitive identifiers remain masked in this chart. Full SSN reveal
-          requires the
+          Sensitive identifiers remain masked in this chart. Full SSN reveal requires the
           <code style={{ margin: "0 0.25rem" }}>phi.read_ssn</code> permission.
         </p>
       </Card>
@@ -899,13 +735,7 @@ interface Address {
   geocodeLng: string | null;
 }
 
-const ADDRESS_KINDS = [
-  "home",
-  "facility",
-  "mailing",
-  "temporary",
-  "prior",
-] as const;
+const ADDRESS_KINDS = ["home", "facility", "mailing", "temporary", "prior"] as const;
 
 function AddressLine({ a }: { a: Address }): JSX.Element {
   return (
@@ -922,9 +752,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
   const client = useApiClient();
   const toast = useToast();
   const [addresses, setAddresses] = useState<Address[] | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [form, setForm] = useState({
     line1: "",
     line2: "",
@@ -990,9 +818,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
     setSaving(false);
 
     if (res.error) {
-      setSaveError(
-        "Could not save the address. Check the fields and try again.",
-      );
+      setSaveError("Could not save the address. Check the fields and try again.");
       return;
     }
 
@@ -1033,9 +859,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
         title="Addresses"
         description="Current service-location and contact addresses, with append-only history."
         trailing={
-          primary ? (
-            <span style={badge("primary")}>Primary address on file</span>
-          ) : undefined
+          primary ? <span style={badge("primary")}>Primary address on file</span> : undefined
         }
       />
 
@@ -1064,12 +888,8 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                     }}
                   >
                     <div style={recordTitleRow}>
-                      <strong style={{ textTransform: "capitalize" }}>
-                        {address.kind}
-                      </strong>
-                      {address.isPrimary ? (
-                        <span style={badge("primary")}>primary</span>
-                      ) : null}
+                      <strong style={{ textTransform: "capitalize" }}>{address.kind}</strong>
+                      {address.isPrimary ? <span style={badge("primary")}>primary</span> : null}
                       {address.geocodeLat && address.geocodeLng ? (
                         <span
                           style={badge("success")}
@@ -1109,9 +929,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                   <div key={address.id} style={recordRowMuted}>
                     <div>
                       <div style={recordTitleRow}>
-                        <strong style={{ textTransform: "capitalize" }}>
-                          {address.kind}
-                        </strong>
+                        <strong style={{ textTransform: "capitalize" }}>{address.kind}</strong>
                         {address.isPrimary ? (
                           <span style={badge("neutral")}>was primary</span>
                         ) : null}
@@ -1121,8 +939,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                       </div>
                     </div>
                     <div style={recordMeta}>
-                      {dateOnly(address.effectiveFrom)} →{" "}
-                      {dateOnly(address.effectiveTo)}
+                      {dateOnly(address.effectiveFrom)} → {dateOnly(address.effectiveTo)}
                     </div>
                   </div>
                 ))}
@@ -1133,8 +950,8 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
 
         <Card title="Add address">
           <p style={cardIntro}>
-            Add a new address record. Setting it as primary will close the
-            current primary record and preserve it in history.
+            Add a new address record. Setting it as primary will close the current primary record
+            and preserve it in history.
           </p>
 
           <form onSubmit={submit} style={addressForm}>
@@ -1183,9 +1000,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                   required
                   placeholder="ZIP"
                   value={form.postalCode}
-                  onChange={(e) =>
-                    setForm({ ...form, postalCode: e.target.value })
-                  }
+                  onChange={(e) => setForm({ ...form, postalCode: e.target.value })}
                   style={input}
                 />
               </FieldLabel>
@@ -1210,9 +1025,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
                 <input
                   type="checkbox"
                   checked={form.isPrimary}
-                  onChange={(e) =>
-                    setForm({ ...form, isPrimary: e.target.checked })
-                  }
+                  onChange={(e) => setForm({ ...form, isPrimary: e.target.checked })}
                 />
                 <span>
                   <strong style={{ display: "block" }}>Set as primary</strong>
@@ -1225,8 +1038,7 @@ function AddressesTab({ patientId }: { patientId: string }): JSX.Element {
 
             {form.isPrimary && current.some((address) => address.isPrimary) ? (
               <div style={warningNote}>
-                The current primary address will move to history when this
-                address is saved.
+                The current primary address will move to history when this address is saved.
               </div>
             ) : null}
 
@@ -1314,8 +1126,7 @@ interface HopeCoverageSnapshot {
 }
 
 function hopeAssessmentDate(assessment: HopeAssessmentSummary): number {
-  const raw =
-    assessment.signedAt ?? assessment.targetDate ?? assessment.createdAt;
+  const raw = assessment.signedAt ?? assessment.targetDate ?? assessment.createdAt;
   const parsed = raw ? Date.parse(raw) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : 0;
 }
@@ -1325,9 +1136,7 @@ function selectHopeAdmissionAssessment(
 ): HopeAssessmentSummary | null {
   const candidates = assessments
     .filter(
-      (assessment) =>
-        assessment.rfaKind === "01_admission" &&
-        !assessment.supersededByAssessmentId,
+      (assessment) => assessment.rfaKind === "01_admission" && !assessment.supersededByAssessmentId,
     )
     .sort((a, b) => {
       if (a.status === "signed" && b.status !== "signed") return -1;
@@ -1349,15 +1158,9 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
   const client = useApiClient();
   const [payers, setPayers] = useState<PatientPayer[] | null>(null);
   const [names, setNames] = useState<Record<string, string>>({});
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
-  const [hopeSnapshot, setHopeSnapshot] = useState<HopeCoverageSnapshot | null>(
-    null,
-  );
-  const [hopeStatus, setHopeStatus] = useState<
-    "loading" | "ready" | "unavailable"
-  >("loading");
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [hopeSnapshot, setHopeSnapshot] = useState<HopeCoverageSnapshot | null>(null);
+  const [hopeStatus, setHopeStatus] = useState<"loading" | "ready" | "unavailable">("loading");
 
   useEffect(() => {
     let active = true;
@@ -1393,9 +1196,8 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
           const result = await client.GET("/api/v1/mdm/{kind}/{id}", {
             params: { path: { kind: "payer", id: payerId } },
           });
-          const name = (
-            result.data as { canonical?: { displayName?: string } } | undefined
-          )?.canonical?.displayName;
+          const name = (result.data as { canonical?: { displayName?: string } } | undefined)
+            ?.canonical?.displayName;
           return [payerId, name ?? ""] as const;
         }),
       );
@@ -1408,9 +1210,7 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
         return;
       }
 
-      const assessments = (
-        hopeRes.data as { assessments: HopeAssessmentSummary[] }
-      ).assessments;
+      const assessments = (hopeRes.data as { assessments: HopeAssessmentSummary[] }).assessments;
       const admissionAssessment = selectHopeAdmissionAssessment(assessments);
 
       if (!admissionAssessment) {
@@ -1418,12 +1218,9 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
         return;
       }
 
-      const workspaceRes = await client.GET(
-        "/api/v1/hope/assessments/{id}/workspace",
-        {
-          params: { path: { id: admissionAssessment.id } },
-        },
-      );
+      const workspaceRes = await client.GET("/api/v1/hope/assessments/{id}/workspace", {
+        params: { path: { id: admissionAssessment.id } },
+      });
 
       if (!active) return;
 
@@ -1433,9 +1230,7 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
       }
 
       const workspace = workspaceRes.data as HopeWorkspace;
-      const sectionA = workspace.sections.find(
-        (section) => section.code === "A",
-      );
+      const sectionA = workspace.sections.find((section) => section.code === "A");
 
       if (!sectionA) {
         setHopeStatus("unavailable");
@@ -1444,13 +1239,9 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
 
       setHopeSnapshot({
         assessment: admissionAssessment,
-        payerItems: sectionA.items.filter((item) =>
-          item.itemCode.startsWith("A1400"),
-        ),
-        medicareNumber:
-          sectionA.items.find((item) => item.itemCode === "A0600B") ?? null,
-        medicaidNumber:
-          sectionA.items.find((item) => item.itemCode === "A0700") ?? null,
+        payerItems: sectionA.items.filter((item) => item.itemCode.startsWith("A1400")),
+        medicareNumber: sectionA.items.find((item) => item.itemCode === "A0600B") ?? null,
+        medicaidNumber: sectionA.items.find((item) => item.itemCode === "A0700") ?? null,
       });
       setHopeStatus("ready");
     })();
@@ -1471,25 +1262,18 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
     );
   }
 
-  const current = [...payers]
-    .filter((payer) => payer.current)
-    .sort((a, b) => a.rank - b.rank);
+  const current = [...payers].filter((payer) => payer.current).sort((a, b) => a.rank - b.rank);
   const history = payers.filter((payer) => !payer.current);
 
   const payerName = (payer: PatientPayer): ReactNode =>
     names[payer.payerId] ?? (
-      <span
-        style={{ color: "var(--color-muted)" }}
-        title={`M40 payer ${payer.payerId}`}
-      >
+      <span style={{ color: "var(--color-muted)" }} title={`M40 payer ${payer.payerId}`}>
         {payer.payerId.slice(0, 8)}…
       </span>
     );
 
   const selectedHopePayers =
-    hopeSnapshot?.payerItems.filter(
-      (item) => String(item.value ?? "") === "1",
-    ) ?? [];
+    hopeSnapshot?.payerItems.filter((item) => String(item.value ?? "") === "1") ?? [];
 
   const hasMedicare =
     hopeSnapshot?.payerItems.some(
@@ -1571,9 +1355,7 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
                   ) : (
                     <span style={badge("neutral")}>rank {payer.rank}</span>
                   )}
-                  <span style={badge("success")}>
-                    {titleCase(payer.coverageKind)}
-                  </span>
+                  <span style={badge("success")}>{titleCase(payer.coverageKind)}</span>
                 </div>
 
                 <div style={coverageFacts}>
@@ -1582,20 +1364,9 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
                     value={maskIdentifierTail(payer.subscriberId)}
                     mono
                   />
-                  <InfoField
-                    label="Group"
-                    value={payer.groupNumber || "—"}
-                    mono
-                  />
-                  <InfoField
-                    label="BIN / PCN"
-                    value={payer.binPcn || "—"}
-                    mono
-                  />
-                  <InfoField
-                    label="Effective"
-                    value={dateOnly(payer.effectiveFrom)}
-                  />
+                  <InfoField label="Group" value={payer.groupNumber || "—"} mono />
+                  <InfoField label="BIN / PCN" value={payer.binPcn || "—"} mono />
+                  <InfoField label="Effective" value={dateOnly(payer.effectiveFrom)} />
                 </div>
               </div>
             ))}
@@ -1631,8 +1402,7 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
                   />
                 </div>
                 <p style={cardIntro}>
-                  Regulatory snapshot from the selected non-superseded Admission
-                  HOPE record.
+                  Regulatory snapshot from the selected non-superseded Admission HOPE record.
                 </p>
               </div>
 
@@ -1730,8 +1500,7 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
                   </div>
                 </div>
                 <div style={recordMeta}>
-                  {dateOnly(payer.effectiveFrom)} →{" "}
-                  {dateOnly(payer.effectiveTo)}
+                  {dateOnly(payer.effectiveFrom)} → {dateOnly(payer.effectiveTo)}
                 </div>
               </div>
             ))}
@@ -1740,9 +1509,8 @@ function CoverageTab({ patientId }: { patientId: string }): JSX.Element {
       ) : null}
 
       <p style={helperNote}>
-        Current payer records and HOPE coverage are intentionally shown
-        separately: the HOPE card is a regulatory snapshot, not a replacement
-        for the patient's live coverage.
+        Current payer records and HOPE coverage are intentionally shown separately: the HOPE card is
+        a regulatory snapshot, not a replacement for the patient's live coverage.
       </p>
     </div>
   );
@@ -1842,15 +1610,12 @@ const ROLE_LABELS: Record<string, string> = {
 
 const roleLabel = (r: string) => ROLE_LABELS[r] ?? r;
 
-const titleCase = (s: string) =>
-  s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+const titleCase = (s: string) => s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 
 function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
   const client = useApiClient();
   const [team, setTeam] = useState<CareTeam | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
     let active = true;
@@ -1887,25 +1652,13 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
     );
   }
 
-  const assignments = [...team.assignments].sort(
-    (a, b) => Number(b.current) - Number(a.current),
-  );
-  const activeAssignments = assignments.filter(
-    (assignment) => assignment.current,
-  );
-  const pastAssignments = assignments.filter(
-    (assignment) => !assignment.current,
-  );
+  const assignments = [...team.assignments].sort((a, b) => Number(b.current) - Number(a.current));
+  const activeAssignments = assignments.filter((assignment) => assignment.current);
+  const pastAssignments = assignments.filter((assignment) => !assignment.current);
   const caregivers = team.caregivers.filter((caregiver) => caregiver.current);
-  const pastCaregivers = team.caregivers.filter(
-    (caregiver) => !caregiver.current,
-  );
-  const emergencyContacts = [...team.emergencyContacts].sort(
-    (a, b) => a.priority - b.priority,
-  );
-  const primaryRn = activeAssignments.find(
-    (assignment) => assignment.role === "primary_rn",
-  );
+  const pastCaregivers = team.caregivers.filter((caregiver) => !caregiver.current);
+  const emergencyContacts = [...team.emergencyContacts].sort((a, b) => a.priority - b.priority);
+  const primaryRn = activeAssignments.find((assignment) => assignment.role === "primary_rn");
   const primaryCaregiver = caregivers.find((caregiver) => caregiver.isPrimary);
 
   return (
@@ -1920,11 +1673,7 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
         <InfoField
           label="Primary RN"
           value={primaryRn ? roleLabel(primaryRn.role) : "Not assigned"}
-          hint={
-            primaryRn
-              ? `Clinician ${primaryRn.clinicianUserId.slice(0, 8)}…`
-              : undefined
-          }
+          hint={primaryRn ? `Clinician ${primaryRn.clinicianUserId.slice(0, 8)}…` : undefined}
         />
         <InfoField label="Active clinicians" value={activeAssignments.length} />
         <InfoField
@@ -1935,10 +1684,7 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
               : "Not recorded"
           }
         />
-        <InfoField
-          label="Emergency contacts"
-          value={emergencyContacts.length}
-        />
+        <InfoField label="Emergency contacts" value={emergencyContacts.length} />
       </div>
 
       <div style={twoColumnGrid}>
@@ -1966,25 +1712,16 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
                 >
                   <div style={recordRowMain}>
                     <div style={recordTitleRow}>
-                      <strong style={recordTitle}>
-                        {roleLabel(assignment.role)}
-                      </strong>
+                      <strong style={recordTitle}>{roleLabel(assignment.role)}</strong>
                       {assignment.role === "primary_rn" ? (
                         <span style={badge("primary")}>primary RN</span>
                       ) : null}
                     </div>
-                    <div
-                      style={recordValue}
-                      title={`M2 user ${assignment.clinicianUserId}`}
-                    >
+                    <div style={recordValue} title={`M2 user ${assignment.clinicianUserId}`}>
                       Clinician{" "}
-                      <code style={inlineCode}>
-                        {assignment.clinicianUserId.slice(0, 8)}…
-                      </code>
+                      <code style={inlineCode}>{assignment.clinicianUserId.slice(0, 8)}…</code>
                     </div>
-                    <div style={recordMeta}>
-                      Assigned {dateOnly(assignment.assignedAt)}
-                    </div>
+                    <div style={recordMeta}>Assigned {dateOnly(assignment.assignedAt)}</div>
                   </div>
                 </div>
               ))}
@@ -2019,36 +1756,24 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
                       <strong style={recordTitle}>
                         {caregiver.firstName} {caregiver.lastName}
                       </strong>
-                      <span style={badge("success")}>
-                        {titleCase(caregiver.relationship)}
-                      </span>
-                      {caregiver.isPrimary ? (
-                        <span style={badge("primary")}>primary</span>
-                      ) : null}
+                      <span style={badge("success")}>{titleCase(caregiver.relationship)}</span>
+                      {caregiver.isPrimary ? <span style={badge("primary")}>primary</span> : null}
                       {caregiver.isLegalRepresentative ? (
-                        <span style={badge("warning")}>
-                          legal representative
-                        </span>
+                        <span style={badge("warning")}>legal representative</span>
                       ) : null}
                     </div>
 
                     {caregiver.phone || caregiver.email ? (
                       <div style={contactLine}>
-                        {caregiver.phone ? (
-                          <span>Phone · {caregiver.phone}</span>
-                        ) : null}
-                        {caregiver.email ? (
-                          <span>Email · {caregiver.email}</span>
-                        ) : null}
+                        {caregiver.phone ? <span>Phone · {caregiver.phone}</span> : null}
+                        {caregiver.email ? <span>Email · {caregiver.email}</span> : null}
                       </div>
                     ) : (
                       <div style={recordMeta}>No contact details recorded</div>
                     )}
 
                     {caregiver.isLegalRepresentative ? (
-                      <div style={recordMeta}>
-                        Authority: {titleCase(caregiver.lrAuthority)}
-                      </div>
+                      <div style={recordMeta}>Authority: {titleCase(caregiver.lrAuthority)}</div>
                     ) : null}
                   </div>
                 </div>
@@ -2077,9 +1802,7 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
                 <span style={contactPriority}>#{contact.priority}</span>
                 <div style={{ minWidth: 0 }}>
                   <strong style={recordTitle}>{contact.name}</strong>
-                  <div style={recordMeta}>
-                    {titleCase(contact.relationship)}
-                  </div>
+                  <div style={recordMeta}>{titleCase(contact.relationship)}</div>
                   <div style={contactLine}>
                     <span>{contact.phone}</span>
                     {contact.email ? <span>{contact.email}</span> : null}
@@ -2108,8 +1831,7 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
                     </div>
                   </div>
                   <div style={recordMeta}>
-                    {dateOnly(assignment.assignedAt)} →{" "}
-                    {dateOnly(assignment.unassignedAt)}
+                    {dateOnly(assignment.assignedAt)} → {dateOnly(assignment.unassignedAt)}
                   </div>
                 </div>
               ))}
@@ -2120,9 +1842,7 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
                     <strong>
                       {caregiver.firstName} {caregiver.lastName}
                     </strong>
-                    <div style={recordMeta}>
-                      {titleCase(caregiver.relationship)}
-                    </div>
+                    <div style={recordMeta}>{titleCase(caregiver.relationship)}</div>
                   </div>
                   <span style={badge("neutral")}>ended</span>
                 </div>
@@ -2133,9 +1853,8 @@ function CareTeamTab({ patientId }: { patientId: string }): JSX.Element {
       ) : null}
 
       <p style={helperNote}>
-        Clinician display names remain represented by their care-team role and
-        clinician ID until the M2/M34 roster exposes staff names to this
-        surface.
+        Clinician display names remain represented by their care-team role and clinician ID until
+        the M2/M34 roster exposes staff names to this surface.
       </p>
     </div>
   );
@@ -2223,9 +1942,7 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   const client = useApiClient();
   const [flags, setFlags] = useState<PrivacyFlags | null>(null);
   const [consents, setConsents] = useState<ConsentRecord[] | null>(null);
-  const [status, setStatus] = useState<"loading" | "ready" | "error">(
-    "loading",
-  );
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
     let active = true;
@@ -2274,10 +1991,8 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
   }
 
   const nonSud = flags.flags.filter((flag) => flag !== "sud");
-  const activeConsents =
-    consents?.filter((consent) => consent.status === "active") ?? [];
-  const otherConsents =
-    consents?.filter((consent) => consent.status !== "active") ?? [];
+  const activeConsents = consents?.filter((consent) => consent.status === "active") ?? [];
+  const otherConsents = consents?.filter((consent) => consent.status !== "active") ?? [];
 
   return (
     <div style={tabPage}>
@@ -2320,12 +2035,9 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
               ✓
             </span>
             <div>
-              <strong style={recordTitle}>
-                No active privacy restrictions
-              </strong>
+              <strong style={recordTitle}>No active privacy restrictions</strong>
               <p style={emptyPanelText}>
-                No patient privacy flag currently limits disclosure on this
-                chart.
+                No patient privacy flag currently limits disclosure on this chart.
               </p>
             </div>
           </div>
@@ -2337,9 +2049,7 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
                   <span style={badge("danger")}>restricted</span>
                   <strong style={recordTitle}>{flagLabel("sud")}</strong>
                 </div>
-                <p style={cardIntro}>
-                  42 CFR Part 2 protections apply to substance-use records.
-                </p>
+                <p style={cardIntro}>42 CFR Part 2 protections apply to substance-use records.</p>
               </div>
             ) : null}
 
@@ -2356,8 +2066,8 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
 
         {flags.capturedAt ? (
           <p style={helperNote}>
-            Restriction snapshot captured {dateOnly(flags.capturedAt)} and
-            recomputed from consent state.
+            Restriction snapshot captured {dateOnly(flags.capturedAt)} and recomputed from consent
+            state.
           </p>
         ) : null}
       </Card>
@@ -2370,9 +2080,7 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
                 ✓
               </span>
               <div>
-                <strong style={recordTitle}>
-                  Disclosure is permitted for authorized care
-                </strong>
+                <strong style={recordTitle}>Disclosure is permitted for authorized care</strong>
                 <p style={emptyPanelText}>
                   A qualifying Part 2 consent is on file for this patient.
                 </p>
@@ -2402,9 +2110,7 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
               <div key={consent.id} style={recordRow}>
                 <div style={recordRowMain}>
                   <div style={recordTitleRow}>
-                    <strong style={recordTitle}>
-                      {titleCase(consent.typeKey)}
-                    </strong>
+                    <strong style={recordTitle}>{titleCase(consent.typeKey)}</strong>
                     <StatusPill
                       label={titleCase(consent.status)}
                       tone={consentTone(consent.status)}
@@ -2415,9 +2121,7 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
                     {consent.expiresAt
                       ? ` · expires ${dateOnly(consent.expiresAt)}`
                       : " · no expiry"}
-                    {consent.grantorKind
-                      ? ` · ${titleCase(consent.grantorKind)}`
-                      : ""}
+                    {consent.grantorKind ? ` · ${titleCase(consent.grantorKind)}` : ""}
                   </div>
                 </div>
               </div>
@@ -2427,9 +2131,7 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
 
         {otherConsents.length > 0 ? (
           <details style={{ ...detailsBlock, marginTop: "1rem" }}>
-            <summary style={detailsSummary}>
-              Other consent records ({otherConsents.length})
-            </summary>
+            <summary style={detailsSummary}>Other consent records ({otherConsents.length})</summary>
             <div style={{ ...recordList, marginTop: "0.75rem" }}>
               {otherConsents.map((consent) => (
                 <div key={consent.id} style={recordRowMuted}>
@@ -2437,9 +2139,7 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
                     <strong>{titleCase(consent.typeKey)}</strong>
                     <div style={recordMeta}>
                       Effective {dateOnly(consent.effectiveAt)}
-                      {consent.expiresAt
-                        ? ` · expires ${dateOnly(consent.expiresAt)}`
-                        : ""}
+                      {consent.expiresAt ? ` · expires ${dateOnly(consent.expiresAt)}` : ""}
                     </div>
                   </div>
                   <StatusPill
@@ -2454,9 +2154,8 @@ function PrivacyFlagsTab({ patientId }: { patientId: string }): JSX.Element {
       </Card>
 
       <p style={helperNote}>
-        Privacy detail fails closed: when disclosure authority is absent or
-        unknown, protected information remains sealed rather than appearing
-        blank.
+        Privacy detail fails closed: when disclosure authority is absent or unknown, protected
+        information remains sealed rather than appearing blank.
       </p>
     </div>
   );
@@ -2566,8 +2265,7 @@ const infoField = {
   minWidth: 0,
   padding: "0.75rem 0.8rem",
   borderRadius: "var(--radius-md)",
-  background:
-    "var(--color-surface-container-low, var(--color-surface-container))",
+  background: "var(--color-surface-container-low, var(--color-surface-container))",
 } as const;
 
 const infoFieldLabel = {
@@ -2623,24 +2321,20 @@ const recordRow = {
   gap: "1rem",
   minWidth: 0,
   padding: "0.75rem 0.8rem",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
   borderRadius: "var(--radius-md)",
   background: "var(--color-surface)",
 } as const;
 
 const recordRowMuted = {
   ...recordRow,
-  background:
-    "var(--color-surface-container-low, var(--color-surface-container))",
+  background: "var(--color-surface-container-low, var(--color-surface-container))",
   color: "var(--color-on-surface-variant)",
 } as const;
 
 const highlightedRow = {
-  borderColor:
-    "color-mix(in srgb, var(--color-primary) 40%, var(--color-outline-variant))",
-  background:
-    "color-mix(in srgb, var(--color-primary) 5%, var(--color-surface))",
+  borderColor: "color-mix(in srgb, var(--color-primary) 40%, var(--color-outline-variant))",
+  background: "color-mix(in srgb, var(--color-primary) 5%, var(--color-surface))",
 } as const;
 
 const recordRowMain = {
@@ -2681,11 +2375,9 @@ const emptyPanel = {
   alignItems: "flex-start",
   gap: "0.75rem",
   padding: "0.85rem",
-  border:
-    "1px dashed color-mix(in srgb, var(--color-outline-variant) 70%, transparent)",
+  border: "1px dashed color-mix(in srgb, var(--color-outline-variant) 70%, transparent)",
   borderRadius: "var(--radius-md)",
-  background:
-    "var(--color-surface-container-low, var(--color-surface-container))",
+  background: "var(--color-surface-container-low, var(--color-surface-container))",
 } as const;
 
 const emptyPanelIcon = {
@@ -2729,8 +2421,7 @@ const cardIntro = {
 } as const;
 
 const detailsBlock = {
-  borderTop:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
   marginTop: "0.9rem",
   paddingTop: "0.75rem",
 } as const;
@@ -2751,17 +2442,14 @@ const addressLayout = {
 
 const addressRecordCard = {
   padding: "0.85rem",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
   borderRadius: "var(--radius-md)",
   background: "var(--color-surface)",
 } as const;
 
 const addressRecordPrimary = {
-  borderColor:
-    "color-mix(in srgb, var(--color-primary) 45%, var(--color-outline-variant))",
-  background:
-    "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
+  borderColor: "color-mix(in srgb, var(--color-primary) 45%, var(--color-outline-variant))",
+  background: "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
 } as const;
 
 const addressText = {
@@ -2807,8 +2495,7 @@ const input = {
   boxSizing: "border-box",
   padding: "0.62rem 0.7rem",
   borderRadius: "var(--radius-md)",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 70%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 70%, transparent)",
   background: "var(--color-surface)",
   color: "var(--color-on-surface)",
   fontSize: "0.85rem",
@@ -2833,11 +2520,9 @@ const primaryToggle = {
   gap: "0.65rem",
   minHeight: "42px",
   padding: "0.55rem 0.65rem",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 55%, transparent)",
   borderRadius: "var(--radius-md)",
-  background:
-    "var(--color-surface-container-low, var(--color-surface-container))",
+  background: "var(--color-surface-container-low, var(--color-surface-container))",
   color: "var(--color-on-surface)",
   cursor: "pointer",
 } as const;
@@ -2846,8 +2531,7 @@ const warningNote = {
   padding: "0.65rem 0.75rem",
   border: "1px solid color-mix(in srgb, var(--color-warning) 40%, transparent)",
   borderRadius: "var(--radius-md)",
-  background:
-    "color-mix(in srgb, var(--color-warning) 8%, var(--color-surface))",
+  background: "color-mix(in srgb, var(--color-warning) 8%, var(--color-surface))",
   color: "var(--color-on-surface)",
   fontSize: "0.78rem",
   lineHeight: 1.45,
@@ -2881,8 +2565,7 @@ const secondaryLinkButton = {
   justifyContent: "center",
   flex: "0 0 auto",
   padding: "0.5rem 0.8rem",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 65%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 65%, transparent)",
   borderRadius: "9999px",
   background: "var(--color-surface)",
   color: "var(--color-on-surface)",
@@ -2899,17 +2582,14 @@ const coverageGrid = {
 
 const coverageCard = {
   padding: "0.85rem",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
   borderRadius: "var(--radius-md)",
   background: "var(--color-surface)",
 } as const;
 
 const coverageCardPrimary = {
-  borderColor:
-    "color-mix(in srgb, var(--color-primary) 45%, var(--color-outline-variant))",
-  background:
-    "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
+  borderColor: "color-mix(in srgb, var(--color-primary) 45%, var(--color-outline-variant))",
+  background: "color-mix(in srgb, var(--color-primary) 4%, var(--color-surface))",
 } as const;
 
 const coverageCardTitle = {
@@ -2968,11 +2648,9 @@ const identifierSummaryCard = {
   gap: "0.35rem 0.75rem",
   alignItems: "center",
   padding: "0.75rem",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
   borderRadius: "var(--radius-md)",
-  background:
-    "var(--color-surface-container-low, var(--color-surface-container))",
+  background: "var(--color-surface-container-low, var(--color-surface-container))",
 } as const;
 
 const identifierSummaryValue = {
@@ -2996,8 +2674,7 @@ const contactCard = {
   alignItems: "flex-start",
   gap: "0.75rem",
   padding: "0.85rem",
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 45%, transparent)",
   borderRadius: "var(--radius-md)",
   background: "var(--color-surface)",
 } as const;
@@ -3033,8 +2710,7 @@ const restrictionCardWarning = {
   padding: "0.8rem",
   border: "1px solid color-mix(in srgb, var(--color-warning) 35%, transparent)",
   borderRadius: "var(--radius-md)",
-  background:
-    "color-mix(in srgb, var(--color-warning) 6%, var(--color-surface))",
+  background: "color-mix(in srgb, var(--color-warning) 6%, var(--color-surface))",
 } as const;
 
 const restrictionCardDanger = {
@@ -3051,8 +2727,7 @@ const positiveState = {
   padding: "0.85rem",
   border: "1px solid color-mix(in srgb, var(--color-success) 35%, transparent)",
   borderRadius: "var(--radius-md)",
-  background:
-    "color-mix(in srgb, var(--color-success) 6%, var(--color-surface))",
+  background: "color-mix(in srgb, var(--color-success) 6%, var(--color-surface))",
 } as const;
 
 const positiveStateIcon = {
