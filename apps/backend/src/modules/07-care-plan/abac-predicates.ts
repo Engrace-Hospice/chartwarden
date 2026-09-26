@@ -43,6 +43,8 @@ const ORG_WIDE_SCOPE_ROLES = [
   "medical_director",
   "compliance_officer",
   "survey_coordinator",
+  "rn_case_manager",
+  "rn",
 ] as const;
 
 /** The InterventionDiscipline tokens a role key directly names (used to assemble the actor's scope). */

@@ -497,6 +497,26 @@ export function createInMemoryMessagingService(
       return [...(inbox.get(`${orgId}:${userId}`) ?? [])];
     },
 
+    async markAlertRead(orgId, userId, alertId) {
+  const key = `${orgId}:${userId}`;
+  const items = inbox.get(key) ?? [];
+
+  const index = items.findIndex((item) => item.alertId === alertId);
+
+  if (index < 0) {
+    throw new NotFoundError("alert", alertId);
+  }
+
+  const item = items[index]!;
+
+  items[index] = {
+    ...item,
+    readAt: new Date().toISOString(),
+  };
+
+  inbox.set(key, items);
+},
+
     async listAlertRules(orgId) {
       return PLATFORM_DEFAULT_ALERT_RULES.map<AlertRuleView>((seed) => {
         const override = overrides.get(`${orgId}:${seed.eventType}`);

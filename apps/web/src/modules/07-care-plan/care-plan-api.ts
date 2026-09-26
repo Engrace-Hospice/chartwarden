@@ -158,7 +158,8 @@ export interface ClinicalSnapshot {
 }
 
 export function idemKey(): string {
-  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+  return typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
     ? crypto.randomUUID()
     : `m7-${Date.now()}-${Math.round(Math.random() * 1e9)}`;
 }
@@ -173,18 +174,26 @@ export function errorMessage(error: unknown, fallback: string): string {
   const body = error as {
     title?: string;
     detail?: string;
+    message?: string;
     code?: string;
     status?: number;
+    error?: { message?: string };
     blockers?: { code?: string; message?: string }[];
   } | null;
-  if (body?.blockers?.length) return body.blockers.map((b) => b.message ?? b.code).join("; ");
+  if (body?.blockers?.length)
+    return body.blockers.map((b) => b.message ?? b.code).join("; ");
   if (body?.detail) return body.detail;
+  if (body?.error?.message) return body.error.message;
+  if (body?.message) return body.message;
   if (body?.title) return body.title;
-  if (body?.status === 409) return "Another open revision already exists. Reload to continue it.";
+  if (body?.status === 409)
+    return "Another open revision already exists. Reload to continue it.";
   if (body?.status === 412)
     return "This record changed while you were working. Reload before saving again.";
-  if (body?.status === 422) return "The Care Plan is not ready for this action.";
-  if (body?.status === 403) return "You do not have access to this action for this patient.";
+  if (body?.status === 422)
+    return "The Care Plan is not ready for this action.";
+  if (body?.status === 403)
+    return "You do not have access to this action for this patient.";
   return fallback;
 }
 
@@ -214,11 +223,21 @@ export async function getCarePlanWorkspace(
   error: unknown;
 }> {
   const [planRes, patRes] = await Promise.all([
-    client.GET("/api/v1/patients/{patientId}/care-plan", { params: { path: { patientId } } }),
-    client.GET("/api/v1/patients/{id}", { params: { path: { id: patientId } } }),
+    client.GET("/api/v1/patients/{patientId}/care-plan", {
+      params: { path: { patientId } },
+    }),
+    client.GET("/api/v1/patients/{id}", {
+      params: { path: { id: patientId } },
+    }),
   ]);
   if (planRes.error) {
-    return { plan: null, patient: null, readiness: null, review: null, error: planRes.error };
+    return {
+      plan: null,
+      patient: null,
+      readiness: null,
+      review: null,
+      error: planRes.error,
+    };
   }
   const patient = patRes.data ? (patRes.data as PatientSummary) : null;
   const data = planRes.data;
@@ -227,10 +246,14 @@ export async function getCarePlanWorkspace(
   }
   const plan = {
     ...(data as unknown as CarePlan),
-    versions: ((data as unknown as CarePlan).versions ?? []).map(normalizeVersion),
+    versions: ((data as unknown as CarePlan).versions ?? []).map(
+      normalizeVersion,
+    ),
   };
   const [readinessRes, reviewRes] = await Promise.all([
-    client.GET("/api/v1/care-plans/{planId}/readiness", { params: { path: { planId: plan.id } } }),
+    client.GET("/api/v1/care-plans/{planId}/readiness", {
+      params: { path: { planId: plan.id } },
+    }),
     client.GET("/api/v1/care-plans/{planId}/review-status", {
       params: { path: { planId: plan.id } },
     }),
@@ -264,9 +287,12 @@ export async function getVersion(
   planId: string,
   versionId: string,
 ): Promise<{ version: Version | null; error: unknown }> {
-  const res = await client.GET("/api/v1/care-plans/{planId}/versions/{versionId}", {
-    params: { path: { planId, versionId } },
-  });
+  const res = await client.GET(
+    "/api/v1/care-plans/{planId}/versions/{versionId}",
+    {
+      params: { path: { planId, versionId } },
+    },
+  );
   if (res.error) return { version: null, error: res.error };
   return { version: normalizeVersion(res.data), error: null };
 }

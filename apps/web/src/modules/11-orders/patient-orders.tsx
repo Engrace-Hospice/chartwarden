@@ -65,8 +65,16 @@ const DETAIL_LIMIT = 50;
 const PENDING = ["pending_signature", "verbal_pending"];
 const DAY = 86_400_000;
 
-const KIND_META: Record<Kind, { tab: string; type: string; icon: GlyphName; color: string }> = {
-  lab: { tab: "Laboratory", type: "Lab", icon: "flask", color: "var(--color-viz-violet)" },
+const KIND_META: Record<
+  Kind,
+  { tab: string; type: string; icon: GlyphName; color: string }
+> = {
+  lab: {
+    tab: "Laboratory",
+    type: "Lab",
+    icon: "flask",
+    color: "var(--color-viz-violet)",
+  },
   dme: { tab: "DME", type: "DME", icon: "bed", color: "var(--color-viz-blue)" },
   comfort_kit: {
     tab: "Comfort Kits",
@@ -74,7 +82,12 @@ const KIND_META: Record<Kind, { tab: string; type: string; icon: GlyphName; colo
     icon: "package",
     color: "var(--color-viz-teal)",
   },
-  supply: { tab: "Supplies", type: "Supply", icon: "package", color: "var(--color-viz-cyan)" },
+  supply: {
+    tab: "Supplies",
+    type: "Supply",
+    icon: "package",
+    color: "var(--color-viz-cyan)",
+  },
   ancillary_service: {
     tab: "Services",
     type: "Service",
@@ -128,7 +141,9 @@ function usDate(value: string | null | undefined): string {
   if (!value) return "—";
   // Date-only values are calendar dates, not UTC midnights.
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  const d = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(value);
+  const d = m
+    ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]))
+    : new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
 }
@@ -136,7 +151,9 @@ function usDate(value: string | null | undefined): string {
 const startOf = (o: OrderRow): string => o.signedAt ?? o.createdAt;
 
 function labName(data: KindData | undefined): string {
-  const codes = Array.isArray(data?.testCodes) ? (data.testCodes as { display?: string }[]) : [];
+  const codes = Array.isArray(data?.testCodes)
+    ? (data.testCodes as { display?: string }[])
+    : [];
   return codes
     .map((c) => str(c.display))
     .filter(Boolean)
@@ -145,7 +162,8 @@ function labName(data: KindData | undefined): string {
 
 /** The row title — the clinical thing ordered when the kind payload names it, else the kind. */
 function orderName(o: OrderRow, data: KindData | undefined): string {
-  if (o.status === "discontinued" && data) return `Discontinue ${baseName(o, data)}`;
+  if (o.status === "discontinued" && data)
+    return `Discontinue ${baseName(o, data)}`;
   return baseName(o, data);
 }
 function baseName(o: OrderRow, data: KindData | undefined): string {
@@ -161,7 +179,9 @@ function baseName(o: OrderRow, data: KindData | undefined): string {
     case "recertification":
       return "Recertification";
     case "idg_requested":
-      return str(data?.requestedKind) ? `IDG: ${str(data?.requestedKind)}` : "IDG request";
+      return str(data?.requestedKind)
+        ? `IDG: ${str(data?.requestedKind)}`
+        : "IDG request";
     default:
       return (
         str(data?.itemName) ||
@@ -173,11 +193,16 @@ function baseName(o: OrderRow, data: KindData | undefined): string {
 }
 
 /** Two short lines of kind-specific detail, read from the order's payload. */
-function orderDetails(o: OrderRow, data: KindData | undefined): [string, string] {
+function orderDetails(
+  o: OrderRow,
+  data: KindData | undefined,
+): [string, string] {
   if (!data) return ["…", ""];
   switch (o.kind) {
     case "lab": {
-      const codes = Array.isArray(data.testCodes) ? (data.testCodes as { code?: string }[]) : [];
+      const codes = Array.isArray(data.testCodes)
+        ? (data.testCodes as { code?: string }[])
+        : [];
       const first = [
         codes.length ? `LOINC ${codes.map((c) => c.code).join(", ")}` : "",
         data.fastingRequired ? "Fasting" : "",
@@ -185,25 +210,35 @@ function orderDetails(o: OrderRow, data: KindData | undefined): [string, string]
       ]
         .filter(Boolean)
         .join(" · ");
-      return [first, str(data.clinicalJustification) || str(data.collectionInstructions)];
+      return [
+        first,
+        str(data.clinicalJustification) || str(data.collectionInstructions),
+      ];
     }
     case "level_of_care_change":
       return [
         `${str(data.fromLevel).toUpperCase() || "—"} → ${str(data.toLevel).toUpperCase() || "—"}${
-          str(data.effectiveAt) ? ` · effective ${usDate(str(data.effectiveAt))}` : ""
+          str(data.effectiveAt)
+            ? ` · effective ${usDate(str(data.effectiveAt))}`
+            : ""
         }`,
         str(data.clinicalJustification),
       ];
     case "comfort_kit":
       return [
-        [str(data.kitSku) ? `Kit ${str(data.kitSku)}` : "", stateLabel(str(data.deploymentSite))]
+        [
+          str(data.kitSku) ? `Kit ${str(data.kitSku)}` : "",
+          stateLabel(str(data.deploymentSite)),
+        ]
           .filter(Boolean)
           .join(" · "),
         str(data.notes),
       ];
     case "recertification":
       return [
-        str(data.periodEndDate) ? `Period ends ${usDate(str(data.periodEndDate))}` : "",
+        str(data.periodEndDate)
+          ? `Period ends ${usDate(str(data.periodEndDate))}`
+          : "",
         "Certification of terminal illness",
       ];
     case "idg_requested":
@@ -229,6 +264,7 @@ export function PatientOrders(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
+  const [verbalOpen, setVerbalOpen] = useState(false);
 
   const [kind, setKind] = useState<Kind | "all">("all");
   const [search, setSearch] = useState("");
@@ -253,9 +289,12 @@ export function PatientOrders(): JSX.Element {
     }
     void (async () => {
       try {
-        const { data, error: requestError } = await client.GET("/api/v1/orders", {
-          params: { query: { patientId } },
-        });
+        const { data, error: requestError } = await client.GET(
+          "/api/v1/orders",
+          {
+            params: { query: { patientId } },
+          },
+        );
         if (!active) return;
         if (requestError) throw new Error("Request failed");
         const orders = ((data?.orders ?? []) as OrderRow[]).sort((a, b) =>
@@ -270,22 +309,35 @@ export function PatientOrders(): JSX.Element {
           recent.map((o) =>
             client
               .GET("/api/v1/orders/{id}", { params: { path: { id: o.id } } })
-              .then((r) => [o.id, (r.data as { data?: KindData } | undefined)?.data ?? {}] as const)
+              .then(
+                (r) =>
+                  [
+                    o.id,
+                    (r.data as { data?: KindData } | undefined)?.data ?? {},
+                  ] as const,
+              )
               .catch(() => [o.id, {}] as const),
           ),
         ).then((pairs) => {
           if (active) setDetails(Object.fromEntries(pairs));
         });
-        const mdmIds = [...new Set(orders.map((o) => o.orderingPhysicianMdmId).filter(Boolean))];
+        const mdmIds = [
+          ...new Set(
+            orders.map((o) => o.orderingPhysicianMdmId).filter(Boolean),
+          ),
+        ];
         void Promise.all(
           mdmIds.map((id) =>
             client
-              .GET("/api/v1/mdm/{kind}/{id}", { params: { path: { kind: "physician", id } } })
+              .GET("/api/v1/mdm/{kind}/{id}", {
+                params: { path: { kind: "physician", id } },
+              })
               .then((r) => [id, r.data?.canonical.displayName ?? ""] as const)
               .catch(() => [id, ""] as const),
           ),
         ).then((pairs) => {
-          if (active) setPhysicians(Object.fromEntries(pairs.filter(([, name]) => name)));
+          if (active)
+            setPhysicians(Object.fromEntries(pairs.filter(([, name]) => name)));
         });
       } catch {
         if (active) {
@@ -299,7 +351,8 @@ export function PatientOrders(): JSX.Element {
     };
   }, [client, patientId, retryKey]);
 
-  const prescriberOf = (o: OrderRow): string => physicians[o.orderingPhysicianMdmId] ?? "—";
+  const prescriberOf = (o: OrderRow): string =>
+    physicians[o.orderingPhysicianMdmId] ?? "—";
 
   const kpis = useMemo(() => {
     const since = (days: number, v: string | null) =>
@@ -311,7 +364,9 @@ export function PatientOrders(): JSX.Element {
       urgent: activeOrders.filter((o) => o.priority !== "routine").length,
       pending: items.filter((o) => PENDING.includes(o.status)).length,
       verbal: items.filter((o) => o.status === "verbal_pending").length,
-      completed: items.filter((o) => o.status === "completed" && since(30, o.completedAt)).length,
+      completed: items.filter(
+        (o) => o.status === "completed" && since(30, o.completedAt),
+      ).length,
       discontinued: items.filter((o) => o.status === "discontinued").length,
     };
   }, [items]);
@@ -323,7 +378,10 @@ export function PatientOrders(): JSX.Element {
   }, [items]);
 
   const prescriberNames = useMemo(
-    () => [...new Set(Object.values(physicians))].sort((a, b) => a.localeCompare(b)),
+    () =>
+      [...new Set(Object.values(physicians))].sort((a, b) =>
+        a.localeCompare(b),
+      ),
     [physicians],
   );
 
@@ -334,7 +392,8 @@ export function PatientOrders(): JSX.Element {
       if (kind !== "all" && o.kind !== kind) return false;
       if (status && o.status !== status) return false;
       if (priority && o.priority !== priority) return false;
-      if (prescriber && physicians[o.orderingPhysicianMdmId] !== prescriber) return false;
+      if (prescriber && physicians[o.orderingPhysicianMdmId] !== prescriber)
+        return false;
       if (cutoff && Date.parse(startOf(o)) < cutoff) return false;
       if (!needle) return true;
       const d = details[o.id];
@@ -348,15 +407,30 @@ export function PatientOrders(): JSX.Element {
         .toLocaleLowerCase()
         .includes(needle);
     });
-  }, [items, details, physicians, kind, status, priority, prescriber, range, search]);
+  }, [
+    items,
+    details,
+    physicians,
+    kind,
+    status,
+    priority,
+    prescriber,
+    range,
+    search,
+  ]);
 
   // Any filter change goes back to the first page.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the filters are the trigger, not inputs.
-  useEffect(() => setPage(0), [kind, status, priority, prescriber, range, search, pageSize]);
+  useEffect(
+    () => setPage(0),
+    [kind, status, priority, prescriber, range, search, pageSize],
+  );
 
   const pageCount = Math.max(1, Math.ceil(rows.length / pageSize));
   const pageRows = rows.slice(page * pageSize, page * pageSize + pageSize);
-  const filtered = Boolean(search || status || priority || prescriber || range !== "all");
+  const filtered = Boolean(
+    search || status || priority || prescriber || range !== "all",
+  );
   const clearFilters = () => {
     setSearch("");
     setStatus("");
@@ -366,7 +440,10 @@ export function PatientOrders(): JSX.Element {
   };
 
   const attention = items.filter(
-    (o) => PENDING.includes(o.status) || o.status === "draft" || o.cosignStatus === "pending",
+    (o) =>
+      PENDING.includes(o.status) ||
+      o.status === "draft" ||
+      o.cosignStatus === "pending",
   );
 
   return (
@@ -377,9 +454,21 @@ export function PatientOrders(): JSX.Element {
             identity={identity}
             actions={
               <>
-                <Link to={`/patients/${patientId}`} className="wx-btn-secondary">
+                <Link
+                  to={`/patients/${patientId}`}
+                  className="wx-btn-secondary"
+                >
                   <Glyph name="file-text" size={16} /> View Patient Chart
                 </Link>
+                {/* <button
+                  type="button"
+                  className="wx-btn-secondary"
+                  onClick={() => setVerbalOpen(true)}
+                  disabled={!patientId}
+                >
+                  <Glyph name="phone" size={16} /> Verbal Order
+                </button> */}
+
                 <button
                   type="button"
                   className="wx-btn-primary"
@@ -392,7 +481,11 @@ export function PatientOrders(): JSX.Element {
             }
           />
         ) : (
-          <div className="wx-patient-banner" aria-busy="true" style={{ minHeight: "6.25rem" }} />
+          <div
+            className="wx-patient-banner"
+            aria-busy="true"
+            style={{ minHeight: "6.25rem" }}
+          />
         )
       }
       rail={
@@ -406,10 +499,27 @@ export function PatientOrders(): JSX.Element {
       }
     >
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
-        {patientId ? <ChartModuleRail patientId={patientId} current="orders" /> : null}
-        <div style={{ flex: 1, overflow: "auto", padding: "0.5rem 1.5rem 1.5rem", minWidth: 0 }}>
-          <section className="wx-chart-section" aria-label="Orders" aria-busy={loading}>
-            <div className="wx-subtabs wx-subtabs-scroll" role="tablist" aria-label="Order type">
+        {patientId ? (
+          <ChartModuleRail patientId={patientId} current="orders" />
+        ) : null}
+        <div
+          style={{
+            flex: 1,
+            overflow: "auto",
+            padding: "0.5rem 1.5rem 1.5rem",
+            minWidth: 0,
+          }}
+        >
+          <section
+            className="wx-chart-section"
+            aria-label="Orders"
+            aria-busy={loading}
+          >
+            <div
+              className="wx-subtabs wx-subtabs-scroll"
+              role="tablist"
+              aria-label="Order type"
+            >
               {(["all", ...KINDS] as const).map((k) => (
                 <button
                   key={k}
@@ -420,7 +530,9 @@ export function PatientOrders(): JSX.Element {
                 >
                   {k === "all" ? "Orders" : KIND_META[k].tab}
                   {kindCounts[k] ? (
-                    <span className="wx-seg-count wx-nums">{kindCounts[k]}</span>
+                    <span className="wx-seg-count wx-nums">
+                      {kindCounts[k]}
+                    </span>
                   ) : null}
                 </button>
               ))}
@@ -440,7 +552,9 @@ export function PatientOrders(): JSX.Element {
                 value={kpis.pending}
                 label="Pending Signature"
                 hint={
-                  kpis.verbal ? `${kpis.verbal} verbal · 48h window` : "Physician review needed"
+                  kpis.verbal
+                    ? `${kpis.verbal} verbal · 48h window`
+                    : "Physician review needed"
                 }
               />
               <StatCard
@@ -486,13 +600,21 @@ export function PatientOrders(): JSX.Element {
                   </option>
                 ))}
               </FilterSelect>
-              <FilterSelect label="Priority" value={priority} onChange={setPriority}>
+              <FilterSelect
+                label="Priority"
+                value={priority}
+                onChange={setPriority}
+              >
                 <option value="">All</option>
                 <option value="routine">Routine</option>
                 <option value="asap">ASAP</option>
                 <option value="stat">STAT</option>
               </FilterSelect>
-              <FilterSelect label="Prescriber" value={prescriber} onChange={setPrescriber}>
+              <FilterSelect
+                label="Prescriber"
+                value={prescriber}
+                onChange={setPrescriber}
+              >
                 <option value="">All</option>
                 {prescriberNames.map((n) => (
                   <option key={n} value={n}>
@@ -511,7 +633,11 @@ export function PatientOrders(): JSX.Element {
                 <option value="90">Last 90 days</option>
               </FilterSelect>
               {filtered ? (
-                <button type="button" className="wx-btn-secondary" onClick={clearFilters}>
+                <button
+                  type="button"
+                  className="wx-btn-secondary"
+                  onClick={clearFilters}
+                >
                   <Glyph name="filter" size={15} /> Clear filters
                 </button>
               ) : null}
@@ -543,7 +669,11 @@ export function PatientOrders(): JSX.Element {
                   }
                 />
                 {filtered ? (
-                  <button type="button" className="wx-btn-secondary" onClick={clearFilters}>
+                  <button
+                    type="button"
+                    className="wx-btn-secondary"
+                    onClick={clearFilters}
+                  >
                     Clear filters
                   </button>
                 ) : null}
@@ -551,7 +681,9 @@ export function PatientOrders(): JSX.Element {
             ) : (
               <div className="wx-list-table-wrap">
                 <table className="wx-list-table wx-list-table-static">
-                  <caption className="wx-sr-only">Orders for this patient</caption>
+                  <caption className="wx-sr-only">
+                    Orders for this patient
+                  </caption>
                   <thead>
                     <tr>
                       <th scope="col">Order</th>
@@ -575,11 +707,18 @@ export function PatientOrders(): JSX.Element {
                         <tr key={o.id}>
                           <td>
                             <span
-                              style={{ display: "flex", alignItems: "center", gap: "0.625rem" }}
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "0.625rem",
+                              }}
                             >
                               <span
                                 aria-hidden
-                                style={{ color: ended ? t.error : meta.color, display: "flex" }}
+                                style={{
+                                  color: ended ? t.error : meta.color,
+                                  display: "flex",
+                                }}
                               >
                                 <Glyph
                                   name={ended ? "block" : meta.icon}
@@ -587,7 +726,10 @@ export function PatientOrders(): JSX.Element {
                                   strokeWidth={1.75}
                                 />
                               </span>
-                              <Link to={`/orders/${o.id}`} className="wx-row-title">
+                              <Link
+                                to={`/orders/${o.id}`}
+                                className="wx-row-title"
+                              >
                                 {orderName(o, d)}
                               </Link>
                             </span>
@@ -595,12 +737,20 @@ export function PatientOrders(): JSX.Element {
                           <td>{meta.type}</td>
                           <td style={{ maxWidth: "18rem" }}>
                             <div>{line1 || "—"}</div>
-                            {line2 ? <div className="wx-row-sub">{line2}</div> : null}
+                            {line2 ? (
+                              <div className="wx-row-sub">{line2}</div>
+                            ) : null}
                           </td>
                           <td>{prescriberOf(o)}</td>
                           <td className="wx-nums">{usDate(startOf(o))}</td>
                           <td>
-                            <div style={{ display: "grid", gap: "0.25rem", justifyItems: "start" }}>
+                            <div
+                              style={{
+                                display: "grid",
+                                gap: "0.25rem",
+                                justifyItems: "start",
+                              }}
+                            >
                               <StatusPill
                                 label={stateLabel(o.status)}
                                 tone={ROW_TONE[o.status] ?? "neutral"}
@@ -611,7 +761,8 @@ export function PatientOrders(): JSX.Element {
                                   tone={PRIORITY_TONE[o.priority] ?? "neutral"}
                                 />
                               ) : null}
-                              {o.status === "verbal_pending" && o.verbalDeadlineAt ? (
+                              {o.status === "verbal_pending" &&
+                              o.verbalDeadlineAt ? (
                                 <CountdownChip
                                   dueAt={o.verbalDeadlineAt}
                                   warnWithinHours={12}
@@ -637,11 +788,24 @@ export function PatientOrders(): JSX.Element {
                 </table>
                 <div className="wx-table-footer">
                   <span className="wx-nums">
-                    Showing {page * pageSize + 1}–{Math.min(rows.length, (page + 1) * pageSize)} of{" "}
+                    Showing {page * pageSize + 1}–
+                    {Math.min(rows.length, (page + 1) * pageSize)} of{" "}
                     {rows.length} orders
                   </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                    <label style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <span
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.5rem",
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "0.5rem",
+                      }}
+                    >
                       Rows per page
                       <select
                         className="wx-select"
@@ -684,7 +848,10 @@ export function PatientOrders(): JSX.Element {
 
             <div className="wx-orders-foot">
               <AttentionCard items={attention} details={details} />
-              <OrderActions pending={kpis.pending} onCreate={() => setCreateOpen(true)} />
+              <OrderActions
+                pending={kpis.pending}
+                onCreate={() => setCreateOpen(true)}
+              />
             </div>
           </section>
         </div>
@@ -751,7 +918,11 @@ function FilterSelect({
   return (
     <label className="wx-filter-field">
       <span>{label}</span>
-      <select className="wx-select" value={value} onChange={(e) => onChange(e.target.value)}>
+      <select
+        className="wx-select"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      >
         {children}
       </select>
     </label>
@@ -803,7 +974,10 @@ function AttentionCard({
                   label="Sign"
                 />
               ) : null}
-              <Link to={`/orders/${o.id}`} className="wx-btn-secondary wx-btn-sm">
+              <Link
+                to={`/orders/${o.id}`}
+                className="wx-btn-secondary wx-btn-sm"
+              >
                 Review
               </Link>
             </div>
@@ -823,9 +997,12 @@ function OrderActions({
 }): JSX.Element {
   const links: { label: string; icon: GlyphName; to: string }[] = [
     { label: `Signature Inbox (${pending})`, icon: "pencil", to: "/orders" },
-    { label: "Verbal Orders", icon: "clock", to: "/orders/verbal-expiring" },
     { label: "Cosign Queue", icon: "users", to: "/orders/cosign-pending" },
-    { label: "Results Review", icon: "flask", to: "/orders/results-pending-review" },
+    {
+      label: "Results Review",
+      icon: "flask",
+      to: "/orders/results-pending-review",
+    },
     { label: "Standing Orders", icon: "file-check", to: "/standing-orders" },
   ];
   return (
@@ -867,7 +1044,13 @@ function RecentOrdersPanel({
   return (
     <Panel title="Recent Orders" icon="clipboard-check">
       {recent.length === 0 ? (
-        <p style={{ margin: 0, color: t.onSurfaceVariant, fontSize: "0.8125rem" }}>
+        <p
+          style={{
+            margin: 0,
+            color: t.onSurfaceVariant,
+            fontSize: "0.8125rem",
+          }}
+        >
           No orders yet.
         </p>
       ) : (
@@ -876,7 +1059,10 @@ function RecentOrdersPanel({
             const ended = o.status === "discontinued";
             return (
               <li key={o.id}>
-                <span aria-hidden style={{ color: ended ? t.error : KIND_META[o.kind].color }}>
+                <span
+                  aria-hidden
+                  style={{ color: ended ? t.error : KIND_META[o.kind].color }}
+                >
                   <Glyph
                     name={ended ? "block" : KIND_META[o.kind].icon}
                     size={18}
@@ -884,8 +1070,12 @@ function RecentOrdersPanel({
                   />
                 </span>
                 <span style={{ minWidth: 0, flex: 1 }}>
-                  <Link to={`/orders/${o.id}`}>{orderName(o, details[o.id])}</Link>
-                  <span className="wx-row-sub wx-nums">{usDate(startOf(o))}</span>
+                  <Link to={`/orders/${o.id}`}>
+                    {orderName(o, details[o.id])}
+                  </Link>
+                  <span className="wx-row-sub wx-nums">
+                    {usDate(startOf(o))}
+                  </span>
                 </span>
                 <span
                   className="wx-status-dot"

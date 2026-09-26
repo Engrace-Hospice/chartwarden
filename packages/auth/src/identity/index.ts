@@ -90,3 +90,9 @@ export {
   sessionPinnedPatientId,
   sessionAllowsConcurrent,
 } from "./session-classes";
+export {
+  createDbTotpSecretReader,
+  createTotpVerifier,
+  type TotpVerifier,
+  type TotpVerifyInput,
+} from "./totp-verifier";

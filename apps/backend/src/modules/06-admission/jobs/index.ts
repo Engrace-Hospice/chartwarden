@@ -4,8 +4,12 @@
 // and `admission.window_alert` / the §3 `workers/window-scanner.ts`): both are pure, deterministic over
 // an injected `now`, and idempotent so duplicate enqueues from outbox-redelivery are no-ops. The
 // notify/form-render jobs are event-triggered shells whose bodies land with their M14/M22 consumers.
-import type { ComplianceWindowSeverity, ComplianceWindowStatusValue } from "@wardenx/types";
+import type {
+  ComplianceWindowSeverity,
+  ComplianceWindowStatusValue,
+} from "@wardenx/types";
 
+export const M6_PLATFORM_JOB_ID = "m6-admission-cron";
 // ── §4.3 queue catalog ────────────────────────────────────────────────────────────────────────────
 
 /** The §4.3 BullMQ queue names (the `m6.` namespace mirrors the events-by-m6 contract). */
@@ -18,6 +22,8 @@ export const M6_QUEUES = {
   recertDueNotify: "m6.admission.recert_due_notify",
   /** Cron (daily 06:00 org TZ): notify M14 for upcoming F2F windows opening. */
   f2fDueNotify: "m6.admission.f2f_due_notify",
+  /** Cron: monitor the hospice-MD 3-day CTI signature SLA. */
+  ctiSignatureNotify: "m6.admission.cti_signature_notify",
   /** On `cti.mark_late`: remind to complete the written cert by `writtenCertDeadlineAt`. */
   ctiLateFollowup: "m6.admission.cti_late_followup",
   /** On election/CTI sign / NOR ack / F2F attest / discharge: post to outbox for M22 form render. */
@@ -32,6 +38,7 @@ export type M6QueueName = (typeof M6_QUEUES)[keyof typeof M6_QUEUES];
 export const M6_JOB_SCHEDULES = {
   recertDueNotify: "0 6 * * *", // daily 06:00 org TZ
   f2fDueNotify: "0 6 * * *", // daily 06:00 org TZ
+  ctiSignatureNotify: "0 6 * * *", // daily 06:00 org TZ
   windowAlert: "*/15 * * * *", // every 15 minutes
 } as const;
 
@@ -46,6 +53,112 @@ export function jobIdempotencyKey(input: {
   payloadHash: string;
 }): string {
   return `${input.admissionId}:${input.eventType}:${input.payloadHash}`;
+}
+
+export type DueReminderTier = "due_7d" | "due_3d" | "overdue_1d";
+
+export interface DueReminderSnapshot {
+  readonly resourceId: string;
+  readonly dueDate: string; // yyyy-mm-dd
+  readonly completed: boolean;
+}
+
+export interface PlannedDueReminder {
+  readonly resourceId: string;
+  readonly tier: DueReminderTier;
+}
+
+/**
+ * Determine whether a due item should produce today's reminder.
+ *
+ * Rules:
+ *   7 calendar days before due → due_7d
+ *   3 calendar days before due → due_3d
+ *   1 calendar day after due  → overdue_1d
+ *
+ * Completed items never emit.
+ */
+export function planDueReminder(
+  item: DueReminderSnapshot,
+  today: string,
+): PlannedDueReminder | null {
+  if (item.completed) return null;
+
+  const dayMs = 86_400_000;
+
+  const due = Date.parse(`${item.dueDate}T00:00:00Z`);
+
+  const current = Date.parse(`${today}T00:00:00Z`);
+
+  const daysUntilDue = Math.round((due - current) / dayMs);
+
+  if (daysUntilDue === 7) {
+    return {
+      resourceId: item.resourceId,
+      tier: "due_7d",
+    };
+  }
+
+  if (daysUntilDue === 3) {
+    return {
+      resourceId: item.resourceId,
+      tier: "due_3d",
+    };
+  }
+
+  if (daysUntilDue === -1) {
+    return {
+      resourceId: item.resourceId,
+      tier: "overdue_1d",
+    };
+  }
+
+  return null;
+}
+
+export type CtiSignatureReminderTier = "requested" | "due_1d" | "overdue";
+
+export interface CtiSignatureReminderSnapshot {
+  readonly ctiId: string;
+  readonly requestedAt: string;
+  readonly dueAt: string;
+  readonly signedAt: string | null;
+}
+
+/**
+ * CTI signature operational SLA:
+ *
+ * - initial assignment/request → requested
+ * - <= 24h remaining          → due_1d
+ * - deadline passed           → overdue
+ *
+ * A signed CTI never emits.
+ */
+export function planCtiSignatureReminder(
+  item: CtiSignatureReminderSnapshot,
+  now: Date,
+): CtiSignatureReminderTier | null {
+  if (item.signedAt) return null;
+
+  const at = now.getTime();
+  const requested = Date.parse(item.requestedAt);
+  const due = Date.parse(item.dueAt);
+
+  if (!Number.isFinite(requested) || !Number.isFinite(due)) {
+    return null;
+  }
+
+  if (at > due) {
+    return "overdue";
+  }
+
+  const remaining = due - at;
+
+  if (remaining <= 24 * 60 * 60 * 1000) {
+    return "due_1d";
+  }
+
+  return null;
 }
 
 // ── compliance-window scans ─────────────────────────────────────────────────────────────────────────
@@ -156,7 +269,10 @@ export function planWindowAlert(
     .filter((t) => t.changed && t.toStatus === "overdue")
     .map((t) => ({
       eventName: "m6.compliance.window.overdue" as const,
-      payload: { complianceWindowId: t.complianceWindowId, severity: "alert" as const },
+      payload: {
+        complianceWindowId: t.complianceWindowId,
+        severity: "alert" as const,
+      },
     }));
   return { transitions, events };
 }

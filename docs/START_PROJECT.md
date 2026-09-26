@@ -119,11 +119,18 @@ bun --cwd=apps/backend run worker
 ```bash
 # Terminal 3 — browser UI: http://localhost:5173
 bun run dev:web
+notFoundOnDeny: true
 ```
 
 ```bash
 # Terminal 4 - Mimio
 docker compose up -d minio
+```
+
+
+```bash
+# Générer les migrations
+bunx drizzle-kit generate --config=drizzle.config.ts
 ```
 
 The web development server proxies `/api` requests to the API at port 3000, so open
