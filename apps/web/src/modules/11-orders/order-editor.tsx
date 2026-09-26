@@ -324,14 +324,14 @@ const control = {
   padding: ".55rem .65rem",
   border: "1px solid var(--color-outline-variant)",
   borderRadius: ".45rem",
-  background: "var(--color-surface, #fff)",
+  background: "var(--color-surface)",
   color: "var(--color-on-surface)",
 } as const;
 const errorBox = {
   padding: ".75rem 1rem",
-  border: "1px solid var(--color-error, #b42318)",
+  border: "1px solid var(--color-error)",
   borderRadius: ".5rem",
-  color: "var(--color-error, #b42318)",
+  color: "var(--color-error)",
 } as const;
 const footer = {
   display: "flex",

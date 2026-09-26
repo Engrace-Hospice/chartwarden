@@ -162,7 +162,11 @@ export function FieldShell({
               *
             </span>
           ) : null}
-          {optional ? <span className="wx-optional-mark">Optional</span> : null}
+          {optional ? (
+            <span className="wx-optional-mark" aria-hidden>
+              Optional
+            </span>
+          ) : null}
         </label>
         <CmsCode code={code} />
       </div>

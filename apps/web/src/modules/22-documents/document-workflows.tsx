@@ -2880,7 +2880,7 @@ const libraryShell: CSSProperties = {
   borderRadius: "14px",
   overflow: "hidden",
   boxShadow:
-    "0 1px 2px rgba(0,0,0,0.025)",
+    "var(--shadow-soft)",
 };
 
 const categoryBar: CSSProperties = {
@@ -3255,7 +3255,7 @@ const modalBackdrop: CSSProperties = {
   display: "grid",
   placeItems: "center",
   padding: "1rem",
-  background: "rgba(15, 23, 42, 0.42)",
+  background: "var(--color-scrim)",
   backdropFilter: "blur(2px)",
 };
 
@@ -3267,7 +3267,7 @@ const modal: CSSProperties = {
     "1px solid var(--color-outline-variant)",
   borderRadius: "14px",
   boxShadow:
-    "0 24px 70px rgba(15, 23, 42, 0.22)",
+    "var(--shadow-float)",
   display: "flex",
   flexDirection: "column",
 };
