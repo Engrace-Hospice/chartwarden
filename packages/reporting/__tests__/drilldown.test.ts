@@ -15,6 +15,7 @@ import {
   CONSENT_UNAVAILABLE_REASON,
   type ConsentEvaluation,
   type DrilldownAuditInput,
+  type DrilldownAuditPorts,
   DrilldownDekUnavailable,
   decideConsentNarrowing,
   narrowDrilldownForConsent,
@@ -112,13 +113,14 @@ describe("M33 §4.4 / W-R-05 consent narrowing — FAIL-CLOSED when M39 is unava
 
 // ── (2) audit writer — FAIL-CLOSED on the DEK; writes NOTHING ─────────────────────────────────────────────────
 
+// The audit row exactly as the PORT declares it. Restating a narrower shape here (the three fields this
+// suite asserts on) made the double reject the port's own argument type: `isConsentNarrowed` is optional
+// on the row and was pinned to `boolean` in the copy.
+type DrilldownAuditRow = Parameters<DrilldownAuditPorts["audit"]["append"]>[0];
+
 function makeAuditPorts(opts: { dekThrows?: boolean } = {}) {
   const calls: string[] = [];
-  const appended: {
-    queryFiltersCipher: string;
-    isConsentNarrowed: boolean;
-    consentNarrowingReason: string | null;
-  }[] = [];
+  const appended: DrilldownAuditRow[] = [];
   const emitted: unknown[] = [];
   return {
     calls,
@@ -133,11 +135,7 @@ function makeAuditPorts(opts: { dekThrows?: boolean } = {}) {
         },
       },
       audit: {
-        append: async (row: {
-          queryFiltersCipher: string;
-          isConsentNarrowed: boolean;
-          consentNarrowingReason: string | null;
-        }) => {
+        append: async (row: DrilldownAuditRow) => {
           calls.push("append");
           appended.push(row);
         },

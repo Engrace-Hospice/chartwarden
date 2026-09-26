@@ -36,13 +36,16 @@ describe("GAP-003 mountAuditRoutes — full compliance surface (composition-root
     { method: "GET", url: "/api/v1/audit/integrity/report" },
   ];
 
-  it.each(cases)("mounts $method $url behind the auth chain (401, not 404)", async ({ method, url }) => {
-    const app = buildServer({ security: { rateLimitEnabled: false } });
-    mountAuditRoutes(app, STUB_DB);
-    const res = await app.inject({ method, url });
-    expect(res.statusCode).toBe(401); // a 404 would mean the route never mounted
-    await app.close();
-  });
+  it.each(cases)(
+    "mounts $method $url behind the auth chain (401, not 404)",
+    async ({ method, url }) => {
+      const app = buildServer({ security: { rateLimitEnabled: false } });
+      mountAuditRoutes(app, STUB_DB);
+      const res = await app.inject({ method, url });
+      expect(res.statusCode).toBe(401); // a 404 would mean the route never mounted
+      await app.close();
+    },
+  );
 
   it("does not serve any of the 9 routes when the mount hook is not invoked (404)", async () => {
     const app = buildServer({ security: { rateLimitEnabled: false } });

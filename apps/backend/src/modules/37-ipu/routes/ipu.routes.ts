@@ -29,6 +29,7 @@ import {
   BedCleaningBodySchema,
   CheckInVisitorBodySchema,
   ConfirmBodySchema,
+  ConfirmStaffBodySchema,
   ConfirmTransferBodySchema,
   CreateBedBodySchema,
   CreateEquipmentBodySchema,
@@ -39,6 +40,7 @@ import {
   DischargeBodySchema,
   IdParamsSchema,
   InitiateTransferBodySchema,
+  InvokeRnBreakGlassBodySchema,
   IrcOverrideBodySchema,
   LiftVisitorRestrictionBodySchema,
   LogInspectionBodySchema,
@@ -52,6 +54,8 @@ import {
   UpdateBedBodySchema,
   UpdateRoomBodySchema,
   UpdateUnitBodySchema,
+  VisitorListQuerySchema,
+  VisitorRestrictionListQuerySchema,
   parse,
 } from "./ipu-typebox";
 import type { IpuRouteService } from "./service";
@@ -339,6 +343,61 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     },
   );
 
+  // 21b–21e. The bedside READS (F-069). `reassess`/`release`/`check-out` below are keyed by ids that no
+  // read route returned, so the only way to hold one was to be the browser session that performed the
+  // POST — and a behavioral restraint is reassessed every 15 minutes by whoever is on shift.
+  //
+  // All four gate on `m37.ipu_admission.read` rather than four new `m37.*.read` keys. They are
+  // sub-resources of ONE admission, reached from its detail pane, and whoever may read the admission is
+  // the staff standing at that bedside. Minting keys no role template grants would make every one of
+  // these routes deny every caller — the fail-closed-invisible shape this whole audit is about — and
+  // deciding which templates get them is a tenant policy call, not one to make silently here (the
+  // `phi.full_read` precedent).
+  app.get(
+    "/api/v1/ipu-admissions/:id/restraints",
+    {
+      preHandler: [P("m37.ipu_admission.read")],
+      config: { auditRead: { resourceKind: "ipu_restraint_event", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return { items: await service.listRestraints(actorOf(request), id) };
+    },
+  );
+  app.get(
+    "/api/v1/ipu-admissions/:id/gip-criteria",
+    {
+      preHandler: [P("m37.ipu_admission.read")],
+      config: { auditRead: { resourceKind: "gip_admission_criteria", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return { items: await service.listGipCriteria(actorOf(request), id) };
+    },
+  );
+  app.get(
+    "/api/v1/ipu-admissions/:id/irc-episodes",
+    {
+      preHandler: [P("m37.ipu_admission.read")],
+      config: { auditRead: { resourceKind: "irc_episode", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { id } = parse(IdParamsSchema, request.params);
+      return { items: await service.listIrcEpisodes(actorOf(request), id) };
+    },
+  );
+  app.get(
+    "/api/v1/ipu-visitors",
+    {
+      preHandler: [P("m37.ipu_admission.read")],
+      config: { auditRead: { resourceKind: "ipu_visitor", list: true } },
+    },
+    async (request) => {
+      const q = parse(VisitorListQuerySchema, request.query);
+      return { items: await service.listVisitors(actorOf(request), q.ipuAdmissionId) };
+    },
+  );
+
   // 22. POST /ipu-admissions/:id/restraint — apply restraint (step-up; RN coverage enforced service-side). §4.1.
   app.post(
     "/api/v1/ipu-admissions/:id/restraint",
@@ -422,6 +481,21 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     },
   );
 
+  // 26b. POST /ipu-shifts/:id/staff/confirm — confirm an assignment (F-080). §4.1.
+  //
+  // Gated on `m37.shift.assign_staff`, the SAME key as assign/unassign, deliberately: whoever staffs the
+  // roster confirms it, and minting `m37.shift.confirm_staff` would have been a key no role template
+  // grants — #169's fail-closed invisibility, which this module's own screens.ts header cites.
+  app.post(
+    "/api/v1/ipu-shifts/:id/staff/confirm",
+    { preHandler: [P("m37.shift.assign_staff")] },
+    async (request) => {
+      const actor = writeActorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      return service.confirmStaff(actor, id, parse(ConfirmStaffBodySchema, request.body));
+    },
+  );
+
   // 27. GET /ipu-units/:id/rn-coverage — read the coverage window. §4.1.
   app.get(
     "/api/v1/ipu-units/:id/rn-coverage",
@@ -446,7 +520,14 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     async (request) => {
       const actor = writeActorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.invokeRnBreakGlass(actor, id);
+      // F-071 — a reason and a bounded window are now REQUIRED. This route took no body at all, which
+      // was consistent with what it did (publish an event, write nothing); it now writes the row the
+      // coverage gate reads, and that row is what a post-incident review reads too.
+      return service.invokeRnBreakGlass(
+        actor,
+        id,
+        parse(InvokeRnBreakGlassBodySchema, request.body),
+      );
     },
   );
 
@@ -473,7 +554,28 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     },
   );
 
-  // 31. POST/DELETE /ipu-visitor-restrictions — apply / lift a restriction. §4.1.
+  // 31. GET/POST/DELETE /ipu-visitor-restrictions — list / apply / lift a restriction. §4.1.
+  //
+  // F-070 — the GET is new. `DELETE` lifts by `restrictionId` and nothing returned one, so a
+  // `full_block` or `mask_required` restriction could be lifted only from the browser session that
+  // applied it. Gated on `m37.visitor_restriction.apply` rather than a new `.read` key, for the F-069
+  // reason: no template grants a key that does not exist yet, so minting one would make this route deny
+  // every caller — the fail-closed invisibility this audit is about. `.apply` is the audience that
+  // manages restrictions; a tenant that wants a read-only viewer role is a policy decision to take
+  // deliberately, not one to take silently here.
+  app.get(
+    "/api/v1/ipu-visitor-restrictions",
+    {
+      preHandler: [P("m37.visitor_restriction.apply")],
+      config: { auditRead: { resourceKind: "ipu_visitor_restriction", list: true } },
+    },
+    async (request) => ({
+      items: await service.listVisitorRestrictions(
+        actorOf(request),
+        parse(VisitorRestrictionListQuerySchema, request.query ?? {}),
+      ),
+    }),
+  );
   app.post(
     "/api/v1/ipu-visitor-restrictions",
     { preHandler: [P("m37.visitor_restriction.apply")] },

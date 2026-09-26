@@ -21,7 +21,12 @@
 // `dependsOn` 39, so it imports the TYPE from @wardenx/consent and resolves the impl via the opaque M1
 // registry (`getSeam`). Registration is idempotent: the shared registry is single-owner / no-clear, so
 // re-boot (tests) is idempotent via `registerPredicateIdempotent`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  hasOrgWideScope,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import type { ConsentEvaluator, ConsentTypeKey } from "@wardenx/consent";
 import type { CarePlanSignerRole } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
@@ -36,13 +41,6 @@ export const M7_ABAC_PREDICATES = [
   "sud_disclosure_allowed",
   "signer_role_match",
   "discipline_scope",
-] as const;
-
-/** Roles that read the whole org's care plans without caseload (§6 `caseload_or_scope`). */
-const ORG_WIDE_SCOPE_ROLES = [
-  "medical_director",
-  "compliance_officer",
-  "survey_coordinator",
 ] as const;
 
 /** The InterventionDiscipline tokens a role key directly names (used to assemble the actor's scope). */
@@ -68,10 +66,19 @@ const targetId = (target: AbacTarget, field: string): string | null => {
   return typeof value === "string" && value.length > 0 ? value : null;
 };
 
-/** Patient ids a collaborator/portal session is scoped to (assembled server-side onto `attributes`). */
-function sessionScopePatientIds(context: AbacContext): readonly string[] {
-  const raw = context.attributes.scopePatientIds;
-  return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string") : [];
+/**
+ * The patient a collaborator / funeral / portal session is pinned to (server-assembled, §3.6 `scope`).
+ *
+ * This read used to be `attributes.scopePatientIds`, an ARRAY — a third name for a fact M31 and M19
+ * were reading as `portalPatientId` and `patientId`, and that nothing wrote under any of them, so
+ * `caseload_or_scope`'s session-scope arm never once fired and every collaborator fell through to the
+ * caseload lookup they are not in (F-030). A session pins exactly ONE patient — that is what the
+ * `session_scope_chk` CHECK enforces and what `sessionPinnedPatientId` returns — so the plural was
+ * never true either: an empty-or-one array dressed up as a set.
+ */
+function sessionScopePatientId(context: AbacContext): string | null {
+  const raw = context.attributes.sessionPatientId;
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
 }
 
 /** A consent-type checker matching {@link CarePlanAbacDeps.isConsentActive}'s shape. */
@@ -194,18 +201,35 @@ export async function sudDisclosureAllowedForPatient(
   return !verdict.restrictedToNamedWorkforce && hasRole(context, "rn_case_manager");
 }
 
-/** Assemble the actor's §7.4 discipline scope from session roles/attributes (never client input). */
+/**
+ * Assemble the actor's §7.4 discipline scope from the session ROLE KEYS (never client input).
+ *
+ * WHY ROLE KEYS AND NOT A WORKFORCE READ — the platform's one derivation, stated in three places and now
+ * followed in all of them. M19's `TRIAGE_DISCIPLINE_FOR_ROLE_KEY` puts it plainly ("M3's
+ * `RoleGrant.roleKey` is the platform's one authority-derivation input"), and M17 — which OWNS the
+ * discipline vocabulary AND the `membership_credential` table — resolves its own D8 pre-schedule gate
+ * exactly this way (`resolveDisciplinesTx`: active role grants ∩ the scheduling-discipline vocabulary).
+ * M17 reads the credential for a DIFFERENT and deliberately orthogonal question — is the licence active —
+ * because a clinician can hold the `rn` role while their nursing licence has lapsed. Authority comes from
+ * the grant; the credential says whether it is currently exercisable.
+ *
+ * THIS USED TO UNION IN AN `attributes.disciplines` ARRAY FIRST, and so did the same derivation in M8, M9,
+ * M10, M11, M12 and M13 — seven modules, seven copies, one key that no producer in the platform has ever
+ * written. The union was therefore with the empty set on every request ever served: the role arm has been
+ * the entire answer everywhere, all along. It degraded instead of dying, which is why it went unnoticed
+ * for the whole life of the codebase (F-030). Seven dead reads standing in front of the derivation that
+ * actually answers is the one arrangement that could not stay — either the fact gets produced or the reads
+ * go, and producing an EIGHTH answer to a question three modules already answer identically would have
+ * been the drift, not the fix.
+ */
 export function disciplineScopeOf(context: AbacContext): AuthoringDisciplineScope {
-  const fromAttributes = Array.isArray(context.attributes.disciplines)
-    ? context.attributes.disciplines.filter((x): x is string => typeof x === "string")
-    : [];
-  const fromRoles = context.roles.filter((r) =>
+  const disciplines = context.roles.filter((r) =>
     (DISCIPLINE_ROLE_TOKENS as readonly string[]).includes(r),
-  );
-  const disciplines = [
-    ...new Set([...fromAttributes, ...fromRoles]),
-  ] as AuthoringDisciplineScope["disciplines"];
-  return { disciplines, isIdgCoordinator: hasRole(context, IDG_COORDINATOR_ROLE) };
+  ) as AuthoringDisciplineScope["disciplines"];
+  return {
+    disciplines: [...new Set(disciplines)] as AuthoringDisciplineScope["disciplines"],
+    isIdgCoordinator: hasRole(context, IDG_COORDINATOR_ROLE),
+  };
 }
 
 /** The signer roles a `care_plan_signature` may be captured under (mirrors `CarePlanSignerRole`). */
@@ -257,8 +281,8 @@ export function buildCarePlanAbacPredicates(
 
   /** Caseload-or-scope over a patient: org-wide role, session scope, or caseload membership. */
   const caseloadOrScopeFor = async (context: AbacContext, patientId: string): Promise<boolean> => {
-    if (ORG_WIDE_SCOPE_ROLES.some((r) => hasRole(context, r))) return true;
-    if (sessionScopePatientIds(context).includes(patientId)) return true;
+    if (hasOrgWideScope(context.roles)) return true;
+    if (sessionScopePatientId(context) === patientId) return true;
     if (!context.userId) return false;
     return isInCaseload({
       organizationId: context.organizationId,

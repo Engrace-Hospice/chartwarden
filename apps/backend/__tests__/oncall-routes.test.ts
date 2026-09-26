@@ -57,6 +57,7 @@ import {
 import {
   InvalidCursorError,
   MissingOutboxPayloadError,
+  type StateHistoryInsert,
   UnknownTriageEffectError,
   decodeCursor,
   encodeCursor,
@@ -90,7 +91,7 @@ const VENDOR_ID = "55555555-5555-4555-8555-555555555555";
 // ── §4.6 permission keys ─────────────────────────────────────────────────────────────────────────────
 
 describe("M19-T07 §4.6 permission keys", () => {
-  it("registers exactly the seventeen §4.6 keys, verbatim", () => {
+  it("registers exactly the eighteen §4.6 keys, verbatim", () => {
     expect(M19_PERMISSION_KEY_LIST).toEqual([
       "triage.open",
       "triage.read",
@@ -107,6 +108,10 @@ describe("M19-T07 §4.6 permission keys", () => {
       "oncall.write_schedule",
       "oncall.read_policy",
       "oncall.admin_policy",
+      // F-030 — binding a session to an `external_triage_vendor`. `admin`, alongside
+      // `oncall.admin_policy`: §8.3.2 names tampering with the vendor binding as a threat, and this
+      // decides which outside party answers the agency's nights.
+      "oncall.bind_vendor_session",
       "portal.triage.read_recent",
       "triage.paper_reentry",
     ]);
@@ -638,7 +643,10 @@ describe("M19-T07 §7.10 PHI minimization at the vendor boundary", () => {
   });
 
   it("the runtime guard catches a permitted key STUFFED with an identifier", () => {
-    const body = minimizeForVendor("hybrid_phi_min", SOURCE, "ref-1") as Record<string, unknown>;
+    const body = minimizeForVendor("hybrid_phi_min", SOURCE, "ref-1") as unknown as Record<
+      string,
+      unknown
+    >;
     const tampered = { ...body, firstName: "Mary Whitfield, MRN-40182" };
     expect(() => assertVendorPayloadMinimized("hybrid_phi_min", SOURCE, tampered)).toThrow(
       VendorPhiMinimizationError,
@@ -646,7 +654,10 @@ describe("M19-T07 §7.10 PHI minimization at the vendor boundary", () => {
   });
 
   it("the runtime guard catches a WIDENED projection (an unpermitted key)", () => {
-    const body = minimizeForVendor("hybrid_phi_min", SOURCE, "ref-1") as Record<string, unknown>;
+    const body = minimizeForVendor("hybrid_phi_min", SOURCE, "ref-1") as unknown as Record<
+      string,
+      unknown
+    >;
     expect(() =>
       assertVendorPayloadMinimized("hybrid_phi_min", SOURCE, { ...body, chartNotes: "…" }),
     ).toThrow(VendorPhiMinimizationError);
@@ -951,9 +962,9 @@ describe("M19-T07 §2.4 effects runner", () => {
   });
 
   it("a SYSTEM transition records no membership; a human one records the actor (§3.3's CHECK)", async () => {
-    const rows: Record<string, unknown>[] = [];
+    const rows: StateHistoryInsert[] = [];
     const stateHistory = {
-      async insert(_tx: unknown, row: Record<string, unknown>) {
+      async insert(_tx: unknown, row: StateHistoryInsert) {
         rows.push(row);
       },
     };

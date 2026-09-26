@@ -308,6 +308,14 @@
       "app": "web",
       "module": "08-encounters",
       "moduleId": 8,
+      "id": "encounter.compose",
+      "path": "/patients/:patientId/encounters/:encounterId/compose",
+      "permission": "encounter.author"
+    },
+    {
+      "app": "web",
+      "module": "08-encounters",
+      "moduleId": 8,
       "id": "encounter.cosignature-queue",
       "path": "/work/cosignatures",
       "permission": "encounter.cosign"
@@ -1998,6 +2006,14 @@
       "moduleId": 37,
       "id": "ipu.admissions",
       "path": "/ipu/admissions",
+      "permission": "m37.ipu_admission.read"
+    },
+    {
+      "app": "web",
+      "module": "37-ipu",
+      "moduleId": 37,
+      "id": "ipu.bedside",
+      "path": "/ipu/admissions/:id",
       "permission": "m37.ipu_admission.read"
     },
     {

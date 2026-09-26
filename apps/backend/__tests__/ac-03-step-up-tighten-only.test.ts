@@ -35,6 +35,9 @@ const NOW = new Date("2026-08-14T12:00:00Z");
 function sessionStore(agoSec: number, factor: "webauthn" | "totp" = "totp") {
   return createInMemorySessionContextStore([
     {
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
       sessionId: SESSION,
       userId: "user_1",
       membershipId: "mem_1",

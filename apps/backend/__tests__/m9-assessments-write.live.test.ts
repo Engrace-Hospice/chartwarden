@@ -16,9 +16,11 @@ import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
+import Fastify from "fastify";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { applyErrorHandler } from "../src/bootstrap/plugins/error-handler";
 import {
   type AssessmentWriteOutboxPort,
   M9_OUTBOX_EVENTS,
@@ -57,6 +59,9 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbAssessmentRouteService>;
+  /** Suite-scoped so a test can build a SECOND service (a sited one) that still emits — the port is
+   *  `createDbAssessmentRouteService`'s second argument and defaults to `NOOP_OUTBOX`. */
+  let outbox: AssessmentWriteOutboxPort;
   const recorderOf: Record<string, string> = {};
   let cosignerA = "";
   let providerA = "";
@@ -138,7 +143,7 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
       connectionString: appRoleUrl(DB_URL as string),
     });
     const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M9_OUTBOX_EVENTS]));
-    const outbox: AssessmentWriteOutboxPort = {
+    outbox = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m9" }),
     };
     // GAP-016 — the §10 admission-anchor gate now runs on every record/correct, so a service whose
@@ -464,6 +469,154 @@ describe.skipIf(!DB_URL)("M9 assessment write pipeline — LIVE Postgres (M9L)",
       recordArgs({ actingAs: "patient_representative" }),
     );
     expect(v.actingAs).toBe("patient_representative");
+  });
+
+  it("F-022 (#55) — a second active license for the same scale is a 409 to the CALLER, not a 500", async () => {
+    // The end-to-end shape the issue reported: the REAL partial unique index raises the REAL 23505,
+    // Drizzle wraps it, and the production error handler renders the answer. Asserted at the route,
+    // because what the caller sees is the whole point — before this it was
+    // `500 INTERNAL_ERROR / "An unexpected error occurred"`, with the constraint name visible only
+    // in a log line that also said "unhandled error".
+    const license = {
+      scaleType: "braden" as never,
+      vendor: "Braden Vendor",
+      effectiveDate: "2026-01-01",
+      expiresAt: "2027-01-01",
+    };
+    await svc.createLicense(ORG_A, license);
+
+    const app = Fastify();
+    applyErrorHandler(app);
+    app.addHook("onRequest", async (request) => {
+      (request as { context?: { correlationId: string } }).context = { correlationId: "cid-live" };
+    });
+    app.post("/api/v1/admin/scales/licenses", async (_request, reply) => {
+      const created = await svc.createLicense(ORG_A, license);
+      return reply.code(201).send(created);
+    });
+
+    const res = await app.inject({ method: "POST", url: "/api/v1/admin/scales/licenses" });
+    expect(res.statusCode).toBe(409);
+    const body = res.json();
+    expect(body.error.code).toBe("CONFLICT");
+    expect(body.error.message).toMatch(/already has an active license for this scale type/i);
+    expect(body.error.correlationId).toBe("cid-live");
+    // No query text, no bound parameters, no constraint name in the response.
+    expect(JSON.stringify(body)).not.toContain("scale_license");
+    await app.close();
+
+    // And the rule itself still held: exactly one active braden license exists.
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM scale_license WHERE organization_id=$1 AND scale_type='braden' AND status='active'",
+      [ORG_A],
+    );
+    expect(rows[0].n).toBe(1);
+  });
+
+  it("significant change (F-076) — a sited capture crossing a rule writes the event row + emits; an UNSITED one cannot", async () => {
+    // The producer this asserts did not exist. `detectSignificantChanges` has been pure, complete and
+    // unit-tested since M9-T08, and NOTHING called it: no code path inserted a `significant_change_event`,
+    // so the queue was empty for every patient in every tenant and the acknowledge action could never be
+    // pressed. Same shape as `hope_submission_item` (#150) — a finished core with no caller.
+    // `outbox` deliberately, not the default: the second argument is the outbox PORT, and it defaults to
+    // `NOOP_OUTBOX` — a service built with `undefined` there records rows and emits nothing, which is
+    // what the sibling siting test (which asserts no events) is built on.
+    const sitedSvc = createDbAssessmentRouteService(handle.db, outbox, {
+      resolve: async () => ({ providerEntityId: providerA, locationId: locationA }),
+      resolveAnchor: async () => ({
+        siting: { providerEntityId: providerA, locationId: locationA },
+        anchor: { status: "active", activatedAt: "2026-01-01" },
+      }),
+    });
+
+    // PAINAD 5 crosses `painad_ge_4` (comparator `ge`, platform 4, floor 4) — an ABSOLUTE rule, so it
+    // needs no prior series and the very first capture fires it.
+    const sited = await sitedSvc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
+    expect(sited.score).toBe(5);
+    const ev = (
+      await admin.query(
+        "SELECT rule_id, delta_value, threshold_value, status, provider_entity_id, location_id FROM significant_change_event WHERE clinical_assessment_id=$1",
+        [sited.id],
+      )
+    ).rows;
+    expect(ev).toHaveLength(1);
+    expect(ev[0].rule_id).toBe("painad_ge_4");
+    expect(Number(ev[0].delta_value)).toBe(5);
+    expect(Number(ev[0].threshold_value)).toBe(4);
+    expect(ev[0].status).toBe("open");
+    expect(ev[0].provider_entity_id).toBe(providerA);
+    expect(ev[0].location_id).toBe(locationA);
+    expect(await eventsFor(sited.id)).toContain("m9.assessment.recorded");
+
+    // The event row's own aggregate id is the EVENT, not the assessment — `m9.assessment.significant_change`
+    // is emitted against `significant_change_event` so a consumer can resolve the row it is about.
+    const evId = (
+      await admin.query("SELECT id FROM significant_change_event WHERE clinical_assessment_id=$1", [
+        sited.id,
+      ])
+    ).rows[0].id as string;
+    expect(await eventsFor(evId)).toContain("m9.assessment.significant_change");
+
+    // `significant_change_event.provider_entity_id` and `.location_id` are NOT NULL while
+    // `clinical_assessment` permits an unsited capture, so an unsited reading CANNOT carry a detection.
+    // Skipping is deliberate: the alternative is inventing a siting for a compliance row, which would
+    // attribute a decline to a location nobody recorded.
+    const unsited = await svc.recordAssessment(ORG_A, recorderOf[ORG_A], PATIENT, recordArgs());
+    const none = (
+      await admin.query(
+        "SELECT count(*)::int AS n FROM significant_change_event WHERE clinical_assessment_id=$1",
+        [unsited.id],
+      )
+    ).rows[0].n;
+    expect(none).toBe(0);
+  });
+
+  it("significant change (F-076) — a windowed DROP rule fires against the patient's own prior series", async () => {
+    const sitedSvc = createDbAssessmentRouteService(handle.db, outbox, {
+      resolve: async () => ({ providerEntityId: providerA, locationId: locationA }),
+      resolveAnchor: async () => ({
+        siting: { providerEntityId: providerA, locationId: locationA },
+        anchor: { status: "active", activatedAt: "2026-01-01" },
+      }),
+    });
+    // PPS 50, then PPS 20 — a 30-point drop, past `pps_drop_20_in_14d`. Unlike the absolute rule above,
+    // this can only fire if the producer reads the patient's PRIOR readings, which is the half a unit
+    // test with a hand-supplied `priorSeries` cannot prove.
+    const first = await sitedSvc.recordAssessment(
+      ORG_A,
+      recorderOf[ORG_A],
+      PATIENT,
+      recordArgs({ scaleType: "pps" as never, data: PPS }),
+    );
+    expect(first.score).toBe(50);
+    const second = await sitedSvc.recordAssessment(
+      ORG_A,
+      recorderOf[ORG_A],
+      PATIENT,
+      recordArgs({
+        scaleType: "pps" as never,
+        data: {
+          ambulation: "totally_bed_bound",
+          activity: "unable_any_work",
+          selfCare: "total_care",
+          intake: "mouth_care_only",
+          consciousness: "drowsy_or_coma",
+        },
+      }),
+    );
+    expect(second.score).toBeLessThanOrEqual(30);
+    const ev = (
+      await admin.query(
+        "SELECT rule_id, delta_value, threshold_value, prior_assessment_id FROM significant_change_event WHERE clinical_assessment_id=$1",
+        [second.id],
+      )
+    ).rows;
+    expect(ev).toHaveLength(1);
+    expect(ev[0].rule_id).toBe("pps_drop_20_in_14d");
+    expect(Number(ev[0].delta_value)).toBeGreaterThanOrEqual(20);
+    expect(Number(ev[0].threshold_value)).toBe(20);
+    // The baseline is recorded, so a reader can see what the decline was measured from.
+    expect(ev[0].prior_assessment_id).not.toBeNull();
   });
 
   it("RLS — org B cannot read or correct org A's assessment (non-leaking 404)", async () => {

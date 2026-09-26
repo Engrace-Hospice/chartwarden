@@ -15,7 +15,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 /** The structural ProviderEntityPort M30's write service binds (tx is its org-context WriteTx = DbClient). */
 export interface PrimaryProviderEntityResolver {
@@ -70,4 +70,123 @@ export function buildOrgProviderEntityLister(
         .orderBy(asc(schema.providerEntities.createdAt));
       return rows.map((r) => r.id);
     });
+}
+
+/**
+ * The ACTIVE service locations under one of an org's provider entities (#50) — how M6 sites an
+ * admission at activation.
+ *
+ * Lives here for the same reason `buildProviderEntityOrgCheck` does: `location` is an M1 FOUNDATION
+ * table M6 neither owns nor may import (`arch:tables` — cross-module reads go through the owner, never
+ * its schema). M6 declares the shape it needs and the composition root binds this.
+ *
+ * `location` is NON_ORG_SCOPED — it carries no `organization_id` and hangs off `provider_entity` — so
+ * the tenant wall is the INNER JOIN plus its explicit `organization_id` predicate, not a location-level
+ * RLS policy. A provider entity in another org therefore yields `[]`, which reads to the caller exactly
+ * like a provider entity with no locations: absent and cross-tenant are indistinguishable by design.
+ *
+ * Only `active` locations count. A `created` site has not opened, a `suspended` or `closed` one is not
+ * accepting patients, and siting a federal capture window at one would be wrong in a way nothing
+ * downstream could detect.
+ */
+export function buildProviderEntityLocationLister(
+  db: DbClient,
+): (organizationId: string, providerEntityId: string) => Promise<readonly string[]> {
+  return async (organizationId, providerEntityId) =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      const rows = await tx
+        .select({ id: schema.locations.id })
+        .from(schema.locations)
+        .innerJoin(
+          schema.providerEntities,
+          eq(schema.providerEntities.id, schema.locations.providerEntityId),
+        )
+        .where(
+          and(
+            eq(schema.locations.providerEntityId, providerEntityId),
+            eq(schema.providerEntities.organizationId, organizationId),
+            eq(schema.locations.status, "active"),
+          ),
+        )
+        .orderBy(asc(schema.locations.name), asc(schema.locations.id));
+      return rows.map((r) => r.id);
+    });
+}
+
+/**
+ * Confirms a provider entity belongs to an org (#44) — the M6 election-statement draft's guard.
+ *
+ * Lives here, not in M6, for the same reason `primaryProviderEntityId` does: `provider_entity` is an
+ * M1 FOUNDATION table that M6 neither owns nor may import (`arch:tables` — cross-module reads go
+ * through the owner, never its schema). M6 declares the shape it needs
+ * (`ProviderEntityOrgCheckPort`) and the composition root binds this.
+ *
+ * It exists because the FKs on `election_statement.provider_entity_id` and
+ * `admission.provider_entity_id` are plain single-column references that carry no organization —
+ * a foreign key is checked as a system operation and does not consult RLS, so nothing below the
+ * application stops one tenant from electing another tenant's hospice. While the elected id was
+ * being discarded that was moot; persisting it makes this check load-bearing.
+ *
+ * Opens its own org-context transaction so RLS scopes the read, and the `organization_id` predicate
+ * is stated explicitly anyway — the same belt-and-braces posture the seam stores use.
+ */
+export function buildProviderEntityOrgCheck(db: DbClient): {
+  belongsToOrg(organizationId: string, providerEntityId: string): Promise<boolean>;
+} {
+  return {
+    async belongsToOrg(organizationId, providerEntityId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const rows = await tx
+          .select({ id: schema.providerEntities.id })
+          .from(schema.providerEntities)
+          .where(
+            and(
+              eq(schema.providerEntities.id, providerEntityId),
+              eq(schema.providerEntities.organizationId, organizationId),
+            ),
+          )
+          .limit(1);
+        return rows.length > 0;
+      });
+    },
+  };
+}
+
+/**
+ * One provider entity's CMS Certification Number, org-scoped (F-072 / #177).
+ *
+ * Lives here for the same reason `buildPrimaryProviderEntityResolver` does: `provider_entity` is an M1
+ * FOUNDATION table M10 neither owns nor may import (`arch:tables` — cross-module reads go through the
+ * owner, never its Drizzle schema). M10's `iqies-submit-worker` declares the shape it needs
+ * (`ProviderEntityCcnPort`) and the composition root binds this.
+ *
+ * The CCN is what the whole submission envelope is keyed on — CMS matches the submitter credential and
+ * `ccn_at_election` against it — so it is resolved rather than assumed. `null` when the provider entity
+ * is absent OR belongs to another org: the worker then skips the batch and logs, and those two cases
+ * are deliberately indistinguishable to the caller (the same posture as
+ * `buildProviderEntityLocationLister`).
+ *
+ * Opens its own org-context transaction because the cron calls it outside any ambient tx; the explicit
+ * `organization_id` predicate sits on top of RLS, belt and braces, as the seam stores do.
+ */
+export function buildProviderEntityCcnResolver(db: DbClient): {
+  ccnFor(organizationId: string, providerEntityId: string): Promise<string | null>;
+} {
+  return {
+    async ccnFor(organizationId, providerEntityId) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const rows = await tx
+          .select({ ccn: schema.providerEntities.ccn })
+          .from(schema.providerEntities)
+          .where(
+            and(
+              eq(schema.providerEntities.id, providerEntityId),
+              eq(schema.providerEntities.organizationId, organizationId),
+            ),
+          )
+          .limit(1);
+        return rows[0]?.ccn ?? null;
+      });
+    },
+  };
 }

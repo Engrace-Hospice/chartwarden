@@ -1,5 +1,5 @@
-import { type DbClient, schema } from "@wardenx/db";
 import { createHash } from "node:crypto";
+import { type DbClient, schema } from "@wardenx/db";
 // apps/backend/src/modules/10-hope — PRODUCTION HopeRouteService (M10L reads + writes, mirrors M9L).
 //
 // The screen-driving READS (timepoint-schedule worklist, HOPE assessment chart + detail, SFV worklist,
@@ -23,25 +23,23 @@ import { createHash } from "node:crypto";
 // original's `target_date` (the composite self-FK `(corrects_assessment_id, target_date) → (id,
 // target_date)` demands it); the DB supersede trigger flips the original only when the correction signs.
 import {
+  type CaptureDecision,
   assertCaptureAllowed,
+  assertRfaMatchesSchedule,
   planSfvCompletion,
   require_,
 } from "@wardenx/hope";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { HopeRfaKind, LatestAssessment, ScaleType } from "@wardenx/types";
 import { ConflictError, NotFoundError, ValidationError } from "@wardenx/types";
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
-import type {
-  HopeAbacResolver,
-  HopeAssessmentAbacFacts,
-} from "./abac-predicates";
+import type { HopeAbacResolver, HopeAssessmentAbacFacts } from "./abac-predicates";
 import { createHopeAdmissionPrefillService } from "./hope-admission-prefill-service";
 import { createHopeAssessmentAnswerService } from "./hope-answer-service";
-import { createHopeDischargePrefillService } from "./hope-discharge-prefill-service";
-import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { HopeSubmissionPayloadError, serializeHopeAssessmentXml } from "./hope-cms-xml-serializer";
-import { buildHopeSubmissionHeader, readHopeSoftwareVendor } from "./hope-submission-header";
+import { createHopeDischargePrefillService } from "./hope-discharge-prefill-service";
 import {
   HopeAssessmentNotReadyToSignError,
   createHopeAssessmentReadinessService,
@@ -53,11 +51,13 @@ import {
   initializeNewHopeRecord,
 } from "./hope-record-initializer";
 import { createHopeSpecRegistry } from "./hope-spec-registry";
+import { buildHopeSubmissionHeader, readHopeSoftwareVendor } from "./hope-submission-header";
 import {
   HopeValidationFindingSitingError,
   createHopeValidationService,
 } from "./hope-validation-service";
 import { buildDeterministicZip } from "./hope-zip";
+import type { HopeWriteOutboxPort } from "./outbox-port";
 import type {
   CorrectTimepointArgs,
   HopeAssessmentView,
@@ -71,7 +71,8 @@ import type {
   RecordSfvArgs,
   RecordTimepointArgs,
 } from "./routes/service";
-import { buildWorkflowState } from "./routes/service";
+import { buildWorkflowState, rateOf } from "./routes/service";
+import { regenerateSchedulesForAdmission } from "./scheduling/schedule-writer";
 
 const ASSESS = schema.hopeAssessments;
 const SCHED = schema.hopeTimepointSchedules;
@@ -116,9 +117,7 @@ export function buildCompletedSfvRegulatoryAnswerPlan(
       ? (sfvData.J as Record<string, unknown>)
       : null;
   const j2053 =
-    sectionJ?.J2053 &&
-    typeof sectionJ.J2053 === "object" &&
-    !Array.isArray(sectionJ.J2053)
+    sectionJ?.J2053 && typeof sectionJ.J2053 === "object" && !Array.isArray(sectionJ.J2053)
       ? (sectionJ.J2053 as Record<string, unknown>)
       : null;
 
@@ -146,21 +145,19 @@ export function buildCompletedSfvRegulatoryAnswerPlan(
   };
 }
 
-/** The transactional-outbox port (§2.4): the bound publisher validates every emit against the boot
- * catalog and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests
- * commit without a dispatcher. Mirrors M7/M8/M9. */
-export interface HopeWriteOutboxPort {
-  publish(
-    tx: unknown,
-    emission: {
-      readonly eventName: string;
-      readonly payload: Record<string, unknown>;
-      readonly organizationId: string;
-      readonly aggregateKind: string;
-      readonly aggregateId: string;
-    },
-  ): Promise<void>;
-}
+/** F-058 — a batch iQIES has answered on. See `complianceDashboard`. */
+const SUBMISSION_TERMINAL_STATUSES = ["accepted", "rejected", "partially_accepted"];
+
+/** D9 — is Section Q (Participation) present on the payload? A death discharge must NOT carry it; every
+ * other discharge reason must. Presence is the key existing with any value, mirroring how the §J reader
+ * below treats its own section: the CMS item-level rules are the validation engine's job, not this gate's. */
+const sectionQPresent = (data: Record<string, unknown>): boolean =>
+  Object.hasOwn(data, "Q") && data.Q != null;
+
+/** The transactional-outbox port (§2.4). Declared in ./outbox-port.ts — a leaf both this file and
+ * scheduling/schedule-writer.ts can import without depending on each other. Re-exported here so the
+ * existing import sites keep working. */
+export type { HopeWriteOutboxPort } from "./outbox-port";
 const NOOP_OUTBOX: HopeWriteOutboxPort = { async publish() {} };
 
 /** First row of a RETURNING/SELECT, or a 500 (unreachable after a successful write). */
@@ -188,9 +185,7 @@ const OFFICIAL_RFA_KINDS = [
   "05_discharge",
 ] as const satisfies readonly HopeRfaKind[];
 
-function isOfficialRfaKind(
-  rfaKind: string,
-): rfaKind is (typeof OFFICIAL_RFA_KINDS)[number] {
+function isOfficialRfaKind(rfaKind: string): rfaKind is (typeof OFFICIAL_RFA_KINDS)[number] {
   return (OFFICIAL_RFA_KINDS as readonly string[]).includes(rfaKind);
 }
 
@@ -204,16 +199,14 @@ const toAssessmentView = (r: AssessmentRow): HopeAssessmentView => ({
   status: r.status as HopeAssessmentView["status"],
   targetDate: r.targetDate.toISOString(),
   authorDiscipline: "",
-  j2051MaxSeverity:
-    r.j2051MaxSeverity as HopeAssessmentView["j2051MaxSeverity"],
+  j2051MaxSeverity: r.j2051MaxSeverity as HopeAssessmentView["j2051MaxSeverity"],
   j2051TriggerFired: r.j2051TriggerFired,
   wasLate: r.wasLate,
   signedAt: iso(r.signedAt),
   signedBy: r.signedByMembershipId ?? null,
   correctsAssessmentId: r.correctsAssessmentId ?? null,
   supersededByAssessmentId: r.supersededById ?? null,
-  snapshot:
-    (r.clinicalContextSnapshot as Record<string, number | null> | null) ?? null,
+  snapshot: (r.clinicalContextSnapshot as Record<string, number | null> | null) ?? null,
   regulatory: {
     specVersionId: r.specVersionId ?? null,
     isc: (r.isc as HopeAssessmentView["regulatory"]["isc"]) ?? null,
@@ -237,6 +230,7 @@ const toScheduleView = (r: ScheduleRow): HopeScheduleView => ({
 const toSfvView = (r: SfvRow): HopeSfvView => ({
   id: r.id,
   patientId: r.patientId,
+  admissionId: r.admissionId,
   triggeringAssessmentId: r.triggeringAssessmentId,
   status: r.status as HopeSfvView["status"],
   triggeredAt: r.triggeredAt.toISOString(),
@@ -249,15 +243,11 @@ const toSubmissionView = (r: SubmissionRow): HopeSubmissionView => ({
   providerEntityId: r.providerEntityId,
   submissionPeriod: r.submissionPeriod,
   status: r.status as HopeSubmissionView["status"],
-  transportMode:
-    (r as { transportMode?: string }).transportMode ?? "manual_iqies_upload",
-  validationProfile:
-    (r as { validationProfile?: string | null }).validationProfile ?? null,
-  packageFilename:
-    (r as { packageFilename?: string | null }).packageFilename ?? null,
+  transportMode: (r as { transportMode?: string }).transportMode ?? "manual_iqies_upload",
+  validationProfile: (r as { validationProfile?: string | null }).validationProfile ?? null,
+  packageFilename: (r as { packageFilename?: string | null }).packageFilename ?? null,
   packageSha256: (r as { packageSha256?: string | null }).packageSha256 ?? null,
-  packageSizeBytes:
-    (r as { packageSizeBytes?: number | null }).packageSizeBytes ?? null,
+  packageSizeBytes: (r as { packageSizeBytes?: number | null }).packageSizeBytes ?? null,
   itemCount: r.itemCount,
   acceptedCount: r.acceptedCount,
   rejectedCount: r.rejectedCount,
@@ -266,8 +256,7 @@ const toSubmissionView = (r: SubmissionRow): HopeSubmissionView => ({
   submittedAt: iso((r as { submittedAt?: Date | null }).submittedAt ?? null),
   acceptedAt: iso(r.acceptedAt),
   iqiesSubmissionReference:
-    (r as { iqiesSubmissionReference?: string | null })
-      .iqiesSubmissionReference ?? null,
+    (r as { iqiesSubmissionReference?: string | null }).iqiesSubmissionReference ?? null,
 });
 
 /**
@@ -320,23 +309,16 @@ export function createDbHopeBackend(
    * Called OUTSIDE the sign transaction: M9's store opens its own `withOrgContextFromRequest`, and
    * nesting that inside an open `withOrgContext` would set the GUC on an already-bound connection.
    */
-  async function d8Snapshot(
-    patientId: string,
-  ): Promise<Record<string, number | null> | null> {
+  async function d8Snapshot(patientId: string): Promise<Record<string, number | null> | null> {
     try {
-      const rows = await getSeam("LatestAssessmentProvider").latestBatch(
-        patientId,
-        [...D8_SNAPSHOT_SCALES] as unknown as ReadonlyArray<ScaleType>,
-      );
+      const rows = await getSeam("LatestAssessmentProvider").latestBatch(patientId, [
+        ...D8_SNAPSHOT_SCALES,
+      ] as unknown as ReadonlyArray<ScaleType>);
       const byScale = new Map<string, number | null>(
-        rows.map((r: LatestAssessment) => [
-          String(r.scaleType),
-          r.score ?? null,
-        ]),
+        rows.map((r: LatestAssessment) => [String(r.scaleType), r.score ?? null]),
       );
       const snap: Record<string, number | null> = {};
-      for (const scale of D8_SNAPSHOT_SCALES)
-        snap[scale] = byScale.get(scale) ?? null;
+      for (const scale of D8_SNAPSHOT_SCALES) snap[scale] = byScale.get(scale) ?? null;
       return snap;
     } catch {
       return null;
@@ -356,14 +338,11 @@ export function createDbHopeBackend(
     admissionId: string,
   ): Promise<{ providerEntityId: string; locationId: string } | null> {
     try {
-      const summary = await getSeam(
-        "AdmissionStatusReader",
-      ).getAdmissionSummary(organizationId, admissionId);
-      if (
-        summary.organizationId !== organizationId ||
-        summary.patientId !== patientId
-      )
-        return null;
+      const summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(
+        organizationId,
+        admissionId,
+      );
+      if (summary.organizationId !== organizationId || summary.patientId !== patientId) return null;
       const providerEntityId = summary.providerEntityId;
       const locationId = summary.locationId ?? null;
       if (!providerEntityId || !locationId) return null;
@@ -384,12 +363,7 @@ export function createDbHopeBackend(
     const [assessment] = (await tx
       .select()
       .from(ASSESS)
-      .where(
-        and(
-          eq(ASSESS.id, triggeringAssessmentId),
-          eq(ASSESS.organizationId, organizationId),
-        ),
-      )
+      .where(and(eq(ASSESS.id, triggeringAssessmentId), eq(ASSESS.organizationId, organizationId)))
       .limit(1)) as AssessmentRow[];
 
     if (
@@ -404,20 +378,12 @@ export function createDbHopeBackend(
     const plan = buildCompletedSfvRegulatoryAnswerPlan(completedDate, sfvData);
     if (!plan) return;
 
-    const requestedCodes = [
-      "J2052A",
-      "J2052B",
-      "J2052C",
-      ...HOPE_J2053_ITEM_CODES,
-    ];
+    const requestedCodes = ["J2052A", "J2052B", "J2052C", ...HOPE_J2053_ITEM_CODES];
 
     const rows = await tx
       .select({ item: ITEM })
       .from(ITEM)
-      .innerJoin(
-        schema.hopeSpecItemIsc,
-        eq(schema.hopeSpecItemIsc.specItemId, ITEM.id),
-      )
+      .innerJoin(schema.hopeSpecItemIsc, eq(schema.hopeSpecItemIsc.specItemId, ITEM.id))
       .where(
         and(
           eq(ITEM.specVersionId, assessment.specVersionId),
@@ -535,12 +501,7 @@ export function createDbHopeBackend(
       )
       .limit(1)) as SfvRow[];
 
-    if (
-      !sfv ||
-      sfv.status !== "completed" ||
-      !sfv.completedAt ||
-      !sfv.completingAssessmentId
-    ) {
+    if (!sfv || sfv.status !== "completed" || !sfv.completedAt || !sfv.completingAssessmentId) {
       return { repaired: false, reason: "sfv_not_completed" };
     }
 
@@ -548,18 +509,11 @@ export function createDbHopeBackend(
       .select()
       .from(ASSESS)
       .where(
-        and(
-          eq(ASSESS.organizationId, organizationId),
-          eq(ASSESS.id, sfv.completingAssessmentId),
-        ),
+        and(eq(ASSESS.organizationId, organizationId), eq(ASSESS.id, sfv.completingAssessmentId)),
       )
       .limit(1)) as AssessmentRow[];
 
-    if (
-      !completion ||
-      completion.rfaKind !== "04_sfv" ||
-      completion.status !== "signed"
-    ) {
+    if (!completion || completion.rfaKind !== "04_sfv" || completion.status !== "signed") {
       return {
         repaired: false,
         reason: "completion_assessment_not_signed_sfv",
@@ -567,9 +521,7 @@ export function createDbHopeBackend(
     }
 
     const completionData =
-      completion.data &&
-      typeof completion.data === "object" &&
-      !Array.isArray(completion.data)
+      completion.data && typeof completion.data === "object" && !Array.isArray(completion.data)
         ? (completion.data as Record<string, unknown>)
         : null;
     if (!completionData) return { repaired: false, reason: "missing_sfv_data" };
@@ -602,10 +554,7 @@ export function createDbHopeBackend(
     const [row] = await tx
       .select({ item: ITEM })
       .from(ITEM)
-      .innerJoin(
-        schema.hopeSpecItemIsc,
-        eq(schema.hopeSpecItemIsc.specItemId, ITEM.id),
-      )
+      .innerJoin(schema.hopeSpecItemIsc, eq(schema.hopeSpecItemIsc.specItemId, ITEM.id))
       .where(
         and(
           eq(ITEM.specVersionId, assessment.specVersionId),
@@ -615,10 +564,7 @@ export function createDbHopeBackend(
         ),
       )
       .limit(1);
-    if (!row)
-      throw new ConflictError(
-        "Z0500B is not active for this HOPE assessment ISC",
-      );
+    if (!row) throw new ConflictError("Z0500B is not active for this HOPE assessment ISC");
     await tx
       .insert(ANSWER)
       .values({
@@ -656,10 +602,7 @@ export function createDbHopeBackend(
   ): Promise<AssessmentRow> {
     const assessment = await loadA(tx, id);
     if (assessment.specVersionId && assessment.isc) return assessment;
-    if (
-      assessment.status !== "draft" ||
-      !isOfficialRfaKind(assessment.rfaKind)
-    ) {
+    if (assessment.status !== "draft" || !isOfficialRfaKind(assessment.rfaKind)) {
       return assessment;
     }
 
@@ -677,10 +620,7 @@ export function createDbHopeBackend(
       })
       .where(and(eq(ASSESS.id, id), eq(ASSESS.organizationId, organizationId)))
       .returning()) as AssessmentRow[];
-    const normalized = firstOrThrow(
-      updated ? [updated] : [],
-      `HOPE assessment ${id} not found`,
-    );
+    const normalized = firstOrThrow(updated ? [updated] : [], `HOPE assessment ${id} not found`);
     await answerWriter.writeDerivedControlAnswers(tx, {
       organizationId,
       providerEntityId: normalized.providerEntityId,
@@ -709,20 +649,12 @@ export function createDbHopeBackend(
     const [row] = (await t
       .select()
       .from(ASSESS)
-      .where(
-        and(
-          eq(ASSESS.correctsAssessmentId, sourceId),
-          eq(ASSESS.status, "draft"),
-        ),
-      )
+      .where(and(eq(ASSESS.correctsAssessmentId, sourceId), eq(ASSESS.status, "draft")))
       .limit(1)) as AssessmentRow[];
     return row ?? null;
   }
 
-  async function assertNoPendingLineageOperation(
-    t: DbClient,
-    sourceId: string,
-  ): Promise<void> {
+  async function assertNoPendingLineageOperation(t: DbClient, sourceId: string): Promise<void> {
     const pending = await pendingLineageOperation(t, sourceId);
     if (pending) {
       throw new ConflictError(
@@ -731,44 +663,30 @@ export function createDbHopeBackend(
     }
   }
 
-  async function answerValueMap(
-    t: DbClient,
-    assessmentId: string,
-  ): Promise<Map<string, unknown>> {
+  async function answerValueMap(t: DbClient, assessmentId: string): Promise<Map<string, unknown>> {
     const rows = await t
       .select({ itemCode: ITEM.itemCode, answer: ANSWER })
       .from(ANSWER)
       .innerJoin(ITEM, eq(ITEM.id, ANSWER.specItemId))
       .where(eq(ANSWER.hopeAssessmentId, assessmentId));
-    return new Map(
-      rows.map((row) => [row.itemCode, row.answer.value as unknown]),
-    );
+    return new Map(rows.map((row) => [row.itemCode, row.answer.value as unknown]));
   }
 
-  async function assertCorrectionHasSubstantiveChange(
-    t: DbClient,
-    correction: AssessmentRow,
-  ) {
+  async function assertCorrectionHasSubstantiveChange(t: DbClient, correction: AssessmentRow) {
     if (!correction.correctsAssessmentId || correction.isc === "XX") return;
     const [original] = (await t
       .select()
       .from(ASSESS)
       .where(eq(ASSESS.id, correction.correctsAssessmentId))
       .limit(1)) as AssessmentRow[];
-    if (!original)
-      throw new ConflictError("Correction source assessment is missing");
+    if (!original) throw new ConflictError("Correction source assessment is missing");
     if (original.status !== "signed") {
-      throw new ConflictError(
-        "Correction source is no longer the current signed record",
-      );
+      throw new ConflictError("Correction source is no longer the current signed record");
     }
     const originalAnswers = await answerValueMap(t, original.id);
     const correctionAnswers = await answerValueMap(t, correction.id);
     const ignored = new Set(["A0050", "A0250", "Z0500B"]);
-    const itemCodes = new Set([
-      ...originalAnswers.keys(),
-      ...correctionAnswers.keys(),
-    ]);
+    const itemCodes = new Set([...originalAnswers.keys(), ...correctionAnswers.keys()]);
     for (const itemCode of itemCodes) {
       if (ignored.has(itemCode)) continue;
       if (
@@ -778,16 +696,13 @@ export function createDbHopeBackend(
         return;
       }
     }
-    throw new ValidationError(
-      "No substantive HOPE correction changes have been made",
-      [
-        {
-          field: "assessment",
-          code: "NO_REGULATORY_CHANGES",
-          message: "No changes have been made to this correction.",
-        },
-      ],
-    );
+    throw new ValidationError("No substantive HOPE correction changes have been made", [
+      {
+        field: "assessment",
+        code: "NO_REGULATORY_CHANGES",
+        message: "No changes have been made to this correction.",
+      },
+    ]);
   }
 
   async function copyActiveAnswersForIsc(input: {
@@ -801,10 +716,7 @@ export function createDbHopeBackend(
     const active = await input.tx
       .select({ item: ITEM })
       .from(ITEM)
-      .innerJoin(
-        schema.hopeSpecItemIsc,
-        eq(schema.hopeSpecItemIsc.specItemId, ITEM.id),
-      )
+      .innerJoin(schema.hopeSpecItemIsc, eq(schema.hopeSpecItemIsc.specItemId, ITEM.id))
       .where(
         and(
           eq(ITEM.specVersionId, input.target.specVersionId!),
@@ -820,11 +732,7 @@ export function createDbHopeBackend(
       .where(eq(ANSWER.hopeAssessmentId, input.source.id));
     for (const row of sourceAnswers) {
       if (!activeIds.has(row.answer.specItemId)) continue;
-      if (
-        row.itemCode === "A0050" ||
-        row.itemCode === "A0250" ||
-        row.itemCode === "Z0500B"
-      )
+      if (row.itemCode === "A0050" || row.itemCode === "A0250" || row.itemCode === "Z0500B")
         continue;
       await input.tx.insert(ANSWER).values({
         organizationId: input.organizationId,
@@ -865,20 +773,11 @@ export function createDbHopeBackend(
   function cmsResultStatus(
     raw: Record<string, unknown>,
   ): "accepted" | "accepted_with_warnings" | "rejected" | "pending" {
-    const status = String(
-      raw.status ?? raw.result ?? raw.outcome ?? "",
-    ).toLowerCase();
-    const severity = String(
-      raw.severity ?? raw.cmsSeverity ?? "",
-    ).toLowerCase();
-    if (
-      status.includes("reject") ||
-      severity === "fatal" ||
-      severity === "error"
-    )
+    const status = String(raw.status ?? raw.result ?? raw.outcome ?? "").toLowerCase();
+    const severity = String(raw.severity ?? raw.cmsSeverity ?? "").toLowerCase();
+    if (status.includes("reject") || severity === "fatal" || severity === "error")
       return "rejected";
-    if (status.includes("warning") || severity === "warning")
-      return "accepted_with_warnings";
+    if (status.includes("warning") || severity === "warning") return "accepted_with_warnings";
     if (status.includes("accept")) return "accepted";
     return "pending";
   }
@@ -937,19 +836,13 @@ export function createDbHopeBackend(
     async listSfv(organizationId, state) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const rows = (await tx.select().from(SFV)) as SfvRow[];
-        const sfvs = rows
-          .filter((r) => !state || r.status === state)
-          .map(toSfvView);
+        const sfvs = rows.filter((r) => !state || r.status === state).map(toSfvView);
         return { sfvs };
       });
     },
     async getSfv(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [r] = (await tx
-          .select()
-          .from(SFV)
-          .where(eq(SFV.id, id))
-          .limit(1)) as SfvRow[];
+        const [r] = (await tx.select().from(SFV).where(eq(SFV.id, id)).limit(1)) as SfvRow[];
         if (!r) throw new NotFoundError(`SFV ${id} not found`);
         return toSfvView(r);
       });
@@ -970,34 +863,23 @@ export function createDbHopeBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const rows = (await tx.select().from(SUB)) as SubmissionRow[];
         const submissions = rows
-          .filter(
-            (r) => !providerEntityId || r.providerEntityId === providerEntityId,
-          )
+          .filter((r) => !providerEntityId || r.providerEntityId === providerEntityId)
           .map(toSubmissionView);
         return { submissions };
       });
     },
     async getSubmission(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [r] = (await tx
-          .select()
-          .from(SUB)
-          .where(eq(SUB.id, id))
-          .limit(1)) as SubmissionRow[];
+        const [r] = (await tx.select().from(SUB).where(eq(SUB.id, id)).limit(1)) as SubmissionRow[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
         return toSubmissionView(r);
       });
     },
 
     // ── Compliance dashboard (§7 — mirrors the in-mem rate math over the RLS-scoped org rows) ────────
-    async complianceDashboard(
-      organizationId,
-      providerEntityId,
-    ): Promise<HopeComplianceView> {
+    async complianceDashboard(organizationId, providerEntityId): Promise<HopeComplianceView> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const scheds = (await tx
-          .select({ status: SCHED.status })
-          .from(SCHED)) as {
+        const scheds = (await tx.select({ status: SCHED.status }).from(SCHED)) as {
           status: string;
         }[];
         const completed = scheds.filter((s) => s.status === "completed").length;
@@ -1019,20 +901,28 @@ export function createDbHopeBackend(
         const subs = subsAll.filter(
           (s) => !providerEntityId || s.providerEntityId === providerEntityId,
         );
-        const accepted = subs.filter((s) => s.status === "accepted").length;
+        // F-058 (#150) — the acceptance-rate DENOMINATOR is the terminal batches only.
+        //
+        // It used to be every submission of any status, which read as 0% acceptance for an agency whose
+        // batches are merely queued. That was latent while nothing created a batch with anything in it;
+        // it becomes live the moment force-assemble does real work, and 0% is the §1.3 APU-penalty band
+        // — the worst possible reading to hand a compliance officer for "assembled, not yet sent". A
+        // `queued` or `in_flight` batch has no acceptance outcome, so it belongs in neither half of the
+        // ratio. Same definition M30's `submissionBatches` rollup already uses.
+        const terminal = subs.filter((s) => SUBMISSION_TERMINAL_STATUSES.includes(s.status));
+        const accepted = terminal.filter((s) => s.status === "accepted").length;
         return {
           providerEntityId: providerEntityId ?? null,
-          hopeOnTimeRate: denom === 0 ? 1 : completed / denom,
-          sfvOnTimeRate: sfvDenom === 0 ? 1 : sfvOnTime / sfvDenom,
-          submissionAcceptanceRate:
-            subs.length === 0 ? 1 : accepted / subs.length,
+          hopeOnTimeRate: rateOf(completed, denom),
+          hopeOnTimeCounts: { onTime: completed, total: denom },
+          sfvOnTimeRate: rateOf(sfvOnTime, sfvDenom),
+          sfvOnTimeCounts: { onTime: sfvOnTime, total: sfvDenom },
+          submissionAcceptanceRate: rateOf(accepted, terminal.length),
+          submissionAcceptanceCounts: { accepted, total: terminal.length },
         };
       });
     },
-    async getWorkflowState(
-      organizationId,
-      admissionId,
-    ): Promise<HopeWorkflowStateView> {
+    async getWorkflowState(organizationId, admissionId): Promise<HopeWorkflowStateView> {
       let admission: {
         patientId?: string | null;
         status?: string | null;
@@ -1041,9 +931,10 @@ export function createDbHopeBackend(
         dischargedAt?: string | null;
       } | null = null;
       try {
-        const summary = await getSeam(
-          "AdmissionStatusReader",
-        ).getAdmissionSummary(organizationId, admissionId);
+        const summary = await getSeam("AdmissionStatusReader").getAdmissionSummary(
+          organizationId,
+          admissionId,
+        );
         if (summary.organizationId === organizationId) {
           admission = {
             patientId: summary.patientId,
@@ -1066,17 +957,11 @@ export function createDbHopeBackend(
           .from(ASSESS)
           .where(eq(ASSESS.admissionId, admissionId))) as AssessmentRow[];
         const patientId =
-          admission?.patientId ??
-          schedRows[0]?.patientId ??
-          assessmentRows[0]?.patientId ??
-          null;
+          admission?.patientId ?? schedRows[0]?.patientId ?? assessmentRows[0]?.patientId ?? null;
         const sfvRows =
           patientId == null
             ? []
-            : ((await tx
-                .select()
-                .from(SFV)
-                .where(eq(SFV.patientId, patientId))) as SfvRow[]);
+            : ((await tx.select().from(SFV).where(eq(SFV.patientId, patientId))) as SfvRow[]);
         return buildWorkflowState({
           admissionId,
           nowIso: new Date().toISOString(),
@@ -1088,8 +973,15 @@ export function createDbHopeBackend(
       });
     },
 
-    // ── Schedule count for an admission (read; regeneration itself is a write, deferred) ────────────
+    // ── §4.1 route 20 — admin regenerate: materialize every window the admission is entitled to ──────
+    //
+    // #48 — this used to be a COUNT, documented in place as "regeneration itself is a write, deferred".
+    // It was the only route whose name promised the write path nothing in the repo performed, so an
+    // operator looking at an empty timepoint worklist had a button that reported the emptiness back to
+    // them. It now regenerates, idempotently, which is also the supported way to backfill an admission
+    // activated before the scheduling consumer shipped. The returned count is the total AFTER the write.
     async regenerateSchedules(organizationId, admissionId) {
+      await regenerateSchedulesForAdmission(db, outbox, { organizationId, admissionId });
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const rows = await tx
           .select({ id: SCHED.id })
@@ -1100,10 +992,7 @@ export function createDbHopeBackend(
     },
 
     // ── §4.7 / GAP-018 ABAC resolver — correction + scope predicate facts (fail-closed on absent) ─────
-    async loadAssessment(
-      organizationId,
-      assessmentId,
-    ): Promise<HopeAssessmentAbacFacts | null> {
+    async loadAssessment(organizationId, assessmentId): Promise<HopeAssessmentAbacFacts | null> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = (await tx
           .select({
@@ -1111,12 +1000,7 @@ export function createDbHopeBackend(
             signedByMembershipId: ASSESS.signedByMembershipId,
           })
           .from(ASSESS)
-          .where(
-            and(
-              eq(ASSESS.id, assessmentId),
-              eq(ASSESS.organizationId, organizationId),
-            ),
-          )
+          .where(and(eq(ASSESS.id, assessmentId), eq(ASSESS.organizationId, organizationId)))
           .limit(1)) as {
           patientId: string;
           signedByMembershipId: string | null;
@@ -1133,12 +1017,7 @@ export function createDbHopeBackend(
         const [r] = (await tx
           .select({ patientId: SCHED.patientId })
           .from(SCHED)
-          .where(
-            and(
-              eq(SCHED.id, scheduleId),
-              eq(SCHED.organizationId, organizationId),
-            ),
-          )
+          .where(and(eq(SCHED.id, scheduleId), eq(SCHED.organizationId, organizationId)))
           .limit(1)) as { patientId: string }[];
         return r ? { patientId: r.patientId } : null;
       });
@@ -1158,12 +1037,7 @@ export function createDbHopeBackend(
         const [r] = (await tx
           .select({ providerEntityId: SUB.providerEntityId })
           .from(SUB)
-          .where(
-            and(
-              eq(SUB.id, submissionId),
-              eq(SUB.organizationId, organizationId),
-            ),
-          )
+          .where(and(eq(SUB.id, submissionId), eq(SUB.organizationId, organizationId)))
           .limit(1)) as { providerEntityId: string }[];
         return r ? { providerEntityId: r.providerEntityId } : null;
       });
@@ -1188,186 +1062,173 @@ export function createDbHopeBackend(
           })
           .where(eq(SCHED.id, id))
           .returning()) as ScheduleRow[];
-        return toScheduleView(
-          firstOrThrow(rows, "schedule skip matched no row"),
-        );
+        return toScheduleView(firstOrThrow(rows, "schedule skip matched no row"));
       });
     },
 
     // ── Record a draft timepoint (§2.2.1 — linked to its open schedule if one exists) ───────────────
-    async recordTimepoint(
-      organizationId,
-      userId,
-      admissionId,
-      args: RecordTimepointArgs,
-    ) {
-      const view = await withOrgContext(
-        db,
-        { organizationId, userId: "" },
-        async (tx) => {
-          const t = tx as unknown as DbClient;
-          const admissionSummary =
-            args.rfaKind === "01_admission" ||
-            args.rfaKind === "02_huv1" ||
-            args.rfaKind === "03_huv2" ||
-            args.rfaKind === "05_discharge"
-              ? await getSeam("AdmissionStatusReader").getAdmissionSummary(
-                  organizationId,
-                  admissionId,
-                )
-              : null;
-          if (
-            admissionSummary &&
-            admissionSummary.organizationId !== organizationId
-          ) {
-            throw new NotFoundError(`Admission ${admissionId} not found`);
-          }
-          const regulatoryTargetDate =
-            args.rfaKind === "01_admission"
-              ? (admissionSummary?.admissionAt ?? args.targetDate)
-              : args.rfaKind === "05_discharge"
-                ? (admissionSummary?.dischargedAt ?? args.targetDate)
-                : args.targetDate;
-          const init = await initializeNewHopeRecord(
-            createHopeSpecRegistry(t),
-            {
-              rfaKind: args.rfaKind,
-              targetDate: args.targetDate,
-            },
+    async recordTimepoint(organizationId, userId, admissionId, args: RecordTimepointArgs) {
+      const view = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const admissionSummary =
+          args.rfaKind === "01_admission" ||
+          args.rfaKind === "02_huv1" ||
+          args.rfaKind === "03_huv2" ||
+          args.rfaKind === "05_discharge"
+            ? await getSeam("AdmissionStatusReader").getAdmissionSummary(
+                organizationId,
+                admissionId,
+              )
+            : null;
+        if (admissionSummary && admissionSummary.organizationId !== organizationId) {
+          throw new NotFoundError(`Admission ${admissionId} not found`);
+        }
+        const regulatoryTargetDate =
+          args.rfaKind === "01_admission"
+            ? (admissionSummary?.admissionAt ?? args.targetDate)
+            : args.rfaKind === "05_discharge"
+              ? (admissionSummary?.dischargedAt ?? args.targetDate)
+              : args.targetDate;
+        const init = await initializeNewHopeRecord(createHopeSpecRegistry(t), {
+          rfaKind: args.rfaKind,
+          targetDate: args.targetDate,
+        });
+        // The window ledger row this capture is gated against (#48, restored from the lost Aug 25–30
+        // history). When the caller names the `scheduleId` it is completing, that row is loaded and
+        // `assertRfaMatchesSchedule` is a real check; otherwise the row is resolved by `rfa_kind`.
+        // `open` first, but ANY status is returned: looking only at `open` made an EXPIRED window
+        // indistinguishable from an unscheduled one — the case `M10_TIMEPOINT_EXPIRED` exists for.
+        const [sched] = (await t
+          .select()
+          .from(SCHED)
+          .where(
+            args.scheduleId
+              ? and(eq(SCHED.id, args.scheduleId), eq(SCHED.admissionId, admissionId))
+              : and(eq(SCHED.admissionId, admissionId), eq(SCHED.rfaKind, args.rfaKind)),
+          )
+          .orderBy(sql`CASE WHEN ${SCHED.status} = 'open' THEN 0 ELSE 1 END`, desc(SCHED.createdAt))
+          .limit(1)) as ScheduleRow[];
+        // A named schedule that does not resolve is a 404, never a silent fall-through to ungated capture.
+        if (args.scheduleId && !sched) {
+          throw new NotFoundError(
+            `HOPE schedule ${args.scheduleId} not found on admission ${admissionId}`,
           );
-          // Link the draft to the open schedule for (admission, rfa) so the sign trigger can close it.
-          const [sched] = (await t
+        }
+        if (
+          args.rfaKind === "01_admission" ||
+          args.rfaKind === "02_huv1" ||
+          args.rfaKind === "03_huv2" ||
+          args.rfaKind === "05_discharge"
+        ) {
+          const [existingDraft] = (await t
             .select()
-            .from(SCHED)
+            .from(ASSESS)
             .where(
               and(
-                eq(SCHED.admissionId, admissionId),
-                eq(SCHED.rfaKind, args.rfaKind),
-                eq(SCHED.status, "open"),
+                eq(ASSESS.admissionId, admissionId),
+                eq(ASSESS.rfaKind, args.rfaKind),
+                eq(ASSESS.status, "draft"),
               ),
             )
-            .limit(1)) as ScheduleRow[];
-          if (
-            args.rfaKind === "01_admission" ||
-            args.rfaKind === "02_huv1" ||
-            args.rfaKind === "03_huv2" ||
-            args.rfaKind === "05_discharge"
-          ) {
-            const [existingDraft] = (await t
-              .select()
-              .from(ASSESS)
-              .where(
-                and(
-                  eq(ASSESS.admissionId, admissionId),
-                  eq(ASSESS.rfaKind, args.rfaKind),
-                  eq(ASSESS.status, "draft"),
-                ),
-              )
-              .orderBy(desc(ASSESS.createdAt))
-              .limit(1)) as AssessmentRow[];
-            if (existingDraft) {
-              const normalized = await ensureDraftSpecInitialized(
-                t,
-                organizationId,
-                existingDraft.id,
-              );
-
-              await admissionPrefillService.prefillAdmission({
-                tx: t,
-                organizationId,
-                assessment: normalized,
-                specVersionCode: init.specVersionCode,
-                admissionDate: (
-                  admissionSummary?.admissionAt ?? regulatoryTargetDate
-                ).slice(0, 10),
-              });
-
-              return toAssessmentView(normalized);
-            }
-          }
-          let capture: { wasLate: boolean; lateReasonCode: string | null } = {
-            wasLate: false,
-            lateReasonCode: null,
-          };
-          if (sched) {
-            capture = assertCaptureAllowed(
-              args.targetDate,
-              {
-                windowOpensAt: sched.windowOpensAt.toISOString(),
-                windowClosesAt: sched.windowClosesAt.toISOString(),
-                lateDeadlineAt: sched.lateDeadlineAt.toISOString(),
-              },
-              {
-                lateReasonCode: args.lateCompletionReasonCode,
-                adminOverride: args.adminOverride,
-              },
+            .orderBy(desc(ASSESS.createdAt))
+            .limit(1)) as AssessmentRow[];
+          if (existingDraft) {
+            const normalized = await ensureDraftSpecInitialized(
+              t,
+              organizationId,
+              existingDraft.id,
             );
-          }
-          const row = firstOrThrow(
-            await t
-              .insert(ASSESS)
-              .values({
-                organizationId,
-                patientId:
-                  admissionSummary?.patientId ??
-                  sched?.patientId ??
-                  admissionId,
-                admissionId,
-                scheduleId: sched?.id ?? null,
-                rfaKind: args.rfaKind,
-                specVersionId: init.specVersionId,
-                isc: init.isc,
-                status: "draft",
-                data: args.data,
-                providerEntityId: admissionSummary?.providerEntityId ?? null,
-                locationId: admissionSummary?.locationId ?? null,
-                dischargeReason:
-                  args.dischargeReason as AssessmentRow["dischargeReason"],
-                targetDate: new Date(args.targetDate),
-                sourceEncounterId: args.sourceEncounterId ?? null,
-                wasLate: capture.wasLate,
-                lateCompletionReasonCode: capture.lateReasonCode,
-                createdByMembershipId: userId,
-              })
-              .returning(),
-            "hope_assessment insert returned no row",
-          );
-          await answerWriter.writeDerivedControlAnswers(t, {
-            organizationId,
-            providerEntityId: row.providerEntityId,
-            locationId: row.locationId,
-            hopeAssessmentId: row.id,
-            specVersionId: init.specVersionId,
-            controlAnswers: init.controlAnswers,
-          });
-          if (
-            row.rfaKind === "01_admission" ||
-            row.rfaKind === "02_huv1" ||
-            row.rfaKind === "03_huv2" ||
-            row.rfaKind === "05_discharge"
-          ) {
+
             await admissionPrefillService.prefillAdmission({
               tx: t,
               organizationId,
-              assessment: row,
+              assessment: normalized,
               specVersionCode: init.specVersionCode,
-              admissionDate: (
-                admissionSummary?.admissionAt ?? regulatoryTargetDate
-              ).slice(0, 10),
+              admissionDate: (admissionSummary?.admissionAt ?? regulatoryTargetDate).slice(0, 10),
             });
+
+            return toAssessmentView(normalized);
           }
-          if (row.rfaKind === "05_discharge") {
-            await dischargePrefillService.prefillDischarge({
-              tx: t,
+        }
+        let capture: CaptureDecision = { wasLate: false, lateReasonCode: null };
+        if (sched) {
+          assertRfaMatchesSchedule(args.rfaKind, {
+            rfaKind: sched.rfaKind,
+            generatedBy: sched.generatedBy,
+          });
+          capture = assertCaptureAllowed(
+            args.targetDate,
+            {
+              windowOpensAt: sched.windowOpensAt.toISOString(),
+              windowClosesAt: sched.windowClosesAt.toISOString(),
+              lateDeadlineAt: sched.lateDeadlineAt.toISOString(),
+            },
+            {
+              lateReasonCode: args.lateCompletionReasonCode,
+              adminOverride: args.adminOverride,
+            },
+          );
+        }
+        const row = firstOrThrow(
+          await t
+            .insert(ASSESS)
+            .values({
               organizationId,
-              assessment: row,
-              dischargeDate: regulatoryTargetDate.slice(0, 10),
-              dischargeReason: args.dischargeReason ?? null,
-            });
-          }
-          return toAssessmentView(row);
-        },
-      );
+              patientId: admissionSummary?.patientId ?? sched?.patientId ?? admissionId,
+              admissionId,
+              // Only an OPEN window is linked: `trg_hope_schedule_mark_completed` closes the linked
+              // schedule on sign and its own WHERE is `status = 'open'`.
+              scheduleId: sched?.status === "open" ? sched.id : null,
+              rfaKind: args.rfaKind,
+              specVersionId: init.specVersionId,
+              isc: init.isc,
+              status: "draft",
+              data: args.data,
+              providerEntityId: admissionSummary?.providerEntityId ?? null,
+              locationId: admissionSummary?.locationId ?? null,
+              dischargeReason: args.dischargeReason as AssessmentRow["dischargeReason"],
+              targetDate: new Date(args.targetDate),
+              sourceEncounterId: args.sourceEncounterId ?? null,
+              wasLate: capture.wasLate,
+              lateCompletionReasonCode: capture.lateReasonCode,
+              createdByMembershipId: userId,
+            })
+            .returning(),
+          "hope_assessment insert returned no row",
+        );
+        await answerWriter.writeDerivedControlAnswers(t, {
+          organizationId,
+          providerEntityId: row.providerEntityId,
+          locationId: row.locationId,
+          hopeAssessmentId: row.id,
+          specVersionId: init.specVersionId,
+          controlAnswers: init.controlAnswers,
+        });
+        if (
+          row.rfaKind === "01_admission" ||
+          row.rfaKind === "02_huv1" ||
+          row.rfaKind === "03_huv2" ||
+          row.rfaKind === "05_discharge"
+        ) {
+          await admissionPrefillService.prefillAdmission({
+            tx: t,
+            organizationId,
+            assessment: row,
+            specVersionCode: init.specVersionCode,
+            admissionDate: (admissionSummary?.admissionAt ?? regulatoryTargetDate).slice(0, 10),
+          });
+        }
+        if (row.rfaKind === "05_discharge") {
+          await dischargePrefillService.prefillDischarge({
+            tx: t,
+            organizationId,
+            assessment: row,
+            dischargeDate: regulatoryTargetDate.slice(0, 10),
+            dischargeReason: args.dischargeReason ?? null,
+          });
+        }
+        return toAssessmentView(row);
+      });
       if (
         (view.rfaKind === "01_admission" && view.regulatory.isc === "HA") ||
         ((view.rfaKind === "02_huv1" || view.rfaKind === "03_huv2") &&
@@ -1406,6 +1267,10 @@ export function createDbHopeBackend(
               organizationId,
               patientId: sfv.patientId,
               admissionId,
+              // F-058 — the batch key, carried from the SFV obligation this RFA-04 completes (the same
+              // denormalized siting, already resolved when the trigger created it).
+              providerEntityId: sfv.providerEntityId,
+              locationId: sfv.locationId,
               rfaKind: "04_sfv",
               status: "signed",
               data: args.data,
@@ -1444,18 +1309,11 @@ export function createDbHopeBackend(
           args.data,
           at,
         );
-        await emit(
-          t,
-          organizationId,
-          "m10.hope.sfv_completed",
-          "symptom_follow_up_visit",
-          sfv.id,
-          {
-            sfvId: sfv.id,
-            completingAssessmentId: row.id,
-            completedAt: at.toISOString(),
-          },
-        );
+        await emit(t, organizationId, "m10.hope.sfv_completed", "symptom_follow_up_visit", sfv.id, {
+          sfvId: sfv.id,
+          completingAssessmentId: row.id,
+          completedAt: at.toISOString(),
+        });
         return toAssessmentView(row);
       });
     },
@@ -1476,19 +1334,13 @@ export function createDbHopeBackend(
           .set({ data: merged, version: r.version + 1, updatedAt: new Date() })
           .where(eq(ASSESS.id, id))
           .returning()) as AssessmentRow[];
-        return toAssessmentView(
-          firstOrThrow(rows, "updateDraft matched no row"),
-        );
+        return toAssessmentView(firstOrThrow(rows, "updateDraft matched no row"));
       });
     },
 
     async getAssessmentWorkspace(organizationId, id) {
       await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        ensureDraftSpecInitialized(
-          tx as unknown as DbClient,
-          organizationId,
-          id,
-        ),
+        ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id),
       );
       return answerService.getWorkspace(organizationId, id);
     },
@@ -1503,12 +1355,7 @@ export function createDbHopeBackend(
     },
 
     async patchAssessmentAnswers(organizationId, userId, id, input) {
-      const result = await answerService.patchAnswers(
-        organizationId,
-        userId,
-        id,
-        input,
-      );
+      const result = await answerService.patchAnswers(organizationId, userId, id, input);
       try {
         await validationService.validateAssessment({
           organizationId,
@@ -1522,66 +1369,53 @@ export function createDbHopeBackend(
     },
 
     async setHuvCompletionDate(organizationId, userId, id, input) {
-      const result = await withOrgContext(
-        db,
-        { organizationId, userId: "" },
-        async (tx) => {
-          const t = tx as unknown as DbClient;
-          const r = await loadA(t, id);
-          if (
-            (r.rfaKind !== "02_huv1" && r.rfaKind !== "03_huv2") ||
-            r.isc !== "HUV"
-          ) {
-            throw new ConflictError(
-              `HOPE assessment ${id} is not a HUV record`,
-            );
-          }
-          require_(
-            r.status === "draft",
-            "M10_ASSESSMENT_IMMUTABLE",
-            `Assessment ${id} is not a draft.`,
-          );
-          if (r.version !== input.ifVersion) {
-            throw new ConflictError(
-              `HOPE assessment ${id} version is stale; reload and retry`,
-            );
-          }
-          const at = new Date();
-          const answer = await answerService.setWorkflowAnswer(t, {
-            organizationId,
-            membershipId: userId,
-            assessment: r,
-            itemCode: "Z0350",
-            value: input.z0350,
-            sourceReference: { reason: "huv_completion_date_workflow" },
-            at,
-          });
-          const [updated] = (await t
-            .update(ASSESS)
-            .set({
-              targetDate: new Date(`${input.z0350}T00:00:00.000Z`),
-              version: r.version + 1,
-              updatedAt: at,
-            })
-            .where(
-              and(
-                eq(ASSESS.id, id),
-                eq(ASSESS.organizationId, organizationId),
-                eq(ASSESS.version, input.ifVersion),
-              ),
-            )
-            .returning({ version: ASSESS.version })) as { version: number }[];
-          if (!updated)
-            throw new ConflictError(
-              `HOPE assessment ${id} version is stale; reload and retry`,
-            );
-          return {
-            assessmentId: id,
-            version: updated.version,
-            answers: [answer],
-          };
-        },
-      );
+      const result = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const r = await loadA(t, id);
+        if ((r.rfaKind !== "02_huv1" && r.rfaKind !== "03_huv2") || r.isc !== "HUV") {
+          throw new ConflictError(`HOPE assessment ${id} is not a HUV record`);
+        }
+        require_(
+          r.status === "draft",
+          "M10_ASSESSMENT_IMMUTABLE",
+          `Assessment ${id} is not a draft.`,
+        );
+        if (r.version !== input.ifVersion) {
+          throw new ConflictError(`HOPE assessment ${id} version is stale; reload and retry`);
+        }
+        const at = new Date();
+        const answer = await answerService.setWorkflowAnswer(t, {
+          organizationId,
+          membershipId: userId,
+          assessment: r,
+          itemCode: "Z0350",
+          value: input.z0350,
+          sourceReference: { reason: "huv_completion_date_workflow" },
+          at,
+        });
+        const [updated] = (await t
+          .update(ASSESS)
+          .set({
+            targetDate: new Date(`${input.z0350}T00:00:00.000Z`),
+            version: r.version + 1,
+            updatedAt: at,
+          })
+          .where(
+            and(
+              eq(ASSESS.id, id),
+              eq(ASSESS.organizationId, organizationId),
+              eq(ASSESS.version, input.ifVersion),
+            ),
+          )
+          .returning({ version: ASSESS.version })) as { version: number }[];
+        if (!updated)
+          throw new ConflictError(`HOPE assessment ${id} version is stale; reload and retry`);
+        return {
+          assessmentId: id,
+          version: updated.version,
+          answers: [answer],
+        };
+      });
       try {
         await validationService.validateAssessment({
           organizationId,
@@ -1595,33 +1429,19 @@ export function createDbHopeBackend(
     },
 
     // ── Sign a draft (§2.2.2 / Phase 3C — final validation + Z0500B candidate, then immutable) ─
-    async signTimepoint(
-      organizationId,
-      userId,
-      id,
-      args,
-    ): Promise<HopeSignResult> {
+    async signTimepoint(organizationId, userId, id, args): Promise<HopeSignResult> {
       // GAP-019 — the D8 clinical-context snapshot and the siting the compensating finding needs both
       // come from OTHER modules' seams, each of which opens its own tenant context. They are resolved
       // here, before the write transaction, and the assessment is re-read inside it so the draft guard
       // and the UPDATE still see one consistent row.
-      const pre = await withOrgContext(
-        db,
-        { organizationId, userId: "" },
-        async (tx) =>
-          ensureDraftSpecInitialized(
-            tx as unknown as DbClient,
-            organizationId,
-            id,
-          ),
+      const pre = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+        ensureDraftSpecInitialized(tx as unknown as DbClient, organizationId, id),
       );
-      const snapshot =
-        pre.status === "draft" ? await d8Snapshot(pre.patientId) : null;
+      const snapshot = pre.status === "draft" ? await d8Snapshot(pre.patientId) : null;
       // A snapshot with no PPS reading is the case §D8 names: "if no PPS is on file at the time of
       // signing, the validator emits a warning-severity finding (not blocking)". An ABSENT snapshot
       // (M9 unreachable) is the same compliance gap from the reviewer's side, so both take the finding.
-      const ppsMissing =
-        pre.status === "draft" && (snapshot === null || snapshot.pps === null);
+      const ppsMissing = pre.status === "draft" && (snapshot === null || snapshot.pps === null);
       const siting = ppsMissing
         ? await admissionSiting(organizationId, pre.patientId, pre.admissionId)
         : null;
@@ -1634,13 +1454,8 @@ export function createDbHopeBackend(
             specCode: schema.hopeSpecVersions.code,
           })
           .from(ASSESS)
-          .innerJoin(
-            schema.hopeSpecVersions,
-            eq(schema.hopeSpecVersions.id, ASSESS.specVersionId),
-          )
-          .where(
-            and(eq(ASSESS.id, id), eq(ASSESS.organizationId, organizationId)),
-          )
+          .innerJoin(schema.hopeSpecVersions, eq(schema.hopeSpecVersions.id, ASSESS.specVersionId))
+          .where(and(eq(ASSESS.id, id), eq(ASSESS.organizationId, organizationId)))
           .limit(1);
         if (!loaded) throw new NotFoundError(`HOPE assessment ${id} not found`);
         const r = loaded.assessment as AssessmentRow;
@@ -1651,14 +1466,10 @@ export function createDbHopeBackend(
         );
         const expectedVersion = args?.ifVersion ?? r.version;
         if (r.version !== expectedVersion) {
-          throw new ConflictError(
-            `HOPE assessment ${id} version is stale; reload and retry`,
-          );
+          throw new ConflictError(`HOPE assessment ${id} version is stale; reload and retry`);
         }
         if (!r.specVersionId || !r.isc) {
-          throw new ConflictError(
-            `HOPE assessment ${id} has no frozen spec version / ISC`,
-          );
+          throw new ConflictError(`HOPE assessment ${id} has no frozen spec version / ISC`);
         }
         await assertCorrectionHasSubstantiveChange(t, r);
         const at = new Date();
@@ -1669,8 +1480,7 @@ export function createDbHopeBackend(
           isc: r.isc as "HA" | "HUV" | "HD" | "XX",
           candidateZ0500B: z0500b,
         });
-        if (!review.readiness.readyToSign)
-          throw new HopeAssessmentNotReadyToSignError(review);
+        if (!review.readiness.readyToSign) throw new HopeAssessmentNotReadyToSignError(review);
         await writeZ0500B(t, r, organizationId, z0500b, at);
         // The AFTER-UPDATE `trg_hope_schedule_mark_completed` closes the linked open schedule on draft→signed.
         const signed = firstOrThrow(
@@ -1725,21 +1535,14 @@ export function createDbHopeBackend(
             `m10: HOPE assessment ${id} signed with no PPS clinical context and the D8 warning finding could not be written (admission ${pre.admissionId} has no resolvable provider entity / location).`,
           );
         }
-        await emit(
-          t,
-          organizationId,
-          "m10.hope.timepoint_signed",
-          "hope_assessment",
-          id,
-          {
-            assessmentId: id,
-            rfaKind: r.rfaKind,
-            signedAt: at.toISOString(),
-            signedBy: userId,
-            j2051TriggerFired: signed.j2051TriggerFired,
-            wasLate: r.wasLate,
-          },
-        );
+        await emit(t, organizationId, "m10.hope.timepoint_signed", "hope_assessment", id, {
+          assessmentId: id,
+          rfaKind: r.rfaKind,
+          signedAt: at.toISOString(),
+          signedBy: userId,
+          j2051TriggerFired: signed.j2051TriggerFired,
+          wasLate: r.wasLate,
+        });
         // §2.4 / §4.9 — a signed record whose server-authoritative J2051 verdict fired announces it
         // (M11's order-suggestion banner, M30 Timely Follow-Up, M33). The SFV obligation it references
         // was opened while the draft was answered (readiness refuses to sign a fired trigger without
@@ -1748,28 +1551,16 @@ export function createDbHopeBackend(
           const [sfv] = (await t
             .select()
             .from(SFV)
-            .where(
-              and(
-                eq(SFV.organizationId, organizationId),
-                eq(SFV.triggeringAssessmentId, id),
-              ),
-            )
+            .where(and(eq(SFV.organizationId, organizationId), eq(SFV.triggeringAssessmentId, id)))
             .limit(1)) as SfvRow[];
           if (sfv) {
-            await emit(
-              t,
-              organizationId,
-              "m10.hope.j2051_trigger_fired",
-              "hope_assessment",
-              id,
-              {
-                assessmentId: id,
-                sfvId: sfv.id,
-                maxSeverity: signed.j2051MaxSeverity ?? "none",
-                triggeredAt: sfv.triggeredAt.toISOString(),
-                dueAt: sfv.dueAt.toISOString(),
-              },
-            );
+            await emit(t, organizationId, "m10.hope.j2051_trigger_fired", "hope_assessment", id, {
+              assessmentId: id,
+              sfvId: sfv.id,
+              maxSeverity: signed.j2051MaxSeverity ?? "none",
+              triggeredAt: sfv.triggeredAt.toISOString(),
+              dueAt: sfv.dueAt.toISOString(),
+            });
           }
         }
         return {
@@ -1789,12 +1580,7 @@ export function createDbHopeBackend(
     },
 
     // ── Correct a signed timepoint (§2.4 / D7 — append-only; signing supersedes the original) ─
-    async correctTimepoint(
-      organizationId,
-      userId,
-      id,
-      args: CorrectTimepointArgs,
-    ) {
+    async correctTimepoint(organizationId, userId, id, args: CorrectTimepointArgs) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const original = await loadA(t, id);
@@ -1809,9 +1595,7 @@ export function createDbHopeBackend(
           `Assessment ${id} is already superseded; correct the latest instead.`,
         );
         if (args.ifVersion != null && original.version !== args.ifVersion) {
-          throw new ConflictError(
-            `HOPE assessment ${id} version is stale; reload and retry`,
-          );
+          throw new ConflictError(`HOPE assessment ${id} version is stale; reload and retry`);
         }
         await assertNoPendingLineageOperation(t, id);
         const at = new Date();
@@ -1838,6 +1622,8 @@ export function createDbHopeBackend(
               j2051TriggerFired: original.j2051TriggerFired,
               wasLate: original.wasLate,
               clinicalContextSnapshot: original.clinicalContextSnapshot,
+              // F-058 — copied, never re-resolved: the CCN a correction is submitted under is the one
+              // the ORIGINAL was captured under.
               providerEntityId: original.providerEntityId,
               locationId: original.locationId,
               signedAt: null,
@@ -1894,25 +1680,18 @@ export function createDbHopeBackend(
           `Assessment ${id} is already superseded; target the current record instead.`,
         );
         if (original.isc === "XX") {
-          throw new ConflictError(
-            `HOPE assessment ${id} is already an inactivation record`,
-          );
+          throw new ConflictError(`HOPE assessment ${id} is already an inactivation record`);
         }
         if (args.ifVersion != null && original.version !== args.ifVersion) {
-          throw new ConflictError(
-            `HOPE assessment ${id} version is stale; reload and retry`,
-          );
+          throw new ConflictError(`HOPE assessment ${id} version is stale; reload and retry`);
         }
         await assertNoPendingLineageOperation(t, id);
         const at = new Date();
-        const init = await initializeHopeInactivation(
-          createHopeSpecRegistry(t),
-          {
-            id: original.id,
-            rfaKind: original.rfaKind as HopeRfaKind,
-            specVersionId: original.specVersionId,
-          },
-        );
+        const init = await initializeHopeInactivation(createHopeSpecRegistry(t), {
+          id: original.id,
+          rfaKind: original.rfaKind as HopeRfaKind,
+          specVersionId: original.specVersionId,
+        });
         const inactivation = firstOrThrow(
           await t
             .insert(ASSESS)
@@ -1968,18 +1747,15 @@ export function createDbHopeBackend(
     async requestSummaryPdf(organizationId, userId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        await loadA(t, id); // 404 before emit if absent/cross-tenant
-        await emit(
-          t,
-          organizationId,
-          "m10.hope.summary_requested",
-          "hope_assessment",
-          id,
-          {
-            assessmentId: id,
-            requestedBy: userId,
-          },
-        );
+        const a = await loadA(t, id); // 404 before emit if absent/cross-tenant
+        await emit(t, organizationId, "m10.hope.summary_requested", "hope_assessment", id, {
+          assessmentId: id,
+          requestedBy: userId,
+          // F-099 — the chart target. M22 files a render against `document.patient_id`, and it reads the
+          // value off THIS payload; the row was already loaded for the 404, so carrying it costs no query.
+          // Without it the summary rendered patient-independent — on no chart, for a patient-scoped record.
+          patientId: a.patientId,
+        });
         return { assessmentId: id, requested: true as const };
       });
     },
@@ -1988,11 +1764,7 @@ export function createDbHopeBackend(
     async retrySubmission(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const [r] = (await t
-          .select()
-          .from(SUB)
-          .where(eq(SUB.id, id))
-          .limit(1)) as SubmissionRow[];
+        const [r] = (await t.select().from(SUB).where(eq(SUB.id, id)).limit(1)) as SubmissionRow[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
         require_(
           r.status === "rejected",
@@ -2004,23 +1776,23 @@ export function createDbHopeBackend(
           .set({ status: "queued", updatedAt: new Date() })
           .where(eq(SUB.id, id))
           .returning()) as SubmissionRow[];
-        await emit(
-          t,
-          organizationId,
-          "m10.hope.submission_queued",
-          "hope_submission",
-          id,
-          {
-            submissionId: id,
-            providerEntityId: r.providerEntityId,
-            itemCount: r.itemCount,
-          },
-        );
-        return toSubmissionView(
-          firstOrThrow(rows, "retrySubmission matched no row"),
-        );
+        await emit(t, organizationId, "m10.hope.submission_queued", "hope_submission", id, {
+          submissionId: id,
+          providerEntityId: r.providerEntityId,
+          itemCount: r.itemCount,
+        });
+        return toSubmissionView(firstOrThrow(rows, "retrySubmission matched no row"));
       });
     },
+    /**
+     * Phase 7 manual iQIES package: validate (final mode) and serialize every eligible signed assessment
+     * for this provider entity into CMS XML (with the #240 submission header), write one
+     * `hope_submission_item` per record, and store a deterministic zip on a `packaged` batch.
+     *
+     * Recovery note: the lost F-058 (#150/#176) rewrite of this method (batch per CMS period via
+     * `jobs/assemble-store.ts`, `queued` status, no XML) is NOT restored — this path already writes the
+     * items and runs the validator, and the manual upload flow is the transport.
+     */
     async assembleSubmission(organizationId, providerEntityId) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
@@ -2046,11 +1818,7 @@ export function createDbHopeBackend(
             .where(
               and(
                 eq(SUBITEM.hopeAssessmentId, candidate.id),
-                inArray(SUBITEM.itemStatus, [
-                  "pending",
-                  "accepted",
-                  "accepted_with_warnings",
-                ]),
+                inArray(SUBITEM.itemStatus, ["pending", "accepted", "accepted_with_warnings"]),
               ),
             )
             .limit(1);
@@ -2060,10 +1828,7 @@ export function createDbHopeBackend(
             assessmentId: candidate.id,
             mode: "final",
           });
-          if (
-            validation.findings.some((finding) => finding.severity === "error")
-          )
-            continue;
+          if (validation.findings.some((finding) => finding.severity === "error")) continue;
           eligible.push(candidate);
         }
         if (eligible.length === 0) {
@@ -2108,8 +1873,7 @@ export function createDbHopeBackend(
               status: "packaged",
               itemCount: serialized.length,
               transportMode: "manual_iqies_upload",
-              validationProfile:
-                serialized[0]?.payload.validationProfile ?? null,
+              validationProfile: serialized[0]?.payload.validationProfile ?? null,
             })
             .returning(),
           "hope_submission insert returned no row",
@@ -2120,11 +1884,7 @@ export function createDbHopeBackend(
             content: payload.bytes,
           })),
         );
-        const filename = submissionPackageName(
-          providerEntityId,
-          period,
-          row.id,
-        );
+        const filename = submissionPackageName(providerEntityId, period, row.id);
         for (const { assessment, payload } of serialized) {
           await t.insert(SUBITEM).values({
             organizationId,
@@ -2166,31 +1926,20 @@ export function createDbHopeBackend(
           })
           .where(eq(SUB.id, row.id))
           .returning()) as SubmissionRow[];
-        await emit(
-          t,
-          organizationId,
-          "m10.hope.submission_queued",
-          "hope_submission",
-          row.id,
-          {
-            submissionId: row.id,
-            providerEntityId,
-            transportMode: "manual_iqies_upload",
-            itemCount: serialized.length,
-            packageSha256: zip.sha256,
-          },
-        );
+        await emit(t, organizationId, "m10.hope.submission_queued", "hope_submission", row.id, {
+          submissionId: row.id,
+          providerEntityId,
+          transportMode: "manual_iqies_upload",
+          itemCount: serialized.length,
+          packageSha256: zip.sha256,
+        });
         return toSubmissionView(packaged ?? row);
       });
     },
     async downloadSubmissionPackage(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const [r] = (await t
-          .select()
-          .from(SUB)
-          .where(eq(SUB.id, id))
-          .limit(1)) as SubmissionRow[];
+        const [r] = (await t.select().from(SUB).where(eq(SUB.id, id)).limit(1)) as SubmissionRow[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
         const bytes = packageBytesFromReport(r.acceptanceReport);
         if (!bytes || !r.packageFilename)
@@ -2213,11 +1962,7 @@ export function createDbHopeBackend(
     async markSubmissionUploaded(organizationId, userId, id, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const [r] = (await t
-          .select()
-          .from(SUB)
-          .where(eq(SUB.id, id))
-          .limit(1)) as SubmissionRow[];
+        const [r] = (await t.select().from(SUB).where(eq(SUB.id, id)).limit(1)) as SubmissionRow[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
         if (r.status !== "packaged" && r.status !== "exported") {
           throw new ConflictError(
@@ -2237,51 +1982,29 @@ export function createDbHopeBackend(
           })
           .where(eq(SUB.id, id))
           .returning()) as SubmissionRow[];
-        await emit(
-          t,
-          organizationId,
-          "m10.hope.submission_transmitted",
-          "hope_submission",
-          id,
-          {
-            submissionId: id,
-            transportMode: "manual_iqies_upload",
-            submittedAt: at.toISOString(),
-          },
-        );
+        await emit(t, organizationId, "m10.hope.submission_transmitted", "hope_submission", id, {
+          submissionId: id,
+          transportMode: "manual_iqies_upload",
+          submittedAt: at.toISOString(),
+        });
         return toSubmissionView(
-          firstOrThrow(
-            updated ? [updated] : [],
-            "markSubmissionUploaded matched no row",
-          ),
+          firstOrThrow(updated ? [updated] : [], "markSubmissionUploaded matched no row"),
         );
       });
     },
     async importSubmissionResult(organizationId, userId, id, args) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const [r] = (await t
-          .select()
-          .from(SUB)
-          .where(eq(SUB.id, id))
-          .limit(1)) as SubmissionRow[];
+        const [r] = (await t.select().from(SUB).where(eq(SUB.id, id)).limit(1)) as SubmissionRow[];
         if (!r) throw new NotFoundError(`HOPE submission ${id} not found`);
-        const reportHash = createHash("sha256")
-          .update(JSON.stringify(args.results))
-          .digest("hex");
-        const items = await t
-          .select()
-          .from(SUBITEM)
-          .where(eq(SUBITEM.hopeSubmissionId, id));
-        const byAssessmentId = new Map(
-          items.map((item) => [item.hopeAssessmentId, item]),
-        );
+        const reportHash = createHash("sha256").update(JSON.stringify(args.results)).digest("hex");
+        const items = await t.select().from(SUBITEM).where(eq(SUBITEM.hopeSubmissionId, id));
+        const byAssessmentId = new Map(items.map((item) => [item.hopeAssessmentId, item]));
         let accepted = 0;
         let rejected = 0;
         let warnings = 0;
         for (const raw of args.results) {
-          const assessmentId =
-            typeof raw.assessmentId === "string" ? raw.assessmentId : null;
+          const assessmentId = typeof raw.assessmentId === "string" ? raw.assessmentId : null;
           const item = assessmentId ? byAssessmentId.get(assessmentId) : null;
           const resultStatus = cmsResultStatus(raw);
           if (item) {
@@ -2294,20 +2017,16 @@ export function createDbHopeBackend(
             await t
               .update(SUBITEM)
               .set({
-                itemStatus:
-                  resultStatus === "pending" ? "pending" : resultStatus,
+                itemStatus: resultStatus === "pending" ? "pending" : resultStatus,
                 iqiesRecordId:
-                  typeof raw.iqiesRecordId === "string"
-                    ? raw.iqiesRecordId
-                    : item.iqiesRecordId,
+                  typeof raw.iqiesRecordId === "string" ? raw.iqiesRecordId : item.iqiesRecordId,
                 iqiesValidationResult: raw,
                 processedAt: new Date(),
                 updatedAt: new Date(),
               })
               .where(eq(SUBITEM.id, item.id));
             if (
-              (resultStatus === "accepted" ||
-                resultStatus === "accepted_with_warnings") &&
+              (resultStatus === "accepted" || resultStatus === "accepted_with_warnings") &&
               typeof raw.iqiesRecordId === "string"
             ) {
               await t
@@ -2329,8 +2048,7 @@ export function createDbHopeBackend(
               reportReference: args.reportReference ?? null,
               resultScope: item ? "record" : "unmatched",
               resultStatus,
-              cmsSeverity:
-                typeof raw.severity === "string" ? raw.severity : null,
+              cmsSeverity: typeof raw.severity === "string" ? raw.severity : null,
               cmsEditCode: typeof raw.code === "string" ? raw.code : null,
               itemCode: typeof raw.itemCode === "string" ? raw.itemCode : null,
               message: typeof raw.message === "string" ? raw.message : null,
@@ -2369,9 +2087,7 @@ export function createDbHopeBackend(
         await emit(
           t,
           organizationId,
-          rejected > 0
-            ? "m10.hope.submission_rejected"
-            : "m10.hope.submission_accepted",
+          rejected > 0 ? "m10.hope.submission_rejected" : "m10.hope.submission_accepted",
           "hope_submission",
           id,
           {
@@ -2382,10 +2098,7 @@ export function createDbHopeBackend(
           },
         );
         return toSubmissionView(
-          firstOrThrow(
-            updated ? [updated] : [],
-            "importSubmissionResult matched no row",
-          ),
+          firstOrThrow(updated ? [updated] : [], "importSubmissionResult matched no row"),
         );
       });
     },

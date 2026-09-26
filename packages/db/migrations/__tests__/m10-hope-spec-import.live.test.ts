@@ -24,7 +24,9 @@ describe.skipIf(!DB_URL)("M10 HOPE spec import — LIVE Postgres", () => {
 
   async function applyMigrations() {
     const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
-    for (const f of readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort()) {
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()) {
       let sql = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
       if (stripVector) {
         sql = sql.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- vector stripped");
@@ -81,8 +83,10 @@ describe.skipIf(!DB_URL)("M10 HOPE spec import — LIVE Postgres", () => {
        JOIN hope_spec_item i ON i.spec_version_id = v.id
        JOIN hope_spec_item_isc isi ON isi.spec_item_id = i.id
        WHERE v.code='1.00.1' AND i.item_code IN ('Z0350','Z0500B')
-       ORDER BY i.item_code, isi.isc`,
+       ORDER BY i.item_code, isi.isc::text`,
     );
+    // `isc` is the `hope_isc` ENUM ('HA','HUV','HD','XX'), which sorts in declaration order; the query
+    // orders by its text so the expected rows below read alphabetically.
     expect(matrix.rows.filter((r) => r.item_code === "Z0350")).toEqual([
       { item_code: "Z0350", isc: "HA", active: false },
       { item_code: "Z0350", isc: "HD", active: false },
@@ -99,7 +103,8 @@ describe.skipIf(!DB_URL)("M10 HOPE spec import — LIVE Postgres", () => {
        WHERE v.code='1.00.1' AND i.item_code='J2051A'
        ORDER BY o.sort_order`,
     );
-    expect(j2051.rows.map((r) => r.value_code)).toEqual(["0", "1", "^", "2", "3", "9"]);
+    // CMS's `val_srt_id` order, not the file's row order: the skip-pattern blank `^` sorts last (6).
+    expect(j2051.rows.map((r) => r.value_code)).toEqual(["0", "1", "2", "3", "9", "^"]);
     expect(j2051.rows.find((r) => r.value_code === "9")?.label).toBe(
       "Not applicable (the patient is not experiencing the symptom)",
     );

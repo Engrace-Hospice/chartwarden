@@ -11,7 +11,7 @@
  */
 import { Type } from "@sinclair/typebox";
 import type { ModuleEventContribution } from "@wardenx/types";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { type Mock, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   M1_OUTBOX_EVENTS,
   OUTBOX_EVENT_CATALOG,
@@ -22,7 +22,7 @@ import {
   publishOutboxEvent,
   toOutboxCatalogRows,
 } from "../src/index";
-import type { OutboxRecord, PublishOutboxEventInput } from "../src/outbox/publish";
+import type { OutboxPersister, OutboxRecord, PublishOutboxEventInput } from "../src/outbox/publish";
 
 const base: Omit<PublishOutboxEventInput, "eventName" | "payload"> = {
   organizationId: "00000000-0000-0000-0000-000000000001",
@@ -64,9 +64,9 @@ describe("buildOutboxEventCatalog — collision rejection (§3.17.4)", () => {
 });
 
 describe("publishOutboxEvent — catalog validation", () => {
-  let persist: ReturnType<typeof vi.fn>;
+  let persist: Mock<OutboxPersister>;
   beforeEach(() => {
-    persist = vi.fn(async (_r: OutboxRecord) => {});
+    persist = vi.fn<OutboxPersister>(async (_r: OutboxRecord) => {});
   });
 
   it("refuses an unknown event (W-M1-09) and persists nothing", async () => {
@@ -107,10 +107,16 @@ describe("publishOutboxEvent — catalog validation", () => {
     const err = await publishOutboxEvent(
       { ...base, eventName: "m9.unknown.thing", payload: {} },
       persist,
-    ).catch((e) => e as OutboxEventValidationError);
+    ).then(
+      () => null,
+      (e: unknown) => e as OutboxEventValidationError,
+    );
     expect(err).toBeInstanceOf(OutboxEventValidationError);
-    expect(err.message).toContain("m9.unknown.thing");
-    expect(err.message).toContain("unknown_event");
+    // `.then(resolve → null)` rather than `.catch`: `publishOutboxEvent` resolves to void, so the
+    // `.catch` form widened `err` to `void | OutboxEventValidationError` and a RESOLVED publish — the
+    // failure this case exists to catch — would have read as an absent message rather than a failure.
+    expect(err?.message).toContain("m9.unknown.thing");
+    expect(err?.message).toContain("unknown_event");
   });
 
   it("persists a valid event exactly once with the normalized record", async () => {

@@ -41,6 +41,7 @@ import {
   ReviewParamsSchema,
   ReviewQuerySchema,
   SignedUrlRequest,
+  TagListQuerySchema,
   TagParamsSchema,
   TemplateListQuerySchema,
   TemplateParamsSchema,
@@ -158,9 +159,16 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
     if (aggregateType !== "referral") return;
     if (!aggregateId) throw new NotFoundError("referral");
     if (!deps.referralReader) {
-      throw new DegradedError("referral-reader", "referral document reads require the M6 ReferralReader seam");
+      throw new DegradedError(
+        "referral-reader",
+        "referral document reads require the M6 ReferralReader seam",
+      );
     }
-    const ok = await deps.referralReader.canAccessReferral({ organizationId, userId, referralId: aggregateId });
+    const ok = await deps.referralReader.canAccessReferral({
+      organizationId,
+      userId,
+      referralId: aggregateId,
+    });
     if (!ok) throw new NotFoundError("referral");
   }
 
@@ -176,6 +184,13 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
       aggregateId: body.aggregateId ?? null,
       title: body.title,
       patientFacing: body.patientFacing ?? false,
+      // F-060 — the contract has always accepted `tags[]` here; the handler parsed it and passed it
+      // to nothing, so the array was validated and discarded on every upload.
+      tags: (body.tags ?? []).map((t) => ({
+        tagKind: t.tagKind,
+        tagKey: t.tagKey,
+        tagValue: t.tagValue ?? null,
+      })),
     });
     return reply.code(201).send(res);
   });
@@ -195,6 +210,8 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
           aggregateType: q.aggregateType,
           aggregateId: q.aggregateId,
           retentionClass: q.retentionClass,
+          tagKey: q.tagKey,
+          tagValue: q.tagValue,
         },
         q.cursor,
         q.limit,
@@ -293,6 +310,24 @@ export function registerDocumentRoutes(app: FastifyInstance, deps: DocumentRoute
         patientId: body.patientId,
         admissionId: body.admissionId,
       });
+    },
+  );
+
+  // 9a — list tags (F-060). `document_tag` had an INSERT, a DELETE-by-id and no SELECT anywhere in
+  // the codebase: a tag was invisible on the next page load and its id — the one the DELETE below
+  // takes — existed only in the POST response a caller held until it navigated away. Guarded by
+  // `documents.read` like the metadata read it belongs to (`free` tag values may carry PHI, §3.6,
+  // hence the read-audit emission; PHI *content* is the stricter ABAC_OWNER surface, not this).
+  app.get(
+    "/api/v1/documents/:id/tags",
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "document_tag", resourceIdParam: "id" } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const q = parse(TagListQuerySchema, request.query);
+      return service.listTags(organizationId, docIdOf(request), q.cursor, q.limit);
     },
   );
 

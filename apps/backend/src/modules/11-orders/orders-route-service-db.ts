@@ -30,9 +30,9 @@ import { type DbClient, schema } from "@wardenx/db";
 import {
   DEFAULT_COSIGN_POLICY,
   ORDER_KIND_VERSION,
+  type OrderCosignPolicy,
   assertSpawnAllowed,
   computeNextSpawnAt,
-  type OrderCosignPolicy,
   computeVerbalDeadline,
   disciplineCanOrder,
   lpnCosignRequired,
@@ -58,12 +58,12 @@ import {
 } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
 import { type SQL, and, desc, eq, lte } from "drizzle-orm";
-import { buildOrderWorkflowProjection, EMPTY_ORDER_DETAIL_ACTOR } from "./routes/service";
+import { EMPTY_ORDER_DETAIL_ACTOR, buildOrderWorkflowProjection } from "./routes/service";
 import type {
   CreateOrderArgs,
   OrderAbacFacts,
-  OrderDetailView,
   OrderDetailActor,
+  OrderDetailView,
   OrderRouteService,
   OrderView,
   StandingOrderView,
@@ -169,11 +169,19 @@ const toOrderView = (r: OrderRow): OrderView => ({
   completedAt: iso(r.completedAt),
   createdAt: (iso(r.createdAt) as string) ?? new Date(0).toISOString(),
 });
-const toOrderDetailView = (r: OrderRow, actor: OrderDetailActor, cosignerRoleNeeded: "rn_case_manager" | "clinical_supervisor" | "medical_director" | null = null): OrderDetailView => ({
+const toOrderDetailView = (
+  r: OrderRow,
+  actor: OrderDetailActor,
+  cosignerRoleNeeded: "rn_case_manager" | "clinical_supervisor" | "medical_director" | null = null,
+): OrderDetailView => ({
   ...toOrderView(r),
   kindVersion: r.kindVersion,
   data: r.data,
-  ...buildOrderWorkflowProjection({ ...toOrderView(r), kindVersion: r.kindVersion, data: r.data }, actor, cosignerRoleNeeded),
+  ...buildOrderWorkflowProjection(
+    { ...toOrderView(r), kindVersion: r.kindVersion, data: r.data },
+    actor,
+    cosignerRoleNeeded,
+  ),
 });
 
 const toStandingView = (r: {
@@ -282,9 +290,9 @@ export function createDbOrderBackend(
     const row = firstOrThrow(rows, `order ${id} not found`);
     const policy = await cosignPolicyOf(tx);
     const needed = row.cosignRequired
-      ? (lpnCosignRequired(row.drafterDiscipline, row.kind as OrderKind, policy)
-          ? "rn_case_manager"
-          : null)
+      ? lpnCosignRequired(row.drafterDiscipline, row.kind as OrderKind, policy)
+        ? "rn_case_manager"
+        : null
       : null;
     return toOrderDetailView(row, actor, needed);
   }
@@ -827,7 +835,14 @@ export function createDbOrderBackend(
         await loadOrderRow(t, id); // 404 if the original is cross-tenant/absent
         const findings = validateOrderData(args.kind, ORDER_KIND_VERSION[args.kind], args.data);
         if (findings.length)
-          throw new ValidationError("Corrected order clinical details are invalid", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
+          throw new ValidationError(
+            "Corrected order clinical details are invalid",
+            findings.map((finding) => ({
+              field: `data.${finding.field}`,
+              code: "INVALID",
+              message: finding.message,
+            })),
+          );
         // Inserting the correcting draft fires `order_record_replace_supersede_trg` → discontinues the
         // original + writes its ledger row (RAISES REPLACED_ORDER_NOT_REPLACEABLE if not replaceable).
         const newId = await insertDraft(t, organizationId, userId, args, id);
@@ -1019,7 +1034,8 @@ export function createDbOrderBackend(
         return readStanding(t, id);
       });
     },
-    async spawnStandingOrder(organizationId, userId, id, trigger = "clinician_request", scheduledFor) {
+    async spawnStandingOrder(organizationId, userId, id, requestedTrigger, scheduledFor) {
+      const trigger = requestedTrigger ?? "clinician_request";
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const [tmpl] = (await t
@@ -1030,9 +1046,17 @@ export function createDbOrderBackend(
           .for("update")) as (typeof SO.$inferSelect)[];
         if (!tmpl) throw new NotFoundError(`standing order ${id} not found`);
         if (!tmpl.signerDiscipline || !tmpl.signedByMembershipId)
-          throw new ValidationError("Standing-order template signature attribution requires repair", [
-            { field: "signerDiscipline", code: "LEGACY_SIGNATURE_ATTRIBUTION_MISSING", message: "The signed template predates persisted signer discipline and cannot safely materialize." },
-          ]);
+          throw new ValidationError(
+            "Standing-order template signature attribution requires repair",
+            [
+              {
+                field: "signerDiscipline",
+                code: "LEGACY_SIGNATURE_ATTRIBUTION_MISSING",
+                message:
+                  "The signed template predates persisted signer discipline and cannot safely materialize.",
+              },
+            ],
+          );
         if (scheduledFor && tmpl.nextSpawnAt?.toISOString() !== scheduledFor)
           return { orderId: "" }; // another locked worker already consumed this deterministic occurrence
         if (tmpl.status !== "active")
@@ -1057,9 +1081,20 @@ export function createDbOrderBackend(
           spawnedBy: trigger,
           now: new Date().toISOString(),
         });
-        const findings = validateOrderData(tmpl.kind as OrderKind, tmpl.kindVersion, tmpl.templateData);
+        const findings = validateOrderData(
+          tmpl.kind as OrderKind,
+          tmpl.kindVersion,
+          tmpl.templateData,
+        );
         if (findings.length)
-          throw new ValidationError("Standing-order template clinical details are invalid", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
+          throw new ValidationError(
+            "Standing-order template clinical details are invalid",
+            findings.map((finding) => ({
+              field: `data.${finding.field}`,
+              code: "INVALID",
+              message: finding.message,
+            })),
+          );
         const isLab = tmpl.kind === "lab";
         const at = new Date();
         // The spawned order is born `active` (signature inherited from the template anchor, §2.4 D5); the
@@ -1149,13 +1184,22 @@ export function createDbOrderBackend(
     },
     async spawnDueStandingOrders(organizationId, at = new Date().toISOString()) {
       const candidates = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
-        tx.select({ id: SO.id, nextSpawnAt: SO.nextSpawnAt }).from(SO).where(and(eq(SO.status, "active"), lte(SO.nextSpawnAt, new Date(at)))),
+        tx
+          .select({ id: SO.id, nextSpawnAt: SO.nextSpawnAt })
+          .from(SO)
+          .where(and(eq(SO.status, "active"), lte(SO.nextSpawnAt, new Date(at)))),
       );
       const spawnedOrderIds: string[] = [];
       for (const candidate of candidates) {
         if (!candidate.nextSpawnAt) continue;
         try {
-          const result = await this.spawnStandingOrder(organizationId, "", candidate.id, "system", candidate.nextSpawnAt.toISOString());
+          const result = await this.spawnStandingOrder(
+            organizationId,
+            "",
+            candidate.id,
+            "system",
+            candidate.nextSpawnAt.toISOString(),
+          );
           if (result.orderId) spawnedOrderIds.push(result.orderId);
         } catch {
           // Isolate an invalid/legacy template; the next candidate still receives its own RLS transaction.

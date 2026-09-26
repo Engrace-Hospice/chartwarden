@@ -217,7 +217,7 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     });
     expect(dev.status).toBe("pending_approval");
     expect(await eventsFor(dev.id)).toContain("m18.evv.device_pending_approval");
-    const approved = await svc.approveDevice(ORG_A, dev.id);
+    const approved = await svc.approveDevice(ORG_A, member, dev.id);
     expect(approved.status).toBe("approved");
     expect(await eventsFor(dev.id)).toContain("m18.evv.device_approved");
   });
@@ -391,29 +391,254 @@ describe.skipIf(!DB_URL)("M18 EVV write lifecycle — LIVE Postgres (M18L)", () 
     expect(requeued.status).toBe("queued");
     expect(requeued.attemptCount).toBe(2);
 
-    const cancelled = await svc.cancelSubmission(ORG_A, seeded[ORG_A].member, requeued.id);
+    const cancelled = await svc.cancelSubmission(
+      ORG_A,
+      seeded[ORG_A].member,
+      requeued.id,
+      "the visit was voided; the state should not see this claim line",
+    );
     expect(cancelled.status).toBe("cancelled");
     expect(await eventsFor(rejected)).toContain("m18.evv.aggregator_cancelled");
   });
 
   it("editTenantPolicy tightens (allowed) and refuses to loosen beyond the floor; per-address override persists", async () => {
-    const tightened = await svc.editTenantPolicy(ORG_A, { radiusM: 80, maxAccuracyM: 30 });
+    const setter = seeded[ORG_A].member;
+    const tightened = await svc.editTenantPolicy(ORG_A, setter, { radiusM: 80, maxAccuracyM: 30 });
     expect(tightened.tenant).toEqual({ radiusM: 80, maxAccuracyM: 30 });
     await expect(
-      svc.editTenantPolicy(ORG_A, { radiusM: 250, maxAccuracyM: 30 }),
+      svc.editTenantPolicy(ORG_A, setter, { radiusM: 250, maxAccuracyM: 30 }),
     ).rejects.toMatchObject({
       statusCode: 422,
     });
-    const withOverride = await svc.createPerAddressOverride(ORG_A, {
+    const withOverride = await svc.createPerAddressOverride(ORG_A, setter, {
       patientAddressId: "77777777-7777-7777-7777-777777777777",
       radiusM: 60,
       maxAccuracyM: 20,
+      overrideReason: "the driveway sits 180m from the road-network centroid",
     });
     expect(
       withOverride.perAddress.some(
         (p) => p.patientAddressId === "77777777-7777-7777-7777-777777777777",
       ),
     ).toBe(true);
+  });
+
+  // ── F-068 · what the write paths actually persist ────────────────────────────────────────────────
+  //
+  // Every assertion here reads a COLUMN, because the defect was never visible in a return value: the
+  // routes validated a justification, the service returned the same view either way, and the column the
+  // schema built to hold it stayed NULL.
+
+  it("correction-of-record: supersedes the original, links back, and records why", async () => {
+    const { member } = seeded[ORG_A];
+    const visit = await seedVisit(ORG_A);
+    const original = await svc.recordCapture(ORG_A, member, "check_in", {
+      visitId: visit,
+      coords: { lat: 45.523, lng: -122.6789 },
+      accuracyM: 4.5,
+      capturedAt: new Date().toISOString(),
+    });
+
+    const reason =
+      "the handset clock was 40 minutes fast; corrected to the visit note arrival time";
+    const corrected = await svc.correctEvent(ORG_A, member, original.eventId, {
+      kind: "check_in",
+      visitId: visit,
+      coords: { lat: 45.523, lng: -122.6789 },
+      accuracyM: 4.5,
+      capturedAt: new Date(Date.now() - 40 * 60_000).toISOString(),
+      correctionReason: reason,
+      stepUpVerified: true,
+    });
+
+    // F-088 — this whole call is what could not complete before. `correctEvent` stamps `superseded_at`
+    // on the original, inserts the replacement, then links the two by `superseded_by_event_id`; it has
+    // to be in that order, because the link points at a row that does not exist yet. 0047 nonetheless
+    // defined the per-partition backstop `evv_event_<yyyy_mm>_active_visit_kind_uidx` — UNIQUE
+    // (organization_id, visit_id, kind) — over `WHERE superseded_by_event_id IS NULL`, so at the moment
+    // of the insert BOTH rows were active on the same tuple and Postgres refused it with 23505. Every
+    // correction, every tenant, since the route was written. 0236 keys the predicate on `superseded_at`
+    // — the marker the service can set first — which is what the write path was always written for.
+    const { rows: orig } = await admin.query(
+      "SELECT superseded_by_event_id, superseded_at FROM evv_event WHERE id=$1",
+      [original.eventId],
+    );
+    expect(orig[0].superseded_by_event_id).toBe(corrected.eventId);
+    expect(orig[0].superseded_at).not.toBeNull();
+
+    const { rows: fresh } = await admin.query(
+      "SELECT replaces_event_id, correction_reason FROM evv_event WHERE id=$1",
+      [corrected.eventId],
+    );
+    expect(fresh[0].replaces_event_id).toBe(original.eventId);
+    expect(fresh[0].correction_reason).toBe(reason);
+
+    expect(await eventsFor(corrected.eventId)).toContain("m18.evv.event_corrected");
+
+    // The corrected leg reverts to attestation-pending (the machine's `open_missing_resolution` effect).
+    const { rows: open } = await admin.query(
+      "SELECT kind, detected_by_source FROM evv_missing_resolution WHERE visit_id=$1 AND status='open'",
+      [visit],
+    );
+    expect(open.map((r) => r.kind)).toContain("missing_checkin");
+    expect(open[0].detected_by_source).toBe("correction_of_record");
+
+    // The bracket follows the live head, not the row that was corrected away.
+    const bracket = await svc.bracketForVisit(ORG_A, visit);
+    expect(bracket.checkInEvent?.id).toBe(corrected.eventId);
+  });
+
+  // F-088 — the guard on the fix. 0236 loosened the D2 backstop's predicate, so the thing to prove is
+  // that it still backstops. Driven by a RAW insert as `admin` rather than through the service, on
+  // purpose: 0047's own header says "the app pairing lookup fires first", so the service refuses a
+  // second check-in before the index is ever consulted and a service-level test would pass whether the
+  // index existed or not. Two rows carrying no supersede marker at all is exactly the shape the index
+  // is for, and it is still refused.
+  it("§3.2/D2 the active-pair backstop still refuses a second ACTIVE event on the same visit+kind", async () => {
+    const { member, pe, location, device } = seeded[ORG_A];
+    const visit = await seedVisit(ORG_A);
+    const first = await svc.recordCapture(ORG_A, member, "check_in", {
+      visitId: visit,
+      coords: { lat: 45.523, lng: -122.6789 },
+      accuracyM: 4.5,
+      capturedAt: new Date().toISOString(),
+    });
+    const { rows: seed } = await admin.query(
+      `SELECT event_at, coords_cipher, coords_dek_version, device_attestation_id_at_record,
+              service_type_code, posting_discipline_at_recording
+         FROM evv_event WHERE id=$1`,
+      [first.eventId],
+    );
+    await expect(
+      admin.query(
+        `INSERT INTO evv_event (organization_id, provider_entity_id, location_id, visit_id, patient_id,
+                                kind, service_type_code, posting_membership_id,
+                                posting_discipline_at_recording, evv_device_id, captured_at, event_at,
+                                coords_cipher, coords_dek_version, accuracy_m, gps_quality,
+                                device_attestation_id_at_record)
+         VALUES ($1,$2,$3,$4,$5,'check_in',$6,$7,$8,$9, now(), $10, $11, $12, 4.5, 'high', $13)`,
+        [
+          ORG_A,
+          pe,
+          location,
+          visit,
+          PATIENT,
+          seed[0].service_type_code,
+          member,
+          seed[0].posting_discipline_at_recording,
+          device,
+          seed[0].event_at,
+          seed[0].coords_cipher,
+          seed[0].coords_dek_version,
+          seed[0].device_attestation_id_at_record,
+        ],
+      ),
+    ).rejects.toMatchObject({ code: "23505" });
+  });
+
+  it("correction-of-record: refuses a stale step-up, an already-corrected target, and a kind swap", async () => {
+    const { member } = seeded[ORG_A];
+    const visit = await seedVisit(ORG_A);
+    const original = await svc.recordCapture(ORG_A, member, "check_in", {
+      visitId: visit,
+      coords: { lat: 45.523, lng: -122.6789 },
+      accuracyM: 4.5,
+      capturedAt: new Date().toISOString(),
+    });
+    const base = {
+      visitId: visit,
+      coords: { lat: 45.523, lng: -122.6789 },
+      accuracyM: 4.5,
+      capturedAt: new Date().toISOString(),
+      correctionReason: "x".repeat(60),
+      stepUpVerified: true,
+    };
+
+    await expect(
+      svc.correctEvent(ORG_A, member, original.eventId, {
+        ...base,
+        kind: "check_in",
+        stepUpVerified: false,
+      }),
+    ).rejects.toMatchObject({ statusCode: 403 });
+
+    await expect(
+      svc.correctEvent(ORG_A, member, original.eventId, { ...base, kind: "check_out" }),
+    ).rejects.toMatchObject({ statusCode: 422 });
+
+    const first = await svc.correctEvent(ORG_A, member, original.eventId, {
+      ...base,
+      kind: "check_in",
+    });
+    expect(first.eventId).not.toBe(original.eventId);
+    await expect(
+      svc.correctEvent(ORG_A, member, original.eventId, { ...base, kind: "check_in" }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it("device reject / suspend persist their reason and name the ACTING supervisor", async () => {
+    const { member } = seeded[ORG_A];
+    const supervisor = seeded[ORG_A].member;
+    const rejected = await svc.selfRegisterDevice(ORG_A, member, {
+      platform: "ios",
+      modelDescription: "iPhone 13",
+    });
+    await svc.rejectDevice(ORG_A, supervisor, rejected.id, "enrolled on a personal handset");
+    const { rows: r } = await admin.query(
+      "SELECT denial_reason, rejected_by_membership_id FROM evv_device WHERE id=$1",
+      [rejected.id],
+    );
+    expect(r[0].denial_reason).toBe("enrolled on a personal handset");
+    expect(r[0].rejected_by_membership_id).toBe(supervisor);
+
+    const live = await svc.selfRegisterDevice(ORG_A, member, {
+      platform: "ios",
+      modelDescription: "iPhone 15",
+    });
+    await svc.approveDevice(ORG_A, supervisor, live.id);
+    await svc.suspendDevice(ORG_A, supervisor, live.id, "reported lost at the Tuesday standup");
+    const { rows: sus } = await admin.query(
+      "SELECT suspend_reason, approved_by_membership_id FROM evv_device WHERE id=$1",
+      [live.id],
+    );
+    expect(sus[0].suspend_reason).toBe("reported lost at the Tuesday standup");
+    expect(sus[0].approved_by_membership_id).toBe(supervisor);
+  });
+
+  it("the per-address override persists its ≥30-char reason and its setter", async () => {
+    const setter = seeded[ORG_A].member;
+    const address = "88888888-8888-8888-8888-888888888888";
+    const reason = "the driveway sits 180m from the road-network centroid";
+    await svc.createPerAddressOverride(ORG_A, setter, {
+      patientAddressId: address,
+      radiusM: 60,
+      maxAccuracyM: 20,
+      overrideReason: reason,
+    });
+    const { rows } = await admin.query(
+      "SELECT override_reason, set_by_membership_id FROM evv_geofence_policy " +
+        "WHERE patient_address_id=$1 AND effective_to IS NULL",
+      [address],
+    );
+    expect(rows[0].override_reason).toBe(reason);
+    expect(rows[0].set_by_membership_id).toBe(setter);
+  });
+
+  it("an aggregator cancel persists its reason and carries it on the outbox payload", async () => {
+    const visit = await seedVisit(ORG_A);
+    const pending = await seedSubmission(ORG_A, visit, "pending");
+    const reason = "the visit was voided; the state should not see this claim line";
+    await svc.cancelSubmission(ORG_A, seeded[ORG_A].member, pending, reason);
+    const { rows } = await admin.query(
+      "SELECT cancellation_reason FROM evv_aggregator_submission WHERE id=$1",
+      [pending],
+    );
+    expect(rows[0].cancellation_reason).toBe(reason);
+    const { rows: ob } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m18.evv.aggregator_cancelled'",
+      [pending],
+    );
+    expect(ob[0].payload.reason).toBe(reason);
   });
 
   it("RLS: org B cannot capture against org A's visit (visit invisible → 404)", async () => {

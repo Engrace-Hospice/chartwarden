@@ -36,7 +36,14 @@ export const hopeSubmissionResultEvents = pgTable(
     bySubmission: index("idx_hope_sub_result_submission").on(t.hopeSubmissionId, t.resultStatus),
     byItem: index("idx_hope_sub_result_item").on(t.hopeSubmissionItemId, t.cmsEditCode),
     uniqueImportedFinding: uniqueIndex("uniq_hope_sub_result_event_import")
-      .on(t.hopeSubmissionId, t.hopeSubmissionItemId, t.reportHash, t.resultScope, t.cmsEditCode, t.itemCode)
+      .on(
+        t.hopeSubmissionId,
+        t.hopeSubmissionItemId,
+        t.reportHash,
+        t.resultScope,
+        t.cmsEditCode,
+        t.itemCode,
+      )
       .where(sql`cms_edit_code IS NOT NULL`),
   }),
 );

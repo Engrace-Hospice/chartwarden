@@ -12,6 +12,16 @@ import {
   createInMemoryAdmissionBackend,
 } from "../src/modules/06-admission/index";
 
+/** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
+const CTI_CLINICAL = {
+  terminalDiagnosisIcd10: "C34.90",
+  prognosisStatement:
+    "Life expectancy of 6 months or less if the terminal illness runs its normal course.",
+  narrative:
+    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care.",
+  clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
+};
+
 const ORG = "org_a";
 const ORG_B = "org_b";
 const U = "user_1";
@@ -54,8 +64,16 @@ async function activatableAdmission() {
   );
   const periods = (await svc.listElectionPeriods(ORG, acc.admissionId)) ?? [];
   const period1 = periods[0]!;
-  const es = await svc.draftElectionStatement(ORG, acc.admissionId, period1.id);
-  await svc.signElection(ORG, es.id, es.version, U);
+  const es = await svc.draftElectionStatement(ORG, acc.admissionId, period1.id, {
+    // #44 — the §418.24 content the draft route accepts; previously validated and discarded.
+    electedProviderEntityId: "pe_1",
+    electedAttendingPhysicianId: "doc_1",
+    waiverAcknowledged: true,
+  });
+  await svc.signElection(ORG, es.id, es.version, U, {
+    signingPatientName: "Pat Patient",
+    signingRole: "patient",
+  });
   await svc.acknowledgeNor(
     ORG,
     acc.admissionId,
@@ -68,6 +86,7 @@ async function activatableAdmission() {
       electionPeriodId: period1.id,
       hospiceMedicalDirectorId: "md_1",
       attendingPhysicianId: "doc_1",
+      ...CTI_CLINICAL,
       isRecert: false,
     },
     U,
@@ -196,7 +215,12 @@ describe("M6-T12 §7.3 — recertification CTI sign (W-CTI)", () => {
     const svc = backend.service;
     const cti = await svc.draftCti(
       ORG,
-      { electionPeriodId: "period2", hospiceMedicalDirectorId: "md_1", isRecert: true },
+      {
+        electionPeriodId: "period2",
+        hospiceMedicalDirectorId: "md_1",
+        ...CTI_CLINICAL,
+        isRecert: true,
+      },
       U,
     );
     const signed = await svc.signCtiHospiceMd(ORG, cti.id, cti.version, U);

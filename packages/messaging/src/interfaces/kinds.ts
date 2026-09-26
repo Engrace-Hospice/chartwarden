@@ -187,8 +187,18 @@ export type AlertRecipientResolver =
   | "user_list"
   | "broadcast";
 
-/** Terminal fan-out outcome of a dispatched alert (§2.4.3). */
-export type AlertOutcome = "delivered" | "partial" | "failed";
+/**
+ * The §2.4.3 fan-out outcome of a dispatched alert.
+ *
+ * F-109 — `pending` is the state the §2.4.3 state machine OPENS in ("alert row written;
+ * notification_delivery rows enqueued") and the enum never had, so `alert.outcome` was
+ * `NOT NULL DEFAULT 'delivered'`: the column could not say "not settled yet", so it said the most
+ * flattering thing it could say, and nothing ever corrected it. Migration 0240 adds the value.
+ */
+export type AlertOutcome = "pending" | "delivered" | "partial" | "failed";
+
+/** An outcome an alert has actually SETTLED on — what {@link computeOutcome} returns. */
+export type SettledAlertOutcome = Exclude<AlertOutcome, "pending">;
 
 /** The per-recipient delivery channels (§3.6). `voice` is SOS-only (§2.5). */
 export type NotificationChannel = "in_app" | "push" | "sms" | "email" | "voice";

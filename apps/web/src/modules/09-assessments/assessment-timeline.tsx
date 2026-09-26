@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   Glyph,
   LoadingSpinner,
@@ -24,11 +25,10 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  ChartModuleRail,
-  PatientChartBail,
-} from "../../shell/chart-module-rail";
+import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
 import { ASSESSMENT_TONE, stateLabel } from "./assessment-status";
+import { type ScaleDefinition, loadPatientAdmissions, loadScaleCatalog } from "./assessments-api";
+import { RecordAssessmentModal } from "./record-assessment-modal";
 
 interface AssessmentRow {
   id: string;
@@ -61,7 +61,26 @@ export function AssessmentTimeline(): JSX.Element {
   const [scale, setScale] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Named `catalog`, not `scales`: this screen already has a `scales` — the captured rows grouped by
+  // scale type. This one is the INSTRUMENT definitions the capture form is rendered from (F-067).
+  const [catalog, setCatalog] = useState<ScaleDefinition[]>([]);
+  const [admissionId, setAdmissionId] = useState<string | null>(null);
+  const [recording, setRecording] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
+  // #91 / F-067 — the instrument catalog and the admission the capture is filed against. Both are
+  // SERVER reads: the scale items were TypeScript interfaces a client cannot read, and until F-065
+  // nothing could resolve a patient's admission (see #161). With no open admission the Record control
+  // is absent rather than present-and-certain-to-fail.
+  useEffect(() => {
+    if (!patientId) return;
+    void loadScaleCatalog(client).then(setCatalog);
+    void loadPatientAdmissions(client, patientId).then((rows) =>
+      setAdmissionId(rows.find((a) => a.dischargedAt == null)?.id ?? null),
+    );
+  }, [client, patientId]);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadKey is the intentional refetch trigger a completed capture bumps, not read in the body.
   useEffect(() => {
     let active = true;
     (async () => {
@@ -89,18 +108,15 @@ export function AssessmentTimeline(): JSX.Element {
     return () => {
       active = false;
     };
-  }, [client, patientId]);
+  }, [client, patientId, reloadKey]);
 
   // One entry per distinct scale, with its captures (newest first) + latest summary — the left list.
   const scales = useMemo(() => {
     const by = new Map<string, AssessmentRow[]>();
-    for (const a of items)
-      by.set(a.scaleType, [...(by.get(a.scaleType) ?? []), a]);
+    for (const a of items) by.set(a.scaleType, [...(by.get(a.scaleType) ?? []), a]);
     return [...by.entries()]
       .map(([scaleType, rows]) => {
-        const sorted = [...rows].sort((a, b) =>
-          b.capturedAt.localeCompare(a.capturedAt),
-        );
+        const sorted = [...rows].sort((a, b) => b.capturedAt.localeCompare(a.capturedAt));
         return {
           scaleType,
           rows: sorted,
@@ -134,24 +150,34 @@ export function AssessmentTimeline(): JSX.Element {
     <PatientBanner name="Assessments" />
   );
 
+  /** The capture form + its trigger, rendered on every branch below (including the empty state, which is
+   *  exactly where a clinician most needs it). */
+  const recordControls =
+    patientId && admissionId ? (
+      <>
+        <Button onClick={() => setRecording(true)}>Record assessment</Button>
+        <RecordAssessmentModal
+          open={recording}
+          patientId={patientId}
+          admissionId={admissionId}
+          scales={catalog}
+          {...(scale ? { initialScaleType: scale } : {})}
+          onClose={() => setRecording(false)}
+          onRecorded={() => setReloadKey((k) => k + 1)}
+        />
+      </>
+    ) : null;
+
   if (loading) {
     return (
-      <PatientChartBail
-        banner={banner}
-        patientId={patientId}
-        current="assessments"
-      >
+      <PatientChartBail banner={banner} patientId={patientId} current="assessments">
         <LoadingSpinner />
       </PatientChartBail>
     );
   }
   if (error) {
     return (
-      <PatientChartBail
-        banner={banner}
-        patientId={patientId}
-        current="assessments"
-      >
+      <PatientChartBail banner={banner} patientId={patientId} current="assessments">
         <EmptyState title="Unavailable" description={error} />
       </PatientChartBail>
     );
@@ -174,6 +200,7 @@ export function AssessmentTimeline(): JSX.Element {
               title="No assessments"
               description="No clinical scales have been recorded for this patient."
             />
+            <div style={{ paddingTop: "1rem" }}>{recordControls}</div>
           </div>
         </div>
       </PatientWorkspaceLayout>
@@ -182,9 +209,7 @@ export function AssessmentTimeline(): JSX.Element {
 
   const selected = scales.find((s) => s.scaleType === scale) ?? scales[0]!;
   // Chronological (oldest→newest) numeric scores → the right-rail trend bars.
-  const series = [...selected.rows]
-    .reverse()
-    .filter((r) => r.score != null) as (AssessmentRow & {
+  const series = [...selected.rows].reverse().filter((r) => r.score != null) as (AssessmentRow & {
     score: number;
   })[];
 
@@ -195,6 +220,7 @@ export function AssessmentTimeline(): JSX.Element {
         {/* Scale list */}
         <div style={scaleListStyle}>
           <span style={listHead}>Scales</span>
+          <div style={{ padding: "0 0.5rem 0.75rem" }}>{recordControls}</div>
           {scales.map((s) => {
             const active = s.scaleType === selected.scaleType;
             const needsCosign = s.latest.cosignRequired && !s.latest.cosignedAt;
@@ -215,11 +241,7 @@ export function AssessmentTimeline(): JSX.Element {
                 >
                   {s.scaleType}
                   {s.latest.sudContext ? (
-                    <Glyph
-                      name="lock"
-                      size={12}
-                      label="Substance-use context"
-                    />
+                    <Glyph name="lock" size={12} label="Substance-use context" />
                   ) : null}
                 </span>
                 <span
@@ -230,9 +252,7 @@ export function AssessmentTimeline(): JSX.Element {
                   }}
                 >
                   <span style={listMeta}>{s.count}</span>
-                  {needsCosign ? (
-                    <span style={cosignDot} title="Cosignature pending" />
-                  ) : null}
+                  {needsCosign ? <span style={cosignDot} title="Cosignature pending" /> : null}
                 </span>
               </button>
             );
@@ -240,9 +260,7 @@ export function AssessmentTimeline(): JSX.Element {
         </div>
 
         {/* Selected scale — latest score + capture history */}
-        <div
-          style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}
-        >
+        <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
           <div
             style={{
               display: "flex",
@@ -280,9 +298,7 @@ export function AssessmentTimeline(): JSX.Element {
                   {selected.latest.score ?? "—"}
                 </div>
                 {selected.latest.scoreInterpretation ? (
-                  <div
-                    style={{ fontSize: "0.78rem", color: t.onSurfaceVariant }}
-                  >
+                  <div style={{ fontSize: "0.78rem", color: t.onSurfaceVariant }}>
                     {selected.latest.scoreInterpretation}
                   </div>
                 ) : null}
@@ -290,8 +306,8 @@ export function AssessmentTimeline(): JSX.Element {
             )}
           </div>
           <p style={{ ...meta, marginTop: "0.25rem" }}>
-            Each capture's total score is shown; the per-item breakdown renders
-            here once the assessment read exposes individual scale items.
+            Each capture's total score is shown; the per-item breakdown renders here once the
+            assessment read exposes individual scale items.
           </p>
 
           <section
@@ -308,8 +324,7 @@ export function AssessmentTimeline(): JSX.Element {
                   key={a.id}
                   type="button"
                   onClick={() =>
-                    patientId &&
-                    navigate(`/patients/${patientId}/scales/${a.scaleType}`)
+                    patientId && navigate(`/patients/${patientId}/scales/${a.scaleType}`)
                   }
                   style={{
                     ...captureRow,
@@ -317,10 +332,7 @@ export function AssessmentTimeline(): JSX.Element {
                   }}
                 >
                   <span style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-                    <span
-                      className="tabular-nums"
-                      style={{ color: t.onSurface }}
-                    >
+                    <span className="tabular-nums" style={{ color: t.onSurface }}>
                       {a.capturedAt.slice(0, 16).replace("T", " ")}
                     </span>
                     <span style={{ ...meta, margin: 0 }}>
@@ -331,10 +343,7 @@ export function AssessmentTimeline(): JSX.Element {
                   {a.redacted ? (
                     <span style={meta}>Redacted</span>
                   ) : (
-                    <span
-                      className="tabular-nums"
-                      style={{ fontWeight: 600, color: t.onSurface }}
-                    >
+                    <span className="tabular-nums" style={{ fontWeight: 600, color: t.onSurface }}>
                       {a.score ?? "—"}
                       {a.scoreInterpretation ? (
                         <span style={tag}> {a.scoreInterpretation}</span>
@@ -345,9 +354,7 @@ export function AssessmentTimeline(): JSX.Element {
                     label={stateLabel(a.status)}
                     tone={ASSESSMENT_TONE[a.status] ?? "neutral"}
                   />
-                  {needsCosign ? (
-                    <StatusPill label="Cosign needed" tone="warning" />
-                  ) : null}
+                  {needsCosign ? <StatusPill label="Cosign needed" tone="warning" /> : null}
                   <Glyph name="arrow-right" size={16} />
                 </button>
               );
@@ -365,8 +372,8 @@ export function AssessmentTimeline(): JSX.Element {
               <Trend series={series} />
             )}
             <p style={{ ...meta, marginTop: "0.5rem" }}>
-              {series.length} scored capture{series.length === 1 ? "" : "s"} ·
-              significant changes are triaged in the changes inbox.
+              {series.length} scored capture{series.length === 1 ? "" : "s"} · significant changes
+              are triaged in the changes inbox.
             </p>
           </div>
         </aside>
@@ -404,10 +411,7 @@ function Trend({
           }}
           title={`${s.capturedAt.slice(0, 10)} · ${s.score}`}
         >
-          <span
-            className="tabular-nums"
-            style={{ fontSize: "0.6rem", color: t.onSurfaceVariant }}
-          >
+          <span className="tabular-nums" style={{ fontSize: "0.6rem", color: t.onSurfaceVariant }}>
             {s.score}
           </span>
           <div

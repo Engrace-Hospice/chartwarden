@@ -36,4 +36,10 @@ export {
   type FanOutInput,
 } from "./fan-out";
 
-export { computeOutcome, type DeliverySettlement } from "./outcome";
+export {
+  computeOutcome,
+  rollUpAlertOutcome,
+  isTerminalDeliveryStatus,
+  type DeliverySettlement,
+  type DeliveryRollupRow,
+} from "./outcome";

@@ -26,7 +26,8 @@ import {
 } from "./oncall-api";
 import {
   CALL_SOURCE_TONE,
-  CALL_STATES,
+  SOURCE_FILTERS,
+  STATE_FILTERS,
   dateTime,
   dispositionLabel,
   durationLabel,
@@ -39,20 +40,6 @@ import { CallStatePill } from "./oncall-ui";
 
 /** §4.1.1's `triageCalls` hard max. */
 const QUEUE_PAGE = 100;
-
-const STATE_FILTERS = [{ value: "", label: "Open board" }].concat(
-  CALL_STATES.map((state) => ({ value: state, label: humanize(state) })),
-);
-
-const SOURCE_FILTERS: readonly { value: "" | TriageCallSource; label: string }[] = [
-  { value: "", label: "Source: All" },
-  { value: "manual", label: "Manual" },
-  { value: "no_show", label: "No-show" },
-  { value: "late_checkout", label: "Late checkout" },
-  { value: "geofence_anomaly", label: "Geofence anomaly" },
-  { value: "m36_delivery_failure", label: "Delivery failure" },
-  { value: "paper_origin", label: "Paper origin" },
-];
 
 type AttentionFilter = "all" | "escalated" | "red_flag" | "callback" | "pending_note";
 
@@ -235,7 +222,7 @@ export function TriageQueueScreen(): JSX.Element {
               style={selectStyle}
             >
               {STATE_FILTERS.map((option) => (
-                <option key={option.value || "open"} value={option.value}>
+                <option key={option.key} value={option.value}>
                   State: {option.label}
                 </option>
               ))}
@@ -247,7 +234,7 @@ export function TriageQueueScreen(): JSX.Element {
               style={selectStyle}
             >
               {SOURCE_FILTERS.map((option) => (
-                <option key={option.value || "all"} value={option.value}>
+                <option key={option.key} value={option.value}>
                   {option.label}
                 </option>
               ))}
@@ -315,7 +302,7 @@ export function TriageQueueScreen(): JSX.Element {
               </thead>
               <tbody>
                 {visibleCalls.map((call) => (
-                  <tr key={call.id} style={rowStyle} className="wx-data-row-interactive">
+                  <tr key={call.id} style={rowStyle}>
                     <td style={tdStyle}>
                       <Link to={`/triage/calls/${call.id}`} style={callLinkStyle}>
                         {shortId(call.id)}

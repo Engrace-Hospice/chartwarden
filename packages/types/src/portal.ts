@@ -122,9 +122,16 @@ export type M31TableName = "portal_account" | "portal_access_grant" | "telehealt
  * `*_jsonb` columns must NOT enter `audit_event.before/after`: the trigger captures a `<changed>` marker
  * instead. `scope_set_jsonb` is denylisted for size (grant metadata is logged separately); the two
  * envelope-encrypted room identifiers + the free-text end-reason detail carry vendor/PHI-leakable content.
+ * `status_change_reason_cipher` is the operator's reason for the last suspend/reinstate (#117) — the same
+ * class as the grant's `revoke_reason_cipher`.
  */
 export const M31_AUDIT_DENYLIST: { readonly [K in M31TableName]: readonly string[] } = {
-  portal_account: ["display_name_cipher", "email_cipher", "phone_cipher"],
+  portal_account: [
+    "display_name_cipher",
+    "email_cipher",
+    "phone_cipher",
+    "status_change_reason_cipher",
+  ],
   portal_access_grant: ["scope_set_jsonb", "revoke_reason_cipher"],
   telehealth_visit: ["vendor_room_id_cipher", "vendor_room_url_cipher", "end_reason_detail_cipher"],
 } as const;
@@ -176,18 +183,40 @@ export const M31_EVENT_NAMES = [
 
 export type M31EventName = (typeof M31_EVENT_NAMES)[number];
 
-/** The §4.10 upstream events M31 subscribes to (verified as live by `validateSeams()` at boot). */
+/**
+ * The §4.10 upstream events M31 subscribes to.
+ *
+ * This used to say "(verified as live by `validateSeams()` at boot)". It is not and never was:
+ * `validateSeams()` validates the M1 SEAM registry — that no published seam is still a deny-stub — and has
+ * no knowledge of outbox event names. Nothing verified this list against anything until rule 6 of
+ * `check-outbox-bindings.ts` (F-094/#205), which found the two sides disagreeing on 17 facts.
+ *
+ * M31 has NO `consumers/` directory (`outbox-deferred-consumers.ts` files it `no-consumer-surface`), so
+ * every name below is an intent rather than a running subscription. The split is what the catalog says:
+ * the first group is routed here the day a binding lands, the second is not routed here at all and each of
+ * its members is registered in `scripts/outbox-subscription-exceptions.ts` with the reason.
+ */
 export const M31_SUBSCRIBED_EVENT_NAMES = [
+  // Catalogued AND declaring `m31`.
+  "m17.visit.rescheduled",
+  "m17.visit.cancelled",
+  "m8.encounter.signed",
+  "m12.medication_order.active",
+  "m12.medication_order.list_changed",
+  "m12.medication_history_pulled",
+  "m13.administration.recorded",
+  "m16.bereavement.contact_active",
+  "m17.caregiver_reminder_due",
+  "m39.consent.delegated_access.granted",
+  "m39.consent.delegated_access.revoked",
+  // Subscribed and NOT routed here.
   "m39.consent.created",
   "m39.consent.revoked",
   "m6.admission.discharged",
   "m16.bereavement.plan_opened",
   "m16.bereavement.plan_closed_completed",
   "m17.visit.published",
-  "m17.visit.rescheduled",
-  "m17.visit.cancelled",
   "m22.document.rendered",
-  "m8.encounter.signed",
   "m4.legal_hold.applied",
   "m4.legal_hold.released",
 ] as const;

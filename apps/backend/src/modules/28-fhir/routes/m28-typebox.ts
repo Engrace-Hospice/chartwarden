@@ -178,17 +178,38 @@ export const InboundListQuery = Type.Object({
 
 // ── FHIR-spec bodies + queries (R3, R5, R7, R13, R16) ────────────────────────────────────────────────
 
-/** R3 — SMART Backend Services token endpoint (`application/x-www-form-urlencoded`). */
+/**
+ * R3 — the token endpoint (`application/x-www-form-urlencoded`). §D2 defines TWO auth paths, and this
+ * shape now admits both: the SMART Backend Services asymmetric flow (`client_assertion_type` +
+ * `client_assertion`) and the api-key flow (`client_id` + `client_secret`) for trusted infrastructure
+ * integrations that cannot run an asymmetric signer.
+ *
+ * Everything but `grant_type` and `scope` is OPTIONAL here on purpose: which fields are required depends
+ * on WHICH path the request is taking, and a schema that demanded the SMART fields — as this one did —
+ * answered a well-formed api-key request with a 400 body-validation error naming a field that flow does
+ * not have. The handler picks the path first, then enforces that path's requirements, so the error a
+ * partner gets names the credential they actually presented.
+ */
 export const TokenFormBody = Type.Object({
   grant_type: Type.Literal("client_credentials"),
   scope: Type.String({ minLength: 1, maxLength: 2000 }),
-  client_assertion_type: Type.Literal("urn:ietf:params:oauth:client-assertion-type:jwt-bearer"),
-  client_assertion: Type.String({ minLength: 1, maxLength: 8192 }),
+  /** Present on both paths; SMART allows it to be omitted, in which case the assertion's `iss` names it. */
+  client_id: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  client_assertion_type: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  client_assertion: Type.Optional(Type.String({ minLength: 1, maxLength: 8192 })),
+  client_secret: Type.Optional(Type.String({ minLength: 1, maxLength: 512 })),
 });
 
-/** R5 — type-level search parameters (the Phase-1 subset; `patient` is W-FHIR-14). */
+/**
+ * R5 — type-level search parameters. `patient` scopes every clinical search (W-FHIR-14: an unscoped
+ * org-wide FHIR search is a bulk export wearing a search's clothes, and R7/R9 is the audited surface for
+ * that); `_id` and `identifier` are the two Patient searches, since a partner that holds an MRN must be
+ * able to resolve it to a `Patient/{id}` before it can scope anything else.
+ */
 export const ResourceSearchQuery = Type.Object({
   patient: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  _id: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  identifier: Type.Optional(Type.String({ minLength: 1, maxLength: 400 })),
   _count: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),
   _since: InstantOpt,
 });

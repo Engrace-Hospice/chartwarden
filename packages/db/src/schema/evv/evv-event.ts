@@ -118,7 +118,7 @@ export const evvEvent = pgTable(
     // D2 active-pair invariant + D5 offline idempotency are partial-UNIQUE indexes that OMIT the
     // partition key (event_at), so they cannot live on the partitioned PARENT — declared plain here and
     // re-added as per-LEAF partial-UNIQUE in 0047 (`evv_event_active_visit_kind_uidx` ON
-    // (organization_id, visit_id, kind) WHERE superseded_by_event_id IS NULL; `evv_event_offline_*` ON
+    // (organization_id, visit_id, kind) WHERE superseded_at IS NULL (0236/F-088); `evv_event_offline_*` ON
     // (organization_id, evv_device_id, local_id) WHERE local_id IS NOT NULL). The M17 per-leaf precedent.
   }),
 );

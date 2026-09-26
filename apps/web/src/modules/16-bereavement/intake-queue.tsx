@@ -24,6 +24,7 @@ import {
   RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
+  interactiveRowProps,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -169,12 +170,20 @@ export function BereavementIntakeQueue(): JSX.Element {
             }
           >
             <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-              Assign counselors and volunteers while preserving server-side version and compliance gates.
+              Assign counselors and volunteers while preserving server-side version and compliance
+              gates.
             </div>
           </PageHeader>
         }
         filters={
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "0 1.5rem 0.75rem" }}>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: "0.75rem",
+              padding: "0 1.5rem 0.75rem",
+            }}
+          >
             {pendingCosign.length > 0 ? (
               <Notice tone="warning">
                 PENDING MEDICAL DIRECTOR COSIGN —{" "}
@@ -195,7 +204,9 @@ export function BereavementIntakeQueue(): JSX.Element {
                 gap: "1rem",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}
+              >
                 <div style={{ position: "relative", minWidth: "15rem" }}>
                   <input
                     type="search"
@@ -364,7 +375,9 @@ function IntakeTable({
   onAssign: (plan: PlanListItem, kind: "counselor" | "volunteer") => void;
 }): JSX.Element {
   return (
-    <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+    <table
+      style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}
+    >
       <thead>
         <tr
           style={{
@@ -390,7 +403,7 @@ function IntakeTable({
           return (
             <tr
               key={p.planId}
-              onClick={() => onSelectPlan(p.planId)}
+              {...interactiveRowProps(() => onSelectPlan(p.planId), isSelected, true)}
               className="wx-data-row-interactive"
               style={{
                 borderBottom:
@@ -429,11 +442,22 @@ function IntakeTable({
               <td style={{ ...tdStyle, fontFamily: t.fontMono }}>
                 {shortId(p.assignedVolunteerUserId)}
               </td>
+              {/* biome-ignore lint/a11y/useKeyWithClickEvents: not a control — this only stops a
+                  click on the assign buttons from ALSO selecting the row. The keyboard path needs
+                  no twin, because the row's own handler ignores any key event whose target is not
+                  the row itself. */}
               <td
                 style={{ ...tdStyle, textAlign: "right" }}
                 onClick={(event) => event.stopPropagation()}
               >
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.4rem", flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "flex-end",
+                    gap: "0.4rem",
+                    flexWrap: "wrap",
+                  }}
+                >
                   <Button size="sm" tone="secondary" onClick={() => onAssign(p, "counselor")}>
                     Counselor
                   </Button>
@@ -475,7 +499,9 @@ function IntakeDrawerContent({
       </div>
 
       {plan.externalSourceCosignPending ? (
-        <Notice tone="warning">First contact stays locked until the medical-director cosign lands.</Notice>
+        <Notice tone="warning">
+          First contact stays locked until the medical-director cosign lands.
+        </Notice>
       ) : null}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>

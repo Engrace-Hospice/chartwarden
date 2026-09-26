@@ -13,6 +13,7 @@
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { group } from "../lib/strict";
 
 export type HttpMethod = "get" | "post" | "put" | "patch" | "delete";
 
@@ -45,7 +46,7 @@ function walk(dir: string, out: string[]): void {
 
 function moduleOf(file: string): string {
   const m = file.match(/modules\/([^/]+)\//);
-  if (m) return m[1];
+  if (m) return group(m, 1, "route file module segment");
   return "bootstrap";
 }
 
@@ -59,8 +60,8 @@ export function scanRoutes(repoRoot: string = process.cwd()): ScannedRoute[] {
     const rel = file.slice(repoRoot.length + 1);
     const src = readFileSync(file, "utf8");
     for (const match of src.matchAll(ROUTE_CALL_RE)) {
-      const method = match[1] as HttpMethod;
-      const path = match[2];
+      const method = group(match, 1, "route registration method") as HttpMethod;
+      const path = group(match, 2, "route registration path");
       // skip the legacy boot smoke probe duplicate of /health
       if (path === "/healthz") continue;
       const key = `${method} ${path}`;

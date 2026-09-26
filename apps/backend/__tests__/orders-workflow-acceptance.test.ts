@@ -312,16 +312,32 @@ describe("M11 correction parity", () => {
   it("creates a draft replacement and discontinues the immutable active original", async () => {
     const svc = backend();
     const original = await svc.createDraft(ORG, "rn_1", {
-      patientId: PATIENT, admissionId: ADMISSION, kind: "lab", drafterDiscipline: "rn_case_manager",
-      data: { testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }], fastingRequired: false },
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      kind: "lab",
+      drafterDiscipline: "rn_case_manager",
+      data: {
+        testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
+        fastingRequired: false,
+      },
       orderingPhysicianMdmId: PHYS,
     });
     await svc.requestSignature(ORG, original.id, { signerDiscipline: "rn_case_manager" });
-    await svc.signOrder(ORG, PHYS, original.id, { signerDiscipline: "medical_director", signedAtClient: NOW });
+    await svc.signOrder(ORG, PHYS, original.id, {
+      signerDiscipline: "medical_director",
+      signedAtClient: NOW,
+    });
     const replacement = await svc.correctOrder(ORG, "rn_1", original.id, {
-      patientId: PATIENT, admissionId: ADMISSION, kind: "lab", drafterDiscipline: "rn_case_manager",
-      data: { testCodes: [{ system: "http://loinc.org", code: "718-7", display: "Hemoglobin" }], fastingRequired: false },
-      priority: "routine", orderingPhysicianMdmId: PHYS,
+      patientId: PATIENT,
+      admissionId: ADMISSION,
+      kind: "lab",
+      drafterDiscipline: "rn_case_manager",
+      data: {
+        testCodes: [{ system: "http://loinc.org", code: "718-7", display: "Hemoglobin" }],
+        fastingRequired: false,
+      },
+      priority: "routine",
+      orderingPhysicianMdmId: PHYS,
     });
     expect(replacement.status).toBe("draft");
     expect(replacement.replacesOrderId).toBe(original.id);

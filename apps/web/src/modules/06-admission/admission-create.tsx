@@ -18,7 +18,7 @@ import type { WorkflowStep } from "@wardenx/ui";
 import { useCallback, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { MdmEntityLookupField, PatientLookupField } from "../../shared/entity-lookups";
+import { MdmEntityLookupField, PatientLookupField } from "../../shell/entity-lookups";
 import { authFailureRedirect } from "./write-workflow";
 
 const INTAKE_METHODS = [
@@ -109,14 +109,7 @@ export function AdmissionCreate(): JSX.Element {
       return;
     }
     navigate(`/admissions/${data.id}`);
-  }, [
-    attendingPhysicianId,
-    client,
-    hospiceMedicalDirectorId,
-    intakeMethod,
-    navigate,
-    patientId,
-  ]);
+  }, [attendingPhysicianId, client, hospiceMedicalDirectorId, intakeMethod, navigate, patientId]);
 
   function next(): void {
     if (step === "intake" && intakeReady) setStep("clinical");

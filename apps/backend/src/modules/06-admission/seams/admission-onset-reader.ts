@@ -28,30 +28,26 @@ const iso = (d: Date): string => d.toISOString();
 export function createAdmissionOnsetReader(db: DbClient): AdmissionOnsetReader {
   return {
     listAdmissionsStartedInPeriod(organizationId, period) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: SYSTEM_USER_ID },
-        async (tx) => {
-          const rows = await (tx as unknown as DbClient)
-            .select({ id: ADM.id, admissionAt: ADM.admissionAt })
-            .from(ADM)
-            .where(
-              and(
-                eq(ADM.organizationId, organizationId),
-                gte(ADM.admissionAt, new Date(period.from)),
-                lt(ADM.admissionAt, new Date(period.to)),
-              ),
-            );
-          const out: AdmissionOnsetRow[] = [];
-          for (const r of rows) {
-            // `admission_at` is nullable at the schema level (a draft/pre-activation admission); the range
-            // filter above already excludes nulls at the SQL level, but stay defensive rather than assume.
-            if (r.admissionAt === null) continue;
-            out.push({ admissionId: r.id, admissionAt: iso(r.admissionAt) });
-          }
-          return out;
-        },
-      );
+      return withOrgContext(db, { organizationId, userId: SYSTEM_USER_ID }, async (tx) => {
+        const rows = await (tx as unknown as DbClient)
+          .select({ id: ADM.id, admissionAt: ADM.admissionAt })
+          .from(ADM)
+          .where(
+            and(
+              eq(ADM.organizationId, organizationId),
+              gte(ADM.admissionAt, new Date(period.from)),
+              lt(ADM.admissionAt, new Date(period.to)),
+            ),
+          );
+        const out: AdmissionOnsetRow[] = [];
+        for (const r of rows) {
+          // `admission_at` is nullable at the schema level (a draft/pre-activation admission); the range
+          // filter above already excludes nulls at the SQL level, but stay defensive rather than assume.
+          if (r.admissionAt === null) continue;
+          out.push({ admissionId: r.id, admissionAt: iso(r.admissionAt) });
+        }
+        return out;
+      });
     },
   };
 }

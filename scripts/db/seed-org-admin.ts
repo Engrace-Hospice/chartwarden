@@ -23,6 +23,7 @@ import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
@@ -71,7 +72,7 @@ async function main(): Promise<void> {
   ]);
   if (!orgRes.rowCount)
     throw new Error(`demo org '${ORG_SLUG}' not found — run 'bun run db:seed' first`);
-  const orgId = orgRes.rows[0].id;
+  const orgId = firstRow(orgRes, "seed-org-admin: organization upsert").id;
 
   // Idempotent cleanup of any prior orgadmin user (Better Auth child rows first).
   await db.query("BEGIN");
@@ -104,7 +105,7 @@ async function main(): Promise<void> {
      VALUES ($1,$2,'active', now()) RETURNING id`,
     [userId, orgId],
   );
-  const membershipId = m.rows[0].id;
+  const membershipId = firstRow(m, "seed-org-admin: membership upsert").id;
 
   // Upsert the org-scoped `org_admin` role (unique on organization_id,key) — shared if it already exists.
   const r = await db.query<{ id: string }>(
@@ -114,7 +115,7 @@ async function main(): Promise<void> {
      RETURNING id`,
     [orgId, USER.roleKey, USER.roleName, USER.roleCategory, `${USER.roleName} (dev seed)`],
   );
-  const roleId = r.rows[0].id;
+  const roleId = firstRow(r, "seed-org-admin: role upsert").id;
 
   // org_admin supersedes administrator → the FULL permission catalog.
   const keys = allRows.map((x) => x.key);
@@ -160,7 +161,7 @@ async function main(): Promise<void> {
   await db.query(
     `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)
      ON CONFLICT (membership_id, role_id) DO NOTHING`,
-    [orgId, membershipId, platformOpsRole.rows[0].id],
+    [orgId, membershipId, firstRow(platformOpsRole, "seed-org-admin: platform-ops role lookup").id],
   );
 
   await db.end();
@@ -172,13 +173,13 @@ async function main(): Promise<void> {
   const credsPath = SEED_CREDENTIALS_PATH;
   const existing = readFileSync(credsPath, "utf8");
   const marker = "\n## Organization Administrator (bun run db:seed:org-admin)\n";
-  const withoutOldBlock = existing.split(marker)[0].replace(/\n+$/, "\n");
+  const withoutOldBlock = (existing.split(marker)[0] ?? existing).replace(/\n+$/, "\n");
   const lines = [
     withoutOldBlock,
     marker.trimStart(),
     "",
     "> The `org_admin` tenant-admin role (full permission catalog + the tenant-admin authority",
-    "> `hasRole(ctx,\"org_admin\")` predicates check) — distinct from the CoP-418.100 `administrator`",
+    '> `hasRole(ctx,"org_admin")` predicates check) — distinct from the CoP-418.100 `administrator`',
     "> role the original 4 accounts above carry.",
     "",
     "| Persona | Email | Password | Role key(s) |",

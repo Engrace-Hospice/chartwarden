@@ -56,7 +56,9 @@ export function createHopeOrgRollupProvider(store: HopeOrgRollupStore): HopeOrgR
         submissions += r.itemCount;
         acceptedSubmissions += r.acceptedCount;
       }
-      return { submissions, acceptedSubmissions };
+      // F-058 — carried beside the counts so a zero denominator is attributable. See the seam contract.
+      const queuedSubmissions = await store.queuedSubmissionCount(organizationId);
+      return { submissions, acceptedSubmissions, queuedSubmissions };
     },
 
     async sfvTimelinessRollup(organizationId, period) {

@@ -33,4 +33,10 @@ export const M2_ACTION_CATALOG: ModuleActionCatalog = [
     "m2.session.terminated_step_up_lockout",
     "A session was terminated after step-up lockout.",
   ),
+  // ADR-0023 D2 / SecHardening §12.4 — device attestation. The FAILED event is as load-bearing as the
+  // passing one: §12.4 names the server-side audit as the complement to on-device detection, and a
+  // handset that repeatedly fails the posture check is exactly the pattern it is asking to surface.
+  compliance("m2.device.attested", "A device passed the §12.4 posture check and was attested."),
+  compliance("m2.device.attestation_failed", "A device failed the §12.4 posture check."),
+  compliance("m2.device.attestation_revoked", "A device attestation was revoked by an administrator."),
 ];

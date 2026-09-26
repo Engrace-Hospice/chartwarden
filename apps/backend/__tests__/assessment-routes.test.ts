@@ -22,11 +22,6 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
-import {
-  buildAssessmentAbacPredicates,
-  createInMemoryAssessmentBackend,
-  registerAssessmentRoutes,
-} from "../src/modules/09-assessments/index";
 // GAP-015: M9's routes bind the SHARED `caseload_or_scope` predicate (M7-owned) by name for the 9 routes
 // that already carry `patientId`; a fresh per-test registry (the GAP-011 pattern, see below) needs it
 // registered too, or every one of those routes would fail-closed-deny in this file. `caseload_or_scope`'s
@@ -35,6 +30,11 @@ import {
 // module's own codePaths, not `__tests__`; `clinical-consumer-contracts.test.ts` already cross-imports
 // M7+M8 the same way).
 import { buildCarePlanAbacPredicates } from "../src/modules/07-care-plan/abac-predicates";
+import {
+  buildAssessmentAbacPredicates,
+  createInMemoryAssessmentBackend,
+  registerAssessmentRoutes,
+} from "../src/modules/09-assessments/index";
 
 function headerAuth(request: FastifyRequest): void {
   const user = request.headers["x-test-user"];
@@ -203,7 +203,11 @@ function makeServer(extra: ExtraSeed = {}, options: { isInCaseload?: IsInCaseloa
   const registry = createPredicateRegistry();
   const m9Predicates = buildAssessmentAbacPredicates({ resolver: backend.resolver, isInCaseload });
   const m7Predicates = buildCarePlanAbacPredicates({
-    resolver: { loadPlan: async () => null, loadProblem: async () => null },
+    resolver: {
+      loadPlan: async () => null,
+      loadProblem: async () => null,
+      loadVersion: async () => null,
+    },
     isInCaseload,
   });
   registry.register("caseload_or_scope", m7Predicates.caseload_or_scope);
@@ -266,6 +270,62 @@ describe("M9-T05 — assessment routes (§4.1, §4.6 RBAC gating)", () => {
     expect(res.json().scaleType).toBe("painad");
     expect(res.json().score).toBe(2); // 1+1+0+0+0
     expect(res.json().id).toMatch(/^90000000-/);
+  });
+
+  it("GET /scales publishes the item definitions a capture form is built from (F-067)", async () => {
+    // The reason there was no record modal: `POST .../assessments` publishes `data` as a bare object,
+    // and which items a scale needs — how many, what kind, what range, which option values — existed
+    // only as TypeScript interfaces in `@wardenx/assessments`. A client cannot read a type.
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: "/api/v1/scales", headers: RN });
+    expect(res.statusCode).toBe(200);
+    const scales = res.json().scales as {
+      scaleType: string;
+      recordable: boolean;
+      scoreRange: [number, number] | null;
+      items: { key: string; kind: string; min?: number; max?: number }[] | null;
+    }[];
+    // All fourteen are described; the catalog is the whole vocabulary, not just what works.
+    expect(scales).toHaveLength(14);
+
+    const painad = scales.find((s) => s.scaleType === "painad");
+    expect(painad?.recordable).toBe(true);
+    // The five 0..2 observational items the scorer sums — and the SAME keys the capture above sends.
+    expect(painad?.items?.filter((i) => i.kind === "number").map((i) => i.key)).toEqual([
+      "breathing",
+      "negativeVocalization",
+      "facialExpression",
+      "bodyLanguage",
+      "consolability",
+    ]);
+    expect(painad?.items?.find((i) => i.key === "breathing")?.max).toBe(2);
+
+    // TEN OF THE FOURTEEN HAVE NO SCORER and raise SCALE_SCORER_UNAVAILABLE — a 500 — on capture,
+    // while sitting in this route's own `scaleType` enum. `items` is NULL, not empty: a form cannot be
+    // built, and "no items" would read as "this scale takes no data".
+    const braden = scales.find((s) => s.scaleType === "braden");
+    expect(braden?.recordable).toBe(false);
+    expect(braden?.items).toBeNull();
+    expect(braden?.scoreRange).toBeNull();
+    expect(
+      scales
+        .filter((s) => s.recordable)
+        .map((s) => s.scaleType)
+        .sort(),
+    ).toEqual(["esas_r", "fast", "painad", "pps"]);
+  });
+
+  it("the published score range is the one the dispatcher enforces, not a second copy (F-067)", async () => {
+    // `scoreRange` is read off each scorer's own published range, so a scorer change cannot leave the
+    // catalog advertising a range the D6 sanity check would reject.
+    const { app } = makeServer();
+    const res = await app.inject({ method: "GET", url: "/api/v1/scales", headers: RN });
+    const scales = res.json().scales as {
+      scaleType: string;
+      scoreRange: [number, number] | null;
+    }[];
+    expect(scales.find((s) => s.scaleType === "esas_r")?.scoreRange).toEqual([0, 90]);
+    expect(scales.find((s) => s.scaleType === "pps")?.scoreRange).toEqual([0, 100]);
   });
 
   it("rejects an author without the permission key (403)", async () => {
@@ -366,6 +426,34 @@ describe("M9-T05 — LPN cosignature (§7.4, §4.7 cosigner_role_match)", () => 
     });
     expect(res.statusCode).toBe(403);
   });
+
+  // #117 — the contract has always demanded `attestationConfirmed` and the handler never read it, so an
+  // eligible RN cosigned whether or not they affirmed anything: `payload: {}` returned 201. A cosignature
+  // is a legal clinical act (CoP 418.104(c)); an attestation the API requires and ignores is worse than
+  // one it never asked for, because the UI can truthfully say the clinician was asked.
+  for (const [label, payload] of [
+    ["an absent attestation", {}],
+    ["an explicitly unconfirmed attestation", { attestationConfirmed: false }],
+  ] as const) {
+    it(`refuses ${label} — no cosignature is written`, async () => {
+      const { app } = makeServer();
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/assessments/${PPS_BY_LPN}/cosignatures`,
+        headers: RN,
+        payload,
+      });
+      expect(res.statusCode).toBe(422);
+      // And the row is still cosignable afterwards — the refusal did not half-apply.
+      const after = await app.inject({
+        method: "POST",
+        url: `/api/v1/assessments/${PPS_BY_LPN}/cosignatures`,
+        headers: RN,
+        payload: { attestationConfirmed: true },
+      });
+      expect(after.statusCode).toBe(201);
+    });
+  }
 });
 
 describe("M9-T05 — correction-of-record (§2.3 If-Match → STALE_VERSION)", () => {
@@ -651,10 +739,7 @@ describe("GAP-015 — caseload scoping", () => {
     });
     expect(denied.statusCode).toBe(404);
 
-    const inside = makeServer(
-      {},
-      { isInCaseload: async ({ patientId }) => patientId === PATIENT },
-    );
+    const inside = makeServer({}, { isInCaseload: async ({ patientId }) => patientId === PATIENT });
     const allowed = await inside.app.inject({
       method: "POST",
       url: `/api/v1/patients/${PATIENT}/assessments`,
@@ -684,10 +769,7 @@ describe("GAP-015 — caseload scoping", () => {
     });
     expect(denied.statusCode).toBe(404);
 
-    const inside = makeServer(
-      {},
-      { isInCaseload: async ({ patientId }) => patientId === PATIENT },
-    );
+    const inside = makeServer({}, { isInCaseload: async ({ patientId }) => patientId === PATIENT });
     const allowed = await inside.app.inject({
       method: "POST",
       url: `/api/v1/assessments/${PPS_BY_LPN}/cosignatures`,
@@ -707,10 +789,7 @@ describe("GAP-015 — caseload scoping", () => {
     });
     expect(denied.statusCode).toBe(404);
 
-    const inside = makeServer(
-      {},
-      { isInCaseload: async ({ patientId }) => patientId === PATIENT },
-    );
+    const inside = makeServer({}, { isInCaseload: async ({ patientId }) => patientId === PATIENT });
     const allowed = await inside.app.inject({
       method: "POST",
       url: `/api/v1/significant-changes/${CHANGE_OPEN}/acknowledge`,

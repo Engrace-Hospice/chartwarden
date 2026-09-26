@@ -11,11 +11,13 @@
 // migration-0186 SECURITY DEFINER insert — the same shape M29's `m29.nppes.*` events use.
 //
 // `declaredConsumers: []` — RECORD-ONLY, and deliberately so. §7.11 describes the event as the signal for
-// downstream caches to refresh, but no module subscribes to it today: M23's `mdm.canonical_updated` topic
-// string (23-billing-medicare/consumers/subscription-map.ts) is a different, older name in a different
-// namespace and is not bound to this catalog. Declaring a consumer that does not exist would hold every
-// row `pending` on the deferred clock forever; declaring none means the row IS the durable record and
-// dispatches immediately. When a real consumer lands it adds itself here in the same diff that binds it.
+// downstream caches to refresh. M23 DOES subscribe to it now (F-095): its `M40_CANONICAL_UPDATED_TOPIC`
+// spent its whole life as `mdm.canonical_updated`, a spec placeholder in a namespace no module has ever
+// emitted under, carried with a note to rebind "when M40's events-by-m40.ts lands" that nothing acted on
+// once it did. That is corrected, and this entry stays record-only anyway: M23's freeze-new-claims effect
+// is written and bound by nothing, so declaring it would hold every row `pending` on the deferred clock
+// forever, while declaring none means the row IS the durable record and dispatches immediately. M23 adds
+// itself here in the same diff that binds the handler.
 import { Type } from "@sinclair/typebox";
 import type { ModuleEventContribution } from "@wardenx/types";
 

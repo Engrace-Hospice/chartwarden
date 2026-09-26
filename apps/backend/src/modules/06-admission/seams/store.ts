@@ -48,13 +48,9 @@ export interface ElectionPeriodRecord {
  */
 export interface AdmissionReaderStore {
   /** Every election period for an admission, sequence-ordered (M23 NOE/NOTR window math). */
-  electionPeriodsForAdmission(
-    admissionId: AdmissionId,
-  ): Promise<readonly ElectionPeriodRecord[]>;
+  electionPeriodsForAdmission(admissionId: AdmissionId): Promise<readonly ElectionPeriodRecord[]>;
   /** Every election period for a patient (the reader picks the one containing `on`). */
-  electionPeriodsForPatient(
-    patientId: PatientId,
-  ): Promise<readonly ElectionPeriodRecord[]>;
+  electionPeriodsForPatient(patientId: PatientId): Promise<readonly ElectionPeriodRecord[]>;
   /** The admission status projection, or null when the id is unknown / not visible under RLS. */
   admissionSummary(
     organizationId: string,
@@ -66,27 +62,17 @@ export interface AdmissionReaderStore {
     admissionId: AdmissionId,
   ): Promise<AdmissionSiting | null>;
   /** Every level-of-care period for an admission (the reader derives current + day counts). */
-  levelOfCarePeriods(
-    admissionId: AdmissionId,
-  ): Promise<readonly LevelOfCarePeriodSummary[]>;
+  levelOfCarePeriods(admissionId: AdmissionId): Promise<readonly LevelOfCarePeriodSummary[]>;
   /** The active (non-superseded/non-voided) CTI for a period, or null. */
-  activeCertification(
-    electionPeriodId: ElectionPeriodId,
-  ): Promise<CertificationSummary | null>;
+  activeCertification(electionPeriodId: ElectionPeriodId): Promise<CertificationSummary | null>;
   /** The attested F2F for a recert period, or null. */
-  attestedF2f(
-    electionPeriodId: ElectionPeriodId,
-  ): Promise<FaceToFaceSummary | null>;
+  attestedF2f(electionPeriodId: ElectionPeriodId): Promise<FaceToFaceSummary | null>;
   /** Active admissions in scope (org from RLS; optional `providerEntityId` narrow). */
-  activeAdmissions(
-    scope: AdmissionReaderScope,
-  ): Promise<readonly AdmissionSummary[]>;
+  activeAdmissions(scope: AdmissionReaderScope): Promise<readonly AdmissionSummary[]>;
 }
 
 /** Project the rich election-period record to the external `ElectionPeriodSummary` DTO (§4.7). */
-export function toElectionPeriodSummary(
-  r: ElectionPeriodRecord,
-): ElectionPeriodSummary {
+export function toElectionPeriodSummary(r: ElectionPeriodRecord): ElectionPeriodSummary {
   return {
     periodId: r.periodId,
     admissionId: r.admissionId,
@@ -100,9 +86,7 @@ export function toElectionPeriodSummary(
 }
 
 /** Project the rich record to the active-period DTO M23 binds a claim to (§4.7). */
-export function toActiveElectionPeriod(
-  r: ElectionPeriodRecord,
-): ActiveElectionPeriod {
+export function toActiveElectionPeriod(r: ElectionPeriodRecord): ActiveElectionPeriod {
   return {
     periodId: r.periodId,
     sequence: r.sequence,
@@ -142,9 +126,7 @@ function withinPeriod(on: LocalDate, r: ElectionPeriodRecord): boolean {
 }
 
 /** An in-memory {@link AdmissionReaderStore} for the slice/tests — no DB, deterministic, RLS-free. */
-export function createInMemoryAdmissionReaderStore(
-  seed: AdmissionReaderSeed = {},
-): {
+export function createInMemoryAdmissionReaderStore(seed: AdmissionReaderSeed = {}): {
   store: AdmissionReaderStore;
 } {
   const admissions = seed.admissions ?? [];
@@ -195,24 +177,16 @@ export function createInMemoryAdmissionReaderStore(
       },
       async activeCertification(electionPeriodId) {
         // Prefer a non-terminal CTI; fall back to the latest matching row.
-        const matches = certs.filter(
-          (c) => c.electionPeriodId === electionPeriodId,
-        );
+        const matches = certs.filter((c) => c.electionPeriodId === electionPeriodId);
         return (
-          matches.find(
-            (c) => c.status !== "voided" && c.status !== "superseded",
-          ) ??
+          matches.find((c) => c.status !== "voided" && c.status !== "superseded") ??
           matches.at(-1) ??
           null
         );
       },
       async attestedF2f(electionPeriodId) {
         return (
-          f2fs.find(
-            (f) =>
-              f.electionPeriodId === electionPeriodId &&
-              f.status === "attested",
-          ) ??
+          f2fs.find((f) => f.electionPeriodId === electionPeriodId && f.status === "attested") ??
           f2fs.find((f) => f.electionPeriodId === electionPeriodId) ??
           null
         );
@@ -222,8 +196,7 @@ export function createInMemoryAdmissionReaderStore(
           (a) =>
             a.organizationId === scope.orgId &&
             a.status === "active" &&
-            (scope.providerEntityId === undefined ||
-              a.providerEntityId === scope.providerEntityId),
+            (scope.providerEntityId === undefined || a.providerEntityId === scope.providerEntityId),
         );
       },
     },

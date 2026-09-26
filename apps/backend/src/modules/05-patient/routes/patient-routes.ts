@@ -1,17 +1,50 @@
 // apps/backend/src/modules/05-patient/routes/patient-routes.ts — M5-T09 the patient route inventory
 // (§4.2; the §4.7 permission handshake; §7.1 admit-no-dup / §7.4 address cascade / §7.7 right-to-amend).
 //
-// Every route is gated by the REAL Authorization Contract (`requirePermission` from @wardenx/auth,
-// M3) on the §4.7 keys M5 registers into M3's catalog (M5_CONTRIBUTED_PERMISSIONS). Org binding is
-// server-side (`request.context`, never the body). Handlers compose over the injected
+// Every route is gated by the REAL Authorization Contract (`requirePermission` + `requireAbac` from
+// @wardenx/auth, M3) on the §4.7 keys M5 registers into M3's catalog (M5_CONTRIBUTED_PERMISSIONS).
+//
+// F-092 — THE ABAC HALF WAS MISSING, AND SIX COMMENTS IN THIS FILE SAID OTHERWISE. Nine of M5's keys
+// declare `abac: "caseload_or_scope"` in the permission catalog, and M5 was the only clinical module on
+// the platform that composed NO `requireAbac` at all: this file imported `requirePermission` and
+// nothing else. The catalog's `abac` field is a DECLARATION, not a mechanism — `requirePermission`
+// resolves the actor's grant set and asks `granted.has(key)`, and never reads a permission's
+// `defaultAbac` (which exists only to mirror into the `permission` table for the admin UI). So the
+// caseload control was documented on every key, mirrored into the database, served to the permission
+// browser, and enforced by nothing.
+//
+// The six `§7.5 non-leak` comments below each said "a non-caseload/other-org patient is 404". Only the
+// other-org half was true, and RLS was doing it: `service.getPatient(organizationId, id)` takes an org
+// and an id and has no caseload input to narrow by. Any holder of `patient.read` read any chart in the
+// tenant. The guard now makes the comment true — `notFoundOnDeny` so a refusal is a 404 and not a 403,
+// because a 403 on a chart id is itself a disclosure that the chart exists.
+//
+// F-096 — THE CENSUS LIST IS NOW NARROWED TOO, which is the half F-092 named and left. §7.5 is one
+// sentence covering two — "an RN with two patients on her caseload sees only those two in `/patients`,
+// even when the tenant has 5,000; the list query SQL contains a `patient_id = ANY(:caseloadIds)`
+// filter; attempting `GET /patients/:id` for a third patient yields 404". Until now any holder of
+// `patient.read` listed every patient in the tenant, which is the larger disclosure of the two: a chart
+// read leaks one patient to someone who guessed an id, a census leaks the identity of every patient the
+// agency serves to everyone who can log in.
+//
+// The list half could not be a guard. A preHandler runs before the handler, sees no rows, and can only
+// allow or deny — it can REFUSE a collection but cannot FILTER one. So `list` now takes the narrowing
+// set (`censusScope` below), and the org-wide-role determination that used to live inside the predicate
+// moved to `hasOrgWideScope` in @wardenx/auth, where both halves read it. M5 built `caseloadPatientIds`
+// for exactly this — its doc comment calls it "the `patient_id = ANY(:ids)` list filter" — and until
+// now it had one consumer platform-wide, M12's refill inbox, which is not this list.
+//
+// Org binding is server-side (`request.context`, never the body). Handlers compose over the injected
 // `PatientRouteService` (in-memory slice; Drizzle in prod under withOrgContext so RLS backstops).
 // §7.1: admit runs the T06 matcher — a hard duplicate returns 409 with the existing id, no row
 // created; a soft match returns 201 + matchReviewIds. §7.4: an address change emits the cascade
 // event. §7.7: an amendment opens with a 60-day SLA; accept/deny decides it (deny needs a reason).
-import { requirePermission } from "@wardenx/auth";
+import { type GuardRequest, hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import { getSeam } from "../../../bootstrap/index";
 import {
+  AddPatientPayerBodySchema,
   AddressBodySchema,
   AdmitBodySchema,
   AmendmentBodySchema,
@@ -19,7 +52,6 @@ import {
   LooseIdParamsSchema,
   PatientListQuerySchema,
   parse,
-  AddPatientPayerBodySchema,
 } from "./patient-typebox";
 import type { PatientRouteService } from "./service";
 
@@ -41,6 +73,66 @@ const EDIT = requirePermission("patient.edit") as PreHandler;
 const AMEND_RECORD = requirePermission("patient.amend_request_record") as PreHandler;
 const AMEND_REVIEW = requirePermission("patient.amend_review") as PreHandler;
 
+/**
+ * §7.5 per-chart scope. The predicate is M7's, bound BY NAME (no import edge — `requireAbac` takes a
+ * string, which is how M12/M13/M19/M20/M23 bind the same one). Its `patientId` arm allows an org-wide
+ * oversight role, a session pinned to this patient, or an open `patient_assignment`; everything else is
+ * refused as a 404 (`notFoundOnDeny`), so a refusal never confirms the chart exists.
+ */
+const chartTarget = (request: GuardRequest): Record<string, unknown> => ({
+  patientId: (request.params as { id?: unknown } | undefined)?.id,
+});
+const chartScope = (action: string): PreHandler =>
+  requireAbac(action, "caseload_or_scope", {
+    getTarget: chartTarget,
+    notFoundOnDeny: true,
+  }) as PreHandler;
+
+const SCOPE_READ = chartScope("patient.read");
+const SCOPE_EDIT = chartScope("patient.edit");
+const SCOPE_AMEND_RECORD = chartScope("patient.amend_request_record");
+
+/**
+ * The §7.5 CENSUS narrowing (F-096): which patient ids this actor's `/api/v1/patients` may contain.
+ *
+ *   - `null` — an org-wide scope role: no narrowing, the whole tenant's census.
+ *   - `[id]` — a session pinned to one patient (collaborator / funeral / portal, §3.6 `scope`).
+ *   - the actor's open `patient_assignment` set otherwise, WHICH MAY BE EMPTY — and an empty set is a
+ *     census of nothing, not a census of everything.
+ *
+ * WHY THIS IS NOT A GUARD. §7.5 is one sentence with two halves — "an RN with two patients on her
+ * caseload sees only those two in `/patients`, even when the tenant has 5,000 … attempting
+ * `GET /patients/:id` for a third patient yields 404". F-092 delivered the second half with a
+ * `requireAbac` preHandler and could not deliver the first, because a preHandler can REFUSE a
+ * collection but cannot FILTER one: it runs before the handler, sees no rows, and its only outputs are
+ * allow and deny. Narrowing a list is a read-path concern, so the determination the predicate makes
+ * internally (`hasOrgWideScope`) had to become callable from outside it — which is what F-096 moved
+ * into `@wardenx/auth`, and why both halves now answer from the same derivation rather than from two
+ * lists that agree until one is edited.
+ *
+ * FAIL-CLOSED ON A SEAM THROW. `CaseloadProvider` is a Phase-0 deny-stub that THROWS when its owning
+ * module has not registered, and M15's `seamCaseloadPort` already treats that as "not in caseload".
+ * The census does the same: an empty narrowing, so an unavailable caseload seam shows a clinician no
+ * patients rather than all of them.
+ */
+async function censusScope(request: FastifyRequest): Promise<readonly string[] | null> {
+  const ctx = request.context;
+  if (!ctx?.organizationId || !ctx.userId) throw new UnauthorizedError();
+  if (hasOrgWideScope(ctx.roles ?? [])) return null;
+
+  const pinned = ctx.attributes?.sessionPatientId;
+  if (typeof pinned === "string" && pinned.length > 0) return [pinned];
+
+  try {
+    return await getSeam("CaseloadProvider").caseloadPatientIds({
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+    });
+  } catch {
+    return [];
+  }
+}
+
 const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not found`, 404);
 
 // §2.5 read-audit: a single-patient chart read. `patientIdParam: "id"` joins the read to the patient
@@ -57,7 +149,7 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
     async (request) => {
       const { organizationId } = actorOf(request);
       const query = parse(PatientListQuerySchema, request.query);
-      return service.list(organizationId, query);
+      return service.list(organizationId, query, await censusScope(request));
     },
   );
 
@@ -80,7 +172,7 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   // --- §4.2 resolve one ------------------------------------------------------------------------
   app.get(
     "/api/v1/patients/:id",
-    { preHandler: [READ], config: { auditRead: PATIENT_READ } },
+    { preHandler: [READ, SCOPE_READ], config: { auditRead: PATIENT_READ } },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(LooseIdParamsSchema, request.params);
@@ -94,7 +186,7 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   app.get(
     "/api/v1/patients/:id/demographics",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE_READ],
       config: {
         auditRead: {
           ...PATIENT_READ,
@@ -115,7 +207,7 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   app.get(
     "/api/v1/patients/:id/identifiers",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE_READ],
       config: { auditRead: { ...PATIENT_READ, fields: ["mrn", "ssn", "state_id", "mbi"] } },
     },
     async (request) => {
@@ -131,7 +223,7 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   app.get(
     "/api/v1/patients/:id/payers",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE_READ],
       config: { auditRead: { ...PATIENT_READ, fields: ["payer", "member_id"] } },
     },
     async (request) => {
@@ -144,38 +236,27 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   );
 
   app.post(
-  "/api/v1/patients/:id/payers",
-  {
-    preHandler: [EDIT],
-  },
-  async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
+    "/api/v1/patients/:id/payers",
+    {
+      preHandler: [EDIT],
+    },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
 
-    const { id } = parse(
-      LooseIdParamsSchema,
-      request.params,
-    );
+      const { id } = parse(LooseIdParamsSchema, request.params);
 
-    const body = parse(
-      AddPatientPayerBodySchema,
-      request.body,
-    );
+      const body = parse(AddPatientPayerBodySchema, request.body);
 
-    const payer = await service.addPayer(
-      organizationId,
-      id,
-      body,
-      userId,
-    );
+      const payer = await service.addPayer(organizationId, id, body, userId);
 
-    return reply.code(201).send(payer);
-  },
-);
+      return reply.code(201).send(payer);
+    },
+  );
 
   // --- §3.4/§3.5 care team & assignments tab (assignment roster + caregivers + emergency contacts) -
   app.get(
     "/api/v1/patients/:id/care-team",
-    { preHandler: [READ], config: { auditRead: PATIENT_READ } },
+    { preHandler: [READ, SCOPE_READ], config: { auditRead: PATIENT_READ } },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(LooseIdParamsSchema, request.params);
@@ -188,7 +269,7 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   // --- §3.5/§7.6 privacy flags tab (active restrictions snapshot; SUD fail-closed disclosability) --
   app.get(
     "/api/v1/patients/:id/privacy-flags",
-    { preHandler: [READ], config: { auditRead: PATIENT_READ } },
+    { preHandler: [READ, SCOPE_READ], config: { auditRead: PATIENT_READ } },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(LooseIdParamsSchema, request.params);
@@ -219,7 +300,7 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   app.get(
     "/api/v1/patients/:id/addresses",
     {
-      preHandler: [READ],
+      preHandler: [READ, SCOPE_READ],
       config: { auditRead: { ...PATIENT_READ, fields: ["address"], list: true } },
     },
     async (request) => {
@@ -232,18 +313,22 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   );
 
   // --- §4.2 add address (§7.4 cascade) ---------------------------------------------------------
-  app.post("/api/v1/patients/:id/addresses", { preHandler: [EDIT] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const { id } = parse(LooseIdParamsSchema, request.params);
-    const body = parse(AddressBodySchema, request.body);
-    const out = await service.addAddress(organizationId, id, body, userId);
-    return reply.code(201).send(out);
-  });
+  app.post(
+    "/api/v1/patients/:id/addresses",
+    { preHandler: [EDIT, SCOPE_EDIT] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(LooseIdParamsSchema, request.params);
+      const body = parse(AddressBodySchema, request.body);
+      const out = await service.addAddress(organizationId, id, body, userId);
+      return reply.code(201).send(out);
+    },
+  );
 
   // --- §4.2 submit amendment (§7.7 60-day SLA) -------------------------------------------------
   app.post(
     "/api/v1/patients/:id/amendments",
-    { preHandler: [AMEND_RECORD] },
+    { preHandler: [AMEND_RECORD, SCOPE_AMEND_RECORD] },
     async (request, reply) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(LooseIdParamsSchema, request.params);
@@ -254,6 +339,12 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
   );
 
   // --- §4.2 accept / deny an amendment (§7.7) --------------------------------------------------
+  // NO chart-scope guard, and it is not an omission: `:id` here is an AMENDMENT id, and
+  // `caseload_or_scope` resolves a `patientId` or an M7 `planId` — it cannot turn an amendment into the
+  // patient it concerns, and a target it cannot resolve falls through to the org-precondition arm,
+  // which would look like a guard and allow everyone. `patient.amend_review` is `abac: "none"` in the
+  // catalog for the same reason the reviewer is not the clinician: §7.7 review is a records-management
+  // decision (the 60-day SLA, HIPAA §164.526), taken by whoever holds the key, not by the care team.
   app.post("/api/v1/amendments/:id/accept", { preHandler: [AMEND_REVIEW] }, async (request) => {
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(LooseIdParamsSchema, request.params);

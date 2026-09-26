@@ -1,0 +1,84 @@
+            sleep 1
+          done
+          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg; exit 1
+      - name: Better Auth sign-up/sign-in over the reconciled schema (real Postgres)
+        run: bun run test:auth:live
+
+<<<<<<< HEAD
+  outbox-boot:
+    # F-020 (issue #49): the backend refused to START in the documented production configuration —
+    # `DATABASE_PLATFORM_URL` set — because the outbox dispatcher's catalog validation throws before
+    # `server.listen()` and two catalog/binding mismatches had accumulated. Nothing caught it because
+    # the dispatcher is only CONSTRUCTED on that branch, and no job here had ever taken it: every
+    # test, every local run and every other CI job configures a tenant credential only.
+    #
+    # `arch:outbox-bindings` (build-and-verify) catches that specific class at build time. This job
+    # covers the rest of the branch — the platform pool, the audited active-org enumerator, the relay
+    # start — by doing the one thing a gate cannot do: running the process the way production runs it.
+    name: Production-configuration boot (DATABASE_PLATFORM_URL + outbox relay)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
+      PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_boot
+      WARDENX_PLATFORM_PASSWORD: ci-platform-password-0123456789
+      BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
+      BETTER_AUTH_URL: http://localhost:3999
+      TWO_FACTOR_ENCRYPTION_KEY: Y2ktMmZhLXRlc3Qta2V5LTAxMjM0NTY3ODlhYmNkZWY=
+=======
+  # #41 — the ONLY live suite gated on WARDENX_TEST_REDIS_URL rather than WARDENX_TEST_DATABASE_URL,
+  # which is a second reason it went unnoticed: it needs no Postgres at all, so it fitted none of the
+  # existing live jobs and nothing ran it. It proves the cluster-wide rate limiter — that two backend
+  # replicas sharing one Redis enforce ONE combined limit rather than one each, the exact gap the
+  # in-memory Map store has (WX-PR-017, SD-055). A `services:` block is fine here: unlike the Postgres
+  # jobs this needs no command arguments and replays no migrations.
+  rate-limit-store-live:
+    name: Rate-limit store live (Valkey) — cluster-wide counter (WX-PR-017)
+    runs-on: ubuntu-latest
+    services:
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      WARDENX_TEST_REDIS_URL: redis://localhost:6379
+>>>>>>> origin/main
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+<<<<<<< HEAD
+      # Same pgvector image + raised lock limit as rls-live: booting applies the full migration set.
+      - name: Start Postgres (pgvector image; raised lock limit)
+        run: |
+          docker run -d --name wardenx-ci-pg-boot \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_boot \
+            -p 5432:5432 pgvector/pgvector:pg16 \
+            -c max_locks_per_transaction=4096
+          for i in $(seq 1 60); do
+            docker exec wardenx-ci-pg-boot pg_isready -U postgres -d wardenx_boot && exit 0
+            sleep 1
+          done
+          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-boot; exit 1
+      - name: Migrate
+        run: bun run db:migrate
+      # The platform login is a REAL provisioned role (carrier + BYPASSRLS), not a superuser alias —
+      # booting against a superuser would prove nothing about the grants production actually has.
+      - name: Provision the platform login role
+        run: bun run db:provision-roles
+      - name: Boot with the platform credential and prove the relay starts
+        run: bun run check:boot:platform
+=======
+      - name: Shared fixed-window counter across two clients (real Valkey)
+        run: bun run test:rate-limit-store:live
+>>>>>>> origin/main

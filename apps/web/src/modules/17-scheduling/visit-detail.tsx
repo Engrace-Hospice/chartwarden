@@ -1,4 +1,11 @@
-import { DetailPageLayout, EmptyState, LoadingSpinner, PageHeader, StatusPill, useApiClient } from "@wardenx/ui";
+import {
+  DetailPageLayout,
+  EmptyState,
+  LoadingSpinner,
+  PageHeader,
+  StatusPill,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/17-scheduling — Visit Detail (M17 §5.1 `/app/scheduling/visit/:visitId`, Track B / ADR-0030).
 // Spec: docs/design/screens — "Use Detail Page". A single visit's detail: status, scheduled window, purpose/setting,
 // assignment, and the reschedule chain back-ref. The reschedule/cancel/reassign + state-history write surfaces
@@ -8,18 +15,18 @@ import { DetailPageLayout, EmptyState, LoadingSpinner, PageHeader, StatusPill, u
 import { useCallback, useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { VISIT_TONE, stateLabel } from "./scheduling-status";
 import {
+  type EncounterLink,
   FieldValue,
   NewVisitModal,
   SchedulingNav,
   VisitActionPanel,
+  type VisitView,
   findLinkedEncounter,
   formatInstant,
   shortId,
-  type EncounterLink,
-  type VisitView,
 } from "./scheduling-workflow";
-import { VISIT_TONE, stateLabel } from "./scheduling-status";
 
 interface PatientSummary {
   mrn: string;
@@ -78,74 +85,87 @@ export function VisitDetail(): JSX.Element {
   return (
     <>
       <DetailPageLayout header={header}>
-      {error ? (
-        <EmptyState title="Unavailable" description={error} />
-      ) : loading || !visit ? (
-        <LoadingSpinner />
-      ) : (
-        <div style={workspace}>
-          <section style={section}>
-            <div style={sectionHeader}>
-              <div>
-                <h2 style={sectionTitle}>
-                  {patient ? `${patient.firstName} ${patient.lastName}` : "Scheduled visit"}
-                </h2>
-                <p style={meta}>
-                  {patient ? `MRN ${patient.mrn} · ` : ""}Admission {shortId(visit.admissionId)}
-                </p>
+        {error ? (
+          <EmptyState title="Unavailable" description={error} />
+        ) : loading || !visit ? (
+          <LoadingSpinner />
+        ) : (
+          <div style={workspace}>
+            <section style={section}>
+              <div style={sectionHeader}>
+                <div>
+                  <h2 style={sectionTitle}>
+                    {patient ? `${patient.firstName} ${patient.lastName}` : "Scheduled visit"}
+                  </h2>
+                  <p style={meta}>
+                    {patient ? `MRN ${patient.mrn} · ` : ""}Admission {shortId(visit.admissionId)}
+                  </p>
+                </div>
+                <StatusPill
+                  label={stateLabel(visit.status)}
+                  tone={VISIT_TONE[visit.status] ?? "neutral"}
+                />
               </div>
-              <StatusPill label={stateLabel(visit.status)} tone={VISIT_TONE[visit.status] ?? "neutral"} />
-            </div>
-            <div style={factsGrid}>
-              <FieldValue label="Purpose">{stateLabel(visit.visitPurpose)}</FieldValue>
-              <FieldValue label="Setting">{stateLabel(visit.visitSetting)}</FieldValue>
-              <FieldValue label="Service date">
-                <span className="tabular-nums">{visit.serviceDate}</span>
-              </FieldValue>
-              <FieldValue label="Scheduled start">
-                <span className="tabular-nums">{formatInstant(visit.scheduledStartedAt)}</span>
-              </FieldValue>
-              <FieldValue label="Scheduled end">
-                <span className="tabular-nums">{formatInstant(visit.scheduledEndedAt)}</span>
-              </FieldValue>
-              <FieldValue label="Assigned clinician">
-                <span className="wx-data-md">{shortId(visit.assignedMembershipId)}</span>
-              </FieldValue>
-              <FieldValue label="Location">
-                {visit.externalFacilityId
-                  ? `Facility ${shortId(visit.externalFacilityId)}`
-                  : visit.patientAddressId
-                    ? `Address ${shortId(visit.patientAddressId)}`
-                    : "Not specified"}
-              </FieldValue>
-              <FieldValue label="Linked Encounter">
-                {encounter ? (
-                  <button type="button" style={linkButton} onClick={() => navigate(`/patients/${encounter.patientId}/encounters/${encounter.id}`)}>
-                    {stateLabel(encounter.status)}
-                  </button>
-                ) : (
-                  "Processing"
-                )}
-              </FieldValue>
-              {visit.rescheduledIntoVisitId ? (
-                <FieldValue label="Rescheduled into">
-                  <button type="button" style={linkButton} onClick={() => navigate(`/scheduling/visits/${visit.rescheduledIntoVisitId}`)}>
-                    Visit {shortId(visit.rescheduledIntoVisitId)}
-                  </button>
+              <div style={factsGrid}>
+                <FieldValue label="Purpose">{stateLabel(visit.visitPurpose)}</FieldValue>
+                <FieldValue label="Setting">{stateLabel(visit.visitSetting)}</FieldValue>
+                <FieldValue label="Service date">
+                  <span className="tabular-nums">{visit.serviceDate}</span>
                 </FieldValue>
-              ) : null}
-            </div>
-          </section>
-          <VisitActionPanel
-            visit={visit}
-            encounter={encounter}
-            onChanged={(next) => {
-              if (next) setVisit(next);
-              void load();
-            }}
-          />
-        </div>
-      )}
+                <FieldValue label="Scheduled start">
+                  <span className="tabular-nums">{formatInstant(visit.scheduledStartedAt)}</span>
+                </FieldValue>
+                <FieldValue label="Scheduled end">
+                  <span className="tabular-nums">{formatInstant(visit.scheduledEndedAt)}</span>
+                </FieldValue>
+                <FieldValue label="Assigned clinician">
+                  <span className="wx-data-md">{shortId(visit.assignedMembershipId)}</span>
+                </FieldValue>
+                <FieldValue label="Location">
+                  {visit.externalFacilityId
+                    ? `Facility ${shortId(visit.externalFacilityId)}`
+                    : visit.patientAddressId
+                      ? `Address ${shortId(visit.patientAddressId)}`
+                      : "Not specified"}
+                </FieldValue>
+                <FieldValue label="Linked Encounter">
+                  {encounter ? (
+                    <button
+                      type="button"
+                      style={linkButton}
+                      onClick={() =>
+                        navigate(`/patients/${encounter.patientId}/encounters/${encounter.id}`)
+                      }
+                    >
+                      {stateLabel(encounter.status)}
+                    </button>
+                  ) : (
+                    "Processing"
+                  )}
+                </FieldValue>
+                {visit.rescheduledIntoVisitId ? (
+                  <FieldValue label="Rescheduled into">
+                    <button
+                      type="button"
+                      style={linkButton}
+                      onClick={() => navigate(`/scheduling/visits/${visit.rescheduledIntoVisitId}`)}
+                    >
+                      Visit {shortId(visit.rescheduledIntoVisitId)}
+                    </button>
+                  </FieldValue>
+                ) : null}
+              </div>
+            </section>
+            <VisitActionPanel
+              visit={visit}
+              encounter={encounter}
+              onChanged={(next) => {
+                if (next) setVisit(next);
+                void load();
+              }}
+            />
+          </div>
+        )}
       </DetailPageLayout>
       <NewVisitModal
         open={creating}
@@ -189,7 +209,11 @@ const factsGrid = {
   gridTemplateColumns: "repeat(auto-fit, minmax(12rem, 1fr))",
   gap: "0.9rem",
 } as const;
-const meta = { margin: "0.25rem 0 0", fontSize: "0.8rem", color: "var(--color-on-surface-variant)" } as const;
+const meta = {
+  margin: "0.25rem 0 0",
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+} as const;
 const linkButton = {
   border: "none",
   padding: 0,

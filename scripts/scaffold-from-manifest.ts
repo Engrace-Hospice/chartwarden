@@ -151,8 +151,14 @@ for (const cp of codePaths) {
   ensureFile(`${cp}/index.ts`, subPathStub(cp));
 }
 
-// ---- 3. root solution tsconfig.json (references every package + app) ----
-const refs = allRoots.map((r) => ({ path: `./${r}` }));
+// ---- 3. root solution tsconfig.json (references every package + app, plus scripts/) ----
+// `scripts/` is NOT manifest-driven — it is not a module, owns no tables, and is not scaffolded —
+// but it must be in the project graph or `tsc -b` silently skips ~24.7k lines that decide whether
+// the architecture gates pass (#34). It is appended here rather than hand-added to the root
+// tsconfig, because this generator rewrites that file wholesale and would drop it on the next
+// `bun run scaffold`.
+const NON_MANIFEST_PROJECTS = ["scripts"] as const;
+const refs = [...allRoots, ...NON_MANIFEST_PROJECTS].map((r) => ({ path: `./${r}` }));
 const rootTsconfig = `${JSON.stringify(
   {
     files: [],

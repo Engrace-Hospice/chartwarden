@@ -14,13 +14,19 @@
 // This service ALSO implements {@link EmarAbacResolver} so the §4.7 predicates resolve over the same dataset
 // (M12-T08 precedent: the backend is both the route service and the ABAC resolver).
 import {
+  ADMINISTRATION_MODE_CATALOG,
   AdministrationStateError,
   type BarcodeMatchResult,
   type BarcodeScanInput,
   type FiveRightsOrderContext,
+  type IvSegment,
+  type IvSegmentMode,
   assertFiveRights,
   barcodeScanBlocks,
+  composeIvSession,
+  deriveIvSessionState,
   evaluateBarcodeScan,
+  planIvSegment,
   resolveLateEntryTier,
 } from "@wardenx/emar";
 import type {
@@ -96,6 +102,8 @@ export interface ReconciliationDecisionView {
   readonly lineKind: string;
   readonly sourceId: string;
   readonly decision: ReconciliationDecisionKind;
+  /** §2.8 D17 — the M12 draft this decision produced, once sent to the prescriber (F-031). */
+  readonly resultingMedicationOrderId: string | null;
 }
 
 export interface WorksheetView {
@@ -124,7 +132,24 @@ export interface AdministrationPolicyView {
 export interface IvSessionView {
   readonly sessionId: string;
   readonly medicationOrderId: string;
-  readonly segments: readonly { kind: AdministrationMode; recordedAt: string }[];
+  /** The `iv_continuous_start` segment's clinical instant — the FHIR `effectivePeriod.start`. */
+  readonly startedAt: string;
+  /** The `iv_continuous_stop` segment's instant, or null while the session is open. */
+  readonly endedAt: string | null;
+  /**
+   * §2.11 — the state the segment sequence derives (`running` / `paused` / `stopped`). Published so a
+   * client can offer the segments `IV_SESSION_GRAPH` accepts NEXT instead of offering all five and
+   * discovering the illegal ones as 409s at the bedside. The server still decides: this is the same
+   * derivation `assertIvSegmentLegal` runs on the write.
+   */
+  readonly state: "none" | "running" | "paused" | "stopped";
+  readonly segments: readonly {
+    kind: AdministrationMode;
+    recordedAt: string;
+    /** The infusion rate this segment carries (start/rate_change); null for pause/resume/stop. */
+    rate: number | null;
+    rateUnit: string | null;
+  }[];
 }
 
 // ── input args ───────────────────────────────────────────────────────────────────────────────────────────
@@ -136,6 +161,18 @@ export interface RecordAdministrationArgs {
   readonly scheduledDoseId?: string;
   readonly comfortKitDeploymentId?: string;
   readonly encounterId?: string;
+  /**
+   * §2.11 D11 — the IV-continuous session this segment belongs to. REQUIRED for `rate_change` / `pause` /
+   * `resume` / `stop` (they continue a session) and REFUSED for `iv_continuous_start` (which mints one).
+   */
+  readonly ivSessionId?: string;
+  /**
+   * The per-mode body (§2.1 mode catalog). Carried opaquely from the route — the server discriminates on
+   * `mode` — and persisted onto the row, which is where the IV rate, the titration reason and the wastage
+   * live. `route` / `doseAmount` / `doseUnit` below are the discrete fields lifted out of it for the
+   * §5.11 five-rights checks and the snapshot columns.
+   */
+  readonly data?: unknown;
   readonly prn?: { triggeringPrnReason: string; requestedByKind: string };
   readonly lateEntryReason?: string;
   readonly offlineCapture?: { deviceId: string; localId: string; capturedAt: string };
@@ -250,6 +287,7 @@ export interface EmarRouteService extends EmarAbacResolver {
     id: string,
     lineId: string,
     decision: ReconciliationDecisionKind,
+    resultingMedicationOrderId?: string,
   ): Promise<WorksheetView>;
   addCaregiverReportedLine(orgId: string, id: string, drugName: string): Promise<WorksheetView>;
   finalizeReconciliation(orgId: string, userId: string, id: string): Promise<WorksheetView>;
@@ -330,6 +368,9 @@ export interface EmarOrderSeed {
   readonly blockedReasons?: readonly string[];
   readonly rxnormRxcui?: string | null;
   readonly ndc?: string | null;
+  /** §2.11 D11 — the titration bounds this order authorises. ABSENT means it authorises no titration, so
+   *  a `rate_change` against it is refused (`IV_RATE_OUT_OF_RANGE`) rather than treated as unbounded. */
+  readonly ivContinuousPolicy?: { readonly minRate: number; readonly maxRate: number } | null;
 }
 /** A seeded patient identity for the §2.9 BCMA wristband match. */
 export interface EmarPatientSeed {
@@ -375,7 +416,33 @@ interface AdminRow {
   requiresRnReview: boolean;
   supersededById: string | null;
   barcodeMatchResult: BarcodeMatchResult | null;
+  /** §2.1 per-mode body — where the IV rate/titration reason/wastage live (F-031). */
+  data?: unknown;
 }
+/** The rate a slice-stored segment carries — the same `data` keys the Drizzle path and the seam read. */
+function sliceIvRateOf(data: unknown): { rate?: number; rateUnit?: string } {
+  const d = (data ?? {}) as Record<string, unknown>;
+  const rate = [d.infusionRate, d.newRate, d.rate].find((v) => typeof v === "number") as
+    | number
+    | undefined;
+  const rateUnit = [d.rateUnit, d.infusionRateUnit].find((v) => typeof v === "string") as
+    | string
+    | undefined;
+  return {
+    ...(rate !== undefined ? { rate } : {}),
+    ...(rateUnit !== undefined ? { rateUnit } : {}),
+  };
+}
+
+/** The seeded order's titration bounds, or null when it authorises none. */
+function sliceIvPolicyOf(order: EmarOrderSeed | undefined): {
+  minRate: number;
+  maxRate: number;
+} | null {
+  const p = order?.ivContinuousPolicy;
+  return p ? { minRate: p.minRate, maxRate: p.maxRate } : null;
+}
+
 interface WorksheetRow {
   id: string;
   organizationId: string;
@@ -657,6 +724,59 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         witnessTokens.delete(args.witnessToken!); // single-use, burned on consume
       }
       const isComfortKitDrawdown = Boolean(args.comfortKitDeploymentId);
+      // §2.11 D11 — the slice runs the SAME pure core the Drizzle path does (F-031/#134), so a boot-
+      // without-DB run refuses an out-of-sequence segment and an out-of-bounds titration identically.
+      const modeMeta = ADMINISTRATION_MODE_CATALOG[args.mode];
+      let ivSessionId: string | null = null;
+      if (modeMeta.isIvContinuous) {
+        if (modeMeta.ivSessionRole === "mint") {
+          if (args.ivSessionId)
+            throw new ValidationError("an IV-continuous start mints its own session", [
+              {
+                field: "ivSessionId",
+                code: "INVALID",
+                message: "iv_continuous_start must not name an existing session",
+              },
+            ]);
+        } else if (!args.ivSessionId) {
+          throw new ValidationError("this IV segment must name its session", [
+            {
+              field: "ivSessionId",
+              code: "REQUIRED",
+              message: `${args.mode} continues an existing IV session and requires its ivSessionId`,
+            },
+          ]);
+        }
+        const prior: IvSegment[] = args.ivSessionId
+          ? [...admins.values()]
+              .filter(
+                (r) =>
+                  r.organizationId === orgId &&
+                  r.ivSessionId === args.ivSessionId &&
+                  r.status !== "voided",
+              )
+              .sort(
+                (a, b) =>
+                  Date.parse(a.administeredAt) - Date.parse(b.administeredAt) ||
+                  Date.parse(a.recordedAt) - Date.parse(b.recordedAt),
+              )
+              .map((r) => ({
+                mode: r.mode as IvSegmentMode,
+                administeredAt: r.administeredAt,
+                ...sliceIvRateOf(r.data),
+              }))
+          : [];
+        if (args.ivSessionId && prior.length === 0) throw new NotFoundError("iv session not found");
+        const body = (args.data ?? {}) as { newRate?: unknown; wastageAmount?: unknown };
+        const plan = planIvSegment(deriveIvSessionState(prior), {
+          mode: args.mode as IvSegmentMode,
+          isControlled,
+          newRate: typeof body.newRate === "number" ? body.newRate : null,
+          policy: sliceIvPolicyOf(orders.get(args.medicationOrderId)),
+          wastageAmount: typeof body.wastageAmount === "number" ? body.wastageAmount : null,
+        });
+        ivSessionId = plan.mintsSession ? nextId("ivs") : (args.ivSessionId ?? null);
+      }
       const id = nextId("adm");
       // The patient/admission are resolved from M12 in prod; the slice derives from the scheduled dose or seed.
       const sched = args.scheduledDoseId ? scheduled.get(args.scheduledDoseId) : undefined;
@@ -691,12 +811,13 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         encounterId,
         scheduledDoseId: args.scheduledDoseId ?? null,
         comfortKitDeploymentId: args.comfortKitDeploymentId ?? null,
-        ivSessionId: null,
+        ivSessionId,
         isControlledSubstance: isControlled,
         isComfortKitDrawdown,
         requiresRnReview: false,
         supersededById: null,
         barcodeMatchResult,
+        data: args.data,
       };
       admins.set(id, row);
       if (sched) sched.status = "administered";
@@ -858,14 +979,34 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         .map(view);
     },
     async getIvSession(orgId, sessionId): Promise<IvSessionView> {
-      const segs = [...admins.values()].filter(
-        (r) => r.organizationId === orgId && r.ivSessionId === sessionId,
-      );
+      const segs = [...admins.values()]
+        .filter(
+          (r) => r.organizationId === orgId && r.ivSessionId === sessionId && r.status !== "voided",
+        )
+        .sort(
+          (a, b) =>
+            Date.parse(a.administeredAt) - Date.parse(b.administeredAt) ||
+            Date.parse(a.recordedAt) - Date.parse(b.recordedAt),
+        );
       if (segs.length === 0) throw new NotFoundError("iv session not found");
+      const ordered: IvSegment[] = segs.map((r) => ({
+        mode: r.mode as IvSegmentMode,
+        administeredAt: r.administeredAt,
+        ...sliceIvRateOf(r.data),
+      }));
+      const session = composeIvSession(sessionId, segs[0]!.medicationOrderId, ordered, null);
       return {
         sessionId,
-        medicationOrderId: segs[0]!.medicationOrderId,
-        segments: segs.map((r) => ({ kind: r.mode, recordedAt: r.recordedAt })),
+        medicationOrderId: session.medicationOrderId,
+        startedAt: session.startedAt,
+        endedAt: session.endedAt,
+        state: deriveIvSessionState(ordered),
+        segments: session.segments.map((seg) => ({
+          kind: seg.mode,
+          recordedAt: seg.administeredAt,
+          rate: seg.rate,
+          rateUnit: seg.rateUnit,
+        })),
       };
     },
     async recordRefusal(orgId, userId, args): Promise<AdministrationView> {
@@ -985,6 +1126,7 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         lineKind: args.lineKind,
         sourceId: args.sourceId,
         decision: args.decision,
+        resultingMedicationOrderId: null,
       });
       w.status = "in_progress";
       if (args.decision === "carry_forward" || args.decision === "new_order")
@@ -1003,11 +1145,22 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         });
       return wView(w);
     },
-    async updateDecision(orgId, userId, id, lineId, decision): Promise<WorksheetView> {
+    async updateDecision(
+      orgId,
+      userId,
+      id,
+      lineId,
+      decision,
+      resultingMedicationOrderId,
+    ): Promise<WorksheetView> {
       const w = requireWorksheet(orgId, id);
       const existing = w.decisions.get(lineId);
       if (!existing) throw new NotFoundError("decision line not found");
-      w.decisions.set(lineId, { ...existing, decision });
+      w.decisions.set(lineId, {
+        ...existing,
+        decision,
+        ...(resultingMedicationOrderId ? { resultingMedicationOrderId } : {}),
+      });
       return wView(w);
     },
     async addCaregiverReportedLine(orgId, id, drugName): Promise<WorksheetView> {

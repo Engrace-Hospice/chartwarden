@@ -143,11 +143,11 @@ describe("M18-T08 §12 workflow acceptance", () => {
 
   it("D3 — the route service enforces tighten-only on a tenant policy edit (may not loosen past the platform floor)", () => {
     const svc = service();
-    expect(svc.editTenantPolicy(ORG, { radiusM: 80, maxAccuracyM: 30 }).tenant).toEqual({
+    expect(svc.editTenantPolicy(ORG, "u1", { radiusM: 80, maxAccuracyM: 30 }).tenant).toEqual({
       radiusM: 80,
       maxAccuracyM: 30,
     });
-    expect(() => svc.editTenantPolicy(ORG, { radiusM: 250, maxAccuracyM: 30 })).toThrowError(
+    expect(() => svc.editTenantPolicy(ORG, "u1", { radiusM: 250, maxAccuracyM: 30 })).toThrowError(
       expect.objectContaining({ code: "CONFLICT" }),
     );
   });
@@ -195,9 +195,9 @@ describe("M18-T08 §12 workflow acceptance", () => {
     expect(() => svc.resubmitSubmission(ORG, "u1", "sub-accepted")).toThrowError(
       expect.objectContaining({ code: "ILLEGAL_AGGREGATOR_SUBMISSION_TRANSITION" }),
     );
-    expect(() => svc.cancelSubmission(ORG, "u1", "sub-accepted")).toThrowError(
-      expect.objectContaining({ code: "ILLEGAL_AGGREGATOR_SUBMISSION_TRANSITION" }),
-    );
+    expect(() =>
+      svc.cancelSubmission(ORG, "u1", "sub-accepted", "already accepted by the state"),
+    ).toThrowError(expect.objectContaining({ code: "ILLEGAL_AGGREGATOR_SUBMISSION_TRANSITION" }));
   });
 
   it("D10 — the portal arrival projection carries timestamps only; the team-location seam is the only coord-bearing read", () => {

@@ -13,6 +13,7 @@ import type { CursorPage as ServiceCursorPage } from "./concurrency";
 import type {
   DocumentView as ServiceDocumentView,
   IntakeBatchView as ServiceIntakeBatchView,
+  TagView as ServiceTagView,
   VersionView as ServiceVersionView,
 } from "./service";
 import type { MintedSignedUrl as ServiceMintedSignedUrl } from "./signed-url-service";
@@ -342,10 +343,15 @@ export const DocumentListQuerySchema = Type.Object({
   aggregateType: Type.Optional(Type.String({ maxLength: 64 })),
   aggregateId: Type.Optional(Type.String({ maxLength: 64 })),
   retentionClass: Type.Optional(Type.String({ maxLength: 64 })),
+  // F-060 — find documents by tag, the query `document_tag_org_key_idx` was built for. `tagValue`
+  // narrows within a key and is ignored without one (a value alone spans unrelated keys).
+  tagKey: Type.Optional(Type.String({ maxLength: 128 })),
+  tagValue: Type.Optional(Type.String({ maxLength: 512 })),
   ...PageQuery,
 });
 
 export const VersionListQuerySchema = Type.Object(PageQuery);
+export const TagListQuerySchema = Type.Object(PageQuery);
 export const ClassificationQuerySchema = Type.Object(PageQuery);
 export const JobsListQuerySchema = Type.Object(PageQuery);
 export const JobQuerySchema = Type.Object(PageQuery);
@@ -375,6 +381,8 @@ const INTAKE_BATCH_STATUS = [
   "parse_failed",
 ] as const;
 const EXTRACTION_REVIEW_STATUS = ["in_progress", "complete", "abandoned"] as const;
+/** §3.3 — `free` values may carry PHI (denylisted in the audit trigger); `structured` ones may not. */
+const DOCUMENT_TAG_KIND = ["free", "structured"] as const;
 const DOCUMENT_ACCESS_KIND = [
   "metadata_read",
   "content_download",
@@ -422,6 +430,22 @@ export const VersionViewSchema = Type.Object({
   createdAt: Type.String({ format: "date-time" }),
 });
 export const VersionListResponseSchema = CursorPageOf(VersionViewSchema);
+
+/**
+ * F-060 — the §3.3 tag DTO. `document_tag` was write-only: `POST /documents/:id/tags` returned the
+ * created row on the wire and declared NO response schema, so `client:gen` typed it `never` and the
+ * id `DELETE /documents/:id/tags/:tagId` needs was unreadable by any typed caller. Publishing the
+ * shape is what makes the DELETE reachable and the tag survivable across a page load.
+ */
+export const TagViewSchema = Type.Object({
+  id: Type.String(),
+  tagKind: lit(DOCUMENT_TAG_KIND),
+  tagKey: Type.String(),
+  tagValue: Type.Union([Type.String(), Type.Null()]),
+  addedAt: Type.String({ format: "date-time" }),
+  createdAt: Type.String({ format: "date-time" }),
+});
+export const TagListResponseSchema = CursorPageOf(TagViewSchema);
 
 export const IntakeBatchViewSchema = Type.Object({
   id: Type.String(),
@@ -517,6 +541,8 @@ type _DocumentList = Conforms<
   Static<typeof DocumentListResponseSchema>,
   ServiceCursorPage<ServiceDocumentView>
 >;
+type _TagView = Conforms<Static<typeof TagViewSchema>, ServiceTagView>;
+type _TagList = Conforms<Static<typeof TagListResponseSchema>, ServiceCursorPage<ServiceTagView>>;
 type _VersionView = Conforms<Static<typeof VersionViewSchema>, ServiceVersionView>;
 type _VersionList = Conforms<
   Static<typeof VersionListResponseSchema>,

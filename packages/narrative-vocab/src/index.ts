@@ -9,6 +9,13 @@ import { VOCABULARY } from "./vocabulary";
 
 export type { VocabBodySystem, VocabCategory, VocabEntry } from "./types";
 export { VOCABULARY, VOCAB_VERSION } from "./vocabulary";
+export {
+  NARRATIVE_VOCAB_RELEASES,
+  UnregisteredNarrativeVocabRelease,
+  activeNarrativeVocabRelease,
+  narrativeVocabReleaseById,
+  type NarrativeVocabRelease,
+} from "./releases";
 
 /** Code → entry index for O(1) resolution at assembly time (built once, frozen). */
 export const VOCAB_BY_CODE: ReadonlyMap<string, VocabEntry> = new Map(

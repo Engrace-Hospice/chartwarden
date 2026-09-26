@@ -179,7 +179,7 @@ describe("DisciplinePlanReader (§4.3)", () => {
     const { store } = createInMemoryDisciplinePlanSeamStore({
       plans: [
         { digest: digest(), idgDigest },
-        { digest: digest({ planId: PLAN_B, status: "closed", kind: "msw_plan" }) },
+        { digest: digest({ planId: PLAN_B, status: "discharged", kind: "msw_plan" }) },
       ],
     });
     const reader = createDisciplinePlanReader(store);
@@ -426,7 +426,10 @@ describe("DisciplineComplianceProvider (§4.3) — an empty scope is null, never
     });
     const provider = createDisciplineComplianceProvider(store);
     const scope = { orgId: ORG };
-    expect(await provider.supervisoryOnTimeCounts(scope)).toEqual({ numerator: 9, denominator: 10 });
+    expect(await provider.supervisoryOnTimeCounts(scope)).toEqual({
+      numerator: 9,
+      denominator: 10,
+    });
     expect(await provider.volunteerGateComplianceCounts(scope)).toEqual({
       numerator: 5,
       denominator: 5,

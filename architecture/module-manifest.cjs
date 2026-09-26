@@ -59,7 +59,7 @@ exports.ALL_OWNED_PATHS =
     void 0;
 exports.allowedImportPaths = allowedImportPaths;
 exports.allowedTables = allowedTables;
-exports.LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/domain", "packages/ui", "apps/web/src/shared", "apps/web/src/modules/22-documents"];
+exports.LEAF_PACKAGES = ["packages/shared", "packages/types", "packages/domain", "packages/ui"];
 /**
  * Foundation helper packages every module may import WITHOUT a dependsOn edge
  * (ADR-0005 D4): audit() (packages/audit), requirePermission/requireAbac/
@@ -155,6 +155,8 @@ exports.MODULES = [
       "passkey",
       "organization_invitation",
       "tenant_step_up_policy_override",
+      "membership_elevated_approval",
+      "device_attestation",
     ],
   },
   {
@@ -338,8 +340,11 @@ exports.MODULES = [
       "discharge_event",
       "transfer_event",
       "referral",
+      "referral_activity",
+      "referral_note",
       "notice_of_rights_acknowledgment",
       "compliance_window",
+      "admission_evidence",
     ],
   },
   {
@@ -843,6 +848,7 @@ exports.MODULES = [
       "fhir_client_credential",
       "fhir_client_session",
       "fhir_inbound_resource",
+      "fhir_read_disclosure",
       "tenant_fhir_config",
     ],
   },
@@ -1064,6 +1070,7 @@ exports.MODULES = [
       "ipu_remote_inpatient_episode",
       "ipu_restraint_event",
       "ipu_restraint_reassessment",
+      "ipu_rn_break_glass",
       "ipu_rn_coverage_window",
       "ipu_room",
       "ipu_shift",

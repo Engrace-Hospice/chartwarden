@@ -29,6 +29,7 @@ import {
   eq,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   ne,
   or,
@@ -82,6 +83,7 @@ import {
   ReferralNotReadyError,
   ReferralNotTriagedError,
   ResourceNotFoundError,
+  SIGNER_KIND_BY_ROLE,
   VersionMismatchError,
 } from "./routes/service";
 import type {
@@ -90,6 +92,7 @@ import type {
   AdmissionRouteService,
   MutationResult,
   Page,
+  PatientAdmissionSummary,
   PatientElectionCertificationView,
   SummaryRow,
 } from "./routes/service";
@@ -98,21 +101,18 @@ import {
   type AdmissionState,
   transitionAdmission,
 } from "./state-machines/admission";
-import {
-  planDischarge,
-  planRevocation,
-  planTransferOut,
-} from "./state-machines/commands";
+import { planDischarge, planRevocation, planTransferOut } from "./state-machines/commands";
 import type { SideEffect } from "./state-machines/effects";
+import {
+  type ElectionPeriodState,
+  RECERT_SEQUENCE_FLOOR,
+  electionPeriodKindForSequence,
+  electionPeriodScheduledEnd,
+  transitionElectionPeriod,
+} from "./state-machines/election-period";
 import { AdmissionStateError } from "./state-machines/errors";
-import {
-  type FaceToFaceState,
-  transitionFaceToFace,
-} from "./state-machines/face-to-face";
-import {
-  type LevelOfCareState,
-  transitionLevelOfCare,
-} from "./state-machines/level-of-care";
+import { type FaceToFaceState, transitionFaceToFace } from "./state-machines/face-to-face";
+import { type LevelOfCareState, transitionLevelOfCare } from "./state-machines/level-of-care";
 
 /**
  * The transactional-outbox port (§4.4): the composition root binds M1's catalog-validating publisher
@@ -140,6 +140,61 @@ const NOOP_OUTBOX: AdmissionWriteOutboxPort = { async publish() {} };
  * closed with a precise 503 rather than silently trusting an unverified bed (matches the M24 composition-
  * root reader posture — degrade with a message, never fake success).
  */
+/**
+ * Confirms a provider entity belongs to THIS org (#44). `provider_entity` is an M1 FOUNDATION table
+ * that M6 does not own and must not import (`arch:tables`: cross-module reads go through the owner's
+ * service, never its schema), so the check is injected from the composition root.
+ *
+ * It is needed because the FK on `election_statement.provider_entity_id` / `admission.provider_entity_id`
+ * is a plain single-column reference with no organization in it — nothing at the database level stops
+ * one tenant from electing another tenant's hospice. While the field was being discarded that was
+ * moot; persisting it makes the check load-bearing.
+ *
+ * Optional, and an absent binding fails the draft route CLOSED with a precise 503 rather than writing
+ * an unverified provider entity — the same posture as {@link IpuBedAssignmentReaderPort} below.
+ */
+export interface ProviderEntityOrgCheckPort {
+  belongsToOrg(organizationId: string, providerEntityId: string): Promise<boolean>;
+}
+
+/**
+ * Lists the ACTIVE service locations under a provider entity (#50) — how activation sites an admission.
+ *
+ * Same reasoning as {@link ProviderEntityOrgCheckPort}: `location` is an M1 FOUNDATION table M6 does not
+ * own and must not import, so the composition root binds it.
+ *
+ * `admission.location_id` was never written by ANY code path — no route accepted a location, no
+ * transition assigned one, nothing backfilled it. It is the second half of the #44 siting gap, and it
+ * kept every admission unsited at the location level: M10 refuses to create a HOPE timepoint schedule
+ * (`hope_timepoint_schedule.location_id` is NOT NULL), M10's D8 compensating validation finding cannot
+ * be written for the same reason, and every M9 capture is recorded with a null location.
+ *
+ * Optional. An absent binding leaves the admission unsited rather than blocking activation: the
+ * admission is ALREADY unsited today, and turning a data gap into an availability outage would be the
+ * wrong trade — the downstream modules already refuse loudly on their own behalf.
+ */
+export interface ProviderEntityLocationPort {
+  activeLocationsFor(organizationId: string, providerEntityId: string): Promise<readonly string[]>;
+}
+
+/**
+ * R-EL-01 — does this patient have an ACTIVE M39 `dpoa_healthcare` consent right now?
+ *
+ * The one fact `transitionElectionPeriod`'s `signElectionStatement` guard needs that M6 cannot resolve
+ * itself: the consent record lives in M39's tables, which M6 must not import (§2.5). Bound at the
+ * composition root over M39's `ConsentStore`, the same way {@link ProviderEntityOrgCheckPort} is bound
+ * over M1's `provider_entity`.
+ *
+ * Absent binding DENIES a representative-signed election rather than allowing it. That is the opposite
+ * default from {@link ProviderEntityLocationPort} on purpose: an unsited admission is a data gap, while
+ * an unverified representative signature is a legal record asserting an authority nobody checked — and
+ * the rule this port exists for has been unenforced since M6 shipped, so "allow when unbound" is the
+ * exact state being fixed. A PATIENT-signed election never reaches this port.
+ */
+export interface DpoaConsentCheckPort {
+  hasActiveDpoaHealthcareConsent(organizationId: string, patientId: string): Promise<boolean>;
+}
+
 export interface IpuBedAssignmentReaderPort {
   activeBedAssignmentForLevelOfCarePeriod(
     organizationId: string,
@@ -196,11 +251,7 @@ const REASON_TO_SM_TYPE: Record<
 /** §4.2.7 discharge reason → the `discharge_type` enum persisted on the discharge_event row. */
 const REASON_TO_DB_TYPE: Record<
   DischargeReason,
-  | "death"
-  | "moved_out_of_service_area"
-  | "no_longer_terminal"
-  | "for_cause"
-  | "other"
+  "death" | "moved_out_of_service_area" | "no_longer_terminal" | "for_cause" | "other"
 > = {
   death: "death",
   moved_out_of_service_area: "moved_out_of_service_area",
@@ -220,9 +271,7 @@ const MAX_LIMIT = 200;
 const DEFAULT_LIMIT = 50;
 
 const clampLimit = (n?: number): number =>
-  n === undefined
-    ? DEFAULT_LIMIT
-    : Math.max(1, Math.min(MAX_LIMIT, Math.trunc(n)));
+  n === undefined ? DEFAULT_LIMIT : Math.max(1, Math.min(MAX_LIMIT, Math.trunc(n)));
 /** The in-memory slice cursors on an integer offset (`String(offset)`); mirror it exactly. */
 const parseOffset = (cursor?: string): number => {
   const n = cursor ? Number.parseInt(cursor, 10) : 0;
@@ -300,8 +349,7 @@ function toReferralReadView(
 
 /** Org-TZ for the D4 written-cert deadline until a per-org TZ is threaded through the write path. */
 const DEFAULT_ORG_TZ = "America/Los_Angeles";
-const conflict = (msg: string): WardenXError =>
-  new WardenXError("INVALID_STATE", msg, 409);
+const conflict = (msg: string): WardenXError => new WardenXError("INVALID_STATE", msg, 409);
 
 /** §2.5 compliance-window deadlines from open instant (only the T02 `createAdmission` kinds). */
 const WINDOW_HOURS: Record<string, number> = {
@@ -321,6 +369,9 @@ export function createDbAdmissionRouteService(
   db: DbClient,
   outbox: AdmissionWriteOutboxPort = NOOP_OUTBOX,
   ipuBedAssignmentReader?: IpuBedAssignmentReaderPort,
+  providerEntityOrgCheck?: ProviderEntityOrgCheckPort,
+  providerEntityLocations?: ProviderEntityLocationPort,
+  dpoaConsent?: DpoaConsentCheckPort,
 ): AdmissionRouteService {
   const now = () => new Date();
 
@@ -349,10 +400,7 @@ export function createDbAdmissionRouteService(
           400,
         );
       }
-      if (
-        link.patientId !== args.patientId ||
-        link.admissionId !== args.admissionId
-      ) {
+      if (link.patientId !== args.patientId || link.admissionId !== args.admissionId) {
         throw new WardenXError(
           "ADMISSION_EVIDENCE_DOCUMENT_MISMATCH",
           "The uploaded document is not linked to this admission and patient.",
@@ -362,10 +410,61 @@ export function createDbAdmissionRouteService(
     },
   };
 
+  /**
+   * #50 — the service location this activation sites the admission at.
+   *
+   * The rule, in the order it fails:
+   *   · no elected provider entity yet → `null`. Nothing to scope a location to, and the admission is
+   *     already unsited at the PE level (#44's transfer-in residue); blocking activation on that
+   *     pre-existing gap would convert missing data into an outage.
+   *   · no location port bound → `null`, same reasoning.
+   *   · the caller NAMED a location → it must be one of the PE's active locations, else 422. A name
+   *     that does not belong is refused rather than silently replaced by a derived one.
+   *   · the PE has EXACTLY ONE active location → derive it. This is not a default: with one candidate
+   *     there is no choice to make, so asking a human to confirm it produces a click, not a decision.
+   *   · the PE has MORE THAN ONE, and none was named → 422. There is no defensible pick (`location`
+   *     carries no primary flag), and guessing would put a federal capture window and its timezone at
+   *     the wrong site.
+   *   · the PE has ZERO active locations → 422, naming that as the cause. Distinct from "choose one".
+   */
+  async function resolveActivationLocation(
+    organizationId: string,
+    providerEntityId: string | null,
+    requested: string | null,
+  ): Promise<string | null> {
+    if (!providerEntityId || !providerEntityLocations) return null;
+    const active = await providerEntityLocations.activeLocationsFor(
+      organizationId,
+      providerEntityId,
+    );
+    if (requested) {
+      if (!active.includes(requested)) {
+        throw new WardenXError(
+          "M6_LOCATION_NOT_UNDER_PROVIDER_ENTITY",
+          `location ${requested} is not an active location of the admission's elected provider entity`,
+          422,
+        );
+      }
+      return requested;
+    }
+    if (active.length === 1) return active[0] as string;
+    if (active.length === 0) {
+      throw new WardenXError(
+        "M6_LOCATION_REQUIRED",
+        "the elected provider entity has no active location, so this admission cannot be sited; activate a location first",
+        422,
+      );
+    }
+    throw new WardenXError(
+      "M6_LOCATION_REQUIRED",
+      `the elected provider entity has ${active.length} active locations; name the one this admission is served from (locationId)`,
+      422,
+    );
+  }
+
   /** Optimistic lock: a stale `ifVersion` is a 409 VERSION_MISMATCH (matches the in-memory slice). */
   function assertVersion(id: string, current: number, expected: number): void {
-    if (current !== expected)
-      throw new VersionMismatchError(id, current, expected);
+    if (current !== expected) throw new VersionMismatchError(id, current, expected);
   }
 
   /**
@@ -440,31 +539,177 @@ export function createDbAdmissionRouteService(
             version: sql`${LOC.version} + 1`,
             updatedAt: now(),
           })
-          .where(
-            and(
-              eq(LOC.admissionId, ctx.admissionId),
-              sql`${LOC.endedAt} is null`,
-            ),
-          );
+          .where(and(eq(LOC.admissionId, ctx.admissionId), sql`${LOC.endedAt} is null`));
       } else if (e.kind === "end_election_period") {
         // §2.3.1 discharge/revocation/transfer cascade — complete every non-terminal benefit period.
-        await tx
-          .update(EP)
-          .set({
-            status: "completed",
-            version: sql`${EP.version} + 1`,
-            updatedAt: now(),
-          })
-          .where(
-            and(
-              eq(EP.admissionId, ctx.admissionId),
-              ne(EP.status, "completed"),
-            ),
-          );
+        //
+        // `actual_end_at` is stamped here, not left null: it is the `complete` transition's own
+        // `set_timestamp` effect (state-machines/election-period.ts), and a completed period whose
+        // actual end is unknown makes the period's real length unrecoverable — which is the whole
+        // question HCI indicator 2 and M28's benefit-period projection ask of this row. Only ever SET
+        // on the transition, never recomputed, so a period completed earlier keeps its own date.
+        //
+        // §2.3.2 `complete` runs per ROW rather than as one blanket UPDATE, because the graph accepts
+        // `complete` only from `active`: a period still `pending` or `signed` when its admission is
+        // discharged never started, and completing it would record an election that never ran. Those
+        // rows are left where they are — the cascade ends the ACTIVE election, which is what
+        // "end_election_period" means.
+        const openPeriods = await tx
+          .select({ id: EP.id, status: EP.status })
+          .from(EP)
+          .where(and(eq(EP.admissionId, ctx.admissionId), ne(EP.status, "completed")));
+        const endedAt = isoDay(now());
+        for (const row of openPeriods) {
+          if ((row.status as ElectionPeriodState) !== "active") continue;
+          transitionElectionPeriod(row.status as ElectionPeriodState, {
+            type: "complete",
+            cause: "discharge",
+            actualEndAt: endedAt,
+          });
+          await tx
+            .update(EP)
+            .set({
+              status: "completed",
+              actualEndAt: endedAt,
+              version: sql`${EP.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(eq(EP.id, row.id));
+        }
       }
       // `audit`, `set_timestamp`, `set_flag`, `start_level_of_care` are folded into the aggregate
       // INSERT/UPDATE by the caller; `audit` is the M4 write-audit trigger (automatic).
     }
+  }
+
+  // ── the §2.3.2 election-period machine, actually reached ────────────────────────────────────────
+  //
+  // `transitionElectionPeriod` used to be called by nothing outside its own unit test: every write here
+  // set `election_period.status` with a bare UPDATE, so the graph never rejected an illegal jump and
+  // none of the guards ran. The consequences were not theoretical —
+  //
+  //   · R-F2F-04 (42 CFR 418.22(a)(4)): a third-or-later benefit period could activate through
+  //     `signCtiHospiceMd` with no attested face-to-face encounter. `decideRecertSign` has no F2F term,
+  //     and `F2F_REQUIRED_FOR_RECERT` appeared nowhere but inside the unreached machine.
+  //   · R-EL-01 / R-EL-02 / R-EL-04 and the overlap check: the three §2.4 election validators were
+  //     likewise called only from the machine, so an election statement could be signed by a
+  //     representative with no DPOA authority, for a patient already elected elsewhere, with the
+  //     curative-care acknowledgment declined.
+  //   · `election_period.status = 'signed'` was written by NOTHING. The real lifecycle was
+  //     `pending → active → completed`, so the documented graph could not have been followed even if
+  //     something had tried: `pending` accepts only `signElectionStatement`.
+  //
+  // The transitions below load each guard's facts org-scoped (never from the request body) and dispatch
+  // through the machine, which throws the typed §2.4 code the M1 error handler renders.
+
+  /** The election-period row a transition is about, plus the patient it belongs to (via its admission). */
+  async function electionPeriodFacts(
+    tx: DbClient,
+    periodId: string,
+  ): Promise<{
+    status: ElectionPeriodState;
+    sequenceNumber: number;
+    admissionId: string;
+    patientId: string;
+    providerEntityId: string | null;
+  } | null> {
+    const [row] = await tx
+      .select({
+        status: EP.status,
+        sequenceNumber: EP.sequenceNumber,
+        admissionId: EP.admissionId,
+        patientId: ADM.patientId,
+        providerEntityId: ADM.providerEntityId,
+      })
+      .from(EP)
+      .innerJoin(ADM, eq(EP.admissionId, ADM.id))
+      .where(eq(EP.id, periodId))
+      .limit(1);
+    if (!row) return null;
+    return {
+      status: row.status as ElectionPeriodState,
+      sequenceNumber: Number(row.sequenceNumber),
+      admissionId: row.admissionId,
+      patientId: row.patientId,
+      providerEntityId: row.providerEntityId,
+    };
+  }
+
+  /**
+   * R-EL-02 + the overlap guard, in one scan.
+   *
+   * Both ask about election periods for the SAME PATIENT on a DIFFERENT ADMISSION that have not been
+   * completed. Same-admission periods are excluded because they are sequential by construction — period
+   * 2 of an admission does not overlap period 1 of it, and counting them would refuse every recert.
+   *
+   * They differ by one term, and it is the term CMS cares about: `existingActiveElectionElsewhere` is
+   * restricted to a DIFFERENT provider entity (a patient may not be elected at two hospices at once),
+   * while `wouldOverlap` covers any other open election including one at this same hospice — a second
+   * concurrent admission here is equally invalid, just not the thing 42 CFR 418.24 names.
+   */
+  async function concurrentElectionFacts(
+    tx: DbClient,
+    organizationId: string,
+    facts: { patientId: string; admissionId: string; providerEntityId: string | null },
+  ): Promise<{ existingActiveElectionElsewhere: boolean; wouldOverlap: boolean }> {
+    const rows = await tx
+      .select({ providerEntityId: ADM.providerEntityId })
+      .from(EP)
+      .innerJoin(ADM, eq(EP.admissionId, ADM.id))
+      .where(
+        and(
+          eq(EP.organizationId, organizationId),
+          eq(ADM.patientId, facts.patientId),
+          ne(EP.admissionId, facts.admissionId),
+          ne(EP.status, "completed"),
+        ),
+      );
+    return {
+      wouldOverlap: rows.length > 0,
+      existingActiveElectionElsewhere: rows.some(
+        (r) => r.providerEntityId !== null && r.providerEntityId !== facts.providerEntityId,
+      ),
+    };
+  }
+
+  /** R-F2F-04 — does this period carry an ATTESTED face-to-face encounter (not merely a scheduled one)? */
+  async function hasAttestedF2f(tx: DbClient, periodId: string): Promise<boolean> {
+    const [row] = await tx
+      .select({ id: F2F.id })
+      .from(F2F)
+      .where(
+        and(
+          eq(F2F.electionPeriodId, periodId),
+          eq(F2F.status, "attested"),
+          isNotNull(F2F.attestationSignedAt),
+        ),
+      )
+      .limit(1);
+    return !!row;
+  }
+
+  /** A `Date` → the UTC `YYYY-MM-DD` string M6's `date` columns store. */
+  function isoDay(d: Date): string {
+    return d.toISOString().slice(0, 10);
+  }
+
+  /**
+   * The `election_period` window a `setActive` stamps: the day the period became effective plus the
+   * INCLUSIVE last day 42 CFR 418.21(a) gives a period of that sequence (1–2 → 90 days, 3+ → 60).
+   * Spread into the same `.set({...})` as `status`, so a period cannot go active without a window.
+   */
+  function electionPeriodWindow(
+    effectiveAt: Date,
+    sequenceNumber: number,
+  ): { effectiveAt: string; scheduledEndAt: string } {
+    const effectiveOn = isoDay(effectiveAt);
+    return {
+      effectiveAt: effectiveOn,
+      scheduledEndAt: electionPeriodScheduledEnd(
+        effectiveOn,
+        electionPeriodKindForSequence(sequenceNumber),
+      ),
+    };
   }
 
   /** Load a referral's lock/state facts, or 404. */
@@ -503,8 +748,7 @@ export function createDbAdmissionRouteService(
     return { ...r, version: Number(r.version), patientId: r.patientId ?? null };
   }
 
-  const patientResolver = (): PatientIntakeResolver =>
-    getSeam("PatientIntakeResolver");
+  const patientResolver = (): PatientIntakeResolver => getSeam("PatientIntakeResolver");
   const patientClearanceReader = (): PatientAdmissionClearanceReader =>
     getSeam("PatientAdmissionClearanceReader");
 
@@ -531,10 +775,7 @@ export function createDbAdmissionRouteService(
 
   function qualificationBlockers(ref: Awaited<ReturnType<typeof loadRef>>) {
     const blockers: Array<{ code: string; message: string }> = [];
-    if (
-      !ref.patientId ||
-      !["matched", "created"].includes(ref.patientResolutionStatus)
-    ) {
+    if (!ref.patientId || !["matched", "created"].includes(ref.patientResolutionStatus)) {
       blockers.push({
         code: "PATIENT_UNRESOLVED",
         message: "A patient must be confirmed or created before qualification.",
@@ -543,19 +784,13 @@ export function createDbAdmissionRouteService(
     if (!ref.referringDxText && !ref.externalReferralId) {
       blockers.push({
         code: "CLINICAL_INDICATION_MISSING",
-        message:
-          "A referral reason or clinical indication is required before qualification.",
+        message: "A referral reason or clinical indication is required before qualification.",
       });
     }
-    if (
-      !ref.referrerName &&
-      !ref.referrerOrganization &&
-      !ref.externalReferralId
-    ) {
+    if (!ref.referrerName && !ref.referrerOrganization && !ref.externalReferralId) {
       blockers.push({
         code: "SOURCE_INFORMATION_MISSING",
-        message:
-          "Referral source information is required before qualification.",
+        message: "Referral source information is required before qualification.",
       });
     }
     return blockers;
@@ -591,14 +826,32 @@ export function createDbAdmissionRouteService(
   async function loadAdm(
     tx: DbClient,
     id: string,
-  ): Promise<{ status: AdmissionState; version: number }> {
+  ): Promise<{
+    status: AdmissionState;
+    version: number;
+    providerEntityId: string | null;
+    locationId: string | null;
+  }> {
     const [r] = await tx
-      .select({ status: ADM.status, version: ADM.version })
+      // `providerEntityId` joined the projection for #50: activation scopes the location it sites the
+      // admission at to the ELECTED provider entity, so it has to be read on the same row it guards.
+      // `locationId` too: an admission already sited by `updateAdmission` keeps its location.
+      .select({
+        status: ADM.status,
+        version: ADM.version,
+        providerEntityId: ADM.providerEntityId,
+        locationId: ADM.locationId,
+      })
       .from(ADM)
       .where(eq(ADM.id, id))
       .limit(1);
     if (!r) throw new ResourceNotFoundError(id);
-    return { status: r.status as AdmissionState, version: Number(r.version) };
+    return {
+      status: r.status as AdmissionState,
+      version: Number(r.version),
+      providerEntityId: r.providerEntityId ?? null,
+      locationId: r.locationId ?? null,
+    };
   }
 
   /** An UPDATE guarded by `WHERE id=? AND version=?` returned nothing → distinguish 404 vs stale-409. */
@@ -918,9 +1171,7 @@ export function createDbAdmissionRouteService(
             terminalDiagnosisIcd10: CTI.terminalDiagnosisIcd10,
           })
           .from(CTI)
-          .where(
-            and(eq(CTI.electionPeriodId, period.id), ne(CTI.status, "voided")),
-          )
+          .where(and(eq(CTI.electionPeriodId, period.id), ne(CTI.status, "voided")))
           .limit(1)
       : [null];
     const [nor] = await tx
@@ -954,11 +1205,10 @@ export function createDbAdmissionRouteService(
 
     let clearance: PatientAdmissionClearance;
     try {
-      clearance =
-        await patientClearanceReader().evaluatePatientAdmissionClearance({
-          organizationId,
-          patientId: adm.patientId,
-        });
+      clearance = await patientClearanceReader().evaluatePatientAdmissionClearance({
+        organizationId,
+        patientId: adm.patientId,
+      });
     } catch {
       clearance = {
         allowed: false,
@@ -971,8 +1221,7 @@ export function createDbAdmissionRouteService(
       patientIdentity: {
         patientId: adm.patientId,
         referralPatientId: ref?.patientId ?? undefined,
-        referralPatientResolutionStatus:
-          ref?.patientResolutionStatus ?? undefined,
+        referralPatientResolutionStatus: ref?.patientResolutionStatus ?? undefined,
       },
       admissionDetails: {
         admissionDatePresent: !!adm.admissionAt || !!period?.effectiveAt,
@@ -989,21 +1238,18 @@ export function createDbAdmissionRouteService(
       },
       noticeOfRights: {
         acknowledged: !!evidenceFacts.noticeOfRights,
-        acknowledgedAtPresent:
-          !!evidenceFacts.noticeOfRights?.completedAt || !!nor?.acknowledgedAt,
+        acknowledgedAtPresent: !!evidenceFacts.noticeOfRights?.completedAt || !!nor?.acknowledgedAt,
         signerValid:
           !!evidenceFacts.noticeOfRights ||
           nor?.signerKind === "patient" ||
           nor?.signerKind === "representative",
-        methodValid:
-          !!evidenceFacts.noticeOfRights || !!nor?.acknowledgmentMethod,
+        methodValid: !!evidenceFacts.noticeOfRights || !!nor?.acknowledgmentMethod,
         evidence: evidenceFacts.noticeOfRights,
       },
       electionStatement: {
         exists: !!evidenceFacts.electionStatement,
         status: es?.status ?? null,
-        signedAtPresent:
-          !!evidenceFacts.electionSignature?.completedAt || !!es?.signedAt,
+        signedAtPresent: !!evidenceFacts.electionSignature?.completedAt || !!es?.signedAt,
         belongsToCurrentPeriod: !!period && !!evidenceFacts.electionStatement,
         evidence: evidenceFacts.electionStatement,
         signatureEvidence: evidenceFacts.electionSignature,
@@ -1035,6 +1281,11 @@ export function createDbAdmissionRouteService(
     ifVersion: number,
     event: AdmissionEvent,
     extraSet: Record<string, unknown> = {},
+    // F-100 — the per-event payload fields, same contract as `runEffects`. This parameter did not exist,
+    // so `holdAdmission` and `resumeAdmission` emitted `m6.admission.on_hold` / `.resumed` with the bare
+    // `{aggregateId, admissionId}` envelope while both schemas require more, and both routes 500'd on
+    // `payload_schema_violation` for every caller.
+    extraPayloadByEvent: Readonly<Record<string, Record<string, unknown>>> = {},
   ): Promise<MutationResult> {
     return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
       const cur = await loadAdm(tx, id);
@@ -1057,6 +1308,7 @@ export function createDbAdmissionRouteService(
           admissionId: id,
         },
         t.effects,
+        extraPayloadByEvent,
       );
       return { id: r.id, state: r.status, version: Number(r.version) };
     });
@@ -1071,9 +1323,7 @@ export function createDbAdmissionRouteService(
     const limit = clampLimit(query.limit);
     const offset = parseOffset(query.cursor);
     return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-      const where = query.state
-        ? eq(table.status as never, query.state as never)
-        : undefined;
+      const where = query.state ? eq(table.status as never, query.state as never) : undefined;
       const rows = (await tx
         .select({ id: table.id, state: table.status, version: table.version })
         .from(table)
@@ -1089,12 +1339,42 @@ export function createDbAdmissionRouteService(
 
   /** Does an admission exist for this org? (RLS-scoped) — reads return `null` → 404 when it does not. */
   async function admissionExists(tx: DbClient, id: string): Promise<boolean> {
-    const [row] = await tx
-      .select({ id: ADM.id })
-      .from(ADM)
-      .where(eq(ADM.id, id))
-      .limit(1);
+    const [row] = await tx.select({ id: ADM.id }).from(ADM).where(eq(ADM.id, id)).limit(1);
     return !!row;
+  }
+
+  /**
+   * The chart target for a §4.11 render request (F-100). M22 writes `document.patient_id` from the
+   * payload and cannot resolve one itself — it `dependsOn [1, 5]` and reads every source module through
+   * the event STRING — so a CoP document whose request omits this files against NO CHART. That is worse
+   * than not rendering it: an unrendered request is a visible `pending` outbox row, an off-chart signed
+   * certification is a filed document nobody can find.
+   *
+   * `admission.patient_id` is NOT NULL, so a missing row is the only failure and it means the admission
+   * was deleted inside this transaction — never a silent null. The caller throws rather than emitting a
+   * chart-less request.
+   */
+  async function patientForAdmission(tx: DbClient, admissionId: string): Promise<string> {
+    const [row] = await tx
+      .select({ patientId: ADM.patientId })
+      .from(ADM)
+      .where(eq(ADM.id, admissionId))
+      .limit(1);
+    if (!row) throw new ResourceNotFoundError(admissionId);
+    return row.patientId;
+  }
+
+  /** {@link patientForAdmission} one hop further out: the CTI and the F2F hang off an election PERIOD,
+   *  which is the aggregate that carries the admission. One join, on the write path only. */
+  async function patientForElectionPeriod(tx: DbClient, electionPeriodId: string): Promise<string> {
+    const [row] = await tx
+      .select({ patientId: ADM.patientId })
+      .from(EP)
+      .innerJoin(ADM, eq(ADM.id, EP.admissionId))
+      .where(eq(EP.id, electionPeriodId))
+      .limit(1);
+    if (!row) throw new ResourceNotFoundError(electionPeriodId);
+    return row.patientId;
   }
 
   /** The latest benefit period for an admission (highest sequence), or `null`. */
@@ -1178,8 +1458,7 @@ export function createDbAdmissionRouteService(
       forCauseCosigned: ev.forCauseCosigned,
       deathAt: ev.dischargeType === "death" ? ev.effectiveAt : undefined,
       today: now().toISOString().slice(0, 10),
-      deathCertifierCredentialed:
-        ev.dischargeType === "death" ? !!ev.deathCertifierId : undefined,
+      deathCertifierCredentialed: ev.dischargeType === "death" ? !!ev.deathCertifierId : undefined,
     });
     const t = transitionAdmission(row.status as AdmissionState, {
       type: "executeDischarge",
@@ -1189,8 +1468,7 @@ export function createDbAdmissionRouteService(
       forCauseCosigned: ev.forCauseCosigned,
       deathAt: ev.dischargeType === "death" ? ev.effectiveAt : undefined,
       today: ev.effectiveAt,
-      deathCertifierCredentialed:
-        ev.dischargeType === "death" ? !!ev.deathCertifierId : undefined,
+      deathCertifierCredentialed: ev.dischargeType === "death" ? !!ev.deathCertifierId : undefined,
     } satisfies AdmissionEvent);
     const r = firstOrThrow(
       await tx
@@ -1229,6 +1507,8 @@ export function createDbAdmissionRouteService(
                 reason: ev.reason ?? ev.dischargeType,
                 dischargeDate: ev.effectiveAt,
                 requiresMedicalDirectorCosign: false,
+                // F-100 — the chart. Already read at the top of this function for the transition guard.
+                patientId: row.patientId,
               },
               "m6.discharge.death": {
                 dischargeEventId: ev.dischargeEventId,
@@ -1257,19 +1537,11 @@ export function createDbAdmissionRouteService(
         const filters: SQL[] = [];
         const status = query.status ?? query.state;
         if (status) filters.push(eq(REF.status, status as never));
-        if (query.source)
-          filters.push(eq(REF.sourceChannel, query.source as never));
+        if (query.source) filters.push(eq(REF.sourceChannel, query.source as never));
         if (query.patientResolutionStatus)
-          filters.push(
-            eq(
-              REF.patientResolutionStatus,
-              query.patientResolutionStatus as never,
-            ),
-          );
-        if (query.priority)
-          filters.push(eq(REF.priority, query.priority as never));
-        if (query.assigned === "unassigned")
-          filters.push(isNull(REF.assignedToUserId));
+          filters.push(eq(REF.patientResolutionStatus, query.patientResolutionStatus as never));
+        if (query.priority) filters.push(eq(REF.priority, query.priority as never));
+        if (query.assigned === "unassigned") filters.push(isNull(REF.assignedToUserId));
         if (query.assigned === "mine" && actorUserId)
           filters.push(eq(REF.assignedToUserId, actorUserId));
         if (query.q?.trim()) {
@@ -1317,11 +1589,7 @@ export function createDbAdmissionRouteService(
     },
     async getReferral(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [r] = await tx
-          .select(referralProjection)
-          .from(REF)
-          .where(eq(REF.id, id))
-          .limit(1);
+        const [r] = await tx.select(referralProjection).from(REF).where(eq(REF.id, id)).limit(1);
         return r
           ? toReferralReadView(
               r,
@@ -1372,6 +1640,32 @@ export function createDbAdmissionRouteService(
         return { items, nextCursor };
       });
     },
+    /**
+     * F-065 — the patient's admissions, newest first. Every clinical CREATE is keyed by `admissionId`
+     * and nothing could resolve one for a patient: the org-wide census takes no patient filter and its
+     * items carry no `patientId`, and the patient read carries no admission. Ordered by `admission_at`
+     * with the id as a tiebreak so a draft admission with no date still has a stable position.
+     */
+    async listPatientAdmissions(organizationId, patientId): Promise<PatientAdmissionSummary[]> {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const rows = await tx
+          .select({
+            id: ADM.id,
+            state: ADM.status,
+            admissionAt: ADM.admissionAt,
+            dischargedAt: ADM.dischargedAt,
+          })
+          .from(ADM)
+          .where(eq(ADM.patientId, patientId))
+          .orderBy(desc(ADM.admissionAt), desc(ADM.id));
+        return rows.map((r) => ({
+          id: r.id,
+          state: r.state,
+          admissionAt: r.admissionAt ? r.admissionAt.toISOString() : null,
+          dischargedAt: r.dischargedAt ? r.dischargedAt.toISOString() : null,
+        }));
+      });
+    },
     async getAdmission(organizationId, id): Promise<AdmissionDetail | null> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [adm] = await tx
@@ -1405,10 +1699,7 @@ export function createDbAdmissionRouteService(
         const legacy = await gateFacts(tx, organizationId, id);
         const activationGate = computeActivationGate(legacy);
         const physician = adm.hospicePhysicianId
-          ? await getMdmEntityProvider().resolvePhysician(
-              organizationId,
-              adm.hospicePhysicianId,
-            )
+          ? await getMdmEntityProvider().resolvePhysician(organizationId, adm.hospicePhysicianId)
           : null;
         return {
           id: adm.id,
@@ -1422,9 +1713,7 @@ export function createDbAdmissionRouteService(
           locationId: adm.locationId ?? null,
           patientResidenceAddressId: adm.patientResidenceAddressId ?? null,
           serviceAddressSnapshot:
-            adm.serviceAddressLine1 &&
-            adm.serviceAddressCity &&
-            adm.serviceAddressPostalCode
+            adm.serviceAddressLine1 && adm.serviceAddressCity && adm.serviceAddressPostalCode
               ? {
                   line1: adm.serviceAddressLine1,
                   line2: adm.serviceAddressLine2,
@@ -1459,8 +1748,7 @@ export function createDbAdmissionRouteService(
       patientId,
     ): Promise<PatientElectionCertificationView> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const iso = (d: Date | null): string | null =>
-          d ? d.toISOString() : null;
+        const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
         // The patient's newest admission (RLS scopes to org). `patient_id` is NOT NULL, no FK.
         const [adm] = await tx
           .select({
@@ -1475,8 +1763,7 @@ export function createDbAdmissionRouteService(
           .where(eq(ADM.patientId, patientId))
           .orderBy(desc(ADM.admissionAt), desc(ADM.createdAt))
           .limit(1);
-        if (!adm)
-          return { admission: null, periods: [], complianceWindows: [] };
+        if (!adm) return { admission: null, periods: [], complianceWindows: [] };
 
         const periodRows = await tx
           .select({
@@ -1630,9 +1917,7 @@ export function createDbAdmissionRouteService(
           .from(ES)
           .where(eq(ES.id, id))
           .limit(1);
-        return r
-          ? { id: r.id, state: r.status, version: Number(r.version) }
-          : null;
+        return r ? { id: r.id, state: r.status, version: Number(r.version) } : null;
       });
     },
     async listElectionPeriods(organizationId, admissionId) {
@@ -1692,9 +1977,7 @@ export function createDbAdmissionRouteService(
           .from(NOR)
           .where(eq(NOR.admissionId, admissionId))
           .limit(1);
-        return r
-          ? { id: r.id, state: "acknowledged", version: Number(r.version) }
-          : null;
+        return r ? { id: r.id, state: "acknowledged", version: Number(r.version) } : null;
       });
     },
 
@@ -1716,87 +1999,70 @@ export function createDbAdmissionRouteService(
 
     // ── Writes — the M6L-T02+ Drizzle lifecycle. Fail-closed 501 until then. ───────────────────────
     // ── M6L-T02: referral intake ───────────────────────────────────────────────────────────────
-    async createReferral(
-      organizationId,
-      input,
-      actorUserId,
-    ): Promise<MutationResult> {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          if (input.externalReferralId) {
-            const existing = await tx
-              .select({ id: REF.id })
-              .from(REF)
-              .where(
-                and(
-                  eq(REF.organizationId, organizationId),
-                  eq(REF.externalReferralId, input.externalReferralId),
-                ),
-              )
-              .limit(1);
-            if (existing.length > 0) {
-              throw new ExternalReferralAlreadyIngestedError(
-                input.externalReferralId,
-              );
-            }
+    async createReferral(organizationId, input, actorUserId): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        if (input.externalReferralId) {
+          const existing = await tx
+            .select({ id: REF.id })
+            .from(REF)
+            .where(
+              and(
+                eq(REF.organizationId, organizationId),
+                eq(REF.externalReferralId, input.externalReferralId),
+              ),
+            )
+            .limit(1);
+          if (existing.length > 0) {
+            throw new ExternalReferralAlreadyIngestedError(input.externalReferralId);
           }
+        }
 
-          const rows = await tx
-            .insert(REF)
-            .values({
-              organizationId,
-              patientId: input.patientId ?? null,
-              patientResolutionStatus: input.patientId
-                ? "matched"
-                : "unresolved",
-              patientNameAtReceipt: input.patientNameAtReceipt,
-              patientDobAtReceipt: input.patientDobAtReceipt ?? null,
-              referringDxText: input.referringDxText ?? null,
-              referrerName: input.referrerName ?? null,
-              referrerOrganization: input.referrerOrganization ?? null,
-              referrerPhone: input.referrerPhone ?? null,
-              externalReferralId: input.externalReferralId ?? null,
-              receivedAt: input.receivedAt ? new Date(input.receivedAt) : now(),
-              sourceChannel: input.source as ReferralSourceChannel,
-            })
-            .returning({
-              id: REF.id,
-              status: REF.status,
-              version: REF.version,
-            });
-          const r = firstOrThrow(rows, "referral insert returned no row");
-          await recordReferralActivity(
-            tx,
+        const rows = await tx
+          .insert(REF)
+          .values({
             organizationId,
-            r.id,
-            actorUserId,
-            "referral_received",
-            null,
-            r.status,
-          );
-          await outbox.publish(tx, {
-            eventName: "m6.referral.received",
-            payload: {
-              referralId: r.id,
-              source: input.source,
-              receivedAt: input.receivedAt,
-            },
-            organizationId,
-            aggregateKind: "referral",
-            aggregateId: r.id,
+            patientId: input.patientId ?? null,
+            patientResolutionStatus: input.patientId ? "matched" : "unresolved",
+            patientNameAtReceipt: input.patientNameAtReceipt,
+            patientDobAtReceipt: input.patientDobAtReceipt ?? null,
+            referringDxText: input.referringDxText ?? null,
+            referrerName: input.referrerName ?? null,
+            referrerOrganization: input.referrerOrganization ?? null,
+            referrerPhone: input.referrerPhone ?? null,
+            externalReferralId: input.externalReferralId ?? null,
+            receivedAt: input.receivedAt ? new Date(input.receivedAt) : now(),
+            sourceChannel: input.source as ReferralSourceChannel,
+          })
+          .returning({
+            id: REF.id,
+            status: REF.status,
+            version: REF.version,
           });
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+        const r = firstOrThrow(rows, "referral insert returned no row");
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          r.id,
+          actorUserId,
+          "referral_received",
+          null,
+          r.status,
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.referral.received",
+          payload: {
+            referralId: r.id,
+            source: input.source,
+            receivedAt: input.receivedAt,
+          },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: r.id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
-    async updateReferral(
-      organizationId,
-      id,
-      input,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async updateReferral(organizationId, id, input, ifVersion): Promise<MutationResult> {
       // Metadata edit — no state change; still optimistic-locked (§7.1 concurrency).
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [r] = await tx
@@ -1815,12 +2081,7 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async triageReferral(
-      organizationId,
-      id,
-      outcome,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async triageReferral(organizationId, id, outcome, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
@@ -1856,10 +2117,7 @@ export function createDbAdmissionRouteService(
           r.status,
         );
         await outbox.publish(tx, {
-          eventName:
-            outcome === "eligible"
-              ? "m6.referral.review_started"
-              : "m6.referral.declined",
+          eventName: outcome === "eligible" ? "m6.referral.review_started" : "m6.referral.declined",
           payload:
             outcome === "eligible"
               ? { referralId: id, outcome }
@@ -1878,304 +2136,248 @@ export function createDbAdmissionRouteService(
       ifVersion,
       actorUserId,
     ): Promise<MutationResult & { admissionId: string }> {
-      return this.convertReferral(
-        organizationId,
-        id,
-        input,
-        ifVersion,
-        actorUserId,
-      );
+      return this.convertReferral(organizationId, id, input, ifVersion, actorUserId);
     },
-    async startReferralReview(
-      organizationId,
-      id,
-      ifVersion,
-      actorUserId,
-    ): Promise<MutationResult> {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const cur = await loadRef(tx, id);
-          assertVersion(id, cur.version, ifVersion);
-          if (
-            cur.status !== "received" &&
-            cur.status !== "pending_information"
-          ) {
-            throw new InvalidReferralStateError(id, cur.status, "start review");
-          }
-          const r = firstOrThrow(
-            await tx
-              .update(REF)
-              .set({
-                status: "under_review",
-                reviewedAt: now(),
-                reviewedBy: actorUserId || null,
-                version: sql`${REF.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
-              .returning({
-                id: REF.id,
-                status: REF.status,
-                version: REF.version,
-              }),
-            "row not found",
-          );
+    async startReferralReview(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (cur.status !== "received" && cur.status !== "pending_information") {
+          throw new InvalidReferralStateError(id, cur.status, "start review");
+        }
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              status: "under_review",
+              reviewedAt: now(),
+              reviewedBy: actorUserId || null,
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({
+              id: REF.id,
+              status: REF.status,
+              version: REF.version,
+            }),
+          "row not found",
+        );
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          cur.status === "pending_information" ? "returned_to_review" : "review_started",
+          cur.status,
+          r.status,
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.referral.review_started",
+          payload: { referralId: id },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
+    },
+    async runReferralPatientMatching(organizationId, id, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (!["under_review", "pending_information"].includes(cur.status)) {
+          throw new InvalidReferralStateError(id, cur.status, "match patient");
+        }
+        const result = await patientResolver().findPatientCandidates({
+          organizationId,
+          patientNameAtReceipt: cur.patientNameAtReceipt,
+          patientDobAtReceipt: cur.patientDobAtReceipt,
+        });
+        const nextResolution = result.outcome === "no_match" ? "unresolved" : "possible_match";
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              patientResolutionStatus: nextResolution,
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({
+              id: REF.id,
+              status: REF.status,
+              version: REF.version,
+            }),
+          "row not found",
+        );
+        if (result.outcome !== "no_match") {
           await recordReferralActivity(
             tx,
             organizationId,
             id,
             actorUserId,
-            cur.status === "pending_information"
-              ? "returned_to_review"
-              : "review_started",
-            cur.status,
-            r.status,
-          );
-          await outbox.publish(tx, {
-            eventName: "m6.referral.review_started",
-            payload: { referralId: id },
-            organizationId,
-            aggregateKind: "referral",
-            aggregateId: id,
-          });
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
-    },
-    async runReferralPatientMatching(
-      organizationId,
-      id,
-      ifVersion,
-      actorUserId,
-    ) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const cur = await loadRef(tx, id);
-          assertVersion(id, cur.version, ifVersion);
-          if (!["under_review", "pending_information"].includes(cur.status)) {
-            throw new InvalidReferralStateError(
-              id,
-              cur.status,
-              "match patient",
-            );
-          }
-          const result = await patientResolver().findPatientCandidates({
-            organizationId,
-            patientNameAtReceipt: cur.patientNameAtReceipt,
-            patientDobAtReceipt: cur.patientDobAtReceipt,
-          });
-          const nextResolution =
-            result.outcome === "no_match" ? "unresolved" : "possible_match";
-          const r = firstOrThrow(
-            await tx
-              .update(REF)
-              .set({
-                patientResolutionStatus: nextResolution,
-                version: sql`${REF.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
-              .returning({
-                id: REF.id,
-                status: REF.status,
-                version: REF.version,
-              }),
-            "row not found",
-          );
-          if (result.outcome !== "no_match") {
-            await recordReferralActivity(
-              tx,
-              organizationId,
-              id,
-              actorUserId,
-              "patient_match_suggested",
-              cur.status,
-              r.status,
-              {
-                candidateCount: result.candidates.length,
-              },
-            );
-          }
-          return {
-            id: r.id,
-            state: r.status,
-            version: Number(r.version),
-            candidates: result.candidates,
-          };
-        },
-      );
-    },
-    async confirmReferralPatient(
-      organizationId,
-      id,
-      patientId,
-      ifVersion,
-      actorUserId,
-    ) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const cur = await loadRef(tx, id);
-          assertVersion(id, cur.version, ifVersion);
-          const patient = await patientResolver().confirmPatient({
-            organizationId,
-            patientId,
-          });
-          if (!patient)
-            throw new WardenXError(
-              "PATIENT_NOT_FOUND",
-              "patient was not found in M5",
-              404,
-            );
-          const r = firstOrThrow(
-            await tx
-              .update(REF)
-              .set({
-                patientId: patient.id,
-                patientResolutionStatus: "matched",
-                version: sql`${REF.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
-              .returning({
-                id: REF.id,
-                status: REF.status,
-                version: REF.version,
-              }),
-            "row not found",
-          );
-          await recordReferralActivity(
-            tx,
-            organizationId,
-            id,
-            actorUserId,
-            "patient_match_confirmed",
+            "patient_match_suggested",
             cur.status,
             r.status,
             {
-              patientId: patient.id,
+              candidateCount: result.candidates.length,
             },
           );
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+        }
+        return {
+          id: r.id,
+          state: r.status,
+          version: Number(r.version),
+          candidates: result.candidates,
+        };
+      });
+    },
+    async confirmReferralPatient(organizationId, id, patientId, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        const patient = await patientResolver().confirmPatient({
+          organizationId,
+          patientId,
+        });
+        if (!patient)
+          throw new WardenXError("PATIENT_NOT_FOUND", "patient was not found in M5", 404);
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              patientId: patient.id,
+              patientResolutionStatus: "matched",
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({
+              id: REF.id,
+              status: REF.status,
+              version: REF.version,
+            }),
+          "row not found",
+        );
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "patient_match_confirmed",
+          cur.status,
+          r.status,
+          {
+            patientId: patient.id,
+          },
+        );
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
     async createReferralPatient(organizationId, id, ifVersion, actorUserId) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const cur = await loadRef(tx, id);
-          assertVersion(id, cur.version, ifVersion);
-          if (!cur.patientDobAtReceipt) {
-            throw new ValidationError(
-              "patient DOB is required to create a canonical patient from intake",
-              [
-                {
-                  field: "patientDobAtReceipt",
-                  code: "PATIENT_DOB_REQUIRED",
-                  message:
-                    "Patient date of birth is required before creating a patient from referral intake.",
-                },
-              ],
-            );
-          }
-          const patient = await patientResolver().createPatientFromIntake({
-            organizationId,
-            patientNameAtReceipt: cur.patientNameAtReceipt,
-            patientDobAtReceipt: cur.patientDobAtReceipt,
-          });
-          const r = firstOrThrow(
-            await tx
-              .update(REF)
-              .set({
-                patientId: patient.id,
-                patientResolutionStatus: "created",
-                version: sql`${REF.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
-              .returning({
-                id: REF.id,
-                status: REF.status,
-                version: REF.version,
-              }),
-            "row not found",
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (!cur.patientDobAtReceipt) {
+          throw new ValidationError(
+            "patient DOB is required to create a canonical patient from intake",
+            [
+              {
+                field: "patientDobAtReceipt",
+                code: "PATIENT_DOB_REQUIRED",
+                message:
+                  "Patient date of birth is required before creating a patient from referral intake.",
+              },
+            ],
           );
-          await recordReferralActivity(
-            tx,
-            organizationId,
-            id,
-            actorUserId,
-            "patient_created",
-            cur.status,
-            r.status,
-            {
+        }
+        const patient = await patientResolver().createPatientFromIntake({
+          organizationId,
+          patientNameAtReceipt: cur.patientNameAtReceipt,
+          patientDobAtReceipt: cur.patientDobAtReceipt,
+        });
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
               patientId: patient.id,
-            },
-          );
-          return {
-            id: r.id,
-            state: r.status,
-            version: Number(r.version),
+              patientResolutionStatus: "created",
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({
+              id: REF.id,
+              status: REF.status,
+              version: REF.version,
+            }),
+          "row not found",
+        );
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "patient_created",
+          cur.status,
+          r.status,
+          {
             patientId: patient.id,
-          };
-        },
-      );
+          },
+        );
+        return {
+          id: r.id,
+          state: r.status,
+          version: Number(r.version),
+          patientId: patient.id,
+        };
+      });
     },
     async qualifyReferral(organizationId, id, ifVersion, actorUserId) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const cur = await loadRef(tx, id);
-          assertVersion(id, cur.version, ifVersion);
-          if (cur.status !== "under_review")
-            throw new InvalidReferralStateError(id, cur.status, "qualify");
-          const blockers = qualificationBlockers(cur);
-          if (blockers.length > 0) throw new ReferralNotReadyError(blockers);
-          const r = firstOrThrow(
-            await tx
-              .update(REF)
-              .set({
-                status: "qualified",
-                qualifiedAt: now(),
-                qualifiedBy: actorUserId || null,
-                version: sql`${REF.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
-              .returning({
-                id: REF.id,
-                status: REF.status,
-                version: REF.version,
-              }),
-            "row not found",
-          );
-          await recordReferralActivity(
-            tx,
-            organizationId,
-            id,
-            actorUserId,
-            "qualified",
-            cur.status,
-            r.status,
-          );
-          await outbox.publish(tx, {
-            eventName: "m6.referral.qualified",
-            payload: { referralId: id, patientId: cur.patientId },
-            organizationId,
-            aggregateKind: "referral",
-            aggregateId: id,
-          });
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (cur.status !== "under_review")
+          throw new InvalidReferralStateError(id, cur.status, "qualify");
+        const blockers = qualificationBlockers(cur);
+        if (blockers.length > 0) throw new ReferralNotReadyError(blockers);
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              status: "qualified",
+              qualifiedAt: now(),
+              qualifiedBy: actorUserId || null,
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({
+              id: REF.id,
+              status: REF.status,
+              version: REF.version,
+            }),
+          "row not found",
+        );
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "qualified",
+          cur.status,
+          r.status,
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.referral.qualified",
+          payload: { referralId: id, patientId: cur.patientId },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
     async convertReferral(
       organizationId,
@@ -2184,155 +2386,134 @@ export function createDbAdmissionRouteService(
       ifVersion,
       actorUserId,
     ): Promise<MutationResult & { admissionId: string }> {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const cur = await loadRef(tx, id);
-          assertVersion(id, cur.version, ifVersion);
-          if (cur.status === "converted") {
-            const [existing] = await tx
-              .select({ id: ADM.id, version: ADM.version })
-              .from(ADM)
-              .where(
-                and(
-                  eq(ADM.organizationId, organizationId),
-                  eq(ADM.referralId, id),
-                ),
-              )
-              .limit(1);
-            if (existing)
-              return {
-                id,
-                state: "converted",
-                version: cur.version,
-                admissionId: existing.id,
-              };
-            throw new ReferralAlreadyConvertedError(id);
-          }
-          if (cur.status !== "qualified") throw new ReferralNotTriagedError(id);
-          if (
-            !cur.patientId ||
-            !["matched", "created"].includes(cur.patientResolutionStatus)
-          ) {
-            throw new ReferralNotReadyError(qualificationBlockers(cur));
-          }
-          const patientId = cur.patientId;
-          const confirmed = await patientResolver().confirmPatient({
-            organizationId,
-            patientId,
-          });
-          if (!confirmed)
-            throw new WardenXError(
-              "PATIENT_NOT_FOUND",
-              "resolved M5 patient no longer exists",
-              409,
-            );
-          // §2.3.1 no double-election: block if the patient already has an open admission.
-          const [open] = await tx
-            .select({ id: ADM.id })
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (cur.status === "converted") {
+          const [existing] = await tx
+            .select({ id: ADM.id, version: ADM.version })
             .from(ADM)
-            .where(
-              and(
-                eq(ADM.patientId, patientId),
-                ne(ADM.status, "discharged"),
-                ne(ADM.status, "bereavement"),
-                ne(ADM.status, "closed"),
-              ),
-            )
+            .where(and(eq(ADM.organizationId, organizationId), eq(ADM.referralId, id)))
             .limit(1);
-          // Validate the createAdmission event FIRST (it throws PATIENT_ALREADY_ELECTED on a double open),
-          // then insert the admission directly at the transition's target state — never a half-open row.
-          const t = transitionAdmission("referred", {
-            type: "createAdmission",
-            referralAccepted: true,
-            hasOtherOpenAdmission: !!open,
-          } satisfies AdmissionEvent);
-          const adm = firstOrThrow(
-            await tx
-              .insert(ADM)
-              .values({
-                organizationId,
-                patientId,
-                referralId: id,
-                status: t.to,
-              })
-              .returning({ id: ADM.id, version: ADM.version }),
-            "admission insert returned no row",
-          );
-          await runEffects(
-            tx,
-            {
+          if (existing)
+            return {
+              id,
+              state: "converted",
+              version: cur.version,
+              admissionId: existing.id,
+            };
+          throw new ReferralAlreadyConvertedError(id);
+        }
+        if (cur.status !== "qualified") throw new ReferralNotTriagedError(id);
+        if (!cur.patientId || !["matched", "created"].includes(cur.patientResolutionStatus)) {
+          throw new ReferralNotReadyError(qualificationBlockers(cur));
+        }
+        const patientId = cur.patientId;
+        const confirmed = await patientResolver().confirmPatient({
+          organizationId,
+          patientId,
+        });
+        if (!confirmed)
+          throw new WardenXError("PATIENT_NOT_FOUND", "resolved M5 patient no longer exists", 409);
+        // §2.3.1 no double-election: block if the patient already has an open admission.
+        const [open] = await tx
+          .select({ id: ADM.id })
+          .from(ADM)
+          .where(
+            and(
+              eq(ADM.patientId, patientId),
+              ne(ADM.status, "discharged"),
+              ne(ADM.status, "bereavement"),
+              ne(ADM.status, "closed"),
+            ),
+          )
+          .limit(1);
+        // Validate the createAdmission event FIRST (it throws PATIENT_ALREADY_ELECTED on a double open),
+        // then insert the admission directly at the transition's target state — never a half-open row.
+        const t = transitionAdmission("referred", {
+          type: "createAdmission",
+          referralAccepted: true,
+          hasOtherOpenAdmission: !!open,
+        } satisfies AdmissionEvent);
+        const adm = firstOrThrow(
+          await tx
+            .insert(ADM)
+            .values({
               organizationId,
-              aggregateKind: "admission",
-              aggregateId: adm.id,
-              admissionId: adm.id,
-            },
-            t.effects,
-            { "m6.admission.draft_created": { patientId, referralId: id } },
-          );
-          // Seed benefit period 1 (the §7.1 cascade — not a state-machine effect).
-          await tx.insert(EP).values({
+              patientId,
+              referralId: id,
+              status: t.to,
+            })
+            .returning({ id: ADM.id, version: ADM.version }),
+          "admission insert returned no row",
+        );
+        await runEffects(
+          tx,
+          {
             organizationId,
+            aggregateKind: "admission",
+            aggregateId: adm.id,
             admissionId: adm.id,
-            sequenceNumber: 1,
-            periodKind: "ninety_day",
-          });
-          // Advance the referral to converted.
-          const r = firstOrThrow(
-            await tx
-              .update(REF)
-              .set({
-                status: "converted",
-                icd10TerminalPrimary: input.primaryDiagnosisIcd10,
-                convertedAt: now(),
-                convertedAdmissionId: adm.id,
-                decidedAt: now(),
-                version: sql`${REF.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
-              .returning({
-                id: REF.id,
-                status: REF.status,
-                version: REF.version,
-              }),
-            "row not found",
-          );
-          await recordReferralActivity(
-            tx,
-            organizationId,
-            id,
-            actorUserId,
-            "converted",
-            cur.status,
-            r.status,
-            {
-              admissionId: adm.id,
-            },
-          );
-          await outbox.publish(tx, {
-            eventName: "m6.referral.converted",
-            payload: { referralId: id, patientId, admissionId: adm.id },
-            organizationId,
-            aggregateKind: "referral",
-            aggregateId: id,
-          });
-          return {
-            id: r.id,
-            state: r.status,
-            version: Number(r.version),
+          },
+          t.effects,
+          { "m6.admission.draft_created": { patientId, referralId: id } },
+        );
+        // Seed benefit period 1 (the §7.1 cascade — not a state-machine effect).
+        await tx.insert(EP).values({
+          organizationId,
+          admissionId: adm.id,
+          sequenceNumber: 1,
+          periodKind: "ninety_day",
+        });
+        // Advance the referral to converted.
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              status: "converted",
+              icd10TerminalPrimary: input.primaryDiagnosisIcd10,
+              convertedAt: now(),
+              convertedAdmissionId: adm.id,
+              decidedAt: now(),
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({
+              id: REF.id,
+              status: REF.status,
+              version: REF.version,
+            }),
+          "row not found",
+        );
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "converted",
+          cur.status,
+          r.status,
+          {
             admissionId: adm.id,
-          };
-        },
-      );
+          },
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.referral.converted",
+          payload: { referralId: id, patientId, admissionId: adm.id },
+          organizationId,
+          aggregateKind: "referral",
+          aggregateId: id,
+        });
+        return {
+          id: r.id,
+          state: r.status,
+          version: Number(r.version),
+          admissionId: adm.id,
+        };
+      });
     },
-    async declineReferral(
-      organizationId,
-      id,
-      reason,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async declineReferral(organizationId, id, reason, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
@@ -2365,60 +2546,40 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async addReferralNote(
-      organizationId,
-      id,
-      input,
-      actorUserId,
-    ): Promise<ReferralNoteView> {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          await loadRef(tx, id);
-          const r = firstOrThrow(
-            await tx
-              .insert(RN)
-              .values({
-                organizationId,
-                referralId: id,
-                authorId: actorUserId || null,
-                content: input.content,
-              })
-              .returning({
-                id: RN.id,
-                referralId: RN.referralId,
-                authorId: RN.authorId,
-                content: RN.content,
-                createdAt: RN.createdAt,
-                updatedAt: RN.updatedAt,
-              }),
-            "referral note insert returned no row",
-          );
-          await recordReferralActivity(
-            tx,
-            organizationId,
-            id,
-            actorUserId,
-            "note_added",
-            null,
-            null,
-          );
-          return {
-            id: r.id,
-            referralId: r.referralId,
-            authorId: r.authorId ?? null,
-            content: r.content,
-            createdAt: r.createdAt.toISOString(),
-            updatedAt: r.updatedAt.toISOString(),
-          };
-        },
-      );
+    async addReferralNote(organizationId, id, input, actorUserId): Promise<ReferralNoteView> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        await loadRef(tx, id);
+        const r = firstOrThrow(
+          await tx
+            .insert(RN)
+            .values({
+              organizationId,
+              referralId: id,
+              authorId: actorUserId || null,
+              content: input.content,
+            })
+            .returning({
+              id: RN.id,
+              referralId: RN.referralId,
+              authorId: RN.authorId,
+              content: RN.content,
+              createdAt: RN.createdAt,
+              updatedAt: RN.updatedAt,
+            }),
+          "referral note insert returned no row",
+        );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, "note_added", null, null);
+        return {
+          id: r.id,
+          referralId: r.referralId,
+          authorId: r.authorId ?? null,
+          content: r.content,
+          createdAt: r.createdAt.toISOString(),
+          updatedAt: r.updatedAt.toISOString(),
+        };
+      });
     },
-    async listReferralNotes(
-      organizationId,
-      id,
-    ): Promise<readonly ReferralNoteView[]> {
+    async listReferralNotes(organizationId, id): Promise<readonly ReferralNoteView[]> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         await loadRef(tx, id);
         const rows = await tx
@@ -2443,10 +2604,7 @@ export function createDbAdmissionRouteService(
         }));
       });
     },
-    async listReferralActivity(
-      organizationId,
-      id,
-    ): Promise<readonly ReferralActivityView[]> {
+    async listReferralActivity(organizationId, id): Promise<readonly ReferralActivityView[]> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         await loadRef(tx, id);
         const rows = await tx
@@ -2475,249 +2633,188 @@ export function createDbAdmissionRouteService(
         }));
       });
     },
-    async updateReferralPriority(
-      organizationId,
-      id,
-      priority,
-      ifVersion,
-      actorUserId,
-    ) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const cur = await loadRef(tx, id);
-          assertVersion(id, cur.version, ifVersion);
-          const r = firstOrThrow(
-            await tx
-              .update(REF)
-              .set({
-                priority,
-                version: sql`${REF.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
-              .returning({
-                id: REF.id,
-                status: REF.status,
-                version: REF.version,
-              }),
-            "row not found",
-          );
-          await recordReferralActivity(
-            tx,
-            organizationId,
-            id,
-            actorUserId,
-            "priority_updated",
-            null,
-            null,
-            {
+    async updateReferralPriority(organizationId, id, priority, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
               priority,
-            },
-          );
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({
+              id: REF.id,
+              status: REF.status,
+              version: REF.version,
+            }),
+          "row not found",
+        );
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "priority_updated",
+          null,
+          null,
+          {
+            priority,
+          },
+        );
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
-    async assignReferral(
-      organizationId,
-      id,
-      assignedToUserId,
-      ifVersion,
-      actorUserId,
-    ) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const cur = await loadRef(tx, id);
-          assertVersion(id, cur.version, ifVersion);
-          const r = firstOrThrow(
-            await tx
-              .update(REF)
-              .set({
-                assignedToUserId: assignedToUserId ?? null,
-                version: sql`${REF.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
-              .returning({
-                id: REF.id,
-                status: REF.status,
-                version: REF.version,
-              }),
-            "row not found",
-          );
-          await recordReferralActivity(
-            tx,
-            organizationId,
-            id,
-            actorUserId,
-            "assigned",
-            null,
-            null,
-            {
+    async assignReferral(organizationId, id, assignedToUserId, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
               assignedToUserId: assignedToUserId ?? null,
-            },
-          );
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({
+              id: REF.id,
+              status: REF.status,
+              version: REF.version,
+            }),
+          "row not found",
+        );
+        await recordReferralActivity(tx, organizationId, id, actorUserId, "assigned", null, null, {
+          assignedToUserId: assignedToUserId ?? null,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
-    async markReferralPendingInformation(
-      organizationId,
-      id,
-      reason,
-      ifVersion,
-      actorUserId,
-    ) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const cur = await loadRef(tx, id);
-          assertVersion(id, cur.version, ifVersion);
-          if (cur.status !== "under_review") {
-            throw new InvalidReferralStateError(
-              id,
-              cur.status,
-              "mark pending information",
-            );
-          }
-          const r = firstOrThrow(
-            await tx
-              .update(REF)
-              .set({
-                status: "pending_information",
-                version: sql`${REF.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
-              .returning({
-                id: REF.id,
-                status: REF.status,
-                version: REF.version,
-              }),
-            "row not found",
-          );
-          await recordReferralActivity(
-            tx,
-            organizationId,
-            id,
-            actorUserId,
-            "pending_information_requested",
-            cur.status,
-            r.status,
-            {
-              reason,
-            },
-          );
-          await tx.insert(RN).values({
-            organizationId,
-            referralId: id,
-            authorId: actorUserId || null,
-            content: `Pending information requested: ${reason}`,
-          });
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+    async markReferralPendingInformation(organizationId, id, reason, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (cur.status !== "under_review") {
+          throw new InvalidReferralStateError(id, cur.status, "mark pending information");
+        }
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              status: "pending_information",
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({
+              id: REF.id,
+              status: REF.status,
+              version: REF.version,
+            }),
+          "row not found",
+        );
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "pending_information_requested",
+          cur.status,
+          r.status,
+          {
+            reason,
+          },
+        );
+        await tx.insert(RN).values({
+          organizationId,
+          referralId: id,
+          authorId: actorUserId || null,
+          content: `Pending information requested: ${reason}`,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
-    async markReferralDuplicate(
-      organizationId,
-      id,
-      reason,
-      ifVersion,
-      actorUserId,
-    ) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const cur = await loadRef(tx, id);
-          assertVersion(id, cur.version, ifVersion);
-          if (cur.status === "converted")
-            throw new InvalidReferralStateError(
-              id,
-              cur.status,
-              "mark duplicate",
-            );
-          const r = firstOrThrow(
-            await tx
-              .update(REF)
-              .set({
-                status: "duplicate",
-                rejectionReason: reason ?? "Duplicate referral",
-                decidedAt: now(),
-                version: sql`${REF.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
-              .returning({
-                id: REF.id,
-                status: REF.status,
-                version: REF.version,
-              }),
-            "row not found",
-          );
-          await recordReferralActivity(
-            tx,
-            organizationId,
-            id,
-            actorUserId,
-            "duplicate",
-            cur.status,
-            r.status,
-            {
-              reason: reason ?? null,
-            },
-          );
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+    async markReferralDuplicate(organizationId, id, reason, ifVersion, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (cur.status === "converted")
+          throw new InvalidReferralStateError(id, cur.status, "mark duplicate");
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              status: "duplicate",
+              rejectionReason: reason ?? "Duplicate referral",
+              decidedAt: now(),
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({
+              id: REF.id,
+              status: REF.status,
+              version: REF.version,
+            }),
+          "row not found",
+        );
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "duplicate",
+          cur.status,
+          r.status,
+          {
+            reason: reason ?? null,
+          },
+        );
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
     async withdrawReferral(organizationId, id, reason, ifVersion, actorUserId) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const cur = await loadRef(tx, id);
-          assertVersion(id, cur.version, ifVersion);
-          if (cur.status === "converted")
-            throw new InvalidReferralStateError(id, cur.status, "withdraw");
-          const r = firstOrThrow(
-            await tx
-              .update(REF)
-              .set({
-                status: "withdrawn",
-                rejectionReason: reason ?? "Referral withdrawn",
-                decidedAt: now(),
-                version: sql`${REF.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
-              .returning({
-                id: REF.id,
-                status: REF.status,
-                version: REF.version,
-              }),
-            "row not found",
-          );
-          await recordReferralActivity(
-            tx,
-            organizationId,
-            id,
-            actorUserId,
-            "withdrawn",
-            cur.status,
-            r.status,
-            {
-              reason: reason ?? null,
-            },
-          );
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (cur.status === "converted")
+          throw new InvalidReferralStateError(id, cur.status, "withdraw");
+        const r = firstOrThrow(
+          await tx
+            .update(REF)
+            .set({
+              status: "withdrawn",
+              rejectionReason: reason ?? "Referral withdrawn",
+              decidedAt: now(),
+              version: sql`${REF.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(REF.id, id), eq(REF.version, ifVersion)))
+            .returning({
+              id: REF.id,
+              status: REF.status,
+              version: REF.version,
+            }),
+          "row not found",
+        );
+        await recordReferralActivity(
+          tx,
+          organizationId,
+          id,
+          actorUserId,
+          "withdrawn",
+          cur.status,
+          r.status,
+          {
+            reason: reason ?? null,
+          },
+        );
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
 
     // ── M6L-T02: admission lifecycle ────────────────────────────────────────────────────────────
@@ -2729,152 +2826,138 @@ export function createDbAdmissionRouteService(
     // be evaluated). Now mirrors `acceptReferral`'s cascade: the same `createAdmission` state-machine
     // event (opens the same 4 compliance windows, lands on `pending`), a seeded period 1, and a draft
     // CTI carrying the hospice-MD/attending ids the form actually asked for.
-    async createAdmission(
-      organizationId,
-      input,
-      actorUserId,
-    ): Promise<MutationResult> {
+    async createAdmission(organizationId, input, actorUserId): Promise<MutationResult> {
       void actorUserId;
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          if (input.referralId) throw new ReferralAdmissionPathError();
-          // §2.3.1 no double-election: same rule acceptReferral enforces — direct intake is a second
-          // entry path into the same admission lifecycle, not an exemption from it.
-          const [open] = await tx
-            .select({ id: ADM.id })
-            .from(ADM)
-            .where(
-              and(
-                eq(ADM.patientId, input.patientId),
-                ne(ADM.status, "discharged"),
-                ne(ADM.status, "bereavement"),
-                ne(ADM.status, "closed"),
-              ),
-            )
-            .limit(1);
-          const t = transitionAdmission("referred", {
-            type: "createAdmission",
-            referralAccepted: true,
-            hasOtherOpenAdmission: !!open,
-          } satisfies AdmissionEvent);
-          const adm = firstOrThrow(
-            await tx
-              .insert(ADM)
-              .values({
-                organizationId,
-                patientId: input.patientId,
-                referralId: input.referralId ?? null,
-                hospicePhysicianId: input.hospiceMedicalDirectorId,
-                attendingPhysicianId: input.attendingPhysicianId ?? null,
-                status: t.to,
-              })
-              .returning({
-                id: ADM.id,
-                status: ADM.status,
-                version: ADM.version,
-              }),
-            "admission insert returned no row",
-          );
-          await runEffects(
-            tx,
-            {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        if (input.referralId) throw new ReferralAdmissionPathError();
+        // §2.3.1 no double-election: same rule acceptReferral enforces — direct intake is a second
+        // entry path into the same admission lifecycle, not an exemption from it.
+        const [open] = await tx
+          .select({ id: ADM.id })
+          .from(ADM)
+          .where(
+            and(
+              eq(ADM.patientId, input.patientId),
+              ne(ADM.status, "discharged"),
+              ne(ADM.status, "bereavement"),
+              ne(ADM.status, "closed"),
+            ),
+          )
+          .limit(1);
+        const t = transitionAdmission("referred", {
+          type: "createAdmission",
+          referralAccepted: true,
+          hasOtherOpenAdmission: !!open,
+        } satisfies AdmissionEvent);
+        const adm = firstOrThrow(
+          await tx
+            .insert(ADM)
+            .values({
               organizationId,
-              aggregateKind: "admission",
-              aggregateId: adm.id,
-              admissionId: adm.id,
-            },
-            t.effects,
-            {
-              "m6.admission.draft_created": {
-                patientId: input.patientId,
-                ...(input.referralId ? { referralId: input.referralId } : {}),
-              },
-            },
-          );
-          // Seed benefit period 1 (mirrors acceptReferral's §7.1 cascade) — EXCEPT for a transfer-in
-          // intake (W-DC-03/D9): that admission never has a "period 1" at all, since the receiving
-          // hospice inherits the sending hospice's carried sequence via the dedicated `transferIn` call
-          // (42 CFR 418.28, the benefit-period counter never restarts). Seeding period 1 here for a
-          // transfer-in unconditionally created a spurious extra election_period row (+ a spurious CTI
-          // attached to it) ahead of `transferIn`'s own inherited/next pair.
-          if (input.intakeMethod === "transfer_in") {
-            return {
-              id: adm.id,
-              state: adm.status,
-              version: Number(adm.version),
-            };
-          }
-          const period = firstOrThrow(
-            await tx
-              .insert(EP)
-              .values({
-                organizationId,
-                admissionId: adm.id,
-                sequenceNumber: 1,
-                periodKind: "ninety_day",
-              })
-              .returning({ id: EP.id }),
-            "election period insert returned no row",
-          );
-          // Draft the CTI the form's hospiceMedicalDirectorId/attendingPhysicianId are for (mirrors
-          // draftCti) — without this the id the user was required to enter had nowhere to go.
-          const cti = firstOrThrow(
-            await tx
-              .insert(CTI)
-              .values({
-                organizationId,
-                electionPeriodId: period.id,
-                hospiceMdId: input.hospiceMedicalDirectorId,
-                attendingMdId: null,
-              })
-              .returning({ id: CTI.id }),
-            "cti insert returned no row",
-          );
-          await outbox.publish(tx, {
-            eventName: "m6.cti.drafted",
-            payload: {
-              ctiId: cti.id,
-              electionPeriodId: period.id,
-              isRecert: false,
-            },
+              patientId: input.patientId,
+              referralId: input.referralId ?? null,
+              hospicePhysicianId: input.hospiceMedicalDirectorId,
+              attendingPhysicianId: input.attendingPhysicianId ?? null,
+              status: t.to,
+            })
+            .returning({
+              id: ADM.id,
+              status: ADM.status,
+              version: ADM.version,
+            }),
+          "admission insert returned no row",
+        );
+        await runEffects(
+          tx,
+          {
             organizationId,
-            aggregateKind: "certification_of_terminal_illness",
-            aggregateId: cti.id,
-          });
-          await createAdmissionEvidenceService(tx).recordStructuredEvidence({
-            organizationId,
+            aggregateKind: "admission",
+            aggregateId: adm.id,
             admissionId: adm.id,
-            electionPeriodId: period.id,
-            patientId: input.patientId,
-            requirementType: "cti",
-            structuredEntityType: "cti",
-            structuredEntityId: cti.id,
-            metadata: { createdBy: "direct_intake" },
-            createdByMembershipId: actorUserId,
-          });
+          },
+          t.effects,
+          {
+            "m6.admission.draft_created": {
+              patientId: input.patientId,
+              ...(input.referralId ? { referralId: input.referralId } : {}),
+            },
+          },
+        );
+        // Seed benefit period 1 (mirrors acceptReferral's §7.1 cascade) — EXCEPT for a transfer-in
+        // intake (W-DC-03/D9): that admission never has a "period 1" at all, since the receiving
+        // hospice inherits the sending hospice's carried sequence via the dedicated `transferIn` call
+        // (42 CFR 418.28, the benefit-period counter never restarts). Seeding period 1 here for a
+        // transfer-in unconditionally created a spurious extra election_period row (+ a spurious CTI
+        // attached to it) ahead of `transferIn`'s own inherited/next pair.
+        if (input.intakeMethod === "transfer_in") {
           return {
             id: adm.id,
             state: adm.status,
             version: Number(adm.version),
           };
-        },
-      );
+        }
+        const period = firstOrThrow(
+          await tx
+            .insert(EP)
+            .values({
+              organizationId,
+              admissionId: adm.id,
+              sequenceNumber: 1,
+              periodKind: "ninety_day",
+            })
+            .returning({ id: EP.id }),
+          "election period insert returned no row",
+        );
+        // Draft the CTI the form's hospiceMedicalDirectorId/attendingPhysicianId are for (mirrors
+        // draftCti) — without this the id the user was required to enter had nowhere to go.
+        const cti = firstOrThrow(
+          await tx
+            .insert(CTI)
+            .values({
+              organizationId,
+              electionPeriodId: period.id,
+              hospiceMdId: input.hospiceMedicalDirectorId,
+              attendingMdId: null,
+            })
+            .returning({ id: CTI.id }),
+          "cti insert returned no row",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.cti.drafted",
+          payload: {
+            ctiId: cti.id,
+            electionPeriodId: period.id,
+            isRecert: false,
+          },
+          organizationId,
+          aggregateKind: "certification_of_terminal_illness",
+          aggregateId: cti.id,
+        });
+        await createAdmissionEvidenceService(tx).recordStructuredEvidence({
+          organizationId,
+          admissionId: adm.id,
+          electionPeriodId: period.id,
+          patientId: input.patientId,
+          requirementType: "cti",
+          structuredEntityType: "cti",
+          structuredEntityId: cti.id,
+          metadata: { createdBy: "direct_intake" },
+          createdByMembershipId: actorUserId,
+        });
+        return {
+          id: adm.id,
+          state: adm.status,
+          version: Number(adm.version),
+        };
+      });
     },
-    async updateAdmission(
-      organizationId,
-      id,
-      input,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async updateAdmission(organizationId, id, input, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const updates: Record<string, unknown> = {
           version: sql`${ADM.version} + 1`,
           updatedAt: now(),
         };
-        if (input.admissionAt !== undefined)
-          updates.admissionAt = new Date(input.admissionAt);
+        if (input.admissionAt !== undefined) updates.admissionAt = new Date(input.admissionAt);
         if (input.hospicePhysicianId !== undefined)
           updates.hospicePhysicianId = input.hospicePhysicianId;
         if (input.attendingPhysicianId !== undefined)
@@ -2890,35 +2973,19 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!current) throw new ResourceNotFoundError(id);
         const finalProviderEntityId =
-          input.providerEntityId !== undefined
-            ? input.providerEntityId
-            : current.providerEntityId;
+          input.providerEntityId !== undefined ? input.providerEntityId : current.providerEntityId;
         const finalLocationId =
-          input.locationId !== undefined
-            ? input.locationId
-            : current.locationId;
+          input.locationId !== undefined ? input.locationId : current.locationId;
         if (finalProviderEntityId && finalLocationId) {
-          const location = await foundationSites.locationProviderEntity(
-            tx,
-            finalLocationId,
-          );
-          if (
-            !location ||
-            location.providerEntityId !== finalProviderEntityId
-          ) {
-            throw new LocationProviderMismatchError(
-              finalLocationId,
-              finalProviderEntityId,
-            );
+          const location = await foundationSites.locationProviderEntity(tx, finalLocationId);
+          if (!location || location.providerEntityId !== finalProviderEntityId) {
+            throw new LocationProviderMismatchError(finalLocationId, finalProviderEntityId);
           }
         }
         if (input.providerEntityId !== undefined) {
           updates.providerEntityId = input.providerEntityId;
         }
-        if (
-          input.providerEntityId !== undefined ||
-          input.admissionAt !== undefined
-        ) {
+        if (input.providerEntityId !== undefined || input.admissionAt !== undefined) {
           const residence = await readCurrentResidenceAddress(
             tx,
             organizationId,
@@ -2944,10 +3011,7 @@ export function createDbAdmissionRouteService(
           updates.locationId =
             input.locationId ??
             (finalProviderEntityId
-              ? await foundationSites.defaultLocationIdForProviderEntity(
-                  tx,
-                  finalProviderEntityId,
-                )
+              ? await foundationSites.defaultLocationIdForProviderEntity(tx, finalProviderEntityId)
               : null);
         } else if (input.locationId !== undefined) {
           updates.locationId = input.locationId;
@@ -2961,196 +3025,139 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async attachUploadedNoticeOfRights(
-      organizationId,
-      admissionId,
-      input,
-      actorUserId,
-    ) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const [adm] = await tx
-            .select({
-              patientId: ADM.patientId,
-              status: ADM.status,
-              version: ADM.version,
-            })
-            .from(ADM)
-            .where(
-              and(
-                eq(ADM.organizationId, organizationId),
-                eq(ADM.id, admissionId),
-              ),
-            )
-            .limit(1);
-          if (!adm) throw new ResourceNotFoundError(admissionId);
-          const svc = createAdmissionEvidenceService(
-            tx,
-            admissionDocumentValidator,
-          );
-          for (const requirementType of requirementsForUploadedNoticeOfRights(
-            input,
-          )) {
-            await svc.recordUploadedEvidence({
-              organizationId,
-              admissionId,
-              patientId: adm.patientId,
-              requirementType,
-              documentId: input.documentId,
-              documentVersionId: input.documentVersionId,
-              completedAt: input.acknowledgedAt
-                ? new Date(input.acknowledgedAt)
-                : undefined,
-              metadata: { ...input },
-              createdByMembershipId: actorUserId,
-            });
-          }
-          return {
-            id: admissionId,
-            state: adm.status,
-            version: Number(adm.version),
-          };
-        },
-      );
+    async attachUploadedNoticeOfRights(organizationId, admissionId, input, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [adm] = await tx
+          .select({
+            patientId: ADM.patientId,
+            status: ADM.status,
+            version: ADM.version,
+          })
+          .from(ADM)
+          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(admissionId);
+        const svc = createAdmissionEvidenceService(tx, admissionDocumentValidator);
+        for (const requirementType of requirementsForUploadedNoticeOfRights(input)) {
+          await svc.recordUploadedEvidence({
+            organizationId,
+            admissionId,
+            patientId: adm.patientId,
+            requirementType,
+            documentId: input.documentId,
+            documentVersionId: input.documentVersionId,
+            completedAt: input.acknowledgedAt ? new Date(input.acknowledgedAt) : undefined,
+            metadata: { ...input },
+            createdByMembershipId: actorUserId,
+          });
+        }
+        return {
+          id: admissionId,
+          state: adm.status,
+          version: Number(adm.version),
+        };
+      });
     },
-    async attachUploadedElectionStatement(
-      organizationId,
-      electionPeriodId,
-      input,
-      actorUserId,
-    ) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const [period] = await tx
-            .select({ admissionId: EP.admissionId })
-            .from(EP)
-            .where(
-              and(
-                eq(EP.organizationId, organizationId),
-                eq(EP.id, electionPeriodId),
-              ),
-            )
-            .limit(1);
-          if (!period) throw new ResourceNotFoundError(electionPeriodId);
-          const [adm] = await tx
-            .select({
-              patientId: ADM.patientId,
-              status: ADM.status,
-              version: ADM.version,
-            })
-            .from(ADM)
-            .where(eq(ADM.id, period.admissionId))
-            .limit(1);
-          if (!adm) throw new ResourceNotFoundError(period.admissionId);
-          if (
-            input.documentState === "signed" &&
-            (!input.signerName || !input.signerRole || !input.signedAt)
-          ) {
-            throw new WardenXError(
-              "UPLOADED_ELECTION_SIGNATURE_METADATA_REQUIRED",
-              "Signer name, signer role, and signature date are required for a signed Election Statement.",
-              400,
-            );
-          }
-          const metadata =
-            input.documentState === "signed"
-              ? {
-                  documentState: "signed" as const,
-                  signedAt: input.signedAt,
-                  signerRole: input.signerRole ?? "patient",
-                  signerName: input.signerName,
-                }
-              : { documentState: "unsigned" as const };
-          const svc = createAdmissionEvidenceService(
-            tx,
-            admissionDocumentValidator,
+    async attachUploadedElectionStatement(organizationId, electionPeriodId, input, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [period] = await tx
+          .select({ admissionId: EP.admissionId })
+          .from(EP)
+          .where(and(eq(EP.organizationId, organizationId), eq(EP.id, electionPeriodId)))
+          .limit(1);
+        if (!period) throw new ResourceNotFoundError(electionPeriodId);
+        const [adm] = await tx
+          .select({
+            patientId: ADM.patientId,
+            status: ADM.status,
+            version: ADM.version,
+          })
+          .from(ADM)
+          .where(eq(ADM.id, period.admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(period.admissionId);
+        if (
+          input.documentState === "signed" &&
+          (!input.signerName || !input.signerRole || !input.signedAt)
+        ) {
+          throw new WardenXError(
+            "UPLOADED_ELECTION_SIGNATURE_METADATA_REQUIRED",
+            "Signer name, signer role, and signature date are required for a signed Election Statement.",
+            400,
           );
-          for (const requirementType of requirementsForUploadedElectionStatement(
+        }
+        const metadata =
+          input.documentState === "signed"
+            ? {
+                documentState: "signed" as const,
+                signedAt: input.signedAt,
+                signerRole: input.signerRole ?? "patient",
+                signerName: input.signerName,
+              }
+            : { documentState: "unsigned" as const };
+        const svc = createAdmissionEvidenceService(tx, admissionDocumentValidator);
+        for (const requirementType of requirementsForUploadedElectionStatement(metadata)) {
+          await svc.recordUploadedEvidence({
+            organizationId,
+            admissionId: period.admissionId,
+            electionPeriodId,
+            patientId: adm.patientId,
+            requirementType,
+            documentId: input.documentId,
+            documentVersionId: input.documentVersionId,
+            completedAt: input.signedAt ? new Date(input.signedAt) : undefined,
             metadata,
-          )) {
-            await svc.recordUploadedEvidence({
-              organizationId,
-              admissionId: period.admissionId,
-              electionPeriodId,
-              patientId: adm.patientId,
-              requirementType,
-              documentId: input.documentId,
-              documentVersionId: input.documentVersionId,
-              completedAt: input.signedAt
-                ? new Date(input.signedAt)
-                : undefined,
-              metadata,
-              createdByMembershipId: actorUserId,
-            });
-          }
-          return {
-            id: period.admissionId,
-            state: adm.status,
-            version: Number(adm.version),
-          };
-        },
-      );
+            createdByMembershipId: actorUserId,
+          });
+        }
+        return {
+          id: period.admissionId,
+          state: adm.status,
+          version: Number(adm.version),
+        };
+      });
     },
-    async attachUploadedElectionSignature(
-      organizationId,
-      electionStatementId,
-      input,
-      actorUserId,
-    ) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const [es] = await tx
-            .select({
-              id: ES.id,
-              patientId: ES.patientId,
-              electionPeriodId: ES.electionPeriodId,
-              status: ES.status,
-            })
-            .from(ES)
-            .where(
-              and(
-                eq(ES.organizationId, organizationId),
-                eq(ES.id, electionStatementId),
-              ),
-            )
-            .limit(1);
-          if (!es) throw new ResourceNotFoundError(electionStatementId);
-          if (es.status === "signed") {
-            throw new WardenXError(
-              "ELECTION_ALREADY_SIGNED",
-              "This Election Statement is already signed.",
-              409,
-            );
-          }
-          if (!input.signerName || !input.signerRole || !input.signedAt) {
-            throw new WardenXError(
-              "UPLOADED_ELECTION_SIGNATURE_METADATA_REQUIRED",
-              "Signer name, signer role, and signature date are required for a signed Election Statement.",
-              400,
-            );
-          }
-          const [period] = await tx
-            .select({ admissionId: EP.admissionId })
-            .from(EP)
-            .where(eq(EP.id, es.electionPeriodId))
-            .limit(1);
-          if (!period) throw new ResourceNotFoundError(es.electionPeriodId);
-          const [adm] = await tx
-            .select({ status: ADM.status, version: ADM.version })
-            .from(ADM)
-            .where(eq(ADM.id, period.admissionId))
-            .limit(1);
-          if (!adm) throw new ResourceNotFoundError(period.admissionId);
-          await createAdmissionEvidenceService(
-            tx,
-            admissionDocumentValidator,
-          ).recordUploadedEvidence({
+    async attachUploadedElectionSignature(organizationId, electionStatementId, input, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [es] = await tx
+          .select({
+            id: ES.id,
+            patientId: ES.patientId,
+            electionPeriodId: ES.electionPeriodId,
+            status: ES.status,
+          })
+          .from(ES)
+          .where(and(eq(ES.organizationId, organizationId), eq(ES.id, electionStatementId)))
+          .limit(1);
+        if (!es) throw new ResourceNotFoundError(electionStatementId);
+        if (es.status === "signed") {
+          throw new WardenXError(
+            "ELECTION_ALREADY_SIGNED",
+            "This Election Statement is already signed.",
+            409,
+          );
+        }
+        if (!input.signerName || !input.signerRole || !input.signedAt) {
+          throw new WardenXError(
+            "UPLOADED_ELECTION_SIGNATURE_METADATA_REQUIRED",
+            "Signer name, signer role, and signature date are required for a signed Election Statement.",
+            400,
+          );
+        }
+        const [period] = await tx
+          .select({ admissionId: EP.admissionId })
+          .from(EP)
+          .where(eq(EP.id, es.electionPeriodId))
+          .limit(1);
+        if (!period) throw new ResourceNotFoundError(es.electionPeriodId);
+        const [adm] = await tx
+          .select({ status: ADM.status, version: ADM.version })
+          .from(ADM)
+          .where(eq(ADM.id, period.admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(period.admissionId);
+        await createAdmissionEvidenceService(tx, admissionDocumentValidator).recordUploadedEvidence(
+          {
             organizationId,
             admissionId: period.admissionId,
             electionPeriodId: es.electionPeriodId,
@@ -3166,106 +3173,82 @@ export function createDbAdmissionRouteService(
               signedAt: input.signedAt,
             },
             createdByMembershipId: actorUserId,
-          });
-          return {
-            id: period.admissionId,
-            state: adm.status,
-            version: Number(adm.version),
-          };
-        },
-      );
+          },
+        );
+        return {
+          id: period.admissionId,
+          state: adm.status,
+          version: Number(adm.version),
+        };
+      });
     },
-    async attachUploadedCti(
-      organizationId,
-      electionPeriodId,
-      input,
-      actorUserId,
-    ) {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const [period] = await tx
-            .select({ admissionId: EP.admissionId })
-            .from(EP)
-            .where(
-              and(
-                eq(EP.organizationId, organizationId),
-                eq(EP.id, electionPeriodId),
-              ),
-            )
-            .limit(1);
-          if (!period) throw new ResourceNotFoundError(electionPeriodId);
-          const [adm] = await tx
-            .select({
-              patientId: ADM.patientId,
-              status: ADM.status,
-              version: ADM.version,
-              hospicePhysicianId: ADM.hospicePhysicianId,
-            })
-            .from(ADM)
-            .where(eq(ADM.id, period.admissionId))
-            .limit(1);
-          if (!adm) throw new ResourceNotFoundError(period.admissionId);
-          if (!adm.hospicePhysicianId) {
-            throw new WardenXError(
-              "ADMISSION_HOSPICE_PHYSICIAN_REQUIRED",
-              "Select a Hospice Physician before creating the CTI.",
-              400,
-            );
-          }
-          if (input.documentState === "signed" && !input.signedAt) {
-            throw new WardenXError(
-              "UPLOADED_CTI_SIGNATURE_DATE_REQUIRED",
-              "Signature date is required for a signed CTI.",
-              400,
-            );
-          }
-          const metadata =
-            input.documentState === "signed"
-              ? {
-                  documentState: "signed" as const,
-                  signedAt: input.signedAt,
-                  signingPhysicianId: adm.hospicePhysicianId,
-                }
-              : { documentState: "unsigned" as const };
-          const svc = createAdmissionEvidenceService(
-            tx,
-            admissionDocumentValidator,
+    async attachUploadedCti(organizationId, electionPeriodId, input, actorUserId) {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [period] = await tx
+          .select({ admissionId: EP.admissionId })
+          .from(EP)
+          .where(and(eq(EP.organizationId, organizationId), eq(EP.id, electionPeriodId)))
+          .limit(1);
+        if (!period) throw new ResourceNotFoundError(electionPeriodId);
+        const [adm] = await tx
+          .select({
+            patientId: ADM.patientId,
+            status: ADM.status,
+            version: ADM.version,
+            hospicePhysicianId: ADM.hospicePhysicianId,
+          })
+          .from(ADM)
+          .where(eq(ADM.id, period.admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(period.admissionId);
+        if (!adm.hospicePhysicianId) {
+          throw new WardenXError(
+            "ADMISSION_HOSPICE_PHYSICIAN_REQUIRED",
+            "Select a Hospice Physician before creating the CTI.",
+            400,
           );
-          for (const requirementType of requirementsForUploadedCti(
+        }
+        if (input.documentState === "signed" && !input.signedAt) {
+          throw new WardenXError(
+            "UPLOADED_CTI_SIGNATURE_DATE_REQUIRED",
+            "Signature date is required for a signed CTI.",
+            400,
+          );
+        }
+        const metadata =
+          input.documentState === "signed"
+            ? {
+                documentState: "signed" as const,
+                signedAt: input.signedAt,
+                signingPhysicianId: adm.hospicePhysicianId,
+              }
+            : { documentState: "unsigned" as const };
+        const svc = createAdmissionEvidenceService(tx, admissionDocumentValidator);
+        for (const requirementType of requirementsForUploadedCti(
+          metadata,
+          adm.hospicePhysicianId,
+        )) {
+          await svc.recordUploadedEvidence({
+            organizationId,
+            admissionId: period.admissionId,
+            electionPeriodId,
+            patientId: adm.patientId,
+            requirementType,
+            documentId: input.documentId,
+            documentVersionId: input.documentVersionId,
+            completedAt: input.signedAt ? new Date(input.signedAt) : undefined,
             metadata,
-            adm.hospicePhysicianId,
-          )) {
-            await svc.recordUploadedEvidence({
-              organizationId,
-              admissionId: period.admissionId,
-              electionPeriodId,
-              patientId: adm.patientId,
-              requirementType,
-              documentId: input.documentId,
-              documentVersionId: input.documentVersionId,
-              completedAt: input.signedAt
-                ? new Date(input.signedAt)
-                : undefined,
-              metadata,
-              createdByMembershipId: actorUserId,
-            });
-          }
-          return {
-            id: period.admissionId,
-            state: adm.status,
-            version: Number(adm.version),
-          };
-        },
-      );
+            createdByMembershipId: actorUserId,
+          });
+        }
+        return {
+          id: period.admissionId,
+          state: adm.status,
+          version: Number(adm.version),
+        };
+      });
     },
-    async holdAdmission(
-      organizationId,
-      id,
-      reason,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async holdAdmission(organizationId, id, reason, ifVersion): Promise<MutationResult> {
       return admissionEvent(
         organizationId,
         id,
@@ -3275,13 +3258,10 @@ export function createDbAdmissionRouteService(
           holdReason: reason,
           holdAt: now(),
         },
+        { "m6.admission.on_hold": { reason, heldAt: now().toISOString() } },
       );
     },
-    async resumeAdmission(
-      organizationId,
-      id,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async resumeAdmission(organizationId, id, ifVersion): Promise<MutationResult> {
       return admissionEvent(
         organizationId,
         id,
@@ -3290,13 +3270,10 @@ export function createDbAdmissionRouteService(
         {
           releasedAt: now(),
         },
+        { "m6.admission.resumed": { resumedAt: now().toISOString() } },
       );
     },
-    async activateAdmission(
-      organizationId,
-      id,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async activateAdmission(organizationId, id, ifVersion, input): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const cur = await loadAdm(tx, id);
         assertVersion(id, cur.version, ifVersion);
@@ -3308,10 +3285,7 @@ export function createDbAdmissionRouteService(
         // directly gets the SAME 412 PRECONDITION_FAILED { missing } the checklist would have shown.
         const gate = computeActivationGate(facts);
         if (!readiness.canActivate) {
-          throw new ActivationPreconditionError(
-            gate.missing,
-            readiness.requirements,
-          );
+          throw new ActivationPreconditionError(gate.missing, readiness.requirements);
         }
         const t = transitionAdmission(cur.status, {
           type: "activate",
@@ -3325,12 +3299,29 @@ export function createDbAdmissionRouteService(
           at: new Date().toISOString().slice(0, 10),
         } satisfies AdmissionEvent);
         const activatedAt = now();
+        // #50 — activation is where the admission is sited at a LOCATION. It has to be here rather than
+        // at intake: the location must belong to the ELECTED provider entity, and that is only known
+        // once the §418.24 statement has been drafted (#44 sites `provider_entity_id` from it). Resolved
+        // before the UPDATE so a refusal leaves the admission un-activated rather than half-sited.
+        // An admission already sited by `updateAdmission` (location validated against its provider
+        // entity there) keeps that location unless the activation request names a different one.
+        const locationId =
+          !input?.locationId && cur.locationId
+            ? cur.locationId
+            : await resolveActivationLocation(
+                organizationId,
+                cur.providerEntityId ?? null,
+                input?.locationId ?? null,
+              );
         const r = firstOrThrow(
           await tx
             .update(ADM)
             .set({
               status: t.to,
               activatedAt,
+              // Only ever SET, never cleared: a null resolution means "could not be determined", and
+              // overwriting a previously sited admission with null would lose a fact.
+              ...(locationId ? { locationId } : {}),
               version: sql`${ADM.version} + 1`,
             })
             .where(and(eq(ADM.id, id), eq(ADM.version, ifVersion)))
@@ -3349,9 +3340,37 @@ export function createDbAdmissionRouteService(
         // exists for it, same "folded into the caller" posture as `set_timestamp`/`set_flag`), so fold
         // it in here directly, mirroring the recert path's `signCtiHospiceMd` period activation.
         if (facts.periodId) {
+          // §2.3.2 `setActive`. R-AC-01 (`computeActivationGate`, above) has already refused an
+          // admission missing its signed election / NOR / CTI signatures, so these guards are the
+          // machine's own restatement of that for the PERIOD — plus the recert F2F rule, which the
+          // admission gate does not cover and which period 1 never triggers.
+          const periodFacts = await electionPeriodFacts(tx as DbClient, facts.periodId);
+          if (periodFacts) {
+            transitionElectionPeriod(periodFacts.status, {
+              type: "setActive",
+              certificationSigned: facts.ctiHospiceMdSigned,
+              admissionActivated: true, // the ADM update above committed in this same transaction
+              sequence: periodFacts.sequenceNumber,
+              f2fAttested:
+                periodFacts.sequenceNumber >= RECERT_SEQUENCE_FLOOR
+                  ? await hasAttestedF2f(tx as DbClient, facts.periodId)
+                  : true,
+              effectiveAt: isoDay(activatedAt),
+            });
+          }
           await tx
             .update(EP)
-            .set({ status: "active", version: sql`${EP.version} + 1` })
+            .set({
+              status: "active",
+              // The `setActive` transition's `set_timestamp effective_at` effect, folded in here the
+              // same way `status` is. Without it the three date columns were written by NOTHING in the
+              // codebase while being read in seven places — so M6's own `ElectionPeriodReader` (which
+              // filters `isNotNull(effective_at)`) returned an empty list for every admission on the
+              // platform, and HCI indicator 1's denominator, which selects election periods by
+              // `effective_at`, was permanently zero.
+              ...electionPeriodWindow(activatedAt, facts.periodSequence),
+              version: sql`${EP.version} + 1`,
+            })
             .where(and(eq(EP.id, facts.periodId), ne(EP.status, "active")));
         }
         await runEffects(
@@ -3373,12 +3392,8 @@ export function createDbAdmissionRouteService(
             "m6.election.period_started": {
               electionPeriodId: facts.periodId,
               sequence: facts.periodSequence,
-              ...(facts.periodEffectiveAt
-                ? { startDate: facts.periodEffectiveAt }
-                : {}),
-              ...(facts.periodScheduledEndAt
-                ? { endDate: facts.periodScheduledEndAt }
-                : {}),
+              ...(facts.periodEffectiveAt ? { startDate: facts.periodEffectiveAt } : {}),
+              ...(facts.periodScheduledEndAt ? { endDate: facts.periodScheduledEndAt } : {}),
             },
           },
         );
@@ -3390,6 +3405,7 @@ export function createDbAdmissionRouteService(
       organizationId,
       admissionId,
       electionPeriodId,
+      input,
     ): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [adm] = await tx
@@ -3408,6 +3424,25 @@ export function createDbAdmissionRouteService(
           .where(eq(EP.id, electionPeriodId))
           .limit(1);
         if (!period) throw new ResourceNotFoundError(electionPeriodId);
+        // The elected hospice must belong to THIS org before it is written to two tables — the FK
+        // carries no organization, so nothing below the app stops a cross-tenant election.
+        if (!providerEntityOrgCheck) {
+          throw new WardenXError(
+            "PROVIDER_ENTITY_CHECK_UNBOUND",
+            "cannot verify the elected provider entity belongs to this organization; refusing to " +
+              "draft an election statement against an unverified hospice",
+            503,
+          );
+        }
+        if (
+          !(await providerEntityOrgCheck.belongsToOrg(
+            organizationId,
+            input.electedProviderEntityId,
+          ))
+        ) {
+          // Absent and cross-tenant read identically, per the §6.6 existence-non-leak convention.
+          throw new ResourceNotFoundError(input.electedProviderEntityId);
+        }
         const es = firstOrThrow(
           await tx
             .insert(ES)
@@ -3415,7 +3450,18 @@ export function createDbAdmissionRouteService(
               organizationId,
               electionPeriodId,
               patientId: adm.patientId,
+              // Draft-time intent. `signerKind` is re-stated from the SIGN request (§418.24(b)(1)
+              // lets a legal representative sign) — it is NOT NULL, so the draft seeds the common
+              // case and signElection corrects it from what the signer actually declared.
               signerKind: "patient",
+              providerEntityId: input.electedProviderEntityId,
+              attendingPhysicianId: input.electedAttendingPhysicianId ?? null,
+              curativeCareAcknowledgment: input.waiverAcknowledged,
+              // The column is jsonb NOT NULL DEFAULT '{}', so the addendum is stored as an object
+              // field rather than a bare scalar — `{}` stays the honest "no addendum" value.
+              ...(input.stateAddendum === undefined
+                ? {}
+                : { stateAddendum: { text: input.stateAddendum } }),
             })
             .returning({ id: ES.id, status: ES.status, version: ES.version }),
           "election statement insert returned no row",
@@ -3430,6 +3476,20 @@ export function createDbAdmissionRouteService(
           structuredEntityId: es.id,
           metadata: { status: "drafted" },
         });
+        // §4.7 SITING — the reason this route is load-bearing well beyond its own table.
+        // `AdmissionStatusReader.getAdmissionSummary` THROWS `AdmissionSeamDataGapError` when
+        // `admission.provider_entity_id` is null (seams/drizzle-store.ts `summaryOf`), and no insert
+        // or update in this file ever set it — activation writes `status`/`activatedAt` only. So the
+        // seam failed for every admission ever created, and each of its five consumers degraded:
+        // M9 assessments (reported as INACTIVE_ADMISSION), M10 HOPE, M16 bereavement, M21 supplies
+        // (M21_SERVING_LOCATION_UNRESOLVED), plus the M14/M30 queue readers the DTO is written for.
+        // The elected hospice IS the admission's serving provider entity, and this is the first
+        // point in the lifecycle where the API supplies one — no other request schema accepts it.
+        // Idempotent by design: re-drafting after a void must not repoint a sited admission.
+        await tx
+          .update(ADM)
+          .set({ providerEntityId: input.electedProviderEntityId, updatedAt: now() })
+          .where(and(eq(ADM.id, admissionId), isNull(ADM.providerEntityId)));
         await outbox.publish(tx, {
           eventName: "m6.election.drafted",
           payload: {
@@ -3438,9 +3498,7 @@ export function createDbAdmissionRouteService(
             // Same TASK-031 precedent as `m6.election.period_started` — omitted rather than
             // fabricated when the period hasn't been dated yet (see events-by-m6.ts).
             ...(period.effectiveAt ? { startDate: period.effectiveAt } : {}),
-            ...(period.scheduledEndAt
-              ? { endDate: period.scheduledEndAt }
-              : {}),
+            ...(period.scheduledEndAt ? { endDate: period.scheduledEndAt } : {}),
           },
           organizationId,
           aggregateKind: "election_statement",
@@ -3449,12 +3507,7 @@ export function createDbAdmissionRouteService(
         return { id: es.id, state: es.status, version: Number(es.version) };
       });
     },
-    async signElection(
-      organizationId,
-      id,
-      ifVersion,
-      actorUserId,
-    ): Promise<MutationResult> {
+    async signElection(organizationId, id, ifVersion, actorUserId, input): Promise<MutationResult> {
       void actorUserId;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
@@ -3463,6 +3516,7 @@ export function createDbAdmissionRouteService(
             version: ES.version,
             electionPeriodId: ES.electionPeriodId,
             patientId: ES.patientId,
+            curativeCareAcknowledgment: ES.curativeCareAcknowledgment,
           })
           .from(ES)
           .where(eq(ES.id, id))
@@ -3470,9 +3524,46 @@ export function createDbAdmissionRouteService(
         if (!cur) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cur.version), ifVersion);
         if (cur.status !== "drafted")
-          throw conflict(
-            `election statement ${id} is not draftable from '${cur.status}'`,
-          );
+          throw conflict(`election statement ${id} is not draftable from '${cur.status}'`);
+
+        // §2.3.2 `signElectionStatement` — the period this statement elects advances `pending → signed`,
+        // and the three §2.4 election validators run on the way. Nothing wrote the `signed` state before,
+        // so the enum value existed and the graph's first edge had never been traversed.
+        const electedPeriod = await electionPeriodFacts(tx as DbClient, cur.electionPeriodId);
+        if (!electedPeriod) throw new ResourceNotFoundError(cur.electionPeriodId);
+        const signerKind = SIGNER_KIND_BY_ROLE[input.signingRole];
+        const concurrent = await concurrentElectionFacts(
+          tx as DbClient,
+          organizationId,
+          electedPeriod,
+        );
+        const transition = transitionElectionPeriod(electedPeriod.status, {
+          type: "signElectionStatement",
+          signerKind,
+          // R-EL-01 — resolved through the composition-root port over M39, and DENIED when unbound.
+          // Only reached for a representative signer; the validator returns early for `patient`.
+          hasActiveDpoaConsent:
+            signerKind === "representative"
+              ? ((await dpoaConsent?.hasActiveDpoaHealthcareConsent(
+                  organizationId,
+                  electedPeriod.patientId,
+                )) ?? false)
+              : true,
+          // R-EL-04 — read from the PERSISTED draft, not from this request. The acknowledgment is a
+          // property of the statement the patient was shown, and signing must not be able to supply it.
+          curativeCareAcknowledgment: cur.curativeCareAcknowledgment === true,
+          existingActiveElectionElsewhere: concurrent.existingActiveElectionElsewhere,
+          wouldOverlap: concurrent.wouldOverlap,
+        });
+        await tx
+          .update(EP)
+          .set({
+            status: transition.to,
+            version: sql`${EP.version} + 1`,
+            updatedAt: now(),
+          })
+          .where(and(eq(EP.id, cur.electionPeriodId), ne(EP.status, transition.to)));
+
         const signedAt = new Date().toISOString().slice(0, 10);
         const [r] = await tx
           .update(ES)
@@ -3480,7 +3571,16 @@ export function createDbAdmissionRouteService(
             status: "signed",
             signedAt,
             signatureMethod: "electronic_witnessed",
-            curativeCareAcknowledgment: true,
+            // #44 — who signed, under what name, and in what capacity (§418.24(b)(1)). These came in
+            // on the request and were discarded: the handler forwarded `ifVersion` alone, so
+            // `patient_name_at_signing` was NULL on every row and `signer_kind` kept the draft's
+            // hardcoded "patient" even when a legal representative signed.
+            signerKind: SIGNER_KIND_BY_ROLE[input.signingRole],
+            patientNameAtSigning: input.signingPatientName,
+            // `curative_care_acknowledgment` is NOT set here any more. It used to be hardcoded
+            // `true` at signing, which recorded a waiver the caller may never have given — the
+            // draft's `waiverAcknowledged` was discarded, so `false` still produced `true`. The
+            // draft now persists what the caller actually sent, and signing must not overwrite it.
             version: sql`${ES.version} + 1`,
             updatedAt: now(),
           })
@@ -3513,6 +3613,8 @@ export function createDbAdmissionRouteService(
             electionStatementId: id,
             electionPeriodId: cur.electionPeriodId,
             signedAt,
+            // F-100 — the chart. `election_statement.patient_id` is on the row this path already read.
+            patientId: cur.patientId,
           },
           organizationId,
           aggregateKind: "election_statement",
@@ -3521,12 +3623,7 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async voidElection(
-      organizationId,
-      id,
-      reason,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async voidElection(organizationId, id, reason, ifVersion): Promise<MutationResult> {
       void reason;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
@@ -3549,10 +3646,7 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async createElectionPeriod(
-      organizationId,
-      admissionId,
-    ): Promise<MutationResult> {
+    async createElectionPeriod(organizationId, admissionId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [adm] = await tx
           .select({ id: ADM.id })
@@ -3564,21 +3658,30 @@ export function createDbAdmissionRouteService(
           .select({ seq: sql<number>`coalesce(max(${EP.sequenceNumber}), 0)` })
           .from(EP)
           .where(eq(EP.admissionId, admissionId));
+        const nextSequence = Number(max?.seq ?? 0) + 1;
         const ep = firstOrThrow(
           await tx
             .insert(EP)
             .values({
               organizationId,
               admissionId,
-              sequenceNumber: Number(max?.seq ?? 0) + 1,
-              periodKind: "ninety_day",
+              sequenceNumber: nextSequence,
+              // 42 CFR 418.21(a): periods 1 and 2 are 90-day, every later period is 60-day. This was a
+              // hard-coded `ninety_day` at every insert site, which is right only for the two seeds that
+              // are always sequence 1 — a recert period and a transfer-in's carried sequence can be any
+              // number, and the kind is what `scheduled_end_at` is derived from.
+              periodKind: electionPeriodKindForSequence(nextSequence),
             })
             .returning({ id: EP.id, status: EP.status, version: EP.version }),
           "election period insert returned no row",
         );
         await outbox.publish(tx, {
           eventName: "m6.election.period_started",
-          payload: { electionPeriodId: ep.id, admissionId },
+          // F-100 — `sequence` is required and was omitted, so `POST /election-periods` raised
+          // `payload_schema_violation` and rolled back for every caller: no admission could open a
+          // benefit period past the one its activation seeds, which is 42 CFR 418.21(a) recertification.
+          // The value was already computed two statements up for the row's own `sequence_number`.
+          payload: { electionPeriodId: ep.id, admissionId, sequence: nextSequence },
           organizationId,
           aggregateKind: "election_period",
           aggregateId: ep.id,
@@ -3586,11 +3689,7 @@ export function createDbAdmissionRouteService(
         return { id: ep.id, state: ep.status, version: Number(ep.version) };
       });
     },
-    async patchElectionPeriod(
-      organizationId,
-      id,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async patchElectionPeriod(organizationId, id, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
           .select({ version: EP.version })
@@ -3610,11 +3709,7 @@ export function createDbAdmissionRouteService(
     },
 
     // ── M6L-T03: certification of terminal illness (CTI) ────────────────────────────────────────
-    async draftCti(
-      organizationId,
-      input: CtiDraftInput,
-      actorUserId,
-    ): Promise<MutationResult> {
+    async draftCti(organizationId, input: CtiDraftInput, actorUserId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const existing = await tx
           .select({
@@ -3714,12 +3809,7 @@ export function createDbAdmissionRouteService(
         return { id: cti.id, state: cti.status, version: Number(cti.version) };
       });
     },
-    async signCtiHospiceMd(
-      organizationId,
-      id,
-      ifVersion,
-      actorUserId,
-    ): Promise<MutationResult> {
+    async signCtiHospiceMd(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cti] = await tx
           .select({
@@ -3734,9 +3824,7 @@ export function createDbAdmissionRouteService(
         if (!cti) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cti.version), ifVersion);
         if (cti.status === "signed" || cti.status === "voided")
-          throw conflict(
-            `cti ${id} cannot be hospice-MD-signed from '${cti.status}'`,
-          );
+          throw conflict(`cti ${id} cannot be hospice-MD-signed from '${cti.status}'`);
         const [period] = await tx
           .select({ seq: EP.sequenceNumber, admissionId: EP.admissionId })
           .from(EP)
@@ -3793,9 +3881,34 @@ export function createDbAdmissionRouteService(
           createdByMembershipId: actorUserId,
         });
         if (period.seq >= 2 && cti.epId) {
+          // §2.3.2 `setActive` on the RECERT path — the one that matters. This path advances any
+          // period ≥ 2 on the hospice-MD signature alone and has no face-to-face term, so a third
+          // or later benefit period activated with no attested F2F encounter: 42 CFR 418.22(a)(4)
+          // requires one before every recertification from the third period on, and
+          // `F2F_REQUIRED_FOR_RECERT` existed only inside the machine nothing called.
+          const periodFacts = await electionPeriodFacts(tx as DbClient, cti.epId);
+          if (periodFacts) {
+            transitionElectionPeriod(periodFacts.status, {
+              type: "setActive",
+              certificationSigned: true, // this call IS the hospice-MD signature
+              admissionActivated: true,
+              sequence: periodFacts.sequenceNumber,
+              f2fAttested:
+                periodFacts.sequenceNumber >= RECERT_SEQUENCE_FLOOR
+                  ? await hasAttestedF2f(tx as DbClient, cti.epId)
+                  : true,
+              effectiveAt: isoDay(now()),
+            });
+          }
           await tx
             .update(EP)
-            .set({ status: "active", version: sql`${EP.version} + 1` })
+            .set({
+              status: "active",
+              // Same `setActive` effect as the admission-activation path above — a recert period needs
+              // its own window, and `period.seq` here is exactly the sequence 418.21(a) keys the length on.
+              ...electionPeriodWindow(now(), period?.seq ?? 1),
+              version: sql`${EP.version} + 1`,
+            })
             .where(and(eq(EP.id, cti.epId), ne(EP.status, "active")));
           await outbox.publish(tx, {
             eventName: "m6.election.period_started",
@@ -3804,9 +3917,7 @@ export function createDbAdmissionRouteService(
             payload: {
               electionPeriodId: cti.epId,
               sequence: period?.seq ?? 1,
-              ...(period?.admissionId
-                ? { admissionId: period.admissionId }
-                : {}),
+              ...(period?.admissionId ? { admissionId: period.admissionId } : {}),
             },
             organizationId,
             aggregateKind: "election_period",
@@ -3819,6 +3930,7 @@ export function createDbAdmissionRouteService(
             ctiId: id,
             electionPeriodId: cti.epId,
             signedAt: hospiceMdSignedAt.toISOString(),
+            patientId: adm.patientId, // F-100 — the chart
           },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
@@ -3827,12 +3939,7 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async signCtiAttending(
-      organizationId,
-      id,
-      ifVersion,
-      actorUserId,
-    ): Promise<MutationResult> {
+    async signCtiAttending(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
       void actorUserId;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cti] = await tx
@@ -3869,6 +3976,7 @@ export function createDbAdmissionRouteService(
             ctiId: id,
             electionPeriodId: cti.epId,
             signedAt: attendingSignedAt.toISOString(),
+            patientId: await patientForElectionPeriod(tx, cti.epId), // F-100 — the chart
           },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
@@ -3877,12 +3985,7 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async voidCti(
-      organizationId,
-      id,
-      reason,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async voidCti(organizationId, id, reason, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cti] = await tx
           .select({ version: CTI.version })
@@ -3936,12 +4039,8 @@ export function createDbAdmissionRouteService(
         // the publish below — `writtenCertDeadlineAt` is a required field on this event's schema, and
         // this call previously omitted it entirely (the computation ran only after the now-failed
         // publish), 500ing on every call.
-        const periodStart =
-          cti.periodStart ?? new Date().toISOString().slice(0, 10);
-        const writtenCertDeadlineAt = computeWrittenCertDeadline(
-          periodStart,
-          DEFAULT_ORG_TZ,
-        );
+        const periodStart = cti.periodStart ?? new Date().toISOString().slice(0, 10);
+        const writtenCertDeadlineAt = computeWrittenCertDeadline(periodStart, DEFAULT_ORG_TZ);
         await outbox.publish(tx, {
           eventName: "m6.cti.late_flagged",
           payload: { ctiId: id, writtenCertDeadlineAt },
@@ -3968,8 +4067,7 @@ export function createDbAdmissionRouteService(
         if (!period) throw new ResourceNotFoundError(input.electionPeriodId);
         // The DB `f2f_performer_role` enum admits only hospice_md / hospice_np (§3.2); anything else
         // (e.g. an attending) defaults to hospice_md — the performer identity is captured separately.
-        const role =
-          input.clinicianRole === "hospice_np" ? "hospice_np" : "hospice_md";
+        const role = input.clinicianRole === "hospice_np" ? "hospice_np" : "hospice_md";
         const f2f = firstOrThrow(
           await tx
             .insert(F2F)
@@ -4012,6 +4110,7 @@ export function createDbAdmissionRouteService(
             version: F2F.version,
             role: F2F.performerRole,
             override: F2F.windowOverride,
+            epId: F2F.electionPeriodId, // F-100 — `m6.f2f.completed` requires it
           })
           .from(F2F)
           .where(eq(F2F.id, id))
@@ -4022,9 +4121,7 @@ export function createDbAdmissionRouteService(
         // computed against the completion instant (encounter today, period start +7d → 7 days prior,
         // inside the [1,30]-day window). The real dates bind when the complete route captures them.
         const encounterDate = new Date().toISOString().slice(0, 10);
-        const periodStart = new Date(Date.now() + 7 * 86_400_000)
-          .toISOString()
-          .slice(0, 10);
+        const periodStart = new Date(Date.now() + 7 * 86_400_000).toISOString().slice(0, 10);
         const t = transitionFaceToFace(cur.status as FaceToFaceState, {
           type: "recordCompletion",
           performerRole: cur.role,
@@ -4062,85 +4159,97 @@ export function createDbAdmissionRouteService(
             admissionId: id,
           },
           t.effects,
+          // F-100 — `runEffects`' base envelope is `{aggregateId, admissionId}` and every M6 event
+          // declares more than that, so an effect emitted without its own entry here does not degrade,
+          // it REFUSES: the publisher `Value.Check`s and the whole write rolls back.
+          {
+            "m6.f2f.completed": {
+              f2fId: id,
+              electionPeriodId: cur.epId,
+              encounterDate,
+              withinWindow,
+            },
+          },
         );
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async attestF2f(
-      organizationId,
-      id,
-      ifVersion,
-      actorUserId,
-    ): Promise<MutationResult> {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const [cur] = await tx
-            .select({
+    async attestF2f(organizationId, id, ifVersion, actorUserId): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [cur] = await tx
+          .select({
+            status: F2F.status,
+            version: F2F.version,
+            performer: F2F.performedByUserId,
+            epId: F2F.electionPeriodId,
+          })
+          .from(F2F)
+          .where(eq(F2F.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        if (cur.status !== "completed")
+          throw new AdmissionStateError(
+            "ILLEGAL_TRANSITION",
+            `F2F cannot attest from '${cur.status}'`,
+          );
+        // §2.3.4 R-F2F-04 — the attesting user must be the performer. (The attestation narrative gate
+        // binds when the attest route captures a narrative; it is not in this signature.)
+        if (actorUserId && cur.performer !== actorUserId)
+          throw new AdmissionStateError(
+            "F2F_INVALID_PERFORMER",
+            "attesting user must be the performer",
+          );
+        const attestedAt = now();
+        const r = firstOrThrow(
+          await tx
+            .update(F2F)
+            .set({
+              status: "attested",
+              attestationSignedAt: attestedAt,
+              version: sql`${F2F.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(F2F.id, id), eq(F2F.version, ifVersion)))
+            .returning({
+              id: F2F.id,
               status: F2F.status,
               version: F2F.version,
-              performer: F2F.performedByUserId,
-              epId: F2F.electionPeriodId,
-            })
-            .from(F2F)
-            .where(eq(F2F.id, id))
-            .limit(1);
-          if (!cur) throw new ResourceNotFoundError(id);
-          assertVersion(id, Number(cur.version), ifVersion);
-          if (cur.status !== "completed")
-            throw new AdmissionStateError(
-              "ILLEGAL_TRANSITION",
-              `F2F cannot attest from '${cur.status}'`,
-            );
-          // §2.3.4 R-F2F-04 — the attesting user must be the performer. (The attestation narrative gate
-          // binds when the attest route captures a narrative; it is not in this signature.)
-          if (actorUserId && cur.performer !== actorUserId)
-            throw new AdmissionStateError(
-              "F2F_INVALID_PERFORMER",
-              "attesting user must be the performer",
-            );
-          const r = firstOrThrow(
-            await tx
-              .update(F2F)
-              .set({
-                status: "attested",
-                attestationSignedAt: now(),
-                version: sql`${F2F.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(F2F.id, id), eq(F2F.version, ifVersion)))
-              .returning({
-                id: F2F.id,
-                status: F2F.status,
-                version: F2F.version,
-              }),
-            "f2f not found",
-          );
-          // Close the recert F2F window on the owning admission (best-effort; no-op when none is open).
-          const [ep] = await tx
-            .select({ admissionId: EP.admissionId })
-            .from(EP)
-            .where(eq(EP.id, cur.epId))
-            .limit(1);
-          if (ep) {
-            await runEffects(
-              tx,
-              {
-                organizationId,
-                aggregateKind: "face_to_face_encounter",
-                aggregateId: id,
-                admissionId: ep.admissionId,
+            }),
+          "f2f not found",
+        );
+        // Close the recert F2F window on the owning admission (best-effort; no-op when none is open).
+        const [ep] = await tx
+          .select({ admissionId: EP.admissionId })
+          .from(EP)
+          .where(eq(EP.id, cur.epId))
+          .limit(1);
+        if (ep) {
+          await runEffects(
+            tx,
+            {
+              organizationId,
+              aggregateKind: "face_to_face_encounter",
+              aggregateId: id,
+              admissionId: ep.admissionId,
+            },
+            [
+              { kind: "close_window", window: "f2f_recert_30d_prior" },
+              { kind: "outbox", event: "m6.f2f.attested" },
+            ],
+            {
+              "m6.f2f.attested": {
+                f2fId: id,
+                electionPeriodId: cur.epId,
+                attestedAt: attestedAt.toISOString(),
+                // F-100 — the chart M22 files the rendered `f2f` document against.
+                patientId: await patientForAdmission(tx, ep.admissionId),
               },
-              [
-                { kind: "close_window", window: "f2f_recert_30d_prior" },
-                { kind: "outbox", event: "m6.f2f.attested" },
-              ],
-            );
-          }
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+            },
+          );
+        }
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
     async overrideF2fWindow(
       organizationId,
@@ -4149,56 +4258,55 @@ export function createDbAdmissionRouteService(
       ifVersion,
       actorUserId,
     ): Promise<MutationResult> {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const [cur] = await tx
-            .select({ status: F2F.status, version: F2F.version })
-            .from(F2F)
-            .where(eq(F2F.id, id))
-            .limit(1);
-          if (!cur) throw new ResourceNotFoundError(id);
-          assertVersion(id, Number(cur.version), ifVersion);
-          // §2.3.4 R-F2F-03 — a Medical-Director override with a reason ≥ 20 chars (the MD role is gated by
-          // the route's ABAC preHandler; the state machine enforces the reason length).
-          const t = transitionFaceToFace(cur.status as FaceToFaceState, {
-            type: "requestWindowOverride",
-            isMedicalDirector: true,
-            reason,
-          });
-          const r = firstOrThrow(
-            await tx
-              .update(F2F)
-              .set({
-                status: t.to,
-                windowOverride: true,
-                windowOverrideReason: reason,
-                windowOverrideBy: actorUserId || null,
-                version: sql`${F2F.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(F2F.id, id), eq(F2F.version, ifVersion)))
-              .returning({
-                id: F2F.id,
-                status: F2F.status,
-                version: F2F.version,
-              }),
-            "f2f not found",
-          );
-          await runEffects(
-            tx,
-            {
-              organizationId,
-              aggregateKind: "face_to_face_encounter",
-              aggregateId: id,
-              admissionId: id,
-            },
-            t.effects,
-          );
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [cur] = await tx
+          .select({ status: F2F.status, version: F2F.version })
+          .from(F2F)
+          .where(eq(F2F.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        // §2.3.4 R-F2F-03 — a Medical-Director override with a reason ≥ 20 chars (the MD role is gated by
+        // the route's ABAC preHandler; the state machine enforces the reason length).
+        const t = transitionFaceToFace(cur.status as FaceToFaceState, {
+          type: "requestWindowOverride",
+          isMedicalDirector: true,
+          reason,
+        });
+        const r = firstOrThrow(
+          await tx
+            .update(F2F)
+            .set({
+              status: t.to,
+              windowOverride: true,
+              windowOverrideReason: reason,
+              windowOverrideBy: actorUserId || null,
+              version: sql`${F2F.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(F2F.id, id), eq(F2F.version, ifVersion)))
+            .returning({
+              id: F2F.id,
+              status: F2F.status,
+              version: F2F.version,
+            }),
+          "f2f not found",
+        );
+        await runEffects(
+          tx,
+          {
+            organizationId,
+            aggregateKind: "face_to_face_encounter",
+            aggregateId: id,
+            admissionId: id,
+          },
+          t.effects,
+          // F-100 — `m6.f2f.window_overridden` requires `{f2fId, reason}`; without them this route
+          // refused every medical-director override with a 500.
+          { "m6.f2f.window_overridden": { f2fId: id, reason } },
+        );
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
 
     // ── M6L-T04: level-of-care period (§2.3.5) ────────────────────────────────────────────────────
@@ -4211,11 +4319,7 @@ export function createDbAdmissionRouteService(
       reason = "",
     ): Promise<MutationResult> {
       if (!LEVELS_OF_CARE.includes(newLevel as LevelOfCare))
-        throw new WardenXError(
-          "VALIDATION_ERROR",
-          `unknown level of care '${newLevel}'`,
-          422,
-        );
+        throw new WardenXError("VALIDATION_ERROR", `unknown level of care '${newLevel}'`, 422);
       const level = newLevel as LevelOfCare;
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [adm] = await tx
@@ -4230,8 +4334,7 @@ export function createDbAdmissionRouteService(
         const t = transitionLevelOfCare("pending", {
           type: "requestAssign",
           level,
-          admissionActiveOrOnHold:
-            adm.status === "active" || adm.status === "on_hold",
+          admissionActiveOrOnHold: adm.status === "active" || adm.status === "on_hold",
           facilityId,
           wouldOverlap: false,
           reason,
@@ -4247,9 +4350,7 @@ export function createDbAdmissionRouteService(
             version: sql`${LOC.version} + 1`,
             updatedAt: now(),
           })
-          .where(
-            and(eq(LOC.admissionId, admissionId), sql`${LOC.endedAt} is null`),
-          );
+          .where(and(eq(LOC.admissionId, admissionId), sql`${LOC.endedAt} is null`));
         const loc = firstOrThrow(
           await tx
             .insert(LOC)
@@ -4279,10 +4380,7 @@ export function createDbAdmissionRouteService(
             payload: {
               levelOfCarePeriodId: loc.id,
               newLevel: level,
-              effectiveStart: (effectiveStart
-                ? new Date(effectiveStart)
-                : now()
-              ).toISOString(),
+              effectiveStart: (effectiveStart ? new Date(effectiveStart) : now()).toISOString(),
               admissionId,
             },
             organizationId,
@@ -4293,12 +4391,7 @@ export function createDbAdmissionRouteService(
         return { id: loc.id, state: loc.status, version: Number(loc.version) };
       });
     },
-    async patchLoc(
-      organizationId,
-      id,
-      reason,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async patchLoc(organizationId, id, reason, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
           .select({ version: LOC.version, status: LOC.status })
@@ -4322,11 +4415,7 @@ export function createDbAdmissionRouteService(
         return { id: r.id, state: r.status, version: Number(r.version) };
       });
     },
-    async confirmLocBedAssignment(
-      organizationId,
-      locPeriodId,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async confirmLocBedAssignment(organizationId, locPeriodId, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
           .select({
@@ -4347,11 +4436,10 @@ export function createDbAdmissionRouteService(
             503,
           );
         }
-        const bed =
-          await ipuBedAssignmentReader.activeBedAssignmentForLevelOfCarePeriod(
-            organizationId,
-            locPeriodId,
-          );
+        const bed = await ipuBedAssignmentReader.activeBedAssignmentForLevelOfCarePeriod(
+          organizationId,
+          locPeriodId,
+        );
         // The real §2.3.5 "bedId verified with M37" guard — never trusts a caller-supplied bed id.
         // ipuConfirmBedAssignment's only legal destination is "active" (§2.3.5 graph) — transitionLevelOfCare
         // still runs first so the ILLEGAL_TRANSITION/guard checks fire before any write.
@@ -4402,68 +4490,63 @@ export function createDbAdmissionRouteService(
       input: RevocationInput,
       actorUserId,
     ): Promise<MutationResult> {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const period = await latestPeriod(tx, admissionId);
-          if (!period) throw new ResourceNotFoundError(admissionId);
-          // §2.3.6 R-RV-01 — the pure command guard: the election period being revoked must actually be
-          // ACTIVE (latestPeriod alone doesn't check status — a completed/pending period would otherwise
-          // slip through and hit the `revocation_period_idx` unique constraint with a confusing 500) and
-          // the effective date may not precede the signed date. Both dates are `input.revocationDate` (the
-          // route contract carries one date, mirroring the spec's own §4.2.7 shape), which trivially
-          // satisfies the second guard by construction — the ACTIVE check is the one this actually gates.
-          // Only used for validation here: the cascade this returns (end period/LOC, audit, outbox) is
-          // already applied by `dischargeAdmissionTx` below via `transitionAdmission`'s own equivalent
-          // effects — running both would double-apply the UPDATEs and double-publish the outbox event.
-          planRevocation({
-            electionPeriodActive: period.status === "active",
-            signedAt: input.revocationDate,
-            effectiveAt: input.revocationDate,
-          });
-          // `signingPatientName` has no column — see RevocationInput's doc.
-          const rev = firstOrThrow(
-            await tx
-              .insert(RE)
-              .values({
-                organizationId,
-                admissionId,
-                electionPeriodId: period.id,
-                signerKind:
-                  input.signingRole === "legal_representative"
-                    ? "representative"
-                    : "patient",
-                effectiveAt: input.revocationDate,
-                signedAt: input.revocationDate,
-                revocationReason: input.revocationReason,
-                narrative: input.narrative,
-              })
-              .returning({ id: RE.id, version: RE.version }),
-            "revocation insert returned no row",
-          );
-          // §2.3.1 — a revocation discharges the admission (end LOC + complete every benefit period).
-          await dischargeAdmissionTx(tx, organizationId, admissionId, {
-            dischargeType: "revocation",
-            effectiveAt: input.revocationDate,
-            forCauseCosigned: false,
-          });
-          await outbox.publish(tx, {
-            eventName: "m6.revocation.created",
-            // Field name must be `revocationEventId` (schema), not `revocationId`; `revocationDate` is
-            // also required and was previously omitted.
-            payload: {
-              revocationEventId: rev.id,
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const period = await latestPeriod(tx, admissionId);
+        if (!period) throw new ResourceNotFoundError(admissionId);
+        // §2.3.6 R-RV-01 — the pure command guard: the election period being revoked must actually be
+        // ACTIVE (latestPeriod alone doesn't check status — a completed/pending period would otherwise
+        // slip through and hit the `revocation_period_idx` unique constraint with a confusing 500) and
+        // the effective date may not precede the signed date. Both dates are `input.revocationDate` (the
+        // route contract carries one date, mirroring the spec's own §4.2.7 shape), which trivially
+        // satisfies the second guard by construction — the ACTIVE check is the one this actually gates.
+        // Only used for validation here: the cascade this returns (end period/LOC, audit, outbox) is
+        // already applied by `dischargeAdmissionTx` below via `transitionAdmission`'s own equivalent
+        // effects — running both would double-apply the UPDATEs and double-publish the outbox event.
+        planRevocation({
+          electionPeriodActive: period.status === "active",
+          signedAt: input.revocationDate,
+          effectiveAt: input.revocationDate,
+        });
+        // `signingPatientName` has no column — see RevocationInput's doc.
+        const rev = firstOrThrow(
+          await tx
+            .insert(RE)
+            .values({
+              organizationId,
               admissionId,
-              revocationDate: input.revocationDate,
-            },
-            organizationId,
-            aggregateKind: "revocation_event",
-            aggregateId: rev.id,
-          });
-          return { id: rev.id, state: "created", version: Number(rev.version) };
-        },
-      );
+              electionPeriodId: period.id,
+              signerKind:
+                input.signingRole === "legal_representative" ? "representative" : "patient",
+              effectiveAt: input.revocationDate,
+              signedAt: input.revocationDate,
+              revocationReason: input.revocationReason,
+              narrative: input.narrative,
+            })
+            .returning({ id: RE.id, version: RE.version }),
+          "revocation insert returned no row",
+        );
+        // §2.3.1 — a revocation discharges the admission (end LOC + complete every benefit period).
+        await dischargeAdmissionTx(tx, organizationId, admissionId, {
+          dischargeType: "revocation",
+          effectiveAt: input.revocationDate,
+          forCauseCosigned: false,
+        });
+        await outbox.publish(tx, {
+          eventName: "m6.revocation.created",
+          // Field name must be `revocationEventId` (schema), not `revocationId`; `revocationDate` is
+          // also required and was previously omitted.
+          payload: {
+            revocationEventId: rev.id,
+            admissionId,
+            revocationDate: input.revocationDate,
+            patientId: await patientForAdmission(tx, admissionId), // F-100 — the chart
+          },
+          organizationId,
+          aggregateKind: "revocation_event",
+          aggregateId: rev.id,
+        });
+        return { id: rev.id, state: "created", version: Number(rev.version) };
+      });
     },
     async transferOut(
       organizationId,
@@ -4471,71 +4554,70 @@ export function createDbAdmissionRouteService(
       input: TransferOutInput,
       actorUserId,
     ): Promise<MutationResult> {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const period = await latestPeriod(tx, admissionId);
-          if (!period) throw new ResourceNotFoundError(admissionId);
-          // §2.3.6 R-XFR-01 — only one transfer-out per benefit period (42 CFR 418.28). No DB constraint
-          // enforces this (unlike revocation_event's `revocation_period_idx` unique index), so query the
-          // real fact rather than assuming it can never happen (the admission-graph transition to
-          // `discharged` blocks an obvious double-call today, but that's incidental, not a rule).
-          const [priorTransferOut] = await tx
-            .select({ id: TE.id })
-            .from(TE)
-            .where(
-              and(
-                eq(TE.admissionId, admissionId),
-                eq(TE.periodSequenceAtTransfer, period.sequence),
-                eq(TE.direction, "out"),
-              ),
-            )
-            .limit(1);
-          planTransferOut({
-            transferAlreadyDoneThisPeriod: !!priorTransferOut,
-          });
-          const xfer = firstOrThrow(
-            await tx
-              .insert(TE)
-              .values({
-                organizationId,
-                admissionId,
-                direction: "out",
-                effectiveAt: input.effectiveDate,
-                periodSequenceAtTransfer: period.sequence,
-                receivingOrSendingCcn: input.otherHospiceCcn ?? null,
-                receivingOrSendingName: input.otherHospiceName,
-                narrative: input.narrative,
-              })
-              .returning({ id: TE.id, version: TE.version }),
-            "transfer insert returned no row",
-          );
-          // §2.3.1 — a transfer-out discharges the admission (the receiving hospice inherits the election).
-          await dischargeAdmissionTx(tx, organizationId, admissionId, {
-            dischargeType: "transfer",
-            effectiveAt: input.effectiveDate,
-            forCauseCosigned: false,
-          });
-          await outbox.publish(tx, {
-            eventName: "m6.transfer.created",
-            // Field name must be `transferEventId` (schema), not `transferId`.
-            payload: {
-              transferEventId: xfer.id,
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const period = await latestPeriod(tx, admissionId);
+        if (!period) throw new ResourceNotFoundError(admissionId);
+        // §2.3.6 R-XFR-01 — only one transfer-out per benefit period (42 CFR 418.28). No DB constraint
+        // enforces this (unlike revocation_event's `revocation_period_idx` unique index), so query the
+        // real fact rather than assuming it can never happen (the admission-graph transition to
+        // `discharged` blocks an obvious double-call today, but that's incidental, not a rule).
+        const [priorTransferOut] = await tx
+          .select({ id: TE.id })
+          .from(TE)
+          .where(
+            and(
+              eq(TE.admissionId, admissionId),
+              eq(TE.periodSequenceAtTransfer, period.sequence),
+              eq(TE.direction, "out"),
+            ),
+          )
+          .limit(1);
+        planTransferOut({
+          transferAlreadyDoneThisPeriod: !!priorTransferOut,
+        });
+        const xfer = firstOrThrow(
+          await tx
+            .insert(TE)
+            .values({
+              organizationId,
               admissionId,
               direction: "out",
-            },
-            organizationId,
-            aggregateKind: "transfer_event",
-            aggregateId: xfer.id,
-          });
-          return {
-            id: xfer.id,
-            state: "created",
-            version: Number(xfer.version),
-          };
-        },
-      );
+              effectiveAt: input.effectiveDate,
+              periodSequenceAtTransfer: period.sequence,
+              receivingOrSendingCcn: input.otherHospiceCcn ?? null,
+              receivingOrSendingName: input.otherHospiceName,
+              narrative: input.narrative,
+            })
+            .returning({ id: TE.id, version: TE.version }),
+          "transfer insert returned no row",
+        );
+        // §2.3.1 — a transfer-out discharges the admission (the receiving hospice inherits the election).
+        await dischargeAdmissionTx(tx, organizationId, admissionId, {
+          dischargeType: "transfer",
+          effectiveAt: input.effectiveDate,
+          forCauseCosigned: false,
+        });
+        await outbox.publish(tx, {
+          eventName: "m6.transfer.created",
+          // Field name must be `transferEventId` (schema), not `transferId`.
+          payload: {
+            transferEventId: xfer.id,
+            admissionId,
+            direction: "out",
+            // F-107 — `effectiveAt` is the transfer's own date, which M23 dates the 42 CFR 418.26
+            // NOTR window from. `admission.discharged_at` is `now()` and cannot substitute.
+            effectiveAt: input.effectiveDate,
+          },
+          organizationId,
+          aggregateKind: "transfer_event",
+          aggregateId: xfer.id,
+        });
+        return {
+          id: xfer.id,
+          state: "created",
+          version: Number(xfer.version),
+        };
+      });
     },
     async transferIn(
       organizationId,
@@ -4543,149 +4625,159 @@ export function createDbAdmissionRouteService(
       input: TransferInInput,
       actorUserId,
     ): Promise<MutationResult & { currentElectionPeriodSequence: number }> {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const [adm] = await tx
-            .select({
-              patientId: ADM.patientId,
-              hospicePhysicianId: ADM.hospicePhysicianId,
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [adm] = await tx
+          .select({
+            patientId: ADM.patientId,
+            hospicePhysicianId: ADM.hospicePhysicianId,
+          })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(admissionId);
+        const selectedHospicePhysicianId = adm.hospicePhysicianId ?? input.hospiceMedicalDirectorId;
+        if (input.hospiceMedicalDirectorId !== selectedHospicePhysicianId) {
+          throw new WardenXError(
+            "CTI_HOSPICE_PHYSICIAN_MISMATCH",
+            "Transfer-in CTI physician must match the admission selected hospice physician.",
+            400,
+          );
+        }
+        if (!adm.hospicePhysicianId) {
+          await tx
+            .update(ADM)
+            .set({
+              hospicePhysicianId: selectedHospicePhysicianId,
+              version: sql`${ADM.version} + 1`,
+              updatedAt: now(),
             })
-            .from(ADM)
-            .where(eq(ADM.id, admissionId))
-            .limit(1);
-          if (!adm) throw new ResourceNotFoundError(admissionId);
-          const selectedHospicePhysicianId =
-            adm.hospicePhysicianId ?? input.hospiceMedicalDirectorId;
-          if (input.hospiceMedicalDirectorId !== selectedHospicePhysicianId) {
-            throw new WardenXError(
-              "CTI_HOSPICE_PHYSICIAN_MISMATCH",
-              "Transfer-in CTI physician must match the admission selected hospice physician.",
-              400,
-            );
-          }
-          if (!adm.hospicePhysicianId) {
-            await tx
-              .update(ADM)
-              .set({
-                hospicePhysicianId: selectedHospicePhysicianId,
-                version: sql`${ADM.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(eq(ADM.id, admissionId));
-          }
-          // W-DC-03 / D9 — inherit the carried sequence as the ACTIVE period (no CTI required from us) and
-          // open the next PENDING period (our CTI required). The sequence counter never restarts.
-          const plan = planTransferIn(input);
-          const inheritedPeriod = firstOrThrow(
-            await tx
-              .insert(EP)
-              .values({
-                organizationId,
-                admissionId,
-                sequenceNumber: plan.inherited.sequence,
-                periodKind: "ninety_day",
-                status: plan.inherited.state,
-              })
-              .returning({ id: EP.id }),
-            "election period insert returned no row",
-          );
-          const nextPeriod = firstOrThrow(
-            await tx
-              .insert(EP)
-              .values({
-                organizationId,
-                admissionId,
-                sequenceNumber: plan.next.sequence,
-                periodKind: "ninety_day",
-                status: plan.next.state,
-              })
-              .returning({ id: EP.id }),
-            "election period insert returned no row",
-          );
-          // D9 — draft OUR CTI against the next period (the inherited period runs on the sending
-          // hospice's certification; `signCtiHospiceMd` derives the no-attending-needed rule from this
-          // period's own sequenceNumber, which is never 1 for a transfer-in, so no special-casing here).
-          const cti = firstOrThrow(
-            await tx
-              .insert(CTI)
-              .values({
-                organizationId,
-                electionPeriodId: nextPeriod.id,
-                hospiceMdId: selectedHospicePhysicianId,
-                attendingMdId: null,
-              })
-              .returning({ id: CTI.id }),
-            "cti insert returned no row",
-          );
-          await createAdmissionEvidenceService(tx).recordStructuredEvidence({
-            organizationId,
-            admissionId,
-            electionPeriodId: nextPeriod.id,
-            patientId: adm.patientId,
-            requirementType: "cti",
-            structuredEntityType: "cti",
-            structuredEntityId: cti.id,
-            metadata: { createdBy: "transfer_in" },
-            createdByMembershipId: actorUserId,
-          });
-          await outbox.publish(tx, {
-            eventName: "m6.cti.drafted",
-            payload: {
-              ctiId: cti.id,
-              electionPeriodId: nextPeriod.id,
-              isRecert: true,
-            },
-            organizationId,
-            aggregateKind: "certification_of_terminal_illness",
-            aggregateId: cti.id,
-          });
-          const xfer = firstOrThrow(
-            await tx
-              .insert(TE)
-              .values({
-                organizationId,
-                admissionId,
-                direction: "in",
-                effectiveAt: input.effectiveDate,
-                periodSequenceAtTransfer: plan.inherited.sequence,
-                receivingOrSendingCcn: input.otherHospiceCcn ?? null,
-                receivingOrSendingName: input.otherHospiceName,
-                narrative: input.narrative,
-              })
-              .returning({ id: TE.id, version: TE.version }),
-            "transfer insert returned no row",
-          );
-          await outbox.publish(tx, {
-            eventName: "m6.transfer.created",
-            // Field name must be `transferEventId` (schema), not `transferId`.
-            payload: { transferEventId: xfer.id, admissionId, direction: "in" },
-            organizationId,
-            aggregateKind: "transfer_event",
-            aggregateId: xfer.id,
-          });
-          await outbox.publish(tx, {
-            eventName: "m6.election.period_started",
-            // `electionPeriodId` is required and was previously omitted entirely — the inherited
-            // period's own insert didn't even `.returning()` its id, so there was nothing to send.
-            payload: {
-              electionPeriodId: inheritedPeriod.id,
+            .where(eq(ADM.id, admissionId));
+        }
+        // W-DC-03 / D9 — inherit the carried sequence as the ACTIVE period (no CTI required from us) and
+        // open the next PENDING period (our CTI required). The sequence counter never restarts.
+        const plan = planTransferIn(input);
+        const inheritedPeriod = firstOrThrow(
+          await tx
+            .insert(EP)
+            .values({
+              organizationId,
               admissionId,
-              sequence: plan.inherited.sequence,
-            },
-            organizationId,
-            aggregateKind: "transfer_event",
-            aggregateId: xfer.id,
-          });
-          return {
-            id: xfer.id,
-            state: "created",
-            version: Number(xfer.version),
-            currentElectionPeriodSequence: plan.inherited.sequence,
-          };
-        },
-      );
+              sequenceNumber: plan.inherited.sequence,
+              periodKind: electionPeriodKindForSequence(plan.inherited.sequence),
+              status: plan.inherited.state,
+              // The inherited period is inserted straight into `active` (42 CFR 418.28 — the sending
+              // hospice's certification carries it), so it never passes the `setActive` update where
+              // every other period gets its window. `priorElectionStartDate` is documented on
+              // `TransferInInput` as "anchors the inherited active period's start" and was read by the
+              // in-memory slice alone; the Drizzle path discarded it, leaving the one period a receiving
+              // hospice cannot re-derive a start for with no start at all.
+              ...electionPeriodWindow(
+                new Date(`${input.priorElectionStartDate}T00:00:00.000Z`),
+                plan.inherited.sequence,
+              ),
+            })
+            .returning({ id: EP.id }),
+          "election period insert returned no row",
+        );
+        const nextPeriod = firstOrThrow(
+          await tx
+            .insert(EP)
+            .values({
+              organizationId,
+              admissionId,
+              sequenceNumber: plan.next.sequence,
+              periodKind: electionPeriodKindForSequence(plan.next.sequence),
+              status: plan.next.state,
+            })
+            .returning({ id: EP.id }),
+          "election period insert returned no row",
+        );
+        // D9 — draft OUR CTI against the next period (the inherited period runs on the sending
+        // hospice's certification; `signCtiHospiceMd` derives the no-attending-needed rule from this
+        // period's own sequenceNumber, which is never 1 for a transfer-in, so no special-casing here).
+        const cti = firstOrThrow(
+          await tx
+            .insert(CTI)
+            .values({
+              organizationId,
+              electionPeriodId: nextPeriod.id,
+              hospiceMdId: selectedHospicePhysicianId,
+              attendingMdId: null,
+            })
+            .returning({ id: CTI.id }),
+          "cti insert returned no row",
+        );
+        await createAdmissionEvidenceService(tx).recordStructuredEvidence({
+          organizationId,
+          admissionId,
+          electionPeriodId: nextPeriod.id,
+          patientId: adm.patientId,
+          requirementType: "cti",
+          structuredEntityType: "cti",
+          structuredEntityId: cti.id,
+          metadata: { createdBy: "transfer_in" },
+          createdByMembershipId: actorUserId,
+        });
+        await outbox.publish(tx, {
+          eventName: "m6.cti.drafted",
+          payload: {
+            ctiId: cti.id,
+            electionPeriodId: nextPeriod.id,
+            isRecert: true,
+          },
+          organizationId,
+          aggregateKind: "certification_of_terminal_illness",
+          aggregateId: cti.id,
+        });
+        const xfer = firstOrThrow(
+          await tx
+            .insert(TE)
+            .values({
+              organizationId,
+              admissionId,
+              direction: "in",
+              effectiveAt: input.effectiveDate,
+              periodSequenceAtTransfer: plan.inherited.sequence,
+              receivingOrSendingCcn: input.otherHospiceCcn ?? null,
+              receivingOrSendingName: input.otherHospiceName,
+              narrative: input.narrative,
+            })
+            .returning({ id: TE.id, version: TE.version }),
+          "transfer insert returned no row",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.transfer.created",
+          // Field name must be `transferEventId` (schema), not `transferId`.
+          payload: {
+            transferEventId: xfer.id,
+            admissionId,
+            direction: "in",
+            effectiveAt: input.effectiveDate,
+          },
+          organizationId,
+          aggregateKind: "transfer_event",
+          aggregateId: xfer.id,
+        });
+        await outbox.publish(tx, {
+          eventName: "m6.election.period_started",
+          // `electionPeriodId` is required and was previously omitted entirely — the inherited
+          // period's own insert didn't even `.returning()` its id, so there was nothing to send.
+          payload: {
+            electionPeriodId: inheritedPeriod.id,
+            admissionId,
+            sequence: plan.inherited.sequence,
+          },
+          organizationId,
+          aggregateKind: "transfer_event",
+          aggregateId: xfer.id,
+        });
+        return {
+          id: xfer.id,
+          state: "created",
+          version: Number(xfer.version),
+          currentElectionPeriodSequence: plan.inherited.sequence,
+        };
+      });
     },
     async discharge(
       organizationId,
@@ -4693,79 +4785,23 @@ export function createDbAdmissionRouteService(
       input: DischargeInput,
       actorUserId,
     ): Promise<DischargeResult> {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          // §6.3 — the per-reason narrative gates (for_cause needs a forCauseReason; D11 tightens
-          // no_longer_terminal/other). The reason→permission key is enforced at the route preHandler.
-          const issue = checkDischargeNarrative(
-            input.reason,
-            input.narrative,
-            input.forCauseReason,
-            input.deathCertifierId,
-          );
-          if (issue) throw new AdmissionStateError(issue.code, issue.message);
-          const requiresMedicalDirectorCosign = dischargeRequiresCosign(
-            input.reason,
-          );
-          const dbType = REASON_TO_DB_TYPE[input.reason];
-          if (requiresMedicalDirectorCosign) {
-            // W-DC-02 / D11 — filing a for-cause discharge does NOT discharge the admission; the row is
-            // `pending_cosign` and the admission stays active until a medical director cosigns (route 40).
-            if (!(await admissionExists(tx as DbClient, admissionId)))
-              throw new ResourceNotFoundError(admissionId);
-            const de = firstOrThrow(
-              await tx
-                .insert(DE)
-                .values({
-                  organizationId,
-                  admissionId,
-                  dischargeType: dbType,
-                  status: "pending_cosign",
-                  effectiveAt: input.dischargeDate,
-                  narrative: input.narrative,
-                  forCauseReason: input.forCauseReason ?? null,
-                })
-                .returning({
-                  id: DE.id,
-                  status: DE.status,
-                  version: DE.version,
-                }),
-              "discharge insert returned no row",
-            );
-            await outbox.publish(tx, {
-              eventName: "m6.discharge.created",
-              // Field name must be `dischargeEventId` (schema), not `dischargeId`; `reason`/
-              // `dischargeDate`/`requiresMedicalDirectorCosign` are also required and were previously
-              // omitted entirely.
-              payload: {
-                dischargeEventId: de.id,
-                admissionId,
-                reason: input.reason,
-                dischargeDate: input.dischargeDate,
-                requiresMedicalDirectorCosign,
-              },
-              organizationId,
-              aggregateKind: "discharge_event",
-              aggregateId: de.id,
-            });
-            return {
-              id: de.id,
-              state: de.status,
-              version: Number(de.version),
-              requiresMedicalDirectorCosign,
-              reason: input.reason,
-            };
-          }
-          // Every other reason discharges immediately: death → bereavement (§2.3.1) + the M6 bereavement-
-          // eligibility rule (emitted by the state machine); the rest → discharged.
-          // The discharge_event row is created FIRST, not after (as it used to be) — `dischargeAdmissionTx`
-          // fires `m6.discharge.created`/`m6.discharge.death` synchronously inside itself, and both require
-          // a real `dischargeEventId`; creating the row afterward meant that id could never exist in time,
-          // so this call 500'd with `payload_schema_violation` on every single non-cosign discharge.
-          // `bereavementEligible` is knowable up front too — `dischargeTarget` is a pure function of
-          // `dischargeType`, so `input.reason === "death"` already decides it without waiting on the result.
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        // §6.3 — the per-reason narrative gates (for_cause needs a forCauseReason; D11 tightens
+        // no_longer_terminal/other). The reason→permission key is enforced at the route preHandler.
+        const issue = checkDischargeNarrative(
+          input.reason,
+          input.narrative,
+          input.forCauseReason,
+          input.deathCertifierId,
+        );
+        if (issue) throw new AdmissionStateError(issue.code, issue.message);
+        const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
+        const dbType = REASON_TO_DB_TYPE[input.reason];
+        if (requiresMedicalDirectorCosign) {
+          // W-DC-02 / D11 — filing a for-cause discharge does NOT discharge the admission; the row is
+          // `pending_cosign` and the admission stays active until a medical director cosigns (route 40).
+          if (!(await admissionExists(tx as DbClient, admissionId)))
+            throw new ResourceNotFoundError(admissionId);
           const de = firstOrThrow(
             await tx
               .insert(DE)
@@ -4773,30 +4809,34 @@ export function createDbAdmissionRouteService(
                 organizationId,
                 admissionId,
                 dischargeType: dbType,
-                status: "completed",
+                status: "pending_cosign",
                 effectiveAt: input.dischargeDate,
                 narrative: input.narrative,
-                deathAt:
-                  input.reason === "death"
-                    ? new Date(input.dischargeDate)
-                    : null,
-                deathCertifierId:
-                  input.reason === "death"
-                    ? (input.deathCertifierId ?? null)
-                    : null,
-                bereavementEligible: input.reason === "death",
+                forCauseReason: input.forCauseReason ?? null,
               })
-              .returning({ id: DE.id, status: DE.status, version: DE.version }),
+              .returning({
+                id: DE.id,
+                status: DE.status,
+                version: DE.version,
+              }),
             "discharge insert returned no row",
           );
-          await dischargeAdmissionTx(tx, organizationId, admissionId, {
-            dischargeType: REASON_TO_SM_TYPE[input.reason],
-            effectiveAt: input.dischargeDate,
-            forCauseCosigned: false,
-            deathCertifierId:
-              input.reason === "death" ? input.deathCertifierId : undefined,
-            dischargeEventId: de.id,
-            reason: input.reason,
+          await outbox.publish(tx, {
+            eventName: "m6.discharge.created",
+            // Field name must be `dischargeEventId` (schema), not `dischargeId`; `reason`/
+            // `dischargeDate`/`requiresMedicalDirectorCosign` are also required and were previously
+            // omitted entirely.
+            payload: {
+              dischargeEventId: de.id,
+              admissionId,
+              reason: input.reason,
+              dischargeDate: input.dischargeDate,
+              requiresMedicalDirectorCosign,
+              patientId: await patientForAdmission(tx as DbClient, admissionId), // F-100 — the chart
+            },
+            organizationId,
+            aggregateKind: "discharge_event",
+            aggregateId: de.id,
           });
           return {
             id: de.id,
@@ -4805,8 +4845,48 @@ export function createDbAdmissionRouteService(
             requiresMedicalDirectorCosign,
             reason: input.reason,
           };
-        },
-      );
+        }
+        // Every other reason discharges immediately: death → bereavement (§2.3.1) + the M6 bereavement-
+        // eligibility rule (emitted by the state machine); the rest → discharged.
+        // The discharge_event row is created FIRST, not after (as it used to be) — `dischargeAdmissionTx`
+        // fires `m6.discharge.created`/`m6.discharge.death` synchronously inside itself, and both require
+        // a real `dischargeEventId`; creating the row afterward meant that id could never exist in time,
+        // so this call 500'd with `payload_schema_violation` on every single non-cosign discharge.
+        // `bereavementEligible` is knowable up front too — `dischargeTarget` is a pure function of
+        // `dischargeType`, so `input.reason === "death"` already decides it without waiting on the result.
+        const de = firstOrThrow(
+          await tx
+            .insert(DE)
+            .values({
+              organizationId,
+              admissionId,
+              dischargeType: dbType,
+              status: "completed",
+              effectiveAt: input.dischargeDate,
+              narrative: input.narrative,
+              deathAt: input.reason === "death" ? new Date(input.dischargeDate) : null,
+              deathCertifierId: input.reason === "death" ? (input.deathCertifierId ?? null) : null,
+              bereavementEligible: input.reason === "death",
+            })
+            .returning({ id: DE.id, status: DE.status, version: DE.version }),
+          "discharge insert returned no row",
+        );
+        await dischargeAdmissionTx(tx, organizationId, admissionId, {
+          dischargeType: REASON_TO_SM_TYPE[input.reason],
+          effectiveAt: input.dischargeDate,
+          forCauseCosigned: false,
+          deathCertifierId: input.reason === "death" ? input.deathCertifierId : undefined,
+          dischargeEventId: de.id,
+          reason: input.reason,
+        });
+        return {
+          id: de.id,
+          state: de.status,
+          version: Number(de.version),
+          requiresMedicalDirectorCosign,
+          reason: input.reason,
+        };
+      });
     },
     async cosignDischarge(
       organizationId,
@@ -4816,172 +4896,155 @@ export function createDbAdmissionRouteService(
       actorUserId,
     ): Promise<MutationResult> {
       void input; // validated at the route; no `discharge_event` column to land in — see the doc comment.
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const [cur] = await tx
-            .select({
-              status: DE.status,
-              version: DE.version,
-              admissionId: DE.admissionId,
-              effectiveAt: DE.effectiveAt,
-            })
-            .from(DE)
-            .where(eq(DE.id, id))
-            .limit(1);
-          if (!cur) throw new ResourceNotFoundError(id);
-          assertVersion(id, Number(cur.version), ifVersion);
-          if (cur.status !== "pending_cosign")
-            throw conflict(
-              `discharge ${id} is not awaiting a medical-director cosign (state '${cur.status}')`,
-            );
-          // W-DC-02 — the cosign completes the discharge AND discharges the admission held active while
-          // awaiting governance sign-off (D11).
-          const outcome = resolveForCauseDischarge("cosign");
-          const r = firstOrThrow(
-            await tx
-              .update(DE)
-              .set({
-                status: outcome.dischargeState,
-                version: sql`${DE.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(DE.id, id), eq(DE.version, ifVersion)))
-              .returning({ id: DE.id, status: DE.status, version: DE.version }),
-            "discharge not found",
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [cur] = await tx
+          .select({
+            status: DE.status,
+            version: DE.version,
+            admissionId: DE.admissionId,
+            effectiveAt: DE.effectiveAt,
+          })
+          .from(DE)
+          .where(eq(DE.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        if (cur.status !== "pending_cosign")
+          throw conflict(
+            `discharge ${id} is not awaiting a medical-director cosign (state '${cur.status}')`,
           );
-          await dischargeAdmissionTx(tx, organizationId, cur.admissionId, {
-            dischargeType: "for_cause",
-            effectiveAt: cur.effectiveAt,
-            forCauseCosigned: true,
-            // Same fix as the immediate-discharge path — the discharge_event row already exists (it was
-            // created `pending_cosign` by the original filing), so its id is available here to satisfy
-            // `m6.discharge.created`'s required `dischargeEventId`.
+        // W-DC-02 — the cosign completes the discharge AND discharges the admission held active while
+        // awaiting governance sign-off (D11).
+        const outcome = resolveForCauseDischarge("cosign");
+        const r = firstOrThrow(
+          await tx
+            .update(DE)
+            .set({
+              status: outcome.dischargeState,
+              version: sql`${DE.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(DE.id, id), eq(DE.version, ifVersion)))
+            .returning({ id: DE.id, status: DE.status, version: DE.version }),
+          "discharge not found",
+        );
+        await dischargeAdmissionTx(tx, organizationId, cur.admissionId, {
+          dischargeType: "for_cause",
+          effectiveAt: cur.effectiveAt,
+          forCauseCosigned: true,
+          // Same fix as the immediate-discharge path — the discharge_event row already exists (it was
+          // created `pending_cosign` by the original filing), so its id is available here to satisfy
+          // `m6.discharge.created`'s required `dischargeEventId`.
+          dischargeEventId: id,
+          reason: "for_cause",
+        });
+        await outbox.publish(tx, {
+          eventName: "m6.discharge.cosigned",
+          // Field name must be `dischargeEventId` (schema), not `dischargeId`; `medicalDirectorCosignedAt`
+          // is required and was previously omitted (and `admissionId` isn't a declared field at all).
+          payload: {
             dischargeEventId: id,
-            reason: "for_cause",
-          });
-          await outbox.publish(tx, {
-            eventName: "m6.discharge.cosigned",
-            // Field name must be `dischargeEventId` (schema), not `dischargeId`; `medicalDirectorCosignedAt`
-            // is required and was previously omitted (and `admissionId` isn't a declared field at all).
-            payload: {
-              dischargeEventId: id,
-              medicalDirectorCosignedAt: now().toISOString(),
-            },
-            organizationId,
-            aggregateKind: "discharge_event",
-            aggregateId: id,
-          });
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+            medicalDirectorCosignedAt: now().toISOString(),
+          },
+          organizationId,
+          aggregateKind: "discharge_event",
+          aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
-    async acknowledgeNor(
-      organizationId,
-      admissionId,
-      input,
-      actorUserId,
-    ): Promise<MutationResult> {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const [adm] = await tx
-            .select({
+    async acknowledgeNor(organizationId, admissionId, input, actorUserId): Promise<MutationResult> {
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [adm] = await tx
+          .select({
+            status: ADM.status,
+            version: ADM.version,
+            patientId: ADM.patientId,
+          })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        if (!adm) throw new ResourceNotFoundError(admissionId);
+        const [existing] = await tx
+          .select({ id: NOR.id })
+          .from(NOR)
+          .where(eq(NOR.admissionId, admissionId))
+          .limit(1);
+        // §2.3.1 pending → notice_of_rights_acknowledged (guards `alreadyAcknowledged`).
+        const t = transitionAdmission(adm.status as AdmissionState, {
+          type: "acknowledgeNoticeOfRights",
+          alreadyAcknowledged: !!existing,
+        } satisfies AdmissionEvent);
+        const acknowledgedAt = new Date();
+        // TASK-034: the request's `deliveryMethod`/`acknowledgedByRole` used to be validated by the
+        // route then discarded here — every acknowledgment silently recorded "patient, electronic
+        // witnessed" regardless of what was submitted. `acknowledgedByRole`'s wire value
+        // "legal_representative" doesn't match the DB's `election_signer_kind` enum ("representative"),
+        // so it's translated, not passed through.
+        const nor = firstOrThrow(
+          await tx
+            .insert(NOR)
+            .values({
+              organizationId,
+              admissionId,
+              patientId: adm.patientId,
+              signerKind:
+                input.acknowledgedByRole === "legal_representative" ? "representative" : "patient",
+              acknowledgedAt: acknowledgedAt.toISOString().slice(0, 10),
+              acknowledgmentMethod: input.deliveryMethod,
+            })
+            .returning({ id: NOR.id }),
+          "NOR insert returned no row",
+        );
+        await createAdmissionEvidenceService(tx).recordStructuredEvidence({
+          organizationId,
+          admissionId,
+          patientId: adm.patientId,
+          requirementType: "notice_of_rights",
+          structuredEntityType: "notice_of_rights",
+          structuredEntityId: nor.id,
+          completedAt: acknowledgedAt,
+          metadata: {
+            acknowledgedByRole: input.acknowledgedByRole,
+            deliveryMethod: input.deliveryMethod,
+          },
+          createdByMembershipId: actorUserId,
+        });
+        const r = firstOrThrow(
+          await tx
+            .update(ADM)
+            .set({ status: t.to, version: sql`${ADM.version} + 1` })
+            .where(eq(ADM.id, admissionId))
+            .returning({
+              id: ADM.id,
               status: ADM.status,
               version: ADM.version,
-              patientId: ADM.patientId,
-            })
-            .from(ADM)
-            .where(eq(ADM.id, admissionId))
-            .limit(1);
-          if (!adm) throw new ResourceNotFoundError(admissionId);
-          const [existing] = await tx
-            .select({ id: NOR.id })
-            .from(NOR)
-            .where(eq(NOR.admissionId, admissionId))
-            .limit(1);
-          // §2.3.1 pending → notice_of_rights_acknowledged (guards `alreadyAcknowledged`).
-          const t = transitionAdmission(adm.status as AdmissionState, {
-            type: "acknowledgeNoticeOfRights",
-            alreadyAcknowledged: !!existing,
-          } satisfies AdmissionEvent);
-          const acknowledgedAt = new Date();
-          // TASK-034: the request's `deliveryMethod`/`acknowledgedByRole` used to be validated by the
-          // route then discarded here — every acknowledgment silently recorded "patient, electronic
-          // witnessed" regardless of what was submitted. `acknowledgedByRole`'s wire value
-          // "legal_representative" doesn't match the DB's `election_signer_kind` enum ("representative"),
-          // so it's translated, not passed through.
-          const nor = firstOrThrow(
-            await tx
-              .insert(NOR)
-              .values({
-                organizationId,
-                admissionId,
-                patientId: adm.patientId,
-                signerKind:
-                  input.acknowledgedByRole === "legal_representative"
-                    ? "representative"
-                    : "patient",
-                acknowledgedAt: acknowledgedAt.toISOString().slice(0, 10),
-                acknowledgmentMethod: input.deliveryMethod,
-              })
-              .returning({ id: NOR.id }),
-            "NOR insert returned no row",
-          );
-          await createAdmissionEvidenceService(tx).recordStructuredEvidence({
+            }),
+          "row not found",
+        );
+        await runEffects(
+          tx,
+          {
             organizationId,
+            aggregateKind: "admission",
+            aggregateId: admissionId,
             admissionId,
-            patientId: adm.patientId,
-            requirementType: "notice_of_rights",
-            structuredEntityType: "notice_of_rights",
-            structuredEntityId: nor.id,
-            completedAt: acknowledgedAt,
-            metadata: {
-              acknowledgedByRole: input.acknowledgedByRole,
-              deliveryMethod: input.deliveryMethod,
+          },
+          t.effects,
+          {
+            "m6.nor.acknowledged": {
+              norAcknowledgmentId: nor.id,
+              acknowledgedAt: acknowledgedAt.toISOString(),
+              // F-100 — the chart. Already in hand: the NOR row was inserted with it two statements up.
+              patientId: adm.patientId,
             },
-            createdByMembershipId: actorUserId,
-          });
-          const r = firstOrThrow(
-            await tx
-              .update(ADM)
-              .set({ status: t.to, version: sql`${ADM.version} + 1` })
-              .where(eq(ADM.id, admissionId))
-              .returning({
-                id: ADM.id,
-                status: ADM.status,
-                version: ADM.version,
-              }),
-            "row not found",
-          );
-          await runEffects(
-            tx,
-            {
-              organizationId,
-              aggregateKind: "admission",
-              aggregateId: admissionId,
-              admissionId,
-            },
-            t.effects,
-            {
-              "m6.nor.acknowledged": {
-                norAcknowledgmentId: nor.id,
-                acknowledgedAt: acknowledgedAt.toISOString(),
-              },
-            },
-          );
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+          },
+        );
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
     // ── M6L-T05: compliance-window close / override ───────────────────────────────────────────────
-    async closeComplianceWindow(
-      organizationId,
-      id,
-      ifVersion,
-    ): Promise<MutationResult> {
+    async closeComplianceWindow(organizationId, id, ifVersion): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const [cur] = await tx
           .select({ status: CW.status, version: CW.version })
@@ -4990,8 +5053,7 @@ export function createDbAdmissionRouteService(
           .limit(1);
         if (!cur) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cur.version), ifVersion);
-        if (cur.status === "closed")
-          throw conflict(`compliance window ${id} is already closed`);
+        if (cur.status === "closed") throw conflict(`compliance window ${id} is already closed`);
         const closedAt = now();
         const r = firstOrThrow(
           await tx
@@ -5029,46 +5091,41 @@ export function createDbAdmissionRouteService(
       ifVersion,
       actorUserId,
     ): Promise<MutationResult> {
-      return withOrgContext(
-        db,
-        { organizationId, userId: actorUserId },
-        async (tx) => {
-          const [cur] = await tx
-            .select({ status: CW.status, version: CW.version })
-            .from(CW)
-            .where(eq(CW.id, id))
-            .limit(1);
-          if (!cur) throw new ResourceNotFoundError(id);
-          assertVersion(id, Number(cur.version), ifVersion);
-          if (cur.status === "closed")
-            throw conflict(`compliance window ${id} is already closed`);
-          // §2.2 override — closes the window early with the captured reason + the overriding staff member
-          // (whose role the route's ABAC preHandler gates); the reason is the audit-bearing evidence.
-          const r = firstOrThrow(
-            await tx
-              .update(CW)
-              .set({
-                status: "closed",
-                closedAt: now(),
-                overrideReason: reason,
-                closedBy: actorUserId || null,
-                version: sql`${CW.version} + 1`,
-                updatedAt: now(),
-              })
-              .where(and(eq(CW.id, id), eq(CW.version, ifVersion)))
-              .returning({ id: CW.id, status: CW.status, version: CW.version }),
-            "compliance window not found",
-          );
-          await outbox.publish(tx, {
-            eventName: "m6.compliance.window.overridden",
-            payload: { complianceWindowId: id, reason },
-            organizationId,
-            aggregateKind: "compliance_window",
-            aggregateId: id,
-          });
-          return { id: r.id, state: r.status, version: Number(r.version) };
-        },
-      );
+      return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
+        const [cur] = await tx
+          .select({ status: CW.status, version: CW.version })
+          .from(CW)
+          .where(eq(CW.id, id))
+          .limit(1);
+        if (!cur) throw new ResourceNotFoundError(id);
+        assertVersion(id, Number(cur.version), ifVersion);
+        if (cur.status === "closed") throw conflict(`compliance window ${id} is already closed`);
+        // §2.2 override — closes the window early with the captured reason + the overriding staff member
+        // (whose role the route's ABAC preHandler gates); the reason is the audit-bearing evidence.
+        const r = firstOrThrow(
+          await tx
+            .update(CW)
+            .set({
+              status: "closed",
+              closedAt: now(),
+              overrideReason: reason,
+              closedBy: actorUserId || null,
+              version: sql`${CW.version} + 1`,
+              updatedAt: now(),
+            })
+            .where(and(eq(CW.id, id), eq(CW.version, ifVersion)))
+            .returning({ id: CW.id, status: CW.status, version: CW.version }),
+          "compliance window not found",
+        );
+        await outbox.publish(tx, {
+          eventName: "m6.compliance.window.overridden",
+          payload: { complianceWindowId: id, reason },
+          organizationId,
+          aggregateKind: "compliance_window",
+          aggregateId: id,
+        });
+        return { id: r.id, state: r.status, version: Number(r.version) };
+      });
     },
   };
 }
@@ -5079,9 +5136,7 @@ export function createDbAdmissionRouteService(
  * through it. Every load is a single org-scoped read under `withOrgContext` (RLS backstops), returning
  * `null` when the row is absent/cross-tenant so the predicate fails closed.
  */
-export function createDbAdmissionAbacResolver(
-  db: DbClient,
-): AdmissionAbacResolver {
+export function createDbAdmissionAbacResolver(db: DbClient): AdmissionAbacResolver {
   return {
     async loadReferral(organizationId, id) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {

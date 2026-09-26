@@ -256,15 +256,32 @@ export const OrderDetailResponseSchema = Type.Intersect([
   Type.Object({
     kindVersion: Type.String(),
     data: Type.Unknown(),
-    requirements: Type.Array(Type.Object({
-      code: Type.Union([Type.Literal("clinical_details"), Type.Literal("rn_cosignature"), Type.Literal("physician_signature"), Type.Literal("verbal_signature")]),
-      label: Type.String(),
-      status: Type.Union([Type.Literal("not_required"), Type.Literal("pending"), Type.Literal("satisfied")]),
-      deadlineAt: Type.Optional(Type.String()),
-    })),
+    requirements: Type.Array(
+      Type.Object({
+        code: Type.Union([
+          Type.Literal("clinical_details"),
+          Type.Literal("rn_cosignature"),
+          Type.Literal("physician_signature"),
+          Type.Literal("verbal_signature"),
+        ]),
+        label: Type.String(),
+        status: Type.Union([
+          Type.Literal("not_required"),
+          Type.Literal("pending"),
+          Type.Literal("satisfied"),
+        ]),
+        deadlineAt: Type.Optional(Type.String()),
+      }),
+    ),
     allowedActions: Type.Object({
-      edit: Type.Boolean(), request_signature: Type.Boolean(), record_verbal: Type.Boolean(), sign: Type.Boolean(),
-      cosign: Type.Boolean(), complete: Type.Boolean(), discontinue: Type.Boolean(), correct: Type.Boolean(),
+      edit: Type.Boolean(),
+      request_signature: Type.Boolean(),
+      record_verbal: Type.Boolean(),
+      sign: Type.Boolean(),
+      cosign: Type.Boolean(),
+      complete: Type.Boolean(),
+      discontinue: Type.Boolean(),
+      correct: Type.Boolean(),
     }),
   }),
 ]);

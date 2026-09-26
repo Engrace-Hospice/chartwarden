@@ -10,9 +10,10 @@
  * quorum, M15's required-signer quorum) — none of the 4 existing roles carry ANY of these tokens, so
  * every one of those routes 403s regardless of how many permission keys the caller holds. This was
  * confirmed by tracing `context.roles` end-to-end through `packages/auth/src/identity/
- * db-session-store.ts` — it's the literal `role.key` values bound to the membership, and
- * `context.attributes.disciplines` (which some ABAC predicates also consult) is never populated
- * anywhere in the backend.
+ * db-session-store.ts` — it's the literal `role.key` values bound to the membership. Those seven
+ * predicates also consulted a `context.attributes.disciplines` array that nothing populated; the reads
+ * are gone (F-030) and the role keys this script grants are now the sole derivation, which is what
+ * M17 (`resolveDisciplinesTx`) and M19 (`TRIAGE_DISCIPLINE_FOR_ROLE_KEY`) had always done.
  *
  * This script adds distinct staff logins, one per discipline persona, each granted the same
  * `clinical` permission-category set `casey@wardenx.local` already gets (so the route's
@@ -34,8 +35,10 @@ import { randomBytes } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
+import { group } from "../lib/strict";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
@@ -51,15 +54,78 @@ interface Persona {
   roleName: string;
 }
 
+/** The `credential_discipline` vocabulary — the disciplines a LICENCE can be issued for. Role keys
+ *  outside this set are authority grants, not licences. */
+const CREDENTIAL_DISCIPLINES = new Set([
+  "rn",
+  "lpn",
+  "chha",
+  "msw",
+  "chaplain",
+  "volunteer",
+  "md",
+  "np",
+  "pa",
+]);
+
+/** Plausible issuing bodies, so the seeded roster reads like a real credential file rather than a
+ *  column full of the same placeholder. Demo data — no real board is being asserted. */
+const ISSUING_BODY: Record<string, string> = {
+  rn: "NC Board of Nursing",
+  lpn: "NC Board of Nursing",
+  np: "NC Board of Nursing",
+  md: "NC Medical Board",
+  pa: "NC Medical Board",
+  msw: "NC Social Work Certification and Licensure Board",
+  chha: "NC Nurse Aide Registry",
+  chaplain: "Board of Chaplaincy Certification Inc.",
+  volunteer: "Agency volunteer onboarding",
+};
+
 const PERSONAS: Persona[] = [
-  { email: "rita@wardenx.local", name: "Rita Alvarez, RN", roleKeys: ["rn", "rn_case_manager"], roleName: "RN Case Manager" },
+  {
+    email: "rita@wardenx.local",
+    name: "Rita Alvarez, RN",
+    roleKeys: ["rn", "rn_case_manager"],
+    roleName: "RN Case Manager",
+  },
   { email: "dana@wardenx.local", name: "Dana Kim, LPN", roleKeys: ["lpn"], roleName: "LPN" },
-  { email: "drharris@wardenx.local", name: "Dr. Sam Harris", roleKeys: ["md", "hospice_physician", "medical_director"], roleName: "Hospice Medical Director" },
-  { email: "nora@wardenx.local", name: "Nora Patel, NP", roleKeys: ["np"], roleName: "Nurse Practitioner" },
-  { email: "mira@wardenx.local", name: "Mira Chen, MSW", roleKeys: ["msw"], roleName: "Medical Social Worker" },
-  { email: "cole@wardenx.local", name: "Cole Jennings, Chaplain", roleKeys: ["chaplain"], roleName: "Chaplain" },
-  { email: "vera@wardenx.local", name: "Vera Simmons", roleKeys: ["volunteer_coordinator"], roleName: "Volunteer Coordinator" },
-  { email: "valentina@wardenx.local", name: "Valentina Okafor", roleKeys: ["volunteer"], roleName: "Volunteer" },
+  {
+    email: "drharris@wardenx.local",
+    name: "Dr. Sam Harris",
+    roleKeys: ["md", "hospice_physician", "medical_director"],
+    roleName: "Hospice Medical Director",
+  },
+  {
+    email: "nora@wardenx.local",
+    name: "Nora Patel, NP",
+    roleKeys: ["np"],
+    roleName: "Nurse Practitioner",
+  },
+  {
+    email: "mira@wardenx.local",
+    name: "Mira Chen, MSW",
+    roleKeys: ["msw"],
+    roleName: "Medical Social Worker",
+  },
+  {
+    email: "cole@wardenx.local",
+    name: "Cole Jennings, Chaplain",
+    roleKeys: ["chaplain"],
+    roleName: "Chaplain",
+  },
+  {
+    email: "vera@wardenx.local",
+    name: "Vera Simmons",
+    roleKeys: ["volunteer_coordinator"],
+    roleName: "Volunteer Coordinator",
+  },
+  {
+    email: "valentina@wardenx.local",
+    name: "Valentina Okafor",
+    roleKeys: ["volunteer"],
+    roleName: "Volunteer",
+  },
   {
     email: "supervisor@wardenx.local",
     name: "Sam Rivera",
@@ -69,7 +135,12 @@ const PERSONAS: Persona[] = [
     roleKeys: ["clinical_supervisor", "compliance_officer"],
     roleName: "Clinical Supervisor",
   },
-  { email: "amy@wardenx.local", name: "Amy Torres, CHHA", roleKeys: ["chha"], roleName: "Home Health Aide" },
+  {
+    email: "amy@wardenx.local",
+    name: "Amy Torres, CHHA",
+    roleKeys: ["chha"],
+    roleName: "Home Health Aide",
+  },
 ];
 
 function genPassword(): string {
@@ -80,8 +151,9 @@ function adminPassword(): string {
   const md = readFileSync(SEED_CREDENTIALS_PATH, "utf8");
   const line = md.split("\n").find((l) => l.includes("admin@wardenx.local"));
   const m = line?.match(/`([^`]+)`\s*\|\s*`([^`]+)`/);
-  if (!m) throw new Error("could not read admin password from CREDENTIALS.local.md (run db:seed first)");
-  return m[2];
+  if (!m)
+    throw new Error("could not read admin password from CREDENTIALS.local.md (run db:seed first)");
+  return group(m, 2, "CREDENTIALS.local.md password cell");
 }
 
 async function signUp(email: string, password: string, name: string): Promise<string> {
@@ -94,10 +166,65 @@ async function signUp(email: string, password: string, name: string): Promise<st
     },
     `sign-up for ${email}`,
   );
-  if (!res.ok) throw new Error(`sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`);
+  if (!res.ok)
+    throw new Error(`sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`);
   const body = (await res.json()) as { user?: { id?: string } };
   if (!body.user?.id) throw new Error(`sign-up for ${email} returned no user id`);
   return body.user.id;
+}
+
+/**
+ * F-014 (#39) — the demo caseload's primary RN.
+ *
+ * `caseload_or_scope` (the predicate behind M7's care plans, M8's encounters and their siblings) is
+ * satisfied by an org-wide role, a session scope attribute, or an OPEN `patient_assignment` row for
+ * the calling user. `seed-clinical.ts` anchors that row to `casey@wardenx.local` because at its point
+ * in the chain no persona exists yet — but every scenario seed acts as `rita@wardenx.local`, who had
+ * no assignment. The denial then arrived as `NOT_FOUND`, because those routes use
+ * `{ notFoundOnDeny: true }` (the §6.6 existence-non-leak convention), so four seed steps reported a
+ * missing resource for a patient that was verifiably there.
+ *
+ * Re-anchoring HERE rather than only in `seed-clinical.ts` is what makes it order-independent. The
+ * chain runs this script immediately BEFORE `db:seed:clinical` (#39 moved it there so rita exists by
+ * then), but this script deletes and re-creates her user row on every run — so an assignment written
+ * against a previous run's rita would point at a user id that no longer exists, whatever the order.
+ */
+const RN_CASE_MANAGER_EMAIL = "rita@wardenx.local";
+
+async function anchorDemoCaseload(
+  db: Client,
+  orgId: string,
+  rnUserId: string | undefined,
+): Promise<void> {
+  if (!rnUserId) return;
+  const patients = await db.query<{ id: string }>(
+    "SELECT id FROM patient WHERE organization_id = $1",
+    [orgId],
+  );
+  if (patients.rowCount === 0) {
+    console.log(
+      "  · no demo patients yet — caseload anchoring skipped (re-run db:seed:staff after db:seed:clinical)",
+    );
+    return;
+  }
+  // `patient_assignment_primary_rn_unique` allows exactly one open primary_rn per patient, so the
+  // prior anchor has to go before this one lands. Scoped to primary_rn: the attending_clinician rows
+  // seed-clinical.ts writes are a different question and are left alone.
+  await db.query(
+    `DELETE FROM patient_assignment
+      WHERE organization_id = $1 AND role = 'primary_rn' AND patient_id = ANY($2)`,
+    [orgId, patients.rows.map((r) => r.id)],
+  );
+  for (const { id } of patients.rows) {
+    await db.query(
+      `INSERT INTO patient_assignment (patient_id, organization_id, clinician_user_id, role, assigned_at)
+       VALUES ($1,$2,$3,'primary_rn', CURRENT_DATE)`,
+      [id, orgId, rnUserId],
+    );
+  }
+  console.log(
+    `  ✓ demo caseload anchored: ${RN_CASE_MANAGER_EMAIL} is primary RN for ${patients.rowCount} patient(s)`,
+  );
 }
 
 async function main(): Promise<void> {
@@ -153,6 +280,11 @@ async function main(): Promise<void> {
     for (const t of ["session", "account", "two_factor", "passkey"]) {
       await db.query(`DELETE FROM ${t} WHERE user_id = ANY($1)`, [priorIds]).catch(() => {});
     }
+    // F-014 (#39) — `patient_assignment.clinician_user_id` REFERENCES "user" ON DELETE RESTRICT
+    // (migration 0020). Once this script started anchoring the demo caseload (below), a re-run would
+    // have been blocked by that constraint on its own previous output. Dropping the assignments here
+    // is safe precisely because the anchoring step at the end re-creates them from scratch.
+    await db.query("DELETE FROM patient_assignment WHERE clinician_user_id = ANY($1)", [priorIds]);
     await db.query('DELETE FROM "user" WHERE id = ANY($1)', [priorIds]);
   }
   // Drop any prior persona-owned roles too (role.key is unique per org — a re-run must not collide).
@@ -170,19 +302,21 @@ async function main(): Promise<void> {
 
   // --- Create one role per distinct role-key token (shared across personas if two happen to list
   // the same key — none do today, but this mirrors seed.ts's role-centric-not-user-centric pattern). ---
+  const userIdByEmail = new Map<string, string>();
   const roleIdByKey = new Map<string, string>();
   for (const key of priorRoleKeys) {
-    const owner = PERSONAS.find((p) => p.roleKeys[0] === key) ?? PERSONAS.find((p) => p.roleKeys.includes(key));
+    const owner =
+      PERSONAS.find((p) => p.roleKeys[0] === key) ?? PERSONAS.find((p) => p.roleKeys.includes(key));
     const r = await db.query<{ id: string }>(
       `INSERT INTO role (organization_id, key, name, category, scope_level, enabled, description)
        VALUES ($1,$2,$3,'clinical_staff'::role_category,'organization', true, $4) RETURNING id`,
       [orgId, key, owner?.roleName ?? key, `${owner?.roleName ?? key} (dev seed persona)`],
     );
-    roleIdByKey.set(key, r.rows[0].id);
+    roleIdByKey.set(key, firstRow(r, `seed-staff-personas: role ${key}`).id);
     for (const permKey of clinicalKeys) {
       await db.query(
         "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",
-        [orgId, r.rows[0].id, permKey],
+        [orgId, firstRow(r, `seed-staff-personas: role ${key}`).id, permKey],
       );
     }
   }
@@ -204,7 +338,7 @@ async function main(): Promise<void> {
        VALUES ($1,$2,'active', now(), $3, $4::jsonb) RETURNING id`,
       [userId, orgId, PROVIDER_ENTITY_ID, JSON.stringify([LOCATION_MAIN_ID])],
     );
-    const membershipId = m.rows[0].id;
+    const membershipId = firstRow(m, "seed-staff-personas: membership upsert").id;
     for (const key of p.roleKeys) {
       const roleId = roleIdByKey.get(key);
       if (!roleId) throw new Error(`role '${key}' was not created`);
@@ -213,9 +347,40 @@ async function main(): Promise<void> {
         [orgId, membershipId, roleId],
       );
     }
+    // F-079 — the §1.1 D8 CLINICAL LICENCE, without which `POST /api/v1/visits` refuses every caller.
+    // `clinician_credentials_active` resolves the assignee's scheduling disciplines from their role
+    // grants, intersects them with the visit purpose's required set, and asks M17's `CredentialReader`
+    // seam for an ACTIVE `membership_credential` in one of them. That seam is real and boot-registered
+    // (GAP-093), the predicate is correct, and `membership_credential` was EMPTY on every seeded stack —
+    // so the gate denied every scheduling attempt, and `seed-scenario-field-ops.ts` worked around it by
+    // inserting the visit row directly, under a header calling the route "unconditionally unreachable in
+    // production". That diagnosis was true when written and had stopped being true; the remaining cause
+    // was that nobody had ever been issued a licence.
+    //
+    // Deliberately only the disciplines the CREDENTIAL vocabulary defines (`credential_discipline`:
+    // rn/lpn/chha/msw/chaplain/volunteer/md/np/pa). A role key that is not one of those — `rn_case_
+    // manager`, `hospice_physician`, `clinical_supervisor` — is an AUTHORITY grant, not a licence, and
+    // issuing a licence for it would assert a credential no board issues.
+    const licensable = p.roleKeys.filter((k) => CREDENTIAL_DISCIPLINES.has(k));
+    for (const discipline of licensable) {
+      await db.query(
+        `INSERT INTO membership_credential
+           (organization_id, membership_id, credential_type, status, effective_at, issuing_body,
+            granted_by_membership_id)
+         VALUES ($1,$2,$3,'active', now() - interval '1 year', $4, $2)`,
+        [orgId, membershipId, discipline, ISSUING_BODY[discipline] ?? "Demo credentialing body"],
+      );
+    }
+
     creds.push({ persona: p, password });
-    console.log(`  ✓ ${p.email} (${p.roleKeys.join("+")}, ${clinicalKeys.length} perms per role)`);
+    console.log(
+      `  ✓ ${p.email} (${p.roleKeys.join("+")}, ${clinicalKeys.length} perms per role` +
+        `${licensable.length > 0 ? `, licensed: ${licensable.join("+")}` : ""})`,
+    );
+    userIdByEmail.set(p.email, userId);
   }
+
+  await anchorDemoCaseload(db, orgId, userIdByEmail.get(RN_CASE_MANAGER_EMAIL));
 
   await db.end();
 
@@ -223,7 +388,7 @@ async function main(): Promise<void> {
   const credsPath = SEED_CREDENTIALS_PATH;
   const existing = readFileSync(credsPath, "utf8");
   const marker = "\n## Discipline personas (bun run db:seed:staff)\n";
-  const withoutOldPersonas = existing.split(marker)[0].replace(/\n+$/, "\n");
+  const withoutOldPersonas = (existing.split(marker)[0] ?? existing).replace(/\n+$/, "\n");
   const lines = [
     withoutOldPersonas,
     marker.trimStart(),
@@ -235,7 +400,8 @@ async function main(): Promise<void> {
     "| Persona | Email | Password | Role key(s) |",
     "|---|---|---|---|",
     ...creds.map(
-      (c) => `| ${c.persona.roleName} | \`${c.persona.email}\` | \`${c.password}\` | ${c.persona.roleKeys.join(", ")} |`,
+      (c) =>
+        `| ${c.persona.roleName} | \`${c.persona.email}\` | \`${c.password}\` | ${c.persona.roleKeys.join(", ")} |`,
     ),
     "",
   ];

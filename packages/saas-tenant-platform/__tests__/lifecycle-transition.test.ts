@@ -52,8 +52,20 @@ function effectKinds(t: LifecycleTransition): string[] {
 
 const REASON = "platform-ops decision" as const;
 
-/** A complete, guard-passing event for each lifecycle event type (the §2.4 happy path). */
-function validEvent(type: LifecycleEvent["type"]): LifecycleEvent {
+/**
+ * A complete, guard-passing event for each lifecycle event type (the §2.4 happy path).
+ *
+ * Generic in the type so it returns the ONE arm asked for. Returning the whole `LifecycleEvent` union
+ * made the `{ ...validEvent("activate"), canonicalTasksComplete: false }` override pattern this suite is
+ * built on illegal — the spread distributes over every arm and no single arm satisfies the union.
+ */
+function validEvent<T extends LifecycleEvent["type"]>(
+  type: T,
+): Extract<LifecycleEvent, { type: T }> {
+  return validEventOfType(type) as Extract<LifecycleEvent, { type: T }>;
+}
+
+function validEventOfType(type: LifecycleEvent["type"]): LifecycleEvent {
   switch (type) {
     case "accept":
       return { type, actorKind: "platform_ops", transitionReason: REASON };

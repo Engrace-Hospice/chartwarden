@@ -62,7 +62,7 @@ export function registerInvocationRoutes(app: FastifyInstance, deps: InvocationR
       config: { auditRead: INVOCATION_PHI },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = await actorOf(request);
       const query = parseQuery(InvocationSearchQuery, request.query);
       const page = await read.searchInvocations(actor, query);
       return {
@@ -85,7 +85,7 @@ export function registerInvocationRoutes(app: FastifyInstance, deps: InvocationR
       config: { auditRead: INVOCATION_PHI },
     },
     async (request) => {
-      const actor = actorOf(request);
+      const actor = await actorOf(request);
       const { invocationId } = parse(InvocationIdParams, request.params);
       const row = await read.getInvocation(actor, invocationId);
       // 404 and not 403: see the header. The guard has already refused a cross-tenant id with a 404, so

@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { TradingPartnerCredentials } from "../src/credentials";
 import { MedicaidAdapterError } from "../src/errors";
+import type { EligibilityResult } from "../src/interface";
 import { OregonMedicaidAdapter } from "../src/oregon";
 import type { OregonGatewayPort } from "../src/oregon/launch-gateway";
 import { MedicaidAdapterRegistry } from "../src/registry";
@@ -55,15 +56,17 @@ describe("OregonMedicaidAdapter — no gateway (default)", () => {
 describe("OregonMedicaidAdapter — with an injected gateway", () => {
   it("delegates eligibilityCheck to the gateway", async () => {
     const gw = fakeGateway({
-      eligibilityCheck: vi.fn(async () => ({
-        outcome: "active",
-        mcoId: null,
-        mcoName: null,
-        routingChannel: "direct_mmis",
-        recipientIdFormatValid: true,
-        recipientIdMasked: "****",
-        vendorTransactionId: null,
-      })),
+      eligibilityCheck: vi.fn(
+        async (): Promise<EligibilityResult> => ({
+          outcome: "active",
+          mcoId: null,
+          mcoName: null,
+          routingChannel: "direct_mmis",
+          recipientIdFormatValid: true,
+          recipientIdMasked: "****",
+          vendorTransactionId: null,
+        }),
+      ),
     });
     const adapter = new OregonMedicaidAdapter(gw);
     const result = await adapter.eligibilityCheck({

@@ -12,9 +12,7 @@ import type { OrderKind } from "@wardenx/types";
 const iso = Type.String({ format: "date-time" });
 const uuid = Type.String({ format: "uuid" });
 
-const level = Type.Union(
-  ["rhc", "chc", "irc", "gip"].map((value) => Type.Literal(value)),
-);
+const level = Type.Union(["rhc", "chc", "irc", "gip"].map((value) => Type.Literal(value)));
 
 const openObject = Type.Object(
   {},
@@ -29,9 +27,7 @@ const openObject = Type.Object(
  * `contract_not_published` is intentional: it is not a partially implemented
  * canonical contract and must not be presented as one by a producer or UI.
  */
-export type OrderPayloadContractStatus =
-  | "canonical_contract_found"
-  | "contract_not_published";
+export type OrderPayloadContractStatus = "canonical_contract_found" | "contract_not_published";
 
 export const ORDER_KIND_CONTRACT_STATUS: Record<OrderKind, OrderPayloadContractStatus> = {
   lab: "canonical_contract_found",
@@ -131,9 +127,7 @@ const schemas: Record<OrderKind, TSchema> = {
       minLength: 1,
     }),
 
-    deploymentSite: Type.Union(
-      ["home", "alf", "snf", "ipu"].map((value) => Type.Literal(value)),
-    ),
+    deploymentSite: Type.Union(["home", "alf", "snf", "ipu"].map((value) => Type.Literal(value))),
 
     preferredDeliveryWindow: Type.Optional(
       Type.Object({

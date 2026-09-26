@@ -263,6 +263,34 @@ export interface MedicationStatement extends FhirResourceBase {
   dosage?: FhirDosage[];
 }
 
+/**
+ * `MedicationAdministration` — what was actually GIVEN (M13), as distinct from what was ordered
+ * (`MedicationRequest`, M12). Profiled against base FHIR rather than US Core: US Core did not carry a
+ * MedicationAdministration profile at R4/3.1, and claiming conformance to a profile that does not exist
+ * in the version this gateway advertises would be a conformance statement no validator could check.
+ *
+ * `effectivePeriod` rather than `effectiveDateTime` is how an IV-continuous session arrives — M13
+ * composes its segment sequence into one span (§2.12), so a titrated infusion is a single administration
+ * with a start and an end, not a resource per rate change.
+ */
+export interface MedicationAdministration extends FhirResourceBase {
+  resourceType: "MedicationAdministration";
+  status:
+    | "in-progress"
+    | "not-done"
+    | "on-hold"
+    | "completed"
+    | "entered-in-error"
+    | "stopped"
+    | "unknown";
+  medicationCodeableConcept?: FhirCodeableConcept;
+  medicationReference?: FhirReference;
+  subject: FhirReference;
+  effectiveDateTime?: string;
+  effectivePeriod?: FhirPeriod;
+  request?: FhirReference;
+}
+
 /** `Observation` — us-core-observation (a per-value lab result, §4.11). */
 export interface Observation extends FhirResourceBase {
   resourceType: "Observation";

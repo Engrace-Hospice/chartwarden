@@ -120,6 +120,26 @@ export interface MedicationRequestDomain {
   readonly routeText?: string | null;
 }
 
+/** M13 administration row → MedicationAdministration. */
+export interface MedicationAdministrationDomain {
+  readonly id: string;
+  readonly patientId: string;
+  readonly status:
+    | "in-progress"
+    | "not-done"
+    | "on-hold"
+    | "completed"
+    | "entered-in-error"
+    | "stopped"
+    | "unknown";
+  readonly rxnormCode?: string | null;
+  readonly medicationText?: string | null;
+  readonly effectiveDateTime?: string | null;
+  readonly effectivePeriod?: { readonly start: string; readonly end: string | null } | null;
+  /** The M12 order this administration fulfilled, when one is known. */
+  readonly medicationRequestId?: string | null;
+}
+
 /** M12 medication-history row → MedicationStatement. */
 export interface MedicationStatementDomain {
   readonly id: string;

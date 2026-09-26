@@ -7,7 +7,16 @@
 
 import type { VisitPurpose } from "@wardenx/types";
 
-/** The discipline vocabulary (mirrors `encounter_discipline` / the M2-M3 catalog). */
+/**
+ * The discipline vocabulary (mirrors `encounter_discipline` / the M2-M3 catalog).
+ *
+ * `md` is PHYSICIAN — MD *or* DO. They are the same level with the same scope, which is why
+ * {@link VISIT_PURPOSE_DISCIPLINES} below has always documented its physician-intent purposes as
+ * "MD/DO or NP" while listing one value; splitting them would stop those four purposes accepting
+ * osteopathic physicians. `pa` is a distinct licence BELOW MD/DO and appears in no purpose list
+ * (F-030): recording the licence is not granting visit authority, and the Medicare hospice
+ * face-to-face encounter is physician-or-NP only (42 CFR 418.22(a)(4)).
+ */
 export type SchedulingDiscipline =
   | "rn"
   | "lpn"
@@ -16,7 +25,8 @@ export type SchedulingDiscipline =
   | "chaplain"
   | "volunteer"
   | "md"
-  | "np";
+  | "np"
+  | "pa";
 
 /** §1.1 D8 predicate 3 (`discipline_matches_visit`) — the acceptable clinician disciplines for each
  * `visit_purpose`. An RN visit needs RN; an aide POC needs CHHA; a volunteer visit needs Volunteer; the

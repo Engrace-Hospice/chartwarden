@@ -6,8 +6,10 @@
 // injected, so this stays M1-owned and unit-testable. Roles come from the resolver (M2 over the M1
 // session repo); permission evaluation remains M3's separate concern.
 import { timingSafeEqual } from "node:crypto";
+import { DEVICE_ATTESTATION_ATTRIBUTE } from "@wardenx/auth";
 import type { OrgScope, SessionContextResolver } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
+import { stepUpFreshFor } from "../step-up";
 
 /** Matches the bootstrap `AuthenticateHook` shape without importing it (avoids an index↔plugin cycle). */
 type AuthenticateHook = (request: FastifyRequest) => Promise<void> | void;
@@ -123,5 +125,65 @@ export function createSessionAuthenticate(deps: SessionAuthenticateDeps): Authen
     // standing in for.
     request.context.providerEntityIds = [...actor.providerEntityIds];
     request.context.locationIds = [...actor.locationIds];
+    // Stamp the STEP-UP freshness fact (F-029). Fifteen modules lift
+    // `context.attributes.stepUpRecent` off the context into their route actor, and their doc
+    // comments assert this hook sets it — nothing ever did, so every one of them read `false` for
+    // every request. The same defect as `membershipId` and the PE/location scopes above, in the same
+    // hook, one line further down.
+    //
+    // It fails CLOSED, so this was never exposure — but four routes are worse off than "a control
+    // that never fires": M37's IRC cap override and restraint apply, M23's claim submit/replace/void
+    // and M27's cost-report submit all mount `requireStepUp(...)`, which PASSES (that path is real),
+    // and then hand the always-false flag to a service or a pure machine that refuses. The guard
+    // allowed and the domain refused, for every caller, always. No test saw it: the live suites build
+    // the actor directly with `stepUpRecent: true` and every inject suite stubs the attribute in its
+    // own fake authenticate hook, so the production assembly was the one path nothing exercised.
+    //
+    // This is the FLOOR answer. The policy is tightenable per operation
+    // (`tenant_step_up_policy_override`, §4.3.2 D9) and this hook does not know which operation the
+    // request is for, so the attribute carries the platform-floor decision only — which is exactly
+    // what all fifteen readers already assume it is. `requireStepUp(opKey)` remains the
+    // per-operation form and resolves the tightened policy itself; the two agree except where a
+    // tenant has tightened, where the guard is the stricter of the two. Never read this attribute as
+    // authoritative for a tightened operation.
+    // Stamp the SESSION CLASS and, for the three M31 portal classes, the portal account + bound
+    // patient (F-030). M16, M19, M31 and M39 all read `sessionClass`, and M16/M19/M31 gate on it being
+    // one of the portal classes — which the `session_class` enum did not even contain until migration
+    // 0219, so every one of those predicates denied unconditionally and the whole portal ABAC surface
+    // with them. `portalAccountId`/`sessionPatientId` come off the session's `scope` jsonb, which is the
+    // only legitimate source: M31's `portalAccountIdOf` throws 403 rather than fall back to a request
+    // parameter (§8.3.1 threat (b) is a valid session naming another patient's id in the query string).
+    //
+    // `sessionPatientId` is ONE key rather than the three the readers used to ask for. M31 and M19's
+    // portal guards read `portalPatientId`, M19's portal-triage routes read `portalPatientId ??
+    // patientId`, and M7's `caseload_or_scope` read a `scopePatientIds` array — three names, one fact
+    // (`session.scope.patientId`), and nothing wrote any of them. It is deliberately not named for a
+    // class: M7's readers are `external_collaborator` sessions, which are pinned to a patient from the
+    // moment they are minted, so `portal…` would have become the fourth name instead of the last one.
+    // It is legitimately null on a portal session until `select-patient` binds it (M31 §2.3 / D2).
+    request.context.attributes.sessionClass = actor.sessionClass;
+    if (actor.portalAccountId) request.context.attributes.portalAccountId = actor.portalAccountId;
+    if (actor.sessionPatientId)
+      request.context.attributes.sessionPatientId = actor.sessionPatientId;
+    // SecHardening §12.4 — the platform's OWN verdict on the device, resolved from M2's
+    // `device_attestation` row and never from anything the request carries. Stamped only when a LIVE
+    // attestation stands behind the session: absent means "no attested device", which is exactly what
+    // `deviceAttestationValid` must read as deny. Writing `{ valid: false }` instead would be the same
+    // decision at the gate and a worse record at the audit — see `liveDeviceAttestation`.
+    if (actor.deviceAttestation) {
+      request.context.attributes[DEVICE_ATTESTATION_ATTRIBUTE] = actor.deviceAttestation;
+    }
+    // F-030 — the `external_triage_vendor` an M19 answering-service session acts for. Class-gated at
+    // the source, so a staff session carrying a stray `scope.externalActorId` stamps nothing: this key
+    // IS what `external_triage_actor` compares against, and a session that could acquire it any other
+    // way would reach a vendor-scoped triage call.
+    if (actor.externalActorId) {
+      request.context.attributes.externalActorId = actor.externalActorId;
+    }
+    request.context.attributes.stepUpRecent = await stepUpFreshFor({
+      organizationId: actor.organizationId,
+      sessionId: snap.sessionId,
+      resolver: deps.getResolver(),
+    });
   };
 }

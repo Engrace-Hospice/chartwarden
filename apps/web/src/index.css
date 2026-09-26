@@ -20,8 +20,19 @@
 /* WardenX tokens → Tailwind theme vars (light). Dark values under `.dark`.
    2026-09-25 redesign: the palette moved from Lantern's twilight indigo on warm paper to the clinical
    blue-on-slate palette of the adopted mockups (docs/design/DESIGN.md §2 is the running record).
-   Token NAMES are unchanged so every `t.*` consumer follows automatically. */
-@theme {
+   Token NAMES are unchanged so every `t.*` consumer follows automatically.
+ *
+ * `static` is load-bearing (F-031). Tailwind v4 emits an `@theme` variable only when a UTILITY CLASS
+ * references it, and this design system is consumed almost entirely through inline `var()` from
+ * `packages/ui/src/web/theme/tokens.ts` — a source Tailwind's scanner cannot see. Without it, tokens
+ * that no utility class references (`--color-on-emphasis`, `--color-success-pill-fg`, `--radius-2xl`,
+ * `--shadow-ambient`, …) never reach the browser in LIGHT mode and every `var()` of them silently
+ * inherits instead — the `.dark` block below is a plain CSS rule, so only light mode is affected, and
+ * only a computed-style read in a real browser shows it. WX-PR-022's success-pill contrast fix was the
+ * concrete casualty (E2E axe on the eMAR measured 4.42:1 against 4.5:1). `static` fixes it without
+ * duplicating every value out of the gate's source of truth (`arch:design-tokens` reads the tokens
+ * from this `@theme` block). */
+@theme static {
   /* Brand — clinical blue */
   --color-primary: #1a56eb;
   --color-primary-strong: #1443c6;
@@ -39,6 +50,10 @@
   /* WX-PR-022: StatusPill "success" text must hold WCAG AA (4.5:1) on its own tint — #166534 on the
      ~#dcf5e4 tint gives ~6.4:1. Text-only; the pill's background still derives from --color-success. */
   --color-success-pill-fg: #166534;
+  /* The same shape for `warning` (F-077, found by the care-plan axe scan): the warning chip's text on
+     its own tint sits at the 4.5:1 edge. This darker text-only variant (#92400e) clears it with room
+     (~6.3:1 on the 12% tint). Text-only; the tint still derives from --color-warning unchanged. */
+  --color-warning-pill-fg: #92400e;
 
   /* Surfaces — cool slate hierarchy */
   --color-background: #f7f8fa;
@@ -158,6 +173,8 @@
   /* Dark --color-success already passes WCAG AA on its own pill tint — same value. */
   --color-success-pill-fg: #4ade80;
   --color-warning: #fbbf24;
+  /* Dark --color-warning already passes on its own pill tint — same value, like the success pair. */
+  --color-warning-pill-fg: #fbbf24;
   --color-error: #f87171;
   --color-alert: #fb7185;
   --color-background: #0b1120;

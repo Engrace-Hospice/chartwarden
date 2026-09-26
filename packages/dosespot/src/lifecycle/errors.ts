@@ -62,6 +62,11 @@ export const M12_ERROR_STATUS = {
   COMPLETION_CRITERION_NOT_MET: 422,
   // §2.2 — a transition reserved to the system worker / webhook handler was attempted by a human actor.
   NOT_SYSTEM_ACTOR: 403,
+  // §2.2 / §4.10 (F-058) — `activate` was attempted from `signed` on an order that OWES a DoseSpot
+  // transmission. The `signed → active` arm exists for orders whose `dosespot_send_state` is
+  // `not_required` (nothing is being e-prescribed, so nothing is pending); an order that is queued,
+  // in flight, transmitted, nacked or failed activates on the pharmacy acknowledgment, not before.
+  MEDICATION_ORDER_TRANSMISSION_PENDING: 409,
 } as const;
 
 /** A machine-readable M12 medication-order-lifecycle failure code (§2.2 / §2.3). */

@@ -370,6 +370,10 @@ export function HopeAssessmentDetail(): JSX.Element {
   const [signOpen, setSignOpen] = useState(false);
   const [inactivationOpen, setInactivationOpen] = useState(false);
   const [inactivating, setInactivating] = useState(false);
+  // #91 (restored) — the §5.2 "Request summary" action: emits `m10.hope.summary_requested`; M22 renders.
+  const [summaryState, setSummaryState] = useState<"idle" | "requesting" | "requested" | "failed">(
+    "idle",
+  );
   const latestVersionRef = useRef<number | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [pendingItemFocus, setPendingItemFocus] = useState<string | null>(null);
@@ -405,7 +409,9 @@ export function HopeAssessmentDetail(): JSX.Element {
     }, 50);
 
     return () => window.clearTimeout(timeout);
-  }, [activeSection, pendingItemFocus]);
+    // pendingItemFocus alone is the trigger: the issue-link handler sets it in the same batched
+    // update as activeSection, so the target section is already committed when the timer fires.
+  }, [pendingItemFocus]);
   // A new section starts at its top (unless an issue link is about to scroll to a specific item).
   const workspaceRef = useRef<HTMLDivElement>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: activeSection is the intentional trigger.
@@ -638,6 +644,15 @@ export function HopeAssessmentDetail(): JSX.Element {
     if (correctionId) navigate(`/hope/assessments/${correctionId}`);
   }, [api, assessment, id, navigate]);
 
+  const requestSummary = useCallback(async () => {
+    if (!id) return;
+    setSummaryState("requesting");
+    const res = await api.POST("/api/v1/hope/assessments/{id}/summary-pdf", {
+      params: { path: { id } },
+    });
+    setSummaryState(res.error ? "failed" : "requested");
+  }, [api, id]);
+
   const createInactivation = useCallback(
     async (reason: string) => {
       if (!id || !assessment) return;
@@ -831,6 +846,17 @@ export function HopeAssessmentDetail(): JSX.Element {
                       disabled={!canInactivate}
                     >
                       Inactivate
+                    </Button>
+                    <Button
+                      tone="secondary"
+                      onClick={() => void requestSummary()}
+                      disabled={summaryState === "requesting" || summaryState === "requested"}
+                    >
+                      {summaryState === "requested"
+                        ? "Summary requested"
+                        : summaryState === "failed"
+                          ? "Retry summary request"
+                          : "Request summary"}
                     </Button>
                     <Button onClick={() => void createCorrection()}>Create correction</Button>
                   </>
@@ -2581,7 +2607,12 @@ function InactivationDialog(props: {
   onSubmit: (reason: string) => void;
 }): JSX.Element {
   const [reason, setReason] = useState("");
+  const reasonRef = useRef<HTMLTextAreaElement>(null);
   const trimmed = reason.trim();
+  // Move focus into the dialog when it opens (in place of the `autoFocus` attribute).
+  useEffect(() => {
+    reasonRef.current?.focus();
+  }, []);
   return (
     <div style={modalBackdrop} role="presentation">
       <dialog style={modal} open aria-modal="true" aria-labelledby="hope-inactivation-title">
@@ -2600,7 +2631,7 @@ function InactivationDialog(props: {
             rows={4}
             maxLength={2000}
             style={textareaField}
-            autoFocus
+            ref={reasonRef}
           />
         </label>
         <div style={actionRow}>

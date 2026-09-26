@@ -45,7 +45,7 @@ describe("validateFhirAIBlock", () => {
   });
 
   it("queries every prohibited FHIR zone prefix (the D18 table-only query)", async () => {
-    const getActivePromptsTargeting = vi.fn(async () => []);
+    const getActivePromptsTargeting = vi.fn(async (_entityPrefix: string) => []);
     await validateFhirAIBlock({ getActivePromptsTargeting });
     expect(getActivePromptsTargeting.mock.calls.map((c) => c[0])).toEqual([
       ...FHIR_PROHIBITED_OUTPUT_ENTITY_PREFIXES,

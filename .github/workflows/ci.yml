@@ -9,6 +9,12 @@ on:
     branches:
       - develop
       - main
+
+  # Callable as a reusable workflow so `deploy.yml` can require THIS ENTIRE workflow — every job
+  # below, live-DB suites included — before it publishes an image or touches the production VPS
+  # (#16). Expressing the deploy gate as a call rather than a copy of `build-and-verify` means the
+  # two can never drift: whatever CI checks on a PR is exactly what a release must satisfy.
+  workflow_call:
 # Phase 0 gate (PHASE_0_SCAFFOLD_PLAN.md PR-0.6): every PR must install from the committed
 # lockfile, build the project-reference graph, pass all six fitness gates + scaffold parity,
 # and pass the Vitest fitness-gate self-test (which proves each gate goes red on a violation).
@@ -38,6 +44,20 @@ jobs:
       - name: Type-check / build project graph
         run: bun run build
 
+      # EXPLICIT, not implied. Type safety was enforced only as a side effect of `bun run build`
+      # above, and `scripts/` — 71 files that decide whether the architecture gates pass, plus the
+      # file that defines every request/response contract in openapi.json — was in no tsconfig
+      # project, so `tsc -b` never compiled it (#34). It is a referenced project now, and naming the
+      # step means the coverage is visible in the log rather than inferred.
+      #
+      # F-098 — `bun run typecheck` is now `tsc -b` PLUS the two test programs. Every workspace
+      # tsconfig is `"include": ["src"]` and a suite lives in a sibling `__tests__/`, so 631 files
+      # vitest runs were compiled by nothing at all and a signature change made its own callers
+      # silently WRONG rather than broken. `arch:test-typecheck` (in the gate chain below) is what
+      # keeps the two programs resolving to the same file set the runner does.
+      - name: Type-check (explicit — src + the test tree)
+        run: bun run typecheck
+
       # Step names deliberately carry NO gate/test COUNT. "parity + 6 gates" was accurate when
       # arch:fitness chained 7 things; it now chains 17, so for ten of them the log said less had been
       # checked than actually was — and a CI log understating its own coverage is read by whoever is
@@ -65,9 +85,14 @@ jobs:
       - name: Dependency vulnerability audit (audit:deps)
         run: bun run audit:deps
 
-      - name: Lint (non-blocking advisory)
+      # BLOCKING as of #33. It ran `continue-on-error: true` from the day it was added, so the gate
+      # executed, failed, and was discarded on every commit — 187 diagnostics on `main`, and the two
+      # real defects buried in them (#31, a cross-tenant ops route publishing the wrong response
+      # contract; #32, four drawers unreachable by keyboard) were found by THIS check with nobody
+      # having to look. It is also the repo's only automated a11y enforcement outside the E2E axe
+      # scans. `scripts/__tests__/lint-gate.test.ts` asserts this step stays blocking.
+      - name: Lint
         run: bun run lint
-        continue-on-error: true
 
   rls-live:
     name: RLS isolation — ${{ matrix.suite.name }} (live Postgres)
@@ -117,6 +142,9 @@ jobs:
           - { name: "M31 Portal & Telehealth", script: "test:rls:live:m31" }
           - { name: "M35 Subscription Billing", script: "test:rls:live:m35" }
           - { name: "M37 IPU Management", script: "test:rls:live:m37" }
+          # #41 — not an RLS-isolation suite, but the same shape: a migrations live suite needing the
+          # full replay + raised lock limit this job already provides. Had no runner.
+          - { name: "M4 nested audit redaction", script: "test:audit:nested-redaction:live" }
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
     steps:
@@ -167,29 +195,89 @@ jobs:
       fail-fast: false
       matrix:
         suite:
-          - { name: "M6 Admission", scripts: "test:m6:read:live test:m6:write:live" }
-          - { name: "M7 Care Plan", scripts: "test:m7:read:live test:m7:write:live" }
+          # #41 — t3/t4/t5 were invisible to the coverage gate (its pattern allowed hyphens but not
+          # colons in the middle segment, and `t3:write` is two segments), so 24 tests / 97 assertions
+          # over the election-CTI, discharge/F2F/LOC and compliance-window write lifecycles had no
+          # runner. They pass; the gap was the runner, not the code.
+          # `test:m6:abac-scope:live` (GAP-011) is here for a reason worth reading: it is the ONE
+          # of the 23 `*.live.test.ts` files with no package.json script that turned out to be RED.
+          # Green on `main`, red on this stack — F-017's new fail-closed provider-entity org check
+          # broke its setup helper, and with no script and no job, nothing said so for a whole
+          # branch. The other 22 pass and stay unwired for now; this one earned a runner.
+          - {
+              name: "M6 Admission",
+              scripts:
+                "test:m6:read:live test:m6:write:live test:m6:t3:write:live test:m6:t4:write:live
+                test:m6:t5:write:live test:m6:abac-scope:live test:m6:election-guards:live",
+            }
+          - {
+              name: "M7 Care Plan",
+              scripts:
+                "test:m7:read:live test:m7:write:live test:m7:conformance:live
+                test:m7:consent-wiring:live",
+            }
           - { name: "M8 Encounters", scripts: "test:m8:read:live test:m8:write:live" }
           - { name: "M9 Assessments", scripts: "test:m9:read:live test:m9:write:live" }
           - { name: "M10 HOPE", scripts: "test:m10:read:live test:m10:write:live" }
+          # The HOPE spec registry / CMS spec import / answer engine suites landed on main after the
+          # 2026-09-17 force-push with no runner; the restored live-suite gate caught them.
+          - { name: "M10 HOPE spec registry", scripts: "test:m10:spec:live" }
+          - { name: "M10 HOPE answer engine", scripts: "test:m10:answer-engine:live" }
           - { name: "M11 Orders", scripts: "test:m11:read:live test:m11:write:live" }
           - { name: "M12 DoseSpot", scripts: "test:m12:read:live test:m12:write:live" }
           - {
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
             }
-          - { name: "M14 IDG", scripts: "test:m14:read:live test:m14:write:live" }
-          - { name: "M17 Scheduling", scripts: "test:m17:read:live test:m17:write:live" }
+          - {
+              name: "M14 IDG",
+              scripts:
+                "test:m14:read:live test:m14:write:live test:m14:clinical-event-consumers:live",
+            }
+          - {
+              name: "M17 Scheduling",
+              scripts:
+                "test:m17:read:live test:m17:write:live test:m17:visit-create-abac:live
+                test:m17:membership-credential:live",
+            }
           - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live" }
-          - { name: "M22 Documents", scripts: "test:m22:read:live test:m22:write:live" }
-          - { name: "M23 remittance feedback", scripts: "test:m23:remittance-feedback:live" }
-          - { name: "M24 NF facility snapshot", scripts: "test:m24:nf-facility-snapshot:live" }
+          # F-043/#103: M20's field-safety visit consumers — the first producer `safety_check_in_schedule`
+          # has ever had. Live because the materializer's idempotence, the `mark_overdue` stamp constraint
+          # and the policy-version FK are all statements about Postgres, and because `readAnchors` reaches
+          # M17's seam under the ambient scope each binding establishes.
+          # F-043/#103: M19's two D10 inbound triggers — the first proactive triage call the platform can
+          # open. Live because the D10 redelivery guard is a partial unique index, the coalesce grain is a
+          # predicate over `state`, `on_call_shift_id` is NOT NULL (which is why `no_coverage` exists as an
+          # outcome rather than a throw), and the visit read only resolves under the binding's own scope.
+          - { name: "M19 Inbound triggers", scripts: "test:m19:inbound-triggers:live" }
+          - { name: "M20 Field-safety consumers", scripts: "test:m20:consumers:live" }
+          - {
+              name: "M22 Documents",
+              scripts:
+                "test:m22:read:live test:m22:write:live test:m22:document-seam-store:live",
+            }
+          - {
+              name: "M23 Billing-Medicare",
+              scripts:
+                "test:m23:remittance-feedback:live test:m23:billed-days-seam:live
+                test:m23:claim-submit-worker:live test:m23:claim-match-seam:live",
+            }
+          - {
+              name: "M24 Billing-Medicaid",
+              scripts: "test:m24:nf-facility-snapshot:live test:m24:claim-line-assembly:live",
+            }
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
           # GAP-043: M27's approver gate over M2's real `membership_elevated_approval` designation —
           # the conjunct that was hardcoded false in the production resolver, blocking every cost-report
           # approve/submit/reopen in every tenant.
-          - { name: "M27 elevated approval", scripts: "test:m27:elevated-approval:live" }
+          - {
+              name: "M27 Cost Report",
+              scripts:
+                "test:m27:elevated-approval:live test:m27:allocation-input:live
+                test:m27:validation-context:live test:m27:workflow-slice:live
+                test:m27:ecr-backref:live",
+            }
           # GAP-060: M40's §7.6 merge approve/reject + provisional promotion against the REAL
           # DB-backed service — the audit's finding was that no test ever exercised it.
           - { name: "M40 governance writes", scripts: "test:m40:governance:live" }
@@ -197,6 +285,39 @@ jobs:
           # org-less event reaching a real consumer, its org-less §4.11 receipt, and M40's canonical
           # write path (which had no SECURITY DEFINER function at all until migration 0202).
           - { name: "M1 platform outbox delivery", scripts: "test:m1:platform-outbox:live" }
+          # F-020 (#49): the ORG-scoped relay's own live proof — delivery, retry/backoff, the `failed`
+          # DLQ terminal, deferred routing, record-only completion and the retention purge, driven as
+          # NOBYPASSRLS `wardenx_app`. It had existed since TASK-006 with no package.json script and no
+          # job, so nothing had ever run it: the same GAP-086 shape this job was created for. Wired
+          # while fixing the two catalog mismatches that kept the relay from booting at all.
+          - { name: "M1 outbox dispatcher relay", scripts: "test:m1:outbox-dispatcher:live" }
+          # F-091: the `feature_flag` table had no reader and no writer in the running system, so every
+          # capability gate on the platform read off and the admin surface that would lift one 5xx'd.
+          # LIVE by necessity: the claims are NULL-distinctness in a unique index (migration 0237),
+          # `ON CONFLICT` inference over it, and migration 0002's own-org-OR-global read policy — none
+          # of which an in-memory double can be wrong about.
+          - { name: "M1 feature flags", scripts: "test:m1:feature-flags:live" }
+          - { name: "M1 locations lookup", scripts: "test:m1:locations-lookup:live" }
+          # F-093: the §3.4.1 `system_locked` CoP floor existed only in the in-memory RoleStore the route
+          # tests use; the Drizzle store production mounts had neither the floor check nor the delete
+          # refusal. LIVE by necessity — a test against the double proves the double, which is precisely
+          # what every suite had been doing while the deployed control was absent.
+          - { name: "M3 role catalog floor", scripts: "test:m3:role-floor:live" }
+          # F-073 (#182) — LIVE by necessity: the in-memory IdempotencyStore is a Map with no
+          # constraint, so it accepts the bodiless completion Postgres refused. Every unit, DOM and
+          # inject test passed while all 24 `code(204)` routes 500'd on the production store.
+          - {
+              name: "M1 idempotency — bodiless (204) responses",
+              scripts: "test:f073:idempotency-bodiless:live",
+            }
+          # F-035 (#95) — LIVE by necessity: the bearer lookup is decided by RLS, the two tenant
+          # resolvers exist only as SECURITY DEFINER functions in migration 0233, and the disclosure
+          # ledger's append-only posture is a GRANT. The in-memory store answers all of it happily,
+          # which is why the inject suite passed while the whole FHIR surface was unreachable.
+          - {
+              name: "M28 FHIR gateway — token mint, projection, §164.528 ledger",
+              scripts: "test:m28:fhir-gateway:live",
+            }
           # GAP-063: M38's platform-ops write door. Migration 0015 granted `terminology_loader`
           # INSERT/UPDATE on the canonical tables but created no row POLICY for it, so the grant was
           # dead — every loader write matched zero rows. This suite runs as NOBYPASSRLS wardenx_app,
@@ -206,15 +327,27 @@ jobs:
           # (`tenant_export.list_platform` had zero route registrations) and the M36 alert the hold port
           # promised in its doc comment and never emitted. Held-ness is derived from the newest ledger
           # event, so this suite is what keeps that derivation agreeing with the release route's.
-          - { name: "M34 oversized-hold discovery", scripts: "test:m34:hold-discovery:live" }
+          - {
+              name: "M34 SaaS Platform",
+              scripts:
+                "test:m34:hold-discovery:live test:m34:dsar-export:live test:m34:tenant-export:live
+                test:m34:tenant-export-approval:live",
+            }
+          # F-045 (#105): the per-tenant DEK chain, which four modules' encryption surfaces terminated at
+          # and which had never once run. Its own runner because it DROPs and re-CREATEs the cluster roles
+          # and then relies on `wardenx_app` being refused a grant — a suite sharing a runner with one that
+          # re-grants anything would make that assertion pass or fail for the wrong reason.
+          - { name: "M34 tenant key provider", scripts: "test:m34:tenant-key-provider:live" }
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
+          - { name: "M37 RN coverage", scripts: "test:m37:coverage:live" }
           # AC-01: the §7.4 break-glass co-signature as a real TWO-PERSON control. `cosign` matched on
           # the event id alone, so the invoker could approve their own emergency PHI grant and a
           # co-signature could resurrect a REVOKED one. Both guards are conjuncts in the UPDATE (a
           # read-then-write would let two concurrent co-signers through) and `bge_cosigner_distinct`
           # (migration 0210) holds when the store is bypassed — neither is provable off a database.
           - { name: "M3 break-glass co-signature", scripts: "test:m3:break-glass:live" }
+          - { name: "M3 proposed-role attach (F-097)", scripts: "test:m3:role-attach:live" }
           # AC-03: the §4.3.2/D9 step-up tighten-only invariant. `trg_tenant_step_up_tighten_only`
           # was asserted by name in a code comment and existed in no migration, and nothing had ever
           # read `tenant_step_up_policy_override` — so a tenant that TIGHTENED step-up was silently
@@ -222,14 +355,58 @@ jobs:
           # store/seam make a tightening bind at evaluation time, and it DERIVES its boundary cases
           # from `STEP_UP_POLICY` so the TS floor and the SQL floor cannot drift apart in silence.
           - { name: "M2 step-up override", scripts: "test:m2:step-up-override:live" }
+          # F-001 (#15): the sign-in org picker. Migrations 0213/0214 served it with two PERMISSIVE
+          # `app.user_id` policies, which PostgreSQL UNIONs into EVERY org-scoped session — a
+          # cross-org read on every authenticated request. 0215 replaces them with a SECURITY DEFINER
+          # function; this drives `listForUser` (which had no live coverage) through the production
+          # repository as wardenx_app, so the hand-written raw-query row mapping is proven too.
+          - { name: "M2 pre-org membership picker", scripts: "test:m2:pre-org-picker:live" }
           # GAP-079: M4's §2.5 read-audit EMISSION over the M26 Cap + M39 Consent read surfaces —
           # proves the events land in the partitioned audit_event table carrying the patient id the
           # §164.528 accounting query joins on, as the NOBYPASSRLS app role.
-          - { name: "M4 read-audit", scripts: "test:m4:read-audit:live" }
+          - {
+              name: "M4 Audit",
+              scripts: "test:m4:read-audit:live test:m4:compliance-routes:live",
+            }
+          # F-025 (#59): five modules had no `lifecycle-live` row at all, so their suites had nowhere
+          # to be added even once they had a script. Each of these is the only LIVE proof of the path
+          # it names — the M5 §7.8 death cascade, the M25 835 receive→post pipeline, the M26→M27 cap
+          # seam CLAUDE.md cites by filename, M31's right-to-erasure eraser, M36's real AlertEmitter.
+          - { name: "M5 Patient death cascade", scripts: "test:m5:death-cascade:live" }
+          - { name: "M5 census caseload scope (F-096)", scripts: "test:m5:census-scope:live" }
+          - {
+              name: "M25 Remittance",
+              scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live",
+            }
+          - { name: "M26 Cap Management", scripts: "test:m26:cost-report-cap-seam:live" }
+          - {
+              name: "M30 HQRP & Quality",
+              scripts:
+                "test:m30:scheduled-jobs:live test:m30:cost-report-filing-measure:live test:m30:hci-inputs:live",
+            }
+          - {
+              name: "M31 Portal & Telehealth",
+              scripts: "test:m31:portal-eraser:live test:m31:care-team-sync:live",
+            }
+          - {
+              name: "M36 Messaging alerts",
+              scripts: "test:m36:alert-emitter:live test:m36:alert-outcome:live",
+            }
+          - { name: "M39 Consent", scripts: "test:m39:consent-lifecycle:live" }
           # GAP-023/024/038: M22's §4.11 render handshake end-to-end — a real signed order/med order
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.
           - { name: "M22 render handshake", scripts: "test:m22:render-handshake:live" }
+          # F-100: M6's six CoP compliance documents through the same chain — the real admission write
+          # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
+          # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
+          - { name: "M6 CoP documents", scripts: "test:m6:cop-documents:live" }
+          - { name: "M6 discharge cascade", scripts: "test:m6:discharge-cascade:live" }
+          - { name: "M15 plan bootstrap", scripts: "test:m15:plan-bootstrap:live" }
+          - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
+          - { name: "M16 bereavement intake", scripts: "test:m16:bereavement-intake:live" }
+          - { name: "M23 NOE draft", scripts: "test:m23:noe-draft:live" }
+          - { name: "M23 NOTR draft", scripts: "test:m23:notr-draft:live" }
           # GAP-050: M33 scheduled-report create/update/resume over the real `cron-parser` adapter —
           # all three compute `next_run_at` through a port that was a fail-closed stub, so no tenant
           # could create a schedule at all and the §4.8 scheduled-run cron had nothing to fire.
@@ -237,9 +414,33 @@ jobs:
           # GAP-051: the M33 PDF/XLSX export → M22 render → back-ref chain end-to-end. Nothing in it
           # ran before: the export outbox was unbound, M22 consumed the request event nowhere, and the
           # request carried a SQL string M22 could never have executed.
-          - { name: "M33 export render", scripts: "test:m33:export-render:live" }
+          - {
+              name: "M33 export render",
+              scripts: "test:m33:export-render:live test:m33:scheduled-jobs:live",
+            }
+          # F-044 / F-059: the dashboard READ path (catalog → dashboard → tile manifest → tile → metric
+          # seam) and the D8 `reportable_scope` narrowing. Five of its eight assertions fail on the
+          # pre-fix tree, and the scope ones fail SILENTLY there — a self-scoped clinician reading the
+          # whole organization's per-clinician productivity looks exactly like a working tile.
+          - { name: "M33 read path", scripts: "test:m33:read-path:live" }
+    services:
+      # F-025 (#59): four of the newly-wired suites gate on `WARDENX_TEST_REDIS_URL` as well as the
+      # database — `test:m30:scheduled-jobs:live`, `test:m33:scheduled-jobs:live`,
+      # `test:m27:workflow-slice:live` and `test:m30:cost-report-filing-measure:live` all drive a real
+      # BullMQ queue. `describe.skipIf(!DB_URL || !REDIS_URL)` means a job without this service would
+      # run them and report SKIPPED, which is precisely the silence this job exists to end.
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
+      WARDENX_TEST_REDIS_URL: redis://localhost:6379
     steps:
       - uses: actions/checkout@v4
       - name: Install Bun
@@ -267,6 +468,7 @@ jobs:
       - name: ${{ matrix.suite.name }} — production write/read lifecycle over real Postgres + RLS
         run: |
           test -n "$WARDENX_TEST_DATABASE_URL" || { echo "WARDENX_TEST_DATABASE_URL unset — the suites would silently skip" >&2; exit 1; }
+          test -n "$WARDENX_TEST_REDIS_URL" || { echo "WARDENX_TEST_REDIS_URL unset — the four BullMQ suites would silently skip" >&2; exit 1; }
           for script in ${{ matrix.suite.scripts }}; do
             echo "::group::$script"
             bun run "$script"
@@ -310,6 +512,17 @@ jobs:
 
       - name: Apply against a fresh disposable DB via the real CLI (pre-deploy simulation)
         run: bun run db:migrate
+
+      # F-033/#93 — partition rotation runs HERE rather than in a job of its own because this is the
+      # only job that already holds a fully migrated database, and rotation is a property of the
+      # migrated schema: the suite asserts that every time-RANGE partitioned table the migrations
+      # create has a creator function the catalog scan can find. A migration that adds a partitioned
+      # table without one fails this step, which is the check `arch:fitness` cannot make — it runs
+      # with no database, so it would have to parse migration text, and that approach demonstrably
+      # missed 3 of the 43 tables.
+      - name: Partition rotation — live proof (idempotency, DEFAULT-trap detection, creator coverage)
+        run: bun run test:partition-rotation:live
+
       - name: Verify --strict --schema-only fails the pipeline on checksum drift (not just warns)
         run: |
           docker exec wardenx-ci-pg-migrate psql -U postgres -d wardenx_migration_gate -c \
@@ -350,5 +563,255 @@ jobs:
             sleep 1
           done
           echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg; exit 1
+      # F-025 (#59): `packages/db/__tests__/client.live.test.ts` (AUTH-T01 / ADR-0033) had no script
+      # and no runner. Its own header names this lane — "the dedicated auth/live CI lane that runs
+      # this end-to-end lands at AUTH-T06" — so it goes here rather than into a Postgres matrix row.
+      - name: createDbClient opens a real pooled connection (AUTH-T01)
+        run: bun run test:db:client:live
       - name: Better Auth sign-up/sign-in over the reconciled schema (real Postgres)
         run: bun run test:auth:live
+
+  outbox-boot:
+    # F-020 (issue #49): the backend refused to START in the documented production configuration —
+    # `DATABASE_PLATFORM_URL` set — because the outbox dispatcher's catalog validation throws before
+    # `server.listen()` and two catalog/binding mismatches had accumulated. Nothing caught it because
+    # the dispatcher is only CONSTRUCTED on that branch, and no job here had ever taken it: every
+    # test, every local run and every other CI job configures a tenant credential only.
+    #
+    # `arch:outbox-bindings` (build-and-verify) catches that specific class at build time. This job
+    # covers the rest of the branch — the platform pool, the audited active-org enumerator, the relay
+    # start — by doing the one thing a gate cannot do: running the process the way production runs it.
+    name: Production-configuration boot (DATABASE_PLATFORM_URL + outbox relay)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
+      PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_boot
+      WARDENX_PLATFORM_PASSWORD: ci-platform-password-0123456789
+      BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
+      BETTER_AUTH_URL: http://localhost:3999
+      TWO_FACTOR_ENCRYPTION_KEY: Y2ktMmZhLXRlc3Qta2V5LTAxMjM0NTY3ODlhYmNkZWY=
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+      # Same pgvector image + raised lock limit as rls-live: booting applies the full migration set.
+      - name: Start Postgres (pgvector image; raised lock limit)
+        run: |
+          docker run -d --name wardenx-ci-pg-boot \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_boot \
+            -p 5432:5432 pgvector/pgvector:pg16 \
+            -c max_locks_per_transaction=4096
+          for i in $(seq 1 60); do
+            docker exec wardenx-ci-pg-boot pg_isready -U postgres -d wardenx_boot && exit 0
+            sleep 1
+          done
+          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-boot; exit 1
+      - name: Migrate
+        run: bun run db:migrate
+      # The platform login is a REAL provisioned role (carrier + BYPASSRLS), not a superuser alias —
+      # booting against a superuser would prove nothing about the grants production actually has.
+      - name: Provision the platform login role
+        run: bun run db:provision-roles
+      - name: Boot with the platform credential and prove the relay starts
+        run: bun run check:boot:platform
+
+  # #41 — the ONLY live suite gated on WARDENX_TEST_REDIS_URL rather than WARDENX_TEST_DATABASE_URL,
+  # which is a second reason it went unnoticed: it needs no Postgres at all, so it fitted none of the
+  # existing live jobs and nothing ran it. It proves the cluster-wide rate limiter — that two backend
+  # replicas sharing one Redis enforce ONE combined limit rather than one each, the exact gap the
+  # in-memory Map store has (WX-PR-017, SD-055). A `services:` block is fine here: unlike the Postgres
+  # jobs this needs no command arguments and replays no migrations.
+  rate-limit-store-live:
+    name: Rate-limit store live (Valkey) — cluster-wide counter (WX-PR-017)
+    runs-on: ubuntu-latest
+    services:
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      WARDENX_TEST_REDIS_URL: redis://localhost:6379
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+      - name: Shared fixed-window counter across two clients (real Valkey)
+        run: bun run test:rate-limit-store:live
+
+  e2e:
+    # F-024 (#41, second half): the 18-test Playwright suite — and the SIX axe-core WCAG 2A/AA scans it
+    # carries, the repo's ENTIRE automated accessibility coverage — ran in no CI job. `test:e2e` was
+    # invisible to `arch:live-suites` until #41 widened its detection, and was then explicitly DEFERRED
+    # rather than wired, because the suite could not be run at all: `bun run db:reset` aborted partway
+    # through its seed chain (#39), and 10 of the 18 specs were red against selectors and a screen that
+    # had since been redesigned (#56). Both are fixed and the suite is 18/18, so the deferral is retired
+    # and this job replaces it.
+    #
+    # This is the ONLY job that exercises the product the way a person uses it: a real Chromium against
+    # the real Vite app, proxied to a real Fastify backend, over a real migrated and seeded Postgres.
+    # Every other job here proves one layer in isolation — a route service, a policy, a boot path.
+    #
+    # It doubles as the only CI coverage `bun run db:reset` has ever had. That command is the documented
+    # way to get a working local stack and it was broken for months with nothing to report it (#39); the
+    # seed chain runs here through the very `db:seed:all` script `db:reset` composes, so the two cannot
+    # drift apart.
+    name: Critical-workflow E2E + accessibility (Playwright, full stack)
+    runs-on: ubuntu-latest
+    services:
+      # `db:seed:scenario-billing` drives M27 `refresh-inputs`, which enqueues a trial-balance pull —
+      # with no queue connection that port is unbound and the step fails (docs/DEVELOPMENT.md). A
+      # `services:` block is enough here: unlike the Postgres jobs this needs no command arguments.
+      valkey:
+        image: valkey/valkey:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "valkey-cli ping"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 30
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_e2e
+      DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_e2e
+      REDIS_URL: redis://localhost:6379
+      BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
+      BETTER_AUTH_URL: http://localhost:3000
+      TWO_FACTOR_ENCRYPTION_KEY: Y2ktMmZhLXRlc3Qta2V5LTAxMjM0NTY3ODlhYmNkZWY=
+      # The target is the DEV stack the suite was written against (Vite dev server + its /api proxy),
+      # not a production build: `NODE_ENV=production` would demand the full production secret set and
+      # https origins, and prove nothing more about these workflows. The production-configuration boot
+      # is a different question and has its own job (`outbox-boot`).
+      NODE_ENV: development
+      PORT: "3000"
+      E2E_BASE_URL: http://localhost:5173
+      # MEASURED, not assumed. Without this the run is RED: a serial Playwright pass plus the seed
+      # chain's ~30 sign-ins all share one `ip:` bucket in SD-055's unauthenticated tier (the sign-in
+      # call is inherently pre-auth, so it has nowhere else to bucket), and the suite self-DoSes
+      # against its own rate limiter — a clean local reproduction at the shipped 30/min default gave
+      # `2 failed / 16 passed`, both failures a sign-in that never left /login, plus a 61-second
+      # retry stall inside `db:seed:staff`. Raising the LOCAL tier is the mechanism `.env.example`
+      # and `e2e/playwright.config.ts` both already document for exactly this; the shipped production
+      # default is untouched, and the limiter itself is proven by `rate-limit-store-live` and by the
+      # SD-055 unit tests, not by this job.
+      RATE_LIMIT_UNAUTHENTICATED_PER_MINUTE: "300"
+      # The AUTHENTICATED tier, for the same reason and now for the same measured cause. This job was
+      # never set, so it ran on the shipped 600/min default — fine when the suite was 24 tests, and not
+      # once #91's per-module E2E specs took it to 33: one full serial pass now issues 805 requests in
+      # 43 seconds (measured, `grep -c responseTime` over the backend log across one run), i.e. ~1113/min
+      # sustained against a 600/min ceiling, all in ONE `ip:` bucket because the whole suite drives one
+      # loopback client. The failure it produces is worth naming, because it does not look like a rate
+      # limit: the census read 429s, `openPatientChartByLastName` polls an empty table until it times
+      # out, and the run goes red in whichever spec happened to be next — a DIFFERENT one each time. It
+      # reads as missing seed data. 3000 is ~2.7x the measured peak, so the remaining eight modules can
+      # land their specs without re-tripping it. Production default untouched.
+      RATE_LIMIT_AUTHENTICATED_PER_MINUTE: "3000"
+      # F-082 — the four vars M8's finalize (and M27's, M29's, M31's and M39's payload ciphers) need.
+      #
+      # `POST /encounters/:id/finalize` seals the assembled narrative under the tenant DEK, which needs
+      # BOTH halves of M34's key envelope: the platform KEK that wraps it (`M34_TENANT_KEK`) and a
+      # credential that may SELECT `tenant_key_ring` — migration 0052 §5 REVOKES that from `wardenx_app`
+      # by design, so the request path physically cannot read a wrapped DEK and the platform login is
+      # what resolves it. Without them the finalize is a 503 `HEARTHNOTE_CIPHER_UNBOUND`, which is the
+      # fail-closed answer working correctly and which no spec could get past.
+      #
+      # This makes the e2e job the SECOND to boot in the documented production configuration. That is a
+      # gain, not a cost: `outbox-boot` proves the platform-credential branch STARTS, and this now runs
+      # the product across it — the relay, the audited active-org enumerator and the platform crons are
+      # live for the whole suite rather than a branch nothing but a boot check has taken.
+      PROVISION_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_e2e
+      WARDENX_PLATFORM_PASSWORD: ci-platform-password-0123456789
+      DATABASE_PLATFORM_URL: postgresql://wardenx_platform_login:ci-platform-password-0123456789@localhost:5432/wardenx_e2e
+      # A throwaway 32-byte test KEK. It wraps DEKs minted by this run's seed and nothing else; a real
+      # deployment's lives in its secret manager (ADR-0045).
+      M34_TENANT_KEK: kek-1:Y2ktdGVuYW50LWtlay10ZXN0LTAxMjM0NTY3ODlhYmM=
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.5"
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+      # Same explicit `docker run` + raised lock limit as rls-live, and for the same reason (see that
+      # job's note): booting replays the full migration set, ~47 partitioned parents included.
+      - name: Start Postgres (pgvector image; raised lock limit)
+        run: |
+          docker run -d --name wardenx-ci-pg-e2e \
+            -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_e2e \
+            -p 5432:5432 pgvector/pgvector:pg16 \
+            -c max_locks_per_transaction=4096
+          for i in $(seq 1 60); do
+            docker exec wardenx-ci-pg-e2e pg_isready -U postgres -d wardenx_e2e && exit 0
+            sleep 1
+          done
+          echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg-e2e; exit 1
+      - name: Install the Chromium build this Playwright version pins
+        run: bunx playwright install --with-deps chromium
+      - name: Migrate
+        run: bun run db:migrate
+      # A REAL provisioned role (carrier + BYPASSRLS), not a superuser alias — same as `outbox-boot`.
+      # Booting against a superuser would prove nothing about the grants production actually has, and
+      # the key-ring read is exactly a grant question.
+      - name: Provision the platform login role
+        run: bun run db:provision-roles
+      # Backgrounded because the suite needs the stack UP for its whole run — unlike `check:boot:platform`,
+      # which boots, asserts and kills. The log is captured to a file so a failure shows the backend's own
+      # output (see the artifact step) instead of an unexplained browser timeout.
+      - name: Boot the backend and wait for /health
+        run: |
+          mkdir -p "$RUNNER_TEMP/e2e-logs"
+          (cd apps/backend && nohup bun src/index.ts > "$RUNNER_TEMP/e2e-logs/backend.log" 2>&1 &)
+          for i in $(seq 1 120); do
+            if curl -sf http://localhost:3000/health > /dev/null; then
+              echo "backend healthy after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "backend did not answer /health within 120s" >&2
+          cat "$RUNNER_TEMP/e2e-logs/backend.log" >&2; exit 1
+      # The same fourteen steps `bun run db:reset` runs, through the same script, against this database.
+      # Most of them drive the real REST API as signed-in demo personas rather than writing rows directly, so
+      # this exercises RLS, ABAC and the state machines on the way to the fixtures the specs need.
+      - name: Seed the demo tenant (the `db:reset` chain)
+        run: bun run db:seed:all
+      - name: Start the web app and wait for it to serve
+        run: |
+          (cd apps/web && nohup bun run dev > "$RUNNER_TEMP/e2e-logs/web.log" 2>&1 &)
+          for i in $(seq 1 90); do
+            if curl -sf http://localhost:5173 > /dev/null; then
+              echo "web up after ${i}s"; exit 0
+            fi
+            sleep 1
+          done
+          echo "the web dev server did not serve within 90s" >&2
+          cat "$RUNNER_TEMP/e2e-logs/web.log" >&2; exit 1
+      # `forbidOnly` is already on under CI (playwright.config.ts), so a stray `.only` fails the job
+      # rather than silently shrinking the suite to one test — the browser-side version of the
+      # self-skip this workflow's live jobs guard against.
+      - name: 20 browser specs — 13 critical-workflow + 7 axe-core WCAG 2A/AA scans (real stack)
+        run: bun run test:e2e
+      - name: Upload the Playwright report, traces and stack logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-failure-artifacts
+          path: |
+            e2e/playwright-report/
+            e2e/test-results/
+            ${{ runner.temp }}/e2e-logs/
+          retention-days: 7

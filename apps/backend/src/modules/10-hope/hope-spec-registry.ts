@@ -45,7 +45,9 @@ export type HopeIsc = "HA" | "HUV" | "HD" | "XX";
 
 export interface HopeSpecRegistry {
   requireVersion(versionId: string): Promise<typeof schema.hopeSpecVersions.$inferSelect>;
-  resolveVersionForTargetDate(targetDate: Date | string): Promise<typeof schema.hopeSpecVersions.$inferSelect>;
+  resolveVersionForTargetDate(
+    targetDate: Date | string,
+  ): Promise<typeof schema.hopeSpecVersions.$inferSelect>;
   getItem(
     versionId: string,
     itemCode: string,
@@ -84,7 +86,10 @@ export function createHopeSpecRegistry(db: DbClient): HopeSpecRegistry {
     },
 
     async resolveVersionForTargetDate(targetDate) {
-      const date = typeof targetDate === "string" ? targetDate.slice(0, 10) : targetDate.toISOString().slice(0, 10);
+      const date =
+        typeof targetDate === "string"
+          ? targetDate.slice(0, 10)
+          : targetDate.toISOString().slice(0, 10);
       const rows = await db
         .select()
         .from(V)
@@ -143,11 +148,7 @@ export function createHopeSpecRegistry(db: DbClient): HopeSpecRegistry {
     async getItemOptions(versionId, itemCode) {
       const item = await this.getItem(versionId, itemCode);
       if (!item) return [];
-      return db
-        .select()
-        .from(O)
-        .where(eq(O.specItemId, item.id))
-        .orderBy(asc(O.sortOrder));
+      return db.select().from(O).where(eq(O.specItemId, item.id)).orderBy(asc(O.sortOrder));
     },
 
     async requireAllowedValue(versionId, itemCode, valueCode) {

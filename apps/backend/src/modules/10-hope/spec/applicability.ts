@@ -1,9 +1,6 @@
 import type { HopeIsc } from "../hope-spec-registry";
 
-export type HopeApplicabilityState =
-  | "applicable"
-  | "not_applicable"
-  | "pending";
+export type HopeApplicabilityState = "applicable" | "not_applicable" | "pending";
 
 export interface HopeAnswerSnapshot {
   readonly state: "answered" | "skipped";
@@ -49,26 +46,19 @@ export interface HopeApplicabilityEngine {
 
 export class HopeApplicabilitySpecUnsupportedError extends Error {
   constructor(readonly specVersionCode: string) {
-    super(
-      `HOPE applicability rules are not registered for spec version ${specVersionCode}`,
-    );
+    super(`HOPE applicability rules are not registered for spec version ${specVersionCode}`);
     this.name = "HopeApplicabilitySpecUnsupportedError";
   }
 }
 
 export class HopeApplicabilityRuleCycleError extends Error {
   constructor(readonly ruleIds: readonly string[]) {
-    super(
-      `HOPE applicability rule graph contains an unsupported cycle: ${ruleIds.join(" -> ")}`,
-    );
+    super(`HOPE applicability rule graph contains an unsupported cycle: ${ruleIds.join(" -> ")}`);
     this.name = "HopeApplicabilityRuleCycleError";
   }
 }
 
-export function answerValue(
-  answers: HopeAnswerMap,
-  itemCode: string,
-): string | null {
+export function answerValue(answers: HopeAnswerMap, itemCode: string): string | null {
   const answer = answers.get(itemCode);
 
   if (!answer || answer.state !== "answered") {
@@ -95,9 +85,7 @@ export function answerValue(
 
 export function createRule(
   input: Omit<HopeApplicabilityRule, "evaluate"> & {
-    readonly evaluate: (
-      answers: HopeAnswerMap,
-    ) => Record<string, HopeApplicabilityState>;
+    readonly evaluate: (answers: HopeAnswerMap) => Record<string, HopeApplicabilityState>;
   },
 ): HopeApplicabilityRule {
   return {
@@ -106,12 +94,9 @@ export function createRule(
   };
 }
 
-export function assertAcyclicApplicabilityRules(
-  rules: readonly HopeApplicabilityRule[],
-): void {
+export function assertAcyclicApplicabilityRules(rules: readonly HopeApplicabilityRule[]): void {
   const byOutput = new Map<string, string>();
-  for (const rule of rules)
-    for (const output of rule.affects) byOutput.set(output, rule.id);
+  for (const rule of rules) for (const output of rule.affects) byOutput.set(output, rule.id);
   const edges = new Map<string, string[]>();
   for (const rule of rules) {
     edges.set(
@@ -126,8 +111,7 @@ export function assertAcyclicApplicabilityRules(
   const visited = new Set<string>();
   const visit = (ruleId: string, path: string[]) => {
     if (visited.has(ruleId)) return;
-    if (visiting.has(ruleId))
-      throw new HopeApplicabilityRuleCycleError([...path, ruleId]);
+    if (visiting.has(ruleId)) throw new HopeApplicabilityRuleCycleError([...path, ruleId]);
     visiting.add(ruleId);
     for (const next of edges.get(ruleId) ?? []) visit(next, [...path, ruleId]);
     visiting.delete(ruleId);
@@ -160,10 +144,7 @@ export function evaluateRules(input: {
           }
         : { ruleId: rule.id, dependsOn: rule.dependsOn };
       if (!previous || previous.applicability === "not_applicable") continue;
-      if (
-        applicability === "not_applicable" ||
-        previous.applicability !== "pending"
-      ) {
+      if (applicability === "not_applicable" || previous.applicability !== "pending") {
         states.set(itemCode, { active: true, applicability, reason });
       }
     }

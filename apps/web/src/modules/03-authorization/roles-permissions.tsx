@@ -473,9 +473,7 @@ function PermissionMatrix({
                   style={groupHeader}
                 >
                   <div>
-                    <h3
-                      style={{ margin: 0, fontSize: "0.9rem", color: "var(--color-on-surface)" }}
-                    >
+                    <h3 style={{ margin: 0, fontSize: "0.9rem", color: "var(--color-on-surface)" }}>
                       {label(category)}
                     </h3>
                     <p style={listDescription}>

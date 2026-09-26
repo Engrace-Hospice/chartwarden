@@ -81,7 +81,7 @@ export function useReportPicker(): {
     // org's list; otherwise fall back to the first report, same as before.
     const wanted = searchParams.get("reportId");
     const wantedIsValid = wanted != null && list.some((r) => r.costReportId === wanted);
-    setSelectedId((prev) => prev ?? (wantedIsValid ? wanted : list[0]?.costReportId ?? null));
+    setSelectedId((prev) => prev ?? (wantedIsValid ? wanted : (list[0]?.costReportId ?? null)));
     setLoading(false);
   }, [client, searchParams]);
 

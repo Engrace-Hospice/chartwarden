@@ -260,47 +260,39 @@ export interface PatientListQuery {
 }
 
 export interface PatientRouteService {
-  admit(
-    organizationId: string,
-    input: AdmitInput,
-    actorUserId: string,
-  ): Promise<AdmitResult>;
+  admit(organizationId: string, input: AdmitInput, actorUserId: string): Promise<AdmitResult>;
   getPatient(organizationId: string, id: string): Promise<PatientView | null>;
-  getDemographics(
-    organizationId: string,
-    id: string,
-  ): Promise<DemographicsView | null>;
-  getIdentifiers(
-    organizationId: string,
-    id: string,
-  ): Promise<IdentifierView[] | null>;
+  getDemographics(organizationId: string, id: string): Promise<DemographicsView | null>;
+  getIdentifiers(organizationId: string, id: string): Promise<IdentifierView[] | null>;
+  /**
+   * The §4.2 census. `scope` is the §7.5 narrowing set (F-096):
+   *
+   *   - `null`  — no narrowing: the actor holds an org-wide scope role and reads the whole tenant.
+   *   - `[...]` — narrow to exactly these patient ids. **An EMPTY array returns NO rows**, and that is
+   *               the point: an actor with no caseload has no census, and the fail-open shape here is
+   *               `if (ids.length > 0) applyFilter(ids)`, which turns "sees nothing" into "sees
+   *               everything" for precisely the actor who should see least.
+   *
+   * A caller cannot forget it — the parameter is required, and `null` is a thing you have to decide to
+   * pass. Defaulting it to "no narrowing" would have made every existing caller keep its current
+   * behaviour, which is the behaviour being fixed.
+   */
   list(
     organizationId: string,
     query: PatientListQuery,
+    scope: readonly string[] | null,
   ): Promise<{ items: PatientView[]; nextCursor: string | null }>;
   censusMetrics(organizationId: string): Promise<CensusMetrics>;
-  listAddresses(
-    organizationId: string,
-    patientId: string,
-  ): Promise<AddressView[] | null>;
-  listPayers(
-    organizationId: string,
-    patientId: string,
-  ): Promise<PatientPayerView[] | null>;
+  listAddresses(organizationId: string, patientId: string): Promise<AddressView[] | null>;
+  listPayers(organizationId: string, patientId: string): Promise<PatientPayerView[] | null>;
   addPayer(
     organizationId: string,
     patientId: string,
     input: AddPatientPayerInput,
     actorUserId: string,
   ): Promise<PatientPayerView>;
-  getCareTeam(
-    organizationId: string,
-    patientId: string,
-  ): Promise<CareTeamView | null>;
-  getPrivacyFlags(
-    organizationId: string,
-    patientId: string,
-  ): Promise<PrivacyFlagsView | null>;
+  getCareTeam(organizationId: string, patientId: string): Promise<CareTeamView | null>;
+  getPrivacyFlags(organizationId: string, patientId: string): Promise<PrivacyFlagsView | null>;
   addAddress(
     organizationId: string,
     patientId: string,
@@ -334,17 +326,13 @@ export interface InMemoryPatientSeed {
 }
 
 /** An in-memory {@link PatientRouteService} for the slice/tests. Runs the real T06 matcher. */
-export function createInMemoryPatientRouteService(
-  seed: InMemoryPatientSeed = {},
-): {
+export function createInMemoryPatientRouteService(seed: InMemoryPatientSeed = {}): {
   service: PatientRouteService;
   events: string[];
 } {
   const events: string[] = [];
   const patients = new Map<string, PatientView & Partial<MatchCandidate>>();
-  const candidates: (PatientView & MatchCandidate)[] = [
-    ...(seed.patients ?? []),
-  ];
+  const candidates: (PatientView & MatchCandidate)[] = [...(seed.patients ?? [])];
   for (const p of candidates) patients.set(p.id, p);
   const amendments = new Map<string, AmendmentView>();
   const addresses = new Map<string, AddressView[]>(); // patientId → append-only address history
@@ -490,10 +478,12 @@ export function createInMemoryPatientRouteService(
       return rows;
     },
 
-    async list(organizationId, query) {
-      // §7.5: org-scoped (prod relies on RLS; the slice filters by organizationId).
+    async list(organizationId, query, scope) {
+      // §7.5: org-scoped (prod relies on RLS; the slice filters by organizationId) AND caseload-narrowed
+      // when `scope` names a set. `scope === null` is the org-wide reader; an empty set matches nothing.
+      const inScope = scope === null ? () => true : (id: string) => scope.includes(id);
       const rows: PatientView[] = [...patients.values()]
-        .filter((p) => p.organizationId === organizationId)
+        .filter((p) => p.organizationId === organizationId && inScope(p.id))
         .map((p) => ({
           id: p.id,
           organizationId: p.organizationId,
@@ -640,8 +630,7 @@ export function createInMemoryPatientRouteService(
       if (address.isPrimary) {
         for (let i = 0; i < history.length; i += 1) {
           const a = history[i]!;
-          if (a.isPrimary && a.current)
-            history[i] = { ...a, current: false, effectiveTo: today };
+          if (a.isPrimary && a.current) history[i] = { ...a, current: false, effectiveTo: today };
         }
       }
       const id = nextId("addr");
@@ -682,12 +671,7 @@ export function createInMemoryPatientRouteService(
       return view;
     },
 
-    async decideAmendment(
-      _organizationId,
-      amendmentId,
-      decision,
-      _actorUserId,
-    ) {
+    async decideAmendment(_organizationId, amendmentId, decision, _actorUserId) {
       const a = amendments.get(amendmentId);
       if (!a) throw new Error(`amendment ${amendmentId} not found`);
       if (!decision.accept && !decision.denialReason) {

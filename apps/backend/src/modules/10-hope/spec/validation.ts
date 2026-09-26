@@ -75,17 +75,12 @@ export interface HopeValidationEngine {
 
 export class HopeValidationSpecUnsupportedError extends Error {
   constructor(readonly specVersionCode: string) {
-    super(
-      `HOPE validation rules are not registered for spec version ${specVersionCode}`,
-    );
+    super(`HOPE validation rules are not registered for spec version ${specVersionCode}`);
     this.name = "HopeValidationSpecUnsupportedError";
   }
 }
 
-export function answerValue(
-  answers: HopeAnswerMap,
-  itemCode: string,
-): string | null {
+export function answerValue(answers: HopeAnswerMap, itemCode: string): string | null {
   const answer = answers.get(itemCode);
 
   if (!answer || answer.state !== "answered") {
@@ -122,9 +117,7 @@ export function applicabilityOf(
   ctx: HopeValidationContext,
   itemCode: string,
 ): HopeApplicabilityState {
-  return (
-    ctx.applicability.items.get(itemCode)?.applicability ?? "not_applicable"
-  );
+  return ctx.applicability.items.get(itemCode)?.applicability ?? "not_applicable";
 }
 
 export function sectionOf(itemCode: string): string {
@@ -135,15 +128,11 @@ export function fingerprint(
   ruleId: string,
   ...parts: readonly (string | null | undefined)[]
 ): string {
-  return [
-    ruleId,
-    ...parts.filter((part): part is string => Boolean(part)),
-  ].join(":");
+  return [ruleId, ...parts.filter((part): part is string => Boolean(part))].join(":");
 }
 
 export function parseHopeDate(value: unknown): Date | null {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value))
-    return null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const date = new Date(`${value}T00:00:00.000Z`);
   return Number.isNaN(date.getTime()) ? null : date;
 }

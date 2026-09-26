@@ -53,6 +53,7 @@ export {
   type DeviceView,
   type EvvAggregatorSubmissionSeed,
   type EvvMissingResolutionSeed,
+  type EvvRoutePort,
   type EvvServiceSeed,
   type EvvVisitSeed,
   type GeofencePolicyView,

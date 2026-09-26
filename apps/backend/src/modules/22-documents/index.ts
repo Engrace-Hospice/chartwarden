@@ -24,6 +24,12 @@ import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../bootstrap/index";
 import { registerDocumentAbacPredicates as _registerM22Abac } from "./abac-predicates";
 import { createDbDocumentBackend } from "./documents-route-service-db";
+import {
+  type DocumentFeatureFlagReader as _DocumentFeatureFlagReader,
+  createDocLensPipelineService as _createDocLensPipelineService,
+  registerDocLensExtractionRoutes as _registerDocLensExtractionRoutes,
+  resolveDocLensCapability as _resolveDocLensCapability,
+} from "./extraction/index";
 import { registerDocumentRoutes as _registerM22Routes } from "./routes/documents-routes";
 import { createSignedUrlService as _createSignedUrlService } from "./routes/signed-url-service";
 import { createVerifiedUploadService } from "./routes/verified-upload";
@@ -44,7 +50,11 @@ import {
  * reads as data loss (a WORKING one would hand out PHI from a store with no BAA gate). Replaces the
  * in-memory clinical-core scaffold mount for M22.
  */
-export function mountDocumentRoutes(app: FastifyInstance, db: DbClient): void {
+export function mountDocumentRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  flags?: _DocumentFeatureFlagReader,
+): void {
   const backend = createDbDocumentBackend(db);
   const objectStoreConfig = s3ObjectStoreConfigFromEnv(process.env);
   const objects = objectStoreConfig ? createS3ObjectStore(objectStoreConfig) : null;
@@ -61,7 +71,7 @@ export function mountDocumentRoutes(app: FastifyInstance, db: DbClient): void {
                 "no object-storage presigner is bound (MINIO_* is not configured)",
               );
             },
-      },
+          },
       resolver: backend.objectResolver,
     }),
     referralReader: {
@@ -82,6 +92,41 @@ export function mountDocumentRoutes(app: FastifyInstance, db: DbClient): void {
       },
     }),
   );
+
+  // §7.1 W1 / depends-on-32 — the DocLens extraction surface (F-090). It was BUILT and MOUNTED BY
+  // NOTHING: `registerDocLensExtractionRoutes` was re-exported from `extraction/index.ts` and called
+  // from no composition root, so `POST /api/v1/intake/uploads/:id/extraction/run` and
+  // `/api/v1/intake/jobs/:id/extraction/commit` — both of which the published contract advertises,
+  // because `scan-routes.ts` reads SOURCE — answered 404 rather than the 503 this module spends a
+  // paragraph specifying. Those are different statements: 404 tells an integrator the endpoint does
+  // not exist, 503 EXTRACTION_DISABLED with `Retry-After: 0` tells them the capability is off for
+  // this tenant. The second is the true one, and it is what the routes now return.
+  //
+  // It also meant the activation switch was wired to nothing. `documents.doclens` is a CAPABILITY
+  // flag whose whole job is to turn this surface on when M32 lands; flipping it on an unmounted
+  // registrar does nothing at all.
+  //
+  // F-091 — this is where that line changed. The comment here used to say no flag reader was threaded
+  // because nothing at boot read the `feature_flag` table: M1's `createDefaultFeatureFlagReader` answered
+  // `{}` for every org, and M34's admin surface — which the note credited with WRITING flags — was in
+  // fact bound to a stub that threw on all three methods, so the table had neither a reader nor a writer
+  // and `documents.doclens` was unreachable from both ends. The composition root now binds the real M1
+  // reader and passes it here; `flags` stays optional because a no-db/slice boot has none to give, and
+  // absent still resolves to the documented Phase-1 503.
+  //
+  // Turning the flag ON does not, on its own, make DocLens work — the pipeline still needs M32 to bind a
+  // classifier/extractor/vision-verifier, which `_resolveDocLensCapability()` reports. What changes is
+  // that the switch is now connected to something: a tenant that has been granted the capability gets the
+  // capability's own answer instead of a blanket "off" that no operator could lift.
+  _registerDocLensExtractionRoutes(app, {
+    // Both layers take the reader: the route gate answers 503 before any work, and the pipeline
+    // service re-checks so a caller reaching it by another path cannot skip the capability gate.
+    pipeline: _createDocLensPipelineService({
+      capability: _resolveDocLensCapability(),
+      ...(flags ? { flags } : {}),
+    }),
+    ...(flags ? { flags } : {}),
+  });
 }
 
 export {

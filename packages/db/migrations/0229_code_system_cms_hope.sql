@@ -1,0 +1,22 @@
+-- M38 `code_system_id` — the CMS HOPE assessment-instrument item list (F-059).
+--
+-- WHAT WAS WRONG. `PLATFORM_VALUE_SETS` defines `hope_j_codes` ("HOPE J-code symptom-impact items:
+-- J2030, J2050, J2051 plus related; consumed by Module 10") and `value_set_member.system_id` is this
+-- enum — so the set was DEFINABLE but not CURATABLE: none of the eleven systems is the authority that
+-- publishes J2030. The curation file lists `hope_j_codes` among the sets "populated once the per-system
+-- loaders have run", but there is no loader to run and no system to load into, so that reason does not
+-- apply to this one. The consequence is that M10's §86 Section-J value-set rule could never resolve,
+-- and the only way to curate a member would have been to assert a false system for it (writing J2030 as
+-- a LOINC code, which it is not — LOINC's CMS instrument codes are numeric).
+--
+-- WHY THE ENUM IS THE RIGHT PLACE. This roster is not "clinical terminologies": it already carries
+-- `revenue` (NUBC UB-04), `carc` and `rarc` (X12) — administrative code lists published by an
+-- authority, which is exactly what a CMS assessment instrument is. `cpt` is held out of the union for a
+-- LICENSING reason (AMA), stated in `enums.ts`; CMS HOPE items are public, like the three above.
+--
+-- No concept table ships for `cms_hope`, which is the norm rather than an exception: per-system concept
+-- tables exist for the four systems with bespoke property shapes (icd10cm/loinc/rxnorm/snomed), and the
+-- other seven — `revenue` included — live in the catalog and their value sets without one.
+--
+-- Additive only. No value removed, no existing row affected.
+ALTER TYPE "public"."code_system_id" ADD VALUE IF NOT EXISTS 'cms_hope';

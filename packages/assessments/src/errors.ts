@@ -15,6 +15,13 @@ export const M9_ERROR_STATUS = {
   // §4.4 — recording / disclosure guards (full enforcement at the route, M9-T05)
   INACTIVE_ADMISSION: 422,
   BEFORE_ADMISSION: 422,
+  // #44 — the M6 status seam REFUSED to project the admission (a required fact is missing on the
+  // row), as distinct from the admission being inactive, absent, or another tenant's. Not a §4.4
+  // code: it describes the state of the RECORD, not of the capture. 422 like its neighbours — the
+  // request is well-formed and the caller cannot fix it by retrying, but the admission can be
+  // repaired. It exists because both cases used to raise INACTIVE_ADMISSION, which told a clinician
+  // an active admission was inactive and hid the real cause from whoever had to fix it.
+  ADMISSION_PROJECTION_GAP: 422,
   SCALE_NOT_ENABLED: 403,
   SCALE_LICENSE_MISSING: 403,
   DISCIPLINE_NOT_ELIGIBLE: 403,

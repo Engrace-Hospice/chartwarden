@@ -1,3 +1,4 @@
+import { safeErrorMessage } from "./redact-database-error";
 // apps/backend/src/bootstrap/readiness-probe.ts — the real `/ready` probe (TASK-040B,
 // production-readiness audit 2026-08-03, OPS-004).
 //
@@ -70,9 +71,9 @@ async function checkReachable(
     await withTimeout(probe(), timeoutMs, name);
     return "ok";
   } catch (err) {
-    log(
-      `⚠️  readiness probe: ${name} unreachable — ${err instanceof Error ? err.message : String(err)}`,
-    );
+    // A probe runs a real query, so its failure can be a database error carrying bound
+    // parameters. `safeErrorMessage` keeps the SQLSTATE/constraint and drops the values (F-027).
+    log(`⚠️  readiness probe: ${name} unreachable — ${safeErrorMessage(err)}`);
     return "fail";
   }
 }
@@ -92,9 +93,7 @@ async function checkOutboxDepth(
     }
     return "ok";
   } catch (err) {
-    log(
-      `⚠️  readiness probe: outbox depth check failed — ${err instanceof Error ? err.message : String(err)}`,
-    );
+    log(`⚠️  readiness probe: outbox depth check failed — ${safeErrorMessage(err)}`);
     return "fail";
   }
 }

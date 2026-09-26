@@ -10,6 +10,13 @@
 // fan-out; the pure handlers in `./handlers.ts` read THIS map, and the boot dispatcher (a later platform
 // phase, RULE 3(d)) forward-declares one consumer binding per subscribed topic.
 //
+// F-108 — `m22.document.rendered` is now LIVE, bound in `../outbox-consumers/m22-document-backref.ts`
+// from the composition root. The other two are not, and for different reasons: `m25.denial.opened` has a
+// written handler and no binding, and the M40 offboard topic below is a name no catalog carries under any
+// spelling (M40 publishes `canonical.updated` / `canonical.deactivated` and no provider-entity offboard),
+// so it is registered `no-such-event` rather than deferred. `M27_UPSTREAM_SUBSCRIPTIONS_DEFERRED` stays
+// true because it describes THIS surface: `registerM27Consumers` still boots no running subscriber.
+//
 // PURE DATA. No I/O, no DB — a frozen lookup table the handlers + the §4.10 fan-out test read. Keys are
 // upstream topic strings (`mN.<entity>.<event>`); values are the ordered list of M27 effects that topic
 // triggers. Cross-module communication here is outbox-ONLY: M27 never imports M22/M25/M40 internals (the

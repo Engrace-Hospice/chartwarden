@@ -19,11 +19,15 @@ export interface ApiClientOptions {
   /** Override fetch (tests / SSR). */
   fetch?: ClientOptions["fetch"];
   /**
-   * Fired with the HTTP status of every response the client observes (TASK-033). Leaf-safe: the
-   * client has no router access, so it just reports the fact — the composition root decides what a
+   * Fired with the HTTP status and URL of every response the client observes (TASK-033). Leaf-safe:
+   * the client has no router access, so it just reports the fact — the composition root decides what a
    * given status means (e.g. 401 → navigate to /expired, 503 → /maintenance).
+   *
+   * The URL is passed because a status alone is not always enough to decide (F-081): a 401 from the
+   * step-up VERIFY route means "that factor did not verify", not "your session is gone", and the shell
+   * has to be able to tell those apart.
    */
-  onResponseStatus?: (status: number) => void;
+  onResponseStatus?: (status: number, url: string) => void;
 }
 
 function defaultCorrelationId(): string | undefined {
@@ -113,7 +117,7 @@ export function createApiClient(options: ApiClientOptions = {}): ApiClient {
   if (onResponseStatus) {
     client.use({
       onResponse({ response }) {
-        onResponseStatus(response.status);
+        onResponseStatus(response.status, response.url);
         return undefined;
       },
     });

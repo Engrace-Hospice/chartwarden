@@ -8,7 +8,14 @@ import { registerOrderRoutes as _registerM11Routes } from "./routes/orders-route
 
 export type { OrderWriteOutboxPort } from "./orders-route-service-db";
 export { createDbOrderBackend } from "./orders-route-service-db";
-export { M11_PLATFORM_JOB_ID, M11_STANDING_SPAWN_QUEUE, M11_STANDING_SPAWN_SCHEDULE, registerM11StandingSpawnWorker, runStandingSpawnFanout, scheduleM11StandingSpawn } from "./jobs";
+export {
+  M11_PLATFORM_JOB_ID,
+  M11_STANDING_SPAWN_QUEUE,
+  M11_STANDING_SPAWN_SCHEDULE,
+  registerM11StandingSpawnWorker,
+  runStandingSpawnFanout,
+  scheduleM11StandingSpawn,
+} from "./jobs";
 
 /**
  * M11L — mount the M11 order routes over the PRODUCTION Drizzle backend (RLS-scoped under `withOrgContext`).
@@ -103,7 +110,9 @@ export {
   type SuggestionFacts,
   type SuggestionSkipReason,
   type SuggestionSource,
+  M11_DISCHARGE_CASCADE_CONSUMER,
   M11_OUTBOX_SUBSCRIPTIONS,
+  buildM11DischargeCascadeConsumer,
   decideAssessmentSuggestion,
   decideDischargeCascade,
   decideHopeSuggestion,

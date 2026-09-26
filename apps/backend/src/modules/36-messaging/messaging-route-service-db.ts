@@ -48,6 +48,7 @@ import type {
   ResolvedMessage,
   RoutingMap,
 } from "@wardenx/messaging";
+import { rollUpAlertOutcome } from "@wardenx/messaging";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import { type SQL, and, asc, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
@@ -736,8 +737,79 @@ export function createDbMessagingRouteService(
     // ── alerts (§4.2) ───────────────────────────────────────────────────────────────────────────
     async alertInbox(orgId, userId): Promise<AlertInboxItem[]> {
       return withOrgContext(db, { organizationId: orgId, userId }, async (tx) => {
+        // ── F-109: THE READ IS THE IN-APP DELIVERY ────────────────────────────────────────────────
+        //
+        // `notification_delivery.status` had no UPDATE anywhere in the repository, so the §2.4.4 state
+        // machine had exactly one reachable state and every row ever written is still `pending` — which
+        // is why `aggregateDeliveryStatus` below has returned `"pending"` for every line of every user's
+        // Notifications tab, always.
+        //
+        // §2.4.4 settles an in-app row on "socket acked", and ADR-0036 (Accepted, and it wins over a
+        // module spec) records that there IS no socket: `socket.io` is installed nowhere, no realtime
+        // transport was ever built, and "UI freshness is REST refetch/poll". This route is that poll —
+        // `apps/web/src/modules/36-messaging/notifications-inbox.tsx` is its only caller — so the fetch
+        // is the moment the alert reaches the client, and there is no second event to wait for. The row
+        // goes straight to `delivered`: `sent` is the "dispatcher accepted" step of a dispatcher tier
+        // that does not exist, and parking rows in a state nothing advances is the defect being fixed.
+        //
+        // Scoped three ways and narrowed to `pending`, so it can only ever settle THIS caller's own
+        // undelivered in-app rows: the parent-join RLS policy, the explicit `alert.organization_id`
+        // predicate beside it, and `recipient_user_id`. Out-of-band rows are deliberately untouched —
+        // no dispatcher exists for them, and calling a push nobody sent `delivered` would move the lie
+        // rather than remove it.
+        const settledAt = new Date();
+        const settled = await tx
+          .update(ND)
+          .set({ status: "delivered", sentAt: settledAt, settledAt })
+          .where(
+            and(
+              eq(ND.recipientUserId, userId),
+              eq(ND.channel, "in_app"),
+              eq(ND.status, "pending"),
+              inArray(
+                ND.alertId,
+                tx.select({ id: AL.id }).from(AL).where(eq(AL.organizationId, orgId)),
+              ),
+            ),
+          )
+          .returning({ alertId: ND.alertId });
+
+        // Re-settle the parent of every row that just moved (§2.4.3). Bounded by what this call
+        // changed — an inbox with nothing new to deliver runs neither of these statements.
+        const touched = [...new Set(settled.map((r) => r.alertId))];
+        if (touched.length > 0) {
+          const siblings = await tx
+            .select({
+              alertId: ND.alertId,
+              recipientUserId: ND.recipientUserId,
+              channel: ND.channel,
+              status: ND.status,
+            })
+            .from(ND)
+            .where(inArray(ND.alertId, touched));
+          for (const alertId of touched) {
+            const outcome = rollUpAlertOutcome(
+              siblings.filter((r) => r.alertId === alertId).map(({ alertId: _drop, ...r }) => r),
+            );
+            // `outcome <> :new` keeps a no-change write out of the M4 audit trail: the trigger fires on
+            // every UPDATE, and an alert that is still `pending` after a partial settlement would
+            // otherwise log one row per inbox poll, per recipient, forever.
+            await tx
+              .update(AL)
+              .set({ outcome })
+              .where(
+                and(
+                  eq(AL.organizationId, orgId),
+                  eq(AL.id, alertId),
+                  sql`${AL.outcome} <> ${outcome}`,
+                ),
+              );
+          }
+        }
+
         // notification_delivery inherits tenancy via its parent alert (RLS parent-join); the join is
         // visible exactly when the parent alert is. category/severity are denormalized on the child.
+        // Read AFTER the settlement so the response reflects it rather than the state one poll behind.
         const rows = await tx
           .select({
             alertId: AL.id,

@@ -8,7 +8,9 @@ import { type DbClient, schema, todayForOrganization } from "@wardenx/db";
 import {
   type AdmissionTransition,
   INITIAL_BED_CLEANING_STATUS,
+  type IpuAdmissionOutboxEvent,
   IpuStateError,
+  RESTRAINT_REASSESS_FLOOR_MINUTES,
   type RoomOccupancyDecision,
   assertInspectionCurrent,
   computeIrcState,
@@ -31,7 +33,7 @@ import {
 import { withOrgContext } from "@wardenx/tenancy";
 import type { PatientPrivacyFlagReader, PatientRoomingFacts } from "@wardenx/types";
 import { ConflictError, NotFoundError } from "@wardenx/types";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull } from "drizzle-orm";
 import type { IpuReadActor, IpuWriteActor } from "./actor";
 import type {
   AdvanceBodyReleaseBody,
@@ -44,6 +46,7 @@ import type {
   BedCleaningBody,
   CheckInVisitorBody,
   ConfirmBody,
+  ConfirmStaffBody,
   ConfirmTransferBody,
   CreateBedBody,
   CreateEquipmentBody,
@@ -52,6 +55,7 @@ import type {
   CreateUnitBody,
   DischargeBody,
   InitiateTransferBody,
+  InvokeRnBreakGlassBody,
   IrcOverrideBody,
   LiftVisitorRestrictionBody,
   LogInspectionBody,
@@ -65,6 +69,7 @@ import type {
   UpdateBedBody,
   UpdateRoomBody,
   UpdateUnitBody,
+  VisitorRestrictionListQuery,
 } from "./ipu-typebox";
 import type {
   AdmissionView,
@@ -72,16 +77,20 @@ import type {
   BodyReleaseView,
   CensusView,
   EquipmentView,
+  GipCriteriaDetailView,
   GipCriteriaView,
   IpuRouteService,
   IrcEpisodeView,
   MealView,
+  RestraintDetailView,
   RestraintView,
+  RnBreakGlassView,
   RnCoverageView,
   RoomView,
   ShiftView,
   StaffAssignmentView,
   UnitView,
+  VisitorRestrictionDetailView,
   VisitorRestrictionView,
   VisitorView,
 } from "./service";
@@ -128,6 +137,21 @@ const UNBOUND_ROOMING: RoomingFactsPort = {
  * relationship → consent-type mapping stays in M37's pure core (`visitorConsentTypesFor`) and this calls
  * M39's real, general `evaluate` per candidate type.
  */
+/**
+ * The slice of M11's `OrderProvider` the restraint gate reads. Narrowed rather than imported whole for
+ * the same reason `VisitorConsentGate` is: M37 consumes one method, and a narrow port is a smaller
+ * thing for a test to fake honestly.
+ */
+export interface RestraintOrderReader {
+  getOrder(input: { orderId: string }): Promise<{
+    readonly orderId: string;
+    readonly patientId: string;
+    readonly status: string;
+    readonly signedAt: string | null;
+    readonly orderingPhysicianMdmId: string | null;
+  } | null>;
+}
+
 export interface VisitorConsentGate {
   evaluate(args: {
     organizationId: string;
@@ -152,6 +176,47 @@ const UNBOUND_CONSENT: VisitorConsentGate = {
   },
 };
 
+/**
+ * Unbound default: THROWS. A restraint applied while the order seam is unbound must fail, not proceed —
+ * an unreadable order register is indistinguishable from an absent order, and CoP 418.110 does not have
+ * a branch for "we could not check".
+ */
+const UNBOUND_ORDERS: RestraintOrderReader = {
+  getOrder() {
+    throw new Error("OrderProvider is not bound");
+  },
+};
+
+/**
+ * The slice of M6's `AdmissionStatusReader` the discharge gate reads (F-070). Narrowed for the same
+ * reason `RestraintOrderReader` is: M37 consumes one method, and a narrow port is a smaller thing for a
+ * test to fake honestly.
+ */
+export interface AdmissionDischargeReader {
+  getAdmissionSummary(
+    organizationId: string,
+    admissionId: string,
+  ): Promise<{
+    readonly status: string;
+    readonly dischargedAt: string | null;
+  }>;
+}
+
+/**
+ * Unbound default: THROWS — the `UNBOUND_ORDERS` rule. An unreadable M6 admission is indistinguishable
+ * from an undischarged one, and closing an IPU stay in front of the discharge is the failure the gate
+ * exists to prevent.
+ */
+const UNBOUND_ADMISSIONS: AdmissionDischargeReader = {
+  getAdmissionSummary() {
+    throw new Error("AdmissionStatusReader is not bound");
+  },
+};
+
+/** The M6 admission states that mean the discharge has been recorded (§4.7 `AdmissionStatusValue`).
+ *  `bereavement`/`closed` are POST-discharge states, so an IPU stay may be closed out from them too. */
+const M6_DISCHARGED_STATES: ReadonlySet<string> = new Set(["discharged", "bereavement", "closed"]);
+
 export interface IpuRouteServiceDeps {
   readonly outbox?: WriteOutboxPort;
   /** M5 `PatientPrivacyFlagReader` (GAP-061). Bound lazily — the composition root passes a thunk so
@@ -159,6 +224,10 @@ export interface IpuRouteServiceDeps {
   readonly rooming?: RoomingFactsPort | (() => RoomingFactsPort);
   /** M39 `ConsentEvaluator` (GAP-062), same lazy-thunk posture as `rooming`. */
   readonly consent?: VisitorConsentGate | (() => VisitorConsentGate);
+  /** M11 `OrderProvider` (F-069) — the restraint gate's physician-order read, same thunk posture. */
+  readonly orders?: RestraintOrderReader | (() => RestraintOrderReader);
+  /** M6 `AdmissionStatusReader` (F-070) — the discharge gate's M6-state read, same thunk posture. */
+  readonly admissions?: AdmissionDischargeReader | (() => AdmissionDischargeReader);
 }
 
 const iso = (d: Date): string => d.toISOString();
@@ -179,6 +248,51 @@ export function buildDrizzleIpuRouteService(
   const consentDep = deps.consent ?? UNBOUND_CONSENT;
   const consentGate = (): VisitorConsentGate =>
     typeof consentDep === "function" ? consentDep() : consentDep;
+  const ordersDep = deps.orders ?? UNBOUND_ORDERS;
+  const orderReader = (): RestraintOrderReader =>
+    typeof ordersDep === "function" ? ordersDep() : ordersDep;
+  const admissionsDep = deps.admissions ?? UNBOUND_ADMISSIONS;
+  const admissionReader = (): AdmissionDischargeReader =>
+    typeof admissionsDep === "function" ? admissionsDep() : admissionsDep;
+
+  /**
+   * F-071 — the ONE §2.3 D3 coverage answer the four write paths share.
+   *
+   * Four call sites used to inline the same `ipu_rn_coverage_window` lookup, and the break-glass override
+   * was consulted by none of them: `invokeRnBreakGlass` published an outbox event and wrote nothing, so
+   * the documented escape hatch from an uncovered unit changed no gate's answer. It now writes a row, and
+   * this is what reads it.
+   *
+   * A live override is DELIBERATELY not written into the coverage grid. That table answers "was an RN on
+   * duty for this hour?" and is the platform's compliance record for the question; an override is the
+   * different fact that someone accepted the risk of running uncovered. Keeping them apart is what lets
+   * the gate pass while the coverage report still shows the gap.
+   */
+  const coverageActiveFor = async (
+    t: DbClient,
+    unitId: string,
+    at: Date,
+  ): Promise<{ covered: boolean; viaBreakGlass: boolean }> => {
+    const hourStart = new Date(Math.floor(at.getTime() / 3_600_000) * 3_600_000);
+    const [cov] = await t
+      .select()
+      .from(schema.ipuRnCoverageWindow)
+      .where(
+        and(
+          eq(schema.ipuRnCoverageWindow.unitId, unitId),
+          eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
+        ),
+      )
+      .limit(1);
+    if (cov?.isCovered === true) return { covered: true, viaBreakGlass: false };
+    const BG = schema.ipuRnBreakGlass;
+    const [bg] = await t
+      .select({ id: BG.id })
+      .from(BG)
+      .where(and(eq(BG.unitId, unitId), isNull(BG.revokedAt), gt(BG.expiresAt, at)))
+      .limit(1);
+    return { covered: bg !== undefined, viaBreakGlass: bg !== undefined };
+  };
   const U = schema.inpatientUnit;
   const A = schema.ipuAdmission;
   const H = schema.ipuAdmissionStateHistory;
@@ -276,12 +390,87 @@ export function buildDrizzleIpuRouteService(
    * bump the admission's state + version. `sourceBedId` is the bed whose cleaning cycle the transition drives
    * (the assigned bed on assignBed; the active-assignment bed on discharge/transfer).
    */
+  /**
+   * The per-event payload fields §4.4 requires BEYOND `{ ipuAdmissionId, organizationId }`.
+   *
+   * F-080 — every `m37.ipu_admission.*` event except `opened` declares extra REQUIRED properties
+   * (`unitId`, `bedId` + `levelOfCarePeriodId`, `activatedAt`, `targetKind`, `completedAt`, `reason`,
+   * `deathEventId`), and `applyAdmissionTransition` published only the two shared ones for all of them.
+   * The transactional publisher `Value.Check`s each payload against its catalog schema inside the
+   * mutation's own transaction, so the emit THREW and rolled the whole write back: `requestBed`,
+   * `assignBed`, `confirm`, `initiateTransfer`, `confirmTransfer` and `discharge` each answered 500 for
+   * every caller on every deployment. §2.2's entire lifecycle after `open` was unreachable.
+   *
+   * `opened` is the one that worked, and the reason is instructive: it is the ONE emit that does not go
+   * through this helper — `openAdmission` builds its payload inline, correctly. Nothing else did, so the
+   * shared path was wrong for all six and right for none, and the module's own tests never noticed
+   * because the pure machine's unit tests assert the event NAMES and never publish.
+   */
+  interface AdmissionEventFacts {
+    /** requestBed — the unit whose coverage and ready-bed state were actually checked. */
+    readonly unitId?: string;
+    /** assignBed — the bed the assignment was persisted against. */
+    readonly bedId?: string;
+    /** confirm — the activation instant, the same one written to `ipu_admission.activated_at`. */
+    readonly activatedAt?: Date;
+    /** initiateTransfer — `to_unit` / `to_home` / `to_facility`. */
+    readonly targetKind?: string;
+    /** confirmTransfer — when the destination acknowledged the handover. */
+    readonly completedAt?: Date;
+    /** discharge — the §2.2 discharge reason. */
+    readonly reason?: string;
+    /** recordDeath — the M6 death event this IPU death hangs off (no route yet). */
+    readonly deathEventId?: string;
+  }
+
+  /**
+   * Build one event's payload. A `switch` over the event union rather than a merged bag, so adding an
+   * `m37.ipu_admission.*` event without deciding what it carries is a compile error rather than a 500.
+   * A required fact that is genuinely absent is refused HERE, where the message names the event — the
+   * publisher's own `payload_schema_violation` names only the property.
+   */
+  const admissionEventPayload = (
+    event: IpuAdmissionOutboxEvent,
+    admission: typeof A.$inferSelect,
+    facts: AdmissionEventFacts,
+  ): Record<string, unknown> => {
+    const need = (value: string | null | undefined, field: string): string => {
+      if (!value) throw new ConflictError(`${event} cannot be emitted without ${field}`);
+      return value;
+    };
+    switch (event) {
+      case "m37.ipu_admission.opened":
+        return { levelOfCarePeriodId: admission.levelOfCarePeriodId, kind: admission.kind };
+      case "m37.ipu_admission.bed_requested":
+        // The requested unit, falling back to the one the row already carries — a non-`arranged`
+        // admission always has one (`ipu_admission_unit_xor_remote`).
+        return { unitId: need(facts.unitId ?? admission.unitId, "unitId") };
+      case "m37.ipu_admission.bed_assigned":
+        return {
+          bedId: need(facts.bedId, "bedId"),
+          levelOfCarePeriodId: need(admission.levelOfCarePeriodId, "levelOfCarePeriodId"),
+        };
+      case "m37.ipu_admission.activated":
+        return { activatedAt: (facts.activatedAt ?? new Date()).toISOString() };
+      case "m37.ipu_admission.transferring":
+        return { targetKind: need(facts.targetKind, "targetKind") };
+      case "m37.ipu_admission.transferred":
+        return { completedAt: (facts.completedAt ?? new Date()).toISOString() };
+      case "m37.ipu_admission.discharged":
+        return { reason: need(facts.reason, "reason") };
+      case "m37.ipu_admission.death_recorded":
+        return { deathEventId: need(facts.deathEventId, "deathEventId") };
+      case "m37.ipu_admission.closed":
+        return {};
+    }
+  };
+
   async function applyAdmissionTransition(
     t: DbClient,
     actor: IpuWriteActor,
     admission: typeof A.$inferSelect,
     transition: AdmissionTransition,
-    opts: { sourceBedId?: string; sourceBedStatus?: string } = {},
+    opts: { sourceBedId?: string; sourceBedStatus?: string; events?: AdmissionEventFacts } = {},
   ): Promise<void> {
     for (const eff of transition.effects) {
       if (eff.kind === "state_history") {
@@ -328,7 +517,11 @@ export function buildDrizzleIpuRouteService(
       } else if (eff.kind === "outbox") {
         await outbox.publish(t, {
           eventName: eff.event,
-          payload: { ipuAdmissionId: admission.id, organizationId: actor.organizationId },
+          payload: {
+            ipuAdmissionId: admission.id,
+            organizationId: actor.organizationId,
+            ...admissionEventPayload(eff.event, admission, opts.events ?? {}),
+          },
           organizationId: actor.organizationId,
           aggregateKind: "ipu_admission",
           aggregateId: admission.id,
@@ -703,18 +896,7 @@ export function buildDrizzleIpuRouteService(
         // bypasses). Fail-closed: an unbuilt coverage grid reads uncovered. The machine re-asserts.
         let rnCoverageActive = false;
         if (body.kind !== "arranged" && body.unitId) {
-          const hourStart = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
-          const [cov] = await t
-            .select()
-            .from(schema.ipuRnCoverageWindow)
-            .where(
-              and(
-                eq(schema.ipuRnCoverageWindow.unitId, body.unitId),
-                eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
-              ),
-            )
-            .limit(1);
-          rnCoverageActive = cov?.isCovered === true;
+          rnCoverageActive = (await coverageActiveFor(t, body.unitId, new Date())).covered;
         }
         // Drive the pure machine (throws IPU_RN_COVERAGE_UNAVAILABLE when a GIP/IRC unit is uncovered).
         const plan = planOpenAdmission(body.kind, { rnCoverageActive });
@@ -769,17 +951,7 @@ export function buildDrizzleIpuRouteService(
         const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         if (!adm) throw new NotFoundError("ipu_admission not found");
         const [unit] = await t.select().from(U).where(eq(U.id, body.unitId)).limit(1);
-        const hourStart = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
-        const [cov] = await t
-          .select()
-          .from(schema.ipuRnCoverageWindow)
-          .where(
-            and(
-              eq(schema.ipuRnCoverageWindow.unitId, body.unitId),
-              eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
-            ),
-          )
-          .limit(1);
+        const coverage = await coverageActiveFor(t, body.unitId, new Date());
         const readyBeds = await t
           .select({ id: B.id })
           .from(B)
@@ -788,10 +960,12 @@ export function buildDrizzleIpuRouteService(
         const transition = transitionAdmission(adm.state, adm.kind, {
           type: "requestBed",
           unitActive: unit?.isActive === true,
-          rnCoverageActive: cov?.isCovered === true,
+          rnCoverageActive: coverage.covered,
           hasReadyBed: readyBeds.length > 0,
         });
-        await applyAdmissionTransition(t, actor, adm, transition);
+        await applyAdmissionTransition(t, actor, adm, transition, {
+          events: { unitId: body.unitId },
+        });
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         return admissionView(updated ?? adm);
       });
@@ -829,6 +1003,7 @@ export function buildDrizzleIpuRouteService(
         await applyAdmissionTransition(t, actor, adm, transition, {
           sourceBedId: body.bedId,
           sourceBedStatus: bed.cleaningStatus ?? INITIAL_BED_CLEANING_STATUS,
+          events: { bedId: body.bedId },
         });
         await t.update(A).set({ bedAssignedAt: new Date() }).where(eq(A.id, admissionId));
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
@@ -841,6 +1016,23 @@ export function buildDrizzleIpuRouteService(
         const t = tx as DbClient;
         const [adm] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         if (!adm) throw new NotFoundError("ipu_admission not found");
+        // F-070 — the machine refuses a discharge whose M6 side has not happened. That boolean used
+        // to arrive in the request body, so the only party it could ever have been answered by was the
+        // one being gated, and `true` was the only value any caller would send. Resolved here from
+        // M6's published `AdmissionStatusReader`, keyed by the M6 admission this IPU stay hangs off.
+        // A throw is a refusal, not a pass: an unreadable admission reads the same as an active one.
+        let m6AdmissionDischarged: boolean;
+        try {
+          const m6 = await admissionReader().getAdmissionSummary(
+            actor.organizationId,
+            adm.admissionId,
+          );
+          m6AdmissionDischarged = M6_DISCHARGED_STATES.has(m6.status) || m6.dischargedAt !== null;
+        } catch {
+          m6AdmissionDischarged = false;
+        }
+        // Resolved BEFORE the bed assignment is ended: the transaction would roll a refusal back
+        // either way, but a gate that runs after the writes it guards reads as an afterthought.
         // Resolve the active bed assignment (its bed goes discharged_dirty).
         const [ba] = await t
           .select()
@@ -862,9 +1054,13 @@ export function buildDrizzleIpuRouteService(
         }
         const transition = transitionAdmission(adm.state, adm.kind, {
           type: "discharge",
-          dischargeEventExists: body.dischargeEventExists,
+          m6AdmissionDischarged,
         });
-        await applyAdmissionTransition(t, actor, adm, transition, { sourceBedId, sourceBedStatus });
+        await applyAdmissionTransition(t, actor, adm, transition, {
+          sourceBedId,
+          sourceBedStatus,
+          events: { reason: body.reason },
+        });
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         return admissionView(updated ?? adm);
       });
@@ -887,14 +1083,14 @@ export function buildDrizzleIpuRouteService(
           lcpConfirmed: true,
           gipCriteriaExists: gip !== undefined,
         });
-        await applyAdmissionTransition(
-          t,
-          actor,
-          adm,
-          transition,
-          bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {},
-        );
-        await t.update(A).set({ activatedAt: new Date() }).where(eq(A.id, admissionId));
+        const activatedAt = new Date();
+        await applyAdmissionTransition(t, actor, adm, transition, {
+          ...(bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {}),
+          // The SAME instant the column gets — an event whose `activatedAt` disagrees with the row's is
+          // worse than one that carries none, because a consumer cannot tell which is the activation.
+          events: { activatedAt },
+        });
+        await t.update(A).set({ activatedAt }).where(eq(A.id, admissionId));
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         return admissionView(updated ?? adm);
       });
@@ -908,18 +1104,8 @@ export function buildDrizzleIpuRouteService(
         // For a to_unit transfer, resolve the destination unit's RN coverage for the current hour.
         let destinationRnCoverage = true;
         if (body.targetKind === "to_unit" && body.destinationUnitId) {
-          const hourStart = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
-          const [cov] = await t
-            .select()
-            .from(schema.ipuRnCoverageWindow)
-            .where(
-              and(
-                eq(schema.ipuRnCoverageWindow.unitId, body.destinationUnitId),
-                eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
-              ),
-            )
-            .limit(1);
-          destinationRnCoverage = cov?.isCovered === true;
+          destinationRnCoverage = (await coverageActiveFor(t, body.destinationUnitId, new Date()))
+            .covered;
         }
         const transition = transitionAdmission(adm.state, adm.kind, {
           type: "initiateTransfer",
@@ -936,7 +1122,9 @@ export function buildDrizzleIpuRouteService(
           reason: body.reason ?? null,
           initiatedBy: actor.membershipId,
         });
-        await applyAdmissionTransition(t, actor, adm, transition);
+        await applyAdmissionTransition(t, actor, adm, transition, {
+          events: { targetKind: body.targetKind },
+        });
         const [updated] = await t.select().from(A).where(eq(A.id, admissionId)).limit(1);
         return admissionView(updated ?? adm);
       });
@@ -952,13 +1140,10 @@ export function buildDrizzleIpuRouteService(
           type: "confirmTransfer",
           destinationAcknowledged: body.destinationAcknowledged,
         });
-        await applyAdmissionTransition(
-          t,
-          actor,
-          adm,
-          transition,
-          bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {},
-        );
+        await applyAdmissionTransition(t, actor, adm, transition, {
+          ...(bed ? { sourceBedId: bed.id, sourceBedStatus: bed.status } : {}),
+          events: { completedAt: new Date() },
+        });
         if (bed) {
           await t
             .update(schema.ipuBedAssignment)
@@ -1067,7 +1252,35 @@ export function buildDrizzleIpuRouteService(
     async listShifts(actor) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const S = schema.ipuShift;
-        const rows = await (tx as DbClient).select().from(S).orderBy(desc(S.shiftStartAt));
+        const SA = schema.ipuStaffAssignment;
+        const t = tx as DbClient;
+        const rows = await t.select().from(S).orderBy(desc(S.shiftStartAt));
+        // F-070 — the assignments the list has always CLAIMED to carry (this route's `auditRead`
+        // config says "staff assignments by membership"). Without them `DELETE /ipu-shifts/:id/staff`
+        // was reachable only by the session that made the assignment.
+        const assignments = rows.length
+          ? await t
+              .select()
+              .from(SA)
+              .where(
+                inArray(
+                  SA.shiftId,
+                  rows.map((r) => r.id),
+                ),
+              )
+          : [];
+        const byShift = new Map<string, StaffAssignmentView[]>();
+        for (const a of assignments) {
+          const list = byShift.get(a.shiftId) ?? [];
+          list.push({
+            id: a.id,
+            shiftId: a.shiftId,
+            membershipId: a.membershipId,
+            role: a.role,
+            state: a.state,
+          });
+          byShift.set(a.shiftId, list);
+        }
         return rows.map(
           (r): ShiftView => ({
             id: r.id,
@@ -1075,6 +1288,7 @@ export function buildDrizzleIpuRouteService(
             shiftStartAt: iso(r.shiftStartAt),
             shiftEndAt: iso(r.shiftEndAt),
             displayLabel: r.displayLabel,
+            assignments: byShift.get(r.id) ?? [],
             version: r.version,
           }),
         );
@@ -1102,6 +1316,7 @@ export function buildDrizzleIpuRouteService(
           shiftStartAt: iso(row.shiftStartAt),
           shiftEndAt: iso(row.shiftEndAt),
           displayLabel: row.displayLabel,
+          assignments: [], // a shift is created empty; staff arrive through assignStaff
           version: row.version,
         };
       });
@@ -1130,11 +1345,73 @@ export function buildDrizzleIpuRouteService(
       });
     },
 
-    async unassignStaff(actor: IpuWriteActor, _shiftId: string, body: UnassignStaffBody) {
+    /**
+     * F-080 — `tentative → confirmed` (§2.3). The RN-coverage rule counts only CONFIRMED assignments, and
+     * `ipu_staff_assignment.state` defaults to `tentative`; `assignStaff` never set it and nothing else in
+     * the module ever wrote `confirmed`. So no assignment created through any product path could cover an
+     * hour, `ipu_rn_coverage_window.is_covered` was false for every hour of every unit forever, and every
+     * GIP and inpatient-respite admission was still refused at open — the outage F-071/#174 built the
+     * watchdog to end. The watchdog was the missing producer of the WINDOW; this is the missing producer
+     * of the window's own input.
+     *
+     * Idempotent on an already-confirmed row (a re-post returns it unchanged rather than re-stamping
+     * `confirmed_at`, which is the timestamp of the ceremony and not of the last request). Every other
+     * state is a refusal: `cancelled`/`completed`/`no_show` are terminal, and silently "confirming" one
+     * would put an RN back on a coverage grid they are not working.
+     */
+    async confirmStaff(actor: IpuWriteActor, shiftId: string, body: ConfirmStaffBody) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const SA = schema.ipuStaffAssignment;
         const t = tx as DbClient;
-        const [cur] = await t.select().from(SA).where(eq(SA.id, body.assignmentId)).limit(1);
+        const [cur] = await t
+          .select()
+          .from(SA)
+          .where(and(eq(SA.id, body.assignmentId), eq(SA.shiftId, shiftId)))
+          .limit(1);
+        if (!cur) throw new NotFoundError("ipu_staff_assignment not found");
+        if (cur.state === "confirmed") {
+          return {
+            id: cur.id,
+            shiftId: cur.shiftId,
+            membershipId: cur.membershipId,
+            role: cur.role,
+            state: cur.state,
+          } satisfies StaffAssignmentView;
+        }
+        if (cur.state !== "tentative") {
+          throw new IpuStateError(
+            "ILLEGAL_STAFF_ASSIGNMENT_TRANSITION",
+            `ipu_staff_assignment cannot be confirmed from '${cur.state}'.`,
+          );
+        }
+        const [row] = await t
+          .update(SA)
+          .set({ state: "confirmed", confirmedAt: new Date(), version: cur.version + 1 })
+          .where(eq(SA.id, body.assignmentId))
+          .returning();
+        if (!row) throw new ConflictError("confirm failed");
+        return {
+          id: row.id,
+          shiftId: row.shiftId,
+          membershipId: row.membershipId,
+          role: row.role,
+          state: row.state,
+        } satisfies StaffAssignmentView;
+      });
+    },
+
+    async unassignStaff(actor: IpuWriteActor, shiftId: string, body: UnassignStaffBody) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const SA = schema.ipuStaffAssignment;
+        const t = tx as DbClient;
+        // F-070 — the path's shift id is part of the identity of what is being cancelled, not
+        // decoration. It used to be ignored (`_shiftId`), so any shift id in the URL cancelled the
+        // named assignment and the audit trail recorded a route that had not happened.
+        const [cur] = await t
+          .select()
+          .from(SA)
+          .where(and(eq(SA.id, body.assignmentId), eq(SA.shiftId, shiftId)))
+          .limit(1);
         if (!cur) throw new NotFoundError("ipu_staff_assignment not found");
         const [row] = await t
           .update(SA)
@@ -1167,23 +1444,72 @@ export function buildDrizzleIpuRouteService(
       });
     },
 
-    async invokeRnBreakGlass(actor: IpuWriteActor, unitId: string) {
+    async invokeRnBreakGlass(actor: IpuWriteActor, unitId: string, body: InvokeRnBreakGlassBody) {
       return withOrgContext(db, ctx(actor), async (tx) => {
-        // §2.3 — the break-glass override is a compliance signal; emit it (M36 critical + compliance log). The
-        // override window semantics live in the @wardenx/inpatient break-glass kernel; there is no dedicated
-        // persistence table, so the ABAC predicate reads the coverage window + this event stream.
-        await outbox.publish(tx as DbClient, {
+        const t = tx as DbClient;
+        const BG = schema.ipuRnBreakGlass;
+        // F-071 — this used to publish an outbox event and write NOTHING, and its own comment said "the
+        // ABAC predicate reads the coverage window + this event stream". That predicate was removed (it
+        // was unreachable by construction — see ipu.routes.ts), and the service-layer check that
+        // replaced it reads only the coverage window. So the documented escape hatch from an uncovered
+        // unit changed no gate's answer: a 200 that did nothing, guarding the one state that blocks
+        // admission, transfer and restraint.
+        const [unit] = await t.select({ id: U.id }).from(U).where(eq(U.id, unitId)).limit(1);
+        if (!unit) throw new NotFoundError("inpatient_unit not found");
+
+        const now = new Date();
+        // One LIVE override per unit (partial unique index). A second invocation while one is running
+        // REPORTS the existing one rather than stacking an extension — otherwise "break glass again"
+        // silently becomes an unbounded window, which is the property the 4-hour cap exists to deny.
+        const [live] = await t
+          .select({ id: BG.id, expiresAt: BG.expiresAt })
+          .from(BG)
+          .where(and(eq(BG.unitId, unitId), isNull(BG.revokedAt), gt(BG.expiresAt, now)))
+          .limit(1);
+        if (live) {
+          return {
+            unitId,
+            invoked: true,
+            expiresAt: iso(live.expiresAt),
+            alreadyActive: true,
+          } satisfies RnBreakGlassView;
+        }
+
+        const expiresAt = new Date(now.getTime() + body.durationMinutes * 60_000);
+        const [row] = await t
+          .insert(BG)
+          .values({
+            organizationId: actor.organizationId,
+            unitId,
+            invokedByMembershipId: actor.membershipId,
+            invokedAt: now,
+            expiresAt,
+            reason: body.reason,
+          })
+          .returning();
+        if (!row) throw new ConflictError("rn break-glass insert failed");
+
+        // The compliance signal still fires (M36 critical + compliance log) — in the SAME transaction as
+        // the row, so an override can never be in force with no record of it having been raised.
+        await outbox.publish(t, {
           eventName: "m37.rn_coverage.break_glass_invoked",
           payload: {
             unitId,
             organizationId: actor.organizationId,
-            invokedAt: new Date().toISOString(),
+            invokedAt: now.toISOString(),
+            expiresAt: expiresAt.toISOString(),
+            invokedByMembershipId: actor.membershipId,
           },
           organizationId: actor.organizationId,
           aggregateKind: "inpatient_unit",
           aggregateId: unitId,
         });
-        return { unitId, invoked: true };
+        return {
+          unitId,
+          invoked: true,
+          expiresAt: iso(expiresAt),
+          alreadyActive: false,
+        } satisfies RnBreakGlassView;
       });
     },
 
@@ -1235,6 +1561,171 @@ export function buildDrizzleIpuRouteService(
       });
     },
 
+    // ── F-069 (read side) — the bedside reads ────────────────────────────────────────────────────────
+    //
+    // `reassessRestraint`, `releaseRestraint` and `checkOutVisitor` are keyed by ids that no read route
+    // returned: the only way to hold one was to be the browser session that performed the POST. A
+    // behavioral restraint is reassessed every 15 minutes and a visitor is checked out by a later
+    // shift — both, by definition, by someone who did not do the create.
+    async listRestraints(actor: IpuReadActor, admissionId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const rows = await t
+          .select()
+          .from(RE)
+          .where(eq(RE.ipuAdmissionId, admissionId))
+          .orderBy(desc(RE.appliedAt));
+        if (rows.length === 0) return [];
+        const reassessments = await t
+          .select()
+          .from(RR)
+          .where(
+            inArray(
+              RR.restraintEventId,
+              rows.map((r) => r.id),
+            ),
+          )
+          .orderBy(desc(RR.reassessedAt));
+        return rows.map((r) => {
+          const mine = reassessments.filter((x) => x.restraintEventId === r.id);
+          return {
+            id: r.id,
+            ipuAdmissionId: r.ipuAdmissionId,
+            restraintKind: r.restraintKind,
+            // `category` is not a column: it is the interval FLOOR the application was normalized to,
+            // and the two floors differ, so the interval recovers it. `normalizeReassessmentInterval`
+            // is tighten-only, so a behavioral restraint can never exceed the behavioral floor.
+            category: (r.reassessmentIntervalMinutes <= RESTRAINT_REASSESS_FLOOR_MINUTES.behavioral
+              ? "behavioral"
+              : "medical") as "behavioral" | "medical",
+            state: r.state,
+            reassessmentIntervalMinutes: r.reassessmentIntervalMinutes,
+            appliedAt: iso(r.appliedAt),
+            appliedByMembershipId: r.appliedByMembershipId,
+            orderingOrderId: r.orderingOrderId,
+            orderingPhysicianId: r.orderingPhysicianId,
+            releasedAt: r.releasedAt ? iso(r.releasedAt) : null,
+            nextDueAt: mine[0] ? iso(mine[0].nextDueAt) : null,
+            reassessmentCount: mine.length,
+            version: Number(r.version),
+          } satisfies RestraintDetailView;
+        });
+      });
+    },
+
+    async listGipCriteria(actor: IpuReadActor, admissionId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const rows = await t
+          .select()
+          .from(GC)
+          .where(eq(GC.ipuAdmissionId, admissionId))
+          .orderBy(desc(GC.attestedAt));
+        if (rows.length === 0) return [];
+        const GR = schema.gipCriteriaReassessment;
+        const reassessments = await t
+          .select()
+          .from(GR)
+          .where(
+            inArray(
+              GR.gipAdmissionCriteriaId,
+              rows.map((r) => r.id),
+            ),
+          )
+          .orderBy(desc(GR.assessedAt));
+        return rows.map(
+          (r) =>
+            ({
+              id: r.id,
+              ipuAdmissionId: r.ipuAdmissionId,
+              criterionKind: r.criterionKind,
+              attestedAt: iso(r.attestedAt),
+              attestingPhysicianId: r.attestingPhysicianId,
+              // The `data` payload is deliberately NOT projected: it carries the §2.4 clinical
+              // narrative (uncontrolled symptoms, signs of imminent death), which this read surface
+              // does not publish. The M22 render is the readable document, with its own consent gate.
+              reassessments: reassessments
+                .filter((x) => x.gipAdmissionCriteriaId === r.id)
+                .map((x) => ({
+                  id: x.id,
+                  reassessedAt: iso(x.assessedAt),
+                  criterionStillMet: x.criterionStillMet,
+                })),
+              version: Number(r.version),
+            }) satisfies GipCriteriaDetailView,
+        );
+      });
+    },
+
+    async listIrcEpisodes(actor: IpuReadActor, admissionId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const rows = await t
+          .select()
+          .from(IE)
+          .where(eq(IE.ipuAdmissionId, admissionId))
+          .orderBy(desc(IE.startedAt));
+        return rows.map(ircView);
+      });
+    },
+
+    async listVisitors(actor: IpuReadActor, admissionId: string) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const t = tx as DbClient;
+        const rows = await t
+          .select()
+          .from(schema.ipuVisitor)
+          .where(eq(schema.ipuVisitor.ipuAdmissionId, admissionId))
+          .orderBy(desc(schema.ipuVisitor.checkedInAt));
+        return rows.map(
+          (r) =>
+            ({
+              id: r.id,
+              ipuAdmissionId: r.ipuAdmissionId,
+              relationship: r.relationship,
+              maskRequired: r.maskRequired,
+              checkedInAt: iso(r.checkedInAt),
+              checkedOutAt: r.checkedOutAt ? iso(r.checkedOutAt) : null,
+            }) satisfies VisitorView,
+        );
+      });
+    },
+
+    async listVisitorRestrictions(actor: IpuReadActor, query: VisitorRestrictionListQuery) {
+      return withOrgContext(db, ctx(actor), async (tx) => {
+        const VR = schema.ipuVisitorRestriction;
+        const where = [
+          // Default to what is currently IN FORCE — the board a nurse checks before admitting a
+          // visitor. `active=false` is how the lifted trail is read back.
+          query.active === "false" ? undefined : isNull(VR.liftedAt),
+          query.unitId ? eq(VR.unitId, query.unitId) : undefined,
+          query.patientId ? eq(VR.patientId, query.patientId) : undefined,
+        ].filter((c): c is Exclude<typeof c, undefined> => c !== undefined);
+        const rows = await (tx as DbClient)
+          .select()
+          .from(VR)
+          .where(where.length ? and(...where) : undefined)
+          .orderBy(desc(VR.appliedAt));
+        return rows.map(
+          (r) =>
+            ({
+              id: r.id,
+              scope: r.scope,
+              unitId: r.unitId,
+              patientId: r.patientId,
+              restrictionKind: r.restrictionKind,
+              rationale: r.rationale,
+              sourceKind: r.sourceKind,
+              appliedAt: iso(r.appliedAt),
+              appliedBy: r.appliedBy,
+              appliedUntil: r.appliedUntil ? iso(r.appliedUntil) : null,
+              liftedAt: r.liftedAt ? iso(r.liftedAt) : null,
+              version: r.version,
+            }) satisfies VisitorRestrictionDetailView,
+        );
+      });
+    },
+
     async applyRestraint(actor: IpuWriteActor, admissionId: string, body: ApplyRestraintBody) {
       return withOrgContext(db, ctx(actor), async (tx) => {
         const t = tx as DbClient;
@@ -1248,28 +1739,59 @@ export function buildDrizzleIpuRouteService(
         // and denied every caller unconditionally — TASK-050A/TEST-003 finding). The preHandler is removed
         // (see routes/guards.ts, routes/ipu-routes.ts); this is now the sole enforcement point.
         if (adm.kind !== "arranged" && adm.unitId) {
-          const hourStart = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000);
-          const [cov] = await t
-            .select()
-            .from(schema.ipuRnCoverageWindow)
-            .where(
-              and(
-                eq(schema.ipuRnCoverageWindow.unitId, adm.unitId),
-                eq(schema.ipuRnCoverageWindow.hourStartAt, hourStart),
-              ),
-            )
-            .limit(1);
+          // F-071 — a live break-glass override satisfies this too. §2.3 D3 says so in as many words
+          // ("no admission, transfer, restraint, or order may be executed against the unit until
+          // coverage is restored OR break-glass invoked"), and the alternative — a restraint gate that
+          // an override cannot reach — would leave the one path with no escape hatch at all.
+          const coverage = await coverageActiveFor(t, adm.unitId, new Date());
           requireIpu(
-            cov?.isCovered === true,
+            coverage.covered,
             "IPU_RN_COVERAGE_UNAVAILABLE",
             "The unit's 24/7 RN coverage is inactive; restraint application is blocked (D3).",
           );
         }
+        // F-069 — RESOLVE the physician order before asking the machine about it.
+        //
+        // `hasOrderingOrder` used to be `body.orderingOrderId.length > 0`: whether the caller typed
+        // anything into the field. `validateRestraintApply` refuses without it and quotes CoP 418.110
+        // ("even in emergency"), so the one control the regulation is explicit about was satisfied by
+        // any non-empty string, and the order the row claims to rest on was never looked for. M37 has
+        // `dependsOn` 11 and `OrderProvider` has been registered the whole time.
+        //
+        // Three separate questions, because they have three different answers for the nurse standing at
+        // the bedside: the order does not exist (wrong id), it is for someone else (wrong patient — the
+        // one this check exists to catch), or it was never signed (an unsigned draft is not an order).
+        const order = await orderReader().getOrder({ orderId: body.orderingOrderId });
+        requireIpu(
+          order !== null,
+          "RESTRAINT_ORDER_REQUIRED",
+          "No order with that id exists; a restraint cannot be applied without a physician order (CoP 418.110, even in emergency).",
+        );
+        requireIpu(
+          order?.patientId === adm.patientId,
+          "RESTRAINT_ORDER_REQUIRED",
+          "That order belongs to a different patient; a restraint must rest on an order for THIS patient (CoP 418.110).",
+        );
+        requireIpu(
+          order?.signedAt != null,
+          "RESTRAINT_ORDER_REQUIRED",
+          "That order has not been signed; an unsigned draft is not a physician order (CoP 418.110).",
+        );
+        // The ordering physician comes from the ORDER, not from a second uuid the caller supplies
+        // alongside it. Two independent client assertions about one fact can name different people and
+        // the record cannot say which is true. An order naming no ordering physician cannot authorise a
+        // restraint, so that is a refusal rather than a null written into a NOT NULL column.
+        const orderingPhysicianId = order?.orderingPhysicianMdmId ?? null;
+        requireIpu(
+          orderingPhysicianId !== null,
+          "RESTRAINT_ORDER_REQUIRED",
+          "That order names no ordering physician, so it cannot authorise a restraint (CoP 418.110).",
+        );
         // §2.10 — validate the application (step-up + physician order + ≥100-char justification) and floor
         // the reassessment interval by category. The DB CHECK is the schema backstop.
         validateRestraintApply({
           justificationText: body.restraintJustificationText,
-          hasOrderingOrder: body.orderingOrderId.length > 0,
+          hasOrderingOrder: true, // resolved above; the machine's fact is now the server's answer
           stepUpVerified: actor.stepUpRecent,
         });
         const interval = normalizeReassessmentInterval(
@@ -1283,10 +1805,18 @@ export function buildDrizzleIpuRouteService(
             ipuAdmissionId: admissionId,
             restraintKind: body.restraintKind,
             restraintJustificationText: body.restraintJustificationText,
-            orderingPhysicianId: body.orderingPhysicianId,
+            orderingPhysicianId: orderingPhysicianId as string,
             orderingOrderId: body.orderingOrderId,
             appliedByMembershipId: actor.membershipId,
-            appliedStepUpAssertionId: actor.membershipId, // the step-up assertion id (session-verified)
+            // KNOWN GAP (F-069 §3, stated rather than papered over). This is NOT an assertion id — it is
+            // the actor's membership, so every restraint the same nurse applies carries the same value
+            // and the column cannot distinguish two applications. The platform has no uuid-identified
+            // step-up assertion to put here: step-up state is `session.last_step_up_at` on a row whose
+            // `id` is `text` (the same absence #165 found behind
+            // `evv_missing_resolution.step_up_auth_ref_id`). Unlike that column this one is NOT NULL, so
+            // it cannot be left empty until an M2 `step_up_session` exists. The step-up itself is real
+            // and server-verified — `actor.stepUpRecent`, checked by the machine above.
+            appliedStepUpAssertionId: actor.membershipId,
             reassessmentIntervalMinutes: interval,
           })
           .returning();
@@ -1765,6 +2295,10 @@ export function buildDrizzleIpuRouteService(
               payload: {
                 organizationId: actor.organizationId,
                 bodyReleaseId: br.id,
+                // F-099 — the decedent's chart, which every body-release artifact belongs to.
+                // `ipu_body_release.patient_id` is NOT NULL, so this is never absent; M22 reads it off
+                // the payload to file `body_release_authorization` against the right chart.
+                patientId: br.patientId,
                 ...(eff.event === "m37.body_release.funeral_home_identified" && body.funeralHomeId
                   ? { funeralHomeId: body.funeralHomeId }
                   : {}),

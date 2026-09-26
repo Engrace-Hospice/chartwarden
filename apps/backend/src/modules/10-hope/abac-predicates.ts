@@ -1,4 +1,9 @@
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  hasOrgWideScope,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 // apps/backend/src/modules/10-hope/abac-predicates.ts — M10-T06 (§4.7).
 //
 // The FOUR named ABAC predicate resolvers M10 OWNS and registers into M3's named-predicate registry (M3
@@ -48,12 +53,6 @@ export const M10_ABAC_PREDICATES = [
 
 /** Roles that read/scope any patient's HOPE data or any ProviderEntity's submissions without caseload/PE
  * membership (mirrors M7/M8/M9's `caseload_or_scope` org-wide escape). */
-const ORG_WIDE_SCOPE_ROLES = [
-  "medical_director",
-  "compliance_officer",
-  "survey_coordinator",
-] as const;
-
 /** The HOPE clinical-lead role token that may correct any signed assessment (§4.7 / §4.6). */
 const CLINICAL_LEAD_ROLES = ["clinical_lead", "clinical_supervisor"] as const;
 
@@ -63,15 +62,23 @@ const targetStr = (target: AbacTarget, field: string): string | null => {
 };
 
 /**
- * Assemble the actor's HOPE discipline set from session roles/attributes (never client input), normalized
- * to the uppercase HOPE codes (`RN` / `NP` / `MD`). Reads `attributes.disciplines` first, then the role
- * tokens (case-insensitive) — the same source the route's discipline derivation reads.
+ * Assemble the actor's HOPE discipline set from the session role keys (never client input), normalized to
+ * the uppercase HOPE codes (`RN` / `NP` / `MD`) — the same source the route's discipline derivation reads.
+ *
+ * Derived from the ROLE KEYS M2 assembled onto the request context. It USED to union in an
+ * `attributes.disciplines` array first; nothing in the platform has ever written that key, so the union was
+ * with the empty set on every request ever served, and the role arm has been the whole answer all along
+ * (F-030). See `07-care-plan/abac-predicates.ts` for the full argument.
  */
 export function hopeDisciplinesOf(context: AbacContext): readonly string[] {
-  const fromAttributes = Array.isArray(context.attributes.disciplines)
-    ? context.attributes.disciplines.filter((x): x is string => typeof x === "string")
-    : [];
-  return [...new Set([...fromAttributes, ...context.roles])].map((d) => d.toUpperCase());
+  return [...new Set(context.roles)].map((d) => d.toUpperCase());
+}
+
+/** The actor's active membership id off the M2-assembled session attributes (never the request body).
+ *  Mirrors M7's `membershipIdOf` / M12's `actorOf` — the F-030 produced key. */
+function membershipIdOf(context: AbacContext): string | null {
+  const raw = context.attributes.membershipId;
+  return typeof raw === "string" && raw.length > 0 ? raw : null;
 }
 
 /** Whether the actor holds the HOPE clinical-lead role (case-insensitive). */
@@ -159,7 +166,7 @@ export function buildHopeAbacPredicates(
   const resolveAdmissionPatient = deps.resolveAdmissionPatient ?? defaultResolveAdmissionPatient;
 
   const caseloadOrScopeFor = async (context: AbacContext, patientId: string): Promise<boolean> => {
-    if (ORG_WIDE_SCOPE_ROLES.some((r) => context.roles.includes(r))) return true;
+    if (hasOrgWideScope(context.roles)) return true;
     if (!context.userId) return false;
     return isInCaseload({
       organizationId: context.organizationId,
@@ -169,8 +176,7 @@ export function buildHopeAbacPredicates(
   };
 
   const peOrScopeFor = (context: AbacContext, providerEntityId: string): boolean =>
-    ORG_WIDE_SCOPE_ROLES.some((r) => context.roles.includes(r)) ||
-    context.providerEntityIds.includes(providerEntityId);
+    hasOrgWideScope(context.roles) || context.providerEntityIds.includes(providerEntityId);
 
   return {
     "hope.authorDisciplineAllowed": async (context) =>
@@ -183,7 +189,14 @@ export function buildHopeAbacPredicates(
       if (!id) return false;
       const facts = await resolver.loadAssessment(context.organizationId, id);
       if (!facts) return false; // fail-closed (absent / cross-tenant)
-      return facts.originalSignedBy != null && facts.originalSignedBy === context.userId;
+      // MEMBERSHIP to MEMBERSHIP. `originalSignedBy` is `hope_assessment.signed_by_membership_id`, and
+      // this compared it to `context.userId` — two different id spaces that are never equal, so the
+      // ORIGINAL SIGNER was denied their own correction on every request and only a clinical lead could
+      // ever correct anything. GAP-026 is the same defect in M12, whose `actorOf` header already spells
+      // out why the route suites stay green through it: their fixtures use one id for both.
+      const actingMembershipId = membershipIdOf(context);
+      if (actingMembershipId === null) return false; // no active membership → cannot own a row
+      return facts.originalSignedBy != null && facts.originalSignedBy === actingMembershipId;
     },
     "hope.scope": async (context, target) => {
       const patientId = targetStr(target, "patientId");
@@ -234,7 +247,7 @@ export function buildHopeAbacPredicates(
       // request is an org-wide read and only the org-wide scope roles may make one. Everyone else
       // must name the patient/PE they claim, which the branches above then verify. Fails closed on
       // a misconfigured route for the same reason (mirrors M8/M9's empty-target `return false`).
-      return ORG_WIDE_SCOPE_ROLES.some((r) => context.roles.includes(r));
+      return hasOrgWideScope(context.roles);
     },
   };
 }

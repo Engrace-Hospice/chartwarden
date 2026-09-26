@@ -76,7 +76,9 @@ export function StaffManagement(): JSX.Element {
   // Table Filters & Search
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "admin" | "member">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "suspended" | "pending">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "suspended" | "pending">(
+    "all",
+  );
   const [activeTab, setActiveTab] = useState<"roster" | "invitations">("roster");
   const [memberPage, setMemberPage] = useState(1);
   const [memberPageSize, setMemberPageSize] = useState(10);
@@ -135,7 +137,9 @@ export function StaffManagement(): JSX.Element {
     if (!members || members.length === 0) return;
     let active = true;
     void (async () => {
-      const catalog = await client.GET("/api/v1/roles").catch(() => ({ data: undefined, error: true }));
+      const catalog = await client
+        .GET("/api/v1/roles")
+        .catch(() => ({ data: undefined, error: true }));
       if (!active || catalog.error) return;
       const names = new Map(
         ((catalog.data as { roles?: { roleId: string; name: string }[] })?.roles ?? []).map(
@@ -209,7 +213,6 @@ export function StaffManagement(): JSX.Element {
     setInviteLink(null);
     const { data, error: err } = await client.POST("/api/v1/orgs/{id}/invitations/{invId}/resend", {
       params: { path: { id: orgId, invId: inv.invitationId } },
-      body: {},
     });
     if (err) {
       setError("Could not resend that invitation (it may no longer be pending).");
@@ -283,12 +286,19 @@ export function StaffManagement(): JSX.Element {
   }
 
   // Calculated Metrics for KPIs
-  const activeCount = loadFailed ? null : (members?.filter((m) => m.status === "active").length ?? 0);
-  const suspendedCount = loadFailed ? null : (members?.filter((m) => m.status === "suspended").length ?? 0);
-  const adminCount = loadFailed ? null : (members?.filter((m) => m.isAdmin && m.status === "active").length ?? 0);
+  const activeCount = loadFailed
+    ? null
+    : (members?.filter((m) => m.status === "active").length ?? 0);
+  const suspendedCount = loadFailed
+    ? null
+    : (members?.filter((m) => m.status === "suspended").length ?? 0);
+  const adminCount = loadFailed
+    ? null
+    : (members?.filter((m) => m.isAdmin && m.status === "active").length ?? 0);
   const lockedCount = loadFailed
     ? null
-    : (members?.filter((m) => m.accountStatus === "suspended" || m.accountStatus === "deactivated").length ?? 0);
+    : (members?.filter((m) => m.accountStatus === "suspended" || m.accountStatus === "deactivated")
+        .length ?? 0);
 
   // Filtered members list
   const filteredMembers = (members ?? []).filter((m) => {
@@ -319,7 +329,10 @@ export function StaffManagement(): JSX.Element {
     (activeMemberPage - 1) * memberPageSize,
     activeMemberPage * memberPageSize,
   );
-  const invitationPageCount = Math.max(1, Math.ceil(pendingInvitationsList.length / invitationPageSize));
+  const invitationPageCount = Math.max(
+    1,
+    Math.ceil(pendingInvitationsList.length / invitationPageSize),
+  );
   const activeInvitationPage = Math.min(invitationPage, invitationPageCount);
   const pagedInvitations = pendingInvitationsList.slice(
     (activeInvitationPage - 1) * invitationPageSize,
@@ -355,7 +368,7 @@ export function StaffManagement(): JSX.Element {
             <Link to="/audit">Audit Log</Link>
           </nav>
 
-            {/* Error Banner */}
+          {/* Error Banner */}
           {error ? (
             <div
               role="alert"
@@ -405,7 +418,15 @@ export function StaffManagement(): JSX.Element {
                 border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
               }}
             >
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1, minWidth: 0 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.5rem",
+                  flex: 1,
+                  minWidth: 0,
+                }}
+              >
                 <Glyph name="sparkle" size={16} />
                 <span style={{ fontSize: "0.85rem", color: "var(--color-on-surface)" }}>
                   Invitation link:
@@ -575,10 +596,7 @@ export function StaffManagement(): JSX.Element {
                   {pagedMembers.map((m) => {
                     const roles = memberRoles.get(m.membershipId);
                     return (
-                      <tr
-                        key={m.membershipId}
-                        aria-selected={selectedMemberId === m.membershipId}
-                      >
+                      <tr key={m.membershipId} aria-selected={selectedMemberId === m.membershipId}>
                         <td>
                           <button
                             type="button"
@@ -654,8 +672,18 @@ export function StaffManagement(): JSX.Element {
         onClose={() => setInviteModalOpen(false)}
         ariaLabel="Invite Staff Member"
       >
-        <form onSubmit={invite} style={{ display: "flex", flexDirection: "column", gap: "1.25rem", padding: "1.5rem" }}>
-          <h3 style={{ margin: 0, fontSize: "1.125rem", fontWeight: 600, color: "var(--color-on-surface)" }}>
+        <form
+          onSubmit={invite}
+          style={{ display: "flex", flexDirection: "column", gap: "1.25rem", padding: "1.5rem" }}
+        >
+          <h3
+            style={{
+              margin: 0,
+              fontSize: "1.125rem",
+              fontWeight: 600,
+              color: "var(--color-on-surface)",
+            }}
+          >
             Invite Staff Member
           </h3>
           <p style={{ margin: 0, fontSize: "0.875rem", color: "var(--color-on-surface-variant)" }}>
@@ -685,21 +713,14 @@ export function StaffManagement(): JSX.Element {
               justifyContent: "flex-end",
               gap: "0.5rem",
               paddingTop: "0.5rem",
-              borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+              borderTop:
+                "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
             }}
           >
-            <Button
-              type="button"
-              tone="tertiary"
-              onClick={() => setInviteModalOpen(false)}
-            >
+            <Button type="button" tone="tertiary" onClick={() => setInviteModalOpen(false)}>
               Cancel
             </Button>
-            <Button
-              type="submit"
-              tone="primary"
-              disabled={busy || !inviteEmail.trim() || !orgId}
-            >
+            <Button type="submit" tone="primary" disabled={busy || !inviteEmail.trim() || !orgId}>
               {busy ? "Sending..." : "Send Invitation"}
             </Button>
           </div>
@@ -915,7 +936,16 @@ function StaffDrawerContent({
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "1.25rem", paddingTop: "0.5rem" }}>
       {/* Header Profile Summary */}
-      <div style={{ display: "flex", alignItems: "center", gap: "0.875rem", paddingBottom: "1rem", borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)" }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "0.875rem",
+          paddingBottom: "1rem",
+          borderBottom:
+            "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+        }}
+      >
         <div
           style={{
             width: "3rem",
@@ -949,7 +979,15 @@ function StaffDrawerContent({
 
       {/* Account Details Section */}
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-        <h4 style={{ margin: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-on-surface-variant)" }}>
+        <h4
+          style={{
+            margin: 0,
+            fontSize: "0.8rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            color: "var(--color-on-surface-variant)",
+          }}
+        >
           Account Details
         </h4>
         <div style={detailGridStyle}>
@@ -966,26 +1004,50 @@ function StaffDrawerContent({
 
       {/* Security Status */}
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-        <h4 style={{ margin: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-on-surface-variant)" }}>
+        <h4
+          style={{
+            margin: 0,
+            fontSize: "0.8rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            color: "var(--color-on-surface-variant)",
+          }}
+        >
           Security & Access State
         </h4>
         <div
           style={{
             padding: "0.75rem",
             borderRadius: "var(--radius-md)",
-            background: isLocked ? "color-mix(in srgb, var(--color-error) 10%, transparent)" : "var(--color-surface-low)",
+            background: isLocked
+              ? "color-mix(in srgb, var(--color-error) 10%, transparent)"
+              : "var(--color-surface-low)",
             border: `1px solid color-mix(in srgb, ${isLocked ? "var(--color-error)" : "var(--color-outline-variant)"} 40%, transparent)`,
             fontSize: "0.85rem",
             color: "var(--color-on-surface)",
           }}
         >
           {isLocked ? (
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-error)" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                color: "var(--color-error)",
+              }}
+            >
               <Glyph name="lock" size={16} />
               <span>User account is locked or deactivated.</span>
             </div>
           ) : (
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--color-success)" }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "0.5rem",
+                color: "var(--color-success)",
+              }}
+            >
               <Glyph name="check-circle" size={16} />
               <span>Account is in good security standing.</span>
             </div>
@@ -994,14 +1056,27 @@ function StaffDrawerContent({
       </div>
 
       {/* Embedded Role Editor */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", paddingTop: "0.5rem", borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)" }}>
-        <h4 style={{ margin: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-on-surface-variant)" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: "0.5rem",
+          paddingTop: "0.5rem",
+          borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+        }}
+      >
+        <h4
+          style={{
+            margin: 0,
+            fontSize: "0.8rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            color: "var(--color-on-surface-variant)",
+          }}
+        >
           Assigned Roles
         </h4>
-        <MemberRoleEditor
-          membershipId={member.membershipId}
-          memberLabel={name}
-        />
+        <MemberRoleEditor membershipId={member.membershipId} memberLabel={name} />
       </div>
 
       {/* Lifecycle Actions */}
@@ -1014,34 +1089,30 @@ function StaffDrawerContent({
           borderTop: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
         }}
       >
-        <h4 style={{ margin: 0, fontSize: "0.8rem", textTransform: "uppercase", letterSpacing: "0.04em", color: "var(--color-on-surface-variant)" }}>
+        <h4
+          style={{
+            margin: 0,
+            fontSize: "0.8rem",
+            textTransform: "uppercase",
+            letterSpacing: "0.04em",
+            color: "var(--color-on-surface-variant)",
+          }}
+        >
           Lifecycle Actions
         </h4>
         <div style={{ display: "flex", gap: "0.5rem" }}>
           {member.status === "active" ? (
-            <Button
-              tone="secondary"
-              size="sm"
-              onClick={() => onStatusChange("suspended")}
-            >
+            <Button tone="secondary" size="sm" onClick={() => onStatusChange("suspended")}>
               Suspend Member
             </Button>
           ) : member.status === "suspended" ? (
-            <Button
-              tone="primary"
-              size="sm"
-              onClick={() => onStatusChange("active")}
-            >
+            <Button tone="primary" size="sm" onClick={() => onStatusChange("active")}>
               Reactivate Member
             </Button>
           ) : null}
 
           {member.status !== "revoked" ? (
-            <Button
-              tone="danger"
-              size="sm"
-              onClick={onRemove}
-            >
+            <Button tone="danger" size="sm" onClick={onRemove}>
               Remove Member
             </Button>
           ) : null}
@@ -1061,10 +1132,25 @@ function DetailRow({
   isCode?: boolean;
 }): JSX.Element {
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: "0.85rem" }}>
+    <div
+      style={{
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        fontSize: "0.85rem",
+      }}
+    >
       <span style={{ color: "var(--color-on-surface-variant)" }}>{label}</span>
       {isCode ? (
-        <code className="wx-data-md" style={{ fontSize: "0.75rem", background: "var(--color-surface-container)", padding: "0.1rem 0.3rem", borderRadius: "var(--radius-sm)" }}>
+        <code
+          className="wx-data-md"
+          style={{
+            fontSize: "0.75rem",
+            background: "var(--color-surface-container)",
+            padding: "0.1rem 0.3rem",
+            borderRadius: "var(--radius-sm)",
+          }}
+        >
           {value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value}
         </code>
       ) : (
@@ -1096,13 +1182,21 @@ function PendingInvitationsTable({
 
   return (
     <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem 1.5rem" }}>
-      <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+      <table
+        style={{
+          display: "table",
+          width: "100%",
+          borderCollapse: "collapse",
+          fontSize: "0.875rem",
+        }}
+      >
         <thead>
           <tr
             style={{
               textAlign: "left",
               color: "var(--color-on-surface-variant)",
-              borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+              borderBottom:
+                "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
               background: "var(--color-surface-low)",
             }}
           >
@@ -1117,11 +1211,14 @@ function PendingInvitationsTable({
             <tr
               key={inv.invitationId}
               style={{
-                borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+                borderBottom:
+                  "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
               }}
             >
               <td style={tdStyle}>
-                <span style={{ fontWeight: 500, color: "var(--color-on-surface)" }}>{inv.email}</span>
+                <span style={{ fontWeight: 500, color: "var(--color-on-surface)" }}>
+                  {inv.email}
+                </span>
               </td>
               <td style={tdStyle}>
                 <StatusPill label={cap(inv.status)} tone={INVITE_STATUS_TONE[inv.status]} />
@@ -1166,7 +1263,10 @@ function formatLogin(iso: string | null): string {
 }
 
 function getInitials(name: string): string {
-  const parts = name.trim().split(/[\s,._@-]+/).filter(Boolean);
+  const parts = name
+    .trim()
+    .split(/[\s,._@-]+/)
+    .filter(Boolean);
   if (parts.length === 0) return "U";
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
   return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();

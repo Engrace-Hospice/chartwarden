@@ -17,6 +17,9 @@ import {
 // surfaced here as a badge; the actual sign step-up (and the verbal-pending section) fill in as their write
 // surfaces harden. The SERVER owns the authoritative §2.2 D2 status (ADR-0030 — no frontend authz). Reads
 // GET /api/v1/medication-orders?status=pending_signature via the typed client. Leaves only (@wardenx/ui).
+// #91 — a row opens the ORDER, and the §2.2 sign ceremony lives there. Deliberately not an inline
+// Sign button per row: signing a prescription without seeing its sig, strength and controlled posture
+// is not a ceremony worth making one click cheaper. The detail carries all three.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate } from "react-router-dom";

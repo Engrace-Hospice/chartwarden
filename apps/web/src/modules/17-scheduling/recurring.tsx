@@ -1,4 +1,5 @@
 import {
+  Button,
   EmptyState,
   LoadingSpinner,
   PageHeader,
@@ -14,6 +15,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useSearchParams } from "react-router-dom";
+import { discontinueRecurring } from "./scheduling-api";
 import { RECURRING_TONE, stateLabel } from "./scheduling-status";
 
 interface RecurringRow {
@@ -32,6 +34,8 @@ export function SchedulingRecurring(): JSX.Element {
   const [rows, setRows] = useState<RecurringRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!patient) {
@@ -56,6 +60,20 @@ export function SchedulingRecurring(): JSX.Element {
     void load();
   }, [load]);
 
+  /**
+   * #91 — stop a cadence. Only DISCONTINUE is offered: creating a policy takes an RRULE, and an RRULE
+   * builder is a screen rather than a row action. Already-scheduled visits are unaffected — the server
+   * decides that, and this control does not claim otherwise.
+   */
+  async function stop(id: string): Promise<void> {
+    setBusyId(id);
+    setNotice(null);
+    const res = await discontinueRecurring(client, id, "No longer clinically indicated.");
+    setBusyId(null);
+    setNotice(res.ok ? "Discontinued. Visits already scheduled are unchanged." : res.message);
+    if (res.ok) await load();
+  }
+
   const active = rows.filter((r) => r.status === "active");
 
   return (
@@ -65,6 +83,17 @@ export function SchedulingRecurring(): JSX.Element {
           <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
             Active recurring-visit policies{patient ? ` for patient ${patient.slice(0, 8)}` : ""}.
           </div>
+          {notice ? (
+            <output
+              style={{
+                display: "block",
+                color: "var(--color-on-surface-variant)",
+                fontSize: "0.8rem",
+              }}
+            >
+              {notice}
+            </output>
+          ) : null}
         </PageHeader>
       }
       filters={
@@ -107,6 +136,7 @@ export function SchedulingRecurring(): JSX.Element {
                   <th style={thStyle}>Clinician</th>
                   <th style={thStyle}>RRULE</th>
                   <th style={thStyle}>Status</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>Discontinue</th>
                 </tr>
               </thead>
               <tbody>
@@ -124,6 +154,20 @@ export function SchedulingRecurring(): JSX.Element {
                         label={stateLabel(r.status)}
                         tone={RECURRING_TONE[r.status] ?? "neutral"}
                       />
+                    </td>
+                    <td style={{ ...tdStyle, textAlign: "right" }}>
+                      {r.status === "active" ? (
+                        <Button
+                          size="sm"
+                          tone="tertiary"
+                          disabled={busyId === r.id}
+                          onClick={() => void stop(r.id)}
+                        >
+                          Discontinue
+                        </Button>
+                      ) : (
+                        <span style={{ color: "var(--color-muted)" }}>—</span>
+                      )}
                     </td>
                   </tr>
                 ))}

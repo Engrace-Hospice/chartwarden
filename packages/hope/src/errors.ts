@@ -20,6 +20,14 @@ export const M10_ERROR_STATUS = {
   M10_LATE_REASON_INVALID: 400,
   // §4.4 — recording preconditions.
   M10_ADMISSION_NOT_ACTIVE: 409,
+  // #45 — the M6 status seam could not tell M10 WHOSE admission this is (the row is missing a fact the
+  // seam projects non-null, the admission is another tenant's, or the seam is absent/denying). Not a
+  // §4.4 code: it describes the state of the ADMISSION record, not of the capture. 422 — the request is
+  // well-formed and no retry fixes it, but the admission can be repaired. It exists because the subject
+  // of a HOPE record may never be guessed: `hope_assessment.patient_id` carries no FK (schema:
+  // "M5 patient (app-validated; no cross-module FK)"), so a wrong id is accepted silently by Postgres
+  // and surfaces later as a 404 on the sign path. Mirrors M9's `ADMISSION_PROJECTION_GAP` (#44).
+  M10_ADMISSION_PROJECTION_GAP: 422,
   M10_DISCIPLINE_NOT_PERMITTED: 403,
   M10_RFA_KIND_MISMATCH: 409,
   M10_REQUIRED_SECTION_MISSING: 400,

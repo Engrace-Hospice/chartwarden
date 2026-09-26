@@ -45,10 +45,15 @@ import {
   type CahpsMonthlySampleCronPorts,
   CahpsRepository,
   type ComputeHvldlInput,
+  HCI_SKILLED_NURSING_GAP_DAYS,
+  HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR,
   HCI_THRESHOLDS_v2025,
+  HCI_UNAVAILABLE_MEASURE_CODES,
   HVLDL_MIN_QUALIFYING_VISITS,
   HVLDL_QUALIFYING_DISCIPLINES_v2025,
   HVLDL_QUALIFYING_DISCIPLINES_v2028,
+  type HciIndicatorKey,
+  type HciIndicatorResults,
   type HopeSfvOnTimeRateInput,
   type HopeSubmissionAcceptanceRateInput,
   type HvldlDecedentInput,
@@ -71,7 +76,6 @@ import {
   type QualityCostReportConsumer,
   type QualityHopeConsumer,
   QualityMeasureValueRepository,
-  denyStubQualityCostReportConsumer,
   type RiskRegisterRefreshCronPorts,
   type RiskRegisterRefreshJob,
   type RiskRegisterRefreshPorts,
@@ -83,6 +87,8 @@ import {
   buildMeasureRegistry,
   cahpsExportProcessor,
   cahpsMonthlySampleCronProcessor,
+  denyStubQualityCostReportConsumer,
+  hciUnavailabilityFor,
   isOpioidDrugName,
   isoDate,
   measureRecomputeProcessor,
@@ -395,6 +401,9 @@ export async function resolveHopeMeasureInput(
         ...base,
         submissions: rollup.submissions,
         acceptedSubmissions: rollup.acceptedSubmissions,
+        // F-058 (#150) — lets the calculator declare the measure UNAVAILABLE rather than suppress it for
+        // low N when batches exist but none has ever been transmitted.
+        queuedSubmissions: rollup.queuedSubmissions,
         threshold: hopeThresholdFor(code),
       };
       return input;
@@ -735,7 +744,12 @@ export async function resolveOperationalMeasureInput(
         fromIso: periodStart,
         toIso: periodEnd,
       });
-      return { ...base, evaluatedPeriods: c.denominator, periodsMeetingGate: c.numerator, threshold };
+      return {
+        ...base,
+        evaluatedPeriods: c.denominator,
+        periodsMeetingGate: c.numerator,
+        threshold,
+      };
     }
     default:
       return unboundWorkerPort(
@@ -1047,6 +1061,328 @@ export async function resolveHciLiveDischargeTimingInput(
   };
 }
 
+// ── HCI indicators 2 / 8 / 9 — the M6 span × M8 day-total intersection ─────────────────────────────────
+//
+// These three are the indicators whose populations are DAYS and SEQUENCES rather than events, so neither
+// module can answer them alone: M6 owns which days a patient was on service and at what level of care, M8
+// owns which of those days a nurse actually visited and for how long. The intersection happens HERE, in
+// M30, over two aggregate reads — the same posture as HCI 10 and HVLDL (M6 supplies the population, M30
+// loops it against M8), never a cross-module SQL join.
+//
+// ★ FLAGGED (`HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR` / `HCI_SKILLED_NURSING_GAP_DAYS`): CMS defines 8
+//   and 9 as a minutes-per-day RATIO scored by national percentile, not as a count of days clearing a cut.
+//   The platform's calculators take the day-count shape, which needs a per-day floor CMS does not publish.
+//   Both constants live beside the threshold table under the same caveat — see `hci/thresholds.ts`.
+
+const MS_PER_DAY_HCI = 86_400_000;
+
+/** Key into the per-(admission, day) skilled-nursing totals. */
+function dayKey(admissionId: string, serviceDate: string): string {
+  return `${admissionId}|${serviceDate}`;
+}
+
+/** Whole days between two `yyyy-mm-dd` UTC dates (`to - from`); negative when `to` precedes `from`. */
+function daysBetween(from: string, to: string): number {
+  return Math.round(
+    (Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / MS_PER_DAY_HCI,
+  );
+}
+
+/** Every `yyyy-mm-dd` in a half-open `[from, to)` span. */
+function daysIn(from: string, to: string): string[] {
+  const out: string[] = [];
+  for (
+    let t = Date.parse(`${from}T00:00:00.000Z`);
+    t < Date.parse(`${to}T00:00:00.000Z`);
+    t += MS_PER_DAY_HCI
+  ) {
+    out.push(new Date(t).toISOString().slice(0, 10));
+  }
+  return out;
+}
+
+/** UTC weekday of a `yyyy-mm-dd`: Saturday or Sunday. */
+function isWeekend(isoDay: string): boolean {
+  const dow = new Date(`${isoDay}T00:00:00.000Z`).getUTCDay();
+  return dow === 0 || dow === 6;
+}
+
+/**
+ * Shape M6's level-of-care day spans × M8's per-day skilled-nursing totals into HCI indicator 8 (SN minutes
+ * per routine-home-care day) or indicator 9 (SN minutes on weekends) — one pair of reads covers both, the
+ * `resolveHciLiveDischargeTimingInput` precedent.
+ *
+ * Indicator 8's population is ROUTINE HOME CARE days only (the level of care its name is about). Indicator
+ * 9's is every care day that falls on a Saturday or Sunday, at ANY level of care — a weekend spent at
+ * general inpatient level is still a weekend the agency staffed, and excluding it would flatter the rate.
+ *
+ * Aggregate-by-default: two org-level reads in, two counts out (D6).
+ */
+export async function resolveHciSkilledNursingDayInput(
+  request: {
+    readonly registration: MeasureRegistration;
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+  },
+  seams: {
+    readonly levelOfCarePeriodReader: LevelOfCarePeriodReader;
+    readonly encounters: SignedEncountersReader;
+  },
+): Promise<unknown> {
+  const { organizationId, providerEntityId, periodStart, periodEnd } = request;
+  const window = { from: periodStart, to: periodEnd };
+  const [spans, dayTotals] = await Promise.all([
+    seams.levelOfCarePeriodReader.levelOfCareDaySpans(organizationId, window),
+    seams.encounters.skilledNursingDayTotalsForOrg(organizationId, window),
+  ]);
+
+  const minutesByDay = new Map<string, number>();
+  for (const d of dayTotals) {
+    minutesByDay.set(dayKey(d.admissionId, d.serviceDate), d.minutes);
+  }
+  const meetsFloor = (admissionId: string, day: string): boolean =>
+    (minutesByDay.get(dayKey(admissionId, day)) ?? 0) >= HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR;
+
+  const isIndicator08 = request.registration.code === "hci_indicator_08";
+  let denominator = 0;
+  let numerator = 0;
+  for (const span of spans) {
+    if (isIndicator08 && span.levelOfCare !== "routine_home_care") continue;
+    for (const day of daysIn(span.from, span.to)) {
+      if (!isIndicator08 && !isWeekend(day)) continue;
+      denominator += 1;
+      if (meetsFloor(span.admissionId, day)) numerator += 1;
+    }
+  }
+
+  const base = { organizationId, providerEntityId, periodStart, periodEnd };
+  if (isIndicator08) {
+    return {
+      ...base,
+      totalRhcDays: denominator,
+      rhcDaysMeetingSnMinuteFloor: numerator,
+      threshold: HCI_THRESHOLDS_v2025.indicators.indicator_08,
+    };
+  }
+  return {
+    ...base,
+    totalWeekendCareDays: denominator,
+    weekendDaysMeetingSnMinuteFloor: numerator,
+    threshold: HCI_THRESHOLDS_v2025.indicators.indicator_09,
+  };
+}
+
+/**
+ * Shape M6's election-period spans × M8's per-day skilled-nursing visits into HCI indicator 2's input
+ * (elections containing a skilled-nursing visit gap beyond {@link HCI_SKILLED_NURSING_GAP_DAYS}).
+ *
+ * Gaps counted: the election's start to its FIRST skilled-nursing visit, and each interval BETWEEN
+ * consecutive visits. The trailing interval — last visit to the end of the span — is deliberately NOT
+ * counted: it is open at the far end (the next visit may fall after the reporting window, or after a still
+ * running election), and scoring an unfinished interval as a completed gap would report a care gap for care
+ * that is not yet due. An election with NO skilled-nursing visit at all needs no special case: its leading
+ * gap is the whole span, and any span longer than the interval counts.
+ *
+ * A visit is any SIGNED `rn`/`lpn` encounter that day — its DURATION is irrelevant here, which is why M8
+ * returns the visit count beside the minutes rather than only the minutes.
+ */
+export async function resolveHciIndicator02Input(
+  request: {
+    readonly registration: MeasureRegistration;
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+  },
+  seams: {
+    readonly levelOfCarePeriodReader: LevelOfCarePeriodReader;
+    readonly encounters: SignedEncountersReader;
+  },
+): Promise<unknown> {
+  const { organizationId, providerEntityId, periodStart, periodEnd } = request;
+  const window = { from: periodStart, to: periodEnd };
+  const [spans, dayTotals] = await Promise.all([
+    seams.levelOfCarePeriodReader.electionPeriodSpans(organizationId, window),
+    seams.encounters.skilledNursingDayTotalsForOrg(organizationId, window),
+  ]);
+
+  const visitDaysByAdmission = new Map<string, string[]>();
+  for (const d of dayTotals) {
+    if (d.visits <= 0) continue;
+    const days = visitDaysByAdmission.get(d.admissionId);
+    if (days === undefined) visitDaysByAdmission.set(d.admissionId, [d.serviceDate]);
+    else days.push(d.serviceDate);
+  }
+  for (const days of visitDaysByAdmission.values()) days.sort();
+
+  let periodsWithSkilledNursingGap = 0;
+  for (const span of spans) {
+    const visitDays = (visitDaysByAdmission.get(span.admissionId) ?? []).filter(
+      (d) => d >= span.from && d < span.to,
+    );
+    let previous = span.from;
+    let hasGap = false;
+    for (const day of visitDays) {
+      if (daysBetween(previous, day) > HCI_SKILLED_NURSING_GAP_DAYS) hasGap = true;
+      previous = day;
+    }
+    // The leading gap for an election with no visits at all: `previous` is still the span start.
+    if (visitDays.length === 0 && daysBetween(span.from, span.to) > HCI_SKILLED_NURSING_GAP_DAYS) {
+      hasGap = true;
+    }
+    if (hasGap) periodsWithSkilledNursingGap += 1;
+  }
+
+  return {
+    organizationId,
+    providerEntityId,
+    periodStart,
+    periodEnd,
+    totalElectionPeriods: spans.length,
+    periodsWithSkilledNursingGap,
+    threshold: HCI_THRESHOLDS_v2025.indicators.indicator_02,
+  };
+}
+
+/**
+ * Shape a STRUCTURALLY unavailable HCI indicator (5, 6 or 7) into its calculator input — the declared
+ * absence, not an unbound port.
+ *
+ * The three claims-file indicators used to fall through to `resolveHopeMeasureInput`'s default arm, which
+ * THROWS. That made every nightly recompute fan out three jobs per provider entity that could only ever
+ * fail, retry, and land in the DLQ — noise that says "something is broken" about a platform working exactly
+ * as designed. Worse, the row that should exist for each of them did not, so the quality hub showed the
+ * indicator as never-computed, which is indistinguishable from a worker that has not run yet.
+ *
+ * Now they compute a real `quality_measure_value` row every night: 0/0, null rate, and a
+ * `computation_snapshot` carrying the reason (`unavailableReason`). See `HCI_UNAVAILABLE_INDICATORS`.
+ */
+export function resolveHciUnavailableIndicatorInput(request: {
+  readonly registration: MeasureRegistration;
+  readonly organizationId: string;
+  readonly providerEntityId: string;
+  readonly periodStart: string;
+  readonly periodEnd: string;
+}): unknown {
+  const declared = hciUnavailabilityFor(request.registration.code);
+  if (declared === null) {
+    // Unreachable through the worker (routed on HCI_UNAVAILABLE_MEASURE_CODES, the same map), but a
+    // silent `undefined` here would resurrect the exact bug this resolver exists to remove.
+    return unboundWorkerPort(
+      "measureRecompute.data.resolveInput.hciUnavailable",
+      `'${request.registration.code}' was routed to the unavailable-indicator resolver but HCI_UNAVAILABLE_INDICATORS does not declare it`,
+    );
+  }
+  return {
+    organizationId: request.organizationId,
+    providerEntityId: request.providerEntityId,
+    periodStart: request.periodStart,
+    periodEnd: request.periodEnd,
+    totalDecedents: 0,
+    type1BurdensomeTransitions: 0,
+    type2BurdensomeTransitions: 0,
+    totalMedicareSpend: 0,
+    benchmarkSpend: 0,
+    unavailable: { reason: declared.reason, requires: declared.requires },
+    threshold:
+      HCI_THRESHOLDS_v2025.indicators[declared.indicator as HciIndicatorKey] ??
+      HCI_THRESHOLDS_v2025.indicators.indicator_05,
+  };
+}
+
+/** The ten indicator measure codes, in the order `HciIndicatorResults` is keyed. */
+const HCI_INDICATOR_MEASURE_CODES: ReadonlyArray<[HciIndicatorKey, string]> = [
+  ["indicator_01", "hci_indicator_01"],
+  ["indicator_02", "hci_indicator_02"],
+  ["indicator_03", "hci_indicator_03"],
+  ["indicator_04", "hci_indicator_04"],
+  ["indicator_05", "hci_indicator_05"],
+  ["indicator_06", "hci_indicator_06"],
+  ["indicator_07", "hci_indicator_07"],
+  ["indicator_08", "hci_indicator_08"],
+  ["indicator_09", "hci_indicator_09"],
+  ["indicator_10", "hci_indicator_10"],
+];
+
+/**
+ * Shape the ten PERSISTED indicator values for the same `(provider entity, period)` into the HCI
+ * composite's input.
+ *
+ * The composite is the one calculator whose input is other measures rather than upstream seam data, which
+ * is why it had no resolver at all and fell through to the throwing default: nothing in the worker's
+ * per-measure `resolveInput` contract hands it the sibling values. It reads them from the ledger the
+ * siblings already wrote — `quality_measure_value`, current (non-superseded) rows only, which is exactly
+ * the reproducibility record the composite is supposed to compose.
+ *
+ * An indicator with no current row for the period reads as `null` and SUSPENDS the composite (see
+ * `computeHciScore`), rather than scoring as a miss. That is the normal outcome on the first nightly pass
+ * for a new period — the ten indicators are ten independent jobs with no ordering guarantee between them —
+ * and it self-heals on the next pass. It is also the permanent outcome while indicators 5/6/7 are declared
+ * unavailable, which is the honest answer: this platform cannot produce a CMS Hospice Care Index score, and
+ * publishing a 7-out-of-10 assembled from the seven it CAN compute would be a fabrication landing exactly
+ * on the "above the national average" cut.
+ */
+export async function resolveHciCompositeInput(
+  request: {
+    readonly registration: MeasureRegistration;
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly periodStart: string;
+    readonly periodEnd: string;
+  },
+  seams: { readonly values: QualityMeasureValueRepository },
+): Promise<unknown> {
+  const { organizationId, providerEntityId, periodStart, periodEnd } = request;
+  const start = new Date(periodStart);
+  const end = new Date(periodEnd);
+
+  const indicators = {} as Record<HciIndicatorKey, ReturnType<typeof rowToResult> | null>;
+  for (const [key, measureCode] of HCI_INDICATOR_MEASURE_CODES) {
+    const row = await seams.values.findCurrent(measureCode, providerEntityId, start, end);
+    indicators[key] = row === null ? null : rowToResult(row);
+  }
+
+  return {
+    organizationId,
+    providerEntityId,
+    periodStart,
+    periodEnd,
+    indicators: indicators as HciIndicatorResults,
+    thresholds: HCI_THRESHOLDS_v2025,
+  };
+}
+
+/**
+ * Rebuild the parts of a `QualityMeasureValueResult` the composite reads from a persisted row.
+ *
+ * Only `thresholdMet` and `computationSnapshot` are load-bearing (`computeHciScore` counts the first and
+ * tests the second for the unavailable marker); `bandColor` is reconstructed the same way the read service
+ * does it, and `thresholdValue` is not persisted at all — the composite never reads it.
+ */
+function rowToResult(row: {
+  numerator: number;
+  denominator: number;
+  ratio: string | null;
+  thresholdMet: boolean | null;
+  computationSnapshot: Record<string, unknown> | null;
+}) {
+  return {
+    numerator: row.numerator,
+    denominator: row.denominator,
+    rate: row.ratio === null ? null : Number(row.ratio),
+    thresholdMet: row.thresholdMet,
+    thresholdValue: null,
+    bandColor: (row.denominator <= 0
+      ? "insufficient_n"
+      : row.thresholdMet === false
+        ? "red"
+        : "green") as "green" | "red" | "insufficient_n",
+    computationSnapshot: row.computationSnapshot ?? {},
+  };
+}
+
 /** How long after `admissionAt` an opioid medication order still counts as "at admission" (the admission
  *  medication-reconciliation window) — flagged the same way the discharge-timing day cutoffs are: not
  *  independently pinned by CMS (this measure is platform-informational, not CMS-scored), a reasonable
@@ -1091,15 +1427,22 @@ export async function resolveOpioidOnAdmissionInput(
 ): Promise<unknown> {
   const { organizationId, providerEntityId, periodStart, periodEnd } = request;
 
-  const admissions = await seams.admissionOnsetReader.listAdmissionsStartedInPeriod(organizationId, {
-    from: periodStart,
-    to: periodEnd,
-  });
+  const admissions = await seams.admissionOnsetReader.listAdmissionsStartedInPeriod(
+    organizationId,
+    {
+      from: periodStart,
+      to: periodEnd,
+    },
+  );
 
   let admissionsWithOpioid = 0;
   for (const admission of admissions) {
-    const orders = await seams.medicationOrders.listForAdmission(organizationId, admission.admissionId);
-    const windowEndMs = new Date(admission.admissionAt).getTime() + OPIOID_ON_ADMISSION_WINDOW_HOURS * MS_PER_HOUR;
+    const orders = await seams.medicationOrders.listForAdmission(
+      organizationId,
+      admission.admissionId,
+    );
+    const windowEndMs =
+      new Date(admission.admissionAt).getTime() + OPIOID_ON_ADMISSION_WINDOW_HOURS * MS_PER_HOUR;
     const hasOpioidAtAdmission = orders.some((o) => {
       // Only an ACTIVATED order counts — a draft/never-activated order was never actually given.
       if (o.activatedAt === null) return false;
@@ -1204,12 +1547,27 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
         "measureRecompute.lateEntry.signedEncounters.lateEntryCountsForOrg",
         "bind the M8 SignedEncountersReader (the org-level late-entry tally) via getSeam at the composition root",
       ),
+    skilledNursingDayTotalsForOrg: () =>
+      unboundWorkerPort(
+        "measureRecompute.hciSkilledNursing.signedEncounters.skilledNursingDayTotalsForOrg",
+        "bind the M8 SignedEncountersReader (HCI indicators 2/8/9's per-day skilled-nursing totals) via getSeam",
+      ),
   };
   const levelOfCarePeriodReader: LevelOfCarePeriodReader = deps.levelOfCarePeriodReader ?? {
     chcOrGipCoverageCounts: () =>
       unboundWorkerPort(
         "measureRecompute.hciIndicator01.levelOfCarePeriodReader",
         "bind the M6 LevelOfCarePeriodReader (HCI indicator 1's CHC/GIP coverage counts) via getSeam at the composition root",
+      ),
+    levelOfCareDaySpans: () =>
+      unboundWorkerPort(
+        "measureRecompute.hciSkilledNursing.levelOfCarePeriodReader.levelOfCareDaySpans",
+        "bind the M6 LevelOfCarePeriodReader (HCI indicators 8/9's level-of-care day spans) via getSeam",
+      ),
+    electionPeriodSpans: () =>
+      unboundWorkerPort(
+        "measureRecompute.hciIndicator02.levelOfCarePeriodReader.electionPeriodSpans",
+        "bind the M6 LevelOfCarePeriodReader (HCI indicator 2's election-period spans) via getSeam",
       ),
   };
   const dischargeReader: DischargeReader = deps.dischargeReader ?? {
@@ -1234,7 +1592,10 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
     deps.medicationOrders ??
     ({
       listForAdmission: () =>
-        unboundWorkerPort("measureRecompute.opioidOnAdmission.medicationOrders", UNBOUND_M12_REASON),
+        unboundWorkerPort(
+          "measureRecompute.opioidOnAdmission.medicationOrders",
+          UNBOUND_M12_REASON,
+        ),
     } as unknown as MedicationOrderProvider);
   // GAP-065 — the M27 forward-seam consumer. Its fallback is the package DENY-STUB, not an
   // `unboundWorkerPort` thunk: a forward seam whose producer is not rolled out must SUPPRESS its measure,
@@ -1277,6 +1638,27 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
           });
         if (request.registration.code === "hci_indicator_01")
           return resolveHciIndicator01Input(request, { levelOfCarePeriodReader });
+        if (request.registration.code === "hci_indicator_02")
+          return resolveHciIndicator02Input(request, {
+            levelOfCarePeriodReader,
+            encounters: signedEncounters,
+          });
+        if (
+          request.registration.code === "hci_indicator_08" ||
+          request.registration.code === "hci_indicator_09"
+        )
+          return resolveHciSkilledNursingDayInput(request, {
+            levelOfCarePeriodReader,
+            encounters: signedEncounters,
+          });
+        // F-042 — the three claims-file indicators. A DECLARED absence that computes a suppressed row
+        // carrying its reason, never an unbound port that throws three DLQ entries per provider entity
+        // per night. See HCI_UNAVAILABLE_INDICATORS.
+        if (HCI_UNAVAILABLE_MEASURE_CODES.has(request.registration.code))
+          return Promise.resolve(resolveHciUnavailableIndicatorInput(request));
+        // The composite reads its ten inputs from the ledger the indicators wrote, not from a seam.
+        if (request.registration.code === "hci_composite")
+          return resolveHciCompositeInput(request, { values: measureValueRepo });
         if (
           request.registration.code === "hci_indicator_03" ||
           request.registration.code === "hci_indicator_04"

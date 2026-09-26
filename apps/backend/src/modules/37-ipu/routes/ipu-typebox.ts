@@ -144,8 +144,9 @@ export const DischargeBodySchema = Type.Object({
     Type.Literal("revocation"),
     Type.Literal("expired_benefit"),
   ]),
-  /** The M6 discharge_event exists (resolved via the M6 DeathEventReader/discharge seam; injected here). */
-  dischargeEventExists: Type.Boolean(),
+  // No `dischargeEventExists` (F-070). The machine refuses a discharge whose M6 side has not happened,
+  // and that boolean used to be supplied BY THE CALLER — the party the guard exists to gate, for whom
+  // `true` was the only sensible value. The service now resolves it from M6's `AdmissionStatusReader`.
 });
 export type DischargeBody = Static<typeof DischargeBodySchema>;
 
@@ -258,15 +259,6 @@ export const CreateShiftBodySchema = Type.Object({
   displayLabel: Type.Optional(Type.String({ maxLength: 80 })),
 });
 export type CreateShiftBody = Static<typeof CreateShiftBodySchema>;
-export const ShiftViewSchema = Type.Object({
-  id,
-  unitId: id,
-  shiftStartAt: Type.String(),
-  shiftEndAt: Type.String(),
-  displayLabel: Type.Union([Type.String(), Type.Null()]),
-  version: Type.Integer(),
-});
-export const ShiftListSchema = Type.Object({ items: Type.Array(ShiftViewSchema) });
 
 export const AssignStaffBodySchema = Type.Object({
   membershipId: id,
@@ -292,16 +284,68 @@ export const StaffAssignmentViewSchema = Type.Object({
   role: Type.String(),
   state: Type.String(),
 });
+
+export const ShiftViewSchema = Type.Object({
+  id,
+  unitId: id,
+  shiftStartAt: Type.String(),
+  shiftEndAt: Type.String(),
+  displayLabel: Type.Union([Type.String(), Type.Null()]),
+  /**
+   * F-070 — the shift's staff assignments. `DELETE /ipu-shifts/:id/staff` takes an `assignmentId`, and
+   * before this the only place one existed was the 201 body of the POST that created it: unassigning
+   * required BEING the browser session that assigned. Scheduling is not done in one sitting.
+   *
+   * This route's own `auditRead` config already described the response as carrying "staff assignments
+   * by membership" — a claim about a payload no schema declared and no query built.
+   */
+  assignments: Type.Array(StaffAssignmentViewSchema),
+  version: Type.Integer(),
+});
+export const ShiftListSchema = Type.Object({ items: Type.Array(ShiftViewSchema) });
 export const UnassignStaffBodySchema = Type.Object({ assignmentId: id });
 export type UnassignStaffBody = Static<typeof UnassignStaffBodySchema>;
+
+/**
+ * F-080 — confirm a staff assignment (§2.3). The same `{ assignmentId }` shape as the unassign body,
+ * and for the same F-070 reason: the shift id is part of the assignment's identity, not decoration.
+ */
+export const ConfirmStaffBodySchema = Type.Object({ assignmentId: id });
+export type ConfirmStaffBody = Static<typeof ConfirmStaffBodySchema>;
 
 export const RnCoverageViewSchema = Type.Object({
   unitId: id,
   items: Type.Array(Type.Object({ hourStartAt: Type.String(), isCovered: Type.Boolean() })),
 });
-export const RnBreakGlassViewSchema = Type.Object({ unitId: id, invoked: Type.Boolean() });
+/**
+ * F-071 — the break-glass now takes a REASON and a bounded window, because it now does something.
+ *
+ * It used to take no body at all, which was consistent with what it did: publish an event and return
+ * `{invoked: true}`. A control that overrides the CoP 418.110(e) 24-hour-RN requirement is the last place
+ * that should be a bare POST — the row it writes is what a post-incident review reads.
+ */
+export const InvokeRnBreakGlassBodySchema = Type.Object({
+  reason: Type.String({ minLength: 40, maxLength: 2000 }),
+  /** §2.3 caps the override at 4 hours; the DB CHECK is the backstop. */
+  durationMinutes: Type.Integer({ minimum: 15, maximum: 240 }),
+});
+export type InvokeRnBreakGlassBody = Static<typeof InvokeRnBreakGlassBodySchema>;
+
+export const RnBreakGlassViewSchema = Type.Object({
+  unitId: id,
+  invoked: Type.Boolean(),
+  /** When this override stops passing the coverage gate. Null only when nothing was written. */
+  expiresAt: Type.Union([Type.String(), Type.Null()]),
+  /** True when a LIVE override already existed — the call is a no-op that reports it, never a stacked
+   *  extension (the partial unique index makes a second live row impossible anyway). */
+  alreadyActive: Type.Boolean(),
+});
 
 // ── restraint (§4.1 routes 22–24) ──────────────────────────────────────────────────────────────────────
+// No `orderingPhysicianId` (F-069). It was a SECOND client-supplied uuid for a fact the order already
+// carries, so the two could name different people and the record could not say which was true. The
+// server now derives it from the resolved M11 order's `orderingPhysicianMdmId`; an order that names no
+// ordering physician cannot authorise a restraint, which is a refusal rather than a null.
 export const ApplyRestraintBodySchema = Type.Object({
   restraintKind: Type.Union([
     Type.Literal("soft_limb"),
@@ -310,7 +354,8 @@ export const ApplyRestraintBodySchema = Type.Object({
     Type.Literal("side_rail_4"),
   ]),
   restraintJustificationText: Type.String({ minLength: 100, maxLength: 4000 }),
-  orderingPhysicianId: id,
+  /** The M11 order authorising the restraint. RESOLVED through `OrderProvider` — it must exist, be for
+   *  this admission's patient, and be signed. Not merely non-empty (F-069). */
   orderingOrderId: id,
   category: Type.Union([Type.Literal("behavioral"), Type.Literal("medical")]),
   reassessmentIntervalMinutes: Type.Integer({ minimum: 1, maximum: 240 }),
@@ -331,6 +376,56 @@ export const RestraintViewSchema = Type.Object({
   state: Type.String(),
   reassessmentIntervalMinutes: Type.Integer(),
   version: Type.Integer(),
+});
+
+// F-069 (read side) — the three POST-only surfaces below had NO read route, so the id each of them
+// needs was obtainable only from the response of the POST that created it, inside one browser session.
+// A behavioral restraint is reassessed every 15 minutes and a visitor is checked out by a later shift:
+// both are, by definition, done by someone who did not perform the create. The lists close that.
+export const RestraintDetailViewSchema = Type.Object({
+  id,
+  ipuAdmissionId: id,
+  restraintKind: Type.String(),
+  category: Type.Union([Type.Literal("behavioral"), Type.Literal("medical")]),
+  state: Type.String(),
+  reassessmentIntervalMinutes: Type.Integer(),
+  appliedAt: Type.String(),
+  appliedByMembershipId: id,
+  orderingOrderId: id,
+  orderingPhysicianId: id,
+  releasedAt: Type.Union([Type.String(), Type.Null()]),
+  /** The most recent reassessment's `next_due_at` — what a bedside board counts down to. Null until
+   *  the first reassessment, when the interval from `appliedAt` is the clock instead. */
+  nextDueAt: Type.Union([Type.String(), Type.Null()]),
+  reassessmentCount: Type.Integer(),
+  version: Type.Integer(),
+});
+export const RestraintListSchema = Type.Object({
+  items: Type.Array(RestraintDetailViewSchema),
+});
+
+export const GipCriteriaDetailViewSchema = Type.Object({
+  id,
+  ipuAdmissionId: id,
+  criterionKind: Type.String(),
+  attestedAt: Type.String(),
+  attestingPhysicianId: id,
+  /** Reassessments recorded against this attestation, newest first (§2.4 — GIP is reassessed daily). */
+  reassessments: Type.Array(
+    Type.Object({
+      id,
+      reassessedAt: Type.String(),
+      criterionStillMet: Type.Boolean(),
+    }),
+  ),
+  version: Type.Integer(),
+});
+export const GipCriteriaListSchema = Type.Object({
+  items: Type.Array(GipCriteriaDetailViewSchema),
+});
+
+export const IrcEpisodeListSchema = Type.Object({
+  items: Type.Array(IrcEpisodeViewSchema),
 });
 
 // ── visitor (§4.1 routes 29–31) ────────────────────────────────────────────────────────────────────────
@@ -366,6 +461,9 @@ export const VisitorViewSchema = Type.Object({
   checkedInAt: Type.String(),
   checkedOutAt: Type.Union([Type.String(), Type.Null()]),
 });
+export const VisitorListSchema = Type.Object({ items: Type.Array(VisitorViewSchema) });
+export const VisitorListQuerySchema = Type.Object({ ipuAdmissionId: id });
+
 export const ApplyVisitorRestrictionBodySchema = Type.Object({
   scope: Type.Union([Type.Literal("unit"), Type.Literal("patient")]),
   unitId: Type.Optional(id),
@@ -388,6 +486,35 @@ export const VisitorRestrictionViewSchema = Type.Object({
   liftedAt: Type.Union([Type.String(), Type.Null()]),
 });
 export const LiftVisitorRestrictionBodySchema = Type.Object({ restrictionId: id });
+
+// F-070 (read side) — `POST` applied a restriction and `DELETE` lifted one by `restrictionId`, and there
+// was NO read route: the id existed only in the 201 of the POST. A `full_block` or `mask_required`
+// restriction persists until lifted, so this made an infection-control block liftable only by whoever
+// still had the tab that applied it. Same defect as the F-069 restraint/visitor ids, one module over.
+export const VisitorRestrictionDetailViewSchema = Type.Object({
+  id,
+  scope: Type.String(),
+  unitId: Type.Union([id, Type.Null()]),
+  patientId: Type.Union([id, Type.Null()]),
+  restrictionKind: Type.String(),
+  rationale: Type.String(),
+  sourceKind: Type.String(),
+  appliedAt: Type.String(),
+  appliedBy: id,
+  appliedUntil: Type.Union([Type.String(), Type.Null()]),
+  liftedAt: Type.Union([Type.String(), Type.Null()]),
+  version: Type.Integer(),
+});
+export const VisitorRestrictionListSchema = Type.Object({
+  items: Type.Array(VisitorRestrictionDetailViewSchema),
+});
+/** `active=true` (the default) hides lifted rows — a board of what is currently in force. */
+export const VisitorRestrictionListQuerySchema = Type.Object({
+  unitId: Type.Optional(id),
+  patientId: Type.Optional(id),
+  active: Type.Optional(Type.Union([Type.Literal("true"), Type.Literal("false")])),
+});
+export type VisitorRestrictionListQuery = Static<typeof VisitorRestrictionListQuerySchema>;
 export type LiftVisitorRestrictionBody = Static<typeof LiftVisitorRestrictionBodySchema>;
 
 // ── meal (§4.1 route 32) ───────────────────────────────────────────────────────────────────────────────

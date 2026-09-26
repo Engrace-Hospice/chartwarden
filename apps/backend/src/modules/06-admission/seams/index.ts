@@ -42,9 +42,13 @@ export { createLevelOfCarePeriodReader } from "./level-of-care-period-reader";
 export { createAdmissionOnsetReader } from "./admission-onset-reader";
 export {
   type ActiveAdmissionDraftContext,
+  type AdmissionSchedulingContext,
+  type ElectionPeriodContext,
   AdmissionSeamDataGapError,
   activeAdmissionDraftContextForPatient,
   admissionIsActiveForOrg,
+  admissionSchedulingContextForOrg,
+  electionPeriodContextForOrg,
   createDrizzleAdmissionReaderStore,
   createReferralReader,
 } from "./drizzle-store";
@@ -108,7 +112,8 @@ export function registerAdmissionSeams(deps: AdmissionSeamDeps = {}): void {
   registerSeam("AdmissionStatusReader", createAdmissionStatusReader(store));
   registerSeam("AdmissionCensusReader", createAdmissionCensusReader(store));
 
-  const referralReader = deps.referralReader ?? (deps.db ? createReferralReader(deps.db) : undefined);
+  const referralReader =
+    deps.referralReader ?? (deps.db ? createReferralReader(deps.db) : undefined);
   if (referralReader) {
     registerSeam("ReferralReader", referralReader);
   }

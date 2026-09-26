@@ -6,7 +6,16 @@
 // composite-PK FK is impractical; integrity is enforced in the service layer). RLS + grants + the M4
 // write-audit trigger (message denylisted, §8.1) land in the RLS migration.
 import { sql } from "drizzle-orm";
-import { boolean, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  boolean,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import { hopeValidationSeverity } from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";

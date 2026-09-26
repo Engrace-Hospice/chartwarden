@@ -1,9 +1,10 @@
 // @wardenx/orders — §2.2 D2 order lifecycle state machine — M11-T03.
 import { describe, expect, it } from "vitest";
+// `order-machine.ts` re-imports this from `./effects`; it is not one of its own exports.
+import type { OrderSideEffect } from "../src/lifecycle/effects";
 import {
   ORDER_GRAPH,
   type OrderEvent,
-  type OrderSideEffect,
   planDraftCreation,
   transitionOrder,
 } from "../src/lifecycle/order-machine";

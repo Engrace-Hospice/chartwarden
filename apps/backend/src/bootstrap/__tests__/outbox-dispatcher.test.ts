@@ -116,9 +116,11 @@ describe("buildOutboxRoutingPlan", () => {
   // ── GAP-099: platform bindings ────────────────────────────────────────────────────────────────────
   it("collects a platform binding separately from the org list", () => {
     const event = entry("m1.test.changed", ["m40"]);
-    const plan = buildOutboxRoutingPlan(new Map([[event.eventName, event]]), [], [
-      platformBinding("m40", event.eventName),
-    ]);
+    const plan = buildOutboxRoutingPlan(
+      new Map([[event.eventName, event]]),
+      [],
+      [platformBinding("m40", event.eventName)],
+    );
 
     expect(plan.livePlatform.get(event.eventName)).toHaveLength(1);
     // The two lists never mix: `pollOrg` must not hand an org row to a consumer that expects no org.
@@ -148,18 +150,22 @@ describe("buildOutboxRoutingPlan", () => {
       async handle() {},
     };
     expect(() =>
-      buildOutboxRoutingPlan(new Map([[event.eventName, event]]), [binding("m5", event.eventName)], [
-        clash,
-      ]),
+      buildOutboxRoutingPlan(
+        new Map([[event.eventName, event]]),
+        [binding("m5", event.eventName)],
+        [clash],
+      ),
     ).toThrow("bound more than once");
   });
 
   it("fails boot for a platform binding on a record-only event", () => {
     const event = entry("m1.audit.recorded", []);
     expect(() =>
-      buildOutboxRoutingPlan(new Map([[event.eventName, event]]), [], [
-        platformBinding("m40", event.eventName),
-      ]),
+      buildOutboxRoutingPlan(
+        new Map([[event.eventName, event]]),
+        [],
+        [platformBinding("m40", event.eventName)],
+      ),
     ).toThrow("catalogued record-only");
   });
 });
@@ -289,7 +295,10 @@ describe("createOutboxDispatcher — platform delivery (GAP-099)", () => {
           },
         },
       ],
-      { maxAttempts: 8, onDeadLetter: (e: { organizationId: string | null }) => deadLettered.push(e) },
+      {
+        maxAttempts: 8,
+        onDeadLetter: (e: { organizationId: string | null }) => deadLettered.push(e),
+      },
     ).tick();
 
     expect(summary.deadLettered).toBe(1);

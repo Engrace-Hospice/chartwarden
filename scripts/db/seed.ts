@@ -18,8 +18,14 @@ import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { allPermissionMirrorRows } from "@wardenx/auth";
 import { Client } from "pg";
+import {
+  ACTIVE_KEK_ENV,
+  createPlatformKekAdapter,
+  loadPlatformKekRing,
+} from "../../apps/backend/src/bootstrap/tenant-kek";
 import { fetchAuthWithRateLimitRetry } from "./lib/auth-rate-limit";
 import { SEED_CREDENTIALS_PATH } from "./lib/credentials";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const AUTH_URL = process.env.BETTER_AUTH_URL ?? "http://localhost:3000";
@@ -99,11 +105,7 @@ function genPassword(): string {
   return `Wx-${randomBytes(9).toString("base64url")}-Zq9!`;
 }
 
-async function signUp(
-  email: string,
-  password: string,
-  name: string,
-): Promise<string> {
+async function signUp(email: string, password: string, name: string): Promise<string> {
   const res = await fetchAuthWithRateLimitRetry(
     `${AUTH_URL}/api/auth/sign-up/email`,
     {
@@ -114,131 +116,58 @@ async function signUp(
     `sign-up for ${email}`,
   );
   if (!res.ok) {
-    throw new Error(
-      `sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`,
-    );
+    throw new Error(`sign-up failed for ${email}: HTTP ${res.status} ${await res.text()}`);
   }
   const body = (await res.json()) as { user?: { id?: string } };
-  if (!body.user?.id)
-    throw new Error(`sign-up for ${email} returned no user id`);
+  if (!body.user?.id) throw new Error(`sign-up for ${email} returned no user id`);
   return body.user.id;
 }
 
-async function main(): Promise<void> {
-  if (!ADMIN_URL)
-    throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
-  const db = new Client({ connectionString: ADMIN_URL });
-  await db.connect();
-  // Seed as a replication session: suppress the M4 write-audit triggers (seeding is not an audited
-  // user action) and the append-only/RESTRICT guards, so dev data inserts cleanly. Superuser-only.
-  await db.query("SET session_replication_role = replica");
-
-  const emails = USERS.map((u) => u.email);
-  const allRows = allPermissionMirrorRows();
-
-  // --- Sync the M3 permission catalog into the read-only `permission` table (deploy-time sync).
-  // role_permission.permission_key FKs to this; it must be populated before any grant.
-  for (const row of allRows) {
-    await db.query(
-      `INSERT INTO permission (key, resource, action, category, default_abac, description)
-       VALUES ($1,$2,$3,$4,$5,$6)
-       ON CONFLICT (key) DO UPDATE SET
-         resource = EXCLUDED.resource, action = EXCLUDED.action,
-         category = EXCLUDED.category, default_abac = EXCLUDED.default_abac,
-         description = EXCLUDED.description`,
-      [
-        row.key,
-        row.resource,
-        row.action,
-        row.category,
-        row.defaultAbac,
-        row.description,
-      ],
-    );
+/**
+ * The database this run wrote to, host:port/name, with any password removed — for the generated
+ * credentials file, so it names the database that was actually seeded.
+ */
+function seededTarget(): string {
+  const raw = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL ?? "";
+  if (!raw) return "the local database";
+  try {
+    const u = new URL(raw);
+    return `${u.hostname}:${u.port || "5432"}${u.pathname}`;
+  } catch {
+    return "the local database";
   }
-  console.log(`permission catalog synced (${allRows.length} keys)`);
+}
 
-  // --- Idempotent cleanup: drop prior demo org + demo users (+ Better Auth child rows) ---
-  await db.query("BEGIN");
-  const prior = await db.query<{ id: string }>(
-    "SELECT id FROM organization WHERE slug = $1",
-    [ORG.slug],
-  );
-  if (prior.rowCount) {
-    const orgId = prior.rows[0].id;
-
-    // M34 tenant lifecycle rows must disappear before the demo organization.
-    const tenantAccounts = await db.query<{ id: string }>(
-      "SELECT id FROM tenant_account WHERE organization_id = $1",
-      [orgId],
-    );
-
-    const tenantAccountIds = tenantAccounts.rows.map((row) => row.id);
-
-    if (tenantAccountIds.length) {
-      await db.query(
-        "DELETE FROM onboarding_task WHERE tenant_account_id = ANY($1::uuid[])",
-        [tenantAccountIds],
-      );
-      await db.query(
-        "DELETE FROM tenant_invitation WHERE tenant_account_id = ANY($1::uuid[])",
-        [tenantAccountIds],
-      );
-      await db.query(
-        "DELETE FROM tenant_account_status_event WHERE tenant_account_id = ANY($1::uuid[])",
-        [tenantAccountIds],
-      );
-      await db.query("DELETE FROM tenant_account WHERE organization_id = $1", [
-        orgId,
-      ]);
-    }
-
-    await db.query("DELETE FROM membership_role WHERE organization_id = $1", [
-      orgId,
-    ]);
-    await db.query("DELETE FROM membership_role WHERE organization_id = $1", [
-      orgId,
-    ]);
-    await db.query("DELETE FROM role_permission WHERE organization_id = $1", [
-      orgId,
-    ]);
-    await db.query("DELETE FROM membership WHERE organization_id = $1", [
-      orgId,
-    ]);
-    await db.query("DELETE FROM role WHERE organization_id = $1", [orgId]);
-    // audit_event has ON DELETE RESTRICT to organization (and is normally append-only);
-    // as the seed superuser we clear the demo org's trail so the org row can be removed.
-    await db
-      .query("DELETE FROM audit_event WHERE organization_id = $1", [orgId])
-      .catch(() => {});
-    await db.query("DELETE FROM organization WHERE id = $1", [orgId]);
-  }
-  // Better Auth child rows (FKs vary) then the user rows.
-  const uids = await db.query<{ id: string }>(
-    'SELECT id FROM "user" WHERE email = ANY($1)',
-    [emails],
-  );
-  const ids = uids.rows.map((r) => r.id);
-  if (ids.length) {
-    for (const t of ["session", "account", "two_factor", "passkey"]) {
-      await db
-        .query(`DELETE FROM ${t} WHERE user_id = ANY($1)`, [ids])
-        .catch(() => {});
-    }
-    await db.query('DELETE FROM "user" WHERE id = ANY($1)', [ids]);
-  }
-  await db.query("COMMIT");
-
-  // --- Create the org ---
-  const org = await db.query<{ id: string }>(
-    `INSERT INTO organization (slug, legal_name, display_name, status)
-     VALUES ($1,$2,$3,'active') RETURNING id`,
-    [ORG.slug, ORG.legal, ORG.display],
-  );
-  const orgId = org.rows[0].id;
-  console.log(`org ${ORG.slug} → ${orgId}`);
-
-  await db.query(
+/**
+ * The M34 tenant spine for the demo org: a `tenant_account` row and the `tenant_key_ring` that hangs
+ * off it, provisioned through the SAME `m34_provision_tenant_key_ring` SECURITY DEFINER function the
+ * production provision worker calls (`apps/backend/src/modules/34-saas-tenant-platform/jobs/saas-jobs.ts`
+ * → `ensureTenantKeyRing`), with a DEK minted and wrapped by the SAME platform KEK adapter.
+ *
+ * WHY THE SEED HAS TO DO THIS (F-082). In production an organization only ever comes into existence
+ * through M34 provisioning, which mints the key ring as step (1) of seven — so "an org with no key
+ * ring" is a state the platform cannot reach. This seed reached it anyway, by inserting the
+ * organization row directly, and every seeded deployment the repo has ever produced has run without
+ * one. `TenantKeyProvider.dekForOrg` answers `TenantKeyMissing` for such an org, which means every
+ * envelope-encrypted PHI write on the platform refuses: M8's HearthNote narrative + free text (so an
+ * encounter cannot be FINALIZED, and therefore never reaches signing), M27's raw cost-report payloads,
+ * M29's stored HL7 payloads, M31's portal contact ciphers, M39's consent notes.
+ *
+ * It was diagnosed as something else, twice, and written down that way: `seed-scenario-clinical-core.ts`
+ * reported the 503 as "#105, no KEK adapter is bound". #105 has been fixed since `bootstrap/tenant-kek.ts`
+ * landed — the adapter binds from `M34_TENANT_KEK` — and the refusal survived it, because the missing
+ * thing was never the KEK. It was the row the KEK wraps a key INTO. A fail-closed 503 that names the
+ * envelope reads the same either way, which is why the stale attribution held.
+ *
+ * No KEK configured is a SKIP, not a failure: a dev boot that sets no `M34_TENANT_KEK` does no tenant
+ * crypto at all (`loadPlatformKekRing` returns null by design), and minting a key ring whose ciphertext
+ * this deployment cannot unwrap would be worse than having none — `dekForOrg` would then fail on the
+ * KEK id instead of on the absent row, one layer further from the cause.
+ */
+async function provisionTenantSpine(db: Client, orgId: string): Promise<void> {
+  // The tenant_account row is unconditional — M34's lifecycle surfaces read it whether or not this
+  // deployment does tenant crypto. Only the key ring below depends on a platform KEK.
+  const account = await db.query<{ id: string }>(
     `INSERT INTO tenant_account (
      organization_id,
      status,
@@ -266,23 +195,129 @@ async function main(): Promise<void> {
      breach_notification_email = EXCLUDED.breach_notification_email,
      provisioned_at = COALESCE(tenant_account.provisioned_at, EXCLUDED.provisioned_at),
      activated_at = COALESCE(tenant_account.activated_at, EXCLUDED.activated_at),
-     updated_at = now()`,
-    [
-      orgId,
-      ORG.legal,
-      "admin@wardenx.local",
-      JSON.stringify({ source: "dev_seed" }),
-    ],
+     updated_at = now()
+   RETURNING id`,
+    [orgId, ORG.legal, "admin@wardenx.local", JSON.stringify({ source: "dev_seed" })],
   );
-
+  const tenantAccountId = firstRow(account, "seed: tenant_account upsert").id;
   console.log(`tenant account ${ORG.slug} → active`);
 
-  const creds: Array<{
-    user: SeedUser;
-    password: string;
-    userId: string;
-    perms: number;
-  }> = [];
+  const ring = loadPlatformKekRing();
+  if (!ring) {
+    console.log(
+      `tenant key ring: SKIPPED — ${ACTIVE_KEK_ENV} is unset, so this deployment does no tenant crypto.\n  Encounter finalize, cost-report payloads, HL7 storage, portal contacts and consent notes will 503.`,
+    );
+    return;
+  }
+
+  const { wrappedCiphertextB64, kekId } = await createPlatformKekAdapter(ring).mintAndWrapDek({
+    organizationId: orgId,
+  });
+  // The function reads the wrapped DEK off two transaction-local GUCs rather than taking them as
+  // arguments, so the key material never lands in `pg_stat_statements` alongside the call.
+  await db.query("BEGIN");
+  await db.query(
+    "SELECT set_config('app.dek_kek_wrapped_ciphertext_b64', $1, true), set_config('app.dek_kek_id', $2, true)",
+    [wrappedCiphertextB64, kekId],
+  );
+  const keyRing = await db.query<{ id: string }>("SELECT m34_provision_tenant_key_ring($1) AS id", [
+    tenantAccountId,
+  ]);
+  await db.query("COMMIT");
+  console.log(
+    `tenant account ${tenantAccountId} → key ring ${firstRow(keyRing, "seed: key ring provision").id} (KEK '${kekId}')`,
+  );
+}
+
+async function main(): Promise<void> {
+  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
+  const db = new Client({ connectionString: ADMIN_URL });
+  await db.connect();
+  // Seed as a replication session: suppress the M4 write-audit triggers (seeding is not an audited
+  // user action) and the append-only/RESTRICT guards, so dev data inserts cleanly. Superuser-only.
+  await db.query("SET session_replication_role = replica");
+
+  const emails = USERS.map((u) => u.email);
+  const allRows = allPermissionMirrorRows();
+
+  // --- Sync the M3 permission catalog into the read-only `permission` table (deploy-time sync).
+  // role_permission.permission_key FKs to this; it must be populated before any grant.
+  for (const row of allRows) {
+    await db.query(
+      `INSERT INTO permission (key, resource, action, category, default_abac, description)
+       VALUES ($1,$2,$3,$4,$5,$6)
+       ON CONFLICT (key) DO UPDATE SET
+         resource = EXCLUDED.resource, action = EXCLUDED.action,
+         category = EXCLUDED.category, default_abac = EXCLUDED.default_abac,
+         description = EXCLUDED.description`,
+      [row.key, row.resource, row.action, row.category, row.defaultAbac, row.description],
+    );
+  }
+  console.log(`permission catalog synced (${allRows.length} keys)`);
+
+  // --- Idempotent cleanup: drop prior demo org + demo users (+ Better Auth child rows) ---
+  await db.query("BEGIN");
+  const prior = await db.query<{ id: string }>("SELECT id FROM organization WHERE slug = $1", [
+    ORG.slug,
+  ]);
+  if (prior.rowCount) {
+    const orgId = firstRow(prior, "seed: existing organization lookup").id;
+    await db.query("DELETE FROM membership_role WHERE organization_id = $1", [orgId]);
+    await db.query("DELETE FROM role_permission WHERE organization_id = $1", [orgId]);
+    await db.query("DELETE FROM membership WHERE organization_id = $1", [orgId]);
+    await db.query("DELETE FROM role WHERE organization_id = $1", [orgId]);
+    // audit_event has ON DELETE RESTRICT to organization (and is normally append-only);
+    // as the seed superuser we clear the demo org's trail so the org row can be removed.
+    await db.query("DELETE FROM audit_event WHERE organization_id = $1", [orgId]).catch(() => {});
+    // The M34 tenant spine, innermost first: both FK the organization ON DELETE RESTRICT, so without
+    // this the re-run's org DELETE fails once the seed has provisioned a key ring even once. The
+    // tenant_account's own lifecycle children go before it.
+    await db.query("DELETE FROM tenant_key_ring WHERE organization_id = $1", [orgId]);
+    const tenantAccounts = await db.query<{ id: string }>(
+      "SELECT id FROM tenant_account WHERE organization_id = $1",
+      [orgId],
+    );
+    const tenantAccountIds = tenantAccounts.rows.map((row) => row.id);
+    if (tenantAccountIds.length) {
+      await db.query("DELETE FROM onboarding_task WHERE tenant_account_id = ANY($1::uuid[])", [
+        tenantAccountIds,
+      ]);
+      await db.query("DELETE FROM tenant_invitation WHERE tenant_account_id = ANY($1::uuid[])", [
+        tenantAccountIds,
+      ]);
+      await db.query(
+        "DELETE FROM tenant_account_status_event WHERE tenant_account_id = ANY($1::uuid[])",
+        [tenantAccountIds],
+      );
+    }
+    await db.query("DELETE FROM tenant_account WHERE organization_id = $1", [orgId]);
+    await db.query("DELETE FROM organization WHERE id = $1", [orgId]);
+  }
+  // Better Auth child rows (FKs vary) then the user rows.
+  const uids = await db.query<{ id: string }>('SELECT id FROM "user" WHERE email = ANY($1)', [
+    emails,
+  ]);
+  const ids = uids.rows.map((r) => r.id);
+  if (ids.length) {
+    for (const t of ["session", "account", "two_factor", "passkey"]) {
+      await db.query(`DELETE FROM ${t} WHERE user_id = ANY($1)`, [ids]).catch(() => {});
+    }
+    await db.query('DELETE FROM "user" WHERE id = ANY($1)', [ids]);
+  }
+  await db.query("COMMIT");
+
+  // --- Create the org ---
+  const org = await db.query<{ id: string }>(
+    `INSERT INTO organization (slug, legal_name, display_name, status)
+     VALUES ($1,$2,$3,'active') RETURNING id`,
+    [ORG.slug, ORG.legal, ORG.display],
+  );
+  const orgId = firstRow(org, "seed: organization insert").id;
+  console.log(`org ${ORG.slug} → ${orgId}`);
+
+  await provisionTenantSpine(db, orgId);
+
+  const creds: Array<{ user: SeedUser; password: string; userId: string; perms: number }> = [];
 
   // --- Pass 1: create each distinct org-scoped role once (a role is owned by the USER whose primary
   // `roleKey` it is) and grant its permissions. `role` is unique on (organization_id, key), so a role a
@@ -294,22 +329,14 @@ async function main(): Promise<void> {
     const r = await db.query<{ id: string }>(
       `INSERT INTO role (organization_id, key, name, category, scope_level, enabled, description)
        VALUES ($1,$2,$3,$4::role_category,'organization', true, $5) RETURNING id`,
-      [
-        orgId,
-        u.roleKey,
-        u.roleName,
-        u.roleCategory,
-        `${u.roleName} (dev seed)`,
-      ],
+      [orgId, u.roleKey, u.roleName, u.roleCategory, `${u.roleName} (dev seed)`],
     );
-    const roleId = r.rows[0].id;
+    const roleId = firstRow(r, "seed: role upsert").id;
     roleIdByKey.set(u.roleKey, roleId);
 
     const keys = u.grantAll
       ? allRows.map((x) => x.key)
-      : allRows
-          .filter((row) => u.permCats.includes(row.category as Cat))
-          .map((x) => x.key);
+      : allRows.filter((row) => u.permCats.includes(row.category as Cat)).map((x) => x.key);
     for (const key of keys) {
       await db.query(
         "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3)",
@@ -329,14 +356,13 @@ async function main(): Promise<void> {
        VALUES ($1,$2,'active', now()) RETURNING id`,
       [userId, orgId],
     );
-    const membershipId = m.rows[0].id;
+    const membershipId = firstRow(m, "seed: membership upsert").id;
 
     const boundRoleKeys = [u.roleKey, ...(u.alsoRoleKeys ?? [])];
     const effectivePerms = new Set<string>();
     for (const key of boundRoleKeys) {
       const roleId = roleIdByKey.get(key);
-      if (!roleId)
-        throw new Error(`user ${u.email} references undefined role '${key}'`);
+      if (!roleId) throw new Error(`user ${u.email} references undefined role '${key}'`);
       await db.query(
         "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
         [orgId, membershipId, roleId],
@@ -357,7 +383,11 @@ async function main(): Promise<void> {
     "# WardenX — Local Dev Credentials",
     "",
     "> **Gitignored. Local only.** Generated by `bun run db:seed`. Re-running regenerates passwords.",
-    "> These are throwaway dev accounts against the local `wardenx-postgres` container — not real PHI users.",
+    // Derived from the connection this run actually used, never a hardcoded container name: the
+    // text said `wardenx-postgres` (the retired 5440 container) while the seed wrote to whatever
+    // DATABASE_URL named, which under the documented setup was a different database entirely
+    // (F-016 / #43).
+    `> These are throwaway dev accounts against \`${seededTarget()}\` — not real PHI users.`,
     "",
     "## URLs",
     "",
@@ -382,7 +412,7 @@ async function main(): Promise<void> {
     "",
     "- Sign in with email + password, then pick the organization above (the session's active org).",
     "- 2FA is not enrolled on these accounts; enroll via `/security` if you want to exercise the MFA flow.",
-    "- Reset everything: `bun run db:reset` (drops the container volume, re-migrates, re-seeds).",
+    "- Reset everything: `bun run db:reset` (`docker compose down -v`, re-migrates, re-seeds).",
     "",
   ];
   const out = SEED_CREDENTIALS_PATH;

@@ -27,7 +27,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A remittance-derived cap accrual line was recorded; the per-beneficiary roll-up updated.",
     payloadSchema: AccrualRecordedPayload,
-    declaredConsumers: ["m27", "m33"],
+    declaredConsumers: ["m27"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -35,7 +36,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m26",
     description: "A projection snapshot was persisted (nightly batch or remittance recompute).",
     payloadSchema: ProjectionUpdatedPayload,
-    declaredConsumers: ["m30", "m33"],
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -43,7 +45,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m26",
     description: "A projection crossed into a higher alert band; a cap_threshold_event was raised.",
     payloadSchema: ThresholdCrossedPayload,
-    declaredConsumers: ["m36", "m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -51,7 +54,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m26",
     description: "A new cap period was opened (manual or the Oct 1 auto-open).",
     payloadSchema: YearOpenedPayload,
-    declaredConsumers: ["m27", "m33"],
+    declaredConsumers: ["m27"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -60,7 +64,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A cap period transitioned active → in_settlement (Sep 30 + grace, or manual close).",
     payloadSchema: YearClosingPayload,
-    declaredConsumers: ["m27", "m33"],
+    declaredConsumers: ["m27"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -68,7 +73,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m26",
     description: "A cap period reached settled (final settlement); the cap year is closed.",
     payloadSchema: YearClosedPayload,
-    declaredConsumers: ["m27", "m30", "m33"],
+    declaredConsumers: ["m27", "m30"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -84,7 +90,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m26",
     description: "A settlement was finalized (step-up); the period closed to settled.",
     payloadSchema: SettlementFinalizedPayload,
-    declaredConsumers: ["m27", "m33"],
+    declaredConsumers: ["m27"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -92,7 +99,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m26",
     description: "PS&R reconciliation produced a non-zero variance above the per-tenant threshold.",
     payloadSchema: PsrVarianceRaisedPayload,
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
 ];

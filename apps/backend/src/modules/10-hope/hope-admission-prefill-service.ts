@@ -9,8 +9,8 @@ import type {
 import { and, eq, inArray } from "drizzle-orm";
 import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
-import { createHopeApplicabilityEngine } from "./spec/applicability-registry";
 import type { HopeIsc } from "./hope-spec-registry";
+import { createHopeApplicabilityEngine } from "./spec/applicability-registry";
 
 type AssessmentRow = typeof schema.hopeAssessments.$inferSelect;
 type SpecItemRow = typeof schema.hopeSpecItems.$inferSelect;
@@ -66,10 +66,7 @@ const PAYER_ITEM_BY_COVERAGE_KIND: Record<string, string> = {
   other: "A1400Y",
 };
 
-export function isHopeCoverageInForceOn(
-  coverage: PatientCoverage,
-  onDate: string,
-): boolean {
+export function isHopeCoverageInForceOn(coverage: PatientCoverage, onDate: string): boolean {
   return (
     coverage.effectiveFrom <= onDate &&
     (coverage.effectiveTo === null || coverage.effectiveTo >= onDate)
@@ -86,18 +83,14 @@ function add(
   if (trimmed) out.push({ itemCode, value: trimmed, source });
 }
 
-export function mapHopeSexAssignedAtBirth(
-  value: string | null | undefined,
-): string | null {
+export function mapHopeSexAssignedAtBirth(value: string | null | undefined): string | null {
   const normalized = value?.trim().toUpperCase();
   if (normalized === "M" || normalized === "MALE") return "1";
   if (normalized === "F" || normalized === "FEMALE") return "2";
   return null;
 }
 
-export function mapHopeRaceCodes(
-  codes: readonly string[],
-): Record<string, string> {
+export function mapHopeRaceCodes(codes: readonly string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const code of codes) {
     const mapped = RACE_MAP[code.trim()];
@@ -106,9 +99,7 @@ export function mapHopeRaceCodes(
   return out;
 }
 
-export function mapHopeEthnicityCodes(
-  codes: readonly string[],
-): Record<string, string> {
+export function mapHopeEthnicityCodes(codes: readonly string[]): Record<string, string> {
   const out: Record<string, string> = {};
   for (const code of codes) {
     const mapped = ETHNICITY_MAP[code.trim()];
@@ -117,9 +108,7 @@ export function mapHopeEthnicityCodes(
   return out;
 }
 
-export function mapHopePreferredLanguage(
-  code: string | null | undefined,
-): string | null {
+export function mapHopePreferredLanguage(code: string | null | undefined): string | null {
   const normalized = code?.trim();
   return normalized ? normalized : null;
 }
@@ -150,14 +139,10 @@ function activeMbi(
   const identifiers = patient.identifiers
     .filter(
       (identifier) =>
-        identifier.kind === "mbi" &&
-        identifier.value &&
-        identifier.effectiveFrom <= admissionDate,
+        identifier.kind === "mbi" && identifier.value && identifier.effectiveFrom <= admissionDate,
     )
     .filter(
-      (identifier) =>
-        identifier.effectiveTo === null ||
-        identifier.effectiveTo >= admissionDate,
+      (identifier) => identifier.effectiveTo === null || identifier.effectiveTo >= admissionDate,
     )
     .sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom));
   return identifiers[0]?.value ?? null;
@@ -168,10 +153,7 @@ function coverageSubscriberId(
   coverageKinds: readonly string[],
 ): string | null {
   const coverage = [...coverages]
-    .filter(
-      (row) =>
-        coverageKinds.includes(row.coverageKind) && row.subscriberId?.trim(),
-    )
+    .filter((row) => coverageKinds.includes(row.coverageKind) && row.subscriberId?.trim())
     .sort((a, b) => a.rank - b.rank)[0];
 
   return coverage?.subscriberId?.trim() || null;
@@ -191,39 +173,23 @@ export function buildHopeAdmissionPrefillAnswers(input: {
   add(out, "A0100B", input.providerCcn, "admission_prefill");
   add(out, "A0220", input.admissionDate, "admission_prefill");
   add(out, "A0500A", input.patient.legalFirstName, "patient_prefill");
-  add(
-    out,
-    "A0500B",
-    input.patient.legalMiddleName?.slice(0, 1) ?? null,
-    "patient_prefill",
-  );
+  add(out, "A0500B", input.patient.legalMiddleName?.slice(0, 1) ?? null, "patient_prefill");
   add(out, "A0500C", input.patient.legalLastName, "patient_prefill");
   add(out, "A0500D", input.patient.legalNameSuffix, "patient_prefill");
   add(
     out,
     "A0600B",
     activeMbi(input.patient, input.admissionDate) ??
-      coverageSubscriberId(input.coverages, [
-        "medicare_ffs",
-        "medicare_advantage",
-      ]),
+      coverageSubscriberId(input.coverages, ["medicare_ffs", "medicare_advantage"]),
     "patient_prefill",
   );
   add(
     out,
     "A0700",
-    coverageSubscriberId(input.coverages, [
-      "medicaid",
-      "medicaid_managed_care",
-    ]),
+    coverageSubscriberId(input.coverages, ["medicaid", "medicaid_managed_care"]),
     "patient_prefill",
   );
-  add(
-    out,
-    "A0810",
-    mapHopeSexAssignedAtBirth(input.patient.sexAssignedAtBirth),
-    "patient_prefill",
-  );
+  add(out, "A0810", mapHopeSexAssignedAtBirth(input.patient.sexAssignedAtBirth), "patient_prefill");
   add(out, "A0900", input.patient.dob, "patient_prefill");
   add(out, "A0550", input.postalCode, "patient_prefill");
   add(out, "A0215", input.residenceSite, "patient_prefill");
@@ -233,9 +199,7 @@ export function buildHopeAdmissionPrefillAnswers(input: {
     mapHopePreferredLanguage(input.patient.preferredLanguageCode),
     "patient_prefill",
   );
-  for (const [itemCode, value] of Object.entries(
-    mapHopeRaceCodes(input.patient.raceCodes),
-  ))
+  for (const [itemCode, value] of Object.entries(mapHopeRaceCodes(input.patient.raceCodes)))
     add(out, itemCode, value, "patient_prefill");
   for (const [itemCode, value] of Object.entries(
     mapHopeEthnicityCodes(input.patient.ethnicityCodes),
@@ -291,15 +255,8 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
     return new Map(rows.map((row) => [row.item.itemCode, row.item]));
   }
 
-  async function validValue(
-    tx: DbClient,
-    item: SpecItemRow,
-    value: string,
-  ): Promise<boolean> {
-    const options = await tx
-      .select()
-      .from(OPTION)
-      .where(eq(OPTION.specItemId, item.id));
+  async function validValue(tx: DbClient, item: SpecItemRow, value: string): Promise<boolean> {
+    const options = await tx.select().from(OPTION).where(eq(OPTION.specItemId, item.id));
     if (options.length === 0) return true;
     if (
       options.some(
@@ -314,11 +271,7 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
     return options.some((option) => option.valueCode === value);
   }
 
-  async function answersByItem(
-    tx: DbClient,
-    assessmentId: string,
-    items: readonly SpecItemRow[],
-  ) {
+  async function answersByItem(tx: DbClient, assessmentId: string, items: readonly SpecItemRow[]) {
     const rows = await tx
       .select()
       .from(ANSWER)
@@ -355,10 +308,7 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
     const items = rows.map((row) => row.item);
     const byId = new Map(items.map((item) => [item.id, item]));
     const current = await answersByItem(tx, assessment.id, items);
-    const answerMap = new Map<
-      string,
-      { state: "answered" | "skipped"; value: unknown | null }
-    >();
+    const answerMap = new Map<string, { state: "answered" | "skipped"; value: unknown | null }>();
     for (const [itemId, answer] of current) {
       const item = byId.get(itemId);
       if (item)
@@ -367,9 +317,7 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
           value: answer.value as unknown | null,
         });
     }
-    const applicability = createHopeApplicabilityEngine(
-      specVersionCode,
-    ).evaluate({
+    const applicability = createHopeApplicabilityEngine(specVersionCode).evaluate({
       isc: assessment.isc as HopeIsc,
       activeItemCodes: items.map((item) => item.itemCode),
       answers: answerMap,
@@ -413,41 +361,22 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
         if (existing?.state === "skipped" && existing.source === "derived") {
           await tx
             .delete(ANSWER)
-            .where(
-              and(
-                eq(ANSWER.hopeAssessmentId, assessment.id),
-                eq(ANSWER.specItemId, item.id),
-              ),
-            );
+            .where(and(eq(ANSWER.hopeAssessmentId, assessment.id), eq(ANSWER.specItemId, item.id)));
         }
       }
     }
   }
 
   return {
-    async prefillAdmission({
-      tx,
-      organizationId,
-      assessment,
-      specVersionCode,
-      admissionDate,
-    }) {
-      if (
-        !assessment.specVersionId ||
-        !assessment.isc ||
-        assessment.status !== "draft"
-      ) {
+    async prefillAdmission({ tx, organizationId, assessment, specVersionCode, admissionDate }) {
+      if (!assessment.specVersionId || !assessment.isc || assessment.status !== "draft") {
         return { assessmentId: assessment.id, prefilledItemCodes: [] };
       }
       const patientReader = getSeam(
         "PatientHopeAdmissionPrefillReader",
       ) as PatientHopeAdmissionPrefillReader;
-      const addressReader = getSeam(
-        "PatientAddressReader",
-      ) as PatientAddressReader;
-      const coverageReader = getSeam(
-        "PatientCoverageReader",
-      ) as PatientCoverageReader;
+      const addressReader = getSeam("PatientAddressReader") as PatientAddressReader;
+      const coverageReader = getSeam("PatientCoverageReader") as PatientCoverageReader;
       const patient = await patientReader.factsForHopeAdmissionPrefill({
         organizationId,
         patientId: assessment.patientId,
@@ -476,10 +405,7 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
         patient,
         admissionDate,
         postalCode: residence?.postalCode ?? null,
-        residenceSite: mapHopeResidenceSite(
-          residence?.kind,
-          residence?.facilityId,
-        ),
+        residenceSite: mapHopeResidenceSite(residence?.kind, residence?.facilityId),
         coverages,
         providerNpi: provider?.npi ?? null,
         providerCcn: provider?.ccn ?? null,
@@ -490,9 +416,7 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
         assessment.isc as HopeIsc,
         answers.map((answer) => answer.itemCode),
       );
-      const existing = await answersByItem(tx, assessment.id, [
-        ...items.values(),
-      ]);
+      const existing = await answersByItem(tx, assessment.id, [...items.values()]);
       const written: string[] = [];
       for (const answer of answers) {
         const item = items.get(answer.itemCode);
@@ -527,10 +451,7 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
         written.push(answer.itemCode);
       }
       await reconcileApplicability({ tx, assessment, specVersionCode });
-      await tx
-        .update(A)
-        .set({ updatedAt: new Date() })
-        .where(eq(A.id, assessment.id));
+      await tx.update(A).set({ updatedAt: new Date() }).where(eq(A.id, assessment.id));
       return { assessmentId: assessment.id, prefilledItemCodes: written };
     },
   };

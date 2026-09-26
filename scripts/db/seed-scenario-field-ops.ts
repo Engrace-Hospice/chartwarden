@@ -22,7 +22,8 @@
  * Run:     bun run db:seed:scenario-field-ops
  */
 import { Client } from "pg";
-import { findPatientIdByLastName, ScenarioLog, signIn } from "./lib/api-session";
+import { ScenarioLog, type WxSession, findPatientIdByLastName, signIn } from "./lib/api-session";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001";
@@ -40,7 +41,7 @@ async function membershipIdFor(email: string): Promise<string> {
   );
   await db.end();
   if (!r.rows[0]) throw new Error(`no membership found for ${email} — run db:seed:staff first`);
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-field-ops: id lookup").id;
 }
 
 /**
@@ -70,7 +71,7 @@ async function seedDraftVolunteerPlan(
     [organizationId, patientId, admissionId, PROVIDER_ENTITY_ID, LOCATION_MAIN_ID],
   );
   await db.end();
-  return r.rows[0].id;
+  return firstRow(r, "seed-scenario-field-ops: id lookup").id;
 }
 
 /**
@@ -98,49 +99,46 @@ async function ensureAdmissionSited(admissionId: string): Promise<void> {
 }
 
 /**
- * GENUINE GAP, confirmed by reading the code, not assumed: `POST /api/v1/visits` is unconditionally
- * unreachable in production. `scheduling-route-service-db.ts`'s `SchedulingAbacResolver` implementation
- * hard-codes `credentialsActiveForPurpose`→`false`, `resolveDiscipline`→`null`, `isInCaseload`→`false`,
- * `allowsUnassignedPool`→`false` ("cross-module facts fail closed (compromise #3)") — there is no live
- * input that can ever satisfy `clinician_credentials_active` / `discipline_matches_visit` /
- * `within_caseload_or_unassigned_pool`, so every visit-create call gets FORBIDDEN regardless of caller or
- * data. This is the SAME class of deliberate Phase-1 stub as M20's unbound DEK (not a bug to route
- * around quietly) — DB-seeds the row directly instead, matching this file's other documented workarounds.
+ * F-079 — THIS NO LONGER DB-SEEDS, and the header it replaces is worth keeping in the history. It read:
+ * "GENUINE GAP … `POST /api/v1/visits` is unconditionally unreachable in production" because
+ * `SchedulingAbacResolver` hard-coded `credentialsActiveForPurpose`→`false`, `resolveDiscipline`→`null`,
+ * `isInCaseload`→`false` and `allowsUnassignedPool`→`false`. That was true when it was written. GAP-093
+ * and GAP-031 since replaced all four with real reads — role grants, org settings, and the boot-registered
+ * `CaseloadProvider` / `CredentialReader` seams — and nobody came back to the workaround.
+ *
+ * One cause remained, and it was not in the platform: `membership_credential` was EMPTY on every seeded
+ * stack, so `clinician_credentials_active` correctly refused every assignee for want of a licence.
+ * `seed-staff-personas.ts` now issues one per licensable discipline, and this schedules through the real
+ * route — which is the only way to keep the claim honest, because a DB-seeded row proves nothing about
+ * whether a clinician could have booked it.
  */
 async function seedPublishedVisit(
-  organizationId: string,
+  rn: WxSession,
   patientId: string,
   admissionId: string,
   assignedMembershipId: string,
+  patientAddressId: string | null,
   startsAt: string,
   endsAt: string,
 ): Promise<string> {
-  if (!ADMIN_URL) throw new Error("DATABASE_ADMIN_URL (or DATABASE_URL) is required");
-  const db = new Client({ connectionString: ADMIN_URL });
-  await db.connect();
-  await db.query("SET session_replication_role = replica");
-  const serviceDate = startsAt.slice(0, 10);
-  const r = await db.query<{ id: string }>(
-    `INSERT INTO visit
-       (organization_id, provider_entity_id, location_id, patient_id, admission_id,
-        assigned_membership_id, assigned_discipline_at_assignment, visit_purpose, visit_setting,
-        scheduled_started_at, scheduled_ended_at, service_date, status)
-     VALUES ($1,$2,$3,$4,$5,$6,'rn','routine_visit','patient_home',$7,$8,$9,'published')
-     RETURNING id`,
-    [
-      organizationId,
-      PROVIDER_ENTITY_ID,
-      LOCATION_MAIN_ID,
+  const res = await rn.client.POST("/api/v1/visits", {
+    body: {
       patientId,
       admissionId,
+      // A home visit must be sited; without a recorded address the server refuses it, so fall back to
+      // the telephonic setting rather than inventing an address for the demo patient.
+      patientAddressId,
+      externalFacilityId: null,
       assignedMembershipId,
-      startsAt,
-      endsAt,
-      serviceDate,
-    ],
-  );
-  await db.end();
-  return r.rows[0].id;
+      visitPurpose: "routine_visit",
+      visitSetting: patientAddressId === null ? "telephonic" : "patient_home",
+      scheduledStartedAt: startsAt,
+      scheduledEndedAt: endsAt,
+    },
+  });
+  const data = res.data as unknown as { id: string } | undefined;
+  if (res.error || !data) throw new Error(`visit create failed: ${JSON.stringify(res.error)}`);
+  return data.id;
 }
 
 /**
@@ -234,7 +232,9 @@ async function wipePriorFieldOps(patientId: string, organizationId: string): Pro
   if (callIds.length) {
     await db.query("DELETE FROM triage_call_answer WHERE triage_call_id = ANY($1)", [callIds]);
     await db.query("DELETE FROM triage_escalation WHERE triage_call_id = ANY($1)", [callIds]);
-    await db.query("DELETE FROM triage_call_state_history WHERE triage_call_id = ANY($1)", [callIds]);
+    await db.query("DELETE FROM triage_call_state_history WHERE triage_call_id = ANY($1)", [
+      callIds,
+    ]);
     await db.query("DELETE FROM triage_call WHERE id = ANY($1)", [callIds]);
   }
   await db.query(
@@ -244,16 +244,14 @@ async function wipePriorFieldOps(patientId: string, organizationId: string): Pro
 
   // M20 field safety
   await db.query("DELETE FROM safety_incident WHERE patient_id = $1", [patientId]);
-  await db.query(
-    `DELETE FROM safety_sos_alert WHERE posted_by_membership_id = $1`,
-    [ritaId],
-  );
+  await db.query(`DELETE FROM safety_sos_alert WHERE posted_by_membership_id = $1`, [ritaId]);
   await db.query(`DELETE FROM safety_check_in WHERE posted_by_membership_id = $1`, [ritaId]);
 
   // M21 supplies
-  const reqs = await db.query<{ id: string }>("SELECT id FROM supply_request WHERE patient_id = $1", [
-    patientId,
-  ]);
+  const reqs = await db.query<{ id: string }>(
+    "SELECT id FROM supply_request WHERE patient_id = $1",
+    [patientId],
+  );
   const reqIds = reqs.rows.map((r) => r.id);
   if (reqIds.length) {
     const dispatches = await db.query<{ id: string }>(
@@ -284,9 +282,10 @@ async function main(): Promise<void> {
   const cert = await rn.client.GET("/api/v1/patients/{patientId}/election-certification", {
     params: { path: { patientId } },
   });
-  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)?.admission
-    ?.id;
-  if (!admissionId) throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
+  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)
+    ?.admission?.id;
+  if (!admissionId)
+    throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
 
   console.log("wiping any prior field-ops data for a clean re-run...");
   await wipePriorFieldOps(patientId, rn.organizationId);
@@ -320,19 +319,26 @@ async function main(): Promise<void> {
           validUntil: gateKind === "initial_training" ? null : "2027-01-01",
         },
       });
-      if (gate.error) throw new Error(`compliance gate '${gateKind}' failed: ${JSON.stringify(gate.error)}`);
+      if (gate.error)
+        throw new Error(`compliance gate '${gateKind}' failed: ${JSON.stringify(gate.error)}`);
     }
 
-    const assign = await coord.client.POST("/api/v1/discipline-plans/{planId}/volunteer-assignments", {
-      params: { path: { planId } },
-      body: {
-        volunteerMembershipId: volunteerId,
-        activities: ["Companionship visits", "Light errands"],
-        startsAt: nowIso(),
+    const assign = await coord.client.POST(
+      "/api/v1/discipline-plans/{planId}/volunteer-assignments",
+      {
+        params: { path: { planId } },
+        body: {
+          volunteerMembershipId: volunteerId,
+          activities: ["Companionship visits", "Light errands"],
+          startsAt: nowIso(),
+        },
       },
-    });
-    if (assign.error) throw new Error(`volunteer assignment failed: ${JSON.stringify(assign.error)}`);
-    log.ok("Volunteer plan: draft plan seeded, 2 compliance gates + volunteer assignment via real API");
+    );
+    if (assign.error)
+      throw new Error(`volunteer assignment failed: ${JSON.stringify(assign.error)}`);
+    log.ok(
+      "Volunteer plan: draft plan seeded, 2 compliance gates + volunteer assignment via real API",
+    );
   } catch (err) {
     log.fail(`M15 volunteer plan: ${String(err)}`);
   }
@@ -341,9 +347,18 @@ async function main(): Promise<void> {
   let visitId: string | null = null;
   try {
     const ritaId = await membershipIdFor("rita@wardenx.local");
-    visitId = await seedPublishedVisit(rn.organizationId, patientId, admissionId, ritaId, addHours(24), addHours(25));
+    visitId = await seedPublishedVisit(
+      rn,
+      patientId,
+      admissionId,
+      ritaId,
+      null,
+      addHours(24),
+      addHours(25),
+    );
     log.ok(
-      "Scheduling: 1 visit published (tomorrow, Rita RN) — DB-seeded, POST /visits is unreachable in prod (see file header)",
+      "Scheduling: 1 visit published (tomorrow, Rita RN) — through POST /api/v1/visits, which the D8 " +
+        "licence gate now admits (F-079)",
     );
   } catch (err) {
     log.fail(`M17 scheduling: ${String(err)}`);
@@ -352,19 +367,36 @@ async function main(): Promise<void> {
   // ── M18 — EVV ──────────────────────────────────────────────────────────────────────────────────
   try {
     const dev = await rn.client.POST("/api/v1/evv/devices/self-register", {
-      body: { platform: "ios", modelDescription: "Demo iPhone", attestationId: crypto.randomUUID() },
+      // The `attestationId` this used to pass was `crypto.randomUUID()` — the only caller in the
+      // codebase, satisfying a REQUIRED uuid by inventing one, because no route mints a device
+      // attestation id a client can hold (F-068 §3). The field is gone from the contract.
+      body: { platform: "ios", modelDescription: "Demo iPhone" },
     });
     const devData = dev.data as unknown as { id: string } | undefined;
-    if (dev.error || !devData) throw new Error(`device register failed: ${JSON.stringify(dev.error)}`);
+    if (dev.error || !devData)
+      throw new Error(`device register failed: ${JSON.stringify(dev.error)}`);
 
     const approve = await supervisor.client.POST("/api/v1/evv/devices/{id}/approve", {
       params: { path: { id: devData.id } },
-      body: {},
     });
     if (approve.error) throw new Error(`device approve failed: ${JSON.stringify(approve.error)}`);
 
+    // A SECOND handset, deliberately left PENDING. The approve/reject ceremony is the only M18 write a
+    // browser can drive at all — check-in/check-out is the Capacitor mobile flow (§5.2), because a
+    // browser has no attested device and no §12.4 posture to report — and with the first device driven
+    // straight to `approved` the supervisor roster had nothing to act on, so `/evv/devices/pending` was
+    // permanently empty on a seeded stack and the action could not be exercised. Same shape as M11's
+    // signature inbox (#91) and the billing spec #106/F-046 names: a queue whose only row is already
+    // terminal, and a spec written against it that would assert the empty state forever.
+    const pending = await rn.client.POST("/api/v1/evv/devices/self-register", {
+      body: { platform: "android", modelDescription: "Demo Pixel — awaiting approval" },
+    });
+    if (pending.error)
+      throw new Error(`second device register failed: ${JSON.stringify(pending.error)}`);
+
     log.ok(
-      "EVV: device self-registered + approved (no completed visit yet to check in/out against — scheduled for tomorrow)",
+      "EVV: device self-registered + approved, and a second left PENDING for the supervisor roster " +
+        "(no completed visit yet to check in/out against — scheduled for tomorrow)",
     );
   } catch (err) {
     log.fail(`M18 EVV: ${String(err)}`);
@@ -389,7 +421,8 @@ async function main(): Promise<void> {
       },
     });
     const shiftData = shift.data as unknown as { id: string; version: number } | undefined;
-    if (shift.error || !shiftData) throw new Error(`on-call shift create failed: ${JSON.stringify(shift.error)}`);
+    if (shift.error || !shiftData)
+      throw new Error(`on-call shift create failed: ${JSON.stringify(shift.error)}`);
 
     // A shift is created `scheduled`, not `active` — `oncall_eligible`'s shift path (and `m19.oncall_shift.
     // activated`, which M20's SOS coverage-lookup subscribes to) both require the explicit open transition.
@@ -410,7 +443,8 @@ async function main(): Promise<void> {
       },
     });
     const callData = call.data as unknown as { triageCallId: string; version: number } | undefined;
-    if (call.error || !callData) throw new Error(`triage call create failed: ${JSON.stringify(call.error)}`);
+    if (call.error || !callData)
+      throw new Error(`triage call create failed: ${JSON.stringify(call.error)}`);
 
     const identify = await rn.client.POST("/api/v1/triage-calls/{triageCallId}/identify-patient", {
       params: { path: { triageCallId: callData.triageCallId } },
@@ -433,12 +467,23 @@ async function main(): Promise<void> {
       body: { triageProtocolId: OTHER_CLINICAL_CONCERN_PROTOCOL_ID },
     });
     const applyData = apply.data as unknown as { version: number } | undefined;
-    if (apply.error || !applyData) throw new Error(`apply-protocol failed: ${JSON.stringify(apply.error)}`);
+    if (apply.error || !applyData)
+      throw new Error(`apply-protocol failed: ${JSON.stringify(apply.error)}`);
 
-    const QUESTIONS: ReadonlyArray<{ id: string; value: { kind: "text" | "bool"; value: string | boolean } }> = [
+    // A DISCRIMINATED union, matching the route's own contract. The previous annotation was
+    // `{ kind: "text" | "bool"; value: string | boolean }`, which is a wider type that admits the
+    // invalid pairings (`kind: "text"` with a boolean) the contract rejects — so the seed could not
+    // be checked against the endpoint it drives.
+    const QUESTIONS: ReadonlyArray<{
+      id: string;
+      value: { kind: "text"; value: string } | { kind: "bool"; value: boolean };
+    }> = [
       {
         id: "00000000-0019-0001-2801-000000000000",
-        value: { kind: "text", value: "Caregiver reports increased shortness of breath overnight." },
+        value: {
+          kind: "text",
+          value: "Caregiver reports increased shortness of breath overnight.",
+        },
       },
       { id: "00000000-0019-0001-2802-000000000000", value: { kind: "bool", value: false } },
       { id: "00000000-0019-0001-2803-000000000000", value: { kind: "bool", value: true } },
@@ -459,7 +504,6 @@ async function main(): Promise<void> {
     const complete = await rn.client.POST("/api/v1/triage-calls/{triageCallId}/complete-protocol", {
       params: { path: { triageCallId: callData.triageCallId } },
       headers: { "If-Match": String(answerVersion) },
-      body: {},
     });
     const completeData = complete.data as unknown as { version: number } | undefined;
     if (complete.error || !completeData)
@@ -477,9 +521,12 @@ async function main(): Promise<void> {
         },
       },
     });
-    if (disposition.error) throw new Error(`disposition failed: ${JSON.stringify(disposition.error)}`);
+    if (disposition.error)
+      throw new Error(`disposition failed: ${JSON.stringify(disposition.error)}`);
 
-    log.ok("On-call: shift opened, 1 triage call identified to Whitfield, dispositioned (education only)");
+    log.ok(
+      "On-call: shift opened, 1 triage call identified to Whitfield, dispositioned (education only)",
+    );
   } catch (err) {
     log.fail(`M19 on-call: ${String(err)}`);
   }
@@ -519,7 +566,10 @@ async function main(): Promise<void> {
 
     const ack = await supervisor.client.POST("/api/v1/safety/sos/{sosAlertId}/acknowledge", {
       params: { path: { sosAlertId: sosData.id } },
-      body: { actionTaken: "Called clinician directly; confirmed a false alarm from an accidental button press." },
+      body: {
+        actionTaken:
+          "Called clinician directly; confirmed a false alarm from an accidental button press.",
+      },
     });
     if (ack.error) throw new Error(`SOS acknowledge failed: ${JSON.stringify(ack.error)}`);
 
@@ -542,7 +592,12 @@ async function main(): Promise<void> {
         patientId,
         admissionId,
         locationId: LOCATION_MAIN_ID,
-        deliveryAddress: { line1: "42 Camellia Ln", city: "Asheville", state: "NC", postalCode: "28801" },
+        deliveryAddress: {
+          line1: "42 Camellia Ln",
+          city: "Asheville",
+          state: "NC",
+          postalCode: "28801",
+        },
         kindPayload: {
           kind: "dme",
           skuId: crypto.randomUUID(),
@@ -555,7 +610,8 @@ async function main(): Promise<void> {
         },
       },
     });
-    if (supplyReq.error) throw new Error(`supply request failed: ${JSON.stringify(supplyReq.error)}`);
+    if (supplyReq.error)
+      throw new Error(`supply request failed: ${JSON.stringify(supplyReq.error)}`);
 
     const template = await rn.client.POST("/api/v1/supplies/comfort-kit-templates", {
       body: {
@@ -610,7 +666,8 @@ async function main(): Promise<void> {
         ],
       },
     });
-    if (template.error) throw new Error(`comfort-kit template failed: ${JSON.stringify(template.error)}`);
+    if (template.error)
+      throw new Error(`comfort-kit template failed: ${JSON.stringify(template.error)}`);
 
     log.ok("Supplies: 1 DME request (hospital bed) + D3 comfort-kit template created");
   } catch (err) {

@@ -502,9 +502,8 @@ export function createDbMdmRouteService(db: DbClient): MdmRouteService {
       const result = await db.execute(
         sql`SELECT mdm_canonical_writer_promote_provisional(${provisionalId}, ${actorUserId}) AS canonical_id`,
       );
-      const canonicalId = (
-        result as unknown as { rows?: Array<{ canonical_id?: string }> }
-      ).rows?.[0]?.canonical_id;
+      const canonicalId = (result as unknown as { rows?: Array<{ canonical_id?: string }> })
+        .rows?.[0]?.canonical_id;
       if (!canonicalId) throw new Error(`promotion of ${provisionalId} returned no canonical id`);
       return { canonicalId };
     },

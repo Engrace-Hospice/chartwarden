@@ -5,9 +5,9 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { CosignatureStatus } from "@wardenx/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, gt, inArray, isNull, lt, or } from "drizzle-orm";
-import type { EncounterWriteOutboxPort } from "../encounters-route-service-db";
 import { transitionCosignature } from "../cosignature/cosignature";
 import { decideCosignatureSlaStage, hoursBetween } from "../cosignature/sla-clock";
+import type { EncounterWriteOutboxPort } from "../encounters-route-service-db";
 import { M8_JOB_SCHEDULES, M8_QUEUES, M8_QUEUE_PARAMS } from "./index";
 
 const M8_WORKER_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000008";

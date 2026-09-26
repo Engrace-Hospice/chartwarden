@@ -2,7 +2,7 @@
 // Unit-tests the authenticate hook factory with a stub snapshot reader + stub SessionContextResolver
 // (no better-auth / no DB). The real session read + DB-backed resolver are verified in the AUTH-T06
 // live-PG lane; the DB-backed SessionContextStore reconciliation lands in AUTH-T05.
-import { type ResolvedActor, type SessionContextResolver, STEP_UP_POLICY } from "@wardenx/types";
+import { type ResolvedActor, STEP_UP_POLICY, type SessionContextResolver } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
 import { describe, expect, it } from "vitest";
 import { createSessionAuthenticate } from "../src/bootstrap/index";
@@ -27,32 +27,48 @@ const reqWith = (headers: Record<string, string> = {}): { req: FastifyRequest; c
   return { req: { context: ctx, headers } as unknown as FastifyRequest, ctx };
 };
 
-const resolverReturning = (actor: ResolvedActor | null): SessionContextResolver => ({
+/**
+ * `stepUpAgoSec` drives the F-029 step-up stamp: `null` means the session never stepped up, a number
+ * means it did, that many seconds ago, with TOTP. The hook calls BOTH `resolveStepUpState` and
+ * `resolveStepUpPolicy` now — before F-029 it called neither, which is precisely why
+ * `context.attributes.stepUpRecent` was never written and fifteen modules read a permanently-false
+ * flag off it.
+ */
+const resolverReturning = (
+  actor: ResolvedActor | null,
+  stepUpAgoSec: number | null = null,
+): SessionContextResolver => ({
   resolveActor: async () => actor,
-  resolveStepUpState: async () => null,
-  // The authenticate hook never calls this; it is here so the double stays a complete
-  // implementation of the seam (`apps/backend/__tests__` is not type-checked by `tsc -b`, so a
-  // missing method would surface only as a runtime TypeError in whichever test grew into it).
+  resolveStepUpState: async () =>
+    stepUpAgoSec === null
+      ? null
+      : { lastStepUpAt: new Date(Date.now() - stepUpAgoSec * 1000), lastStepUpFactor: "totp" },
   resolveStepUpPolicy: async () => ({
     qualifyingFactors: STEP_UP_POLICY.qualifyingFactors,
     maxAgeSec: STEP_UP_POLICY.defaultMaxAgeSec,
   }),
 });
 
+const ORG_BOUND_ACTOR: ResolvedActor = {
+  sessionClass: "staff",
+  portalAccountId: null,
+  sessionPatientId: null,
+  deviceAttestation: null,
+  externalActorId: null,
+  userId: "u1",
+  membershipId: "m1",
+  organizationId: "org1",
+  roles: ["rn"],
+  providerEntityIds: ["pe-1"],
+  locationIds: ["loc-1"],
+};
+
 describe("createSessionAuthenticate (AUTH-T03)", () => {
   it("populates context for an org-bound session via the resolver", async () => {
     const { req, ctx } = reqWith();
     const hook = createSessionAuthenticate({
       getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
-      getResolver: () =>
-        resolverReturning({
-          userId: "u1",
-          membershipId: "m1",
-          organizationId: "org1",
-          roles: ["rn"],
-          providerEntityIds: ["pe-1"],
-          locationIds: ["loc-1"],
-        }),
+      getResolver: () => resolverReturning(ORG_BOUND_ACTOR),
     });
     await hook(req);
     expect(ctx).toEqual({
@@ -67,8 +83,63 @@ describe("createSessionAuthenticate (AUTH-T03)", () => {
       // `membershipId` is the fact the §4.x ownership predicates in M15/M16/M20/M21/M30/M33/M34 read
       // off `context.attributes`. The hook used to drop it even though the resolver returns it here,
       // so every one of those predicates saw null and denied — this assertion pinned that bug in place.
-      attributes: { sessionId: "s1", actorKind: "user", membershipId: "m1" },
+      // `stepUpRecent` is the §4.2.1 step-up freshness fact fifteen modules lift off
+      // `context.attributes` into their route actor. NOTHING used to write it, so every one of them
+      // read `false` for every request (F-029) — and four routes were worse than merely inert:
+      // M37's IRC cap override and restraint apply, M23's claim submit and M27's cost-report submit
+      // mount `requireStepUp(...)`, which passes, then hand the always-false flag to a service or a
+      // pure machine that refuses. The guard allowed and the domain refused, always. `false` here is
+      // correct for THIS case (the stub session never stepped up); the two cases below pin the fix.
+      attributes: {
+        sessionId: "s1",
+        actorKind: "user",
+        membershipId: "m1",
+        stepUpRecent: false,
+        // The §2.2.4 class the hook stamps off the resolved actor. It appears here now only because
+        // the fixture above stopped omitting it: the resolver returned `undefined`, so the hook wrote
+        // nothing and the portal/bereavement predicates that gate on it never saw a value (F-030).
+        sessionClass: "staff",
+      },
     });
+  });
+
+  it("stamps stepUpRecent TRUE for a session that stepped up inside the policy window (F-029)", async () => {
+    const { req, ctx } = reqWith();
+    const hook = createSessionAuthenticate({
+      getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
+      getResolver: () => resolverReturning(ORG_BOUND_ACTOR, 30), // 30s ago, floor allows 300s
+    });
+    await hook(req);
+    expect(ctx.attributes.stepUpRecent).toBe(true);
+  });
+
+  it("stamps stepUpRecent FALSE for a step-up outside the window — the fact is resolved, not assumed", async () => {
+    const { req, ctx } = reqWith();
+    const hook = createSessionAuthenticate({
+      getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
+      getResolver: () => resolverReturning(ORG_BOUND_ACTOR, 86_400), // a day ago
+    });
+    await hook(req);
+    expect(ctx.attributes.stepUpRecent).toBe(false);
+  });
+
+  it("resolves step-up through the INJECTED resolver, not the global seam registry", async () => {
+    // The hook is constructed with a resolver and must not acquire a second, differently-wired path
+    // to the same fact. No seam is registered in this suite; if the stamp went through `getSeam`
+    // it would fail closed to `false` and this case would not be able to tell the difference from
+    // the stale case above — hence a resolver that ONLY this hook can see, answering `true`.
+    const { req, ctx } = reqWith();
+    let calls = 0;
+    const hook = createSessionAuthenticate({
+      getSnapshot: async () => ({ sessionId: "s1", userId: "u1", activeOrganizationId: "org1" }),
+      getResolver: () => {
+        calls++;
+        return resolverReturning(ORG_BOUND_ACTOR, 10);
+      },
+    });
+    await hook(req);
+    expect(ctx.attributes.stepUpRecent).toBe(true);
+    expect(calls).toBeGreaterThan(0);
   });
 
   it("leaves context anonymous when there is no session", async () => {

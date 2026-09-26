@@ -481,6 +481,19 @@ export const ShiftTransitionBody = Type.Object({}, { additionalProperties: false
  * §4.1's "tighten-only on locked tiers" is a cross-field rule over the escalation ladder that TypeBox
  * cannot state; it lives in the write service beside the row it compares against.
  */
+/** F-030 — bind THIS session to an `external_triage_vendor` (D3 Hybrid/Centralized).
+ *
+ *  The session id is deliberately ABSENT from the body: it is server-assembled off the request context,
+ *  so a caller cannot bind someone else's session. Only the vendor and the class are the caller's to
+ *  choose, and both are then checked against the org's own vendor row and policy. */
+export const BindVendorSessionBody = Type.Object({
+  externalActorId: Uuid,
+  sessionClass: Type.Union([
+    Type.Literal("external_triage_vendor"),
+    Type.Literal("external_triage_operator"),
+  ]),
+});
+
 export const PatchOncallPolicyBody = Type.Object(
   {
     model: Type.Optional(OncallModel),

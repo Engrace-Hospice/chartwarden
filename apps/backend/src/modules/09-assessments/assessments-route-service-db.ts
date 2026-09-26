@@ -37,6 +37,7 @@
 import {
   computeScaleLicenseStatus,
   cosignRequiredFor,
+  detectSignificantChanges,
   disciplineCanRecordScale,
   isLicensedScale,
   planCorrection,
@@ -78,6 +79,10 @@ import type {
 const CA = schema.clinicalAssessments;
 const COS = schema.assessmentCosignatures;
 const SCE = schema.significantChangeEvents;
+
+/** A superset of every §2.4 delta rule's `windowDays`, used only to bound the prior-series read. The
+ *  detector applies each rule's own window; widening this cannot make a rule fire that would not. */
+const MAX_DETECTOR_LOOKBACK_DAYS = 60;
 const LIC = schema.scaleLicenses;
 const POL = schema.scalePolicies;
 
@@ -293,7 +298,20 @@ export function createDbAssessmentRouteService(
    * SITING half of the same seam call, which stays fail-open (an unsited row is a reporting gap, not a
    * mis-attributed record) — same fact, two consequences, deliberately.
    */
-  function assertAdmissionAnchor(anchor: ResolvedAdmissionAnchor | null, capturedAt: string): void {
+  function assertAdmissionAnchor(
+    anchor: ResolvedAdmissionAnchor | null,
+    capturedAt: string,
+    projectionGap?: string,
+  ): void {
+    // #44 — a seam that REFUSED to project is not an inactive admission, and must not say it is.
+    // Both used to arrive here as `anchor === null`, so a missing `provider_entity_id` was reported
+    // as "Patient's admission is not active" for an admission whose status was `active`. Checked
+    // first: the gap is the reason the anchor is absent, so it is the more specific truth.
+    require_(
+      projectionGap === undefined,
+      "ADMISSION_PROJECTION_GAP",
+      `The admission record is incomplete, so this capture cannot be anchored: ${projectionGap}`,
+    );
     require_(
       anchor !== null && anchor.status === "active",
       "INACTIVE_ADMISSION",
@@ -428,8 +446,119 @@ export function createDbAssessmentRouteService(
       sourceEncounterId: args.sourceEncounterId ?? null,
       isCorrection: correction !== null,
     });
+    await detectAndRecordSignificantChanges(tx, org, patientId, args, scored, siting, row);
     const map = await cosignedMap(tx, [row.id]);
     return toView(row as unknown as AssessmentRow, map.get(row.id) ?? null, false);
+  }
+
+  /**
+   * §2.4 — run the significant-change detector over the just-inserted reading and persist what fired.
+   *
+   * F-076 (#91). `detectSignificantChanges` has been complete, pure and unit-tested since M9-T08, and its
+   * own header describes "the pure evaluators THE RECORDING TRANSACTION runs after scoring" — a caller
+   * that did not exist. Nothing in the backend inserted a `significant_change_event`: four consumers read
+   * that table (this service's worklist, the seam store, the escalation cron and the eraser) and none
+   * wrote to it. So the queue was empty for every patient in every tenant, the Acknowledge action #91
+   * added could never be pressed, the escalation cron had nothing to escalate, and the catalogued
+   * `m9.assessment.significant_change` event was never emitted. Same shape as `hope_submission_item`
+   * (#150) and the F-029 step-up routes: a finished core with no caller, which every unit test passes.
+   *
+   * Runs INSIDE the write transaction, per §9.6 — a decline and the reading that caused it commit
+   * together or not at all. A correction is deliberately included: superseding a reading with a much
+   * worse one is exactly as clinically significant as recording it the first time.
+   */
+  async function detectAndRecordSignificantChanges(
+    tx: DbClient,
+    org: string,
+    patientId: string,
+    args: RecordAssessmentArgs,
+    scored: { score: number | null; interpretation: string | null },
+    siting: ResolvedCaptureSiting,
+    inserted: { id: string; capturedAt: Date },
+  ): Promise<void> {
+    // The event row requires a provider entity AND a location, both NOT NULL. `clinical_assessment`
+    // permits an unsited capture ("NULL = documented unsited"), so an unsited reading cannot carry a
+    // detection. Skipping is the honest outcome: the alternative is inventing a siting for a compliance
+    // row, which would attribute a decline to a location nobody recorded.
+    if (siting.providerEntityId === null || siting.locationId === null) return;
+    if (scored.score === null) return;
+
+    const capturedAt = toIso(inserted.capturedAt);
+    // Prior ACTIVE readings for the same patient x scale, excluding the row just written. The detector
+    // does its own day-granular window filtering, so this only has to be a superset of every rule's
+    // lookback; `MAX_DETECTOR_LOOKBACK_DAYS` is that superset, not a rule threshold.
+    const priorRows = (await tx
+      .select({ id: CA.id, score: CA.score, capturedAt: CA.capturedAt })
+      .from(CA)
+      .where(
+        and(
+          eq(CA.organizationId, org),
+          eq(CA.patientId, patientId),
+          eq(CA.scaleType, args.scaleType),
+          eq(CA.status, "active"),
+          gte(
+            CA.capturedAt,
+            new Date(inserted.capturedAt.getTime() - MAX_DETECTOR_LOOKBACK_DAYS * 86_400_000),
+          ),
+          lte(CA.capturedAt, inserted.capturedAt),
+        ),
+      )) as { id: string; score: string | null; capturedAt: Date }[];
+    const priors = priorRows.filter((r) => r.id !== inserted.id);
+
+    const [policy] = await tx
+      .select({ overrides: POL.significantChangeOverrides })
+      .from(POL)
+      .where(and(eq(POL.organizationId, org), eq(POL.scaleType, args.scaleType)))
+      .limit(1);
+
+    const findings = detectSignificantChanges({
+      scaleType: args.scaleType,
+      score: scored.score,
+      capturedAt,
+      priorSeries: priors.map((r) => ({ score: toNum(r.score), capturedAt: toIso(r.capturedAt) })),
+      ...(policy?.overrides
+        ? { overrides: policy.overrides as Record<string, number> as never }
+        : {}),
+    });
+    if (findings.length === 0) return;
+
+    // The baseline the delta was measured against, for the row's `prior_assessment_id`. The detector
+    // picks the most-sensitive prior in the window, so the newest is not necessarily it — but the
+    // detector reports only the delta, not which row produced it, so this records the nearest prior
+    // reading rather than claiming a precision the return shape does not carry.
+    const nearestPrior =
+      priors.length === 0
+        ? null
+        : priors.reduce((a, b) => (a.capturedAt > b.capturedAt ? a : b)).id;
+
+    for (const f of findings) {
+      const [ev] = await tx
+        .insert(SCE)
+        .values({
+          organizationId: org,
+          providerEntityId: siting.providerEntityId,
+          locationId: siting.locationId,
+          clinicalAssessmentId: inserted.id,
+          priorAssessmentId: nearestPrior,
+          ruleId: f.ruleId,
+          deltaValue: String(f.deltaValue),
+          thresholdValue: String(f.thresholdValue),
+          status: "open",
+        })
+        .returning({ id: SCE.id });
+      if (!ev) continue;
+      await emit(tx, org, "m9.assessment.significant_change", "significant_change_event", ev.id, {
+        eventId: ev.id,
+        assessmentId: inserted.id,
+        patientId,
+        scaleType: args.scaleType,
+        ruleId: f.ruleId,
+        deltaValue: f.deltaValue,
+        thresholdValue: f.thresholdValue,
+        severity: f.severity,
+        detectedAt: capturedAt,
+      });
+    }
   }
 
   /** Earliest cosignature timestamp per assessment id (the AssessmentView carries a single `cosignedAt`). */
@@ -684,12 +813,12 @@ export function createDbAssessmentRouteService(
     async recordAssessment(organizationId, actorUserId, patientId, args) {
       // Seam-resolved siting + anchor facts BEFORE the write tx, in ONE seam call (the M6 store opens
       // its own request-scoped read). GAP-016: the anchor half used to be discarded.
-      const { siting, anchor } = await sitingResolver.resolveAnchor(
+      const { siting, anchor, projectionGap } = await sitingResolver.resolveAnchor(
         organizationId,
         patientId,
         args.admissionId,
       );
-      assertAdmissionAnchor(anchor, args.capturedAt);
+      assertAdmissionAnchor(anchor, args.capturedAt, projectionGap);
       await assertProxyAttribution(organizationId, patientId, args.actingAs);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
@@ -710,12 +839,12 @@ export function createDbAssessmentRouteService(
       // Resolved up front (outside the write tx). The SITING half is used only where the target row is
       // legacy-unsited; the ANCHOR half gates the amendment itself (GAP-016) — a correction is a new
       // append-only clinical row, so §10 applies to it exactly as it does to the original capture.
-      const { siting: fresh, anchor } = await sitingResolver.resolveAnchor(
-        organizationId,
-        patientId,
-        args.admissionId,
-      );
-      assertAdmissionAnchor(anchor, args.capturedAt);
+      const {
+        siting: fresh,
+        anchor,
+        projectionGap,
+      } = await sitingResolver.resolveAnchor(organizationId, patientId, args.admissionId);
+      assertAdmissionAnchor(anchor, args.capturedAt, projectionGap);
       await assertProxyAttribution(organizationId, patientId, args.actingAs);
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;

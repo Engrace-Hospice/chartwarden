@@ -79,7 +79,9 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
     const eventCatalog = new Map<string, OutboxEventEntry>();
     for (const [eventName, modules] of declared) {
       eventCatalog.set(eventName, {
-        eventName,
+        // The catalog's `eventName` is the `m<N>.<a>.<b>` template type; this harness builds entries from
+        // strings the test supplies, deliberately including one off-convention name below.
+        eventName: eventName as OutboxEventEntry["eventName"],
         moduleOwner: "m1",
         description: eventName,
         payloadSchema: Type.Object({}, { additionalProperties: true }),
@@ -88,7 +90,7 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
       });
     }
     eventCatalog.set("outbox.test.unrouted", {
-      eventName: "outbox.test.unrouted",
+      eventName: "outbox.test.unrouted" as OutboxEventEntry["eventName"],
       moduleOwner: "m1",
       description: "Explicit record-only live-test event",
       payloadSchema: Type.Object({}, { additionalProperties: true }),
@@ -266,11 +268,14 @@ describe.skipIf(!DB_URL)("Outbox dispatcher — LIVE Postgres (TASK-006)", () =>
   it("DLQ: maxAttempts exhausted → 'failed' terminal with lastError; a later tick never touches it", async () => {
     let calls = 0;
     // TASK-040D (OPS-012) — the DLQ-promotion alert hook fires exactly once, on the SAME transition.
+    // `organizationId` is NULLABLE on the callback (GAP-099 — a PLATFORM row belongs to no tenant) and
+    // the payload carries `error`; the local restatement had neither.
     const deadLetters: Array<{
       eventId: string;
       eventType: string;
-      organizationId: string;
+      organizationId: string | null;
       attemptCount: number;
+      error: string;
     }> = [];
     await seed({ id: EV_DLQ, eventType: "outbox.test.dlq" });
     const dispatcher = makeDispatcher(

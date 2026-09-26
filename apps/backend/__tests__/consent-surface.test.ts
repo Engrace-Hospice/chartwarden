@@ -188,6 +188,11 @@ function makeServer(stepUpAgeMs: number | null = 60_000) {
   // `step_up_recent` from this session's recency (abac-step-up-boot.test.ts owns that contract).
   const { store: sessionStore } = createInMemorySessionContextStore([
     {
+      providerEntityIds: [],
+      locationIds: [],
+      sessionClass: "staff",
+      portalAccountId: null,
+      sessionPatientId: null,
       sessionId: SESSION,
       userId: "signer",
       membershipId: "mem-1",

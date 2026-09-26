@@ -58,7 +58,10 @@ export type DeathCascadeOutcome =
  *  `→ deceased` edges. A genuine bug (e.g. a discharged/merged chart) that should dead-letter, not
  *  silently overwrite an unrelated transition. */
 export class InvalidDeceasedTransitionError extends Error {
-  constructor(readonly patientId: string, readonly fromStatus: string) {
+  constructor(
+    readonly patientId: string,
+    readonly fromStatus: string,
+  ) {
     super(`patient '${patientId}': cannot record death from status '${fromStatus}'`);
     this.name = "InvalidDeceasedTransitionError";
   }

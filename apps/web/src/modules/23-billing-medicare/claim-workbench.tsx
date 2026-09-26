@@ -27,7 +27,7 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { PatientLookupField, ProviderEntityLookupField } from "../../shared/entity-lookups";
+import { PatientLookupField, ProviderEntityLookupField } from "../../shell/entity-lookups";
 import { claimStateTone, dollars, statusLabel, tobLabel } from "./billing-status";
 import { authFailureRedirect } from "./write-workflow";
 

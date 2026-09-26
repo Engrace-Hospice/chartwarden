@@ -33,9 +33,13 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
+import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
+import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
+import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import {
   M22_DOCUMENT_RENDERED_EVENT,
@@ -46,11 +50,14 @@ import {
   createInMemoryObjectStore,
 } from "../src/modules/22-documents/index";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
+import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import {
   M33_OUTBOX_EVENTS,
   buildDrizzleM33ExportDrilldownService,
   buildM33DocumentBackrefConsumer,
 } from "../src/modules/33-reporting/index";
+import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -71,11 +78,15 @@ describe.skipIf(!DB_URL)("GAP-051 — M33 export render, LIVE Postgres", () => {
   const memberOf: Record<string, string> = {};
   const viewOf: Record<string, string> = {};
 
+  // `org_admin` is the role key the §4.7.1 ladder reads for org-wide reporting authority — `administrator`
+  // is the CoP 418.100 clinical-leadership role and confers none. This actor used to hold only the latter
+  // and still exported org-wide, because the export path built its own `scopeKind: "org"` envelope and
+  // ignored the resolution entirely (F-059). It now resolves, so an org-wide export needs the org-wide role.
   const actorFor = (org: string) => ({
     organizationId: org,
     userId: USER,
     membershipId: memberOf[org] as string,
-    roles: ["administrator"],
+    roles: ["administrator", "org_admin"],
   });
 
   /** Every outbox row for one aggregate, with its dispatch status (the relay's own record). */
@@ -214,13 +225,20 @@ describe.skipIf(!DB_URL)("GAP-051 — M33 export render, LIVE Postgres", () => {
     // ("binds unknown catalog event"). That refusal is the reason M22's subscription list and the boot
     // catalog can never drift apart silently.
     const catalog = buildBootOutboxCatalog([
+      M6_OUTBOX_EVENTS,
+      M10_OUTBOX_EVENTS,
       M11_OUTBOX_EVENTS,
       M12_OUTBOX_EVENTS,
       M13_OUTBOX_EVENTS,
+      M16_OUTBOX_EVENTS,
+      M20_OUTBOX_EVENTS,
       M21_OUTBOX_EVENTS,
       M22_OUTBOX_EVENTS,
       M23_OUTBOX_EVENTS,
+      M25_OUTBOX_EVENTS,
+      M27_OUTBOX_EVENTS,
       M33_OUTBOX_EVENTS,
+      M37_OUTBOX_EVENTS,
     ]);
     publisher = buildTxOutboxPublisher(catalog);
     const m33Outbox = {

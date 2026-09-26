@@ -60,6 +60,26 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       "m21.supply_request.document_requested",
       "m23.abn.required",
       "m33.scheduled_report.render_requested",
+      // F-099 — six REQUEST-spelled events emitted from production write paths with nothing draining
+      // them. They were filed under the m22 outbox-deferral group whose stated reason was that these
+      // declarations are the SOURCE spelling of a handshake already wired through the request spelling.
+      // That reason was true of the other ~70 and false of these six, and a reason that fits most of a
+      // group reads as a decision covering all of it.
+      "m10.hope.summary_requested",
+      "m16.bereavement.outreach_artifact_requested",
+      "m20.safety.incident_report_requested",
+      "m25.appeal_packet.render_requested",
+      "m27.artifact.render_requested",
+      "m37.body_release.document_requested",
+      // F-100 — M6's six CoP compliance documents. M6 emits no `*.document_requested`; the M22 spec's own
+      // consumer table routes these SOURCE events here, one template each. All six templates were already
+      // published and six `document_id` columns were already waiting — only the subscription was missing.
+      "m6.election.signed",
+      "m6.cti.signed",
+      "m6.f2f.attested",
+      "m6.nor.acknowledged",
+      "m6.revocation.created",
+      "m6.discharge.created",
     ]);
   });
 

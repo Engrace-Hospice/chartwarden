@@ -194,7 +194,10 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     // for the fixture's non-existent `PATIENT` constant (no `patient` row backs that id in this file).
     // GAP-093 — the gate also checks a real, active membership_credential row now (not just the role);
     // the CredentialReader seam must be registered before ANY gate check runs, same reason as CaseloadProvider.
-    registerPatientSeams({ db: handle.db, caseload: { store: createDrizzleCaseloadStore(handle.db) } });
+    registerPatientSeams({
+      db: handle.db,
+      caseload: { store: createDrizzleCaseloadStore(handle.db) },
+    });
     registerSchedulingSeams({ credentials: { store: createDrizzleCredentialStore(handle.db) } });
     const rnRoleId = (
       await admin.query(
@@ -437,7 +440,9 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       // A membership whose only role ('chaplain') is NOT in routine_visit's accepted set (rn/lpn).
       const suffix = `${Date.now()}-wrongdisc`;
       const user = (
-        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`m17w-${suffix}@x.test`])
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+          `m17w-${suffix}@x.test`,
+        ])
       ).rows[0].id as string;
       wrongDisciplineMember = (
         await admin.query(
@@ -465,7 +470,9 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
         svc.reassignVisit(ORG_A, member, v.id, wrongDisciplineMember),
       ).rejects.toMatchObject({ message: "PRE_SCHEDULE_GATE_FAILED", statusCode: 403 });
       // The assignment must NOT have changed.
-      const { rows } = await admin.query("SELECT assigned_membership_id FROM visit WHERE id=$1", [v.id]);
+      const { rows } = await admin.query("SELECT assigned_membership_id FROM visit WHERE id=$1", [
+        v.id,
+      ]);
       expect(rows[0].assigned_membership_id).toBe(member);
     });
 
@@ -514,7 +521,9 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     it("resolveDisciplines returns [] for a membership with no qualifying role grant (fail-closed)", async () => {
       const suffix = `${Date.now()}-norole`;
       const user = (
-        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`m17w-${suffix}@x.test`])
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+          `m17w-${suffix}@x.test`,
+        ])
       ).rows[0].id as string;
       const membership = (
         await admin.query(
@@ -532,7 +541,9 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
     it("resolveDisciplines returns EVERY held discipline, deterministically ordered", async () => {
       const suffix = `${Date.now()}-multi`;
       const user = (
-        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`m17w-${suffix}@x.test`])
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+          `m17w-${suffix}@x.test`,
+        ])
       ).rows[0].id as string;
       const membership = (
         await admin.query(
@@ -557,13 +568,18 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
           [ORG_A, membership, roleId],
         );
       }
-      await expect(resolver().resolveDisciplines(ORG_A, membership)).resolves.toEqual(["msw", "rn"]);
+      await expect(resolver().resolveDisciplines(ORG_A, membership)).resolves.toEqual([
+        "msw",
+        "rn",
+      ]);
     });
 
     it("resolveDisciplines ignores an EXPIRED role grant (fail-closed)", async () => {
       const suffix = `${Date.now()}`;
       const user = (
-        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`m17w-exp-${suffix}@x.test`])
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+          `m17w-exp-${suffix}@x.test`,
+        ])
       ).rows[0].id as string;
       const membership = (
         await admin.query(
@@ -589,9 +605,8 @@ describe.skipIf(!DB_URL)("M17 scheduling write lifecycle — LIVE Postgres (M17L
       // CaseloadProvider is already registered in the top-level beforeAll (GAP-031 needs it live before
       // the very first gate check runs), so no need to re-register here.
       const { member } = seeded[ORG_A];
-      const [memRow] = (
-        await admin.query(`SELECT user_id FROM membership WHERE id=$1`, [member])
-      ).rows as Array<{ user_id: string }>;
+      const [memRow] = (await admin.query(`SELECT user_id FROM membership WHERE id=$1`, [member]))
+        .rows as Array<{ user_id: string }>;
       const patientId = (
         await admin.query(
           `INSERT INTO patient (organization_id,mrn,legal_first_name,legal_last_name,dob,sex_assigned_at_birth,status)

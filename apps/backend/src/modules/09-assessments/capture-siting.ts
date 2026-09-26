@@ -145,6 +145,14 @@ export interface ResolvedAdmissionAnchor {
 export interface ResolvedCaptureAnchor {
   readonly siting: ResolvedCaptureSiting;
   readonly anchor: ResolvedAdmissionAnchor | null;
+  /**
+   * #44 — set when the seam REFUSED to project the admission (a missing required fact), as opposed
+   * to the admission being absent or another tenant's. Both used to collapse into `anchor: null`,
+   * so the §10 gate reported "Patient's admission is not active" for an admission whose status was
+   * verifiably `active` — telling a clinician something false about the chart and hiding the real
+   * cause. The siting half stays fail-OPEN regardless; only the gate distinguishes them.
+   */
+  readonly projectionGap?: string;
 }
 
 /** Port the route service resolves siting + anchor facts through (seam-backed in prod; injectable). */
@@ -166,6 +174,17 @@ export interface AssessmentSitingResolver {
 }
 
 /**
+ * The seam's own refusal message when it declines to project a row (`AdmissionSeamDataGapError`), or
+ * `undefined` for any other throw. Matched structurally by `name` rather than by importing M6's
+ * error class — M9 may not import M6's internals, and a seam contract is what it publishes.
+ */
+function gapReason(error: unknown): string | undefined {
+  const named = error as { name?: unknown; message?: unknown } | null;
+  if (named?.name !== "AdmissionSeamDataGapError") return undefined;
+  return typeof named.message === "string" ? named.message : "admission projection gap";
+}
+
+/**
  * The production resolver over M6's published `AdmissionStatusReader` seam (lazy `getSeam` per call —
  * boot order safe). See the file header for the exact chain + why `locationId` is always null today.
  */
@@ -174,7 +193,7 @@ export function createSeamAssessmentSitingResolver(): AssessmentSitingResolver {
     organizationId: string,
     patientId: string,
     admissionId: string,
-  ): Promise<AdmissionSummary | null> {
+  ): Promise<{ summary: AdmissionSummary | null; gap?: string }> {
     let summary: AdmissionSummary;
     try {
       const reader = getSeam("AdmissionStatusReader");
@@ -182,16 +201,21 @@ export function createSeamAssessmentSitingResolver(): AssessmentSitingResolver {
       // use the tenant-explicit two-argument contract.
       summary =
         reader.getAdmissionSummary.length < 2
-          ? await (reader.getAdmissionSummary as unknown as (id: string) => Promise<AdmissionSummary>)
-              (admissionId)
+          ? await (
+              reader.getAdmissionSummary as unknown as (id: string) => Promise<AdmissionSummary>
+            )(admissionId)
           : await reader.getAdmissionSummary(organizationId, admissionId);
-    } catch {
-      return null; // seam absent/denying/gapped or admission unknown
+    } catch (error) {
+      // Keep WHY. A projection gap (the store refusing to fabricate a missing fact) is an entirely
+      // different operational problem from an unknown admission, and callers must be able to say so.
+      return { summary: null, gap: gapReason(error) };
     }
     // An admission that is not this org's/patient's is treated as unresolvable — it must never site a
     // row, and (GAP-016) it must never satisfy the anchor gate either.
-    if (summary.organizationId !== organizationId || summary.patientId !== patientId) return null;
-    return summary;
+    if (summary.organizationId !== organizationId || summary.patientId !== patientId) {
+      return { summary: null };
+    }
+    return { summary };
   }
 
   const resolveAnchor: AssessmentSitingResolver["resolveAnchor"] = async (
@@ -199,8 +223,10 @@ export function createSeamAssessmentSitingResolver(): AssessmentSitingResolver {
     patientId,
     admissionId,
   ) => {
-    const summary = await load(organizationId, patientId, admissionId);
-    if (!summary) return { siting: UNSITED_CAPTURE, anchor: null };
+    const { summary, gap } = await load(organizationId, patientId, admissionId);
+    if (!summary) {
+      return { siting: UNSITED_CAPTURE, anchor: null, ...(gap ? { projectionGap: gap } : {}) };
+    }
     return {
       // task-11 — AdmissionSummary carries the admission's location anchor (optional field; honestly
       // null until activation sites the admission).

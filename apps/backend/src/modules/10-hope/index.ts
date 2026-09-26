@@ -209,6 +209,22 @@ export {
 // M10-T06 — the §2.4 outbox contract (the full `m10.hope.*` taxonomy; check-fitness-gaps.ts scans
 // events-by-m10.ts for naming + ownership + declared consumers).
 export { M10_OUTBOX_EVENTS } from "./events-by-m10";
+// #48 — the LIVE `m6.admission.activated` / `m6.admission.discharged` → timepoint-schedule consumer and
+// the write path it shares with the §4.1 route-20 admin regenerate. Nothing wrote `hope_timepoint_schedule`
+// before these, so the whole CMS capture-window model sat on an empty table.
+export {
+  M10_ADMISSION_ACTIVATED_EVENT,
+  M10_ADMISSION_DISCHARGED_EVENT,
+  M10_SCHEDULING_CONSUMER_NAME,
+  buildM10AdmissionSchedulingConsumer,
+} from "./outbox-consumers/m6-admission-scheduling";
+export {
+  HOPE_SCHEDULE_TIME_ZONE,
+  type SchedulingSiting,
+  regenerateSchedulesForAdmission,
+  schedulingSitingFor,
+  writeSchedules,
+} from "./scheduling/schedule-writer";
 // M10-T06 — the §4.8 BullMQ queue catalog + the pure window / SFV watchdog + alert-dispatch scans.
 export {
   type HopeScheduleSnapshot,
@@ -234,15 +250,27 @@ export {
 // M25 precedent) + the platform-tenancy registration their active-org fan-out needs.
 export {
   type ActiveOrgListPort as M10ActiveOrgListPort,
+  type AssembleTickOutcome,
   type HopeOutboxPublishPort,
+  type IqiesAdapterPort,
   type M10WorkerDeps,
   type PlannedM10AlertEmission,
+  type ReconcileTickOutcome,
+  type SubmissionItemValidator,
+  type SubmitTickOutcome,
+  IQIES_BATCHES_PER_TICK,
+  IQIES_SUBMIT_BLOCKED_RULE,
   buildM10WorkerDeps,
   planM10AlertEmissions,
   registerM10CronWorkers,
+  runAssembleSubmissionCron,
   runHopeWindowWatchdogCron,
+  runIqiesReconcileCron,
+  runIqiesSubmitCron,
   runSfvWatchdogCron,
+  runSubmissionJob,
   scheduleM10Jobs,
+  transmitCorrelationId,
 } from "./jobs/cron-workers";
 export { M10_PLATFORM_JOB_ID, wireM10Tenancy } from "./wiring";
 export {
@@ -274,7 +302,32 @@ export {
   planCorrectionRfa,
   planReconcile,
   planTransmitResult,
+  submissionPeriodFor,
 } from "./jobs/submission";
+// F-058 (#150) — the Drizzle read/write half of the AUTOMATED §4.10 stage 1 (restored from the lost
+// Aug 25–30 history). Production `assembleSubmission` uses the manual iQIES package path instead, which
+// writes its own `hope_submission_item` rows; these back only the unscheduled cron-stage runners.
+export {
+  type AssemblableScan,
+  type PersistedSubmission,
+  assemblableAssessmentsForOrg,
+  persistAssembledSubmission,
+  queuedSubmissionCountForOrg,
+} from "./jobs/assemble-store";
+// F-072 (#177) — the Drizzle half of §4.10 stages 2 and 3.
+export {
+  type PickedSubmission,
+  type PickedSubmissionItem,
+  applyItemTransition,
+  claimSubmissionForTransmit,
+  inFlightSubmissionsForOrg,
+  pendingItemsForSubmission,
+  queuedSubmissionsForOrg,
+  recordReconcileOutcome,
+  recordTransmit,
+  releaseSubmission,
+  writeValidationFindings,
+} from "./jobs/submission-store";
 // M10-T08 — the `hope_record` data eraser (§8.4). registerHopeErasers stands the REAL eraser over the
 // Phase-0 deny-stub; invoked from the composition root's wireModuleErasers() before validateErasers(). The
 // pure retention/partition core (earliestErasableInstant / isHopeErasureBlocked / eraseHopeRecord) is unit

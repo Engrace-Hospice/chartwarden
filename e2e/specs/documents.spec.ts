@@ -1,8 +1,13 @@
+import { Buffer } from "node:buffer";
 // e2e/specs/documents.spec.ts — critical workflow 5/6: documents (TEST-001).
 // Live-stack coverage for Patient Documents + Referral Documents. Upload paths intentionally use the
 // real M22 verified upload UI: initiate -> presigned PUT -> complete -> signed URL view/open.
+//
+// The tag test covers the write path #153 was about. `document_tag` had two writers and no reader,
+// so a tag was invisible and undeletable on the next page load — a defect that is INVISIBLE to a
+// test that never reloads. The reload in that test is the assertion, not a formality. Tags need no
+// object store, so that test does not depend on a MinIO deployment the way the upload tests do.
 import { expect, test } from "@playwright/test";
-import { Buffer } from "node:buffer";
 import { ADMIN_ACCOUNT } from "../fixtures/credentials";
 import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
 import { openFirstPatientChart } from "../fixtures/patients";
@@ -34,7 +39,9 @@ test.describe("Documents", () => {
     const row = page.locator("article").filter({ hasText: title });
     await expect(row).toBeVisible();
     await row.getByRole("button", { name: "View" }).click();
-    await expect(page.getByRole("dialog", { name: new RegExp(`View ${escapeRegExp(title)}`) })).toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: new RegExp(`View ${escapeRegExp(title)}`) }),
+    ).toBeVisible();
     await page.getByRole("button", { name: "Close" }).click();
 
     await row.getByRole("button", { name: "History" }).click();
@@ -44,7 +51,9 @@ test.describe("Documents", () => {
     await expect(row.getByText(/PDF .* v2/)).toBeVisible();
   });
 
-  test("main path: upload a referral fax document and view it from referral detail", async ({ page }) => {
+  test("main path: upload a referral fax document and view it from referral detail", async ({
+    page,
+  }) => {
     await signInAs(page, ADMIN_ACCOUNT());
     const referralId = await openFirstReferral(page);
     const title = `E2E Referral packet ${Date.now()}`;
@@ -62,7 +71,45 @@ test.describe("Documents", () => {
     await expect(row).toBeVisible();
     await expect(row.getByText(/Fax/)).toBeVisible();
     await row.getByRole("button", { name: "View" }).click();
-    await expect(page.getByRole("dialog", { name: new RegExp(`View ${escapeRegExp(title)}`) })).toBeVisible();
+    await expect(
+      page.getByRole("dialog", { name: new RegExp(`View ${escapeRegExp(title)}`) }),
+    ).toBeVisible();
+  });
+
+  test("main path: a tag survives the reload that used to erase it (#153/#91)", async ({
+    page,
+  }) => {
+    await signInAs(page, ADMIN_ACCOUNT());
+    // Discovered through the app, never a hardcoded uuid — the explorer row's "Version history" link
+    // is the way in: the version chain was once registered at `/documents/:documentId/versions` and
+    // linked from NOWHERE, so every control it hosts was reachable only by typing a URL.
+    await page.goto("/documents");
+    const rows = page.getByRole("table").getByRole("link", { name: /^Version history for / });
+    await expect.poll(() => rows.count(), { timeout: 10_000 }).toBeGreaterThan(0);
+    await rows.first().click();
+    await page.waitForURL(/\/documents\/[^/]+\/versions$/);
+
+    const key = `e2e-phase-${Date.now()}`;
+    await page.getByRole("button", { name: "Add tag" }).click();
+    // `getByLabel("Key")` is a SUBSTRING match and the form has three fields whose labels contain it
+    // ("Kind", "Key", and the Value field's hint "…key with no value"), so both are pinned by role
+    // and exact name.
+    await page.getByRole("textbox", { name: "Key", exact: true }).fill(key);
+    await page.getByRole("textbox", { name: /^Value/ }).fill("IIA");
+    await page.getByRole("button", { name: "Add tag" }).click();
+    await expect(page.getByText(key)).toBeVisible();
+
+    // THE assertion. Before #153 the tag was written and then invisible to every client forever;
+    // a spec that only checked the optimistic render would have passed against the broken build.
+    await page.reload();
+    await expect(page.getByText(key)).toBeVisible();
+
+    // And removable — by an id that only a read could supply, which is why the DELETE was
+    // unreachable by construction before the reader existed.
+    await page.getByRole("button", { name: `Remove tag ${key}` }).click();
+    await expect(page.getByText(key)).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText(key)).toHaveCount(0);
   });
 
   test("accessibility: the documents list has no WCAG 2A/AA violations", async ({ page }) => {

@@ -67,7 +67,8 @@
  * Run:     bun run db:seed:scenario-billing
  */
 import { Client } from "pg";
-import { findPatientIdByLastName, ScenarioLog, signIn } from "./lib/api-session";
+import { ScenarioLog, findPatientIdByLastName, signIn } from "./lib/api-session";
+import { firstRow } from "./lib/query-rows";
 
 const ADMIN_URL = process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
 const PROVIDER_ENTITY_ID = "44444444-0000-4000-8000-000000000001"; // db:seed:org-structure
@@ -114,7 +115,7 @@ async function grantBillingScope(organizationId: string, membershipId: string): 
   await db.query(
     `INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)
      ON CONFLICT DO NOTHING`,
-    [organizationId, membershipId, role.rows[0].id],
+    [organizationId, membershipId, firstRow(role, "seed-scenario-billing: role lookup").id],
   );
   await db.end();
 }
@@ -176,10 +177,19 @@ async function wipePriorBilling(patientId: string, organizationId: string): Prom
   await db.query("SET session_replication_role = replica");
 
   // M23 — claim + children (partitioned; DELETE on the parent reaches whichever partition holds it).
-  const claims = await db.query<{ id: string }>("SELECT id FROM claim WHERE patient_id = $1", [patientId]);
+  const claims = await db.query<{ id: string }>("SELECT id FROM claim WHERE patient_id = $1", [
+    patientId,
+  ]);
   const claimIds = claims.rows.map((r) => r.id);
   if (claimIds.length) {
-    for (const t of ["claim_line", "claim_state_history", "validation_run", "validation_result", "claim_acknowledgment", "claim_submission"]) {
+    for (const t of [
+      "claim_line",
+      "claim_state_history",
+      "validation_run",
+      "validation_result",
+      "claim_acknowledgment",
+      "claim_submission",
+    ]) {
       await db.query(`DELETE FROM ${t} WHERE claim_id = ANY($1)`, [claimIds]);
     }
     await db.query("DELETE FROM claim WHERE id = ANY($1)", [claimIds]);
@@ -246,7 +256,9 @@ async function wipePriorBilling(patientId: string, organizationId: string): Prom
       "trial_balance_import",
       "wage_data_import",
     ]) {
-      await db.query(`DELETE FROM ${t} WHERE cost_report_id = ANY($1)`, [reportIds]).catch(() => {});
+      await db
+        .query(`DELETE FROM ${t} WHERE cost_report_id = ANY($1)`, [reportIds])
+        .catch(() => {});
     }
     await db.query("DELETE FROM cost_report WHERE id = ANY($1)", [reportIds]);
   }
@@ -262,16 +274,19 @@ async function main(): Promise<void> {
   const cert = await admin.client.GET("/api/v1/patients/{patientId}/election-certification", {
     params: { path: { patientId } },
   });
-  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)?.admission
-    ?.id;
-  if (!admissionId) throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
+  const admissionId = (cert.data as unknown as { admission?: { id?: string } } | undefined)
+    ?.admission?.id;
+  if (!admissionId)
+    throw new Error("Whitfield has no admission — run db:seed:scenario-admissions first");
 
   console.log("wiping any prior billing data for a clean re-run...");
   await wipePriorBilling(patientId, admin.organizationId);
 
   const authCtx = await admin.client.GET("/api/v1/auth/context", {});
-  const membershipId = (authCtx.data as unknown as { membershipId?: string } | undefined)?.membershipId;
-  if (!membershipId) throw new Error("could not resolve orgadmin's membershipId from /auth/context");
+  const membershipId = (authCtx.data as unknown as { membershipId?: string } | undefined)
+    ?.membershipId;
+  if (!membershipId)
+    throw new Error("could not resolve orgadmin's membershipId from /auth/context");
   await grantBillingScope(admin.organizationId, membershipId);
 
   // Whitfield's M6 level-of-care period starts the day the admission scenario script ran (today), not
@@ -290,18 +305,23 @@ async function main(): Promise<void> {
     await seedMedicaidCoverage(admin.organizationId, PROVIDER_ENTITY_ID, patientId);
 
     await stepUpSession(admin.userId);
-    const credential = await admin.client.POST("/api/v1/state-medicaid-trading-partner-credentials", {
-      headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {
-        providerEntityId: PROVIDER_ENTITY_ID,
-        serviceState: "OR",
-        channel: "direct_mmis",
-        tradingPartnerId: "OHP-DEV-TP-0001",
-        activeFrom: serviceFrom,
+    const credential = await admin.client.POST(
+      "/api/v1/state-medicaid-trading-partner-credentials",
+      {
+        headers: { "Idempotency-Key": crypto.randomUUID() },
+        body: {
+          providerEntityId: PROVIDER_ENTITY_ID,
+          serviceState: "OR",
+          channel: "direct_mmis",
+          tradingPartnerId: "OHP-DEV-TP-0001",
+          activeFrom: serviceFrom,
+        },
       },
-    });
+    );
     if (credential.error)
-      throw new Error(`trading-partner credential upsert failed: ${JSON.stringify(credential.error)}`);
+      throw new Error(
+        `trading-partner credential upsert failed: ${JSON.stringify(credential.error)}`,
+      );
 
     const claim = await admin.client.POST("/api/v1/medicaid-claims", {
       headers: { "Idempotency-Key": crypto.randomUUID() },
@@ -315,12 +335,12 @@ async function main(): Promise<void> {
       },
     });
     const claimData = claim.data as unknown as { id: string; version: number } | undefined;
-    if (claim.error || !claimData) throw new Error(`medicaid claim assemble failed: ${JSON.stringify(claim.error)}`);
+    if (claim.error || !claimData)
+      throw new Error(`medicaid claim assemble failed: ${JSON.stringify(claim.error)}`);
 
     const validate = await admin.client.POST("/api/v1/medicaid-claims/{id}/validate", {
       params: { path: { id: claimData.id } },
       headers: { "Idempotency-Key": crypto.randomUUID(), "If-Match": String(claimData.version) },
-      body: {},
     });
     const validateData = validate.data as unknown as { version: number } | undefined;
     if (validate.error || !validateData)
@@ -332,7 +352,8 @@ async function main(): Promise<void> {
       headers: { "Idempotency-Key": crypto.randomUUID(), "If-Match": String(validateData.version) },
       body: { channelHint: "direct_mmis" },
     });
-    if (submit.error) throw new Error(`medicaid claim submit failed: ${JSON.stringify(submit.error)}`);
+    if (submit.error)
+      throw new Error(`medicaid claim submit failed: ${JSON.stringify(submit.error)}`);
 
     log.ok("Medicaid (M24): 1 claim assembled, validated, and submitted (Oregon adapter)");
   } catch (err) {
@@ -340,31 +361,41 @@ async function main(): Promise<void> {
   }
 
   // ── M25 — Remittance/Denials: SKIPPED, no API-reachable creation route (see file header) ───────────
-  log.dup("Remittance/Denials (M25): skipped — no reachable creation route (systemPrincipal is a dead field)");
+  log.dup(
+    "Remittance/Denials (M25): skipped — no reachable creation route (systemPrincipal is a dead field)",
+  );
 
   // ── M26 — Cap Management (publish constant → open period → recompute) ──────────────────────────────
   try {
     const publish = await admin.client.POST("/api/v1/platform/cap/constants", {
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: { capYear: CAP_YEAR, aggregateCapAmountCents: 3_400_000_00, sourceUrl: "https://www.cms.gov/" },
+      body: {
+        capYear: CAP_YEAR,
+        aggregateCapAmountCents: 3_400_000_00,
+        sourceUrl: "https://www.cms.gov/",
+      },
     });
-    if (publish.error) throw new Error(`publish cap constant failed: ${JSON.stringify(publish.error)}`);
+    if (publish.error)
+      throw new Error(`publish cap constant failed: ${JSON.stringify(publish.error)}`);
 
     const period = await admin.client.POST("/api/v1/cap/periods", {
       headers: { "Idempotency-Key": crypto.randomUUID() },
       body: { capYear: CAP_YEAR },
     });
     const periodData = period.data as unknown as { id: string } | undefined;
-    if (period.error || !periodData) throw new Error(`open cap period failed: ${JSON.stringify(period.error)}`);
+    if (period.error || !periodData)
+      throw new Error(`open cap period failed: ${JSON.stringify(period.error)}`);
 
     const recompute = await admin.client.POST("/api/v1/cap/projections/{periodId}/recompute", {
       params: { path: { periodId: periodData.id } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
-    if (recompute.error) throw new Error(`cap recompute failed: ${JSON.stringify(recompute.error)}`);
+    if (recompute.error)
+      throw new Error(`cap recompute failed: ${JSON.stringify(recompute.error)}`);
 
-    log.ok(`Cap Management (M26): ${CAP_YEAR} constant published, period opened, projection recomputed`);
+    log.ok(
+      `Cap Management (M26): ${CAP_YEAR} constant published, period opened, projection recomputed`,
+    );
   } catch (err) {
     log.fail(`M26 Cap Management: ${String(err)}`);
   }
@@ -376,23 +407,26 @@ async function main(): Promise<void> {
 
     const report = await admin.client.POST("/api/v1/cost-reports", {
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: { providerEntityId: PROVIDER_ENTITY_ID, fiscalYearStartDate: fyStart, fiscalYearEndDate: fyEnd },
+      body: {
+        providerEntityId: PROVIDER_ENTITY_ID,
+        fiscalYearStartDate: fyStart,
+        fiscalYearEndDate: fyEnd,
+      },
     });
     const reportData = report.data as unknown as { costReportId: string } | undefined;
-    if (report.error || !reportData) throw new Error(`cost report create failed: ${JSON.stringify(report.error)}`);
+    if (report.error || !reportData)
+      throw new Error(`cost report create failed: ${JSON.stringify(report.error)}`);
     const id = reportData.costReportId;
 
     const refresh = await admin.client.POST("/api/v1/cost-reports/{id}/refresh-inputs", {
       params: { path: { id } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
     if (refresh.error) throw new Error(`refresh-inputs failed: ${JSON.stringify(refresh.error)}`);
 
     const allocate = await admin.client.POST("/api/v1/cost-reports/{id}/allocate", {
       params: { path: { id } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
     if (allocate.error) throw new Error(`allocate failed: ${JSON.stringify(allocate.error)}`);
 
@@ -403,7 +437,8 @@ async function main(): Promise<void> {
       params: { path: { id, code: "S" } },
     });
     const wsData = ws.data as unknown as { data: unknown } | undefined;
-    if (ws.error || !wsData) throw new Error(`worksheet S read failed: ${JSON.stringify(ws.error)}`);
+    if (ws.error || !wsData)
+      throw new Error(`worksheet S read failed: ${JSON.stringify(ws.error)}`);
     const putWs = await admin.client.PUT("/api/v1/cost-reports/{id}/worksheets/{code}", {
       params: { path: { id, code: "S" } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
@@ -414,16 +449,15 @@ async function main(): Promise<void> {
     const stats = await admin.client.POST("/api/v1/cost-reports/{id}/statistics/refresh", {
       params: { path: { id } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
     if (stats.error) throw new Error(`statistics refresh failed: ${JSON.stringify(stats.error)}`);
 
     const validate = await admin.client.POST("/api/v1/cost-reports/{id}/validate", {
       params: { path: { id } },
       headers: { "Idempotency-Key": crypto.randomUUID() },
-      body: {},
     });
-    if (validate.error) throw new Error(`validate-trigger failed: ${JSON.stringify(validate.error)}`);
+    if (validate.error)
+      throw new Error(`validate-trigger failed: ${JSON.stringify(validate.error)}`);
 
     log.ok(
       "Cost Report (M27): created, inputs refreshed, allocated, worksheet S round-tripped, statistics refreshed, validation triggered (stays 'validating' — no live worker, see file header)",

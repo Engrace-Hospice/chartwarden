@@ -9,6 +9,8 @@ import { describe, expect, it } from "vitest";
 import {
   type AdmissionDischargedPayload,
   type HopeJ2051TriggerPayload,
+  M11_DOCUMENT_BACKREF_CONSUMER,
+  M11_IDG_DECISION_CONSUMER,
   M11_OUTBOX_EVENTS,
   M11_OUTBOX_SUBSCRIPTIONS,
   type SignificantChangePayload,
@@ -62,8 +64,11 @@ describe("M11 outbox event contract (§4.4)", () => {
   it("`m11.order.signed` fans out to the clinical-record + interop subscriber set (§4.4)", () => {
     const signed = M11_OUTBOX_EVENTS.find((e) => e.eventName === "m11.order.signed");
     expect(signed?.declaredConsumers).toEqual(
-      expect.arrayContaining(["m21", "m22", "m28", "m29", "m30", "m33"]),
+      expect.arrayContaining(["m21", "m22", "m28", "m29", "m30"]),
     );
+    // M33's reporting intake is a pull over `report_mv.*` — recorded, but not an outbox subscription
+    // (#103).
+    expect(signed?.seamConsumers).toContain("m33");
   });
 
   it("`m11.order.recertification_signed` reaches M6 for the CTI handshake (W-RC-01)", () => {
@@ -130,7 +135,7 @@ describe("M11 outbox event contract (§4.4)", () => {
 // ── §4.5 subscription bindings ──────────────────────────────────────────────────────────────────────────
 
 describe("M11 outbox subscriptions (§4.5)", () => {
-  it("binds the three Wave-E events and the live M14 IDG intake", () => {
+  it("binds the three Wave-E events, the live M14 IDG intake, and the live M22 back-ref", () => {
     expect(M11_OUTBOX_SUBSCRIPTIONS).toEqual([
       {
         eventName: "m6.admission.discharged",
@@ -139,7 +144,20 @@ describe("M11 outbox subscriptions (§4.5)", () => {
       { eventName: "m9.assessment.significant_change", consumerName: "m11.assessment-trigger" },
       { eventName: "m10.hope.j2051_trigger_fired", consumerName: "m11.hope-trigger" },
       { eventName: "idg.decision_recorded", consumerName: "m11.idg-decision-intake" },
+      { eventName: "m22.document.rendered", consumerName: "m11.document-backref" },
     ]);
+  });
+
+  it("names every event M11 actually BINDS — the property pinning the list verbatim does not give you", () => {
+    // F-095. This list is documented as the shared source of truth for M11's consumer wiring, and the
+    // assertion above — the only one it had — pins its contents without ever asking whether they are
+    // true of anything. `m22.document.rendered` was bound live in `outbox-consumers/m22-document-rendered.ts`
+    // and absent from the list for the whole of that binding's life, and the verbatim assertion passed
+    // throughout, because a list and a copy of the same list always agree. Reading the consumer names
+    // off the bindings is what makes the two halves able to disagree.
+    const bound = [M11_DOCUMENT_BACKREF_CONSUMER, M11_IDG_DECISION_CONSUMER];
+    const listed = new Set(M11_OUTBOX_SUBSCRIPTIONS.map((s) => s.eventName));
+    for (const consumer of bound) expect(listed).toContain(consumer.eventName);
   });
 });
 
@@ -155,18 +173,16 @@ describe("decideDischargeCascade (M6 discharge consumer, §2.6 / W-DC-02)", () =
   it("discontinues every in-flight order (pending/verbal/active) with system actor + reason", () => {
     const action = decideDischargeCascade(dischargePayload(), {
       ordersOnAdmission: [
-        { orderId: "o1", status: "active", kind: "lab", supplyFulfillmentInFlight: false },
+        { orderId: "o1", status: "active", kind: "lab" },
         {
           orderId: "o2",
           status: "verbal_pending",
           kind: "comfort_kit",
-          supplyFulfillmentInFlight: false,
         },
         {
           orderId: "o3",
           status: "pending_signature",
           kind: "dme",
-          supplyFulfillmentInFlight: false,
         },
       ],
     });
@@ -182,41 +198,48 @@ describe("decideDischargeCascade (M6 discharge consumer, §2.6 / W-DC-02)", () =
   it("leaves terminal orders untouched (completed / discontinued / expired_unsigned / draft)", () => {
     const action = decideDischargeCascade(dischargePayload(), {
       ordersOnAdmission: [
-        { orderId: "o1", status: "completed", kind: "lab", supplyFulfillmentInFlight: false },
-        { orderId: "o2", status: "discontinued", kind: "dme", supplyFulfillmentInFlight: false },
+        { orderId: "o1", status: "completed", kind: "lab" },
+        { orderId: "o2", status: "discontinued", kind: "dme" },
         {
           orderId: "o3",
           status: "expired_unsigned",
           kind: "comfort_kit",
-          supplyFulfillmentInFlight: false,
         },
-        { orderId: "o4", status: "draft", kind: "supply", supplyFulfillmentInFlight: false },
-        { orderId: "o5", status: "active", kind: "lab", supplyFulfillmentInFlight: false },
+        { orderId: "o4", status: "draft", kind: "supply" },
+        { orderId: "o5", status: "active", kind: "lab" },
       ],
     });
     expect(action.discontinuations.map((d) => d.orderId)).toEqual(["o5"]);
     expect(action.skippedCount).toBe(4);
   });
 
-  it("flags supply cancellation only for supply-kind orders with in-flight fulfillment (§2.6)", () => {
+  // F-102 — this case used to assert `dme + in-flight → true`, `comfort_kit + not-in-flight → false`.
+  // The second half was the bug: M11 holds no supply-request reference and the seam that answers
+  // "in flight?" takes an id M11 never sees, so the live consumer could only ever have passed `false` and
+  // M21 would never have been told about ANY of them. M21's own decider returns `no_match` (emitting
+  // nothing) for an order with no request, so asking about every supply-kind order is the cheap direction
+  // and not asking is the one that leaves a vendor order standing on a discharged patient.
+  it("flags supply cancellation for every supply kind — M21 decides whether anything is open (§2.6)", () => {
     const action = decideDischargeCascade(dischargePayload(), {
       ordersOnAdmission: [
-        { orderId: "o1", status: "active", kind: "dme", supplyFulfillmentInFlight: true },
-        { orderId: "o2", status: "active", kind: "comfort_kit", supplyFulfillmentInFlight: false },
-        { orderId: "o3", status: "active", kind: "lab", supplyFulfillmentInFlight: true },
+        { orderId: "o1", status: "active", kind: "dme" },
+        { orderId: "o2", status: "active", kind: "comfort_kit" },
+        { orderId: "o3", status: "active", kind: "supply" },
+        { orderId: "o4", status: "active", kind: "lab" },
       ],
     });
     const byId = Object.fromEntries(action.discontinuations.map((d) => [d.orderId, d]));
-    expect(byId.o1?.emitSupplyCancellation).toBe(true); // dme + in-flight
-    expect(byId.o2?.emitSupplyCancellation).toBe(false); // supply kind but not in-flight
-    expect(byId.o3?.emitSupplyCancellation).toBe(false); // in-flight but not a supply kind
+    expect(byId.o1?.emitSupplyCancellation).toBe(true);
+    expect(byId.o2?.emitSupplyCancellation).toBe(true);
+    expect(byId.o3?.emitSupplyCancellation).toBe(true);
+    expect(byId.o4?.emitSupplyCancellation).toBe(false); // not a supply kind
   });
 
   it("is idempotent — a redelivery after the cascade ran sees all orders terminal and discontinues none", () => {
     const action = decideDischargeCascade(dischargePayload(), {
       ordersOnAdmission: [
-        { orderId: "o1", status: "discontinued", kind: "lab", supplyFulfillmentInFlight: false },
-        { orderId: "o2", status: "discontinued", kind: "dme", supplyFulfillmentInFlight: false },
+        { orderId: "o1", status: "discontinued", kind: "lab" },
+        { orderId: "o2", status: "discontinued", kind: "dme" },
       ],
     });
     expect(action.discontinuations).toHaveLength(0);

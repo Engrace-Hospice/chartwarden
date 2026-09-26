@@ -35,7 +35,12 @@
 // Registration is idempotent: the shared registry is single-owner / no-clear, so re-boot (tests) is
 // idempotent via `registerPredicateIdempotent`.
 import { ASSESSMENT_DISCIPLINES, anyDisciplineCanRecordScale } from "@wardenx/assessments";
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  hasOrgWideScope,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import type { ScaleType } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
 import type { AssessmentAbacResolver } from "./routes/service";
@@ -59,23 +64,26 @@ export const M9_ABAC_PREDICATES = [
 const COSIGN_ELIGIBLE_DISCIPLINES = ["rn", "rn_case_manager", "clinical_supervisor"] as const;
 
 /** Roles that read/scope any patient's assessments without caseload (mirrors M7/M8's `caseload_or_scope`). */
-const ORG_WIDE_SCOPE_ROLES = ["medical_director", "compliance_officer", "survey_coordinator"] as const;
-
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
 const targetStr = (target: AbacTarget, field: string): string | null => {
   const value = target[field];
   return typeof value === "string" && value.length > 0 ? value : null;
 };
 
-/** Assemble the actor's discipline set from session roles/attributes (never client input). */
+/**
+ * Assemble the actor's discipline set from the session role keys (never client input).
+ *
+ * Derived from the ROLE KEYS M2 assembled onto the request context. It USED to union in an
+ * `attributes.disciplines` array first; nothing in the platform has ever written that key, so the union was
+ * with the empty set on every request ever served, and the role arm has been the whole answer all along
+ * (F-030). See `07-care-plan/abac-predicates.ts` for the full argument.
+ */
 export function disciplinesOf(context: AbacContext): readonly string[] {
-  const fromAttributes = Array.isArray(context.attributes.disciplines)
-    ? context.attributes.disciplines.filter((x): x is string => typeof x === "string")
-    : [];
-  const fromRoles = context.roles.filter((r) =>
-    (ASSESSMENT_DISCIPLINES as readonly string[]).includes(r),
-  );
-  return [...new Set([...fromAttributes, ...fromRoles])];
+  return [
+    ...new Set(
+      context.roles.filter((r) => (ASSESSMENT_DISCIPLINES as readonly string[]).includes(r)),
+    ),
+  ];
 }
 
 /** Whether the actor holds a cosign-eligible role/discipline (RN / RN Case Manager / Clinical Supervisor). */
@@ -114,9 +122,13 @@ export function buildAssessmentAbacPredicates(
   const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
 
   const caseloadOrScopeFor = async (context: AbacContext, patientId: string): Promise<boolean> => {
-    if (ORG_WIDE_SCOPE_ROLES.some((r) => hasRole(context, r))) return true;
+    if (hasOrgWideScope(context.roles)) return true;
     if (!context.userId) return false;
-    return isInCaseload({ organizationId: context.organizationId, userId: context.userId, patientId });
+    return isInCaseload({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      patientId,
+    });
   };
 
   return {

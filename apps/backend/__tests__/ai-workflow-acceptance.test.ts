@@ -1102,7 +1102,6 @@ describe("W9 — a Phase-1 deny-stub returns `unavailable` (§7.W9)", () => {
       documentType: "face_sheet",
       schemaKey: "intake.face_sheet.v1",
       extractedText: "…",
-      pageCount: 2,
     });
 
     // W9.1/W9.2 — gate 1 refuses, and absence reaches M22 as a VALUE it can branch on.

@@ -17,20 +17,9 @@ type Props = {
   errors?: Record<string, string>;
 };
 
-export function CanonicalOrderFields({
-  kind,
-  value,
-  onChange,
-  errors = {},
-}: Props): JSX.Element {
-  const set = (key: string, next: unknown) =>
-    onChange({ ...value, [key]: next });
-  const text = (
-    key: string,
-    label: string,
-    required = false,
-    placeholder?: string,
-  ) => (
+export function CanonicalOrderFields({ kind, value, onChange, errors = {} }: Props): JSX.Element {
+  const set = (key: string, next: unknown) => onChange({ ...value, [key]: next });
+  const text = (key: string, label: string, required = false, placeholder?: string) => (
     <Field label={label} error={errors[key]} required={required}>
       <input
         aria-invalid={Boolean(errors[key])}
@@ -106,9 +95,7 @@ export function CanonicalOrderFields({
           />
           <span>
             <strong>Fasting required</strong>
-            <small style={help}>
-              Check only when the patient must fast before collection.
-            </small>
+            <small style={help}>Check only when the patient must fast before collection.</small>
           </span>
         </label>
       </ClinicalSection>
@@ -152,10 +139,7 @@ export function CanonicalOrderFields({
             type="datetime-local"
             value={local(value.effectiveAt)}
             onChange={(e) =>
-              set(
-                "effectiveAt",
-                e.target.value ? new Date(e.target.value).toISOString() : "",
-              )
+              set("effectiveAt", e.target.value ? new Date(e.target.value).toISOString() : "")
             }
             style={control}
           />
@@ -229,9 +213,8 @@ export function CanonicalOrderFields({
     <div style={fallbackBox}>
       <strong>{transitionalKindName(kind)} contract not published</strong>
       <p style={{ margin: ".35rem 0 0" }}>
-        This order kind has no published M11 field-level payload contract yet,
-        so no typed clinical controls are shown. Existing payload data is
-        preserved when editing a draft or correction.
+        This order kind has no published M11 field-level payload contract yet, so no typed clinical
+        controls are shown. Existing payload data is preserved when editing a draft or correction.
       </p>
     </div>
   );
@@ -278,19 +261,25 @@ function Field({
   required?: boolean;
   children: ReactNode;
 }): JSX.Element {
+  // The alert sits beside the <label>, not inside it: a live region may not live inside an
+  // interactive element, and it would otherwise be folded into the control's accessible name. Both
+  // wrappers use the same grid so the stacked layout is unchanged.
   return (
-    <label style={field}>
-      <span>
-        {label}
-        {required ? <span aria-hidden="true"> *</span> : null}
-      </span>
-      {children}
+    <div style={field}>
+      {/* biome-ignore lint/a11y/noLabelWithoutControl: the control arrives through `children` (every caller passes an <input>/<select>/<textarea>), so the implicit label association holds; the rule cannot see through the slot. */}
+      <label style={field}>
+        <span>
+          {label}
+          {required ? <span aria-hidden="true"> *</span> : null}
+        </span>
+        {children}
+      </label>
       {error ? (
-        <small role="alert" style={errorText}>
+        <span role="alert" style={errorText}>
           {error}
-        </small>
+        </span>
       ) : null}
-    </label>
+    </div>
   );
 }
 
@@ -347,6 +336,8 @@ const help = {
   fontWeight: 400,
 } as const;
 const errorText = {
+  // Was a <small>; keep its UA size (biome maps <small> as interactive and rejects role="alert").
+  fontSize: "smaller",
   color: "var(--color-error)",
   fontWeight: 500,
 } as const;

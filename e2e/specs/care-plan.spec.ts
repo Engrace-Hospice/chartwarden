@@ -3,8 +3,9 @@
 // These scenarios run against the real app/backend when seeded IDs are supplied. They are skipped by
 // default rather than faking clinical lifecycle state in the browser.
 import { expect, test } from "@playwright/test";
-import { ADMIN_ACCOUNT } from "../fixtures/credentials";
-import { signInAs } from "../fixtures/helpers";
+import { ADMIN_ACCOUNT, RN_ACCOUNT } from "../fixtures/credentials";
+import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
+import { openPatientChartByLastName } from "../fixtures/patients";
 
 const patientId = process.env.E2E_CARE_PLAN_PATIENT_ID;
 const idgPatientId = process.env.E2E_CARE_PLAN_IDG_PATIENT_ID;
@@ -71,5 +72,25 @@ test.describe("Care Plan workspace", () => {
         "These changes are proposed until the governed review version is signed and published.",
       ),
     ).toBeVisible();
+  });
+});
+
+// #190 (F-077) — the axe scan over the Care Plan workspace. Runs against the seeded demo patient (no env
+// needed), so it always executes: the signer/quorum text it guards (`successPillFg` rather than
+// `t.success` for small success text on a white card) failed WCAG AA at 4.33:1 before the fix.
+//
+// NOT ported from the lost spec: its two-login §418.56 quorum main path (RN signs → plan stays inactive
+// → physician signs → activates) drove the pre-redesign footer ceremony labels ("Start IDG review",
+// "Close draft for signature", "Signing as"), none of which exist in this workspace. The quorum rule
+// itself is still asserted server-side; re-drive it here against the redesigned Revision / Review tab.
+test.describe("Care Plan accessibility", () => {
+  test("the care plan view is accessible (WCAG 2.1 A/AA)", async ({ page }) => {
+    await signInAs(page, RN_ACCOUNT());
+    const seededPatientId = await openPatientChartByLastName(page, "Whitfield");
+    await page.goto(`/patients/${seededPatientId}/care-plan`);
+    await expect(page.getByRole("tablist", { name: "Care Plan workspace views" })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expectNoAxeViolations(page);
   });
 });

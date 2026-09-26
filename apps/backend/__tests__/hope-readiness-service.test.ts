@@ -216,9 +216,9 @@ describe("HOPE Admission readiness SFV review state", () => {
     expect(plan?.answered.get("J2052A")).toBe("1");
     expect(plan?.answered.get("J2052B")).toBe("2026-09-09");
     expect(plan?.skipped.has("J2052C")).toBe(true);
-    expect([...Array(8)].every((_, i) => plan?.answered.has(`J2053${String.fromCharCode(65 + i)}`))).toBe(
-      true,
-    );
+    expect(
+      [...Array(8)].every((_, i) => plan?.answered.has(`J2053${String.fromCharCode(65 + i)}`)),
+    ).toBe(true);
   });
 
   it("does not fabricate missing J2053 values for legacy completed SFVs", () => {

@@ -590,8 +590,12 @@ export const M20_EVENT_IDEMPOTENCY_KEYS = {
  * M36 actually emits is `m36.notification.delivery_failed` — the same correction M19-T01 made.
  *
  * SHIFT READ: §3.1's consumer file is named for `m19.on_call_shift.opened` / `.closed`. M19-F12 retired
- * that pair; the canonical topics M19 actually emits are `m19.oncall_shift.activated` / `.completed`,
- * and those are what the after-hours parallel-recipient set re-syncs on.
+ * that pair and the canonical topics are `m19.oncall_shift.activated` / `.completed` — but F-094/#205
+ * removed BOTH from this list rather than correcting the name, because `consumers/index.ts` has always
+ * said there is nothing to consume: they were the re-sync trigger for a CACHED on-call resolution and M20
+ * caches none (the D14 union is resolved live at fan-out, since a cached roster is a 3 a.m. staleness
+ * bug). #204 dropped `m20` from the `activated` entry's `declaredConsumers` for the same reason, so
+ * neither event routes here and neither ever will.
  */
 export const M20_SUBSCRIBED_EVENT_NAMES = [
   "m17.visit.published",
@@ -601,8 +605,9 @@ export const M20_SUBSCRIBED_EVENT_NAMES = [
   "m18.evv.check_in_recorded",
   "m18.evv.check_out_recorded",
   "m18.evv.gps_spoof_suspected",
-  "m19.oncall_shift.activated",
-  "m19.oncall_shift.completed",
+  // Subscribed and NOT routed here — both registered in `scripts/outbox-subscription-exceptions.ts`.
+  // `m5.patient.deceased` and the M36 trigger are M20-T06's, which is why `consumers/index.ts` lists
+  // them as out of scope for the M17/M18 binding #204 landed.
   "m36.notification.delivery_failed",
   "m5.patient.deceased",
 ] as const;

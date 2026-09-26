@@ -78,6 +78,7 @@ export {
   type RecurringPolicyView,
   type MeetingScheduleView,
   type RecordedIdgEvent,
+  type IdgBackendInspect,
   createInMemoryIdgBackend,
 } from "./routes/service";
 // M14-T06 — the §4.4 outbox contract (the full `m14.*` taxonomy + the canonical `idg.decision_recorded`
@@ -90,8 +91,10 @@ export { M14_OUTBOX_EVENTS } from "./events-by-m14";
 // auto-close planner + the event → consumer binding registry; consumed event names are string literals
 // (no dependsOn edge).
 export {
+  M14_AUTO_CLOSE_CONSUMER,
   M14_AUTO_CLOSE_LINKED_KIND,
   M14_OUTBOX_SUBSCRIPTIONS,
+  buildM14ActionItemAutoCloseConsumer,
   planActionItemAutoClose,
 } from "./consumers/index";
 // M14-T06 — the §4.10 M36 typed alert payloads M14 OWNS (packet-ready / action-item assigned + carry-forward

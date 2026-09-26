@@ -53,37 +53,37 @@ export function SchedulingDay(): JSX.Element {
     <>
       <WorkQueueLayout
         header={
-        <PageHeader title="Day View" breadcrumb="Scheduling">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Scheduled visits for {date}
-            {membership ? `, scoped to clinician ${membership.slice(0, 8)}` : ""}.
-          </div>
-        </PageHeader>
-      }
+          <PageHeader title="Day View" breadcrumb="Scheduling">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Scheduled visits for {date}
+              {membership ? `, scoped to clinician ${membership.slice(0, 8)}` : ""}.
+            </div>
+          </PageHeader>
+        }
         filters={
-        <div style={filterShellStyle}>
-          <SchedulingNav onNewVisit={() => setCreating(true)} />
-        </div>
-      }
+          <div style={filterShellStyle}>
+            <SchedulingNav onNewVisit={() => setCreating(true)} />
+          </div>
+        }
         table={
-        error ? (
-          <div style={emptyShellStyle}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading && visits.length === 0 ? (
-          <div style={loadingShellStyle}>
-            <LoadingSpinner />
-          </div>
-        ) : sorted.length === 0 ? (
-          <div style={emptyShellStyle}>
-            <EmptyState title="No visits" description="No visits are scheduled for this day." />
-          </div>
-        ) : (
-          <div style={tableShellStyle}>
-            <VisitRows visits={sorted} onSelect={(id) => navigate(`/scheduling/visits/${id}`)} />
-          </div>
-        )
-      }
+          error ? (
+            <div style={emptyShellStyle}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : loading && visits.length === 0 ? (
+            <div style={loadingShellStyle}>
+              <LoadingSpinner />
+            </div>
+          ) : sorted.length === 0 ? (
+            <div style={emptyShellStyle}>
+              <EmptyState title="No visits" description="No visits are scheduled for this day." />
+            </div>
+          ) : (
+            <div style={tableShellStyle}>
+              <VisitRows visits={sorted} onSelect={(id) => navigate(`/scheduling/visits/${id}`)} />
+            </div>
+          )
+        }
         fullPageScroll
       />
       <NewVisitModal

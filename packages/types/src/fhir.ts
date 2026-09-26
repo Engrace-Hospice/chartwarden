@@ -273,7 +273,7 @@ export type FhirClientServePosture =
 
 // ── §3.5–§3.7 owned-table descriptors (the arguments M28-T02 passes to the M4 generators) ─────────────
 
-/** The eight tables `architecture/module-manifest.ts` gives M28. */
+/** The nine tables `architecture/module-manifest.ts` gives M28. */
 export type M28TableName =
   | "fhir_bulk_export_artifact"
   | "fhir_bulk_export_job"
@@ -282,9 +282,10 @@ export type M28TableName =
   | "fhir_client_credential"
   | "fhir_client_session"
   | "fhir_inbound_resource"
+  | "fhir_read_disclosure"
   | "tenant_fhir_config";
 
-/** The same eight as a runtime list (the M4 trigger loop and the §8.1 RLS proof both iterate it). */
+/** The same nine as a runtime list (the M4 trigger loop and the §8.1 RLS proof both iterate it). */
 export const M28_TABLE_NAMES = [
   "fhir_bulk_export_artifact",
   "fhir_bulk_export_job",
@@ -293,6 +294,7 @@ export const M28_TABLE_NAMES = [
   "fhir_client_credential",
   "fhir_client_session",
   "fhir_inbound_resource",
+  "fhir_read_disclosure",
   "tenant_fhir_config",
 ] as const satisfies readonly M28TableName[];
 
@@ -314,6 +316,7 @@ export const M28_TABLE_TENANCY: { readonly [K in M28TableName]: M28TableTenancy 
   fhir_client_credential: "tenant_scoped",
   fhir_client_session: "tenant_scoped",
   fhir_inbound_resource: "tenant_scoped",
+  fhir_read_disclosure: "tenant_scoped",
   tenant_fhir_config: "tenant_scoped",
 };
 
@@ -334,6 +337,9 @@ export const M28_AUDIT_DENYLIST: { readonly [K in M28TableName]: readonly string
   fhir_client_credential: ["secret_cipher", "secret_digest_sha256"],
   fhir_client_session: [],
   fhir_inbound_resource: ["payload"],
+  // Nothing. The disclosure ledger holds no secret and no payload — only who read what, about whom, and
+  // when — and every one of those columns is exactly what a §164.528 accounting reads back.
+  fhir_read_disclosure: [],
   tenant_fhir_config: ["cursor_signing_key_cipher"],
 };
 
@@ -357,6 +363,10 @@ export const M28_AUDIT_RETENTION_CLASS: {
   fhir_client_credential: "compliance",
   fhir_client_session: "operational",
   fhir_inbound_resource: "compliance",
+  // The §164.528 accounting itself: six years (§164.530(j)), never purged. Its sibling
+  // `fhir_client_session` is `operational` precisely because it is the OTHER half — the credential
+  // ledger, which holds no disclosure and can age out at 90 days.
+  fhir_read_disclosure: "compliance",
   tenant_fhir_config: "compliance",
 };
 
@@ -371,6 +381,7 @@ export const M28_CIPHER_COLUMNS: { readonly [K in M28TableName]: readonly string
   fhir_client_credential: ["secret_cipher"],
   fhir_client_session: [],
   fhir_inbound_resource: [],
+  fhir_read_disclosure: [],
   tenant_fhir_config: ["cursor_signing_key_cipher"],
 };
 

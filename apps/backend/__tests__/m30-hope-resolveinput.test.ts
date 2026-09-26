@@ -43,7 +43,7 @@ function fakeHope(rollups: {
     async submissionPostureRollup(org, period) {
       calls.org = org;
       calls.period = period;
-      return rollups.submission ?? { submissions: 0, acceptedSubmissions: 0 };
+      return rollups.submission ?? { submissions: 0, acceptedSubmissions: 0, queuedSubmissions: 0 };
     },
     async sfvTimelinessRollup(org, period) {
       calls.org = org;
@@ -162,7 +162,9 @@ describe("resolveHopeMeasureInput — HOPE-family measure-input binding (#107)",
   });
 
   it("hope_submission_acceptance_rate: shapes the posture counts and bands red below the APU floor", async () => {
-    const { hope } = fakeHope({ submission: { submissions: 100, acceptedSubmissions: 85 } });
+    const { hope } = fakeHope({
+      submission: { submissions: 100, acceptedSubmissions: 85, queuedSubmissions: 0 },
+    });
     const input = (await resolveHopeMeasureInput(request("hope_submission_acceptance_rate"), {
       hope,
     })) as {

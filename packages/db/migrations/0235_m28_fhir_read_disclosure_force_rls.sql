@@ -1,0 +1,34 @@
+-- M28 FHIR Gateway — FORCE ROW LEVEL SECURITY on `fhir_read_disclosure` (F-087).
+--
+-- 0233 created the §164.528 served-read disclosure ledger with `ENABLE ROW LEVEL SECURITY` and a
+-- correct tenant-scoped policy, and stopped one line short: it never FORCEd it. ENABLE does not
+-- apply to the table's OWNER. Every policy in this repo is `TO wardenx_app`, and
+-- `scripts/db/migrate.ts` connects as `DATABASE_ADMIN_URL ?? DATABASE_URL` — so on a deployment
+-- that runs the migrator with only DATABASE_URL set, `wardenx_app` OWNS this table and the policy
+-- stops applying to the application's own role. Migration 0118's header sets that out in full;
+-- there is no `rolbypassrls` flag to catch it, because ownership is not BYPASSRLS.
+--
+-- Of every table in the schema this is close to the worst one to leave exempt. The ledger records
+-- WHICH PATIENT each partner client read, and the whole argument for writing it (F-035, #95) is
+-- that a gateway whose accounting seam answers zero publishes a false compliance statement. An
+-- unFORCEd ledger answers a DIFFERENT tenant's disclosures to whichever tenant asks — the one
+-- reading that is strictly worse than the zero, because it is wrong in the direction of confidence.
+-- It is also `GRANT SELECT, INSERT` and nothing else precisely so the writer cannot edit the
+-- evidence away; ownership hands back the ability that grant was shaped to withhold.
+--
+-- Nothing had ever read it cross-tenant: the live catalog assertion ("every RLS table is FORCEd",
+-- rls-isolation.live.test.ts) has been failing on exactly this table, in the `rls-live` CI job,
+-- which has no runner assigned.
+--
+-- THE FOURTH ROUND OF THIS. 0118 forced 370 tables; 0159 re-swept the 66 that M28/M29/M35/M37 had
+-- added after it; 0203 hand-patched two M24 tables; this is one more. Every round was found by
+-- querying a live schema and fixed the tables that existed that day. The durable half of F-087 is
+-- therefore not this file but `check-tenancy.ts` Rule 4 (`rls-enabled-not-forced`), which replays
+-- the migrations' net effect and fails the build — with no database, in `arch:fitness`, everywhere
+-- — the moment a table is left ENABLEd and unFORCEd. Run against this tree it reports exactly one
+-- table, and this is it.
+--
+-- Deliberately NOT a fifth catalog sweep. A sweep repairs today and hides tomorrow: the gate credits
+-- one as forcing everything enabled before it, so a sweep here would silently absolve the next
+-- omission too. One named table, one named reason.
+ALTER TABLE "fhir_read_disclosure" FORCE ROW LEVEL SECURITY;

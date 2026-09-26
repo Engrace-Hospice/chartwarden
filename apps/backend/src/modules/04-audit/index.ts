@@ -48,7 +48,10 @@ export {
   registerDestructionCertificatesRoutes,
 } from "./routes/destruction-certificates";
 export { type AuditExportsRouteDeps, registerAuditExportsRoutes } from "./routes/audit-exports";
-export { type AuditIntegrityRouteDeps, registerAuditIntegrityRoutes } from "./routes/audit-integrity";
+export {
+  type AuditIntegrityRouteDeps,
+  registerAuditIntegrityRoutes,
+} from "./routes/audit-integrity";
 export { M4_OUTBOX_EVENTS } from "./events-by-m4";
 // M4-T08: the destruction path — the REAL `audit_event` eraser (registered over the deny-stub by
 // the composition root) enforcing legal-hold supremacy (§10.6) + Part 2 lifetime retention (§6).

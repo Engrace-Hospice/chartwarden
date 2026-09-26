@@ -8,4 +8,5 @@ export * from "./condition";
 export * from "./goal";
 export * from "./care-plan";
 export * from "./medication";
+export * from "./medication-administration";
 export * from "./diagnostic-report";

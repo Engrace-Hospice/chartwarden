@@ -52,3 +52,28 @@ export const ADMIN_ACCOUNT = (): DemoAccount => byEmailPrefix("admin@");
 export const CLINICIAN_ACCOUNT = (): DemoAccount => byEmailPrefix("casey@");
 /** Compliance-only permissions (84 keys) — used for permission-denied paths. */
 export const AUDITOR_ACCOUNT = (): DemoAccount => byEmailPrefix("avery@");
+/**
+ * The RN persona from `db:seed:staff` — the only seeded account that can actually administer a
+ * medication. F-031: `administration.record` is gated by BOTH a permission key and M13's
+ * `administering_clinician_eligible` ABAC predicate, and that predicate reads the caller's clinical
+ * DISCIPLINE from their session role grants (`rn` / `lpn` / `md` / `np` / `pa`). `admin@` holds all
+ * 816 permission keys and none of those role keys, so it passes RBAC and is refused by ABAC —
+ * exactly the split the eMAR spec has to sign in around.
+ */
+export const RN_ACCOUNT = (): DemoAccount => byEmailPrefix("rita@");
+/**
+ * The hospice medical director from `db:seed:staff` (`md` / `hospice_physician` / `medical_director`)
+ * — the seeded account that can PRESCRIBE. M12 gates `POST /medication-orders` and the §2.2 lifecycle
+ * on a prescribing discipline resolved from role grants, so the RN who administers a dose (M13) and
+ * the physician who orders it are deliberately two different logins, exactly as they are on a ward.
+ * Holding two of M12's four prescriber roles is why the action modal's discipline select offers a
+ * choice here rather than preselecting one.
+ */
+export const PRESCRIBER_ACCOUNT = (): DemoAccount => byEmailPrefix("drharris@");
+/**
+ * The clinical supervisor from `db:seed:staff` (`clinical_supervisor` / `compliance_officer`) — the
+ * account that can act on someone ELSE's work. M18 device approval is the clear case: `/me/evv/devices`
+ * is a clinician looking at their own handsets and offers no approve control at all, because approving
+ * a device is a supervisory act, not a self-service one.
+ */
+export const SUPERVISOR_ACCOUNT = (): DemoAccount => byEmailPrefix("supervisor@");

@@ -13,7 +13,9 @@
 // registered into the shared ABAC registry, exactly as `buildOrderAbacPredicates` does for M11.
 import {
   createInMemoryEffectivePermissionStore,
+  createInMemorySessionContextStore,
   createPredicateRegistry,
+  createSessionContextResolver,
   registerAbacRegistry,
   registerEffectivePermissionResolver,
   resetAbacRegistry,
@@ -23,7 +25,9 @@ import {
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
+  type EvvRoutePort,
   EvvRouteService,
   buildEvvAbacPredicates,
   registerEvvRoutes,
@@ -39,19 +43,24 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  // F-028 — the §2.3 correction and the D6 supervisor override used to take their step-up from
+  // `request.headers["x-step-up"]`, a string the gated caller supplies. They resolve the REAL session
+  // through M2's `SessionContextResolver` seam now, so the shim stamps a session id the way the
+  // production authenticate hook does and the seam stub decides freshness.
+  const session = request.headers["x-test-session"];
+  if (typeof session === "string" && session.length > 0)
+    request.context.attributes.sessionId = session;
 }
 
 const ORG = "org_a";
 const PATIENT = "11111111-1111-4111-8111-111111111111";
 const VISIT_1 = "22222222-2222-4222-8222-222222222222";
 const DEVICE_UUID = "33333333-3333-4333-8333-333333333333";
-const ATTESTATION_UUID = "44444444-4444-4444-8444-444444444444";
 const RESOLUTION_ATTEST = "55555555-5555-4555-8555-555555555555";
 const RESOLUTION_OVERRIDE = "66666666-6666-4666-8666-666666666666";
 const SUBMISSION_PENDING = "77777777-7777-4777-8777-777777777777";
 const SUBMISSION_REJECTED = "88888888-8888-4888-8888-888888888888";
 const PATIENT_ADDRESS = "99999999-9999-4999-8999-999999999999";
-const STEP_UP_REF = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
 // The visit's scheduled window (§4.7 `evv_within_visit_window`); capture instants below are chosen to fall
 // inside the default 2h-before / 4h-after policy relative to these.
@@ -72,7 +81,49 @@ const SUPERVISOR = {
   "x-test-org": ORG,
   "x-test-roles": "clinical_supervisor",
 };
-const SUPERVISOR_STEPUP = { ...SUPERVISOR, "x-step-up": "fresh" };
+// A supervisor whose REAL session stepped up 30s ago (inside the `STEP_UP_POLICY` 300s window), and
+// one whose last step-up was a day ago. Nothing but the session distinguishes them.
+const SESSION_FRESH = "sess_fresh";
+const SESSION_STALE = "sess_stale";
+const SUPERVISOR_STEPUP = { ...SUPERVISOR, "x-test-session": SESSION_FRESH };
+const SUPERVISOR_STALE = { ...SUPERVISOR, "x-test-session": SESSION_STALE };
+
+/** Register the real `SessionContextResolver` seam over an in-memory store holding both sessions. */
+function registerStepUpSeam(): void {
+  const base = {
+    userId: "sup_1",
+    membershipId: "sup_1",
+    organizationId: ORG,
+    roles: ["clinical_supervisor"],
+    providerEntityIds: [] as string[],
+    locationIds: [] as string[],
+  };
+  registerSeam(
+    "SessionContextResolver",
+    createSessionContextResolver(
+      createInMemorySessionContextStore([
+        {
+          sessionClass: "staff",
+          portalAccountId: null,
+          sessionPatientId: null,
+          ...base,
+          sessionId: SESSION_FRESH,
+          lastStepUpAt: new Date(Date.now() - 30_000),
+          lastStepUpFactor: "totp",
+        },
+        {
+          sessionClass: "staff",
+          portalAccountId: null,
+          sessionPatientId: null,
+          ...base,
+          sessionId: SESSION_STALE,
+          lastStepUpAt: new Date(Date.now() - 86_400_000),
+          lastStepUpFactor: "totp",
+        },
+      ]).store,
+    ),
+  );
+}
 const PORTAL = { "x-test-user": "portal_1", "x-test-org": ORG, "x-test-roles": "family_caregiver" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 
@@ -123,7 +174,7 @@ function withUuidIds(backend: EvvRouteService): EvvRouteService {
   return backend;
 }
 
-function makeServer() {
+function makeServer(service?: EvvRoutePort) {
   const backend = withUuidIds(
     new EvvRouteService({
       visits: [
@@ -212,7 +263,7 @@ function makeServer() {
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerEvvRoutes(app, { service: backend });
+  registerEvvRoutes(app, { service: service ?? backend });
   return { app, backend };
 }
 
@@ -223,7 +274,6 @@ const checkInBody = (over: Record<string, unknown> = {}) => ({
   coords: { lat: 40.0, lng: -75.0 },
   accuracyM: 10,
   evvDeviceId: DEVICE_UUID,
-  expectedAttestationId: ATTESTATION_UUID,
   ...over,
 });
 const checkOutBody = (over: Record<string, unknown> = {}) => ({
@@ -232,7 +282,6 @@ const checkOutBody = (over: Record<string, unknown> = {}) => ({
   coords: { lat: 40.0, lng: -75.0 },
   accuracyM: 10,
   evvDeviceId: DEVICE_UUID,
-  expectedAttestationId: ATTESTATION_UUID,
   ...over,
 });
 
@@ -240,11 +289,14 @@ beforeEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
   resetAbacRegistry();
+  __resetSeamsForTest();
+  registerStepUpSeam();
 });
 afterEach(() => {
   resetAuthorizationContract();
   resetRbacEngine();
   resetAbacRegistry();
+  __resetSeamsForTest();
 });
 
 describe("M18 EVV inject smoke — auth/RBAC/validation envelope", () => {
@@ -350,9 +402,18 @@ describe("§4.1 routes 1-7 — capture + event reads", () => {
 
   it("6: POST /evv/events/:eventId/correct — 200 (Clinical Supervisor, fresh step-up)", async () => {
     const { app } = makeServer();
+    // This used to target `00000000-…-000000000000` — an event that has never existed — and assert 200,
+    // which was true only because the route recorded an unrelated new capture and ignored the id
+    // entirely (F-068 §1). A correction now needs something to correct.
+    const original = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/check-in",
+      headers: CLINICIAN,
+      payload: checkInBody(),
+    });
     const res = await app.inject({
       method: "POST",
-      url: "/api/v1/evv/events/00000000-0000-4000-8000-000000000000/correct",
+      url: `/api/v1/evv/events/${original.json().eventId}/correct`,
       headers: SUPERVISOR_STEPUP,
       payload: { newEvent: checkInBody(), correctionReason: "x".repeat(60) },
     });
@@ -393,7 +454,7 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
       headers: CLINICIAN,
-      payload: { platform: "ios", modelDescription: "iPhone 14", attestationId: ATTESTATION_UUID },
+      payload: { platform: "ios", modelDescription: "iPhone 14" },
     });
     expect(res.statusCode).toBe(201);
     expect(res.json().status).toBe("pending_approval");
@@ -406,7 +467,7 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
       headers: CLINICIAN,
-      payload: { platform: "ios", modelDescription: "iPhone 14", attestationId: ATTESTATION_UUID },
+      payload: { platform: "ios", modelDescription: "iPhone 14" },
     });
     const id = reg.json().id as string;
     const res = await app.inject({
@@ -428,7 +489,6 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
       payload: {
         platform: "android",
         modelDescription: "Pixel 8",
-        attestationId: ATTESTATION_UUID,
       },
     });
     const id = reg.json().id as string;
@@ -449,7 +509,7 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
       method: "POST",
       url: "/api/v1/evv/devices/self-register",
       headers: CLINICIAN,
-      payload: { platform: "ios", modelDescription: "iPhone 15", attestationId: ATTESTATION_UUID },
+      payload: { platform: "ios", modelDescription: "iPhone 15" },
     });
     const id = reg.json().id as string;
     const res = await app.inject({
@@ -472,7 +532,6 @@ describe("§4.1 routes 8-13 — device lifecycle", () => {
       payload: {
         platform: "android",
         modelDescription: "Pixel 7",
-        attestationId: ATTESTATION_UUID,
       },
     });
     const id = reg.json().id as string;
@@ -565,7 +624,7 @@ describe("§4.1 routes 17-19 — missing-EVV resolution (§2.2.4 D6)", () => {
       method: "POST",
       url: `/api/v1/evv/missing-resolutions/${RESOLUTION_OVERRIDE}/supervisor-override`,
       headers: SUPERVISOR_STEPUP,
-      payload: { reason: "x".repeat(60), stepUpAuthRefId: STEP_UP_REF },
+      payload: { reason: "x".repeat(60) },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json().status).toBe("closed_supervisor_override");
@@ -660,6 +719,375 @@ describe("§4.1 routes 23-25 — metrics, team location, portal arrival", () => 
     expect(res.statusCode).toBe(200);
     expect(res.json().visitId).toBe(VISIT_1);
     expect(res.json().arrivedAt).not.toBeNull();
+    await app.close();
+  });
+});
+
+describe("F-028 — the §2.3 / D6 step-up is server-verified, not client-asserted", () => {
+  // Both routes used to decide step-up from `request.headers["x-step-up"]`. Each case sends exactly
+  // that header — the request that USED to succeed — from a session whose real last step-up is a day
+  // old, and asserts the route now refuses. Then the same request with a fresh real session succeeds,
+  // so the tests pin the gate to the session rather than merely proving the routes deny.
+
+  it("correction-of-record: a stale session sending `x-step-up: fresh` is refused (403)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/events/00000000-0000-4000-8000-000000000000/correct",
+      headers: { ...SUPERVISOR_STALE, "x-step-up": "fresh" },
+      payload: { newEvent: checkInBody(), correctionReason: "x".repeat(60) },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("correction-of-record: a session with no step-up at all is refused, header or not", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/events/00000000-0000-4000-8000-000000000000/correct",
+      headers: { ...SUPERVISOR, "x-step-up": "fresh" }, // no `x-test-session` ⇒ no session id
+      payload: { newEvent: checkInBody(), correctionReason: "x".repeat(60) },
+    });
+    expect(res.statusCode).toBe(403);
+    await app.close();
+  });
+
+  it("supervisor override: a stale session sending `x-step-up: fresh` is refused", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/missing-resolutions/${RESOLUTION_OVERRIDE}/supervisor-override`,
+      headers: { ...SUPERVISOR_STALE, "x-step-up": "fresh" },
+      payload: { reason: "x".repeat(60) },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json().error.code).toBe("EVV_SUPERVISOR_OVERRIDE_STEP_UP_REQUIRED");
+    await app.close();
+  });
+
+  it("supervisor override: the same request with a fresh real session succeeds (no header sent)", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/missing-resolutions/${RESOLUTION_OVERRIDE}/supervisor-override`,
+      headers: SUPERVISOR_STEPUP,
+      payload: { reason: "x".repeat(60) },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("closed_supervisor_override");
+    await app.close();
+  });
+});
+
+// ── F-068 · the write paths validate a justification and drop it ────────────────────────────────────
+//
+// Four of these assert on a PARAMETER being passed, not on a type. That is deliberate: `EvvRoutePort`
+// replaced the `as unknown as EvvRouteService` cast in `createDbEvvBackend` and now catches a missing or
+// renamed method and a wrong return shape — but TypeScript accepts a function of FEWER parameters
+// wherever one of more is expected, so an implementation that quietly ignores a trailing `reason` is
+// still legal. That is the exact shape six of this module's writes were in, so it needs a test.
+describe("M18 EVV — write fidelity (F-068)", () => {
+  /**
+   * The routes, driven over an implementation whose every method returns a PROMISE — which is what
+   * production is. The in-memory slice is synchronous, so `POST /evv/offline-sync`'s `b.events.map(...)`
+   * serialized correctly in every test and returned `[{}, {}, …]` in production.
+   */
+  function asAsync(backend: EvvRouteService): EvvRoutePort {
+    return new Proxy(backend, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => Promise.resolve(value.apply(target, args));
+      },
+    }) as unknown as EvvRoutePort;
+  }
+
+  /** Records every call so a test can assert what actually reached the service. */
+  function recording(backend: EvvRouteService): {
+    service: EvvRoutePort;
+    calls: Array<{ method: string; args: unknown[] }>;
+  } {
+    const calls: Array<{ method: string; args: unknown[] }> = [];
+    const service = new Proxy(backend, {
+      get(target, prop, receiver) {
+        const value = Reflect.get(target, prop, receiver);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => {
+          calls.push({ method: String(prop), args });
+          return value.apply(target, args);
+        };
+      },
+    }) as unknown as EvvRoutePort;
+    return { service, calls };
+  }
+
+  const last = (calls: Array<{ method: string; args: unknown[] }>, method: string): unknown[] => {
+    const hit = [...calls].reverse().find((c) => c.method === method);
+    if (!hit) throw new Error(`no call to ${method}`);
+    return hit.args;
+  };
+
+  async function capture(app: ReturnType<typeof makeServer>["app"]): Promise<string> {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/check-in",
+      headers: CLINICIAN,
+      payload: checkInBody(),
+    });
+    expect(res.statusCode).toBe(201);
+    return res.json().eventId as string;
+  }
+
+  const correct = (app: ReturnType<typeof makeServer>["app"], id: string, over = {}) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/evv/events/${id}/correct`,
+      headers: SUPERVISOR_STEPUP,
+      payload: { newEvent: checkInBody(), correctionReason: "x".repeat(60), ...over },
+    });
+
+  // §1 — the correction-of-record bypassed its own machine.
+  it("a correction SUPERSEDES the original and links back to it", async () => {
+    const { app } = makeServer();
+    const originalId = await capture(app);
+    const res = await correct(app, originalId);
+    expect(res.statusCode).toBe(200);
+    const newId = res.json().eventId as string;
+    expect(newId).not.toBe(originalId);
+
+    const before = await app.inject({
+      method: "GET",
+      url: `/api/v1/evv/events/${originalId}`,
+      headers: SUPERVISOR,
+    });
+    const after = await app.inject({
+      method: "GET",
+      url: `/api/v1/evv/events/${newId}`,
+      headers: SUPERVISOR,
+    });
+    // Both were hardcoded `null` on the read path and written by nothing on the write path.
+    expect(before.json().supersededByEventId).toBe(newId);
+    expect(after.json().replacesEventId).toBe(originalId);
+    await app.close();
+  });
+
+  it("correcting an event that does not exist is 404, not a silent new capture", async () => {
+    const { app } = makeServer();
+    const res = await correct(app, "00000000-0000-4000-8000-000000000000");
+    expect(res.statusCode).toBe(404);
+    await app.close();
+  });
+
+  it("correcting an ALREADY-corrected event is refused — correct the live head of the chain", async () => {
+    const { app } = makeServer();
+    const originalId = await capture(app);
+    expect((await correct(app, originalId)).statusCode).toBe(200);
+    const second = await correct(app, originalId);
+    expect(second.statusCode).toBe(409);
+    expect(second.json().error.code).toBe("EVV_EVENT_ALREADY_SUPERSEDED");
+    await app.close();
+  });
+
+  it("a check-OUT offered as the correction of a check-in is refused", async () => {
+    const { app } = makeServer();
+    const originalId = await capture(app);
+    // The two request shapes differ only by `serviceTypeCode`, which is how the route tells them apart;
+    // it used to derive the kind from the body and write whichever leg the body implied.
+    const res = await correct(app, originalId, {
+      newEvent: {
+        visitId: VISIT_1,
+        capturedAt: CHECK_OUT_AT,
+        coords: { lat: 40.0, lng: -75.0 },
+        accuracyM: 10,
+        evvDeviceId: DEVICE_UUID,
+      },
+    });
+    expect(res.statusCode).toBe(422);
+    expect(res.json().error.code).toBe("EVV_CORRECTION_KIND_MISMATCH");
+    await app.close();
+  });
+
+  it("a correction with too short a reason is refused (the reason is USED, not just measured)", async () => {
+    const { app } = makeServer();
+    const originalId = await capture(app);
+    const res = await correct(app, originalId, { correctionReason: "too short" });
+    // Refused by TypeBox at the edge (422); the machine's own ≥60 guard —
+    // EVV_CORRECTION_REASON_TOO_SHORT, also 422 — is the second line behind it.
+    expect(res.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("the visit bracket takes the LIVE leg, not the one that was corrected away", async () => {
+    const { app } = makeServer();
+    const originalId = await capture(app);
+    const newId = (await correct(app, originalId)).json().eventId as string;
+    const bracket = await app.inject({
+      method: "GET",
+      url: `/api/v1/evv/visits/${VISIT_1}/bracket`,
+      headers: SUPERVISOR,
+    });
+    expect(bracket.json().checkInEvent.id).toBe(newId);
+    await app.close();
+  });
+
+  // §2 — offline-sync returned an array of un-awaited promises.
+  it("offline-sync returns the recorded events, not `[{}]`, against an ASYNC service", async () => {
+    const { backend } = makeServer();
+    const { app } = makeServer(asAsync(backend));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/offline-sync",
+      headers: CLINICIAN,
+      payload: {
+        evvDeviceId: DEVICE_UUID,
+        events: [
+          { kind: "check_in", ...checkInBody() },
+          { kind: "check_out", ...checkOutBody() },
+        ],
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as Array<{ eventId?: string; kind?: string }>;
+    expect(body).toHaveLength(2);
+    for (const item of body) {
+      expect(typeof item.eventId).toBe("string");
+      expect(item.kind).toBeDefined();
+    }
+    await app.close();
+  });
+
+  // §3/§4 — the reasons and the acting membership reach the service.
+  it("device reject / suspend / retire pass the reason AND the acting membership", async () => {
+    const { backend } = makeServer();
+    const { service, calls } = recording(backend);
+    const { app } = makeServer(service);
+    const reg = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/devices/self-register",
+      headers: CLINICIAN,
+      payload: { platform: "ios", modelDescription: "iPhone 14" },
+    });
+    const deviceId = reg.json().id as string;
+
+    for (const [action, reason] of [
+      ["reject", "enrolled on a personal handset"],
+      ["suspend", "reported lost at the Tuesday standup"],
+      ["retire", "returned to IT"],
+    ] as const) {
+      const res = await app.inject({
+        method: "POST",
+        url: `/api/v1/evv/devices/${deviceId}/${action}`,
+        headers: SUPERVISOR,
+        payload: { reason },
+      });
+      expect(res.statusCode).toBe(200);
+      const args = last(calls, `${action}Device`);
+      expect(args[1]).toBe("sup_1"); // the CALLER, not an arbitrary membership in the org
+      expect(args[3]).toBe(reason);
+    }
+    await app.close();
+  });
+
+  it("device approve passes the acting membership", async () => {
+    const { backend } = makeServer();
+    const { service, calls } = recording(backend);
+    const { app } = makeServer(service);
+    const reg = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/devices/self-register",
+      headers: CLINICIAN,
+      payload: { platform: "ios", modelDescription: "iPhone 14" },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/devices/${reg.json().id}/approve`,
+      headers: SUPERVISOR,
+      payload: {},
+    });
+    expect(res.statusCode).toBe(200);
+    expect(last(calls, "approveDevice")[1]).toBe("sup_1");
+    await app.close();
+  });
+
+  it("the per-address geofence override passes its ≥30-char reason and the setter", async () => {
+    const { backend } = makeServer();
+    const { service, calls } = recording(backend);
+    const { app } = makeServer(service);
+    const overrideReason = "the driveway sits 180m from the road-network centroid";
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/geofence-policy/per-address",
+      headers: SUPERVISOR,
+      payload: {
+        patientAddressId: PATIENT_ADDRESS,
+        radiusM: 120,
+        maxAccuracyM: 30,
+        overrideReason,
+      },
+    });
+    expect(res.statusCode).toBe(201);
+    const args = last(calls, "createPerAddressOverride");
+    expect(args[1]).toBe("sup_1");
+    expect((args[2] as { overrideReason: string }).overrideReason).toBe(overrideReason);
+    await app.close();
+  });
+
+  it("the tenant geofence edit passes the setter", async () => {
+    const { backend } = makeServer();
+    const { service, calls } = recording(backend);
+    const { app } = makeServer(service);
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/evv/geofence-policy/tenant",
+      headers: SUPERVISOR,
+      payload: { radiusM: 150, maxAccuracyM: 40 },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(last(calls, "editTenantPolicy")[1]).toBe("sup_1");
+    await app.close();
+  });
+
+  it("an aggregator cancel passes its reason", async () => {
+    const { backend } = makeServer();
+    const { service, calls } = recording(backend);
+    const { app } = makeServer(service);
+    const reason = "the visit was voided; the state should not see this claim line";
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/aggregator-submissions/${SUBMISSION_PENDING}/cancel`,
+      headers: SUPERVISOR,
+      payload: { reason },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(last(calls, "cancelSubmission")[3]).toBe(reason);
+    await app.close();
+  });
+
+  // §3 — the two required uuids no caller could obtain are gone from the contracts.
+  it("supervisor-override no longer demands a step-up ref no route can mint", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/v1/evv/missing-resolutions/${RESOLUTION_OVERRIDE}/supervisor-override`,
+      headers: SUPERVISOR_STEPUP,
+      payload: { reason: "x".repeat(60) }, // no stepUpAuthRefId
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("closed_supervisor_override");
+    await app.close();
+  });
+
+  it("device self-register no longer demands an attestation id no caller holds", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/v1/evv/devices/self-register",
+      headers: CLINICIAN,
+      payload: { platform: "ios", modelDescription: "iPhone 14" }, // no attestationId
+    });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().status).toBe("pending_approval");
     await app.close();
   });
 });

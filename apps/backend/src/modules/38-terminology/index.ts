@@ -89,7 +89,10 @@ import {
   createRemediationService as _createRemediationService,
 } from "./remediation-service";
 import { registerAdminTerminologyRoutes as _registerAdminTerminologyRoutes } from "./routes/admin-terminology-routes";
-import { registerTerminologyRoutes as _registerTerminologyRoutes } from "./routes/terminology-routes";
+import {
+  type TerminologyFeatureFlagReader as _TerminologyFeatureFlagReader,
+  registerTerminologyRoutes as _registerTerminologyRoutes,
+} from "./routes/terminology-routes";
 import { createDbTerminologyOpsStore as _createDbTerminologyOpsStore } from "./terminology-ops-store-db";
 import { createDbTerminologyStore as _createDbTerminologyStore } from "./terminology-store-db";
 
@@ -99,8 +102,18 @@ import { createDbTerminologyStore as _createDbTerminologyStore } from "./termino
  * present. The handlers run over the real Drizzle-backed `TerminologyProvider`; reads serve live
  * reference data and the org-scoped tenant-extension write runs under RLS. Backs the Terminology
  * Admin screen (FB-T01).
+ *
+ * `flags` is the M1 `feature_flag` reader the composition root now binds (F-091). It is what makes the
+ * §7.7 `ai.full` semantic-search gate ANSWERABLE: without a reader the gate cannot resolve anything but
+ * "off", so `mode=semantic` returned FEATURE_NOT_ENABLED for every tenant on every deployment whether or
+ * not the capability had been granted. Optional because a no-db/slice boot has no reader to give, and
+ * absent still means every flag off — the Phase-1 default this module documents.
  */
-export function mountTerminologyRoutes(app: FastifyInstance, db: DbClient): void {
+export function mountTerminologyRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  flags?: _TerminologyFeatureFlagReader,
+): void {
   const provider = createTerminologyProvider(_createDbTerminologyStore(db));
   const ops = _createDbTerminologyOpsStore(db);
   // The remediation report's ONE bound producer today is M7's problem list, reached opaquely through
@@ -110,6 +123,6 @@ export function mountTerminologyRoutes(app: FastifyInstance, db: DbClient): void
     ops,
     producers: [_carePlanCodeUsageProducer(() => getSeam("CarePlanReader"))],
   });
-  _registerTerminologyRoutes(app, { provider, ops, remediation });
+  _registerTerminologyRoutes(app, { provider, ops, remediation, ...(flags ? { flags } : {}) });
   _registerAdminTerminologyRoutes(app, { ops });
 }

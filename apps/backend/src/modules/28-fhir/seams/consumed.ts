@@ -30,6 +30,7 @@ import type {
   MedicationAdministrationProvider,
   MedicationOrderProvider,
   OrderProvider,
+  PatientAddressReader,
   PatientReader,
   ReconciliationProvider,
   SignedEncountersReader,
@@ -46,6 +47,15 @@ import { getSeam } from "../../../bootstrap/index";
 /** M5 — the patient identity/demographics read the `Patient` projection + `?patient=:id` search read. */
 export function getFhirPatientReader(): PatientReader {
   return getSeam("PatientReader");
+}
+
+/**
+ * M5 — the one address element any registered seam exposes (F-035). The US Core Patient projection sends
+ * `address.state` from this; street, city and postal code are recorded by the agency but reachable
+ * through no seam, so the projection omits them rather than inventing them.
+ */
+export function getFhirPatientAddressReader(): PatientAddressReader {
+  return getSeam("PatientAddressReader");
 }
 
 /** M6 — the election/benefit-period read the `Coverage` / `Encounter` projections read. */
@@ -91,12 +101,19 @@ export function getFhirReconciliationProvider(): ReconciliationProvider {
 // ── opaque rich-seams — resolved to M28's own minimal consumer views ─────────────────────────────────
 
 /**
- * §8.5 — the M38 `TerminologyProvider` slice M28's mappers use to validate/expand a code before it enters
- * a `CodeableConcept`. M38's rich interface lives in `@wardenx/terminology` (not importable here); this is
- * M28's minimal view.
+ * §8.5 — the M38 `TerminologyProvider` slice M28's mappers use to validate a code before it enters a
+ * `CodeableConcept`, and that R13 `CodeSystem/$validate-code` answers from. M38's rich interface lives in
+ * `@wardenx/terminology` (not importable here); this is M28's minimal view.
+ *
+ * IT MUST MATCH THE REAL METHOD. This view used to declare `validateCode({ system, code })`, a method
+ * `TerminologyProvider` has never had — the real one is `validate(system, code, asOf?)`. A structural view
+ * over a seam resolved with `as` is only as true as the shape it asserts; nothing type-checks it against
+ * the provider, so the mismatch would have surfaced as a runtime `not a function` on the first call. It
+ * survived because there was no first call: the view was declared, exported, and used by nobody (#117).
  */
 export interface FhirTerminologyView {
-  validateCode(input: { system: string; code: string }): Promise<{ valid: boolean }>;
+  /** `system` is an M38 `CodeSystemId` (`icd10cm`, `loinc`, …), never a FHIR canonical URI. */
+  validate(system: string, code: string, asOf?: Date): Promise<{ valid: boolean; status?: string }>;
 }
 
 /** Resolve M38's terminology provider as M28's view. */

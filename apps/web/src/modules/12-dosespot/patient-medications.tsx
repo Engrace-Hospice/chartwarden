@@ -7,6 +7,7 @@ import {
   Panel,
   PatientWorkspaceLayout,
   StatusPill,
+  interactiveRowProps,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -28,6 +29,8 @@ import {
 } from "../../shell/patient-context";
 import { MED_ORDER_TONE, controlledLabel, stateLabel } from "./medication-status";
 import { ATTENTION_STATUSES } from "./medication-workspace";
+import { loadPatientAdmissions } from "./medications-api";
+import { PrescribeModal } from "./prescribe-modal";
 
 interface Sig {
   doseQuantity?: number | string;
@@ -158,9 +161,29 @@ export function PatientMedications(): JSX.Element {
   const [search, setSearch] = useState("");
   const [sortBy, setSortBy] = useState<"name" | "start">("name");
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [admissionId, setAdmissionId] = useState<string | null>(null);
+  const [prescribing, setPrescribing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
+
+  // #91 — the admission a new prescription is documented against. An OPEN one, newest first; a patient
+  // with only discharged admissions is not currently under care and prescribing into one would be wrong.
+  useEffect(() => {
+    let active = true;
+    setAdmissionId(null);
+    if (!patientId) return;
+    void loadPatientAdmissions(client, patientId)
+      .then((rows) => {
+        if (active) setAdmissionId(rows.find((a) => a.dischargedAt == null)?.id ?? null);
+      })
+      .catch(() => {
+        if (active) setAdmissionId(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [client, patientId]);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: retryKey re-runs the load on "Try again".
   useEffect(() => {
@@ -262,6 +285,15 @@ export function PatientMedications(): JSX.Element {
                 >
                   Reconcile
                 </Link>
+                {admissionId ? (
+                  <button
+                    type="button"
+                    className="wx-btn-secondary"
+                    onClick={() => setPrescribing(true)}
+                  >
+                    Prescribe
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="wx-btn-primary"
@@ -283,6 +315,15 @@ export function PatientMedications(): JSX.Element {
         ) : undefined
       }
     >
+      {patientId && admissionId ? (
+        <PrescribeModal
+          open={prescribing}
+          patientId={patientId}
+          admissionId={admissionId}
+          onClose={() => setPrescribing(false)}
+          onCreated={(order) => navigate(`/medication-orders/${order.id}`)}
+        />
+      ) : null}
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
         {patientId ? <ChartModuleRail patientId={patientId} current="medications" /> : null}
         <div style={{ flex: 1, overflow: "auto", padding: "1.125rem 1.5rem 1.5rem", minWidth: 0 }}>
@@ -392,11 +433,18 @@ export function PatientMedications(): JSX.Element {
                   </thead>
                   <tbody>
                     {rows.map((m) => (
-                      // biome-ignore lint/a11y/useKeyWithClickEvents: whole-row click is a mouse shortcut; the drug-name button is the keyboard path.
                       <tr
                         key={m.id}
-                        className={m.id === selectedId ? "is-selected" : undefined}
-                        onClick={() => setSelectedId(m.id === selectedId ? null : m.id)}
+                        className={
+                          m.id === selectedId
+                            ? "is-selected wx-data-row-interactive"
+                            : "wx-data-row-interactive"
+                        }
+                        {...interactiveRowProps(
+                          () => setSelectedId(m.id === selectedId ? null : m.id),
+                          m.id === selectedId,
+                          true,
+                        )}
                       >
                         <td>
                           <span

@@ -16,7 +16,7 @@ import type {
   FhirInboundProposalDetail,
   FhirInboundProposalSummary,
 } from "@wardenx/types";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
 
 import type { FhirPublishedSeamStore } from "./published";
 
@@ -25,11 +25,29 @@ const asStringArray = (value: unknown): string[] =>
 
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 
+/**
+ * `YYYY-Qn` → the half-open instant range `[from, to)` for the §164.528 quarter scorecard. Half-open on
+ * purpose: a closed upper bound either double-counts a disclosure served exactly at midnight on the
+ * boundary or loses it, depending on which quarter you ask about first.
+ */
+function quarterRange(quarter: string): { from: Date; to: Date } | null {
+  const m = /^(\d{4})-Q([1-4])$/.exec(quarter.trim());
+  if (!m) return null;
+  const year = Number(m[1]);
+  const q = Number(m[2]);
+  const startMonth = (q - 1) * 3;
+  return {
+    from: new Date(Date.UTC(year, startMonth, 1)),
+    to: new Date(Date.UTC(year, startMonth + 3, 1)),
+  };
+}
+
 export function createDrizzleFhirPublishedSeamStore(db: DbClient): FhirPublishedSeamStore {
   const CLIENT = schema.fhirClient;
   const JOB = schema.fhirBulkExportJob;
   const INBOUND = schema.fhirInboundResource;
   const CONFIG = schema.tenantFhirConfig;
+  const DISCLOSURE = schema.fhirReadDisclosure;
 
   const ctx = (organizationId: string) => ({ organizationId, userId: "" });
 
@@ -64,16 +82,78 @@ export function createDrizzleFhirPublishedSeamStore(db: DbClient): FhirPublished
     },
 
     async disclosureMetricsForOrg({ organizationId, quarter }): Promise<FhirDisclosureMetrics> {
-      // Phase 1 has no served-read disclosure log table yet (the bearer read path is fail-closed), so the
-      // §164.528 quarter scorecard reports zeros over a real, org-scoped read rather than a fabricated
-      // number — the honest Phase-1 answer for a gateway serving no external client.
-      return withOrgContext(db, ctx(organizationId), async () => ({
-        quarter,
-        totalDisclosures: 0,
-        distinctRecipientClients: 0,
-        byResourceType: [],
-        byClient: [],
-      }));
+      // §164.528 over the real `fhir_read_disclosure` ledger (F-035, migration 0233). This used to
+      // return hard zeros, correctly: the bearer read path served nothing, so there was no disclosure to
+      // account for. Binding the read path (#95) made that same answer a false compliance statement, so
+      // the ledger and this reader landed together — a gateway that discloses PHI while its accounting
+      // says zero is worse than one that discloses nothing.
+      const range = quarterRange(quarter);
+      if (range === null) {
+        // An unparseable quarter is a caller error, not an empty quarter. Refusing beats answering zero:
+        // "no disclosures in 2026-Q9" and "2026-Q9 is not a quarter" must not look alike to a scorecard.
+        throw new Error(`FHIR disclosure metrics: '${quarter}' is not a YYYY-Qn quarter`);
+      }
+      return withOrgContext(db, ctx(organizationId), async (tx) => {
+        const rows = await tx
+          .select({
+            fhirClientId: DISCLOSURE.fhirClientId,
+            resourceType: DISCLOSURE.resourceType,
+          })
+          .from(DISCLOSURE)
+          .where(
+            and(
+              eq(DISCLOSURE.organizationId, organizationId),
+              gte(DISCLOSURE.servedAt, range.from),
+              lt(DISCLOSURE.servedAt, range.to),
+            ),
+          );
+        const byResource = new Map<string, number>();
+        const byClientId = new Map<string, number>();
+        for (const r of rows) {
+          byResource.set(r.resourceType, (byResource.get(r.resourceType) ?? 0) + 1);
+          byClientId.set(r.fhirClientId, (byClientId.get(r.fhirClientId) ?? 0) + 1);
+        }
+        // The client NAME and BAA reference come from `fhir_client`, which a revoked-and-erased partner
+        // may no longer have (the ledger deliberately outlives its client — 0233). An unresolvable id
+        // still reports its disclosures, under its id, rather than dropping the row: an accounting that
+        // silently omits the disclosures of a deleted recipient is not an accounting.
+        const clientRows =
+          byClientId.size === 0
+            ? []
+            : await tx
+                .select({
+                  id: CLIENT.id,
+                  name: CLIENT.name,
+                  baaContractReference: CLIENT.baaContractReference,
+                })
+                .from(CLIENT)
+                .where(
+                  and(
+                    eq(CLIENT.organizationId, organizationId),
+                    inArray(CLIENT.id, [...byClientId.keys()]),
+                  ),
+                );
+        const clientById = new Map(clientRows.map((c) => [c.id, c]));
+        return {
+          quarter,
+          totalDisclosures: rows.length,
+          distinctRecipientClients: byClientId.size,
+          byResourceType: [...byResource.entries()]
+            .map(([resourceType, disclosures]) => ({ resourceType, disclosures }))
+            .sort(
+              (a, b) =>
+                b.disclosures - a.disclosures || a.resourceType.localeCompare(b.resourceType),
+            ),
+          byClient: [...byClientId.entries()]
+            .map(([clientId, disclosures]) => ({
+              clientId,
+              clientName: clientById.get(clientId)?.name ?? "(client no longer registered)",
+              baaReference: clientById.get(clientId)?.baaContractReference ?? "",
+              disclosures,
+            }))
+            .sort((a, b) => b.disclosures - a.disclosures || a.clientId.localeCompare(b.clientId)),
+        };
+      });
     },
 
     async clientsForOrg({ organizationId }): Promise<ReadonlyArray<FhirClientSummary>> {

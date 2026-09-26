@@ -83,7 +83,22 @@ export type IpuAdmissionEvent =
       readonly destinationRnCoverage: boolean;
     }
   | { readonly type: "confirmTransfer"; readonly destinationAcknowledged: boolean }
-  | { readonly type: "discharge"; readonly dischargeEventExists: boolean }
+  | {
+      readonly type: "discharge";
+      /**
+       * The M6 admission this IPU stay hangs off has ITSELF been discharged (F-070). Resolved by the
+       * caller from M6's `AdmissionStatusReader`, never asserted by the request body.
+       *
+       * Named for the admission and not for `discharge_event` (its previous name) because M6 does NOT
+       * write a `discharge_event` row for every discharge — `revocation` and `transfer` set the
+       * admission's own state and skip it (`admission-route-service-db.ts`, "revocation/transferOut
+       * never create a `discharge_event` row"). `revocation` is in M37's OWN discharge-reason union, so
+       * a literal event-existence check would refuse a discharge M37 is required to accept. The
+       * admission's discharged state is the fact that is both true for every reason and load-bearing:
+       * closing the IPU stay while M6 still reads `active` desynchronizes bed and service.
+       */
+      readonly m6AdmissionDischarged: boolean;
+    }
   | {
       readonly type: "recordDeath";
       readonly deathEventReferencesAdmission: boolean;
@@ -256,9 +271,9 @@ export function transitionAdmission(
 
     case "discharge": {
       requireIpu(
-        event.dischargeEventExists,
+        event.m6AdmissionDischarged,
         "ADMISSION_DISCHARGE_EVENT_MISSING",
-        "A discharge requires the M6 discharge_event to exist.",
+        "The M6 admission is not discharged; close the IPU stay after the discharge is recorded.",
       );
       const effects: IpuAdmissionEffect[] = [
         { kind: "state_history", to: "discharged" },

@@ -75,11 +75,14 @@ describe("AC-04 — /ready reaches the object store it advertises", () => {
 
 describe("AC-05 — the §22.1 public-signup budget is a real limiter", () => {
   const limiterFor = (nowRef: { t: number }) =>
-    createBudgetedRateLimiter(createInMemoryRateLimitStore(() => nowRef.t), {
-      limit: 5,
-      windowMs: 3_600_000,
-      keyPrefix: "m34:signup:ip",
-    });
+    createBudgetedRateLimiter(
+      createInMemoryRateLimitStore(() => nowRef.t),
+      {
+        limit: 5,
+        windowMs: 3_600_000,
+        keyPrefix: "m34:signup:ip",
+      },
+    );
 
   it("allows exactly 5 per IP per hour, then refuses with a Retry-After", async () => {
     const nowRef = { t: 0 };
@@ -316,9 +319,9 @@ describe("AC-05 — the throttle bound to the real /api/auth mount", () => {
     for (let i = 0; i < CREDENTIAL_THROTTLE_POLICY.perUsernameLimit - 1; i++) {
       await signIn(app, "clinician@example.test", "wrong");
     }
-    expect(
-      (await signIn(app, "clinician@example.test", "correct-horse-battery")).statusCode,
-    ).toBe(200);
+    expect((await signIn(app, "clinician@example.test", "correct-horse-battery")).statusCode).toBe(
+      200,
+    );
     // Budget cleared by the success: a fresh run of failures is available again.
     for (let i = 0; i < CREDENTIAL_THROTTLE_POLICY.perUsernameLimit - 1; i++) {
       expect((await signIn(app, "clinician@example.test", "wrong")).statusCode).toBe(401);

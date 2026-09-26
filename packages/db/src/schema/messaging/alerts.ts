@@ -19,7 +19,9 @@ export const alerts = pgTable(
     severity: alertSeverity("severity").notNull(),
     payload: jsonb("payload").notNull(), // field-tagged; sanitizer enforces the perimeter
     correlationId: text("correlation_id").notNull(),
-    outcome: alertOutcome("outcome").notNull().default("delivered"),
+    // F-109 / migration 0241 — `pending` until the §2.4.3 roll-up settles it from the delivery children.
+    // The previous default was `delivered`, written by nothing and corrected by nothing.
+    outcome: alertOutcome("outcome").notNull().default("pending"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({

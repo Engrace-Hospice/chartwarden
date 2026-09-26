@@ -153,8 +153,7 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m29.nppes.sync_run.completed",
     moduleOwner: "m29",
-    description:
-      "The platform NPPES sync finished walking every NPI (§4.10). Record-only.",
+    description: "The platform NPPES sync finished walking every NPI (§4.10). Record-only.",
     payloadSchema: Type.Object({
       syncRunId: Type.String({ minLength: 1 }),
       completedAt: Type.String({ minLength: 1 }),

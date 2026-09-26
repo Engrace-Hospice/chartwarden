@@ -27,7 +27,12 @@
 // the RN discipline from the actor's roles/attributes (the M7 `disciplineScopeOf` convention) and compares
 // `context.userId` to the encounter's `authoredByUserId`. Registration is idempotent: the shared registry
 // is single-owner / no-clear, so re-boot (tests) is idempotent via `registerPredicateIdempotent`.
-import { type AbacContext, type AbacTarget, registerPredicateIdempotent } from "@wardenx/auth";
+import {
+  type AbacContext,
+  type AbacTarget,
+  hasOrgWideScope,
+  registerPredicateIdempotent,
+} from "@wardenx/auth";
 import { getSeam } from "../../bootstrap/index";
 import type { EncounterAbacResolver } from "./routes/service";
 
@@ -42,20 +47,21 @@ import type { EncounterAbacResolver } from "./routes/service";
  */
 export const M8_ABAC_PREDICATES = ["m8.cosigner_role_match", "encounter.scope"] as const;
 
-/** Roles that read/scope any patient's encounters without caseload (mirrors M7's `caseload_or_scope`). */
-const ORG_WIDE_SCOPE_ROLES = ["medical_director", "compliance_officer", "survey_coordinator"] as const;
-
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
 const targetId = (target: AbacTarget, field: string): string | null => {
   const value = target[field];
   return typeof value === "string" && value.length > 0 ? value : null;
 };
 
-/** Whether the actor holds the RN discipline (from role keys or the session-assembled discipline set). */
+/**
+ * Whether the actor holds the RN discipline, from the session role keys.
+ *
+ * The second arm used to re-ask the same question of an `attributes.disciplines` array that no producer
+ * has ever written, so it could only ever agree with the role arm or contribute nothing (F-030). See
+ * `07-care-plan/abac-predicates.ts` for why role keys are the platform's one derivation.
+ */
 function isRn(context: AbacContext): boolean {
-  if (hasRole(context, "rn") || hasRole(context, "rn_case_manager")) return true;
-  const disciplines = context.attributes.disciplines;
-  return Array.isArray(disciplines) && disciplines.includes("rn");
+  return hasRole(context, "rn") || hasRole(context, "rn_case_manager");
 }
 
 /** Deps for M8's ABAC predicate resolvers (the slice injects an in-memory resolver over its dataset). */
@@ -84,9 +90,13 @@ export function buildEncounterAbacPredicates(
   const isInCaseload = deps.isInCaseload ?? ((q) => getSeam("CaseloadProvider").isInCaseload(q));
 
   const caseloadOrScopeFor = async (context: AbacContext, patientId: string): Promise<boolean> => {
-    if (ORG_WIDE_SCOPE_ROLES.some((r) => hasRole(context, r))) return true;
+    if (hasOrgWideScope(context.roles)) return true;
     if (!context.userId) return false;
-    return isInCaseload({ organizationId: context.organizationId, userId: context.userId, patientId });
+    return isInCaseload({
+      organizationId: context.organizationId,
+      userId: context.userId,
+      patientId,
+    });
   };
 
   return {

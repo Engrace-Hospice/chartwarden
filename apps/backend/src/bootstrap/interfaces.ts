@@ -10,6 +10,8 @@ export type {
   AdmissionCensusReader,
   AdmissionStatusReader,
   AuditorSessionMinter,
+  PortalSessionBinder,
+  VendorSessionBinder,
   BillingStatusProvider,
   ExternalInterfaceMetricsProvider,
   IpuAdmissionReader,

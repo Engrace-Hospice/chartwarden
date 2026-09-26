@@ -32,7 +32,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       fiscalYearStartDate: isoInstant,
       deadlineDate: isoInstant,
     }),
-    declaredConsumers: ["m33", "m34", "m36"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -41,7 +42,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "Seam-derived inputs first materialized (trial balance + statistics); the report entered populating.",
     payloadSchema: Type.Object({ costReportId: id }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -53,7 +55,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       validationId: id,
       ruleSetVersion: Type.Integer(),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -71,7 +74,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       skippedCount: Type.Integer(),
       blockingRulesFailing: Type.Array(id),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -80,7 +84,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A validation run failed at the infrastructure layer (seam unbound / stale pull), distinct from rule failure.",
     payloadSchema: Type.Object({ costReportId: id, validationId: id, reason: id }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -89,7 +94,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "Validation completed with no unresolved blocking failures; the report is ready for review.",
     payloadSchema: Type.Object({ costReportId: id, validationId: id }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -97,7 +103,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m27",
     description: "The report was returned from ready_for_review to populating for further editing.",
     payloadSchema: Type.Object({ costReportId: id, reason: Type.Optional(id) }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -109,7 +116,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       approvedByMembershipId: id,
       approvedAt: isoInstant,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -124,7 +132,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       submittedByMembershipId: id,
       attestation: Type.Object({ attestedByMembershipId: id, attestedAt: isoInstant }),
     }),
-    declaredConsumers: ["m22", "m28", "m30", "m33", "m34", "m36"],
+    declaredConsumers: ["m22", "m28", "m30", "m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -138,7 +147,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       mcrefAcknowledgmentNumber: id,
       acceptedAt: isoInstant,
     }),
-    declaredConsumers: ["m30", "m33", "m34", "m36"],
+    declaredConsumers: ["m30", "m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -152,7 +162,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       mcrefRejectionCode: id,
       mcrefRejectionDetail: Type.Optional(id),
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -168,7 +179,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: id,
       reasonCategory: id,
     }),
-    declaredConsumers: ["m22", "m28", "m30", "m33", "m34", "m36"],
+    declaredConsumers: ["m22", "m28", "m30", "m34"],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -177,7 +189,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The report was closed on ProviderEntity offboarding; submission history is retained.",
     payloadSchema: Type.Object({ costReportId: id, providerEntityId: id }),
-    declaredConsumers: ["m33", "m34"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── imports + statistics (§4.5 / §4.10) ──────────────────────────────────────────────────────────
@@ -202,7 +215,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       totalCreditsCents: cents,
       balanced: Type.Boolean(),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -216,7 +230,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       failureReason: id,
       requiresReconnect: Type.Boolean(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -239,7 +254,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       totalPaidHours: Type.Number(),
       totalSalaryCents: cents,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -251,7 +267,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       failureReason: id,
       requiresReconnect: Type.Boolean(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -276,7 +293,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       capProviderSkipped: Type.Boolean(),
       claimProviderSkipped: Type.Boolean(),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── mapping / bad-debt / allocation (§4.10) ──────────────────────────────────────────────────────
@@ -291,7 +309,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       changeCount: Type.Integer(),
       mappingSource: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -304,7 +323,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       fyInt: Type.Integer(),
       keepTenantOverrides: Type.Boolean(),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -318,7 +338,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       amountCents: cents,
       periodLabel: id,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -326,7 +347,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m27",
     description: "A bad-debt record was soft-deleted (tombstone preserved for audit).",
     payloadSchema: Type.Object({ costReportId: id, recordId: id, deletedByMembershipId: id }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -339,7 +361,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       worksheetsRecomputed: Type.Array(id),
       totalAllocatedCents: cents,
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── validation override + rule suggestion (§4.10) ────────────────────────────────────────────────
@@ -355,7 +378,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       overriddenByMembershipId: id,
       reason: id,
     }),
-    declaredConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -369,7 +393,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       suggestedFromCostReportId: id,
       anonymized: Type.Boolean(),
     }),
-    declaredConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── artifact render + compliance window + snapshot integrity (§4.10) ─────────────────────────────
@@ -412,7 +437,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       deadlineDate: isoInstant,
       daysToDeadline: Type.Integer(),
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -426,7 +452,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       storedHash: id,
       computedHash: id,
     }),
-    declaredConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
 ];

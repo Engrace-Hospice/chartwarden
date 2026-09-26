@@ -553,7 +553,7 @@ export interface CapProjectionChangedEvent {
 }
 
 /**
- * `m26.cap.projection_updated.v1` → DENY-STUB (task 56). M26 has not landed; this handler fail-closes. When
+ * `m26.cap.projection_updated` → DENY-STUB (task 56). M26 has not landed; this handler fail-closes. When
  * M26 lands this re-validates claims in VALIDATING whose `aggregate cap projection not exceeded` rule depends
  * on the changed projection (it will route to {@link handleRevalidateTrigger}).
  */

@@ -14,12 +14,12 @@ import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import {
   AdmissionNotFoundError,
   createAdmissionStatusReader,
   createDrizzleAdmissionReaderStore,
 } from "../src/modules/06-admission/index";
-import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;

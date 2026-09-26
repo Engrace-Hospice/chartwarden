@@ -9,10 +9,23 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/18-evv — Missing-EVV Resolutions (M18 §5.1 `/app/evv/missing-resolutions`, Track B /
-// ADR-0030). The SERVER owns D6 transition + RLS; this read surface keeps the queue coordinate-free.
+// ADR-0030).
+//
+// #91 — the two D6 human closes are here now. This queue is what stands between a delivered visit and a
+// payable one: a capture that never arrived opens an `evv_missing_resolution` row, and an OPEN row is what
+// blocks the visit downstream (a `documented_missing` close never gates a Medicare claim, ADR-0008; an
+// `unresolved_missing` one does). Closing it is a human attestation on a clock — §7.3 gives the assigned
+// clinician 24 hours, §7.4 gives a supervisor 7 days. With no control, every row aged out of both windows
+// and the visits behind them stayed unclaimable.
+//
+// The SERVER owns the D6 transition and RLS (ADR-0030 — no frontend authz). The screen states the windows
+// so someone does not type a 50-word attestation into a row that closed yesterday; it does not decide them
+// and does not disable a control on its own reading of a clock. The queue stays coordinate-free.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { JSX } from "react";
 import { useSearchParams } from "react-router-dom";
+import { type MissingResolutionView, isResolutionOpen } from "./evv-api";
+import { type ResolutionAction, ResolutionActionModal } from "./evv-modals";
 import { EVV_RESOLUTION_TONE, stateLabel } from "./evv-shared";
 
 interface ResolutionRow {
@@ -37,6 +50,10 @@ export function EvvMissingResolutions(): JSX.Element {
   const [pageSize, setPageSize] = useState(10);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ action: ResolutionAction; row: ResolutionRow } | null>(
+    null,
+  );
+  const [notice, setNotice] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -99,188 +116,241 @@ export function EvvMissingResolutions(): JSX.Element {
     setPage(1);
   };
 
+  const applyResolution = (updated: MissingResolutionView): void => {
+    setRows((prev) =>
+      prev.map((r) =>
+        r.id === updated.id
+          ? { ...r, status: updated.status, resolvedByMembershipId: updated.resolvedByMembershipId }
+          : r,
+      ),
+    );
+    setNotice(`Resolution ${updated.id.slice(0, 8)} closed as ${stateLabel(updated.status)}.`);
+  };
+
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="Missing-EVV Resolutions"
-          breadcrumb="Admin / EVV"
-          actions={
-            <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
-              Refresh
-            </Button>
-          }
-        >
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Track late-checkout and missing capture resolutions before billing release.
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <span>{error}</span>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
-              </button>
+    <>
+      {pending ? (
+        <ResolutionActionModal
+          open
+          action={pending.action}
+          resolutionId={pending.row.id}
+          visitId={pending.row.visitId}
+          kind={pending.row.kind}
+          onClose={() => setPending(null)}
+          onResolved={applyResolution}
+        />
+      ) : null}
+      <WorkQueueLayout
+        header={
+          <PageHeader
+            title="Missing-EVV Resolutions"
+            breadcrumb="Admin / EVV"
+            actions={
+              <Button type="button" tone="secondary" onClick={() => void load()} loading={loading}>
+                Refresh
+              </Button>
+            }
+          >
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Track late-checkout and missing capture resolutions before billing release.
             </div>
-          ) : null}
-          <div style={toolbarStyle}>
-            <div style={toolbarTitleStyle}>
-              <span style={toolbarEyebrowStyle}>Resolution backlog</span>
-              <strong>{sortedRows.length} matching resolutions</strong>
-            </div>
-            <div style={controlGroupStyle}>
-              <div style={searchWrapStyle}>
-                <input
-                  type="search"
-                  placeholder="Search resolution, visit, resolver..."
-                  value={searchQuery}
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <span>{error}</span>
+                <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                  x
+                </button>
+              </div>
+            ) : null}
+            <div style={toolbarStyle}>
+              <div style={toolbarTitleStyle}>
+                <span style={toolbarEyebrowStyle}>Resolution backlog</span>
+                <strong>{sortedRows.length} matching resolutions</strong>
+                {notice ? (
+                  <output style={{ fontSize: "0.75rem", color: "var(--color-on-surface-variant)" }}>
+                    {notice}
+                  </output>
+                ) : null}
+              </div>
+              <div style={controlGroupStyle}>
+                <div style={searchWrapStyle}>
+                  <input
+                    type="search"
+                    placeholder="Search resolution, visit, resolver..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    aria-label="Search missing EVV resolutions"
+                    style={searchInputStyle}
+                  />
+                </div>
+                <select
+                  aria-label="Resolution status"
+                  value={statusFilter}
                   onChange={(e) => {
-                    setSearchQuery(e.target.value);
+                    setStatusFilter(e.target.value);
                     setPage(1);
                   }}
-                  aria-label="Search missing EVV resolutions"
-                  style={searchInputStyle}
-                />
-              </div>
-              <select
-                aria-label="Resolution status"
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="all">Status: All</option>
-                {statusOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {stateLabel(option)}
-                  </option>
-                ))}
-              </select>
-              <select
-                aria-label="Resolution kind"
-                value={kindFilter}
-                onChange={(e) => {
-                  setKindFilter(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="all">Kind: All</option>
-                {kindOptions.map((option) => (
-                  <option key={option} value={option}>
-                    {stateLabel(option)}
-                  </option>
-                ))}
-              </select>
-              {activeFilters > 0 ? (
-                <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                  Clear
-                </Button>
-              ) : null}
-            </div>
-          </div>
-          {status ? (
-            <div role="note" style={noteStyle}>
-              <StatusPill label="Server scoped" tone="progress" />
-              <span>The URL status filter is applied by the server before local filtering.</span>
-            </div>
-          ) : null}
-        </div>
-      }
-      table={
-        error && rows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : sortedRows.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title={activeFilters > 0 ? "No matching resolutions" : "No resolutions"}
-              description={
-                activeFilters > 0
-                  ? "Try adjusting the local resolution filters."
-                  : "No missing-EVV resolutions match your server-scoped request."
-              }
-              action={
-                activeFilters > 0 ? (
-                  <Button size="sm" tone="secondary" onClick={clearFilters}>
-                    Clear filters
+                  style={selectStyle}
+                >
+                  <option value="all">Status: All</option>
+                  {statusOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {stateLabel(option)}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  aria-label="Resolution kind"
+                  value={kindFilter}
+                  onChange={(e) => {
+                    setKindFilter(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="all">Kind: All</option>
+                  {kindOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {stateLabel(option)}
+                    </option>
+                  ))}
+                </select>
+                {activeFilters > 0 ? (
+                  <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                    Clear
                   </Button>
-                ) : undefined
-              }
-            />
+                ) : null}
+              </div>
+            </div>
+            {status ? (
+              <div role="note" style={noteStyle}>
+                <StatusPill label="Server scoped" tone="progress" />
+                <span>The URL status filter is applied by the server before local filtering.</span>
+              </div>
+            ) : null}
           </div>
-        ) : (
-          <div style={tableWrapStyle}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={headerRowStyle}>
-                  <th style={{ ...thStyle, width: "26%" }}>Resolution</th>
-                  <th style={{ ...thStyle, width: "22%" }}>Visit</th>
-                  <th style={{ ...thStyle, width: "18%" }}>Kind</th>
-                  <th style={{ ...thStyle, width: "16%" }}>Status</th>
-                  <th style={{ ...thStyle, width: "18%", textAlign: "right" }}>Resolved by</th>
-                </tr>
-              </thead>
-              <tbody>
-                {pagedRows.map((row) => (
-                  <tr key={row.id} style={rowStyle}>
-                    <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(row.id)}
-                      </code>
-                    </td>
-                    <td style={tdStyle}>
-                      <code className="wx-data-md" style={codeStyle}>
-                        {shortId(row.visitId)}
-                      </code>
-                    </td>
-                    <td style={tdStyle}>{stateLabel(row.kind)}</td>
-                    <td style={tdStyle}>
-                      <StatusPill
-                        label={stateLabel(row.status)}
-                        tone={EVV_RESOLUTION_TONE[row.status] ?? "neutral"}
-                      />
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right" }}>
-                      {row.resolvedByMembershipId ? (
-                        <code className="wx-data-md" style={codeStyle}>
-                          {shortId(row.resolvedByMembershipId)}
-                        </code>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
+        }
+        table={
+          error && rows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : loading ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : sortedRows.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title={activeFilters > 0 ? "No matching resolutions" : "No resolutions"}
+                description={
+                  activeFilters > 0
+                    ? "Try adjusting the local resolution filters."
+                    : "No missing-EVV resolutions match your server-scoped request."
+                }
+                action={
+                  activeFilters > 0 ? (
+                    <Button size="sm" tone="secondary" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <div style={tableWrapStyle}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={headerRowStyle}>
+                    <th style={{ ...thStyle, width: "20%" }}>Resolution</th>
+                    <th style={{ ...thStyle, width: "18%" }}>Visit</th>
+                    <th style={{ ...thStyle, width: "16%" }}>Kind</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Status</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Resolved by</th>
+                    <th style={{ ...thStyle, width: "18%", textAlign: "right" }}>Close</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={sortedRows.length}
-              onPageChange={setPage}
-              onPageSizeChange={(nextPageSize) => {
-                setPageSize(nextPageSize);
-                setPage(1);
-              }}
-              pageSizeOptions={PAGE_SIZES}
-              noun="resolutions"
-            />
-          </div>
-        )
-      }
-      fullPageScroll
-    />
+                </thead>
+                <tbody>
+                  {pagedRows.map((row) => (
+                    <tr key={row.id} style={rowStyle}>
+                      <td style={tdStyle}>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {shortId(row.id)}
+                        </code>
+                      </td>
+                      <td style={tdStyle}>
+                        <code className="wx-data-md" style={codeStyle}>
+                          {shortId(row.visitId)}
+                        </code>
+                      </td>
+                      <td style={tdStyle}>{stateLabel(row.kind)}</td>
+                      <td style={tdStyle}>
+                        <StatusPill
+                          label={stateLabel(row.status)}
+                          tone={EVV_RESOLUTION_TONE[row.status] ?? "neutral"}
+                        />
+                      </td>
+                      <td style={tdStyle}>
+                        {row.resolvedByMembershipId ? (
+                          <code className="wx-data-md" style={codeStyle}>
+                            {shortId(row.resolvedByMembershipId)}
+                          </code>
+                        ) : (
+                          "—"
+                        )}
+                      </td>
+                      <td style={{ ...tdStyle, textAlign: "right" }}>
+                        {isResolutionOpen(row.status) ? (
+                          <div
+                            style={{ display: "flex", gap: "0.35rem", justifyContent: "flex-end" }}
+                          >
+                            <Button
+                              size="sm"
+                              onClick={() => setPending({ action: "clinician_attest", row })}
+                            >
+                              Attest
+                            </Button>
+                            <Button
+                              size="sm"
+                              tone="tertiary"
+                              onClick={() => setPending({ action: "supervisor_override", row })}
+                            >
+                              Override
+                            </Button>
+                          </div>
+                        ) : (
+                          <span style={{ color: "var(--color-on-surface-variant)" }}>Closed</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={sortedRows.length}
+                onPageChange={setPage}
+                onPageSizeChange={(nextPageSize) => {
+                  setPageSize(nextPageSize);
+                  setPage(1);
+                }}
+                pageSizeOptions={PAGE_SIZES}
+                noun="resolutions"
+              />
+            </div>
+          )
+        }
+        fullPageScroll
+      />
+    </>
   );
 }
 

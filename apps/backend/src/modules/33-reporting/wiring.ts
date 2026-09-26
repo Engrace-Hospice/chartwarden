@@ -21,6 +21,7 @@
 //     evaluator (drilldown maximal-narrows), and the tile/export SQL executor (tiles serve the
 //     forward-seam empty result). The replica-lag gate reports a healthy single-pool primary (no replica
 //     ⇒ no lag).
+import { DegradedError } from "@wardenx/types";
 import type { ConnectionOptions } from "bullmq";
 import { Queue } from "bullmq";
 import { parseExpression } from "cron-parser";
@@ -29,18 +30,26 @@ import { sql } from "drizzle-orm";
 import type { DbClient } from "@wardenx/db";
 import {
   type CsvExportOutboxPort,
+  DashboardCatalogProviderImpl,
+  type DashboardMetricExecutorPort,
   type DrilldownAuditOutboxPort,
   type ExportRenderOutboxPort,
   MetricsProviderImpl,
   type ReadReplicaSessionPort,
   type ReplicaLagGatePort,
+  ReportCatalogRepository,
   type ReportingConsentConsumer,
   type ReportingDb,
+  type TranslatorBaseCatalog,
+  translateSpec,
+  withReportSession,
 } from "@wardenx/reporting";
 import { isValidTimeZone } from "@wardenx/shared/dates";
 import { registerPlatformJob, withOrgContext } from "@wardenx/tenancy";
 
 import { getSeam, registerSeam } from "../../bootstrap/index";
+import { resolveReportableScope } from "./abac-predicates";
+import { buildDrizzleReportingAbacResolver } from "./abac-resolver-db";
 import {
   CronExpressionInvalidError,
   type CronPort,
@@ -48,6 +57,7 @@ import {
   type M33ReadEnqueuePort,
   type M33ReadRouteService,
   type M33WriteRouteService,
+  type ReportScopeResolverPort,
   type WriteOutboxPort,
   createDrizzleM33ExportDrilldownBackend,
   createDrizzleM33ReadBackend,
@@ -63,10 +73,26 @@ import { buildDrizzleTileSqlExecutor } from "./sql-executor";
  */
 export const M33_PLATFORM_JOB_ID = "m33.platform_ops";
 
-/** Raised by a still-unbound Phase-2C infra port (the fail-closed signal — never a silent no-op). */
-export class M33InfraPortUnbound extends Error {
-  constructor(port: string, reason: string) {
-    super(`M33 Phase-2C infra port '${port}' is not bound to a real adapter: ${reason}`);
+/**
+ * Raised by a still-unbound infra port (the fail-closed signal — never a silent no-op).
+ *
+ * A `DegradedError`, so the caller gets `503 DEGRADED` naming the missing dependency rather than the
+ * `500 INTERNAL_ERROR / "An unexpected error occurred"` a bare `Error` collapsed into (F-022 / #55).
+ * A deliberately unbound port IS the dependency-unavailable condition `DegradedError` exists for,
+ * and the M34 `M34InfraPortUnbound` precedent already took that posture. `reason` is the whole of
+ * the caller-facing message — the internal port name stays on `port`, where the log can read it and
+ * the response cannot.
+ *
+ * `component` defaults to the background queue because every current throw site is a queue producer;
+ * a future non-queue port passes its own rather than mislabelling itself.
+ */
+export class M33InfraPortUnbound extends DegradedError {
+  constructor(
+    public readonly port: string,
+    reason: string,
+    component = "background-queue",
+  ) {
+    super(component, reason);
     this.name = "M33InfraPortUnbound";
   }
 }
@@ -156,20 +182,119 @@ function buildLiveReplicaSession(db: DbClient): ReadReplicaSessionPort {
 }
 
 /**
+ * Evaluate ONE catalogued metric over the MV substrate — the {@link DashboardMetricExecutorPort} behind
+ * `MetricsProviderImpl` (§4.3).
+ *
+ * F-044: this port had no implementation anywhere, so `MetricsProviderImpl` was constructed WITHOUT it and
+ * took its own `!this.deps.executor` branch on every call. The seam was registered, the endpoint was
+ * mounted, the catalog lookup ran — and the answer was `value: null, isForwardSeamDenyStub: true` for every
+ * metric, for every consumer (M30's HQRP measure-detail embed, M34's ops console, M37's IPU tiles), forever.
+ * A metric that is genuinely not materialized yet and one whose executor was never built are the same
+ * response, which is why nothing surfaced it.
+ *
+ * A metric belongs to whichever ACTIVE base declares a measure bound to it (`MeasureCatalog.metricKey`), so
+ * resolution is: find that base → build a one-measure KPI spec → translate → execute → read the scalar.
+ * No new SQL surface and no new catalog concept: this is `readTile` narrowed to a single measure, through
+ * the same translator and the same executor.
+ *
+ * Scope is `org` here, and deliberately: the seam's callers are OTHER MODULES' server-side embeds, which
+ * hold no M33 route actor to resolve a §4.7.1 envelope for. The consuming module gates its own surface,
+ * and every value crossing this seam is an org aggregate (D6). A metric on a member-grain base is still
+ * org-summed — the seam has no way to say "this clinician" and does not pretend to.
+ */
+function buildDashboardMetricExecutor(
+  db: DbClient,
+  tiles: ReturnType<typeof buildDrizzleTileSqlExecutor>,
+): DashboardMetricExecutorPort {
+  const replica = buildLiveReplicaSession(db);
+  const empty = { value: null, rowCount: 0, isForwardSeamDenyStub: true } as const;
+  return {
+    async evaluate(input) {
+      return withReportSession(
+        { orgId: input.organizationId, tier: "tile" },
+        { replica },
+        async (sessionDb) => {
+          const catalog = new ReportCatalogRepository(sessionDb);
+          const bases = await catalog.listBases("active");
+          let base: (typeof bases)[number] | undefined;
+          let measureKey: string | undefined;
+          for (const candidate of bases) {
+            const measure = candidate.measures.find((m) => m.metricKey === input.metricKey);
+            if (measure) {
+              base = candidate;
+              measureKey = measure.measureKey;
+              break;
+            }
+          }
+          if (!base || !measureKey) return empty;
+          const mv = await catalog.findMvByKey(base.mvKey);
+          if (!mv) return empty;
+          const translatorBase: TranslatorBaseCatalog = {
+            baseKey: base.baseKey,
+            status: base.status,
+            mvKey: base.mvKey,
+            mvSchemaName: mv.schemaName,
+            mvStatus: mv.status,
+            dimensions: base.dimensions,
+            measures: base.measures,
+            maxRowLimit: base.maxRowLimit,
+            drilldownUrlTemplate: base.drilldownUrlTemplate,
+            scopeMembershipColumn: base.scopeMembershipColumn,
+            scopeLocationColumn: base.scopeLocationColumn,
+          };
+          const translation = translateSpec(
+            { dimensions: [], measures: [{ measureKey }], filters: [] },
+            translatorBase,
+            { scopeKind: "org", organizationId: input.organizationId },
+          );
+          if (translation.kind === "deny_stub") return empty;
+          const { rows, rowCount } = await tiles.execute(sessionDb, {
+            sql: translation.sql,
+            params: translation.params,
+          });
+          const first = rows[0] as Record<string, unknown> | undefined;
+          const raw = first?.[measureKey];
+          const value = raw === null || raw === undefined ? null : Number(raw);
+          return {
+            value: value !== null && Number.isFinite(value) ? value : null,
+            rowCount,
+            isForwardSeamDenyStub: false,
+          };
+        },
+      );
+    },
+  };
+}
+
+/**
+ * The three PUBLISHED §4.3 seam implementations over one live replica session + one metric executor.
+ * Shared by `registerReportingMetricsSeam` and `buildDrizzleM33ReadService` so the in-process seam and the
+ * HTTP face of that same seam (#42) cannot answer differently — they were two independent deny paths for
+ * one fact before F-044.
+ */
+function buildReportingPublishedSeams(db: DbClient) {
+  const replica = buildLiveReplicaSession(db);
+  const executor = buildDashboardMetricExecutor(db, buildDrizzleTileSqlExecutor());
+  return {
+    metrics: new MetricsProviderImpl({ replica, lag: HEALTHY_SINGLE_POOL_LAG_GATE, executor }),
+    dashboards: new DashboardCatalogProviderImpl({
+      replica,
+      lag: HEALTHY_SINGLE_POOL_LAG_GATE,
+    }),
+  };
+}
+
+/**
  * Register M33's PUBLISHED `MetricsProvider` seam (#107 item 2 / §4.3) into the M1 SeamRegistry — the embedded
- * dashboard-metric read M30/M34/M37 resolve via `getSeam`. With NO MV executor bound it returns the forward-
- * seam EMPTY value (`value: null`, `isForwardSeamDenyStub: true`) over the authoritative unit from
- * `report_metric_catalog` — never a fabricated number; the real value lands when M33's MV read path binds. The
- * read runs under the replica-over-primary session (RLS-scoped to the caller's org). When no db is present the
- * M1 fail-closed deny-stub stands. Called by the composition root in `wireModuleSeams` (the M10
- * `registerHopeSeams` precedent).
+ * dashboard-metric read M30/M34/M37 resolve via `getSeam`. The read runs under the replica-over-primary
+ * session (RLS-scoped to the caller's org) and now carries a REAL MV executor (F-044), so a `value: null,
+ * isForwardSeamDenyStub: true` answer once again means what it says: the metric's MV has not materialized.
+ * When no db is present the M1 fail-closed deny-stub stands. Called by the composition root in
+ * `wireModuleSeams` (the M10 `registerHopeSeams` precedent).
  */
 export function registerReportingMetricsSeam(db: DbClient | undefined): void {
   if (!db) return;
-  registerSeam(
-    "MetricsProvider",
-    new MetricsProviderImpl({ replica: buildLiveReplicaSession(db) }),
-  );
+  registerSeam("MetricsProvider", buildReportingPublishedSeams(db).metrics);
 }
 
 /**
@@ -249,12 +374,54 @@ export function buildDrizzleM33ReadService(deps: {
   db: DbClient;
   enqueue: M33ReadEnqueuePort;
 }): { service: M33ReadRouteService } {
+  const published = buildReportingPublishedSeams(deps.db);
   return createDrizzleM33ReadBackend({
     replica: buildLiveReplicaSession(deps.db),
     lag: HEALTHY_SINGLE_POOL_LAG_GATE,
     enqueue: deps.enqueue,
     tiles: buildDrizzleTileSqlExecutor(),
+    dashboards: published.dashboards,
+    metrics: published.metrics,
+    scope: buildReportScopeResolver(deps.db),
   });
+}
+
+/**
+ * The §4.7.1 D8 scope resolver every M33 read narrows on — `resolveReportableScope` over the PRODUCTION
+ * Drizzle `ReportingAbacResolver`, i.e. the same resolution the `reportable_scope` predicate performs.
+ *
+ * F-059: that resolution has run on every request since M33 landed, inside the predicate, which then
+ * threw the envelope away and returned a boolean. Every read path built its OWN envelope, hard-defaulting
+ * to `org`, so the authorization gate and the query narrowing disagreed about what the actor may see and
+ * only the gate's answer was ever wrong-side-safe. One resolver now feeds both.
+ */
+export function buildReportScopeResolver(db: DbClient): ReportScopeResolverPort {
+  const resolver = buildDrizzleReportingAbacResolver(db);
+  return {
+    async resolve(actor) {
+      const envelope = await resolveReportableScope(
+        {
+          organizationId: actor.organizationId,
+          userId: actor.userId,
+          roles: [...actor.roles],
+          attributes: actor.membershipId ? { membershipId: actor.membershipId } : {},
+        } as never,
+        {} as never,
+        resolver,
+      );
+      // The predicate's envelope names the field `kind` and stamps `sealed: true` "so the SQL
+      // scope-injector accepts it"; the injector's envelope names it `scopeKind` and has no `sealed`
+      // field to check. The two shapes have never been assignable — a third way this chain could not have
+      // been connected without someone noticing, alongside the discarded resolution and the MV columns
+      // that do not exist. Translated here, at the one seam between the ABAC vocabulary and the SQL one.
+      return {
+        scopeKind: envelope.kind,
+        organizationId: envelope.organizationId,
+        membershipIds: envelope.membershipIds,
+        locationIds: envelope.locationIds,
+      };
+    },
+  };
 }
 
 /**
@@ -318,6 +485,7 @@ export function buildDrizzleM33ExportDrilldownService(deps: {
   service: M33ExportDrilldownRouteService;
 } {
   const tiles = buildDrizzleTileSqlExecutor();
+  const scope = buildReportScopeResolver(deps.db);
   const consent: Pick<ReportingConsentConsumer, "evaluateForReporting"> = {
     evaluateForReporting: (input) =>
       (getSeam("ConsentEvaluator") as ReportingConsentConsumer).evaluateForReporting(input),
@@ -402,6 +570,7 @@ export function buildDrizzleM33ExportDrilldownService(deps: {
     replica: buildLiveReplicaSession(deps.db),
     lag: HEALTHY_SINGLE_POOL_LAG_GATE,
     tiles,
+    scope,
     consent,
     csvOutbox,
     drilldownOutbox,

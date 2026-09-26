@@ -5,9 +5,16 @@
 // into application logs (and any log shipper / proxy access log downstream). This module builds the
 // logger options that:
 //   • log the URL PATH ONLY (query string stripped) so a `?q=…` needle never reaches the logs, and
-//   • censor the auth-bearing request headers + the response Set-Cookie (Pino `redact`).
+//   • censor the auth-bearing request headers + the response Set-Cookie (Pino `redact`), and
+//   • rebuild a DATABASE error from an allowlist, dropping its bound parameters (F-027 / #65).
 // Request BODIES are not serialized by Fastify's default logging, so no body field is emitted to redact.
+//
+// The third one closes a hole in the first: `log.error({ err }, "unhandled error")` on the catch-all
+// path emitted a Drizzle wrapper whose own message embeds the bound parameters, so the needle this
+// module had just stripped out of `req.url` was sitting in the field beside it.
 import type { FastifyRequest } from "fastify";
+import { stdSerializers } from "pino";
+import { hasDatabaseErrorInChain, redactDatabaseError } from "../redact-database-error";
 
 /** Auth material + cookies are censored wholesale — never logged raw (defense in depth). */
 const REDACT_PATHS = [
@@ -32,6 +39,16 @@ export function buildLoggerOptions() {
     level: process.env.LOG_LEVEL ?? "info",
     redact: { paths: [...REDACT_PATHS], censor: "[redacted]" },
     serializers: {
+      /**
+       * PHI-safe error serializer. A database error — or an ordinary error with one on its `cause`
+       * chain — is rebuilt from `redact-database-error.ts`'s allowlist. Everything else keeps Pino's
+       * standard shape exactly, so existing log consumers see no change for the ordinary case.
+       */
+      err(error: Error) {
+        return hasDatabaseErrorInChain(error)
+          ? (redactDatabaseError(error) ?? stdSerializers.err(error))
+          : stdSerializers.err(error);
+      },
       req(request: FastifyRequest) {
         return {
           method: request.method,

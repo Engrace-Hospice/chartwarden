@@ -186,6 +186,12 @@ describe("M6-T09 — §7.6 W-DC-03 transfer-in inherited period sequencing (D9)"
     const plan = planTransferIn({
       priorBenefitPeriodSequence: 3,
       priorElectionStartDate: "2026-04-01",
+      // `planTransferIn` is pure period-sequencing math and reads none of these, but they are REQUIRED
+      // on the input the service layer passes — the `transfer_event` row's own columns.
+      hospiceMedicalDirectorId: "md_1",
+      effectiveDate: "2026-04-01",
+      otherHospiceName: "Sending Hospice",
+      narrative: "transfer in",
     });
     expect(plan.inherited).toEqual({ sequence: 3, state: "active", ctiRequired: false });
     expect(plan.next).toEqual({ sequence: 4, state: "pending", ctiRequired: true });

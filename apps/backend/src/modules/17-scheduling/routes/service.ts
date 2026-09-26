@@ -658,10 +658,7 @@ export class SchedulingRouteService implements SchedulingAbacResolver {
   }
 
   // ── SchedulingAbacResolver (§4.7) — resolves over the same dataset ────────────────────────────────────
-  async resolveDisciplines(
-    _orgId: string,
-    membershipId: string,
-  ): Promise<SchedulingDiscipline[]> {
+  async resolveDisciplines(_orgId: string, membershipId: string): Promise<SchedulingDiscipline[]> {
     return this.disciplines.get(membershipId) ?? [];
   }
 

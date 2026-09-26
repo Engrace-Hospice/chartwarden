@@ -3,9 +3,9 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, ValidationError } from "@wardenx/types";
 import { and, asc, eq, inArray } from "drizzle-orm";
 import {
+  type HopeJ2051TriggerState,
   canonicalAnsweredString,
   deriveHopeJ2051TriggerState,
-  type HopeJ2051TriggerState,
 } from "./hope-sfv-service";
 import type { HopeIsc } from "./hope-spec-registry";
 import type { HopeApplicabilityResult } from "./spec/applicability";
@@ -21,10 +21,7 @@ type CanonicalReadinessAnswer = {
   readonly state: "answered" | "skipped";
   readonly value: unknown | null;
 };
-type CanonicalReadinessAnswerMap = ReadonlyMap<
-  string,
-  CanonicalReadinessAnswer
->;
+type CanonicalReadinessAnswerMap = ReadonlyMap<string, CanonicalReadinessAnswer>;
 type MutableSectionReview = {
   code: string;
   active: number;
@@ -158,9 +155,7 @@ export const OPTIONAL_ASSESSMENT_ITEMS: ReadonlySet<string> = new Set([
   "A0500D", // Patient Name Suffix
 ]);
 
-export function isCompletedSfvRegulatoryState(
-  answers: CanonicalReadinessAnswerMap,
-): boolean {
+export function isCompletedSfvRegulatoryState(answers: CanonicalReadinessAnswerMap): boolean {
   const j2052a = canonicalAnsweredString(answers.get("J2052A"));
   const j2052b = canonicalAnsweredString(answers.get("J2052B"));
   const j2052c = answers.get("J2052C");
@@ -183,10 +178,7 @@ function answerMapByCode(input: {
     { state: "answered" | "skipped"; value: unknown | null }
   >;
 }) {
-  const out = new Map<
-    string,
-    { state: "answered" | "skipped"; value: unknown | null }
-  >();
+  const out = new Map<string, { state: "answered" | "skipped"; value: unknown | null }>();
   for (const [itemId, answer] of input.answersByItem) {
     const item = input.itemsById.get(itemId);
     if (item)
@@ -195,8 +187,7 @@ function answerMapByCode(input: {
         value: answer.value as unknown | null,
       });
   }
-  for (const [itemCode, answer] of input.candidateAnswers ?? [])
-    out.set(itemCode, answer);
+  for (const [itemCode, answer] of input.candidateAnswers ?? []) out.set(itemCode, answer);
   return out;
 }
 
@@ -216,8 +207,7 @@ function workflowControlAnswers(
 
   if (!a0250) return new Map();
 
-  const a0050 =
-    assessment.isc === "XX" ? "3" : assessment.correctsAssessmentId ? "2" : "1";
+  const a0050 = assessment.isc === "XX" ? "3" : assessment.correctsAssessmentId ? "2" : "1";
 
   return new Map([
     ["A0050", { state: "answered" as const, value: a0050 }],
@@ -238,15 +228,10 @@ export interface HopeAssessmentReadinessService {
     readonly assessmentId: string;
     readonly candidateZ0500B?: string;
   }): Promise<HopeReviewReadModel>;
-  evaluateCandidateInTx(
-    tx: DbClient,
-    input: HopeReadinessCandidate,
-  ): Promise<HopeReviewReadModel>;
+  evaluateCandidateInTx(tx: DbClient, input: HopeReadinessCandidate): Promise<HopeReviewReadModel>;
 }
 
-export function createHopeAssessmentReadinessService(
-  db: DbClient,
-): HopeAssessmentReadinessService {
+export function createHopeAssessmentReadinessService(db: DbClient): HopeAssessmentReadinessService {
   const A = schema.hopeAssessments;
   const V = schema.hopeSpecVersions;
   const I = schema.hopeSpecItems;
@@ -276,10 +261,7 @@ export function createHopeAssessmentReadinessService(
     readonly specCode: string;
     readonly isc: HopeIsc;
     readonly items: readonly SpecItemRow[];
-    readonly answers: Map<
-      string,
-      { state: "answered" | "skipped"; value: unknown | null }
-    >;
+    readonly answers: Map<string, { state: "answered" | "skipped"; value: unknown | null }>;
     readonly applicability: HopeApplicabilityResult;
   }): readonly HopeRuleFinding[] {
     return createHopeValidationEngine(input.specCode).evaluate({
@@ -307,10 +289,7 @@ export function createHopeAssessmentReadinessService(
 
   function blockersFor(input: {
     readonly items: readonly SpecItemRow[];
-    readonly answers: Map<
-      string,
-      { state: "answered" | "skipped"; value: unknown | null }
-    >;
+    readonly answers: Map<string, { state: "answered" | "skipped"; value: unknown | null }>;
     readonly applicability: HopeApplicabilityResult;
     readonly findings: readonly HopeRuleFinding[];
     readonly sfv: SfvRow | undefined;
@@ -326,15 +305,11 @@ export function createHopeAssessmentReadinessService(
     const WORKFLOW_COMPLETION_ITEMS = new Set(["Z0500B"]);
 
     for (const item of input.items.filter((row) => row.kind === "assessment")) {
-      const app =
-        input.applicability.items.get(item.itemCode)?.applicability ??
-        "applicable";
+      const app = input.applicability.items.get(item.itemCode)?.applicability ?? "applicable";
 
       const answer = input.answers.get(item.itemCode);
 
-      const workflowCompletionItem = WORKFLOW_COMPLETION_ITEMS.has(
-        item.itemCode,
-      );
+      const workflowCompletionItem = WORKFLOW_COMPLETION_ITEMS.has(item.itemCode);
 
       if (app === "pending") {
         push({
@@ -343,11 +318,7 @@ export function createHopeAssessmentReadinessService(
           itemCode: item.itemCode,
           message: `${item.itemCode} cannot be finalized until its applicability branch is resolved.`,
         });
-      } else if (
-        app === "applicable" &&
-        answer?.state !== "answered" &&
-        !workflowCompletionItem
-      ) {
+      } else if (app === "applicable" && answer?.state !== "answered" && !workflowCompletionItem) {
         if (OPTIONAL_ASSESSMENT_ITEMS.has(item.itemCode)) {
           continue;
         }
@@ -443,11 +414,7 @@ export function createHopeAssessmentReadinessService(
     tx: DbClient,
     input: HopeReadinessCandidate,
   ): Promise<HopeReviewReadModel> {
-    const items = await loadItems(
-      tx,
-      input.assessment.specVersionId!,
-      input.isc,
-    );
+    const items = await loadItems(tx, input.assessment.specVersionId!, input.isc);
     const itemsById = new Map(items.map((item) => [item.id, item]));
     const answers = await tx
       .select()
@@ -474,14 +441,10 @@ export function createHopeAssessmentReadinessService(
     }
     const answerMap = answerMapByCode({
       itemsById,
-      answersByItem: new Map(
-        answers.map((answer) => [answer.specItemId, answer]),
-      ),
+      answersByItem: new Map(answers.map((answer) => [answer.specItemId, answer])),
       candidateAnswers,
     });
-    const applicability = createHopeApplicabilityEngine(
-      input.specVersionCode,
-    ).evaluate({
+    const applicability = createHopeApplicabilityEngine(input.specVersionCode).evaluate({
       isc: input.isc,
       activeItemCodes: items
         .filter((item) => item.kind === "assessment")
@@ -507,13 +470,9 @@ export function createHopeAssessmentReadinessService(
       )
       .limit(1);
     const validation = {
-      errorCount: findings.filter((finding) => finding.severity === "error")
-        .length,
-      warningCount: findings.filter((finding) => finding.severity === "warning")
-        .length,
-      hasBlockingErrors: findings.some(
-        (finding) => finding.severity === "error",
-      ),
+      errorCount: findings.filter((finding) => finding.severity === "error").length,
+      warningCount: findings.filter((finding) => finding.severity === "warning").length,
+      hasBlockingErrors: findings.some((finding) => finding.severity === "error"),
       findings: findings.map((finding) => ({
         ruleId: finding.ruleId,
         severity: finding.severity,
@@ -533,8 +492,7 @@ export function createHopeAssessmentReadinessService(
     };
     for (const item of items.filter((row) => row.kind === "assessment")) {
       const section = sectionOf(item);
-      const app =
-        applicability.items.get(item.itemCode)?.applicability ?? "applicable";
+      const app = applicability.items.get(item.itemCode)?.applicability ?? "applicable";
       const answer = answerMap.get(item.itemCode);
       const current = bySection.get(section) ?? {
         code: section,
@@ -639,18 +597,9 @@ export function createHopeAssessmentReadinessService(
             .select({ assessment: A, specCode: V.code })
             .from(A)
             .innerJoin(V, eq(V.id, A.specVersionId))
-            .where(
-              and(
-                eq(A.id, input.assessmentId),
-                eq(A.organizationId, input.organizationId),
-              ),
-            )
+            .where(and(eq(A.id, input.assessmentId), eq(A.organizationId, input.organizationId)))
             .limit(1);
-          if (
-            !loaded ||
-            !loaded.assessment.specVersionId ||
-            !loaded.assessment.isc
-          ) {
+          if (!loaded || !loaded.assessment.specVersionId || !loaded.assessment.isc) {
             throw new ConflictError(
               `HOPE assessment ${input.assessmentId} has no frozen spec version / ISC`,
             );

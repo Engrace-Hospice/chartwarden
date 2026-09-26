@@ -1,3 +1,20 @@
+import {
+  createInMemorySessionContextStore,
+  createSessionContextResolver,
+  resetAuthorizationContract,
+  resetEffectivePermissionResolver,
+  setEffectivePermissionResolver,
+} from "@wardenx/auth";
+import {
+  CARRY_FORWARD_COMPLIANCE_THRESHOLD,
+  type PacketBuildInput,
+  applySudRedaction,
+  assertPacketWritable,
+  buildPacketSnapshot,
+  evaluateQuorum,
+  planCarryForward,
+  transitionActionItem,
+} from "@wardenx/idg";
 // apps/backend/__tests__/idg-workflow-acceptance.test.ts — M14-T08 the §9 workflow-acceptance suite (the
 // FINAL M14 task). One scenario per the §7 plan-named IDG workflows — W-SCH-01 (schedule materialisation),
 // W-PKT-01 (pre-meeting packet build), W-DEC-01 (quorate decision recording), W-DEC-02 (non-quorate decision
@@ -17,23 +34,7 @@
 // service + ABAC layer own (per-decision quorum, inclusion-criteria URL-tamper defense, cross-location EoP,
 // step-up repudiation, non-leaking cross-tenant 404). The RLS layer-independence (§9.3/§9.4) lives in
 // rls-isolation.live (the M14 block).
-import {
-  CARRY_FORWARD_COMPLIANCE_THRESHOLD,
-  type PacketBuildInput,
-  applySudRedaction,
-  assertPacketWritable,
-  buildPacketSnapshot,
-  evaluateQuorum,
-  planCarryForward,
-  transitionActionItem,
-} from "@wardenx/idg";
-import {
-  createInMemorySessionContextStore,
-  createSessionContextResolver,
-  resetAuthorizationContract,
-  resetEffectivePermissionResolver,
-  setEffectivePermissionResolver,
-} from "@wardenx/auth";
+import type { IdgDecisionRecordedPayload } from "@wardenx/types";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
@@ -58,6 +59,18 @@ const MEM_MD = "mem_md";
 const MEM_RN = "mem_rn";
 const MEM_MSW = "mem_msw";
 const MEM_CHAP = "mem_chap";
+
+// The §2.6 D4 payload is REQUIRED on every decision — `RecordDecisionArgs.payload` is not optional, and
+// `idg.decision_recorded` is what carries it to M7/M11/M12. Every `recordDecision` call in this suite used
+// to omit it, so each decision was recorded with `payload: undefined` and the adjournment burst this file
+// asserts carried nothing to its consumers. These are the minimal valid envelopes for the four kinds it
+// records; the suite asserts the burst, the quorum stamp and the per-patient split, not payload content.
+const PAYLOAD = {
+  care_plan_update: { kind: "care_plan_update", mutations: [] },
+  order_request: { kind: "order_request", requestedOrders: [] },
+  medication_recommendation: { kind: "medication_recommendation", recommendations: [] },
+  team_note: { kind: "team_note", noteText: "team note" },
+} as const satisfies Record<string, IdgDecisionRecordedPayload>;
 const QUORUM_DISCIPLINES: Readonly<Record<string, string>> = {
   [MEM_MD]: "hospice_physician",
   [MEM_RN]: "rn_case_manager",
@@ -154,10 +167,12 @@ describe("M14-T08 §7 workflow acceptance", () => {
     await svc.recordDecision(ORG, COORD, MTG, {
       patientId: PATIENT,
       decisionKind: "care_plan_update",
+      payload: PAYLOAD.care_plan_update,
     });
     await svc.recordDecision(ORG, COORD, MTG, {
       patientId: PATIENT_2,
       decisionKind: "order_request",
+      payload: PAYLOAD.order_request,
     });
 
     const history = await svc.getPatientIdgHistory(ORG, PATIENT);
@@ -200,18 +215,25 @@ describe("M14-T08 §7 workflow acceptance", () => {
     const carePlan = await svc.recordDecision(ORG, COORD, MTG, {
       patientId: PATIENT,
       decisionKind: "care_plan_update",
+      payload: PAYLOAD.care_plan_update,
     });
     expect(carePlan.status).toBe("open");
     expect(carePlan.wasQuorate).toBe(true);
     await svc.recordDecision(ORG, COORD, MTG, {
       patientId: PATIENT,
       decisionKind: "order_request",
+      payload: PAYLOAD.order_request,
     });
     await svc.recordDecision(ORG, COORD, MTG, {
       patientId: PATIENT_2,
       decisionKind: "medication_recommendation",
+      payload: PAYLOAD.medication_recommendation,
     });
-    await svc.recordDecision(ORG, COORD, MTG, { patientId: null, decisionKind: "team_note" });
+    await svc.recordDecision(ORG, COORD, MTG, {
+      patientId: null,
+      decisionKind: "team_note",
+      payload: PAYLOAD.team_note,
+    });
     svc.drainEvents();
 
     // Adjourn with a fresh step-up: the commit point bursts idg.decision_recorded for the THREE actionable
@@ -313,6 +335,7 @@ describe("M14-T08 §7 workflow acceptance", () => {
     const dec = await svc2.recordDecision(ORG, COORD, MTG, {
       patientId: PATIENT,
       decisionKind: "team_note",
+      payload: PAYLOAD.team_note,
     });
     expect(dec.wasQuorate).toBe(false);
   });
@@ -492,7 +515,10 @@ describe("GAP-091 — per_patient_review_floor_clear's audited idg.override_revi
   }
 
   /** Session-context-derived, so the predicate's real M2-seam read (never a client header) is exercised. */
-  function seedSession(lastStepUpAt: Date | null, factor: "webauthn" | "totp" | "sms" | null): void {
+  function seedSession(
+    lastStepUpAt: Date | null,
+    factor: "webauthn" | "totp" | "sms" | null,
+  ): void {
     const { store } = createInMemorySessionContextStore([
       {
         sessionId: SESSION,
@@ -500,6 +526,11 @@ describe("GAP-091 — per_patient_review_floor_clear's audited idg.override_revi
         membershipId: COORD,
         organizationId: ORG,
         roles: ["idg_coordinator"],
+        providerEntityIds: [],
+        locationIds: [LOC],
+        sessionClass: "staff",
+        portalAccountId: null,
+        sessionPatientId: null,
         lastStepUpAt,
         lastStepUpFactor: factor,
       },
@@ -508,7 +539,10 @@ describe("GAP-091 — per_patient_review_floor_clear's audited idg.override_revi
   }
 
   function overrideCtx(sessionId: string | null = SESSION) {
-    return { ...ctx(), attributes: sessionId ? { sessionId } : {} };
+    // `attributes` is the mutable server-assembled bag the predicate STAMPS the override flag into and the
+    // assertion reads back; inferring it as `{ sessionId: string } | {}` made that read an implicit any.
+    const attributes: Record<string, unknown> = sessionId ? { sessionId } : {};
+    return { ...ctx(), attributes };
   }
 
   const target = { id: MTG, proposedTransition: "cancel" as const };
@@ -573,6 +607,7 @@ describe("M14-T08 §9.3 / §4.12 security & authorization (quorum, inclusion-tam
       svc.recordDecision(ORG, COORD, MTG, {
         patientId: "99999999-9999-4999-8999-999999999999",
         decisionKind: "care_plan_update",
+        payload: PAYLOAD.care_plan_update,
       }),
     ).rejects.toThrowError(expect.objectContaining({ code: "INCLUSION_CRITERIA_FAILED" }));
   });
@@ -594,7 +629,11 @@ describe("M14-T08 §9.3 / §4.12 security & authorization (quorum, inclusion-tam
       ],
     });
     await expect(
-      svc.recordDecision(ORG, COORD, MTG, { patientId: PATIENT, decisionKind: "care_plan_update" }),
+      svc.recordDecision(ORG, COORD, MTG, {
+        patientId: PATIENT,
+        decisionKind: "care_plan_update",
+        payload: PAYLOAD.care_plan_update,
+      }),
     ).rejects.toThrowError(expect.objectContaining({ code: "MEETING_NOT_LIVE" }));
   });
 

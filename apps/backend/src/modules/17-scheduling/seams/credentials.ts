@@ -12,9 +12,9 @@ import type { CredentialGrant, CredentialReader } from "@wardenx/types";
 import { registerSeam } from "../../../bootstrap/index";
 
 /** The discipline vocabulary a credential covers — mirrors `@wardenx/scheduling`'s
- *  `SchedulingDiscipline` (rn/lpn/chha/msw/chaplain/volunteer/md/np); kept as a plain string union
+ *  `SchedulingDiscipline` (rn/lpn/chha/msw/chaplain/volunteer/md/np/pa); kept as a plain string union
  *  here rather than importing the feature package (this file is consumed by the seam layer, which
- *  stays leaf-safe). */
+ *  stays leaf-safe). `md` is PHYSICIAN — MD *or* DO (same level, one value; see the policy header). */
 export type CredentialDiscipline =
   | "rn"
   | "lpn"
@@ -23,7 +23,8 @@ export type CredentialDiscipline =
   | "chaplain"
   | "volunteer"
   | "md"
-  | "np";
+  | "np"
+  | "pa";
 
 export type CredentialRecordStatus = "active" | "suspended" | "revoked";
 

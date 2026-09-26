@@ -13,6 +13,17 @@ export {
   type FhirR4RouteDeps,
   type FhirDisclosureAuditPort,
   type M28RouteServices,
+  type FhirAssertionReplayGuard,
+  type FhirJwksFetcher,
+  type FhirReplayRedis,
+  type FhirServedResource,
+  SERVED_RESOURCES,
+  createHttpFhirJwksFetcher,
+  createInMemoryFhirReplayGuard,
+  createRedisFhirReplayGuard,
+  mintFhirToken,
+  projectResourceById,
+  projectSearch,
 } from "./mount";
 export {
   type M28ReadActor,

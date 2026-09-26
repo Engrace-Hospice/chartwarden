@@ -46,7 +46,9 @@ function isTypeBoxSchema(x: unknown): x is TSchema {
   return typeof x === "object" && x !== null && (Kind as unknown as symbol) in (x as object);
 }
 
-const capitalize = (s: string): string => (s ? s[0].toUpperCase() + s.slice(1) : s);
+// `charAt(0)` rather than `s[0]`: same result, and it returns `string` rather than
+// `string | undefined`, so the non-empty check the ternary already makes is enough.
+const capitalize = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
 /** Stable, unique operationId from method + path. */
 function operationId(route: ScannedRoute): string {

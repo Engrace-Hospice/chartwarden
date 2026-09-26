@@ -69,7 +69,6 @@ export function Dunning(): JSX.Element {
       const res = await client.POST(path, {
         params: { path: { subscriptionId } },
         headers: { "Idempotency-Key": idempotencyKey() },
-        body: {},
       });
       if (res.error) {
         const c = (res.error as { code?: string })?.code;

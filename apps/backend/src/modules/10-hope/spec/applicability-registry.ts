@@ -1,6 +1,6 @@
 import {
-  HopeApplicabilitySpecUnsupportedError,
   type HopeApplicabilityEngine,
+  HopeApplicabilitySpecUnsupportedError,
 } from "./applicability";
 import { createHopeV1_00_1ApplicabilityEngine } from "./v1_00_1/applicability";
 

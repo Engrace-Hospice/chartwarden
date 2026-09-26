@@ -91,7 +91,8 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "Patient death recorded; seeds bereavement (M16), enables final claim (M23), FHIR sync (M28), IDG alert (M36).",
     payloadSchema: Type.Object({ ...corePatient, deceasedDate: Type.String() }),
-    declaredConsumers: ["m16", "m23", "m28", "m36"],
+    declaredConsumers: ["m16", "m23", "m28"],
+    seamConsumers: ["m36"],
     isOutboxOnly: false,
   },
   {

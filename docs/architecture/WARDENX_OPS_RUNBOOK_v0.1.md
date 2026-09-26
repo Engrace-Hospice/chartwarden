@@ -157,15 +157,27 @@ For every deploy, however small:
 
 - [ ] Code merged to `main` (no direct deploys from branches)
 - [ ] All CI checks green — what `ci.yml` **actually** runs: build, `arch:fitness` (read the gate chain from `package.json`, never from prose),
-      unit/integration tests, and the live-DB jobs (`rls-live`, `lifecycle-live`, the per-module
-      matrix). Note **lint is `continue-on-error: true`** — a red lint does not fail CI, so read it
-      rather than trusting the check mark.
-- [ ] ~~All CI checks green (… e2e, SBOM)~~ — **NOT BUILT.** `ci.yml` has no e2e job (a Playwright
-      suite exists at `e2e/` and is wired to `test:e2e`, but no workflow invokes it) and no SBOM
-      step. Run `bun run test:e2e` locally against a seeded stack if the change touches the UI.
-- [ ] ~~Container image signed with cosign~~ / ~~Image SBOM attached~~ — **STATUS: TARGET — NOT
-      BUILT.** `cosign`, `syft`, `trivy` and `grype` have zero occurrences repo-wide. Nothing signs
-      the image and nothing produces an SBOM. Do not tick these; they protect nothing today.
+      unit/integration tests, the live-DB jobs (`rls-live`, `lifecycle-live`, the per-module
+      matrix), and the `e2e` job (a real Chromium against a migrated + seeded full stack: 18
+      critical-workflow specs and the 12 axe-core WCAG 2A/AA assertions that are the repo's only
+      automated accessibility coverage outside the lint rules — 12 scans against 290 registered
+      screens, so read that as a smoke test, not as coverage). **Lint is BLOCKING** (F-011/#33):
+      `ci.yml` runs `bun run lint` as an ordinary step and `scripts/__tests__/lint-gate.test.ts`
+      asserts it stays that way, so the check mark can be trusted. This bullet previously said
+      `continue-on-error: true`; that was true until #33 and told operators to distrust the repo's
+      main automated a11y control.
+- [ ] SBOM produced — `deploy.yml`'s `release` job runs `syft` over each published image (SPDX JSON),
+      uploads both as workflow artifacts (90-day retention) and attaches them to the images as cosign
+      attestations. The attestation is the copy that matters: an SBOM that lives only in an Actions run
+      expires with the run and cannot be fetched from the host running the image.
+- [ ] Image vulnerability scan green — Trivy scans both images and **HIGH/CRITICAL fail the release**.
+      The only way past is an entry in `.trivyignore.yaml`, which must carry a statement and an
+      unexpired date within 90 days (`arch:vuln-allowlist`, in `arch:fitness`). There is no severity
+      threshold to turn down.
+- [ ] Container images signed with cosign — keyless (Fulcio/Rekor), over the **digest**, with the
+      release job verifying its own signatures before the deploy job runs. `deploy.sh` verifies again on
+      the VPS against a pinned workflow identity and pins `.env.production` to the verified digest.
+      (F-040/#100.)
 - [ ] Migration files reviewed (if present): forward-only? two-phase pattern if breaking?
 - [ ] Feature flags: any new flags? Default values set? Documented in `docs/feature-flags/`? (**directory does not exist** — flags are currently documented only in the M34 admin surface and the seed)
 - [ ] Customer-facing change? If so, customer communication drafted
@@ -181,12 +193,26 @@ For every deploy, however small:
 gh run list --workflow=ci.yml --status=success --limit=1
 # Verify the SHA you intend to deploy
 
-# 2. Verify image signature and SBOM
-#    STATUS: TARGET — NOT BUILT. There is no signing step and no SBOM, so there is nothing to
-#    verify; a `cosign verify` here fails on a missing signature, it does not prove provenance.
-#    Until image signing exists, the provenance you actually have is the digest: confirm the tag
-#    you are about to deploy resolves to the digest built by the run you checked in step 1.
-docker buildx imagetools inspect ghcr.io/<owner>/wardenx:sha-<sha> --format '{{.Manifest.Digest}}'
+# 2. Verify image signature and SBOM (F-040/#100 — real, not aspirational)
+#    The identity is the assertion: not "signed by someone with a key" but "built by THIS repo's
+#    deploy.yml on this ref, per GitHub's OIDC issuer". A signature from any other workflow, repo,
+#    branch or actor fails here — which is what makes this worth running while `main` still has no
+#    branch protection (#16).
+cosign verify ghcr.io/engrace-hospice/wardenx:sha-<sha> \
+  --certificate-identity \
+    "https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com"
+
+#    The SBOM travels with the image as an attestation:
+cosign verify-attestation --type spdxjson ghcr.io/engrace-hospice/wardenx:sha-<sha> \
+  --certificate-identity \
+    "https://github.com/Engrace-Hospice/wardenx/.github/workflows/deploy.yml@refs/heads/main" \
+  --certificate-oidc-issuer "https://token.actions.githubusercontent.com" \
+  | jq -r '.payload | @base64d | fromjson | .predicate.name'
+
+#    `deploy.sh` does the same verification automatically and then pins `.env.production` to the
+#    digest cosign returned, so the pull cannot resolve the tag to anything else. Run the above by
+#    hand only when deploying outside the workflow, or when answering "what is actually running?".
 
 # 3. Pull image to all app VMs (parallel; doesn't impact running traffic)
 #    NOTE the real image name is ghcr.io/<repository_owner>/wardenx (deploy.yml's metadata-action),
@@ -475,61 +501,88 @@ by the write path that first needs them, not by a time-based rotation.
 
 #### 5.2.2 Partition Rotation Job
 
-> ### ⚠️ STATUS: NOT IMPLEMENTED — this job does not exist
->
-> There is **no `partition.rotate` job** anywhere in the tree, and no
-> `packages/db/src/jobs/partition-rotation.ts`. Nothing schedules partition creation. The snippet
-> previously printed here also called `create_message_partition` and `create_outbox_partition`,
-> **neither of which exists** — `outbox_event` is not partitioned at all.
->
-> What DOES exist is the per-table SQL side: **55 `create_<table>_partition(date)` SECURITY DEFINER
-> functions** shipped by the migrations (`create_audit_partition`, `create_evv_event_partition`,
-> `create_medication_order_partition`, …). They are correct and callable; nothing calls them on a
-> schedule.
->
-> **Operational consequence — read this before it bites you.** A RANGE-partitioned table with no
-> partition covering `now()` rejects the INSERT outright (`no partition of relation … found for
-> row`). This is a write-path outage on the affected table, not a slow query. Until the job is
-> built, partition creation is a **manual monthly task**; put it on the ops calendar.
->
-> Manual rotation — create the next three months for every time-partitioned table that has a
-> creator function:
->
-> ```sql
-> DO $$
-> DECLARE fn text; m date;
-> BEGIN
->   FOR m IN SELECT generate_series(date_trunc('month', now()),
->                                   date_trunc('month', now()) + interval '3 months',
->                                   interval '1 month')::date
->   LOOP
->     FOR fn IN SELECT p.proname FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
->               WHERE n.nspname = 'public' AND p.proname LIKE 'create\_%\_partition'
->                 -- date-keyed creators ONLY. The LIST-partitioned cap/claim tables also have
->                 -- create_*_partition functions, but they take a period or tenant uuid; calling
->                 -- them with a date aborts the whole block on "no function matches".
->                 AND p.pronargs = 1 AND p.proargtypes[0] = 'date'::regtype
->     LOOP
->       EXECUTE format('SELECT %I($1)', fn) USING m;
->     END LOOP;
->   END LOOP;
-> END $$;
-> ```
->
-> Verify afterwards that every time-partitioned parent has a partition covering next month:
->
-> ```sql
-> SELECT c.relname, count(i.inhrelid) AS partitions
-> FROM pg_partitioned_table p
-> JOIN pg_class c ON c.oid = p.partrelid
-> LEFT JOIN pg_inherits i ON i.inhparent = c.oid
-> WHERE p.partstrat = 'r'
-> GROUP BY 1 ORDER BY 2 ASC;   -- anything with a suspiciously low count needs attention
-> ```
+**Status: implemented** (F-033 / #93). `platform.partition_rotate` runs at 03:10 on the **1st, 8th and
+15th** of each month and keeps the current + **3** following months of partitions created for every
+time-RANGE-partitioned table. Three ticks rather than one because the work is a no-op once the window is
+covered — a single monthly tick is one restart away from being no job at all.
 
-**Target design (when the job is built):** a weekly BullMQ job verifies that the next 3 months of
-partitions exist for every RANGE-by-time table and creates the missing ones by calling the
-`create_*_partition` functions above.
+**Correction — this section previously described the wrong failure.** It said a table with no partition
+covering `now()` "rejects the INSERT outright … a write-path outage". That is true of a partitioned table
+with no DEFAULT partition. **All 43 of these tables have one**, so what actually happens is quieter and
+harder to recover from:
+
+1. the write **succeeds**, landing in the DEFAULT partition — no error, no alert, nothing to notice;
+2. the table keeps working, unpruned and progressively slower, for as long as nobody looks;
+3. and the repair becomes impossible without downtime, because PostgreSQL refuses to create a partition
+   overlapping rows already in DEFAULT:
+   `updated partition constraint for default partition "…_default" would be violated by some row`.
+   Fixing it then means moving rows out of DEFAULT under an `ACCESS EXCLUSIVE` lock on a table that has
+   been absorbing writes for however long it took to notice.
+
+That is why the alert to care about is not headroom, it is **DEFAULT occupancy**. Headroom is
+self-healing; occupancy is not, and every hour of delay lengthens the eventual lock.
+
+The old prose also said there were **55** creator functions. There are **53** — 40 date-keyed plus 13
+uuid-keyed (the LIST-partitioned `cap_*` / `claim` / `medicaid_*` / `validation_*` / `rb_day` tables,
+whose partitions the write path creates on demand). Neither number was ever authoritative: the count that
+matters is what `pg_catalog` reports, which is what the job reads.
+
+##### What runs
+
+| | |
+|---|---|
+| Job id | `platform.partition_rotate` (allowlisted for `withPlatformContext`) |
+| Queue | `platform.partition-rotate` |
+| Cron | `10 3 1,8,15 * *` |
+| SQL | `rotate_time_partitions(int)` · `time_partition_coverage()` (migration `0224_partition_rotation.sql`) |
+| Code | `apps/backend/src/bootstrap/jobs/partition-rotation.ts` |
+| Proof | `bun run test:partition-rotation:live` — runs in the `migration-gate` CI job |
+
+Both SQL functions discover their work from `pg_catalog`; **nothing carries a table list.** A migration
+that adds a time-RANGE partitioned table is picked up on the next tick with no code change — and if it
+ships without a creator function, the live suite fails in CI (`no_creator`), which is the check
+`arch:fitness` cannot make because it runs without a database.
+
+##### Running it by hand
+
+```sql
+-- Rotate now (idempotent — every creator is CREATE TABLE IF NOT EXISTS, so re-running costs nothing).
+SELECT * FROM rotate_time_partitions(3);
+```
+
+`status` is one of:
+
+| `status` | Meaning | Action |
+|---|---|---|
+| `ok` | window already covered | none |
+| `created` | partitions were added | none |
+| `blocked` | the creator refused — almost always rows already in DEFAULT | **manual repair, see below** |
+| `no_creator` | time-RANGE partitioned, nothing can extend it | needs a migration adding a `create_*_partition(date)` |
+
+```sql
+-- Health, worst first. `default_occupied` is the one that should page someone.
+SELECT table_name, covered_through, months_headroom, default_occupied, has_creator
+FROM time_partition_coverage()
+ORDER BY default_occupied DESC, months_headroom ASC;
+```
+
+##### Alerts
+
+Scraped from `/metrics` on every replica, read fresh on each scrape (`-1` = not measured):
+
+| Metric | Fires when | Severity |
+|---|---|---|
+| `wardenx_partition_default_occupied_tables` | `> 0` | **SEV-2** — not self-healing; repair cost grows with delay |
+| `wardenx_partition_missing_creator_tables` | `> 0` | SEV-3 — needs a migration |
+| `wardenx_partition_min_headroom_months` | `<= 1` for two consecutive ticks | SEV-3 — the rotation job is probably not running |
+
+##### Recovering a `blocked` table
+
+Rotation cannot fix this; it is a data-movement job. Take a maintenance window sized to the DEFAULT
+partition, and in one transaction: detach DEFAULT, create the missing partitions, move the rows back from
+the detached table into the parent (they route correctly now), then re-attach an empty DEFAULT. The
+`ACCESS EXCLUSIVE` lock is held for the whole thing, so do this at the first opportunity rather than the
+convenient one — the table is still accepting writes into DEFAULT while you wait.
 
 #### 5.2.3 Manual Partition Operations
 
@@ -947,6 +1000,11 @@ Maintained in `infra/secrets/inventory.yaml` (encrypted via SOPS):
 | `STRIPE_SECRET_KEY` / `STRIPE_WEBHOOK_SECRET` | Backend (subscription billing) | Annual | | |
 | `XERO_*` (OAuth refresh tokens) | Cost report worker | Per Xero contract | | |
 | `INTERNAL_SERVICE_TOKEN` (backend↔workers) | All | Quarterly | | |
+| `M34_TENANT_KEK` (platform KEK wrapping every tenant DEK) | Backend, workers | Annual — **rotatable**, see §8.3.3 | | |
+| `M34_TENANT_KEK_RETIRED` (prior KEKs, unwrap-only) | Backend, workers | Pruned only after re-wrap, §8.3.3 | | |
+| `TWO_FACTOR_ENCRYPTION_KEY` (TOTP secrets + backup codes) | Backend | **Not rotatable today**, §8.3.3 | | |
+| `M24_CREDENTIAL_ENCRYPTION_KEY` (Medicaid trading-partner secrets) | Backend | **Not rotatable today**, §8.3.3 | | |
+| `MESSAGING_ENCRYPTION_KEY` (message bodies) | Backend, workers | **Not rotatable today**, §8.3.3 | | |
 | `SOPS_AGE_KEY` (decryption key for secrets-in-Git) | Each VM at startup | Annual (with operator presence) | | |
 | `PGBACKREST_REPO1_CIPHER_PASS` | Backups | Annual | | |
 | `PGBACKREST_REPO2_CIPHER_PASS` | Backup VM | Annual | | |
@@ -1080,6 +1138,51 @@ sudo -u postgres pgbackrest --stanza=wardenx-v2 --type=full verify
 # 8. Retain old stanza wardenx for historical backup restoration only
 # 9. After 6 months (per retention class), retire old stanza
 ```
+
+#### 8.3.3 Application Encryption Keys (KEKs)
+
+Four master keys encrypt data at rest in the application layer (ADR-0038 — the mechanism is
+AES-256-GCM in the app process, never pgcrypto). They do **not** rotate alike, and the difference is
+structural rather than a matter of procedure.
+
+**`M34_TENANT_KEK` — rotatable (ADR-0045).** Each tenant's DEK is 32 random bytes *wrapped* under
+this KEK, and `tenant_key_ring.current_dek_kek_id` records which KEK wrapped it. Rotation is
+therefore additive: introduce the new key as active, keep the old one readable, re-wrap at leisure.
+
+```bash
+# 1. Mint the new KEK. The id must be new; it is what stored rings resolve by.
+NEW_KEK="kek-$(date +%Y%m):$(openssl rand -base64 32)"
+
+# 2. Move the CURRENT active key into the retired (unwrap-only) list, then set the new active key.
+#    Order matters: a deploy that drops the old key before every ring is re-wrapped makes those
+#    tenants' ciphertext unreadable. Retired keys are only ever removed AFTER step 4 reports zero.
+#    (in .env.production, via SOPS)
+#      M34_TENANT_KEK_RETIRED=<previous M34_TENANT_KEK>[,<older entries…>]
+#      M34_TENANT_KEK=$NEW_KEK
+
+# 3. Roll the API + worker containers. New tenants wrap under the new KEK immediately; existing
+#    rings keep resolving through the retired entry.
+
+# 4. Re-wrap existing tenants by rotating their DEKs (the `tenant.dek_rotate` job re-mints and
+#    re-wraps under whatever KEK is active). Which rings still name an old KEK:
+#      SELECT current_dek_kek_id, count(*) FROM tenant_key_ring
+#       WHERE destroyed_at IS NULL GROUP BY 1;
+
+# 5. Only once that query returns the new kekId alone, prune M34_TENANT_KEK_RETIRED and roll again.
+```
+
+**`TWO_FACTOR_ENCRYPTION_KEY`, `M24_CREDENTIAL_ENCRYPTION_KEY`, `MESSAGING_ENCRYPTION_KEY` — not
+rotatable today.** All three HKDF-*derive* their per-scope DEK from the master key, so the master key
+is not a wrapper that can be swapped: changing it changes every derived DEK, and every existing
+ciphertext becomes unreadable at once. Their at-rest format reserves a version byte for a future
+two-key read path (ADR-0034 §3), and nothing implements one. Until it does, treat a compromise of any
+of the three as requiring a **re-encryption project**, not a rotation — and note that the affected
+data is recoverable by re-entry (a user re-enrols 2FA; an operator re-enters a trading-partner
+secret) except for message bodies, which are not.
+
+**Losing `M34_TENANT_KEK` without a retired copy is unrecoverable by design** — it is the same
+property that makes the M34 cryptographic shred real, pointed the wrong way. It belongs in the sealed
+off-site envelope alongside `SOPS_AGE_KEY` (§8.4).
 
 #### 8.3.2 TLS Certificate Rotation
 

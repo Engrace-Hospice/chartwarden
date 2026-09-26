@@ -162,6 +162,8 @@ const NOPERM = {
   "x-test-roles": "none",
   "x-test-membership": MEMBER_NOPERM,
 };
+/** SUPER plus the `phi.full_read` masking grant — the R16/R17 unmasked read (F-030). */
+const PHI_READER = { ...SUPER, "x-test-user": "phi_1" };
 
 function baseCapability(id: string, capabilityKey: string): AiCapabilityGovernanceRow {
   return {
@@ -505,6 +507,22 @@ function makeServer() {
       userId: "noperm_1",
       grants: [{ roleKey: "seed", enabled: true, expiresAt: null, permissionKeys: [] }],
     },
+    {
+      // F-030 — the same M32 keys PLUS the M5-contributed `phi.full_read` masking grant. It could not
+      // be granted to anyone before: the key was in no catalog, and M32 asked for it as a ROLE token
+      // and as an unwritten context attribute, so R16/R17 masked every caller including the compliance
+      // officer the disclosure ledger exists for.
+      orgId: ORG,
+      userId: "phi_1",
+      grants: [
+        {
+          roleKey: "seed",
+          enabled: true,
+          expiresAt: null,
+          permissionKeys: [...M32_PERMISSION_KEY_LIST, "phi.full_read"],
+        },
+      ],
+    },
   ]);
   registerEffectivePermissionResolver(grantStore.store);
 
@@ -845,6 +863,42 @@ describe("M32-ai-platform-inject — R16-R17: invocation ledger", () => {
     expect(one.statusCode).toBe(200);
     expect(one.json().invocationId).toBe(INVOCATION_SEED_ID);
     expect(one.json().patientId).toBeNull();
+    await app.close();
+  });
+
+  it("F-030 — `phi.full_read` UNMASKS the ledger; without it the same rows stay masked", async () => {
+    // The direction that had no coverage. Both arms of the old check were dead — a `resource.action`
+    // permission key looked up in the list of ROLE keys, and a context attribute nothing ever wrote —
+    // so this route masked for everyone, always. Masking fails SAFE, which is exactly why a permanently
+    // masked ledger and a correctly masked one were indistinguishable.
+    const { app } = makeServer();
+
+    const search = await app.inject({
+      method: "GET",
+      url: "/api/v1/ai/invocations",
+      headers: PHI_READER,
+    });
+    expect(search.statusCode).toBe(200);
+    expect(search.json().phiMasked).toBe(false);
+
+    const one = await app.inject({
+      method: "GET",
+      url: `/api/v1/ai/invocations/${INVOCATION_SEED_ID}`,
+      headers: PHI_READER,
+    });
+    expect(one.statusCode).toBe(200);
+    expect(one.json().patientId).toBe("patient-smoke-1");
+    expect(one.json().phiMasked).toBe(false);
+
+    // The control still binds: the identical request from an actor without the grant is masked, and
+    // `touchedPatientChart` — the fact the §164.528 accounting turns on — survives the masking.
+    const masked = await app.inject({
+      method: "GET",
+      url: `/api/v1/ai/invocations/${INVOCATION_SEED_ID}`,
+      headers: SUPER,
+    });
+    expect(masked.json().patientId).toBeNull();
+    expect(masked.json().touchedPatientChart).toBe(true);
     await app.close();
   });
 });

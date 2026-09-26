@@ -1,11 +1,4 @@
-import {
-  Button,
-  Glyph,
-  Modal,
-  StatusPill,
-  t,
-  useApiClient,
-} from "@wardenx/ui";
+import { Button, Glyph, Modal, StatusPill, t, useApiClient } from "@wardenx/ui";
 import type { ApiClient, EntityLookupOption } from "@wardenx/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, FormEvent, JSX, ReactNode } from "react";
@@ -15,7 +8,7 @@ import {
   MdmEntityLookupField,
   MembershipLookupField,
   PatientLookupField,
-} from "../../shared/entity-lookups";
+} from "../../shell/entity-lookups";
 import { useSession } from "../../shell/session";
 import { VISIT_TONE, stateLabel } from "./scheduling-status";
 
@@ -84,7 +77,20 @@ export function apiErrorMessage(error: unknown, fallback: string): string {
     issues?: Array<{ message?: string }>;
   } | null;
   const nested = body?.error;
-  if (body?.issues?.length) return body.issues.map((i) => i.message).filter(Boolean).join("; ");
+  // §4.7 D8 — the pre-schedule gate refuses as `VISIT_PRE_SCHEDULE_GATE_UNMET` on create/publish and as
+  // a 403 whose message is the bare constant `PRE_SCHEDULE_GATE_FAILED` on reassign/reschedule. Neither
+  // is copy a scheduler can act on; the fix is a different clinician, not a retry, so say so.
+  const d8Signal = [nested?.code, nested?.message, body?.code, body?.message];
+  if (
+    d8Signal.includes("VISIT_PRE_SCHEDULE_GATE_UNMET") ||
+    d8Signal.includes("PRE_SCHEDULE_GATE_FAILED")
+  )
+    return "That clinician's discipline, active licence, caseload or approved time off does not allow this visit (§4.7 pre-schedule check). Choose a different clinician or time.";
+  if (body?.issues?.length)
+    return body.issues
+      .map((i) => i.message)
+      .filter(Boolean)
+      .join("; ");
   if (body?.detail) return body.detail;
   if (body?.message) return body.message;
   if (body?.title) return body.title;
@@ -239,18 +245,29 @@ export function NewVisitModal({
 
   if (!open) return null;
   return (
-    <Modal open={open} onClose={submitting ? undefined : onClose} ariaLabel="New Visit" width="42rem">
+    <Modal
+      open={open}
+      onClose={submitting ? undefined : onClose}
+      ariaLabel="New Visit"
+      width="42rem"
+    >
       <form onSubmit={(event) => void submit(event)} style={modalBody}>
         <div style={modalHeader}>
           <div>
             <h2 style={modalTitle}>New Visit</h2>
-            <p style={muted}>Schedule ownership stays in M17; Encounter draft seeding is backend-owned.</p>
+            <p style={muted}>
+              Schedule ownership stays in M17; Encounter draft seeding is backend-owned.
+            </p>
           </div>
           <button type="button" onClick={onClose} disabled={submitting} style={iconButton}>
             <Glyph name="close" size={16} label="Close" />
           </button>
         </div>
-        {error ? <div style={errorBanner}>{error}</div> : null}
+        {error ? (
+          <div role="alert" style={errorBanner}>
+            {error}
+          </div>
+        ) : null}
         <div style={grid2}>
           <PatientLookupField
             label="Patient"
@@ -274,7 +291,11 @@ export function NewVisitModal({
           />
           <label style={field}>
             <span style={label}>Visit purpose *</span>
-            <select value={visitPurpose} onChange={(e) => setVisitPurpose(e.target.value)} style={input}>
+            <select
+              value={visitPurpose}
+              onChange={(e) => setVisitPurpose(e.target.value)}
+              style={input}
+            >
               {VISIT_PURPOSES.map((p) => (
                 <option key={p} value={p}>
                   {stateLabel(p)}
@@ -284,7 +305,11 @@ export function NewVisitModal({
           </label>
           <label style={field}>
             <span style={label}>Visit setting *</span>
-            <select value={visitSetting} onChange={(e) => setVisitSetting(e.target.value)} style={input}>
+            <select
+              value={visitSetting}
+              onChange={(e) => setVisitSetting(e.target.value)}
+              style={input}
+            >
               {VISIT_SETTINGS.map((p) => (
                 <option key={p} value={p}>
                   {stateLabel(p)}
@@ -294,11 +319,21 @@ export function NewVisitModal({
           </label>
           <label style={field}>
             <span style={label}>Scheduled start *</span>
-            <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} style={input} />
+            <input
+              type="datetime-local"
+              value={start}
+              onChange={(e) => setStart(e.target.value)}
+              style={input}
+            />
           </label>
           <label style={field}>
             <span style={label}>Scheduled end *</span>
-            <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} style={input} />
+            <input
+              type="datetime-local"
+              value={end}
+              onChange={(e) => setEnd(e.target.value)}
+              style={input}
+            />
           </label>
           <MembershipLookupField
             label="Assigned clinician"
@@ -320,16 +355,29 @@ export function NewVisitModal({
           ) : (
             <label style={field}>
               <span style={label}>Patient address</span>
-              <input value={addressId} onChange={(e) => setAddressId(e.target.value)} style={input} />
+              <input
+                value={addressId}
+                onChange={(e) => setAddressId(e.target.value)}
+                style={input}
+              />
             </label>
           )}
         </div>
         <label style={field}>
           <span style={label}>Scheduler notes</span>
-          <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} style={textarea} />
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            rows={3}
+            style={textarea}
+          />
         </label>
         <label style={checkRow}>
-          <input type="checkbox" checked={reminder} onChange={(e) => setReminder(e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={reminder}
+            onChange={(e) => setReminder(e.target.checked)}
+          />
           Caregiver reminder requested
         </label>
         <div style={actions}>
@@ -369,16 +417,27 @@ export function VisitActionPanel({
 
   const permissions = session?.permissions;
   const buttons = useMemo(() => {
-    const out: Array<{ action: VisitAction; label: string; tone?: "primary" | "secondary" | "danger"; icon: "clock" | "check" | "users" | "calendar" | "block" | "alert" }> = [];
+    const out: Array<{
+      action: VisitAction;
+      label: string;
+      tone?: "primary" | "secondary" | "danger";
+      icon: "clock" | "check" | "users" | "calendar" | "block" | "alert";
+    }> = [];
     if (visit.status === "published" && hasPermission(permissions, "visit.start"))
       out.push({ action: "start", label: "Start", icon: "clock" });
     if (visit.status === "en_route" && hasPermission(permissions, "visit.start"))
       out.push({ action: "arrive", label: "Check in", icon: "check" });
-    if (["published", "en_route"].includes(visit.status) && hasPermission(permissions, "visit.reassign"))
+    if (
+      ["published", "en_route"].includes(visit.status) &&
+      hasPermission(permissions, "visit.reassign")
+    )
       out.push({ action: "reassign", label: "Reassign", tone: "secondary", icon: "users" });
     if (visit.status === "published" && hasPermission(permissions, "visit.reschedule"))
       out.push({ action: "reschedule", label: "Reschedule", tone: "secondary", icon: "calendar" });
-    if (["published", "en_route", "in_visit"].includes(visit.status) && hasPermission(permissions, "visit.cancel"))
+    if (
+      ["published", "en_route", "in_visit"].includes(visit.status) &&
+      hasPermission(permissions, "visit.cancel")
+    )
       out.push({ action: "cancel", label: "Cancel", tone: "danger", icon: "block" });
     if (visit.status === "published" && hasPermission(permissions, "visit.mark_no_show"))
       out.push({ action: "no-show", label: "No-show", tone: "danger", icon: "alert" });
@@ -405,7 +464,10 @@ export function VisitActionPanel({
     } else if (action === "reassign") {
       result = await client.POST("/api/v1/visits/{visitId}/reassign", {
         params: { path: { visitId: visit.id } },
-        body: { newAssignedMembershipId: clinicianId, ...(reason.trim() ? { reason: reason.trim() } : {}) },
+        body: {
+          newAssignedMembershipId: clinicianId,
+          ...(reason.trim() ? { reason: reason.trim() } : {}),
+        },
       } as never);
     } else if (action === "reschedule") {
       result = await client.POST("/api/v1/visits/{visitId}/reschedule", {
@@ -433,7 +495,10 @@ export function VisitActionPanel({
       setError(apiErrorMessage(result.error, "The visit action could not be completed."));
       return;
     }
-    const payload = result.data as VisitView | { original: VisitView; created: VisitView } | undefined;
+    const payload = result.data as
+      | VisitView
+      | { original: VisitView; created: VisitView }
+      | undefined;
     setAction(null);
     setReason("");
     setEvvReason("");
@@ -452,7 +517,12 @@ export function VisitActionPanel({
         <h2 style={panelTitle}>Visit actions</h2>
         <div style={actionGrid}>
           {buttons.map((b) => (
-            <Button key={b.action} tone={b.tone ?? "primary"} size="sm" onClick={() => setAction(b.action)}>
+            <Button
+              key={b.action}
+              tone={b.tone ?? "primary"}
+              size="sm"
+              onClick={() => setAction(b.action)}
+            >
               <Glyph name={b.icon} size={14} /> {b.label}
             </Button>
           ))}
@@ -465,30 +535,53 @@ export function VisitActionPanel({
                 : void onChanged()
             }
           >
-            <Glyph name="file-text" size={14} /> {encounter ? "Open Encounter" : "Refresh Encounter"}
+            <Glyph name="file-text" size={14} />{" "}
+            {encounter ? "Open Encounter" : "Refresh Encounter"}
           </Button>
         </div>
         {!encounter ? (
-          <p style={muted}>Draft Encounter is created asynchronously after publish. Refresh if it is still processing.</p>
+          <p style={muted}>
+            Draft Encounter is created asynchronously after publish. Refresh if it is still
+            processing.
+          </p>
         ) : (
           <p style={muted}>
             Linked Encounter: <StatusPill label={stateLabel(encounter.status)} tone="neutral" />
           </p>
         )}
       </div>
-      <Modal open={action !== null} onClose={busy ? undefined : () => setAction(null)} ariaLabel="Visit action" width="34rem">
+      <Modal
+        open={action !== null}
+        onClose={busy ? undefined : () => setAction(null)}
+        ariaLabel="Visit action"
+        width="34rem"
+      >
         <div style={modalBody}>
           <div style={modalHeader}>
             <h2 style={modalTitle}>{action ? actionTitle(action) : "Visit action"}</h2>
-            <button type="button" onClick={() => setAction(null)} disabled={busy} style={iconButton}>
+            <button
+              type="button"
+              onClick={() => setAction(null)}
+              disabled={busy}
+              style={iconButton}
+            >
               <Glyph name="close" size={16} label="Close" />
             </button>
           </div>
-          {error ? <div style={errorBanner}>{error}</div> : null}
+          {error ? (
+            <div role="alert" style={errorBanner}>
+              {error}
+            </div>
+          ) : null}
           {action === "start" || action === "arrive" ? (
             <label style={field}>
               <span style={label}>EVV missing reason</span>
-              <textarea value={evvReason} onChange={(e) => setEvvReason(e.target.value)} rows={3} style={textarea} />
+              <textarea
+                value={evvReason}
+                onChange={(e) => setEvvReason(e.target.value)}
+                rows={3}
+                style={textarea}
+              />
             </label>
           ) : null}
           {action === "reassign" || action === "reschedule" ? (
@@ -503,18 +596,32 @@ export function VisitActionPanel({
             <div style={grid2}>
               <label style={field}>
                 <span style={label}>New start</span>
-                <input type="datetime-local" value={start} onChange={(e) => setStart(e.target.value)} style={input} />
+                <input
+                  type="datetime-local"
+                  value={start}
+                  onChange={(e) => setStart(e.target.value)}
+                  style={input}
+                />
               </label>
               <label style={field}>
                 <span style={label}>New end</span>
-                <input type="datetime-local" value={end} onChange={(e) => setEnd(e.target.value)} style={input} />
+                <input
+                  type="datetime-local"
+                  value={end}
+                  onChange={(e) => setEnd(e.target.value)}
+                  style={input}
+                />
               </label>
             </div>
           ) : null}
           {action === "cancel" ? (
             <label style={field}>
               <span style={label}>Reason code</span>
-              <select value={reasonCode} onChange={(e) => setReasonCode(e.target.value)} style={input}>
+              <select
+                value={reasonCode}
+                onChange={(e) => setReasonCode(e.target.value)}
+                style={input}
+              >
                 <option value="patient_request">Patient request</option>
                 <option value="clinical_hold">Clinical hold</option>
                 <option value="staff_unavailable">Staff unavailable</option>
@@ -525,17 +632,29 @@ export function VisitActionPanel({
           {action && ["reassign", "reschedule", "cancel", "no-show"].includes(action) ? (
             <label style={field}>
               <span style={label}>Reason</span>
-              <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={3} style={textarea} />
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={3}
+                style={textarea}
+              />
             </label>
           ) : null}
           {action === "reschedule" ? (
-            <p style={muted}>This preserves lineage: the original Visit becomes rescheduled and a new Visit is published.</p>
+            <p style={muted}>
+              This preserves lineage: the original Visit becomes rescheduled and a new Visit is
+              published.
+            </p>
           ) : null}
           <div style={actions}>
             <Button tone="tertiary" onClick={() => setAction(null)} disabled={busy}>
               Cancel
             </Button>
-            <Button tone={action === "cancel" || action === "no-show" ? "danger" : "primary"} loading={busy} onClick={() => void mutate()}>
+            <Button
+              tone={action === "cancel" || action === "no-show" ? "danger" : "primary"}
+              loading={busy}
+              onClick={() => void mutate()}
+            >
               Confirm
             </Button>
           </div>
@@ -558,7 +677,8 @@ export async function findLinkedEncounter(
       },
     },
   } as never);
-  const encounters = ((data as { encounters?: EncounterLink[] } | undefined)?.encounters ?? []) as EncounterLink[];
+  const encounters = ((data as { encounters?: EncounterLink[] } | undefined)?.encounters ??
+    []) as EncounterLink[];
   return encounters.find((encounter) => encounter.visitId === visit.id) ?? null;
 }
 
@@ -571,7 +691,10 @@ function actionTitle(action: VisitAction): string {
   return "Mark No-show";
 }
 
-export function FieldValue({ label, children }: { label: string; children: ReactNode }): JSX.Element {
+export function FieldValue({
+  label,
+  children,
+}: { label: string; children: ReactNode }): JSX.Element {
   return (
     <div style={fieldValue}>
       <span style={fieldValueLabel}>{label}</span>
@@ -598,22 +721,91 @@ const navLink: CSSProperties = {
   fontWeight: 650,
 };
 const navLinkActive: CSSProperties = { background: t.primaryTint, color: t.primary };
-const modalBody: CSSProperties = { padding: "1.25rem", display: "flex", flexDirection: "column", gap: "1rem" };
-const modalHeader: CSSProperties = { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "1rem" };
-const modalTitle: CSSProperties = { margin: 0, fontFamily: t.fontDisplay, fontWeight: 500, color: t.onSurface };
-const grid2: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(15rem, 1fr))", gap: "0.85rem" };
+const modalBody: CSSProperties = {
+  padding: "1.25rem",
+  display: "flex",
+  flexDirection: "column",
+  gap: "1rem",
+};
+const modalHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "1rem",
+};
+const modalTitle: CSSProperties = {
+  margin: 0,
+  fontFamily: t.fontDisplay,
+  fontWeight: 500,
+  color: t.onSurface,
+};
+const grid2: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(15rem, 1fr))",
+  gap: "0.85rem",
+};
 const field: CSSProperties = { display: "flex", flexDirection: "column", gap: "0.4rem" };
 const label: CSSProperties = { fontSize: "0.8125rem", fontWeight: 650, color: t.onSurface };
-const input: CSSProperties = { minHeight: "2.5rem", borderRadius: t.radiusMd, border: `1px solid ${t.outlineVariant}`, background: t.surfaceLowest, color: t.onSurface, padding: "0.45rem 0.65rem" };
+const input: CSSProperties = {
+  minHeight: "2.5rem",
+  borderRadius: t.radiusMd,
+  border: `1px solid ${t.outlineVariant}`,
+  background: t.surfaceLowest,
+  color: t.onSurface,
+  padding: "0.45rem 0.65rem",
+};
 const textarea: CSSProperties = { ...input, resize: "vertical", fontFamily: t.fontSans };
-const checkRow: CSSProperties = { display: "flex", gap: "0.5rem", alignItems: "center", fontSize: "0.85rem", color: t.onSurface };
-const actions: CSSProperties = { display: "flex", justifyContent: "flex-end", gap: "0.6rem", flexWrap: "wrap" };
+const checkRow: CSSProperties = {
+  display: "flex",
+  gap: "0.5rem",
+  alignItems: "center",
+  fontSize: "0.85rem",
+  color: t.onSurface,
+};
+const actions: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  gap: "0.6rem",
+  flexWrap: "wrap",
+};
 const muted: CSSProperties = { margin: 0, color: t.onSurfaceVariant, fontSize: "0.8rem" };
-const errorBanner: CSSProperties = { padding: "0.7rem 0.85rem", borderRadius: t.radiusMd, color: t.error, background: "color-mix(in srgb, var(--color-error) 12%, transparent)", fontSize: "0.82rem" };
-const iconButton: CSSProperties = { border: "none", background: t.surfaceContainer, color: t.onSurfaceVariant, borderRadius: "9999px", width: "2rem", height: "2rem", display: "grid", placeItems: "center", cursor: "pointer" };
-const panel: CSSProperties = { borderRadius: t.radiusMd, background: t.surfaceContainer, padding: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" };
-const panelTitle: CSSProperties = { margin: 0, fontSize: "0.95rem", color: t.onSurface, fontWeight: 700 };
+const errorBanner: CSSProperties = {
+  padding: "0.7rem 0.85rem",
+  borderRadius: t.radiusMd,
+  color: t.error,
+  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+  fontSize: "0.82rem",
+};
+const iconButton: CSSProperties = {
+  border: "none",
+  background: t.surfaceContainer,
+  color: t.onSurfaceVariant,
+  borderRadius: "9999px",
+  width: "2rem",
+  height: "2rem",
+  display: "grid",
+  placeItems: "center",
+  cursor: "pointer",
+};
+const panel: CSSProperties = {
+  borderRadius: t.radiusMd,
+  background: t.surfaceContainer,
+  padding: "1rem",
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.75rem",
+};
+const panelTitle: CSSProperties = {
+  margin: 0,
+  fontSize: "0.95rem",
+  color: t.onSurface,
+  fontWeight: 700,
+};
 const actionGrid: CSSProperties = { display: "flex", flexWrap: "wrap", gap: "0.5rem" };
 const fieldValue: CSSProperties = { display: "flex", flexDirection: "column", gap: "0.1rem" };
-const fieldValueLabel: CSSProperties = { fontSize: "0.72rem", color: t.onSurfaceVariant, fontWeight: 650 };
+const fieldValueLabel: CSSProperties = {
+  fontSize: "0.72rem",
+  color: t.onSurfaceVariant,
+  fontWeight: 650,
+};
 const fieldValueText: CSSProperties = { fontSize: "0.88rem", color: t.onSurface };

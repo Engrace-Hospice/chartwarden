@@ -1,0 +1,34 @@
+-- M20 Field Safety (F-043 / #103) — GRANT DELETE on `safety_check_in_schedule` to `wardenx_app`.
+--
+-- WHY THIS IS NEEDED. `consumers/schedule-plan.ts` defines RETIREMENT as a DELETE and argues at length
+-- that it is the only truthful representation available: `safety_check_in_state` has six members
+-- (`proposed`, `recorded`, `overdue`, `escalated`, `superseded`, `incident_opened`) and none of them can
+-- say "this plan was invalidated". `recorded` is refused by `m20_scis_recorded_fulfilled` without a
+-- fulfilling check-in row — writing it would forge a clinician's attestation that she is OK — and
+-- `superseded` means correction-of-record, which a cancelled visit is not.
+--
+-- Migration 0111's header states the opposite rule for the whole module: "wardenx_app gets SELECT/INSERT/
+-- UPDATE and DELETE on NOTHING … Destruction runs through the admin-role eraseFn (§3.7)." Both statements
+-- were written before anything executed a retirement, so the contradiction cost nothing and nothing
+-- surfaced it: the four consumers that decide retirements had no binding until F-043, and every test of
+-- them ran against an in-memory double that has no grants to deny. The first delivery on a real database
+-- fails `42501 permission denied for table safety_check_in_schedule`, mid-transaction, inside the relay's
+-- retry loop — so the retirement never happens AND the obligations the same decision meant to keep are
+-- rolled back with it.
+--
+-- WHY THE 0111 RULE IS RIGHT EVERYWHERE ELSE AND WRONG HERE. Its argument is about EVIDENCE. The four
+-- append-only tables record what happened — a policy version that was in force during an incident, an SOS
+-- location stream, two state-history ledgers — and withholding UPDATE/DELETE is what makes a retroactive
+-- rewrite a permission error rather than a code-review convention. A `proposed` row on this table is not
+-- evidence of anything that happened: it is an obligation the system MADE, and a visit that was cancelled
+-- or never happened is precisely the case where the obligation should not stand. Leaving it would walk the
+-- D4 ladder at its scheduled minute and page a supervisor at `critical` about a clinician who is
+-- demonstrably fine — the false alarm that teaches an agency to ignore the safety board.
+--
+-- THE RETIREMENT STAYS ON THE RECORD. 0111's own M4 write-audit trigger on this table fires on DELETE and
+-- stamps the `compliance` retention class, so the row's absence is accounted for. That is what makes the
+-- DELETE defensible rather than a hole: nothing is destroyed silently.
+--
+-- SCOPED TO ONE TABLE. The other twelve M20 tables keep the 0111 posture unchanged, including
+-- `safety_check_in` — a clinician's own attestation IS evidence and is never a consumer's to remove.
+GRANT DELETE ON "safety_check_in_schedule" TO wardenx_app;

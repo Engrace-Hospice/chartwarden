@@ -6,7 +6,17 @@
 // NOT cross-module FKs. `external_message_ref` carries the M29 HL7 provenance for the consumer path
 // (§3.4). RLS + the M4 write-audit trigger land in M6-T03 (§3.6–3.7).
 import { sql } from "drizzle-orm";
-import { bigint, date, index, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import {
+  bigint,
+  date,
+  index,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from "drizzle-orm/pg-core";
 import {
   referralPatientResolutionStatus,
   referralPriority,
@@ -45,7 +55,9 @@ export const referrals = pgTable(
       .notNull()
       .default("unresolved"),
     priority: referralPriority("priority").notNull().default("routine"),
-    assignedToUserId: uuid("assigned_to_user_id").references(() => users.id, { onDelete: "set null" }),
+    assignedToUserId: uuid("assigned_to_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     rejectionReason: text("rejection_reason"),
     receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),

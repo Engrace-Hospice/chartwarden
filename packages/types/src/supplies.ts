@@ -289,8 +289,14 @@ export const M21_SUBSCRIBED_EVENT_NAMES = [
   "m11.order.discontinued",
   "m13.comfort_kit.replenishment_needed",
   "m13.comfort_kit.return_required",
+  // F-094/#205 — M21 has DECIDERS for these two (`consumers/m13-comfort-kit.ts`) and the catalog named
+  // m14 and m30 and not m21, so the relay routed them past the only module that acts on a kit deployment
+  // or a CII discrepancy. Both events now declare `m21`.
   "m13.comfort_kit.deployed",
   "m13.comfort_kit.controlled_substance_discrepancy",
+  // Catalogued AND declaring `m21`, and absent from this list until the two were first compared.
+  "m11.order.signed",
+  "m12.medication_order.dispensed_at_pharmacy",
   "m22.document.rendered",
 ] as const;
 

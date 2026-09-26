@@ -133,3 +133,12 @@ export {
   buildM27FilingStatusReader,
   registerM27PublishedSeams,
 } from "./published-seams";
+
+// F-108 — the §4.4 render handshake's RETURN leg. `handleDocumentRendered` shipped with M27-T09 and had
+// no caller and no test; the three `ecr_submission` back-ref columns the ECR file, the Print Image and the
+// supporting-doc bundle land in were NULL in every database.
+export {
+  M27_DOCUMENT_BACKREF_CONSUMER,
+  type M27DocumentBackrefDeps,
+  buildM27DocumentBackrefConsumer,
+} from "./outbox-consumers/m22-document-backref";

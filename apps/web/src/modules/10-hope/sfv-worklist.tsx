@@ -18,13 +18,21 @@ import {
 // triggering assessment, the 2-calendar-day deadline countdown (ADR-0018 D1), and the server status. A
 // state filter narrows the queue server-side. Reads GET /api/v1/hope/sfv via the typed client; the server
 // enforces every scope (ADR-0030 — no authz on the frontend). Leaves only (@wardenx/ui).
+//
+// #91 — this is the queue whose reason to exist is COMPLETING the follow-up, and it offered no way to.
+// Each OPEN or OVERDUE row now carries Record, which commits through `POST /admissions/:id/hope/sfv` —
+// a different endpoint from the timepoint capture, with its own RN/NP author floor, that matches the
+// OPEN obligation rather than creating a free-standing RFA-04. A missed or completed row offers
+// nothing: `planSfvCompletion` refuses both, and offering a refused control is the F-007 rule.
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
+import { HopeRecordModal } from "./hope-record-modal";
 import { SFV_TONE, stateLabel } from "./hope-status";
 
 interface SfvRow {
   id: string;
   patientId: string;
+  admissionId: string;
   triggeringAssessmentId: string;
   status: string;
   triggeredAt: string;
@@ -42,6 +50,7 @@ export function SfvWorklist(): JSX.Element {
   const [items, setItems] = useState<SfvRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [recording, setRecording] = useState<SfvRow | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,224 +120,250 @@ export function SfvWorklist(): JSX.Element {
   };
 
   return (
-    <WorkQueueLayout
-      fullPageScroll
-      header={
-        <PageHeader title="Symptom Follow-Up Visits" breadcrumb="Clinical Quality — HOPE SFV">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Track symptom follow-up visits triggered by HOPE assessments, due dates, missed visits,
-            and overdue risk.
-          </div>
-        </PageHeader>
-      }
-      kpis={
-        <KpiStrip>
-          <KpiCard
-            label="Open"
-            value={loading || error ? "—" : counts.open}
-            detail="Awaiting visit"
-            tone="info"
-            accentColor="var(--color-primary)"
-            selected={state === "open"}
-            onSelect={() => {
-              setState("open");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Overdue"
-            value={loading || error ? "—" : counts.overdue}
-            detail="Past due"
-            tone={counts.overdue > 0 ? "warning" : "neutral"}
-            accentColor={
-              counts.overdue > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-            }
-            selected={state === "overdue"}
-            onSelect={() => {
-              setState("overdue");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Missed"
-            value={loading || error ? "—" : counts.missed}
-            detail="Escalated miss"
-            tone={counts.missed > 0 ? "danger" : "neutral"}
-            accentColor={counts.missed > 0 ? "var(--color-error)" : "var(--color-outline-variant)"}
-            selected={state === "missed"}
-            onSelect={() => {
-              setState("missed");
-              setPage(1);
-            }}
-          />
-          <KpiCard
-            label="Completed"
-            value={loading || error ? "—" : counts.completed}
-            detail="Closed SFVs"
-            tone="success"
-            accentColor="var(--color-success)"
-            selected={state === "completed"}
-            onSelect={() => {
-              setState("completed");
-              setPage(1);
-            }}
-          />
-        </KpiStrip>
-      }
-      filters={
-        <div style={filterPanelStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <Glyph name="alert" size={16} />
-              <span>{error}</span>
+    <>
+      <WorkQueueLayout
+        fullPageScroll
+        header={
+          <PageHeader title="Symptom Follow-Up Visits" breadcrumb="Clinical Quality — HOPE SFV">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Track symptom follow-up visits triggered by HOPE assessments, due dates, missed
+              visits, and overdue risk.
             </div>
-          ) : null}
-          <div style={filterRowStyle}>
-            <div style={{ position: "relative", minWidth: "17rem" }}>
-              <input
-                type="search"
-                placeholder="Search patient, assessment, SFV..."
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setPage(1);
-                }}
-                aria-label="Search symptom follow-up visits"
-                style={searchInputStyle}
-              />
-              <div style={searchIconStyle}>
-                <Glyph name="eye" size={14} />
-              </div>
-            </div>
-            <label style={filterLabelStyle}>
-              <span style={mutedStyle}>State</span>
-              <select
-                aria-label="SFV state"
-                value={state}
-                onChange={(e) => {
-                  setState(e.target.value);
-                  setPage(1);
-                }}
-                style={selectStyle}
-              >
-                <option value="">Any state</option>
-                <option value="open">Open</option>
-                <option value="overdue">Overdue</option>
-                <option value="missed">Missed</option>
-                <option value="completed">Completed</option>
-              </select>
-            </label>
-            {hasActiveFilters ? (
-              <Button size="sm" tone="tertiary" onClick={clearFilters}>
-                Clear
-              </Button>
-            ) : null}
-            <span style={mutedStyle}>
-              {filteredItems.length} of {items.length} SFVs
-            </span>
-          </div>
-        </div>
-      }
-      table={
-        error ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState title="Unavailable" description={error} />
-          </div>
-        ) : loading && items.length === 0 ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : filteredItems.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title="No SFVs"
-              description={
-                hasActiveFilters
-                  ? "No symptom-follow-up visits match the current filters."
-                  : "No symptom-follow-up visits are currently open."
-              }
-              action={
-                hasActiveFilters ? (
-                  <Button tone="secondary" size="sm" onClick={clearFilters}>
-                    Clear filters
-                  </Button>
-                ) : undefined
-              }
-            />
-          </div>
-        ) : (
-          <>
-            <div style={tableViewportStyle}>
-              <table style={tableStyle}>
-                <colgroup>
-                  <col style={{ width: "22%" }} />
-                  <col style={{ width: "18%" }} />
-                  <col style={{ width: "18%" }} />
-                  <col style={{ width: "14%" }} />
-                  <col style={{ width: "14%" }} />
-                  <col style={{ width: "14%" }} />
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th>SFV</th>
-                    <th>Triggered</th>
-                    <th>Due</th>
-                    <th>Status</th>
-                    <th>Patient</th>
-                    <th>Assessment</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pagedItems.map(({ row: s, effectiveStatus }) => (
-                    <tr key={s.id}>
-                      <td>
-                        <div style={primaryCellStyle}>
-                          <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
-                            Symptom follow-up
-                          </span>
-                          <span style={monoMutedStyle}>{s.id.slice(0, 8)}</span>
-                        </div>
-                      </td>
-                      <td className="tabular-nums">
-                        {s.triggeredAt.slice(0, 16).replace("T", " ")}
-                      </td>
-                      <td>
-                        <CountdownChip
-                          dueAt={s.dueAt}
-                          warnWithinHours={48}
-                          alertWithinHours={12}
-                          label="Due"
-                        />
-                      </td>
-                      <td>
-                        <StatusPill
-                          label={stateLabel(effectiveStatus)}
-                          tone={SFV_TONE[effectiveStatus] ?? "neutral"}
-                        />
-                      </td>
-                      <td style={monoMutedStyle}>{s.patientId.slice(0, 8)}</td>
-                      <td style={monoMutedStyle}>{s.triggeringAssessmentId.slice(0, 8)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={filteredItems.length}
-              onPageChange={setPage}
-              onPageSizeChange={(size) => {
-                setPageSize(size);
+          </PageHeader>
+        }
+        kpis={
+          <KpiStrip>
+            <KpiCard
+              label="Open"
+              value={loading || error ? "—" : counts.open}
+              detail="Awaiting visit"
+              tone="info"
+              accentColor="var(--color-primary)"
+              selected={state === "open"}
+              onSelect={() => {
+                setState("open");
                 setPage(1);
               }}
-              pageSizeOptions={PAGE_SIZES}
-              noun="SFVs"
             />
-          </>
-        )
-      }
-    />
+            <KpiCard
+              label="Overdue"
+              value={loading || error ? "—" : counts.overdue}
+              detail="Past due"
+              tone={counts.overdue > 0 ? "warning" : "neutral"}
+              accentColor={
+                counts.overdue > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
+              }
+              selected={state === "overdue"}
+              onSelect={() => {
+                setState("overdue");
+                setPage(1);
+              }}
+            />
+            <KpiCard
+              label="Missed"
+              value={loading || error ? "—" : counts.missed}
+              detail="Escalated miss"
+              tone={counts.missed > 0 ? "danger" : "neutral"}
+              accentColor={
+                counts.missed > 0 ? "var(--color-error)" : "var(--color-outline-variant)"
+              }
+              selected={state === "missed"}
+              onSelect={() => {
+                setState("missed");
+                setPage(1);
+              }}
+            />
+            <KpiCard
+              label="Completed"
+              value={loading || error ? "—" : counts.completed}
+              detail="Closed SFVs"
+              tone="success"
+              accentColor="var(--color-success)"
+              selected={state === "completed"}
+              onSelect={() => {
+                setState("completed");
+                setPage(1);
+              }}
+            />
+          </KpiStrip>
+        }
+        filters={
+          <div style={filterPanelStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <Glyph name="alert" size={16} />
+                <span>{error}</span>
+              </div>
+            ) : null}
+            <div style={filterRowStyle}>
+              <div style={{ position: "relative", minWidth: "17rem" }}>
+                <input
+                  type="search"
+                  placeholder="Search patient, assessment, SFV..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setPage(1);
+                  }}
+                  aria-label="Search symptom follow-up visits"
+                  style={searchInputStyle}
+                />
+                <div style={searchIconStyle}>
+                  <Glyph name="eye" size={14} />
+                </div>
+              </div>
+              <label style={filterLabelStyle}>
+                <span style={mutedStyle}>State</span>
+                <select
+                  aria-label="SFV state"
+                  value={state}
+                  onChange={(e) => {
+                    setState(e.target.value);
+                    setPage(1);
+                  }}
+                  style={selectStyle}
+                >
+                  <option value="">Any state</option>
+                  <option value="open">Open</option>
+                  <option value="overdue">Overdue</option>
+                  <option value="missed">Missed</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </label>
+              {hasActiveFilters ? (
+                <Button size="sm" tone="tertiary" onClick={clearFilters}>
+                  Clear
+                </Button>
+              ) : null}
+              <span style={mutedStyle}>
+                {filteredItems.length} of {items.length} SFVs
+              </span>
+            </div>
+          </div>
+        }
+        table={
+          error ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState title="Unavailable" description={error} />
+            </div>
+          ) : loading && items.length === 0 ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : filteredItems.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title="No SFVs"
+                description={
+                  hasActiveFilters
+                    ? "No symptom-follow-up visits match the current filters."
+                    : "No symptom-follow-up visits are currently open."
+                }
+                action={
+                  hasActiveFilters ? (
+                    <Button tone="secondary" size="sm" onClick={clearFilters}>
+                      Clear filters
+                    </Button>
+                  ) : undefined
+                }
+              />
+            </div>
+          ) : (
+            <>
+              <div style={tableViewportStyle}>
+                <table style={tableStyle}>
+                  <colgroup>
+                    <col style={{ width: "19%" }} />
+                    <col style={{ width: "15%" }} />
+                    <col style={{ width: "16%" }} />
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "12%" }} />
+                    <col style={{ width: "14%" }} />
+                  </colgroup>
+                  <thead>
+                    <tr>
+                      <th>SFV</th>
+                      <th>Triggered</th>
+                      <th>Due</th>
+                      <th>Status</th>
+                      <th>Patient</th>
+                      <th>Assessment</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pagedItems.map(({ row: s, effectiveStatus }) => (
+                      <tr key={s.id}>
+                        <td>
+                          <div style={primaryCellStyle}>
+                            <span style={{ color: "var(--color-on-surface)", fontWeight: 600 }}>
+                              Symptom follow-up
+                            </span>
+                            <span style={monoMutedStyle}>{s.id.slice(0, 8)}</span>
+                          </div>
+                        </td>
+                        <td className="tabular-nums">
+                          {s.triggeredAt.slice(0, 16).replace("T", " ")}
+                        </td>
+                        <td>
+                          <CountdownChip
+                            dueAt={s.dueAt}
+                            warnWithinHours={48}
+                            alertWithinHours={12}
+                            label="Due"
+                          />
+                        </td>
+                        <td>
+                          <StatusPill
+                            label={stateLabel(effectiveStatus)}
+                            tone={SFV_TONE[effectiveStatus] ?? "neutral"}
+                          />
+                        </td>
+                        <td style={monoMutedStyle}>{s.patientId.slice(0, 8)}</td>
+                        <td style={monoMutedStyle}>{s.triggeringAssessmentId.slice(0, 8)}</td>
+                        <td>
+                          {s.status === "open" ? (
+                            <Button size="sm" onClick={() => setRecording(s)}>
+                              Record
+                            </Button>
+                          ) : (
+                            <span style={mutedStyle}>—</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={filteredItems.length}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setPageSize(size);
+                  setPage(1);
+                }}
+                pageSizeOptions={PAGE_SIZES}
+                noun="SFVs"
+              />
+            </>
+          )
+        }
+      />
+      {recording !== null ? (
+        <HopeRecordModal
+          open
+          admissionId={recording.admissionId}
+          triggeringAssessmentId={recording.triggeringAssessmentId}
+          onClose={() => setRecording(null)}
+          onDone={() => {
+            void load();
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 

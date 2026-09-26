@@ -18,7 +18,7 @@
 //     org-pooled db + the tenant queue producer + the injected clock — are all available), and §4.3 queue
 //     producer construction. Enqueue remains capability-disabled until every mandatory worker port is live.
 //   • TYPED-TODO (genuinely-missing infra accessors at the composition root — each FAILS CLOSED, never a
-//     silent no-op): the M1 KEK/KMS unwrap adapter, the M4 `platform.bypass_invoked` auditor, the live
+//     silent no-op): the M4 `platform.bypass_invoked` auditor, the live
 //     transactional-outbox dispatcher, the M1 `FeatureFlagAdmin` seam, the M36 alert router, and the
 //     M1 MinIO presign/object-store seam. Until these land, the platform-ops route service + the worker
 //     ports that need them fail closed (a 5xx / a typed throw), which is the correct posture for an
@@ -35,6 +35,7 @@ import {
 } from "@wardenx/tenancy";
 import { DegradedError, type SignedUrlDescriptor } from "@wardenx/types";
 import { getSeam } from "../../bootstrap/index";
+import { ACTIVE_KEK_ENV } from "../../bootstrap/tenant-kek";
 
 /**
  * §11 D1 — one bucket per tenant: `tenant-{tenantId}`. GAP-048: mirrors M22's `deriveTenantBucket`
@@ -122,28 +123,47 @@ export function wireM34Tenancy(): void {
  * register the real providers over the bootstrap deny-stubs. The org runner binds `withOrgContext`; the
  * platform runner binds `withPlatformContext` under {@link M34_PLATFORM_JOB_ID}.
  *
- * TODO(integrator — KEK/KMS): `kekUnwrap` is the ONLY genuinely-missing dep here. M34's package holds no
- * KMS knowledge (no `dependsOn` edge), so the real KEK adapter (M1 infra) binds here when it lands. Until
- * then it FAILS CLOSED on call — `validateModule34Seams()` still passes (it only requires the provider be
- * REGISTERED, not that a live key resolve succeed), so boot is clean and a PHI-key resolve denies loudly.
+ * THE D5 KEY PROVIDER NEEDS TWO THINGS, and #105 found both missing at once:
+ *   • `kekUnwrap` — the KEK adapter. Bound in production to `bootstrap/tenant-kek.ts` (ADR-0045).
+ *   • `keyRingDb` — a credential that may SELECT `tenant_key_ring`. Migration 0052 §5 REVOKES that from
+ *     `wardenx_app` (the request path reads only the ciphertext-free metadata view), so the org-pooled
+ *     client `deps.db` carries CANNOT read a wrapped DEK no matter what the KEK port is bound to; it
+ *     fails with `42501 permission denied for table tenant_key_ring` one step BEFORE the unwrap. The
+ *     platform login has the grant (`PLATFORM_READ_TABLES` in `scripts/db/provision-runtime-roles.ts`).
+ *
+ * Either one absent FAILS CLOSED on call with a typed, named `M34InfraPortUnbound` —
+ * `validateModule34Seams()` still passes (it only requires the provider be REGISTERED, not that a live
+ * key resolve succeed), so boot is clean and a PHI-key resolve denies loudly rather than silently.
  */
 export function registerLiveM34Seams(deps: {
   db: DbClient;
   auditBypass: PlatformBypassAuditor<PlatformTx>;
   kekUnwrap?: KekUnwrapPort;
+  /** The PLATFORM-pooled client the key-ring read runs on (see above). Absent ⇒ every DEK resolve refuses. */
+  keyRingDb?: DbClient;
 }): void {
   const kekUnwrap: KekUnwrapPort = deps.kekUnwrap ?? {
     async unwrap() {
       throw new M34InfraPortUnbound(
         "kekUnwrap",
-        "bind the M1 KEK/KMS unwrap adapter (the §3.3 per-tenant DEK wrap/unwrap) — no boot accessor yet",
+        `no platform KEK is configured — set ${ACTIVE_KEK_ENV} (ADR-0045), or bind a KMS adapter at the composition root`,
       );
     },
   };
+  const keyRingDb = deps.keyRingDb;
   const seamDeps: M34SeamRegistrationDeps = {
     db: deps.db,
     runInOrgContext: (orgId, fn) =>
       withOrgContext(deps.db, { organizationId: orgId, userId: M34_PLATFORM_JOB_ID }, fn),
+    runInKeyRingContext: (orgId, fn) => {
+      if (!keyRingDb) {
+        throw new M34InfraPortUnbound(
+          "tenantKeyRingRead",
+          "no platform database credential is configured (DATABASE_PLATFORM_URL) — wardenx_app's SELECT on tenant_key_ring is revoked by migration 0052 §5, so no DEK can be resolved",
+        );
+      }
+      return withOrgContext(keyRingDb, { organizationId: orgId, userId: M34_PLATFORM_JOB_ID }, fn);
+    },
     runInPlatformContext: (fn) =>
       withPlatformContext(
         deps.db,
@@ -272,6 +292,10 @@ export function buildDrizzlePlatformService(deps: {
   /** #107 — the live transactional-outbox publisher (callerModule-pinned 'm34'). When omitted the lifecycle
    *  outbox stays fail-closed (the §2.5 emit throws, never a silent no-op). */
   outbox?: OutboxPublishPort;
+  /** F-091 — M1's `FeatureFlagAdmin` seam (§4.7 / D13). M1 owns the `feature_flag` schema, so the
+   *  implementation is bound in the composition root and passed in here rather than constructed
+   *  locally; omitted, the three admin routes keep the fail-closed stub below. */
+  featureFlags?: FeatureFlagAdminPort;
 }): { service: TenantPlatformRouteService } {
   const outbox: OutboxPublishPort = deps.outbox ?? {
     async publish(_tx, input) {
@@ -281,7 +305,12 @@ export function buildDrizzlePlatformService(deps: {
       );
     },
   };
-  const featureFlags: FeatureFlagAdminPort = {
+  // F-091 — bound in production. The stub below is the no-accessor fallback (a slice/no-db boot), NOT
+  // the deployed state any more: until F-091 this stub WAS the production binding, so all three §4.7
+  // admin routes answered 5xx and the `feature_flag` table had no writer at all. `setKillSwitch` still
+  // refuses even when bound — the reason lives with the implementation (M1's `KILL_SWITCH_BLOCKED_REASON`)
+  // because it is a fact about the alert taxonomy, not about this wiring.
+  const featureFlags: FeatureFlagAdminPort = deps.featureFlags ?? {
     async list() {
       throw new M34InfraPortUnbound(
         "featureFlags.list",

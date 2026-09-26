@@ -37,13 +37,20 @@ import type { CSSProperties, JSX, ReactNode } from "react";
 
 import { useNavigate, useParams } from "react-router-dom";
 
-import { AdmissionLookupField } from "../../shared/entity-lookups";
+import { AdmissionLookupField } from "../../shell/entity-lookups";
 
 import { useSession } from "../../shell/session";
 
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 
 import { ENCOUNTER_TONE, stateLabel } from "./encounter-status";
+import {
+  type EncounterDiscipline,
+  type EncounterType,
+  disciplinesForRoles,
+  encounterTypesForDisciplines,
+  legalDisciplinesFor,
+} from "./encounters-api";
 
 interface EncounterRow {
   id: string;
@@ -77,17 +84,11 @@ interface PatientSummary {
   status: string;
 }
 
-type EncounterCreateField =
-  | "admissionId"
-  | "encounterType"
-  | "discipline"
-  | "serviceDate";
+type EncounterCreateField = "admissionId" | "encounterType" | "discipline" | "serviceDate";
 
 type EncounterCreateFieldErrors = Partial<Record<EncounterCreateField, string>>;
 
-function validationDetails(
-  error: unknown,
-): Array<{ field?: string; message?: string }> {
+function validationDetails(error: unknown): Array<{ field?: string; message?: string }> {
   const body = error as {
     details?: unknown;
     error?: {
@@ -110,9 +111,7 @@ function validationDetails(
   });
 }
 
-function createFieldFromPath(
-  path: string | undefined,
-): EncounterCreateField | null {
+function createFieldFromPath(path: string | undefined): EncounterCreateField | null {
   if (!path) return null;
 
   const normalized = path
@@ -239,9 +238,7 @@ export function PatientEncounters(): JSX.Element {
   const rows = useMemo(() => {
     const visible = status ? items.filter((e) => e.status === status) : items;
 
-    return [...visible].sort(
-      (a, b) => Date.parse(b.serviceDate) - Date.parse(a.serviceDate),
-    );
+    return [...visible].sort((a, b) => Date.parse(b.serviceDate) - Date.parse(a.serviceDate));
   }, [items, status]);
 
   const selected = items.find((e) => e.id === selectedId) ?? null;
@@ -270,9 +267,7 @@ export function PatientEncounters(): JSX.Element {
       <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
         <ChartModuleRail patientId={patientId ?? ""} current="encounters" />
 
-        <div
-          style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}
-        >
+        <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
           <div
             style={{
               display: "flex",
@@ -373,9 +368,7 @@ export function PatientEncounters(): JSX.Element {
         </div>
 
         <RightDetailPanel
-          title={
-            selected ? stateLabel(selected.encounterType) : "Encounter detail"
-          }
+          title={selected ? stateLabel(selected.encounterType) : "Encounter detail"}
         >
           {selected ? (
             <>
@@ -416,18 +409,30 @@ export function PatientEncounters(): JSX.Element {
 
               <Button
                 type="button"
-                onClick={() =>
-                  navigate(`/patients/${patientId}/encounters/${selected.id}`)
-                }
+                onClick={() => navigate(`/patients/${patientId}/encounters/${selected.id}`)}
                 style={{ marginTop: "1rem", width: "100%" }}
               >
                 Open encounter
               </Button>
+              {/* #91 — a draft has somewhere to be finished: the HearthNote composer (template menu +
+                  per-section free text). Offered only on `draft`, because the composer's writes are
+                  refused on any other status by `checkMutableForEdit`. */}
+              {selected.status === "draft" && session?.permissions?.includes("encounter.author") ? (
+                <Button
+                  type="button"
+                  tone="secondary"
+                  onClick={() =>
+                    navigate(`/patients/${patientId}/encounters/${selected.id}/compose`)
+                  }
+                  style={{ marginTop: "0.5rem", width: "100%" }}
+                >
+                  Compose note
+                </Button>
+              ) : null}
             </>
           ) : (
             <p style={meta}>
-              Select an encounter to see its discipline, service date, and
-              lifecycle status here.
+              Select an encounter to see its discipline, service date, and lifecycle status here.
             </p>
           )}
         </RightDetailPanel>
@@ -447,6 +452,18 @@ export function PatientEncounters(): JSX.Element {
   );
 }
 
+/** Every authoring discipline — the fallback when the caller's role keys name none (e.g. an administrator). */
+const ALL_DISCIPLINES: readonly EncounterDiscipline[] = [
+  "rn",
+  "lpn",
+  "chha",
+  "msw",
+  "chaplain",
+  "volunteer",
+  "md",
+  "np",
+];
+
 function PrnEncounterModal({
   open,
   patientId,
@@ -459,17 +476,43 @@ function PrnEncounterModal({
   onCreated: (id: string) => void;
 }): JSX.Element | null {
   const client = useApiClient();
+  const session = useSession();
   const [admissionId, setAdmissionId] = useState("");
-  const [encounterType, setEncounterType] = useState("routine_visit");
-  const [discipline, setDiscipline] = useState("rn");
-  const [serviceDate, setServiceDate] = useState(
-    new Date().toISOString().slice(0, 10),
+  const [encounterType, setEncounterType] = useState<string>("routine_visit");
+  const [discipline, setDiscipline] = useState<string>("rn");
+  // F-083 (#195) — offer only (type × discipline) pairs the server accepts (`ENCOUNTER_DISCIPLINE_RULES`,
+  // a 422 otherwise, and no HearthNote template exists for an illegal pair), narrowed to the caller's own
+  // clinical disciplines when their role keys name any. Not a check — the server decides.
+  const roleDisciplines = useMemo(
+    () => disciplinesForRoles(session?.roles ?? []),
+    [session?.roles],
   );
+  const typeOptions = useMemo(
+    () =>
+      encounterTypesForDisciplines(roleDisciplines.length > 0 ? roleDisciplines : ALL_DISCIPLINES),
+    [roleDisciplines],
+  );
+  const disciplineOptions = useMemo(
+    () =>
+      legalDisciplinesFor(encounterType as EncounterType).filter(
+        (d) => roleDisciplines.length === 0 || roleDisciplines.includes(d),
+      ),
+    [encounterType, roleDisciplines],
+  );
+  useEffect(() => {
+    if (!typeOptions.includes(encounterType as EncounterType) && typeOptions[0]) {
+      setEncounterType(typeOptions[0]);
+    }
+  }, [typeOptions, encounterType]);
+  useEffect(() => {
+    if (!disciplineOptions.includes(discipline as EncounterDiscipline)) {
+      setDiscipline(disciplineOptions[0] ?? "");
+    }
+  }, [disciplineOptions, discipline]);
+  const [serviceDate, setServiceDate] = useState(new Date().toISOString().slice(0, 10));
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [fieldErrors, setFieldErrors] = useState<EncounterCreateFieldErrors>(
-    {},
-  );
+  const [fieldErrors, setFieldErrors] = useState<EncounterCreateFieldErrors>({});
 
   if (!open) return null;
 
@@ -548,12 +591,7 @@ function PrnEncounterModal({
   }
 
   return (
-    <Modal
-      open={open}
-      onClose={busy ? undefined : onClose}
-      ariaLabel="New Encounter"
-      width="34rem"
-    >
+    <Modal open={open} onClose={busy ? undefined : onClose} ariaLabel="New Encounter" width="34rem">
       <div
         style={{
           padding: "1.25rem",
@@ -563,12 +601,10 @@ function PrnEncounterModal({
         }}
       >
         <div>
-          <h2 style={{ margin: 0, fontFamily: t.fontDisplay, fontWeight: 500 }}>
-            New Encounter
-          </h2>
+          <h2 style={{ margin: 0, fontFamily: t.fontDisplay, fontWeight: 500 }}>New Encounter</h2>
           <p style={modalHint}>
-            Start an unscheduled encounter for the selected patient. Choose the
-            active admission, visit type, discipline, and service date.
+            Start an unscheduled encounter for the selected patient. Choose the active admission,
+            visit type, discipline, and service date.
           </p>
         </div>
 
@@ -608,16 +644,7 @@ function PrnEncounterModal({
             }}
             aria-invalid={Boolean(fieldErrors.encounterType)}
           >
-            {[
-              "routine_visit",
-              "lpn_visit",
-              "chha_visit",
-              "msw_assessment",
-              "msw_followup",
-              "chaplain_visit",
-              "volunteer_visit",
-              "telephonic",
-            ].map((value) => (
+            {typeOptions.map((value) => (
               <option key={value} value={value}>
                 {stateLabel(value)}
               </option>
@@ -640,16 +667,7 @@ function PrnEncounterModal({
             }}
             aria-invalid={Boolean(fieldErrors.discipline)}
           >
-            {[
-              "rn",
-              "lpn",
-              "chha",
-              "msw",
-              "chaplain",
-              "volunteer",
-              "md",
-              "np",
-            ].map((value) => (
+            {disciplineOptions.map((value) => (
               <option key={value} value={value}>
                 {stateLabel(value)}
               </option>
@@ -739,8 +757,7 @@ const selectStyle: CSSProperties = {
 
   borderRadius: t.radiusMd,
 
-  border:
-    "1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent)",
+  border: "1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent)",
 
   background: t.surfaceLow,
 
@@ -832,10 +849,7 @@ const ENCOUNTER_COLUMNS: readonly DataTableColumn<EncounterRow>[] = [
           {stateLabel(encounter.encounterType)}
         </span>
 
-        <span
-          className="tabular-nums"
-          style={{ color: t.onSurfaceVariant, fontSize: "0.8125rem" }}
-        >
+        <span className="tabular-nums" style={{ color: t.onSurfaceVariant, fontSize: "0.8125rem" }}>
           {encounter.serviceDate.slice(0, 10)}
         </span>
       </span>

@@ -1,14 +1,7 @@
-import {
-  Button,
-  EmptyState,
-  LoadingSpinner,
-  StatusPill,
-  t,
-  useApiClient,
-} from "@wardenx/ui";
+import { Button, EmptyState, LoadingSpinner, StatusPill, t, useApiClient } from "@wardenx/ui";
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX } from "react";
-import { MdmEntityLookupField } from "../../shared/entity-lookups";
+import { MdmEntityLookupField } from "../../shell/entity-lookups";
 
 interface AddressView {
   id?: string;
@@ -43,10 +36,7 @@ interface Props {
 
 type LoadState = "loading" | "ready" | "error";
 
-export function PatientIntakeDetails({
-  patientId,
-  onSaved,
-}: Props): JSX.Element {
+export function PatientIntakeDetails({ patientId, onSaved }: Props): JSX.Element {
   const client = useApiClient();
 
   const [addresses, setAddresses] = useState<AddressView[]>([]);
@@ -131,9 +121,7 @@ export function PatientIntakeDetails({
     setAddresses(nextAddresses);
     setPayers(nextPayers);
 
-    const ids = [
-      ...new Set(nextPayers.map((payer) => payer.payerId).filter(Boolean)),
-    ];
+    const ids = [...new Set(nextPayers.map((payer) => payer.payerId).filter(Boolean))];
 
     const resolved = await Promise.all(
       ids.map(async (payerId) => {
@@ -160,9 +148,7 @@ export function PatientIntakeDetails({
       }),
     );
 
-    setPayerNames(
-      Object.fromEntries(resolved.filter(([, name]) => Boolean(name))),
-    );
+    setPayerNames(Object.fromEntries(resolved.filter(([, name]) => Boolean(name))));
 
     setState("ready");
   }, [client, patientId]);
@@ -172,9 +158,7 @@ export function PatientIntakeDetails({
   }, [load]);
 
   const currentResidence =
-    addresses.find(
-      (item) => item.current && item.isPrimary && item.kind === "home",
-    ) ??
+    addresses.find((item) => item.current && item.isPrimary && item.kind === "home") ??
     addresses.find((item) => item.current && item.kind === "home") ??
     addresses.find((item) => item.current && item.isPrimary) ??
     null;
@@ -231,12 +215,7 @@ export function PatientIntakeDetails({
     setBusy(null);
 
     if (result.error) {
-      setAddressError(
-        apiErrorMessage(
-          result.error,
-          "The residence address could not be saved.",
-        ),
-      );
+      setAddressError(apiErrorMessage(result.error, "The residence address could not be saved."));
       return;
     }
 
@@ -314,9 +293,7 @@ export function PatientIntakeDetails({
     setBusy(null);
 
     if (result.error) {
-      setCoverageError(
-        apiErrorMessage(result.error, "The coverage could not be saved."),
-      );
+      setCoverageError(apiErrorMessage(result.error, "The coverage could not be saved."));
       return;
     }
 
@@ -348,9 +325,7 @@ export function PatientIntakeDetails({
     return (
       <EmptyState
         title="Patient information unavailable"
-        description={
-          error ?? "Address and coverage information could not be loaded."
-        }
+        description={error ?? "Address and coverage information could not be loaded."}
       />
     );
   }
@@ -362,8 +337,8 @@ export function PatientIntakeDetails({
           <h3 style={title}>Patient information</h3>
 
           <p style={description}>
-            Residence address and coverage are optional during intake. You can
-            continue without completing them.
+            Residence address and coverage are optional during intake. You can continue without
+            completing them.
           </p>
         </div>
 
@@ -377,8 +352,7 @@ export function PatientIntakeDetails({
             <div>
               <h4 style={cardTitle}>Residence address</h4>
               <p style={cardDescription}>
-                Used as the patient residence / service-location context when
-                available.
+                Used as the patient residence / service-location context when available.
               </p>
             </div>
 
@@ -398,15 +372,11 @@ export function PatientIntakeDetails({
             <div style={summaryBox}>
               <strong>{currentResidence.line1}</strong>
 
-              {currentResidence.line2 ? (
-                <span>{currentResidence.line2}</span>
-              ) : null}
+              {currentResidence.line2 ? <span>{currentResidence.line2}</span> : null}
 
               <span>
                 {currentResidence.city}
-                {currentResidence.state
-                  ? `, ${currentResidence.state}`
-                  : ""}{" "}
+                {currentResidence.state ? `, ${currentResidence.state}` : ""}{" "}
                 {currentResidence.postalCode}
               </span>
             </div>
@@ -519,11 +489,7 @@ export function PatientIntakeDetails({
                   Cancel
                 </Button>
 
-                <Button
-                  size="sm"
-                  loading={busy === "address"}
-                  onClick={() => void saveAddress()}
-                >
+                <Button size="sm" loading={busy === "address"} onClick={() => void saveAddress()}>
                   Save address
                 </Button>
               </div>
@@ -537,9 +503,7 @@ export function PatientIntakeDetails({
             <div>
               <h4 style={cardTitle}>Coverage / Payers</h4>
 
-              <p style={cardDescription}>
-                Add insurance coverage when it is known during intake.
-              </p>
+              <p style={cardDescription}>Add insurance coverage when it is known during intake.</p>
             </div>
 
             <Button
@@ -560,8 +524,7 @@ export function PatientIntakeDetails({
                 <div key={payer.id} style={payerRow}>
                   <div style={payerMain}>
                     <strong>
-                      {payerNames[payer.payerId] ??
-                        `Payer ${shortId(payer.payerId)}`}
+                      {payerNames[payer.payerId] ?? `Payer ${shortId(payer.payerId)}`}
                     </strong>
 
                     <span style={muted}>
@@ -720,11 +683,7 @@ export function PatientIntakeDetails({
                   Cancel
                 </Button>
 
-                <Button
-                  size="sm"
-                  loading={busy === "coverage"}
-                  onClick={() => void saveCoverage()}
-                >
+                <Button size="sm" loading={busy === "coverage"} onClick={() => void saveCoverage()}>
                   Save coverage
                 </Button>
               </div>
@@ -746,13 +705,7 @@ function apiErrorMessage(error: unknown, fallback: string): string {
     };
   } | null;
 
-  return (
-    body?.detail ??
-    body?.message ??
-    body?.error?.detail ??
-    body?.error?.message ??
-    fallback
-  );
+  return body?.detail ?? body?.message ?? body?.error?.detail ?? body?.error?.message ?? fallback;
 }
 
 function maskIdentifier(value: string): string {
@@ -772,9 +725,7 @@ function maskIdentifier(value: string): string {
 }
 
 function humanize(value: string): string {
-  return value
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
+  return value.replaceAll("_", " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function shortId(value: string): string {

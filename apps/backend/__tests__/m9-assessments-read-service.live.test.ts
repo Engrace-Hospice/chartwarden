@@ -28,7 +28,15 @@ const USER = "33333333-3333-3333-3333-333333333333";
 const PATIENT = "44444444-4444-4444-4444-444444444444";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 
-type SeedIds = { scaleLicense: string; clinicalAssessment: string };
+// `seedOrg` returns five ids and this named two, so the three the ABAC assertions read back —
+// providerEntity, location, membership — were invisible to every consumer of the seed.
+type SeedIds = {
+  scaleLicense: string;
+  clinicalAssessment: string;
+  providerEntity: string;
+  location: string;
+  membership: string;
+};
 
 describe.skipIf(!DB_URL)("M9 Drizzle read service — LIVE Postgres (M9L)", () => {
   let admin: Client;

@@ -17,7 +17,12 @@
  *   • alert_rule, notification_template — organization_id is NULLABLE by design; platform-default/floor rows
  *     (organization_id IS NULL) are read-only to EVERY tenant, so the read policy is `… IS NULL OR org = …`,
  *     not a pure org-isolation policy (would trip the "no IS NULL escape" assertion).
- *   • user_notification_preferences — keyed on app.user_id (the user's own rows), not app.org_id.
+ *   • user_notification_preferences — NOT excluded any more. It was, justified as "keyed on app.user_id
+ *     (the user's own rows), not app.org_id" — and that justification was the bug: the table carries
+ *     organization_id and is not in NON_ORG_SCOPED, so it IS org-scoped, and its only wardenx_app policy
+ *     scoped nothing by the org at all (F-005, #21). It is covered by its own describe block below
+ *     rather than by the COVERED sweep, because the sweep's `withOrg` helper sets no app.user_id and so
+ *     cannot even reach this policy.
  *   • presence, delivery_endpoint — user-owned / cross-org (the human, not the tenant); no organization_id.
  *   • message_attachment, notification_delivery — pure children of message/alert; no organization_id column,
  *     org-isolated through the parent join.
@@ -314,6 +319,143 @@ describe.skipIf(!DB_URL)(
         "SELECT count(*)::int AS n FROM audit_event WHERE resource_kind = 'message'",
       );
       expect(r.rows[0].n).toBeGreaterThan(0);
+    });
+
+    // ── F-005 (#21) — user_notification_preferences must be scoped by the ORG, not only the user ──
+    //
+    // This table sits in the EXCLUDED list at the top of this file, justified as "keyed on app.user_id
+    // (the user's own rows), not app.org_id". That justification is the finding: the table carries
+    // `organization_id` (FK -> organization) and a unique index on (user_id, organization_id), so it IS
+    // org-scoped — it is not in check-tenancy.ts's NON_ORG_SCOPED list, unlike `presence` and
+    // `delivery_endpoint` beside it. Its only wardenx_app policy (migration 0017) constrained neither
+    // USING nor WITH CHECK by the org, and a PERMISSIVE policy is the WHOLE of what the role may reach,
+    // so there was no tenant moat on this table at all.
+    //
+    // Every case below ran as an ORG-B session in the envelope withOrgContext() actually creates —
+    // app.org_id AND app.user_id both set — because `withOrg` alone sets no app.user_id and so cannot
+    // reach the policy. Migration 0216 adds the org predicate as a conjunct on both sides.
+    describe("F-005 (#21) — notification preferences are tenant-scoped", () => {
+      /** The real request envelope: withOrgContext sets BOTH GUCs (app.user_id for M4 attribution). */
+      async function withOrgAndUser<T>(
+        org: string,
+        user: string,
+        fn: () => Promise<T>,
+      ): Promise<T> {
+        await db.query("SET ROLE wardenx_app");
+        await db.query("SELECT set_config('app.org_id', $1, false)", [org]);
+        await db.query("SELECT set_config('app.user_id', $1, false)", [user]);
+        try {
+          return await fn();
+        } finally {
+          await db.query("RESET ROLE");
+          await db.query("SELECT set_config('app.user_id', '', false)");
+        }
+      }
+
+      /** A tenant the seeded USER has no membership in — the unbounded-write case. */
+      const ORG_FOREIGN = "44444444-4444-4444-4444-444444444444";
+
+      beforeAll(async () => {
+        await db.query(
+          `INSERT INTO organization (id,slug,legal_name,display_name,status)
+             VALUES ($1,'f005-foreign','Foreign Hospice LLC','Foreign Hospice','active')
+           ON CONFLICT (id) DO NOTHING`,
+          [ORG_FOREIGN],
+        );
+        await db.query(
+          `INSERT INTO user_notification_preferences (user_id, organization_id, routing_map)
+             VALUES ($1,$2,'{"secret":"org-A-private-routing"}'::jsonb)
+           ON CONFLICT (user_id, organization_id) DO UPDATE SET routing_map = EXCLUDED.routing_map`,
+          [USER, ORG_A],
+        );
+      });
+
+      it("an org-B session cannot READ the caller's own org-A row", async () => {
+        const seen = await withOrgAndUser(ORG_B, USER, () =>
+          db.query(
+            "SELECT count(*)::int AS n FROM user_notification_preferences WHERE organization_id=$1",
+            [ORG_A],
+          ),
+        );
+        expect(seen.rows[0].n).toBe(0);
+      });
+
+      it("an org-B session cannot UPDATE the org-A row", async () => {
+        const res = await withOrgAndUser(ORG_B, USER, () =>
+          db.query(
+            "UPDATE user_notification_preferences SET routing_map='{\"tampered\":true}'::jsonb WHERE organization_id=$1",
+            [ORG_A],
+          ),
+        );
+        expect(res.rowCount).toBe(0);
+        // ...and the row is genuinely untouched, not merely invisible to the UPDATE's RETURNING.
+        const still = await db.query(
+          "SELECT routing_map FROM user_notification_preferences WHERE user_id=$1 AND organization_id=$2",
+          [USER, ORG_A],
+        );
+        expect(still.rows[0].routing_map).toEqual({ secret: "org-A-private-routing" });
+      });
+
+      it("an org-B session cannot INSERT into a tenant it is not scoped to", async () => {
+        await expect(
+          withOrgAndUser(ORG_B, USER, () =>
+            db.query(
+              `INSERT INTO user_notification_preferences (user_id, organization_id, routing_map)
+                 VALUES ($1,$2,'{"forged":true}'::jsonb)`,
+              [USER, ORG_FOREIGN],
+            ),
+          ),
+        ).rejects.toThrow();
+        const planted = await db.query(
+          "SELECT count(*)::int AS n FROM user_notification_preferences WHERE organization_id=$1",
+          [ORG_FOREIGN],
+        );
+        expect(planted.rows[0].n).toBe(0);
+      });
+
+      it("the caller CAN still read and update their own row in the CURRENT org", async () => {
+        // The constraint the fix must preserve: scoping by org must not break the feature. A fix that
+        // denies the three cases above and this one too has just made the table unreachable.
+        await db.query(
+          `INSERT INTO user_notification_preferences (user_id, organization_id, routing_map)
+             VALUES ($1,$2,'{"channel":"sms"}'::jsonb)
+           ON CONFLICT (user_id, organization_id) DO UPDATE SET routing_map = EXCLUDED.routing_map`,
+          [USER, ORG_B],
+        );
+        const read = await withOrgAndUser(ORG_B, USER, () =>
+          db.query(
+            "SELECT routing_map FROM user_notification_preferences WHERE organization_id=$1",
+            [ORG_B],
+          ),
+        );
+        expect(read.rows[0].routing_map).toEqual({ channel: "sms" });
+
+        const upd = await withOrgAndUser(ORG_B, USER, () =>
+          db.query(
+            'UPDATE user_notification_preferences SET routing_map=\'{"channel":"push"}\'::jsonb WHERE organization_id=$1',
+            [ORG_B],
+          ),
+        );
+        expect(upd.rowCount).toBe(1);
+      });
+
+      it("the policy is constrained by app.org_id in the CATALOG, not just in the migration text", async () => {
+        // Asserted against pg_policies because the defect was invisible to every text-scanning check:
+        // check-tenancy.ts exempts this whole migration file (it contains audit triggers), and this
+        // suite's own EXCLUDED list took the policy's intent at its word. See #22.
+        const { rows } = await db.query<{ policyname: string; qual: string; with_check: string }>(
+          `SELECT policyname, qual, with_check FROM pg_policies
+            WHERE schemaname='public' AND tablename='user_notification_preferences'
+              AND permissive='PERMISSIVE' AND roles::text LIKE '%wardenx_app%'`,
+        );
+        expect(rows.length).toBeGreaterThan(0);
+        for (const r of rows) {
+          expect(r.qual ?? "", `${r.policyname}.USING must be org-scoped`).toMatch(/app\.org_id/);
+          expect(r.with_check ?? "", `${r.policyname}.WITH CHECK must be org-scoped`).toMatch(
+            /app\.org_id/,
+          );
+        }
+      });
     });
   },
 );

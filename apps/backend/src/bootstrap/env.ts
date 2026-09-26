@@ -99,6 +99,16 @@ const REQUIREMENTS: readonly Requirement[] = [
     rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
   },
   {
+    // F-035 (#95) — the absolute URL of M28's `/fhir/oauth2/token`, which is the `aud` every SMART
+    // Backend Services client assertion must carry. Required in production because audience binding is
+    // what stops an assertion minted for a partner's OTHER FHIR server being replayed against this one;
+    // with it unset the mint refuses the assertion path with a 503 rather than accepting an unbound
+    // audience, so an unset value does not weaken the gateway — it silently disables it, which is the
+    // failure mode this whole module just stopped having.
+    key: "FHIR_TOKEN_ENDPOINT_URL",
+    rule: (v) => (/^https:\/\//.test(v) ? null : "must be an https:// URL"),
+  },
+  {
     // TASK-010/OPS-010 — the platform-scoped DB connection (M34/M35/outbox dispatcher). Presence-only,
     // like DATABASE_URL: format is a connection string, not something to pattern-match here.
     key: "DATABASE_PLATFORM_URL",
@@ -141,6 +151,29 @@ const REQUIREMENTS: readonly Requirement[] = [
     key: "TRUSTED_PROXY_CIDRS",
   },
   {
+    // #105 — the platform KEK that wraps every tenant's DEK (`bootstrap/tenant-kek.ts`, ADR-0045). The
+    // root of M34's §3.5 key envelope: unset, `dekForOrg` refuses for every org, and with it every
+    // consumer of per-tenant encryption — M8's signed HearthNote narrative, M27's raw payload ciphers,
+    // M29's stored HL7 payloads, M31's portal contact ciphers, M39's consent notes. Shaped
+    // `<kekId>:<base64 32 bytes>` rather than a bare key because the id is stored beside every wrapped
+    // DEK (`tenant_key_ring.current_dek_kek_id`) and is what makes a KEK rotation resolvable.
+    key: "M34_TENANT_KEK",
+    rule: (v) => {
+      const sep = v.indexOf(":");
+      if (sep <= 0) return "must be '<kekId>:<base64 32-byte key>'";
+      if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(v.slice(0, sep))) {
+        return "kekId must be 1-64 chars of [A-Za-z0-9._-]";
+      }
+      try {
+        return Buffer.from(v.slice(sep + 1), "base64").length === 32
+          ? null
+          : "key must decode to 32 base64 bytes";
+      } catch {
+        return "key must be valid base64";
+      }
+    },
+  },
+  {
     // TASK-013/ARCH-008 — the shared secret an internal (non-interactive) caller presents to
     // authenticate as a system principal (`bootstrap/plugins/authenticate.ts`), the only way
     // `requireSystemPrincipal()`-gated routes (M23 #39/#40, M15's `/internal/...` seams) become
@@ -151,6 +184,74 @@ const REQUIREMENTS: readonly Requirement[] = [
     rule: (v) => (v.length < 32 ? "must be at least 32 characters" : null),
   },
 ];
+
+/**
+ * Hostnames reserved by RFC 2606 to never resolve to anything real. `.invalid` (§2) exists so that a
+ * name is *guaranteed* to fail resolution; `.test` (§2) is reserved for testing; `example.com`/`.net`/
+ * `.org` and the `.example` TLD (§2, §3) are reserved for documentation. None of them can be a working
+ * production endpoint anywhere, for anyone.
+ *
+ * Deliberately NOT here: `localhost` and loopback literals. A single-host deployment that runs Postgres
+ * or an object store beside the API and addresses it as `localhost` is doing something ordinary and
+ * correct, and rejecting that would break real deployments to catch a mistake this rule already catches.
+ */
+const RESERVED_HOST_NAMES: readonly string[] = [
+  "invalid",
+  "example",
+  "test",
+  "example.com",
+  "example.net",
+  "example.org",
+];
+
+/**
+ * Is this hostname one RFC 2606 guarantees is not real? Matches the reserved name itself or any
+ * subdomain of it, on a LABEL boundary — `notexample.com` merely ends with the characters of
+ * `example.com` and is somebody's real domain, so a bare `endsWith` would reject it.
+ */
+export function isReservedPlaceholderHost(hostname: string): boolean {
+  const host = hostname.trim().toLowerCase().replace(/\.$/, "");
+  if (host.length === 0) return false;
+  return RESERVED_HOST_NAMES.some((name) => host === name || host.endsWith(`.${name}`));
+}
+
+/**
+ * Pull every hostname out of a config value. A value may be a URL (`https://gw.example.invalid/x`), a
+ * connection string (`postgresql://u:p@host:5432/db`), a comma- or space-separated origin list
+ * (`TRUSTED_ORIGINS`), or a bare host (`PASSKEY_RP_ID`). Anything that is neither parses to no host and
+ * contributes nothing — a base64 key or a hex token has no dots and cannot be mistaken for a hostname.
+ */
+export function hostnamesIn(value: string): string[] {
+  const hosts: string[] = [];
+  for (const part of value.split(/[,\s]+/).filter(Boolean)) {
+    try {
+      const { hostname } = new URL(part);
+      if (hostname) {
+        hosts.push(hostname);
+        continue;
+      }
+    } catch {
+      // Not a URL — fall through to the bare-hostname shape below.
+    }
+    if (/^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+\.?$/i.test(part)) {
+      hosts.push(part);
+    }
+  }
+  return hosts;
+}
+
+/**
+ * The placeholder problem for one value, or null. Applied to EVERY requirement rather than only the
+ * ones whose rule mentions a URL: the point is that `.env.example` ships reserved hosts in four values
+ * and the per-key rules ask only for `https://`, so a copied example file passes production validation
+ * intact and the stack boots "validated" against hosts DNS is guaranteed never to answer (#115).
+ */
+export function reservedPlaceholderProblem(value: string): string | null {
+  const reserved = hostnamesIn(value).filter(isReservedPlaceholderHost);
+  if (reserved.length === 0) return null;
+  const names = [...new Set(reserved)].join(", ");
+  return `must not use an RFC 2606 reserved host (${names}) — these never resolve, so this looks like an unedited .env.example placeholder`;
+}
 
 /**
  * Collect every unmet production requirement (empty array = OK). Pure, so the rules are unit-testable
@@ -166,7 +267,12 @@ export function collectEnvProblems(env: EnvLike): EnvProblem[] {
       continue;
     }
     const ruleProblem = rule?.(value);
-    if (ruleProblem) problems.push({ key, problem: ruleProblem });
+    if (ruleProblem) {
+      problems.push({ key, problem: ruleProblem });
+      continue;
+    }
+    const placeholder = reservedPlaceholderProblem(value);
+    if (placeholder) problems.push({ key, problem: placeholder });
   }
   return problems;
 }

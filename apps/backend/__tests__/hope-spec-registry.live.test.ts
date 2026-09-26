@@ -1,15 +1,55 @@
-import { sql } from "drizzle-orm";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
 import { createDbClient, schema } from "@wardenx/db";
+import { sql } from "drizzle-orm";
+import { Client } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
 import { createHopeSpecRegistry } from "../src/modules/10-hope/hope-spec-registry";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
+const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+
+/**
+ * A fresh schema, like the sibling spec suites. The database is shared and vitest does not order files:
+ * `m10-hope-phase-1a-spec-foundation` leaves its own synthetic `1.00.1` version behind, which the real
+ * import then refuses as "metadata differs".
+ */
+async function resetAndMigrate(): Promise<void> {
+  const db = new Client({ connectionString: DB_URL });
+  await db.connect();
+  try {
+    await db.query("DROP SCHEMA IF EXISTS public CASCADE");
+    await db.query("CREATE SCHEMA public");
+    for (const r of ROLES) {
+      await db.query(
+        `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${r}') THEN ` +
+          `EXECUTE 'DROP OWNED BY ${r} CASCADE'; EXECUTE 'DROP ROLE ${r}'; END IF; END $$;`,
+      );
+    }
+    const stripVector = !!process.env.WARDENX_TEST_NO_PGVECTOR;
+    for (const f of readdirSync(MIGRATIONS_DIR)
+      .filter((f) => f.endsWith(".sql"))
+      .sort()) {
+      let text = readFileSync(join(MIGRATIONS_DIR, f), "utf8");
+      if (stripVector) {
+        text = text.replace(/^.*EXTENSION IF NOT EXISTS "?vector"?.*$/gm, "-- vector stripped");
+        text = text.replace(/\bvector\(\d+\)/g, "text");
+        text = text.replace(/^.*USING hnsw \(.*$/gm, "-- hnsw stripped");
+      }
+      await db.query(text);
+    }
+  } finally {
+    await db.end();
+  }
+}
 
 describe.skipIf(!DB_URL)("HopeSpecRegistry — LIVE Postgres", () => {
   let handle: ReturnType<typeof createDbClient>;
 
   beforeAll(async () => {
+    await resetAndMigrate();
     handle = createDbClient({ connectionString: DB_URL! });
     await importHopeSpec({ databaseUrl: DB_URL });
   }, 120_000);
@@ -39,9 +79,9 @@ describe.skipIf(!DB_URL)("HopeSpecRegistry — LIVE Postgres", () => {
         ('overlap-test', '1.00', '2025-12-01', NULL, 'overlap fixture')
       ON CONFLICT DO NOTHING
     `);
-    await expect(createHopeSpecRegistry(handle.db).resolveVersionForTargetDate("2025-12-01")).rejects.toThrow(
-      "Overlapping HOPE spec versions",
-    );
+    await expect(
+      createHopeSpecRegistry(handle.db).resolveVersionForTargetDate("2025-12-01"),
+    ).rejects.toThrow("Overlapping HOPE spec versions");
   });
 
   it("reads items, active ISC members, and item options", async () => {
@@ -51,7 +91,8 @@ describe.skipIf(!DB_URL)("HopeSpecRegistry — LIVE Postgres", () => {
       itemCode: "J2051A",
       kind: "assessment",
     });
-    await expect(registry.getActiveItems(version.id, "HD")).resolves.toHaveLength(17);
+    // The CMS v1.00.1 item master marks 29 items `x` in its `isc_hd` column.
+    await expect(registry.getActiveItems(version.id, "HD")).resolves.toHaveLength(29);
     await expect(registry.getItemOptions(version.id, "J2051A")).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ valueCode: "0" }),

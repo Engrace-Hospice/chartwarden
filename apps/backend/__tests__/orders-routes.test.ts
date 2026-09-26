@@ -303,9 +303,7 @@ describe("M11-T06 — §2.4 standing-order spawn", () => {
         orderingPhysicianMdmId: PHYS,
         cadence: "prn",
         data: {
-          testCodes: [
-            { system: "http://loinc.org", code: "2160-0", display: "Creatinine" },
-          ],
+          testCodes: [{ system: "http://loinc.org", code: "2160-0", display: "Creatinine" }],
           fastingRequired: false,
         },
       },

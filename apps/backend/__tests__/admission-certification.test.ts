@@ -31,6 +31,16 @@ import {
   registerAdmissionRoutes,
 } from "../src/modules/06-admission/index";
 
+/** Clinical content every CTI draft carries (`CtiDraftInput` requires it — CtiDraftSchema, route 22). */
+const CTI_CLINICAL = {
+  terminalDiagnosisIcd10: "C34.90",
+  prognosisStatement:
+    "Life expectancy of 6 months or less if the terminal illness runs its normal course.",
+  narrative:
+    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care.",
+  clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
+};
+
 const ORG = "org_a";
 const ADMISSION = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const PERIOD = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -166,7 +176,12 @@ describe("M6-T08 — §7.3 slice: mark-late echoes the D4 deadline; recert sign 
     const { service } = seedBackend({ sequence: 2, periodStartDate: "2026-08-01" });
     const cti = await service.draftCti(
       ORG,
-      { electionPeriodId: PERIOD, hospiceMedicalDirectorId: MD_ID, isRecert: true },
+      {
+        electionPeriodId: PERIOD,
+        hospiceMedicalDirectorId: MD_ID,
+        ...CTI_CLINICAL,
+        isRecert: true,
+      },
       "u1",
     );
     const late = await service.markCtiLate(ORG, cti.id, cti.version);
@@ -179,7 +194,12 @@ describe("M6-T08 — §7.3 slice: mark-late echoes the D4 deadline; recert sign 
     const { service, events } = seedBackend({ sequence: 2, periodStartDate: "2026-08-01" });
     const cti = await service.draftCti(
       ORG,
-      { electionPeriodId: PERIOD, hospiceMedicalDirectorId: MD_ID, isRecert: true },
+      {
+        electionPeriodId: PERIOD,
+        hospiceMedicalDirectorId: MD_ID,
+        ...CTI_CLINICAL,
+        isRecert: true,
+      },
       "u1",
     );
     const signed = await service.signCtiHospiceMd(ORG, cti.id, cti.version, "u1");
@@ -198,6 +218,7 @@ describe("M6-T08 — §7.3 slice: mark-late echoes the D4 deadline; recert sign 
         electionPeriodId: PERIOD,
         hospiceMedicalDirectorId: MD_ID,
         attendingPhysicianId: ATTENDING,
+        ...CTI_CLINICAL,
         isRecert: false,
       },
       "u1",

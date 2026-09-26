@@ -28,7 +28,7 @@ import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { DegradedError, NotFoundError, type OrgId, WardenXError } from "@wardenx/types";
-import { and, desc, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, exists, isNull } from "drizzle-orm";
 import type { DocumentAbacFacts, DocumentAbacResolver } from "./abac-predicates";
 import { type CursorPage, paginate } from "./routes/concurrency";
 import type {
@@ -36,6 +36,7 @@ import type {
   DocumentView,
   DocumentWriteActor,
   IntakeBatchView,
+  TagView,
   VersionView,
 } from "./routes/service";
 import type { SignedUrlObjectFacts, SignedUrlObjectResolver } from "./routes/signed-url-service";
@@ -190,6 +191,24 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
           filter.aggregateId ? eq(DOC.aggregateId, filter.aggregateId) : undefined,
           filter.retentionClass
             ? eq(DOC.retentionClass, filter.retentionClass as never)
+            : undefined,
+          // F-060 — the query `document_tag_org_key_idx` (organization_id, tag_key, tag_value) was
+          // designed for. EXISTS rather than a join so a document matching two tags stays one row;
+          // RLS scopes both sides, and the org column is in the predicate so the index is usable.
+          filter.tagKey
+            ? exists(
+                tx
+                  .select({ one: TAG.id })
+                  .from(TAG)
+                  .where(
+                    and(
+                      eq(TAG.documentId, DOC.id),
+                      eq(TAG.organizationId, organizationId),
+                      eq(TAG.tagKey, filter.tagKey),
+                      ...(filter.tagValue === undefined ? [] : [eq(TAG.tagValue, filter.tagValue)]),
+                    ),
+                  ),
+              )
             : undefined,
         ].filter(Boolean);
         const rows = await tx
@@ -506,6 +525,35 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
         return loadDocRow(tx, organizationId, documentId);
       });
     },
+    async listTags(organizationId, documentId, cursor, limit): Promise<CursorPage<TagView>> {
+      return withOrg(db, organizationId, async (tx) => {
+        await loadDocRow(tx, organizationId, documentId); // 404 before an empty page
+        const rows = await tx
+          .select({
+            id: TAG.id,
+            tagKind: TAG.tagKind,
+            tagKey: TAG.tagKey,
+            tagValue: TAG.tagValue,
+            addedAt: TAG.addedAt,
+          })
+          .from(TAG)
+          .where(eq(TAG.documentId, documentId))
+          .orderBy(desc(TAG.addedAt), desc(TAG.id))
+          .limit(READ_WINDOW);
+        return paginate(
+          rows.map((t) => ({
+            id: t.id,
+            tagKind: t.tagKind,
+            tagKey: t.tagKey,
+            tagValue: t.tagValue,
+            addedAt: iso(t.addedAt),
+            createdAt: iso(t.addedAt),
+          })),
+          cursor,
+          limit,
+        );
+      });
+    },
     async addTag(organizationId, actor, documentId, tag) {
       return withOrgAs(db, organizationId, actor, async (tx) => {
         await loadDocRow(tx, organizationId, documentId); // 404
@@ -520,9 +568,16 @@ export function createDbDocumentRouteService(db: DbClient): DocumentRouteService
             tagValue: tag.tagValue,
             addedByMembershipId: actor.membershipId,
           })
-          .returning({ id: TAG.id });
+          .returning({ id: TAG.id, addedAt: TAG.addedAt });
         if (!t) throw new Error("document_tag insert returned no row");
-        return { id: t.id, tagKind: tag.tagKind, tagKey: tag.tagKey, tagValue: tag.tagValue };
+        return {
+          id: t.id,
+          tagKind: tag.tagKind,
+          tagKey: tag.tagKey,
+          tagValue: tag.tagValue,
+          addedAt: iso(t.addedAt),
+          createdAt: iso(t.addedAt),
+        };
       });
     },
     async removeTag(organizationId, actor, documentId, tagId) {

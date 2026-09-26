@@ -21,6 +21,7 @@ import { OsrmRoutingProvider, type RoutingCache, matrixCacheKey } from "@wardenx
 import {
   EVV_MISSING_SELF_ATTEST_MIN_REASON_LENGTH,
   MATERIALIZE_HORIZON_DAYS,
+  type SchedulingSideEffect,
   materializeRecurrence,
   parseRrule,
   planFrequencyProposals,
@@ -110,7 +111,7 @@ describe("M17-T09 §7 workflow acceptance", () => {
     expect(proposals[0]!.source).toBe("frequency_driven_m7");
     expect(proposals[0]!.sourceIdempotencyKey).toBe("interv-9:2026-06-22");
     const genesisOutbox = proposals[0]!.effects
-      .filter((e): e is { kind: "outbox"; event: string } => e.kind === "outbox")
+      .filter((e): e is Extract<SchedulingSideEffect, { kind: "outbox" }> => e.kind === "outbox")
       .map((e) => e.event);
     expect(genesisOutbox).toContain("m17.visit.proposed");
 
@@ -234,7 +235,10 @@ describe("M17-T09 §7 workflow acceptance", () => {
     expect(await predicates.discipline_matches_visit!(ctx(), target)).toBe(true);
     // …and the volunteer half is not a free pass onto a purpose neither discipline covers.
     expect(
-      await predicates.discipline_matches_visit!(ctx(), { ...target, visitPurpose: "msw_assessment" }),
+      await predicates.discipline_matches_visit!(ctx(), {
+        ...target,
+        visitPurpose: "msw_assessment",
+      }),
     ).toBe(false);
     // The service-layer D8 gate reads the same set, so the two layers still agree.
     expect(() =>

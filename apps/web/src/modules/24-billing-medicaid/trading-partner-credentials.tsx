@@ -366,7 +366,7 @@ export function MedicaidTradingPartnerCredentials(): JSX.Element {
                 {pagedRows.map((c) => {
                   const testing = testingId === c.id;
                   return (
-                    <tr key={c.id} style={rowLine} className="wx-data-row-interactive">
+                    <tr key={c.id} style={rowLine}>
                       <td style={td}>{c.serviceState}</td>
                       <td style={tdMono}>{shortId(c.providerEntityId)}</td>
                       <td style={td}>

@@ -464,6 +464,7 @@ export function buildDrizzleM15WriteService(
           }
           // §2.4 / D12 — the M22 discipline-plan PDF render handshake + the M28/M14/M30/M33 fan-out.
           await emit(tx, {
+            organizationId: actor.organizationId,
             eventName: "m15.plan.version_signed",
             aggregateKind: "discipline_care_plan_version",
             aggregateId: versionId,
@@ -859,6 +860,7 @@ export function buildDrizzleM15WriteService(
           .where(and(eq(A.id, assessmentId), eq(A.version, original.version)));
 
         await emit(tx, {
+          organizationId: actor.organizationId,
           eventName: "m15.discipline_assessment.amended",
           aggregateKind: "discipline_assessment",
           aggregateId: amendment.id,
@@ -939,6 +941,7 @@ export function buildDrizzleM15WriteService(
             .where(and(eq(P.id, planId), eq(P.version, plan.version)));
         }
         await emit(tx, {
+          organizationId: actor.organizationId,
           eventName: "m15.aide_supervisory.completed",
           aggregateKind: "aide_supervisory_visit",
           aggregateId: row.id,
@@ -1038,6 +1041,7 @@ export function buildDrizzleM15WriteService(
         // this insert) plus the failing-gate list the coordinator knowingly accepted.
         if (decision.overridden) {
           await emit(tx, {
+            organizationId: actor.organizationId,
             eventName: "m15.volunteer.assignment_inactivated",
             aggregateKind: "volunteer_assignment",
             aggregateId: row.id,
@@ -1130,6 +1134,7 @@ export function buildDrizzleM15WriteService(
         }
         if (input.inactivate) {
           await emit(tx, {
+            organizationId: actor.organizationId,
             eventName: "m15.volunteer.assignment_inactivated",
             aggregateKind: "volunteer_assignment",
             aggregateId: updated.id,
@@ -1268,6 +1273,7 @@ export function buildDrizzleM15WriteService(
               ),
             );
           await emit(tx, {
+            organizationId: actor.organizationId,
             eventName: "m15.volunteer.assignment_inactivated",
             aggregateKind: "volunteer_compliance_gate",
             aggregateId: updated.id,

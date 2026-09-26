@@ -140,15 +140,10 @@ describe("Encounter workspace web workflow", () => {
     const post = vi.fn(async () => ({ data: { status: "ok" }, response: new Response() }));
     renderEncounter({ GET: get, PATCH: patch, POST: post });
 
-    const note = await screen.findByLabelText("Clinical documentation");
-    fireEvent.change(note, { target: { value: "Patient comfortable after intervention." } });
-    fireEvent.click(screen.getByRole("button", { name: /save documentation/i }));
-    await waitFor(() =>
-      expect(patch).toHaveBeenCalledWith(
-        "/api/v1/encounters/{encounterId}/selections",
-        expect.objectContaining({ body: expect.objectContaining({ selections: expect.any(Object) }) }),
-      ),
-    );
+    // #91/#114 — the note is authored in the HearthNote composer (sections + DEK-sealed free text), not
+    // a single free-text box; the workspace links to it for a draft.
+    expect(await screen.findByRole("button", { name: /compose note/i })).toBeTruthy();
+    expect(patch).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText(/Heart rate/i), { target: { value: "72" } });
     fireEvent.click(screen.getByRole("button", { name: /save vitals/i }));
@@ -190,9 +185,26 @@ describe("Encounter workspace web workflow", () => {
             status: "active",
           },
         };
-      if (path === "/api/v1/admissions")
+      // #161 — the admission lookup reads the PATIENT-scoped list (not the org-wide census) and
+      // filters to `state="active"` client-side, so a discharged admission must not be offered.
+      if (path === "/api/v1/patients/{patientId}/admissions")
         return {
-          data: { items: [{ id: "admission-1", patientId: "patient-1", state: "active" }] },
+          data: {
+            items: [
+              {
+                id: "admission-1",
+                state: "active",
+                admissionAt: "2026-08-01T00:00:00Z",
+                dischargedAt: null,
+              },
+              {
+                id: "admission-0",
+                state: "discharged",
+                admissionAt: "2025-01-01T00:00:00Z",
+                dischargedAt: "2025-03-01T00:00:00Z",
+              },
+            ],
+          },
         };
       return { data: null };
     });
@@ -201,22 +213,16 @@ describe("Encounter workspace web workflow", () => {
 
     await screen.findByText("Encounters / Visits");
     fireEvent.click(screen.getByRole("button", { name: /^new encounter$/i }));
-    fireEvent.focus(screen.getByLabelText(/active admission/i));
-    await waitFor(() => expect(screen.getByText(/Admission admissio/i)).toBeTruthy());
-    await waitFor(() =>
-      expect(get).toHaveBeenCalledWith(
-        "/api/v1/admissions",
-        expect.objectContaining({
-          params: {
-            query: expect.objectContaining({
-              state: "active",
-              patientId: "patient-1",
-            }),
-          },
-        }),
-      ),
+    // The admission lookup is an ARIA combobox whose popup listbox shares its label, so the
+    // label alone matches two nodes — address the input by its role.
+    fireEvent.focus(screen.getByRole("combobox", { name: /active admission/i }));
+    await waitFor(() => expect(screen.getByText("Admitted 2026-08-01")).toBeTruthy());
+    expect(get).toHaveBeenCalledWith(
+      "/api/v1/patients/{patientId}/admissions",
+      expect.objectContaining({ params: { path: { patientId: "patient-1" } } }),
     );
-    fireEvent.click(screen.getByText(/Admission admissio/i));
+    expect(screen.queryByText("Admitted 2025-01-01")).toBeNull();
+    fireEvent.click(screen.getByText("Admitted 2026-08-01"));
     fireEvent.change(screen.getByLabelText(/service date/i), { target: { value: "2026-08-31" } });
     fireEvent.click(screen.getByRole("button", { name: /create encounter/i }));
 
@@ -247,7 +253,7 @@ describe("Encounter workspace web workflow", () => {
             status: "active",
           },
         };
-      if (path === "/api/v1/admissions") return { data: { items: [], nextCursor: null } };
+      if (path === "/api/v1/patients/{patientId}/admissions") return { data: { items: [] } };
       return { data: null };
     });
     const post = vi.fn(async () => ({ data: { id: "enc-prn" }, response: new Response() }));
@@ -255,7 +261,9 @@ describe("Encounter workspace web workflow", () => {
 
     await screen.findByText("Encounters / Visits");
     fireEvent.click(screen.getByRole("button", { name: /^new encounter$/i }));
-    fireEvent.focus(screen.getByLabelText(/active admission/i));
+    // The admission lookup is an ARIA combobox whose popup listbox shares its label, so the
+    // label alone matches two nodes — address the input by its role.
+    fireEvent.focus(screen.getByRole("combobox", { name: /active admission/i }));
 
     expect(
       (await screen.findByRole("link", { name: /direct admission/i })).getAttribute("href"),

@@ -34,11 +34,20 @@ function toBase64Url(buf: ArrayBuffer): string {
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
-/** Treat the server's opaque challenge string as raw bytes for the navigator API. */
+/**
+ * Decode the server's base64url challenge into the raw bytes the navigator API signs over (F-081).
+ *
+ * This used to `TextEncoder().encode(challenge)` — signing over the ASCII of the encoded string rather
+ * than the bytes it encodes. The authenticator then echoed `base64url(ascii)` back in `clientDataJSON`,
+ * the server compared it to the string it had issued, and every assertion failed verification. The
+ * challenge is base64url now (the shape Better Auth's own registration options already use), so
+ * decoding here makes what is signed and what is expected the same value.
+ */
 function challengeBytes(challenge: string): ArrayBuffer {
-  const encoded = new TextEncoder().encode(challenge);
-  const buf = new ArrayBuffer(encoded.byteLength);
-  new Uint8Array(buf).set(encoded);
+  const binary = atob(challenge.replace(/-/g, "+").replace(/_/g, "/"));
+  const buf = new ArrayBuffer(binary.length);
+  const view = new Uint8Array(buf);
+  for (let i = 0; i < binary.length; i += 1) view[i] = binary.charCodeAt(i);
   return buf;
 }
 

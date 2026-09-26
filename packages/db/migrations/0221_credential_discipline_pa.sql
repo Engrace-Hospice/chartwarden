@@ -1,0 +1,33 @@
+-- M17 `credential_discipline` — add `pa` (Physician Assistant), the one clinical licence M22's §4.7
+-- high-risk-field review gate names that the platform cannot represent at all (F-030 / #75).
+--
+-- WHAT WAS WRONG. M22's `extraction_reviewer_eligible` asks whether the reviewer holds a licence in
+-- {RN, NP, PA, MD, DO} before letting them review an extracted high-risk medication / allergy / dx
+-- field. It asked by reading `context.attributes.licensure.type`, which nothing has ever written, so
+-- the answer was always "no" and NOBODY could review a high-risk field. The fact it wanted already
+-- exists — M17's `membership_credential` + the `CredentialReader` seam, which also handle the
+-- status / effective / expiry logic and are deliberately orthogonal to the RBAC role grant (a
+-- clinician can hold the `rn` ROLE while their nursing LICENCE has lapsed). Only the vocabulary was
+-- short.
+--
+-- WHY `pa` AND NOT `do`. DO and MD are the same level — both are fully licensed physicians with the
+-- same scope — and this codebase already treats them as one value: `packages/scheduling/src/policy.ts`
+-- documents the physician-intent visit purposes (`f2f` / `recert` / `loc_change` / `pronouncement`) as
+-- needing "MD/DO or NP" while listing the discipline as `md`. Giving DO its own value would silently
+-- stop those four purpose lists accepting osteopathic physicians — a regression, in four CoP-relevant
+-- gates, in exchange for a distinction no consumer makes. `md` means PHYSICIAN; `issuing_body` already
+-- records which board issued the licence.
+--
+-- PA is different: it is a distinct licence at a distinct level (below MD/DO), currently
+-- unrepresentable, so a physician assistant cannot be recorded as licensed at all.
+--
+-- Deliberately NOT added to any `VISIT_PURPOSE_DISCIPLINES` list. Recording that someone holds a PA
+-- licence is not the same as granting them visit authority, and the Medicare hospice face-to-face
+-- encounter (42 CFR 418.22(a)(4)) is a hospice physician or nurse practitioner — not a PA. Widening a
+-- visit-purpose list is a separate, deliberate change.
+--
+-- Additive only — no value removed, no existing row affected.
+--
+-- Own migration: PG forbids USING an enum value added earlier in the same transaction. The
+-- 0125 / 0183 / 0219 precedent.
+ALTER TYPE "public"."credential_discipline" ADD VALUE IF NOT EXISTS 'pa';

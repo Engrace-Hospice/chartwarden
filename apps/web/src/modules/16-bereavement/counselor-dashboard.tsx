@@ -21,6 +21,7 @@ import {
   RightDetailPanel,
   StatusPill,
   WorkQueueLayout,
+  interactiveRowProps,
   t,
   useApiClient,
 } from "@wardenx/ui";
@@ -43,7 +44,14 @@ import {
   shortId,
   toneOf,
 } from "./bereavement-status";
-import { Field, Notice, RiskTierPill, ghostButtonStyle, linkStyle, mutedStyle } from "./bereavement-ui";
+import {
+  Field,
+  Notice,
+  RiskTierPill,
+  ghostButtonStyle,
+  linkStyle,
+  mutedStyle,
+} from "./bereavement-ui";
 
 const HORIZONS = [
   { value: "7", label: "next 7 days" },
@@ -263,7 +271,14 @@ export function BereavementCounselorDashboard(): JSX.Element {
         </KpiStrip>
       }
       filters={
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "0 1.5rem 0.75rem" }}>
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: "0.75rem",
+            padding: "0 1.5rem 0.75rem",
+          }}
+        >
           {view.externalSourceCosignPendingCount > 0 ? (
             <Notice tone="warning">
               {view.externalSourceCosignPendingCount === 1
@@ -489,7 +504,7 @@ function PlanTable({
           return (
             <tr
               key={p.planId}
-              onClick={() => onSelectPlan(p.planId)}
+              {...interactiveRowProps(() => onSelectPlan(p.planId), isSelected, true)}
               className="wx-data-row-interactive"
               style={{
                 borderBottom:
@@ -580,7 +595,9 @@ function PlanDrawerContent({ plan }: { plan: PlanListItem }): JSX.Element {
       </div>
 
       {plan.externalSourceCosignPending ? (
-        <Notice tone="warning">Counselor first contact is locked until external-source cosign.</Notice>
+        <Notice tone="warning">
+          Counselor first contact is locked until external-source cosign.
+        </Notice>
       ) : null}
 
       <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>

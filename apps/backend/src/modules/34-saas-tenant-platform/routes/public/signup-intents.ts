@@ -30,7 +30,6 @@ import {
   AcceptInvitationRequest,
   PublicSignupIntentRequest,
   TokenHashParamsSchema,
-  VerifyEmailRequest,
   parse,
 } from "../typebox";
 
@@ -175,7 +174,6 @@ export function registerPublicSignupRoutes(
     { preHandler: [requireSignupEnabled, requireUnderRateLimit] },
     async (request, reply) => {
       const { tokenHash } = parse(TokenHashParamsSchema, request.params);
-      parse(VerifyEmailRequest, request.body);
       const res = await service.verifyEmail(tokenHash);
       return reply.code(200).send(res);
     },

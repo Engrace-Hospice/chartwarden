@@ -484,13 +484,15 @@ describe.skipIf(!DB_URL)(
       expect(after.rows[0].mid_visit_cadence_minutes).toBe(60);
     });
 
-    it("no M20 table grants DELETE to wardenx_app — destruction runs through the M4 eraser", async () => {
+    it("wardenx_app may DELETE only a check-in schedule — every other M20 table goes through the M4 eraser", async () => {
+      // Migration 0238: retiring a `proposed` check-in obligation is a DELETE (schedule-plan.ts), audited by
+      // 0111's write-audit trigger. That one grant is the exception; no TRUNCATE anywhere, no DELETE elsewhere.
       const { rows } = await db.query<{ table_name: string; privilege_type: string }>(
         `SELECT table_name, privilege_type FROM information_schema.role_table_grants
        WHERE grantee='wardenx_app' AND table_name = ANY($1) AND privilege_type IN ('DELETE','TRUNCATE')`,
         [ALL_TABLES],
       );
-      expect(rows).toEqual([]);
+      expect(rows).toEqual([{ table_name: "safety_check_in_schedule", privilege_type: "DELETE" }]);
     });
 
     it("a tenant cannot INSERT a row carrying ANOTHER org's id (the WITH CHECK half)", async () => {

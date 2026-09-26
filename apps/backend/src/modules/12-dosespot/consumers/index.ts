@@ -3,11 +3,21 @@
 // decision core for each ships + is tested here, and the live boot wiring (when the M12 backend is mounted)
 // binds the handler to the dispatcher and executes the returned action through M12's service path.
 //
+// F-102 — `m6.admission.discharged` IS NOW BOUND (`./bindings.ts`). "The live boot wiring (when the M12
+// backend is mounted)" above never happened and could not have: M6's catalog did not name m12 on that
+// event, so `assertBindableAgainstCatalog` would have refused the binding. The rest of the list is still in
+// that state, registered with its reasons in `scripts/outbox-subscription-exceptions.ts`.
+//
 // Most producers (M5 demographics, M6 discharge/admission/CTI, M11 verbal timer) exist in Wave D/E — these
 // bindings are LIVE-eligible. M22's document.rendered + M14's idg.decision_recorded are forward producers
 // (Wave F / later Wave E). Every consumed event name is a STRING literal (no cross-module schema import):
 // M12 reads other modules solely through the foundation outbox (M5/M11 already in dependsOn for the seam; no
 // schema edge added by these consumers), so this task adds NO new edge to M12's manifest dependsOn.
+export {
+  type DoseSpotConsumerDeps,
+  M12_DISCHARGE_CASCADE_CONSUMER,
+  buildM12DischargeCascadeConsumer,
+} from "./bindings";
 export {
   type AdmissionDischargedPayload,
   type MedicationDischargeCascadeAction,
