@@ -73,6 +73,10 @@ export const t = {
   radiusXl: "var(--radius-xl)",
   radius2xl: "var(--radius-2xl)",
 
+  // Card hairline edge + shell sidebar wash (2026-09-25 redesign)
+  cardBorder: "var(--color-card-border)",
+  sidebar: "var(--color-sidebar)",
+
   // Elevation (§4.3)
   shadowSoft: "var(--shadow-soft)",
   shadowFloat: "var(--shadow-float)",
@@ -86,10 +90,14 @@ export const t = {
  */
 export const ghostBorder = `1px solid color-mix(in srgb, ${t.outlineVariant} 15%, transparent)`;
 
-/** Lantern card surface — No-Line: surface-lowest fill + soft shadow + xl radius, no border. */
+/**
+ * Card surface — white fill, hairline edge, lg radius (2026-09-25 redesign: the mockups draw every
+ * card with a 1px slate border; this supersedes Lantern's borderless shadow card).
+ */
 export const cardSurface = {
   background: t.surfaceLowest,
-  borderRadius: t.radiusXl,
+  border: `1px solid ${t.cardBorder}`,
+  borderRadius: t.radiusLg,
   boxShadow: t.shadowSoft,
 } as const;
 

@@ -290,18 +290,35 @@ export function StepperWorkflowLayout({
 export interface PatientWorkspaceLayoutProps {
   banner: ReactNode;
   contextHeader?: ReactNode;
+  /** Right context rail beside the whole workspace column (collapses below 1200px). */
+  rail?: ReactNode;
   children: ReactNode;
 }
 export function PatientWorkspaceLayout({
   banner,
   contextHeader,
+  rail,
   children,
 }: PatientWorkspaceLayoutProps): JSX.Element {
+  // 2026-09-25 redesign: an optional right context rail (Alerts & Safety, Care Team, Quick Links …)
+  // runs the full height beside the banner + workspace column, as in the mockups.
   return (
-    <div className="wx-patient-workspace" style={fillColumn}>
-      {banner}
-      {contextHeader}
-      <div style={{ flex: 1, overflow: "auto", minHeight: 0 }}>{children}</div>
+    <div className="wx-patient-workspace" style={{ ...fillColumn, flexDirection: "row" }}>
+      <div style={{ ...fillColumn, flex: 1, minWidth: 0 }}>
+        {banner}
+        {contextHeader}
+        <div
+          className="wx-patient-workspace-body"
+          style={{ flex: 1, overflow: "auto", minHeight: 0 }}
+        >
+          {children}
+        </div>
+      </div>
+      {rail ? (
+        <aside className="wx-patient-rail wx-no-scrollbar" aria-label="Patient context">
+          {rail}
+        </aside>
+      ) : null}
     </div>
   );
 }
