@@ -16,7 +16,12 @@ const ORG = "org_a";
 const ORG_B = "org_b";
 const U = "user_1";
 
-/** Drive a converted referral → a fully activatable admission (election + NOR + period-1 CTI signed). */
+/**
+ * Drive a converted referral → a fully activatable admission (admission date + election + NOR + period-1
+ * CTI signed). The admission date is an R-AC-01 readiness blocker (activation-gate.ts
+ * evaluateAdmissionReadiness `admission_details`: "Missing admission date.") that conversion leaves
+ * null, so the wizard's details step (updateAdmission) sets it.
+ */
 async function activatableAdmission() {
   const backend = createInMemoryAdmissionBackend();
   const svc = backend.service;
@@ -39,6 +44,13 @@ async function activatableAdmission() {
     { primaryDiagnosisIcd10: "C00", attendingPhysicianId: "doc_1" },
     qualified.version,
     U,
+  );
+  const draft = await svc.getAdmission(ORG, acc.admissionId);
+  await svc.updateAdmission(
+    ORG,
+    acc.admissionId,
+    { admissionAt: "2026-06-02T00:00:00Z" },
+    draft!.version,
   );
   const periods = (await svc.listElectionPeriods(ORG, acc.admissionId)) ?? [];
   const period1 = periods[0]!;

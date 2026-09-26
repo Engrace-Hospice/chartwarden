@@ -35,6 +35,52 @@ function eventNames(events: ReadonlyArray<{ eventName: string }>): string[] {
   return events.map((e) => e.eventName);
 }
 
+/** Complete standard.v1 payload (aspirin 81 mg, 1 tab PO daily, 30-day supply); request-signature
+ *  enforces the full shape from packages/dosespot/src/classes/contracts.ts. */
+const ASPIRIN_DATA = {
+  sigStructured: {
+    doseQuantity: 1,
+    doseUnit: "tablet",
+    route: "oral",
+    frequencyCode: "QD",
+    asNeeded: false,
+  },
+  sigFreeText: "1 tablet by mouth daily",
+  refillsAuthorized: 3,
+  dispenseQuantity: { value: 30, unit: "tablet" },
+  daysSupply: 30,
+  daw: false,
+};
+/** The edited sig: 2 tablets daily (dispense/refills adjusted to stay coherent with the new dose). */
+const ASPIRIN_DATA_EDITED = {
+  ...ASPIRIN_DATA,
+  sigStructured: { ...ASPIRIN_DATA.sigStructured, doseQuantity: 2 },
+  sigFreeText: "2 tablets by mouth daily",
+  refillsAuthorized: 1,
+  dispenseQuantity: { value: 60, unit: "tablet" },
+};
+/** controlled_substance.v1 (oxycodone 5 mg, Schedule II → non-refillable; indication/justification/DEA required). */
+const OXYCODONE_DATA = {
+  sigStructured: {
+    doseQuantity: 1,
+    doseUnit: "tablet",
+    route: "oral",
+    frequencyCode: "Q4H",
+    asNeeded: true,
+    asNeededReasonCode: "pain",
+  },
+  sigFreeText: "1 tablet by mouth every 4 hours as needed for pain",
+  indication: "Severe cancer-related pain",
+  clinicalJustification:
+    "Opioid required for pain uncontrolled on non-opioid analgesics at end of life.",
+  refillsAuthorized: 0,
+  dispenseQuantity: { value: 42, unit: "tablet" },
+  daysSupply: 7,
+  daw: false,
+  deaSchedule: "II",
+  prescriberDea: "AB1234563",
+};
+
 describe("M12-T10 §5 workflow acceptance", () => {
   it("W-MR-01 — standard prescription: draft → request-signature → sign → transmit → active", async () => {
     const svc = backend();
@@ -48,7 +94,7 @@ describe("M12-T10 §5 workflow acceptance", () => {
       strength: "81 mg",
       doseForm: "tablet",
       route: "oral",
-      data: { sigFreeText: "1 tablet by mouth daily" },
+      data: ASPIRIN_DATA,
       prescriberDiscipline: "hospice_physician",
       prescribingPhysicianMdmId: PHYS,
       dispensingPharmacyMdmId: PHARMACY,
@@ -56,15 +102,15 @@ describe("M12-T10 §5 workflow acceptance", () => {
     });
     expect(draft.status).toBe("draft");
     expect(draft.isControlledSubstance).toBe(false);
-    expect(draft.data).toEqual({ sigFreeText: "1 tablet by mouth daily" });
+    expect(draft.data).toEqual(ASPIRIN_DATA);
     expect(draft.refillsAuthorized).toBe(3);
     expect(eventNames(svc.drainEvents())).toContain("m12.medication_order.draft_created");
 
     const edited = await svc.editDraft(ORG, draft.id, {
-      data: { sigFreeText: "2 tablets by mouth daily" },
+      data: ASPIRIN_DATA_EDITED,
       refillsAuthorized: 1,
     });
-    expect(edited.data).toEqual({ sigFreeText: "2 tablets by mouth daily" });
+    expect(edited.data).toEqual(ASPIRIN_DATA_EDITED);
     expect(edited.refillsAuthorized).toBe(1);
     expect(edited.refillsRemaining).toBe(1);
     expect(edited.version).toBe(2);
@@ -200,7 +246,7 @@ describe("M12-T10 §9.3 security & authorization (anti-escalation, EPCS gate D18
       strength: "81 mg",
       doseForm: "tablet",
       route: "oral",
-      data: {},
+      data: { ...ASPIRIN_DATA, refillsAuthorized: 0 },
       prescriberDiscipline: "hospice_physician",
       prescribingPhysicianMdmId: PHYS,
       refillsAuthorized: 0,
@@ -228,7 +274,7 @@ describe("M12-T10 §9.3 security & authorization (anti-escalation, EPCS gate D18
       strength: "5 mg",
       doseForm: "tablet",
       route: "oral",
-      data: {},
+      data: OXYCODONE_DATA,
       prescriberDiscipline: "hospice_physician",
       prescribingPhysicianMdmId: PHYS,
       deaSchedule: "II",
