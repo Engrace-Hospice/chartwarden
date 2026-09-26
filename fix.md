@@ -74,3 +74,17 @@ So when there is something regarding a patient, everybody can see it
 - Remove the verbal order Tab and add a button in the Order tab called Verbal order
 Create a verbal order: physician communication, created by, created at, check box "read back and verified", effective date, and the order, then send it for sigature
 ORG_WIDE_SCOPE_ROLES
+- Race (Select all that apply): Remove the word "Race" in front of the actual races
+- For multiple choices questions, we can choose one or many answers then leave the rest blank (the backend should not block it anymore)
+- Section I: Other Conditions it's better to have two checkboxew than the select options
+- Section J & M: Remove the visual O and 1
+- A verbal order doesn't need to be linked to an order
+- WHen the user click on "+ New order", give him two options "Order" or "Verbal order"
+- In visit in encounters, check why the backend send an empty array for the care plan (For the test, the patient Phil John has an active problem)
+- Work on assessment module (in the patient and globaly) in visit's tab
+- When the HOPE in Completed, the section "Review" says "Not started". Check why and fix
+- When a patient is converted in the referral intake, it shouldn't be there anymore
+- Give the possibility to modify all Referral Informations even if it's already created
+- RN permission in admission & care plan modules
+- Show the notice of right in the "Election & Certification" tab as view.
+- Apart from passkeys, the user can sign using a code
