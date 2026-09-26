@@ -39,7 +39,9 @@ import type {
 import { createHopeAdmissionPrefillService } from "./hope-admission-prefill-service";
 import { createHopeAssessmentAnswerService } from "./hope-answer-service";
 import { createHopeDischargePrefillService } from "./hope-discharge-prefill-service";
-import { serializeHopeAssessmentXml } from "./hope-cms-xml-serializer";
+import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
+import { HopeSubmissionPayloadError, serializeHopeAssessmentXml } from "./hope-cms-xml-serializer";
+import { buildHopeSubmissionHeader, readHopeSoftwareVendor } from "./hope-submission-header";
 import {
   HopeAssessmentNotReadyToSignError,
   createHopeAssessmentReadinessService,
@@ -2069,12 +2071,32 @@ export function createDbHopeBackend(
             "No signed HOPE assessments are eligible for iQIES package generation",
           );
         }
+        // The CMS submission header (facility ID, state, software vendor) is the same for every record
+        // in the package. A header or payload problem is a fixable setup gap, so it surfaces as a 422
+        // naming what to set, never a 500.
         const serialized = [];
-        for (const assessment of eligible) {
-          serialized.push({
-            assessment,
-            payload: await serializeHopeAssessmentXml(t, assessment),
-          });
+        try {
+          const header = buildHopeSubmissionHeader(
+            await buildFoundationSiteReader().providerEntitySubmissionProfile(
+              t,
+              organizationId,
+              providerEntityId,
+            ),
+            readHopeSoftwareVendor(),
+          );
+          for (const assessment of eligible) {
+            serialized.push({
+              assessment,
+              payload: await serializeHopeAssessmentXml(t, assessment, header),
+            });
+          }
+        } catch (error) {
+          if (error instanceof HopeSubmissionPayloadError) {
+            throw new ValidationError(error.message, [
+              { field: "hope_submission", code: error.code, message: error.message },
+            ]);
+          }
+          throw error;
         }
         const row = firstOrThrow(
           await t

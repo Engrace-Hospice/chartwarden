@@ -16,22 +16,22 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { registerPatientSeams } from "../src/modules/05-patient/index";
+import {
+  createAdmissionStatusReader,
+  createDrizzleAdmissionReaderStore,
+} from "../src/modules/06-admission/index";
 import {
   type HopeWriteOutboxPort,
   M10_OUTBOX_EVENTS,
   buildM10AdmissionWorkflowConsumer,
   createDbHopeBackend,
 } from "../src/modules/10-hope/index";
-import {
-  createAdmissionStatusReader,
-  createDrizzleAdmissionReaderStore,
-} from "../src/modules/06-admission/index";
-import { registerPatientSeams } from "../src/modules/05-patient/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
-import { importHopeSpec } from "../../../scripts/db/import-hope-spec";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
@@ -208,13 +208,16 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       ).rows[0].id as string;
       providerOf[org] = (
         await admin.query(
-          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
-           VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
+          `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end,
+                                        addresses, iqies_facility_id)
+           VALUES ($1,$2,$3,$4,'enc','12-31',
+                   '[{"line1":"1 St","city":"Town","state":"OR","postalCode":"97000"}]'::jsonb, $5) RETURNING id`,
           [
             org,
             `CCN-M10W-${org.slice(0, 4)}`,
             `M10W ${org.slice(0, 4)}`,
             `NPI-M10W-${org.slice(0, 4)}`,
+            `FAC${org.slice(0, 4)}`,
           ],
         )
       ).rows[0].id as string;
@@ -243,6 +246,8 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   });
 
   beforeEach(() => registerBootSeams());
+  // Vendor configuration is stubbed per test (assembleSubmission); never let it leak past a failure.
+  afterEach(() => vi.unstubAllEnvs());
 
   const recordArgs = (data: Record<string, unknown>) => ({
     rfaKind: "01_admission" as const,
@@ -250,24 +255,6 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     authorDiscipline: "RN",
     data,
   });
-
-  /** Stand-in for the missing CMS-header control producer (see the assembleSubmission test). */
-  async function seedIqiesHeaderControls(org: string): Promise<void> {
-    await admin.query(
-      `INSERT INTO hope_assessment_answer (organization_id, provider_entity_id, location_id,
-         hope_assessment_id, spec_version_id, spec_item_id, state, value, source, answered_at)
-       SELECT a.organization_id, a.provider_entity_id, a.location_id, a.id, a.spec_version_id, i.id,
-              'answered', to_jsonb(CASE i.item_code WHEN 'STATE_CD' THEN 'OR' WHEN 'CRCTN_NUM' THEN '00'
-                                    ELSE 'WX-TEST' END), 'derived', now()
-         FROM hope_assessment a
-         JOIN hope_spec_item i ON i.spec_version_id = a.spec_version_id AND i.kind = 'control'
-         JOIN hope_spec_item_isc isc ON isc.spec_item_id = i.id AND isc.isc = a.isc AND isc.active
-        WHERE a.organization_id = $1 AND a.status = 'signed'
-          AND NOT EXISTS (SELECT 1 FROM hope_assessment_answer x
-                           WHERE x.hope_assessment_id = a.id AND x.spec_item_id = i.id)`,
-      [org],
-    );
-  }
 
   /** Patch canonical answers through the production route-service path (which emits on its tx). */
   async function patch(id: string, answers: Record<string, string>): Promise<void> {
@@ -639,13 +626,37 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
   });
 
   it("assembleSubmission queues a submission; retry is refused unless the submission is rejected", async () => {
-    // KNOWN PRODUCT GAP: the iQIES serializer (hope-cms-xml-serializer) emits every active CONTROL item
-    // of the frozen spec — the CMS submission header (FAC_ID, STATE_CD, SFTWR_*, SPEC_VRSN_CD, …) — but
-    // no production code writes those answers yet, so a real signed record cannot be packaged. Until
-    // that producer exists, this fixture stands in for it on the org's signed records, so the rest of
-    // the assemble → package → retry lifecycle stays proven.
-    await seedIqiesHeaderControls(ORG_A);
+    // The CMS submission header (the spec's Control items) is computed at package time from the
+    // provider entity (FAC_ID, STATE_CD), the software-vendor configuration (SFTWR_*), the frozen spec
+    // (ASMT_SYS_CD, ITM_SET_VRSN_CD, SPEC_VRSN_CD), the record's ISC and its correction chain.
+    // Setup gaps refuse with a 422 naming what to set, and package nothing.
+    vi.stubEnv("WARDENX_SOFTWARE_VENDOR_ID", "");
+    await expect(svc.assembleSubmission(ORG_A, providerOf[ORG_A])).rejects.toMatchObject({
+      statusCode: 422,
+      details: [expect.objectContaining({ code: "WX-HOPE-SUBMISSION-VENDOR-CONFIG" })],
+    });
+    await admin.query("UPDATE provider_entity SET iqies_facility_id = NULL WHERE id=$1", [
+      providerOf[ORG_A],
+    ]);
+    vi.stubEnv("WARDENX_SOFTWARE_VENDOR_ID", "12-3456789");
+    vi.stubEnv("WARDENX_SOFTWARE_VENDOR_NAME", "WardenX Test Vendor");
+    vi.stubEnv("WARDENX_SOFTWARE_VENDOR_EMAIL", "hope@vendor.test");
+    vi.stubEnv("APP_VERSION", "2026.9.26");
+    await expect(svc.assembleSubmission(ORG_A, providerOf[ORG_A])).rejects.toMatchObject({
+      statusCode: 422,
+      details: [expect.objectContaining({ code: "WX-HOPE-SUBMISSION-FACILITY-ID" })],
+    });
+    await admin.query("UPDATE provider_entity SET iqies_facility_id = $2 WHERE id=$1", [
+      providerOf[ORG_A],
+      `FAC${ORG_A.slice(0, 4)}`,
+    ]);
+    const { rows: noPackages } = await admin.query(
+      "SELECT count(*)::int AS n FROM hope_submission WHERE organization_id=$1 AND status='packaged'",
+      [ORG_A],
+    );
+    expect(noPackages[0].n).toBe(0);
     const assembled = await svc.assembleSubmission(ORG_A, providerOf[ORG_A]);
+    vi.unstubAllEnvs();
     // The manual-iQIES-upload transport builds the XML package in the same tx: the row lands
     // `packaged` (package + per-assessment items written), still announced as submission_queued.
     expect(assembled.status).toBe("packaged");
@@ -654,6 +665,28 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
       [assembled.id],
     );
     expect(packagedItems[0].n).toBeGreaterThan(0);
+    const { rows: xmlRows } = await admin.query(
+      `SELECT i.iqies_validation_result->>'xmlContentBase64' AS b64, a.isc
+         FROM hope_submission_item i JOIN hope_assessment a ON a.id = i.hope_assessment_id
+        WHERE i.hope_submission_id=$1`,
+      [assembled.id],
+    );
+    for (const { b64, isc } of xmlRows) {
+      const xml = Buffer.from(b64, "base64").toString("utf8");
+      const tag = (code: string) => new RegExp(`<${code}>([^<]*)</${code}>`).exec(xml)?.[1];
+      expect(tag("ITM_SBST_CD")).toBe(isc);
+      expect(tag("ASMT_SYS_CD")).toBe("HOPE");
+      expect(tag("ITM_SET_VRSN_CD")).toBe("1.00");
+      expect(tag("SPEC_VRSN_CD")).toBe("1.00");
+      expect(tag("STATE_CD")).toBe("OR");
+      expect(tag("FAC_ID")).toBe(`FAC${ORG_A.slice(0, 4)}`);
+      expect(tag("SFTWR_VNDR_ID")).toBe("123456789");
+      expect(tag("SFTWR_VNDR_NAME")).toBe("WardenX Test Vendor");
+      expect(tag("SFTWR_VNDR_EMAIL_ADR")).toBe("hope@vendor.test");
+      expect(tag("SFTWR_PROD_NAME")).toBe("WardenX");
+      expect(tag("SFTWR_PROD_VRSN_CD")).toBe("2026.9.26");
+      expect(tag("CRCTN_NUM")).toMatch(/^\d{2}$/);
+    }
     expect(await eventsFor(assembled.id)).toContain("m10.hope.submission_queued");
     // A queued submission cannot be retried (409).
     await expect(svc.retrySubmission(ORG_A, assembled.id)).rejects.toMatchObject({

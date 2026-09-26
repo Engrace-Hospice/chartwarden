@@ -43,12 +43,13 @@ async function main(): Promise<void> {
   await db.query(
     `INSERT INTO provider_entity
        (id, organization_id, ccn, legal_name, doing_business_as, fiscal_intermediary, npi,
-        tax_id_encrypted, fiscal_year_end, addresses, status, created_at, updated_at)
+        tax_id_encrypted, fiscal_year_end, addresses, iqies_facility_id, status, created_at, updated_at)
      VALUES ($1,$2,'341234','WardenX Demo Hospice, Inc.','WardenX Demo Hospice','Palmetto GBA',
              '1234567890','enc:demo-tax-id-not-real','1231',
              '[{"line1":"100 Hospice Way","city":"Asheville","state":"NC","postalCode":"28801"}]'::jsonb,
-             'active', now(), now())
-     ON CONFLICT (id) DO NOTHING`,
+             -- Demo iQIES facility ID (HOPE FAC_ID); a real one is assigned by CMS at iQIES registration.
+             'DEMO341234', 'active', now(), now())
+     ON CONFLICT (id) DO NOTHING`
     [PROVIDER_ENTITY_ID, orgId],
   );
 
