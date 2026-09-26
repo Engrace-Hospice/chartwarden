@@ -43,7 +43,8 @@ import type { EncounterAbacResolver } from "./routes/service";
 export const M8_ABAC_PREDICATES = ["m8.cosigner_role_match", "encounter.scope"] as const;
 
 /** Roles that read/scope any patient's encounters without caseload (mirrors M7's `caseload_or_scope`). */
-const ORG_WIDE_SCOPE_ROLES = ["medical_director", "compliance_officer", "survey_coordinator"] as const;
+const ORG_WIDE_SCOPE_ROLES = ["medical_director", "compliance_officer", "survey_coordinator","rn_case_manager",
+  "rn",] as const;
 
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
 const targetId = (target: AbacTarget, field: string): string | null => {

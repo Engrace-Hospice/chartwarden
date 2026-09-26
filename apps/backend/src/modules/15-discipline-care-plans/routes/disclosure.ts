@@ -215,6 +215,8 @@ const ORG_WIDE_SCOPE_ROLES = [
   "compliance_officer",
   "survey_coordinator",
   "director_of_nursing",
+  "rn_case_manager",
+  "rn",
 ] as const;
 
 export interface CaseloadPort {

@@ -2749,15 +2749,22 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               task: "TASK-004 (live effective-permission resolver)",
             });
           }
-          const stepUpExpectedOrigin =
-            process.env.WEB_APP_URL ??
-            (process.env.NODE_ENV === "production"
-              ? undefined
-              : "http://localhost:5173");
+          // Keep the verifier's origin identical to the SPA origin used for the
+          // identity links. A proxied API request still has WebAuthn client data
+          // from the browser's origin, not the Fastify origin.
+          const stepUpExpectedOrigin = webAppBaseUrl;
 
           const stepUpRpId =
-            process.env.PASSKEY_RP_ID ??
+            process.env.WEBAUTHN_RP_ID ??
             (process.env.NODE_ENV === "production" ? undefined : "localhost");
+          // `assertProductionEnv` validates these in production, but narrow them
+          // here too: this composition root must never hand an undefined WebAuthn
+          // origin or RP ID to the verifier.
+          if (!stepUpExpectedOrigin || !stepUpRpId) {
+            throw new Error(
+              "WEB_APP_URL (or BETTER_AUTH_URL) and WEBAUTHN_RP_ID are required for step-up authentication",
+            );
+          }
           // M2 — member roster on the real MembershipRepository; isAdmin via the M3 admin reader.
           // TASK-030 — invite delivery: the SAME M36 transport bound to Better Auth's reset/magic-link
           // above, reused here so the invite-create/resend routes can email the accept link too.
@@ -2787,11 +2794,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                       createValkeyStepUpChallengeStore(stepUpRedisClient),
                     audit: dbHandle.db,
 
-                    webauthnRpId:
-                      process.env.PASSKEY_RP_ID ??
-                      (process.env.NODE_ENV === "production"
-                        ? undefined
-                        : "localhost"),
+                    webauthnRpId: stepUpRpId,
                   },
                 }
               : undefined,

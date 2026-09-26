@@ -496,6 +496,7 @@ function ChartActions({
             label: "View admission",
             to: `/admissions/${admission.id}`,
           },
+          { label: "HOPE", to: `/admissions/${admission.id}/hope` },
         ]
       : []),
     {

@@ -52,6 +52,8 @@ const ORG_WIDE_SCOPE_ROLES = [
   "medical_director",
   "compliance_officer",
   "survey_coordinator",
+  "rn_case_manager",
+  "rn",
 ] as const;
 
 /** The HOPE clinical-lead role token that may correct any signed assessment (§4.7 / §4.6). */

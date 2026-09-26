@@ -59,7 +59,8 @@ export const M9_ABAC_PREDICATES = [
 const COSIGN_ELIGIBLE_DISCIPLINES = ["rn", "rn_case_manager", "clinical_supervisor"] as const;
 
 /** Roles that read/scope any patient's assessments without caseload (mirrors M7/M8's `caseload_or_scope`). */
-const ORG_WIDE_SCOPE_ROLES = ["medical_director", "compliance_officer", "survey_coordinator"] as const;
+const ORG_WIDE_SCOPE_ROLES = ["medical_director", "compliance_officer", "survey_coordinator","rn_case_manager",
+  "rn",] as const;
 
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
 const targetStr = (target: AbacTarget, field: string): string | null => {

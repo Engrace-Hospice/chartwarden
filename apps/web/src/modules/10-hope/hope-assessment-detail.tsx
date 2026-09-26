@@ -587,6 +587,24 @@ export function HopeAssessmentDetail(): JSX.Element {
         PROTECTED_ITEMS.has(item.itemCode)
       )
         return;
+      // Show A1400 conflicts at selection time; the server remains authoritative.
+      if (item.itemCode.startsWith("A1400")) {
+        setWorkspace((previous) =>
+          previous
+            ? {
+                ...previous,
+                sections: previous.sections.map((section) => ({
+                  ...section,
+                  items: section.items.map((candidate) =>
+                    candidate.itemCode === item.itemCode
+                      ? { ...candidate, value }
+                      : candidate,
+                  ),
+                })),
+              }
+            : previous,
+        );
+      }
       const run = async () => {
         setSaving("saving");
         setFieldErrors((prev) => {
@@ -616,6 +634,7 @@ export function HopeAssessmentDetail(): JSX.Element {
               ? "This assessment changed elsewhere. Reload the latest version before continuing."
               : "This answer was not saved. Check the value and try again.",
           }));
+          if (item.itemCode.startsWith("A1400")) await refreshWorkspaceOnly();
           return;
         }
         latestVersionRef.current =
@@ -1577,6 +1596,75 @@ function ReviewSfvDialog({
 type SaveFn = (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
 type Findings = Map<string, ReviewModel["validation"]["findings"]>;
 
+type PayerConsistencyFinding = {
+  severity: "error" | "warning";
+  message: string;
+};
+
+/** CMS HOPE A1400 consistency edits. Fatal edits are errors; the others are CMS warnings. */
+function payerConsistencyFindings(
+  items: WorkspaceItem[],
+): PayerConsistencyFinding[] {
+  const selected = new Set(
+    items
+      .filter((item) => String(item.value ?? "") === "1")
+      .map((item) => item.itemCode),
+  );
+  const has = (...codes: string[]) => codes.every((code) => selected.has(code));
+  const includesAny = (...codes: string[]) =>
+    codes.some((code) => selected.has(code));
+  const findings: PayerConsistencyFinding[] = [];
+  const error = (message: string) =>
+    findings.push({ severity: "error", message });
+  const warning = (message: string) =>
+    findings.push({ severity: "warning", message });
+
+  if (has("A1400A", "A1400B"))
+    error("Medicare FFS and Medicare Advantage cannot both be selected.");
+  if (has("A1400C", "A1400D"))
+    error("Medicaid FFS and Medicaid managed care cannot both be selected.");
+  if (selected.has("A1400K") && selected.size > 1)
+    error("No payor source cannot be selected with any other payer source.");
+  if (
+    selected.has("A1400X") &&
+    includesAny(
+      "A1400A",
+      "A1400B",
+      "A1400C",
+      "A1400D",
+      "A1400G",
+      "A1400H",
+      "A1400I",
+      "A1400J",
+      "A1400K",
+    )
+  )
+    warning(
+      "Unknown payer should not be selected when another payer source is known.",
+    );
+  if (has("A1400X", "A1400Y"))
+    warning("Unknown payer and Other should not both be selected.");
+  if (has("A1400C", "A1400H"))
+    warning(
+      "Medicaid FFS and private insurance/Medigap should not both be selected.",
+    );
+  if (has("A1400C", "A1400I"))
+    warning(
+      "Medicaid FFS and private managed care should not both be selected.",
+    );
+  if (has("A1400D", "A1400H"))
+    warning(
+      "Medicaid managed care and private insurance/Medigap should not both be selected.",
+    );
+  if (has("A1400D", "A1400I"))
+    warning(
+      "Medicaid managed care and private managed care should not both be selected.",
+    );
+  if (has("A1400J", "A1400Y"))
+    warning("Self-pay and Other should not both be selected.");
+  return findings;
+}
+
 interface ItemRenderProps {
   readonly: boolean;
   findingsByItem: Findings;
@@ -1795,6 +1883,8 @@ function TileGroup(
     ...(props.findingsByItem.get(i.itemCode) ?? []).map((f) => f.message),
     ...(props.fieldErrors[i.itemCode] ? [props.fieldErrors[i.itemCode]!] : []),
   ]);
+  const payerFindings =
+    props.stem === "A1400" ? payerConsistencyFindings(props.items) : [];
   const sourced = props.items.find((i) => i.source && i.source !== "user");
   return (
     <div id={`hope-item-${props.stem}`} tabIndex={-1}>
@@ -1827,6 +1917,18 @@ function TileGroup(
           ))}
         </div>
       ) : null}
+      {payerFindings.map((finding) => (
+        <div
+          key={finding.message}
+          className={`wx-hope-field-msg wx-hope-field-msg-${finding.severity}`}
+          role={finding.severity === "error" ? "alert" : undefined}
+        >
+          <strong>
+            {finding.severity === "error" ? "Error: " : "Warning: "}
+          </strong>
+          {finding.message}
+        </div>
+      ))}
     </div>
   );
 }
@@ -2458,6 +2560,7 @@ function PayerCoverageReview({
   const selectedPayers = payerItems.filter(
     (item) => String(item.value ?? "") === "1",
   );
+  const consistencyFindings = payerConsistencyFindings(payerItems);
 
   const medicareNumber = sectionA.items.find(
     (item) => item.itemCode === "A0600B",
@@ -2530,9 +2633,28 @@ function PayerCoverageReview({
         </div>
       ) : (
         <div style={payerReviewEmpty}>
-          No payer source is currently selected.
+          No payer source is selected. Select at least one payer source before
+          signing.
         </div>
       )}
+
+      {consistencyFindings.length ? (
+        <div style={payerReviewEmpty}>
+          <strong>A1400 coverage issues</strong>
+          {consistencyFindings.map((finding) => (
+            <div
+              key={finding.message}
+              className={`wx-hope-field-msg wx-hope-field-msg-${finding.severity}`}
+              role={finding.severity === "error" ? "alert" : undefined}
+            >
+              <strong>
+                {finding.severity === "error" ? "Error: " : "Warning: "}
+              </strong>
+              {finding.message}
+            </div>
+          ))}
+        </div>
+      ) : null}
 
       {hasMedicare || hasMedicaid ? (
         <div style={payerIdentifierGrid}>
@@ -3001,10 +3123,10 @@ function CompletedSummary({
     <div style={completedBox}>
       <span aria-hidden="true">✓</span>
       <span>
-        Completed {formatDate(assessment.signedAt)} · Signed by{" "}
-        {assessment.signedBy ??
+        Completed {formatDate(assessment.signedAt)} · Signed by the MD{" "}
+        {/* {assessment.signedBy ??
           review?.signedByMembershipId ??
-          "recorded signer"}{" "}
+          "recorded signer"}{" "} */}
         · Z0500B {formatDate(review?.z0500b ?? assessment.signedAt)}
       </span>
     </div>

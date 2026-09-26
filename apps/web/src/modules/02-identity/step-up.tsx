@@ -31,15 +31,21 @@ function toBase64Url(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
   let binary = "";
   for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
-/** Treat the server's opaque challenge string as raw bytes for the navigator API. */
+/** Decode the server's base64url challenge into the exact bytes WebAuthn must sign. */
 function challengeBytes(challenge: string): ArrayBuffer {
-  const encoded = new TextEncoder().encode(challenge);
-  const buf = new ArrayBuffer(encoded.byteLength);
-  new Uint8Array(buf).set(encoded);
-  return buf;
+  const padded = challenge
+    .replace(/-/g, "+")
+    .replace(/_/g, "/")
+    .padEnd(Math.ceil(challenge.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  return bytes.buffer;
 }
 
 /** Serialize a WebAuthn assertion into a JSON-safe object the server can verify. */
@@ -66,7 +72,9 @@ export function StepUp(): JSX.Element {
 
   const hasPasskey = webauthnAvailable();
   // Prefer the passkey ceremony when the browser supports it; the TOTP code is always available.
-  const [mode, setMode] = useState<"webauthn" | "totp">(hasPasskey ? "webauthn" : "totp");
+  const [mode, setMode] = useState<"webauthn" | "totp">(
+    hasPasskey ? "webauthn" : "totp",
+  );
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -105,13 +113,19 @@ export function StepUp(): JSX.Element {
 
     // 2) Verify the code against that challenge.
     const verified = await client.POST("/api/v1/sessions/step-up", {
-      body: { factor: "totp", challengeId: initiated.data.challengeId, totpCode: code },
+      body: {
+        factor: "totp",
+        challengeId: initiated.data.challengeId,
+        totpCode: code,
+      },
     });
     setBusy(false);
 
     if (verified.error) {
       if (handledLockout(verified.response?.status)) return;
-      setError("That code didn’t verify. Check your authenticator app and try again.");
+      setError(
+        "That code didn’t verify. Check your authenticator app and try again.",
+      );
       setCode("");
       return;
     }
@@ -164,13 +178,19 @@ export function StepUp(): JSX.Element {
 
     // 3) Submit the assertion for server verification + the paired-write.
     const verified = await client.POST("/api/v1/sessions/step-up", {
-      body: { factor: "webauthn", challengeId: initiated.data.challengeId, assertion },
+      body: {
+        factor: "webauthn",
+        challengeId: initiated.data.challengeId,
+        assertion,
+      },
     });
     setBusy(false);
 
     if (verified.error) {
       if (handledLockout(verified.response?.status)) return;
-      setError("That passkey didn’t verify. Try again, or use an authenticator code.");
+      setError(
+        "That passkey didn’t verify. Try again, or use an authenticator code.",
+      );
       return;
     }
     navigate(returnTo); // freshness recorded — resume the action that required step-up
@@ -183,7 +203,13 @@ export function StepUp(): JSX.Element {
     >
       <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         <h1 style={{ margin: 0, fontSize: "1.1rem" }}>Confirm it’s you</h1>
-        <p style={{ margin: 0, color: "var(--color-on-surface-variant)", fontSize: "0.85rem" }}>
+        <p
+          style={{
+            margin: 0,
+            color: "var(--color-on-surface-variant)",
+            fontSize: "0.85rem",
+          }}
+        >
           {mode === "webauthn"
             ? "This action needs a fresh verification. Use your passkey — your device’s biometrics or security key."
             : "This action needs a fresh verification. Enter the 6-digit code from your authenticator app."}
@@ -191,13 +217,31 @@ export function StepUp(): JSX.Element {
 
         {mode === "webauthn" ? (
           <>
-            <button type="button" onClick={verifyPasskey} disabled={busy} style={primaryBtn}>
+            <button
+              type="button"
+              onClick={verifyPasskey}
+              disabled={busy}
+              style={primaryBtn}
+            >
               {busy ? "Waiting for passkey…" : "Verify with a passkey"}
             </button>
             {error ? (
-              <p style={{ color: "var(--color-error)", margin: 0, fontSize: "0.85rem" }}>{error}</p>
+              <p
+                style={{
+                  color: "var(--color-error)",
+                  margin: 0,
+                  fontSize: "0.85rem",
+                }}
+              >
+                {error}
+              </p>
             ) : null}
-            <button type="button" onClick={() => setMode("totp")} disabled={busy} style={linkBtn}>
+            <button
+              type="button"
+              onClick={() => setMode("totp")}
+              disabled={busy}
+              style={linkBtn}
+            >
               Use an authenticator code instead
             </button>
           </>
@@ -227,9 +271,21 @@ export function StepUp(): JSX.Element {
               />
             </label>
             {error ? (
-              <p style={{ color: "var(--color-error)", margin: 0, fontSize: "0.85rem" }}>{error}</p>
+              <p
+                style={{
+                  color: "var(--color-error)",
+                  margin: 0,
+                  fontSize: "0.85rem",
+                }}
+              >
+                {error}
+              </p>
             ) : null}
-            <button type="submit" disabled={busy || code.length !== 6} style={primaryBtn}>
+            <button
+              type="submit"
+              disabled={busy || code.length !== 6}
+              style={primaryBtn}
+            >
               {busy ? "Verifying…" : "Verify"}
             </button>
             {hasPasskey ? (
