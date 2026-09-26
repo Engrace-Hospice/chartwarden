@@ -29,7 +29,7 @@ import {
   MEASURE_BAND_TONE,
   fraction,
   humanize,
-  ratePct,
+  measureRate,
   readErrorMessage,
   toneOf,
 } from "./quality-status";
@@ -338,7 +338,7 @@ export function QualityHub(): JSX.Element {
                       {m.fiscalYear}
                     </td>
                     <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                      {m.latestValue ? ratePct(m.latestValue.rate, m.latestValue.bandColor) : "—"}
+                      {m.latestValue ? measureRate(m.measureId, m.latestValue) : "—"}
                     </td>
                     <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
                       {m.latestValue

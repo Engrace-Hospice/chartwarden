@@ -33,6 +33,21 @@ actions already conform to the `m30.` namespace (`m30.measure.*`, `m30.cahps.*`,
 
 ## Changelog
 
+- **Implementation note (HCI indicators 8/9 on the CMS definitions, 2026-09-26)** — indicator 8
+  ("Skilled Nursing Care Minutes per Routine Home Care Day") is now CMS's MEAN: skilled-nursing (RN/LPN)
+  minutes delivered on RHC days ÷ RHC days; indicator 9 ("Skilled Nursing Minutes on Weekends") is the
+  SHARE of those minutes delivered on a Saturday or Sunday. Both replace a platform day-count shape (RHC
+  days / weekend care-days clearing a 15-minute per-day floor) that CMS does not define; the
+  `HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR` constant is removed, and indicator 9's population narrows
+  from weekend days at any level of care to RHC days. The inputs are unchanged (M6
+  `levelOfCareDaySpans` × M8 `skilledNursingDayTotalsForOrg`), reduced by the pure
+  `skilledNursingMinutesOnRhcDays` in `packages/quality`. Thresholds in `HCI_THRESHOLDS_v2025`:
+  indicator 8 ≥ 15 minutes per RHC day, indicator 9 ≥ 0.05 weekend share — static approximations of
+  CMS's national-percentile scoring, like the rest of the table. Because indicator 8 is a mean, not a
+  proportion, its `numerator`/`denominator` are SN minutes / RHC days and its verdict is decided on the
+  mean, while the stored `rate` (and `thresholdValue`) is the mean ÷ 1440 — the share of RHC-day minutes —
+  so it stays within the proportion contract and the `ratio` numeric(6,4) column; the quality hub shows it
+  in minutes per day. Calculator versions for `hci_indicator_08`/`09` bumped to 0.2.0.
 - **Implementation note (WX-PR-014, 2026-08-06)** — bound the §7.1/§7.9 nightly-recompute and
   daily risk-register-refresh CRON → WORK-QUEUE fan-out for real (previously hardcoded fail-closed
   thunks with no fan-out logic at all — both crons were silent no-ops in production). Live-tested

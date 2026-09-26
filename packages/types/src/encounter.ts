@@ -330,8 +330,8 @@ export interface SignedEncountersReader {
    *
    * Returns the day totals rather than a rate or a count for the same reason
    * {@link lateEntryCountsForOrg} returns a pair: all three indicators reduce these days DIFFERENTLY (2
-   * measures the gaps BETWEEN visit dates inside an election, 8 counts routine-home-care days at/above a
-   * per-day minute floor, 9 counts weekend days at the same floor), and each reduction needs the spans M6
+   * measures the gaps BETWEEN visit dates inside an election, 8 averages the minutes over routine-home-care
+   * days, 9 takes the weekend share of those minutes), and each reduction needs the spans M6
    * holds to be intersected with these days. A reduction performed on either side of the module boundary
    * would answer one indicator and destroy the other two.
    *
