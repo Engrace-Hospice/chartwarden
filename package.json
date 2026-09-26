@@ -194,7 +194,7 @@
     "jsdom": "^25.0.1",
     "openapi-typescript": "^7.13.0",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.7"
+    "vitest": "^4.1.11"
   },
   "dependencies": {
     "@better-auth/passkey": "^1.6.25",
