@@ -317,6 +317,9 @@ export const documentReaderDenyStub: DocumentReader = {
   documentMetadata() {
     throw new NotImplementedError("DocumentReader");
   },
+  activeVersionLink() {
+    throw new NotImplementedError("DocumentReader");
+  },
 };
 
 /** M22 — portal-safe document read + download-URL mint (M31). Denies until M22 registers the real reader. */
@@ -585,6 +588,9 @@ export const levelOfCareReaderDenyStub: LevelOfCareReader = {
 /** M6 — admission-status projection (M14/M30 queues). Denies until M6 registers the real reader. */
 export const admissionStatusReaderDenyStub: AdmissionStatusReader = {
   getAdmissionSummary() {
+    throw new NotImplementedError("AdmissionStatusReader");
+  },
+  getAdmissionSiting() {
     throw new NotImplementedError("AdmissionStatusReader");
   },
 };

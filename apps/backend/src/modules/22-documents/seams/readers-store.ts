@@ -6,6 +6,7 @@
 // the impls never switch tenants; RLS scopes every read by `app.org_id` (§4.3). Mirrors the M17 seams/store.ts
 // read-seam precedent (one store, many readers). All five seams are READ-only — M22 owns the lifecycle internally.
 import type {
+  ActiveDocumentVersionLink,
   ChartTargetModule,
   DocumentAggregateType,
   DocumentDigest,
@@ -54,6 +55,14 @@ export interface DocumentReaderStore {
     readonly documentId: DocumentId;
     readonly organizationId: OrgId;
   }): Promise<DocumentDigest | null>;
+
+  /** §4.3 DocumentReader.activeVersionLink — the patient/admission link of a document whose ACTIVE version
+   * is `documentVersionId` (the version must belong to the document); null otherwise. */
+  activeVersionLink(args: {
+    readonly documentId: DocumentId;
+    readonly documentVersionId: DocumentVersionId;
+    readonly organizationId: OrgId;
+  }): Promise<ActiveDocumentVersionLink | null>;
 
   /** The active version id for one document (the version the portal mint targets), or null. */
   activeVersionForDocument(args: {
@@ -164,6 +173,22 @@ export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {})
             (d) => d.documentId === documentId && d.organizationId === organizationId,
           ) ?? null
         );
+      },
+      async activeVersionLink({ documentId, documentVersionId, organizationId }) {
+        const d = documents.find(
+          (x) =>
+            x.documentId === documentId &&
+            x.organizationId === organizationId &&
+            x.activeVersionId === documentVersionId,
+        );
+        return d
+          ? {
+              documentId: d.documentId,
+              documentVersionId,
+              patientId: d.patientId,
+              admissionId: d.admissionId,
+            }
+          : null;
       },
       async activeVersionForDocument({ documentVersionId, organizationId }) {
         const d = documents.find(

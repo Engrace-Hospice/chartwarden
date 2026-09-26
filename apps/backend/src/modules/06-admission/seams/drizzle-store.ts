@@ -413,6 +413,32 @@ export function createDrizzleAdmissionReaderStore(
       });
     },
 
+    async admissionSiting(organizationId, admissionId) {
+      return withOrgContext(db, { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID }, async (tx) => {
+        const [row] = await tx
+          .select({
+            admissionId: ADM.id,
+            organizationId: ADM.organizationId,
+            providerEntityId: ADM.providerEntityId,
+            locationId: ADM.locationId,
+            admissionAt: ADM.admissionAt,
+            activatedAt: ADM.activatedAt,
+          })
+          .from(ADM)
+          .where(and(eq(ADM.organizationId, organizationId), eq(ADM.id, admissionId)))
+          .limit(1);
+        if (!row) return null; // unknown id / not visible under RLS
+        return {
+          admissionId: row.admissionId,
+          organizationId: row.organizationId,
+          providerEntityId: row.providerEntityId,
+          locationId: row.locationId,
+          admissionAt: row.admissionAt?.toISOString() ?? null,
+          activatedAt: row.activatedAt?.toISOString() ?? null,
+        };
+      });
+    },
+
     async levelOfCarePeriods(admissionId) {
       return withOrgContextFromRequest(db, async (tx) => {
         const rows = await tx

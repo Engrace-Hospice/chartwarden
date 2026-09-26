@@ -34,9 +34,14 @@ import {
   or,
   sql,
 } from "drizzle-orm";
+import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
+import { readCurrentResidenceAddress } from "../05-patient/address-reader";
 import { getMdmEntityProvider } from "../40-mdm/seams";
-import { createAdmissionEvidenceService } from "./admission-evidence-service";
+import {
+  type AdmissionEvidenceDocumentValidator,
+  createAdmissionEvidenceService,
+} from "./admission-evidence-service";
 import {
   requirementsForUploadedCti,
   requirementsForUploadedElectionStatement,
@@ -164,15 +169,11 @@ function firstOrThrow<T>(rows: readonly T[], msg: string): T {
 
 const REF = schema.referrals;
 const ADM = schema.admissions;
-const ADDR = schema.patientAddresses;
-const DOC = schema.documents;
-const DV = schema.documentVersions;
 const EP = schema.electionPeriods;
 const ES = schema.electionStatements;
 const CTI = schema.certificationsOfTerminalIllness;
 const F2F = schema.faceToFaceEncounters;
 const LOC = schema.levelOfCarePeriods;
-const LOCATION = schema.locations;
 const NOR = schema.noticeOfRightsAcknowledgments;
 const CW = schema.complianceWindows;
 const DE = schema.dischargeEvents;
@@ -323,82 +324,25 @@ export function createDbAdmissionRouteService(
 ): AdmissionRouteService {
   const now = () => new Date();
 
-  async function currentResidence(
-    tx: DbClient,
-    organizationId: string,
-    patientId: string,
-  ) {
-    const [addr] = await tx
-      .select({
-        id: ADDR.id,
-        line1: ADDR.line1,
-        line2: ADDR.line2,
-        city: ADDR.city,
-        state: ADDR.state,
-        postalCode: ADDR.postalCode,
-        country: ADDR.country,
-      })
-      .from(ADDR)
-      .where(
-        and(
-          eq(ADDR.organizationId, organizationId),
-          eq(ADDR.patientId, patientId),
-          isNull(ADDR.effectiveTo),
-          or(eq(ADDR.kind, "home"), eq(ADDR.isPrimary, true)),
-        ),
-      )
-      .orderBy(desc(ADDR.isPrimary), desc(ADDR.effectiveFrom))
-      .limit(1);
-    return addr ?? null;
-  }
+  // Cross-module siting reads go through the OWNING module's exported reader, never its schema
+  // (scripts/check-table-ownership.ts): M5's current-residence read and M1's location reads both run on
+  // the caller's org-context `tx` (same RLS scope + snapshot as the admission update they feed).
+  const foundationSites = buildFoundationSiteReader();
 
-  async function defaultLocationForProvider(
-    tx: DbClient,
-    providerEntityId: string,
-  ) {
-    const [location] = await tx
-      .select({ id: LOCATION.id })
-      .from(LOCATION)
-      .where(
-        and(
-          eq(LOCATION.providerEntityId, providerEntityId),
-          inArray(LOCATION.status, ["active", "created"]),
-        ),
-      )
-      .orderBy(
-        sql`CASE WHEN ${LOCATION.status} = 'active' THEN 0 ELSE 1 END`,
-        LOCATION.name,
-      )
-      .limit(1);
-    return location?.id ?? null;
-  }
-
-  const admissionDocumentValidator = (tx: DbClient) => ({
-    async validateAdmissionEvidenceDocumentVersion(args: {
-      organizationId: string;
-      admissionId: string;
-      patientId: string;
-      documentId: string;
-      documentVersionId: string;
-    }) {
-      const [row] = await tx
-        .select({
-          documentId: DOC.id,
-          patientId: DOC.patientId,
-          admissionId: DOC.admissionId,
-          activeVersionId: DOC.activeVersionId,
-        })
-        .from(DOC)
-        .innerJoin(DV, eq(DV.documentId, DOC.id))
-        .where(
-          and(
-            eq(DOC.organizationId, args.organizationId),
-            eq(DOC.id, args.documentId),
-            eq(DV.id, args.documentVersionId),
-          ),
-        )
-        .limit(1);
-      if (!row || row.activeVersionId !== args.documentVersionId) {
+  /**
+   * Uploaded admission-evidence validation over M22's published `DocumentReader` seam (M6 does not list
+   * M22 in `dependsOn`, so it may not import M22 — the seam's leaf-typed contract is the sanctioned path).
+   * The version must be the document's ACTIVE version and the document must be linked to this admission
+   * and patient.
+   */
+  const admissionDocumentValidator: AdmissionEvidenceDocumentValidator = {
+    async validateAdmissionEvidenceDocumentVersion(args) {
+      const link = await getSeam("DocumentReader").activeVersionLink({
+        organizationId: args.organizationId,
+        documentId: args.documentId,
+        documentVersionId: args.documentVersionId,
+      });
+      if (!link) {
         throw new WardenXError(
           "DOCUMENT_VERSION_UNAVAILABLE",
           "The document version is no longer available.",
@@ -406,8 +350,8 @@ export function createDbAdmissionRouteService(
         );
       }
       if (
-        row.patientId !== args.patientId ||
-        row.admissionId !== args.admissionId
+        link.patientId !== args.patientId ||
+        link.admissionId !== args.admissionId
       ) {
         throw new WardenXError(
           "ADMISSION_EVIDENCE_DOCUMENT_MISMATCH",
@@ -416,7 +360,7 @@ export function createDbAdmissionRouteService(
         );
       }
     },
-  });
+  };
 
   /** Optimistic lock: a stale `ifVersion` is a 409 VERSION_MISMATCH (matches the in-memory slice). */
   function assertVersion(id: string, current: number, expected: number): void {
@@ -2954,11 +2898,10 @@ export function createDbAdmissionRouteService(
             ? input.locationId
             : current.locationId;
         if (finalProviderEntityId && finalLocationId) {
-          const [location] = await tx
-            .select({ providerEntityId: LOCATION.providerEntityId })
-            .from(LOCATION)
-            .where(eq(LOCATION.id, finalLocationId))
-            .limit(1);
+          const location = await foundationSites.locationProviderEntity(
+            tx,
+            finalLocationId,
+          );
           if (
             !location ||
             location.providerEntityId !== finalProviderEntityId
@@ -2976,7 +2919,7 @@ export function createDbAdmissionRouteService(
           input.providerEntityId !== undefined ||
           input.admissionAt !== undefined
         ) {
-          const residence = await currentResidence(
+          const residence = await readCurrentResidenceAddress(
             tx,
             organizationId,
             current.patientId,
@@ -3001,7 +2944,10 @@ export function createDbAdmissionRouteService(
           updates.locationId =
             input.locationId ??
             (finalProviderEntityId
-              ? await defaultLocationForProvider(tx, finalProviderEntityId)
+              ? await foundationSites.defaultLocationIdForProviderEntity(
+                  tx,
+                  finalProviderEntityId,
+                )
               : null);
         } else if (input.locationId !== undefined) {
           updates.locationId = input.locationId;
@@ -3042,7 +2988,7 @@ export function createDbAdmissionRouteService(
           if (!adm) throw new ResourceNotFoundError(admissionId);
           const svc = createAdmissionEvidenceService(
             tx,
-            admissionDocumentValidator(tx),
+            admissionDocumentValidator,
           );
           for (const requirementType of requirementsForUploadedNoticeOfRights(
             input,
@@ -3121,7 +3067,7 @@ export function createDbAdmissionRouteService(
               : { documentState: "unsigned" as const };
           const svc = createAdmissionEvidenceService(
             tx,
-            admissionDocumentValidator(tx),
+            admissionDocumentValidator,
           );
           for (const requirementType of requirementsForUploadedElectionStatement(
             metadata,
@@ -3203,7 +3149,7 @@ export function createDbAdmissionRouteService(
           if (!adm) throw new ResourceNotFoundError(period.admissionId);
           await createAdmissionEvidenceService(
             tx,
-            admissionDocumentValidator(tx),
+            admissionDocumentValidator,
           ).recordUploadedEvidence({
             organizationId,
             admissionId: period.admissionId,
@@ -3285,7 +3231,7 @@ export function createDbAdmissionRouteService(
               : { documentState: "unsigned" as const };
           const svc = createAdmissionEvidenceService(
             tx,
-            admissionDocumentValidator(tx),
+            admissionDocumentValidator,
           );
           for (const requirementType of requirementsForUploadedCti(
             metadata,

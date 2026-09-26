@@ -9,6 +9,7 @@ import type {
   AdmissionCensusEntry,
   AdmissionId,
   AdmissionReaderScope,
+  AdmissionSiting,
   AdmissionSummary,
   CertificationSummary,
   DateRange,
@@ -59,6 +60,11 @@ export interface AdmissionReaderStore {
     organizationId: string,
     admissionId: AdmissionId,
   ): Promise<AdmissionSummary | null>;
+  /** The admission's siting as stored (nullable), or null when unknown / not visible under RLS. */
+  admissionSiting(
+    organizationId: string,
+    admissionId: AdmissionId,
+  ): Promise<AdmissionSiting | null>;
   /** Every level-of-care period for an admission (the reader derives current + day counts). */
   levelOfCarePeriods(
     admissionId: AdmissionId,
@@ -165,6 +171,22 @@ export function createInMemoryAdmissionReaderStore(
             (a) => a.organizationId === organizationId && a.admissionId === admissionId,
           ) ?? null
         );
+      },
+      async admissionSiting(organizationId, admissionId) {
+        const a = admissions.find(
+          (x) => x.organizationId === organizationId && x.admissionId === admissionId,
+        );
+        // The slice seeds LocalDate summaries; project each to its UTC-midnight instant.
+        return a
+          ? {
+              admissionId: a.admissionId,
+              organizationId: a.organizationId,
+              providerEntityId: a.providerEntityId,
+              locationId: a.locationId ?? null,
+              admissionAt: `${a.admissionAt}T00:00:00.000Z`,
+              activatedAt: a.activatedAt ? `${a.activatedAt}T00:00:00.000Z` : null,
+            }
+          : null;
       },
       async levelOfCarePeriods(admissionId) {
         return locPeriods
