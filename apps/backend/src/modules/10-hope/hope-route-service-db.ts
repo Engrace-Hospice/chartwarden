@@ -277,7 +277,16 @@ export function createDbHopeBackend(
   db: DbClient,
   outbox: HopeWriteOutboxPort = NOOP_OUTBOX,
 ): HopeRouteService {
-  const answerService = createHopeAssessmentAnswerService(db);
+  const answerService = createHopeAssessmentAnswerService(db, {
+    // §2.4 / §4.9 — the SFV obligation opens while the draft's J2050/J2051 answers are patched, so
+    // `m10.hope.sfv_created` (M36's SFV-obligation alert) is emitted on THAT tx, beside the row.
+    onSfvOpened: (tx, e) =>
+      emit(tx, e.organizationId, "m10.hope.sfv_created", "symptom_follow_up_visit", e.sfvId, {
+        sfvId: e.sfvId,
+        triggeringAssessmentId: e.triggeringAssessmentId,
+        dueAt: e.dueAt,
+      }),
+  });
   const validationService = createHopeValidationService(db);
   const readinessService = createHopeAssessmentReadinessService(db);
   const admissionPrefillService = createHopeAdmissionPrefillService();
@@ -1729,6 +1738,38 @@ export function createDbHopeBackend(
             wasLate: r.wasLate,
           },
         );
+        // §2.4 / §4.9 — a signed record whose server-authoritative J2051 verdict fired announces it
+        // (M11's order-suggestion banner, M30 Timely Follow-Up, M33). The SFV obligation it references
+        // was opened while the draft was answered (readiness refuses to sign a fired trigger without
+        // one), so it is read here rather than created.
+        if (signed.j2051TriggerFired) {
+          const [sfv] = (await t
+            .select()
+            .from(SFV)
+            .where(
+              and(
+                eq(SFV.organizationId, organizationId),
+                eq(SFV.triggeringAssessmentId, id),
+              ),
+            )
+            .limit(1)) as SfvRow[];
+          if (sfv) {
+            await emit(
+              t,
+              organizationId,
+              "m10.hope.j2051_trigger_fired",
+              "hope_assessment",
+              id,
+              {
+                assessmentId: id,
+                sfvId: sfv.id,
+                maxSeverity: signed.j2051MaxSeverity ?? "none",
+                triggeredAt: sfv.triggeredAt.toISOString(),
+                dueAt: sfv.dueAt.toISOString(),
+              },
+            );
+          }
+        }
         return {
           assessmentId: signed.id,
           status: "signed",

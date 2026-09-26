@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import type { DbClient } from "@wardenx/db";
 import { schema } from "@wardenx/db";
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { OPTIONAL_ASSESSMENT_ITEMS } from "./hope-readiness-service";
 import type { HopeIsc } from "./hope-spec-registry";
 
 const VALIDATION_PROFILE = "HOPE-1.00.1-ERRATA-1.00.3";
@@ -118,7 +119,14 @@ export async function serializeHopeAssessmentXml(
   }
 
   const body = items
-    .map((item) => `    <${item.itemCode}>${xmlEscape(answerToCmsValue(answersByItem.get(item.id)))}</${item.itemCode}>`)
+    .map((item) => {
+      const answer = answersByItem.get(item.id);
+      // An optional item readiness allowed to stay unanswered (e.g. no middle initial) is the CMS
+      // blank `^` ("not available or unknown"), not a missing answer.
+      const value =
+        !answer && OPTIONAL_ASSESSMENT_ITEMS.has(item.itemCode) ? "^" : answerToCmsValue(answer);
+      return `    <${item.itemCode}>${xmlEscape(value)}</${item.itemCode}>`;
+    })
     .join("\n");
   const xml = [
     '<?xml version="1.0" encoding="UTF-8"?>',

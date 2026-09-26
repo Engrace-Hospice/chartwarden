@@ -11,6 +11,7 @@ import {
   HOPE_J2051_ITEM_CODES,
   createHopeSfvService,
   deriveHopeJ2051TriggerState,
+  hopeSfvDueAtFromJ2050B,
 } from "./hope-sfv-service";
 import type { HopeIsc } from "./hope-spec-registry";
 import type {
@@ -478,8 +479,27 @@ export interface HopeAssessmentAnswerService {
   ): Promise<HopeAssessmentItemState>;
 }
 
+/**
+ * Side-effect hooks the answer service fires inside the patch transaction. The route service binds
+ * `onSfvOpened` to its transactional outbox so `m10.hope.sfv_created` (M36's SFV-obligation alert,
+ * M14) lands in the SAME tx that inserted/reopened the `symptom_follow_up_visit` row — the SFV
+ * obligation is now opened when the J2050/J2051 answers are patched, not at sign.
+ */
+export interface HopeAnswerServiceHooks {
+  onSfvOpened?(
+    tx: DbClient,
+    event: {
+      readonly organizationId: string;
+      readonly sfvId: string;
+      readonly triggeringAssessmentId: string;
+      readonly dueAt: string;
+    },
+  ): Promise<void>;
+}
+
 export function createHopeAssessmentAnswerService(
   db: DbClient,
+  hooks: HopeAnswerServiceHooks = {},
 ): HopeAssessmentAnswerService {
   const A = schema.hopeAssessments;
   const V = schema.hopeSpecVersions;
@@ -1095,7 +1115,7 @@ export function createHopeAssessmentAnswerService(
           ? j2051Projection(reconciledAnswers)
           : null;
         if (projection) {
-          await sfvService.reconcileTriggeringAssessment({
+          const reconciled = await sfvService.reconcileTriggeringAssessment({
             tx: t,
             organizationId,
             assessment,
@@ -1103,6 +1123,21 @@ export function createHopeAssessmentAnswerService(
             answers: reconciledAnswers,
             now,
           });
+          // A newly opened (or re-opened after withdrawal) SFV obligation is the fact M36 alerts on.
+          if (
+            (reconciled.action === "created" || reconciled.action === "reopened") &&
+            reconciled.sfvId &&
+            reconciled.trigger.symptomImpactDate
+          ) {
+            await hooks.onSfvOpened?.(t, {
+              organizationId,
+              sfvId: reconciled.sfvId,
+              triggeringAssessmentId: assessment.id,
+              dueAt: hopeSfvDueAtFromJ2050B(
+                reconciled.trigger.symptomImpactDate,
+              ).toISOString(),
+            });
+          }
         }
         const assessmentUpdate = projection
           ? {
