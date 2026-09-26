@@ -303,22 +303,17 @@ async function main(): Promise<void> {
       rank++;
     }
 
-    // Privacy flags (one patient gets a Part-2/SUD restriction to exercise the gated tab)
-    if (d.flags.length) {
-      await db.query(
-        `INSERT INTO patient_privacy_flag_snapshot (patient_id, organization_id, flags, captured_at)
-         VALUES ($1,$2,$3,now())
-         ON CONFLICT (patient_id) DO UPDATE SET flags = EXCLUDED.flags, captured_at = now()`,
-        [pid, org, d.flags],
-      );
-    }
+    // Privacy flags (one patient gets a Part-2/SUD restriction to exercise the gated tab) are recorded
+    // by db:seed:scenario-admissions AFTER that patient's admission activates: M6 readiness refuses to
+    // activate a patient with any active privacy flag, and the "authorized review" it asks for has no
+    // route yet. `d.flags` documents the intent; keep it in step with that script's `PRIVACY_FLAGS`.
     n++;
   }
 
   await db.end();
   console.log(
     `✓ clinical seed: enriched ${n} patients (demographics, MBI, care team, payers; ` +
-      `${DETAIL.filter((d) => d.flags.length).length} with a privacy flag). Caseload RN = ${rnEmail}.`,
+      `${DETAIL.filter((d) => d.flags.length).length} with a privacy flag, recorded after admission). Caseload RN = ${rnEmail}.`,
   );
 }
 
