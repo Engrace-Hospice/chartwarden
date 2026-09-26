@@ -70,11 +70,12 @@ describe("Admission census", () => {
     const client = clientFor();
     renderCensus(client);
 
-    await waitFor(() => expect(screen.getByRole("link", { name: /Elena Rivera/i })).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("link", { name: "Elena Rivera" })).toBeTruthy());
 
-    const patientLink = screen.getByRole("link", { name: /Elena Rivera/i });
+    const patientLink = screen.getByRole("link", { name: "Elena Rivera" });
     expect(patientLink.getAttribute("href")).toBe("/patients/patient-1");
-    expect(screen.getByText(/MRN MRN-1001/)).toBeTruthy();
+    // The MRN is masked to its last four in the table (full value in the cell's title).
+    expect(screen.getAllByText("…1001").length).toBeGreaterThan(0);
     expect(client.GET).toHaveBeenCalledWith(
       "/api/v1/patients/{id}",
       expect.objectContaining({ params: { path: { id: "patient-1" } } }),
