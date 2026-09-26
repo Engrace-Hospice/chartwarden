@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1242,
-    "coveredRoutes": 1242,
-    "directRoutesReferenced": 1183
+    "routes": 1276,
+    "coveredRoutes": 1276,
+    "directRoutesReferenced": 1220
   },
   "modules": [
     {
@@ -50,7 +50,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 14,
+      "routes": 15,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -58,11 +58,11 @@
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 14
+      "directRoutesReferenced": 15
     },
     {
       "module": "06-admission",
-      "routes": 48,
+      "routes": 67,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/admission-certification.test.ts",
@@ -70,11 +70,11 @@
         "apps/backend/__tests__/admission-intake.test.ts",
         "apps/backend/__tests__/admission-routes.test.ts"
       ],
-      "directRoutesReferenced": 48
+      "directRoutesReferenced": 67
     },
     {
       "module": "07-care-plan",
-      "routes": 19,
+      "routes": 22,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/assessment-routes.test.ts",
@@ -82,7 +82,7 @@
         "apps/backend/__tests__/care-plan-routes.test.ts",
         "apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts"
       ],
-      "directRoutesReferenced": 18
+      "directRoutesReferenced": 21
     },
     {
       "module": "08-encounters",
@@ -105,12 +105,12 @@
     },
     {
       "module": "10-hope",
-      "routes": 20,
+      "routes": 29,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/hope-routes.test.ts"
       ],
-      "directRoutesReferenced": 18
+      "directRoutesReferenced": 27
     },
     {
       "module": "11-orders",
@@ -170,14 +170,14 @@
     },
     {
       "module": "17-scheduling",
-      "routes": 32,
+      "routes": 33,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
         "apps/backend/__tests__/scheduling-inject.test.ts"
       ],
-      "directRoutesReferenced": 32
+      "directRoutesReferenced": 33
     },
     {
       "module": "18-evv",
@@ -217,14 +217,14 @@
     },
     {
       "module": "22-documents",
-      "routes": 38,
+      "routes": 39,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/document-doclens.test.ts",
         "apps/backend/__tests__/document-routes.test.ts",
         "apps/backend/__tests__/document-workflow-acceptance.test.ts"
       ],
-      "directRoutesReferenced": 30
+      "directRoutesReferenced": 34
     },
     {
       "module": "23-billing-medicare",
