@@ -22,7 +22,17 @@ test.describe("Billing", () => {
   test("main path: the AR dashboard renders its KPI shell", async ({ page }) => {
     await signInAs(page, ADMIN_ACCOUNT());
     await page.goto("/billing");
-    await expect(page.getByRole("heading", { name: "Accounts Receivable" })).toBeVisible();
+    // The 2026-09-25 redesign (#235) folded the AR dashboard into the "Billing / Claims" landing:
+    // a KPI tile row over the claim list, with the A/R aging buckets in the "Receivables" rail.
+    await expect(page.getByRole("heading", { name: "Billing / Claims", level: 1 })).toBeVisible();
+    const kpis = page.getByLabel("Billing summary");
+    for (const kpi of ["Submitted", "Paid", "Denied", "A/R > 30 days"]) {
+      await expect(kpis.getByText(kpi, { exact: true })).toBeVisible();
+    }
+    const receivables = page.getByRole("complementary", { name: "Receivables" });
+    await expect(receivables.getByRole("heading", { name: "A/R Aging" })).toBeVisible();
+    // The aging read really answered: a failed ar-dashboard call renders "A/R aging is unavailable."
+    await expect(receivables.getByText("A/R aging is unavailable.")).toHaveCount(0);
   });
 
   test("accessibility: the Claim Workbench has no WCAG 2A/AA violations", async ({ page }) => {

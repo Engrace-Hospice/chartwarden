@@ -68,6 +68,11 @@ describe("M12 medication editor canonical payload boundary", () => {
       ).refillsAuthorized,
     ).toBe(5);
   });
+  it("hydrates a Prescribe-dialog draft (sig only) with the 0 refills the Refills control displays", () => {
+    const hydrated = hydrateMedicationData({ sigStructured: SIG }, "standard");
+    expect(hydrated.refillsAuthorized).toBe(0);
+    expect(serializeMedicationData(hydrated, "standard").refillsAuthorized).toBe(0);
+  });
   it("round-trips all compound fields and removes stale DEA only when not controlled", () => {
     const data = {
       compoundingPharmacyMdmId: "pharmacy",

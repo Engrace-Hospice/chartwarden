@@ -375,6 +375,37 @@ describe.skipIf(!DB_URL)("M10 HOPE write lifecycle — LIVE Postgres (M10L)", ()
     ]);
   });
 
+  it("anchors the Admission window on the org-LOCAL activation day, not its UTC date", async () => {
+    const adm = await admitted();
+    // 23:30 on 2026-06-01 in America/Los_Angeles (the location's zone) is 06:30Z on 2026-06-02. The
+    // window must open at that LOCAL day's midnight — anchoring on the UTC date opened it the next day,
+    // after the patient had already been admitted.
+    await admin.query("UPDATE admission SET activated_at = $2 WHERE id = $1", [
+      adm,
+      "2026-06-02T06:30:00.000Z",
+    ]);
+    const consumer = buildM10AdmissionWorkflowConsumer({
+      db: handle.db,
+      outbox: { async publish() {} },
+      admissions: createAdmissionStatusReader(createDrizzleAdmissionReaderStore(handle.db)),
+    });
+    await consumer.handle({
+      id: "evt-activation-late-evening",
+      organizationId: ORG_A,
+      eventType: "m6.admission.activated",
+      payload: {
+        admissionId: adm,
+        patientId: patientOf[adm],
+        activatedAt: "2026-06-02T06:30:00.000Z",
+      },
+    });
+    const { rows } = await admin.query(
+      `SELECT window_opens_at FROM hope_timepoint_schedule WHERE admission_id=$1 AND rfa_kind='01_admission'`,
+      [adm],
+    );
+    expect(new Date(rows[0].window_opens_at).toISOString()).toBe("2026-06-01T07:00:00.000Z");
+  });
+
   it("record → sign (no J2051) closes the linked schedule and emits timepoint_signed", async () => {
     const adm = await admitted();
     const sched = await seedSchedule(ORG_A, adm);

@@ -29,6 +29,7 @@
 // orders it are two different logins — as they are on a ward. Dr Harris holds two of M12's four
 // prescriber roles, which is why "Signing as" offers a choice instead of preselecting one.
 import { expect, test } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 import { PRESCRIBER_ACCOUNT } from "../fixtures/credentials";
 import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";
 import { openPatientChartByLastName } from "../fixtures/patients";
@@ -60,7 +61,7 @@ test.describe("Prescribing", () => {
     await signInAs(page, PRESCRIBER_ACCOUNT());
     const patientId = await openPatientChartByLastName(page, PATIENT_LAST_NAME);
     await page.goto(`/patients/${patientId}/medications`);
-    await expect(page.getByRole("heading", { name: "Medications" })).toBeVisible();
+    await expect(medicationList(page)).toBeVisible();
 
     await page.getByRole("button", { name: "Prescribe" }).click();
     const dialog = page.getByRole("dialog", { name: "Prescribe a medication" });
@@ -94,6 +95,30 @@ test.describe("Prescribing", () => {
     await page.waitForURL(/\/medication-orders\/[^/]+$/);
     await expect(page.getByRole("heading", { name: "Medication Order" })).toBeVisible();
     await expect(page.getByText(DRUG_DISPLAY).first()).toBeVisible();
+
+    // The draft the prescribe dialog creates carries the structured sig only. Since the #235 redesign,
+    // requesting signature validates the order's complete §2.1 dispensing payload (human-readable SIG,
+    // dispense quantity + unit, days supply, DAW), which the draft editor — "Edit draft" on the order —
+    // is where a prescriber supplies it. Without it the server answers 422 "not ready for signature".
+    await page.getByRole("button", { name: "Edit draft" }).click();
+    await page.waitForURL(/\/medication-orders\/[^/]+\/edit/);
+    // The editor hydrates from the stored draft asynchronously; typing before that lands is
+    // overwritten by the hydration, so wait for the draft to have loaded first.
+    await expect(page.getByLabel("Human-readable SIG")).toBeVisible();
+    await expect(page.getByText("Loading draft…")).toBeHidden({ timeout: 15_000 });
+    await page
+      .getByLabel("Human-readable SIG")
+      .fill("Take 0.5 mL by mouth every 2 hours as needed for pain.");
+    await page.getByLabel("Dispense quantity", { exact: true }).fill("30");
+    await page.getByLabel("Dispense quantity unit").fill("mL");
+    await page.getByLabel("Days supply").fill("7");
+    // DAW is a real yes/no the order must state; ticking and clearing it records an explicit "no".
+    const daw = page.getByLabel("Dispense as written (DAW)");
+    await daw.check();
+    await daw.uncheck();
+    await page.getByRole("button", { name: "Save draft" }).click();
+    await page.waitForURL(/\/medication-orders\/[^/]+$/, { timeout: 15_000 });
+    await expect(page.getByRole("heading", { name: "Medication Order" })).toBeVisible();
 
     // §2.2 — a draft is sent for signature before it can be signed. Two ceremonies, not one button,
     // because the requester and the signer are not always the same person.
@@ -135,13 +160,11 @@ test.describe("Prescribing", () => {
     // A spec that stopped at the detail page's status pill would pass on an order filed against the
     // wrong patient, which is the defect class F-058 and the eMAR spec's sentinel-patient bug both are.
     await page.goto(`/patients/${patientId}/medications`);
-    await expect(page.getByRole("heading", { name: "Medications" })).toBeVisible();
-    // Selected by the `button` role, not `row`: the repo's interactive-row pattern puts
-    // `role="button"` on the `<tr>` so the whole row is keyboard-actionable, and an explicit role
-    // REPLACES the implicit one — `getByRole("row")` matches only the header. Same trap F-023
-    // documents in `e2e/fixtures/patients.ts`.
+    await expect(medicationList(page)).toBeVisible();
+    // The #235 redesign's medication table keeps real `row`s (the drug name inside is the button), so
+    // the row role resolves again — the `role="button"`-on-`<tr>` trap F-023 documents no longer applies.
     await expect(
-      page.getByRole("table").getByRole("button").filter({ hasText: DRUG_DISPLAY }).first(),
+      medicationList(page).getByRole("row").filter({ hasText: DRUG_DISPLAY }).first(),
     ).toBeVisible({ timeout: 15_000 });
   });
 
@@ -149,7 +172,18 @@ test.describe("Prescribing", () => {
     await signInAs(page, PRESCRIBER_ACCOUNT());
     const patientId = await openPatientChartByLastName(page, PATIENT_LAST_NAME);
     await page.goto(`/patients/${patientId}/medications`);
-    await expect(page.getByRole("heading", { name: "Medications" })).toBeVisible();
+    await expect(medicationList(page)).toBeVisible();
     await expectNoAxeViolations(page);
   });
 });
+
+/**
+ * The chart's Medications tab. The #235 redesign dropped the tab's "Medications" page heading (the
+ * chart tab strip names the tab; the section is a labelled region), so the list is located by the
+ * table's own accessible name — rendered only once the patient's medication read has answered.
+ */
+function medicationList(page: Page): Locator {
+  return page
+    .getByRole("region", { name: "Medications", exact: true })
+    .getByRole("table", { name: "Medications for this patient" });
+}
