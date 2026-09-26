@@ -3,10 +3,8 @@ import {
   Glyph,
   LoadingSpinner,
   Modal,
-  PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
-  ageYears,
   cardSurface,
   ghostBorder,
   t,
@@ -19,7 +17,21 @@ import {
   ChartModuleRail,
   PatientChartBail,
 } from "../../shell/chart-module-rail";
+import {
+  ChartBanner,
+  ChartPatientBanner,
+  PatientSummaryPanel,
+  useChartIdentity,
+} from "../../shell/patient-context";
 import { useSession } from "../../shell/session";
+import {
+  CarePlanRail,
+  GoalsList,
+  disciplineLabel,
+  InterventionsList,
+  PlanHeader,
+  PlanStats,
+} from "./care-plan-overview";
 import {
   type CarePlan,
   type ClinicalSnapshot,
@@ -39,7 +51,7 @@ import {
 } from "./care-plan-api";
 import { cap, toneFor } from "./care-plan-status";
 
-type Tab = "current" | "revision" | "history";
+type Tab = "goals" | "interventions" | "problems" | "revision" | "history";
 type ModalState =
   | { kind: "problem"; problem?: Problem }
   | { kind: "resolve_problem"; problem: Problem }
@@ -103,7 +115,9 @@ function hasPerm(perms: string[] | undefined, key: string): boolean {
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return "Not set";
-  const d = new Date(value);
+  // Date-only values are calendar dates: parse locally so they don't shift a day west of UTC.
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  const d = ymd ? new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3])) : new Date(value);
   return Number.isNaN(d.getTime())
     ? value
     : d.toLocaleDateString(undefined, {
@@ -145,12 +159,13 @@ export function CarePlanView(): JSX.Element {
   const navigate = useNavigate();
   const session = useSession();
   const { patientId } = useParams<{ patientId: string }>();
+  const identity = useChartIdentity(patientId);
   const [plan, setPlan] = useState<CarePlan | null>(null);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [review, setReview] = useState<ReviewStatus | null>(null);
   const [proposed, setProposed] = useState<ProposedChanges | null>(null);
-  const [tab, setTab] = useState<Tab>("current");
+  const [tab, setTab] = useState<Tab>("goals");
   const [selectedVersionId, setSelectedVersionId] = useState<string | null>(
     null,
   );
@@ -300,15 +315,7 @@ export function CarePlanView(): JSX.Element {
     setTab("revision");
   }
 
-  const bailBanner = patient ? (
-    <PatientBanner
-      name={`${patient.firstName} ${patient.lastName}`}
-      meta={`DOB ${patient.dob}`}
-      chips={<MonoChip title="Medical record number">{patient.mrn}</MonoChip>}
-    />
-  ) : (
-    <PatientBanner name="Care Plan" />
-  );
+  const bailBanner = <ChartPatientBanner patientId={patientId} />;
 
   if (loading) {
     return (
@@ -349,82 +356,70 @@ export function CarePlanView(): JSX.Element {
     );
   }
 
-  const age = patient ? ageYears(patient.dob) : null;
   const activeTerminal = plan.problems.find(
     (p) => p.kind === "terminal" && p.status === "active",
   );
   const blockers = uniqueBlockers(readiness, activeTerminal);
+  const editable =
+    canAuthor &&
+    plan.status !== "discharged" &&
+    Boolean(openVersion) &&
+    openVersion?.status !== "in_review";
+  const addGoal = (): void =>
+    setModal({ kind: "goal", problemId: activeTerminal?.id ?? plan.problems[0]?.id });
 
   return (
     <PatientWorkspaceLayout
       banner={
-        <PatientBanner
-          name={
-            patient ? `${patient.firstName} ${patient.lastName}` : "Care Plan"
-          }
-          meta={
-            patient
-              ? `DOB ${patient.dob}${age != null ? ` · ${age}y` : ""}`
-              : undefined
-          }
-          chips={
-            <>
-              {patient ? (
-                <MonoChip title="Medical record number">{patient.mrn}</MonoChip>
-              ) : null}
-              <StatusPill
-                label={cap(plan.status)}
-                tone={toneFor(plan.status)}
-              />
-              <MonoChip title="Admission">{`Admission ${plan.admissionId.slice(0, 8)}`}</MonoChip>
-              {plan.redacted ? (
-                <span style={restricted}>
-                  <Glyph name="lock" size={12} /> restricted content omitted
-                </span>
-              ) : null}
-            </>
-          }
-          actions={
-            <Link to={`/patients/${patientId}`} style={ghostBtn}>
-              Open chart
-            </Link>
-          }
+        identity ? (
+          <ChartBanner
+            identity={identity}
+            actions={
+              <>
+                {plan.redacted ? (
+                  <span style={restricted}>
+                    <Glyph name="lock" size={12} /> restricted content omitted
+                  </span>
+                ) : null}
+                <Link to={`/patients/${patientId}/idg-history`} className="wx-btn-primary">
+                  IDG History
+                </Link>
+              </>
+            }
+          />
+        ) : (
+          bailBanner
+        )
+      }
+      rail={
+        <CarePlanRail
+          plan={plan}
+          patientId={patientId ?? ""}
+          summary={<PatientSummaryPanel identity={identity} />}
+          canAddGoal={editable && plan.problems.length > 0}
+          onAddGoal={addGoal}
         />
       }
     >
       <div style={workspace}>
         <ChartModuleRail patientId={patientId ?? ""} current="care-plan" />
         <main style={mainPane}>
-          <header style={topRow}>
-            <div>
-              <h1 style={title}>Patient Care Plan</h1>
-              <div style={summaryMeta}>
-                <span>
-                  {activeVersion
-                    ? `Current v${activeVersion.sequence} · ${cap(activeVersion.kind)}`
-                    : openVersion
-                      ? `${cap(openVersion.kind)} v${openVersion.sequence} · ${cap(openVersion.status)}`
-                      : "No signed version yet"}
-                </span>
-                <span aria-hidden="true">·</span>
-                <span>
-                  Next review{" "}
-                  {review?.status === "overdue"
-                    ? `overdue by ${review.overdueByDays} day${review.overdueByDays === 1 ? "" : "s"}`
-                    : review?.status === "review_in_progress"
-                      ? "in progress"
-                      : formatDate(review?.nextReviewDueAt)}
-                </span>
-              </div>
-            </div>
-            <button
-              type="button"
-              style={ghostBtn}
-              onClick={() => navigate(`/care-plans/${plan.id}/versions`)}
-            >
-              Version history
-            </button>
-          </header>
+          <PlanHeader
+            plan={plan}
+            activeVersion={activeVersion}
+            openVersion={openVersion}
+            actions={
+              <button
+                type="button"
+                className="wx-btn-secondary"
+                onClick={() => navigate(`/care-plans/${plan.id}/versions`)}
+              >
+                Version history
+              </button>
+            }
+          />
+
+          <PlanStats plan={plan} review={review} />
 
           {error ? <Notice tone="error">{error}</Notice> : null}
           {notice ? <Notice tone="success">{notice}</Notice> : null}
@@ -444,7 +439,7 @@ export function CarePlanView(): JSX.Element {
             onAddTerminal={() => setModal({ kind: "problem" })}
             onContinue={() =>
               setTab(
-                openVersion?.status === "in_review" ? "revision" : "current",
+                openVersion?.status === "in_review" ? "revision" : "problems",
               )
             }
             onOpenRevision={() => setTab("revision")}
@@ -458,35 +453,56 @@ export function CarePlanView(): JSX.Element {
             }}
           />
 
-          <div
-            style={tabs}
-            role="tablist"
-            aria-label="Care Plan workspace views"
-          >
-            <TabButton
-              active={tab === "current"}
-              onClick={() => setTab("current")}
-            >
-              Care Plan
+          <div className="wx-subtabs" role="tablist" aria-label="Care Plan workspace views">
+            <TabButton active={tab === "goals"} onClick={() => setTab("goals")}>
+              Goals<span className="wx-seg-count wx-nums">{plan.goals.length}</span>
             </TabButton>
-            <TabButton
-              active={tab === "revision"}
-              onClick={() => setTab("revision")}
-            >
+            <TabButton active={tab === "interventions"} onClick={() => setTab("interventions")}>
+              Interventions
+            </TabButton>
+            <TabButton active={tab === "problems"} onClick={() => setTab("problems")}>
+              Problems
+            </TabButton>
+            <TabButton active={tab === "revision"} onClick={() => setTab("revision")}>
               Review & Sign
-              {openVersion ? <span style={tabCount}>1</span> : null}
+              {openVersion ? <span className="wx-seg-count wx-nums">1</span> : null}
             </TabButton>
-            <TabButton
-              active={tab === "history"}
-              onClick={() => setTab("history")}
-            >
-              History
+            <TabButton active={tab === "history"} onClick={() => setTab("history")}>
+              Revisions
             </TabButton>
           </div>
 
-          {tab === "current" ? (
+          {tab === "goals" ? (
+            <GoalsList
+              plan={plan}
+              editable={editable && plan.problems.length > 0}
+              onEdit={(goal) => setModal({ kind: "goal", goal, problemId: goal.problemId })}
+              onAdd={addGoal}
+            />
+          ) : null}
+
+          {tab === "interventions" ? (
+            <InterventionsList
+              plan={plan}
+              editable={editable && plan.problems.length > 0}
+              onEdit={(intervention) =>
+                setModal({ kind: "intervention", intervention, problemId: intervention.problemId })
+              }
+              onDiscontinue={(intervention) =>
+                setModal({ kind: "discontinue_intervention", intervention })
+              }
+              onAdd={() =>
+                setModal({
+                  kind: "intervention",
+                  problemId: activeTerminal?.id ?? plan.problems[0]?.id,
+                })
+              }
+            />
+          ) : null}
+
+          {tab === "problems" ? (
             <ClinicalContent
-              title="Care Plan"
+              title="Problems"
               readonly={
                 plan.status === "discharged" ||
                 !openVersion ||
@@ -496,12 +512,7 @@ export function CarePlanView(): JSX.Element {
               problems={plan.problems}
               goals={plan.goals}
               interventions={plan.interventions}
-              canAuthor={
-                canAuthor &&
-                plan.status !== "discharged" &&
-                Boolean(openVersion) &&
-                openVersion?.status !== "in_review"
-              }
+              canAuthor={editable}
               onProblem={(problem) => setModal({ kind: "problem", problem })}
               onGoal={(goal, problemId) =>
                 setModal({ kind: "goal", goal, problemId })
@@ -1661,7 +1672,7 @@ function InterventionRow({
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={rowTitle}>{intervention.scopeText}</p>
         <p style={muted}>
-          {cap(intervention.discipline)} · {intervention.frequencyText} ·{" "}
+          {disciplineLabel(intervention.discipline)} · {intervention.frequencyText} ·{" "}
           {intervention.frequencyValue}
           {linkedGoals.length
             ? ` · linked to ${linkedGoals.map((g) => g.revisedText ?? g.originalText).join(", ")}`
@@ -2819,20 +2830,6 @@ function Notice({
   );
 }
 
-function MonoChip({
-  children,
-  title,
-}: {
-  children: ReactNode;
-  title?: string;
-}): JSX.Element {
-  return (
-    <span title={title} style={monoChip}>
-      {children}
-    </span>
-  );
-}
-
 const workspace: CSSProperties = {
   display: "flex",
   height: "100%",
@@ -2841,34 +2838,11 @@ const workspace: CSSProperties = {
 const mainPane: CSSProperties = {
   flex: 1,
   overflow: "auto",
-  padding: t.space5,
+  padding: "1.125rem 1.5rem 1.5rem",
   minWidth: 0,
   display: "flex",
   flexDirection: "column",
-  gap: t.space5,
-};
-const topRow: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
   gap: t.space4,
-  flexWrap: "wrap",
-};
-const title: CSSProperties = {
-  margin: 0,
-  fontFamily: t.fontDisplay,
-  fontWeight: 500,
-  fontSize: "1.45rem",
-  color: t.onSurface,
-};
-const summaryMeta: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: t.space2,
-  flexWrap: "wrap",
-  marginTop: "0.2rem",
-  color: t.onSurfaceVariant,
-  fontSize: "0.82rem",
 };
 const sectionTitle: CSSProperties = {
   margin: 0,
@@ -2963,8 +2937,11 @@ const clinicalHeader: CSSProperties = {
   flexWrap: "wrap",
 };
 const clinicalTitle: CSSProperties = {
-  ...title,
-  fontSize: "1.3rem",
+  margin: 0,
+  fontFamily: t.fontSans,
+  fontWeight: 700,
+  fontSize: "1.125rem",
+  color: t.onSurface,
 };
 const clinicalIntro: CSSProperties = {
   ...muted,
@@ -3007,10 +2984,10 @@ const subPanel: CSSProperties = {
   background: t.surfaceLow,
 };
 const workflowCard: CSSProperties = {
-  border: ghostBorder,
+  border: `1px solid ${t.cardBorder}`,
   borderLeft: `3px solid ${t.primary}`,
-  borderRadius: t.radiusMd,
-  background: t.surfaceLow,
+  borderRadius: t.radiusLg,
+  background: t.surfaceLowest,
   padding: "0.9rem 1rem",
   display: "flex",
   flexDirection: "column",
@@ -3148,12 +3125,6 @@ const noticeStyle: CSSProperties = {
   background: t.surfaceLow,
   fontSize: "0.84rem",
 };
-const tabs: CSSProperties = {
-  display: "flex",
-  gap: "0.25rem",
-  borderBottom: ghostBorder,
-  flexWrap: "wrap",
-};
 const tabBtn: CSSProperties = {
   border: "none",
   borderBottom: "2px solid transparent",
@@ -3172,16 +3143,6 @@ const activeTab: CSSProperties = {
   color: t.onSurface,
   borderBottom: `2px solid ${t.primary}`,
 };
-const tabCount: CSSProperties = {
-  minWidth: "1.1rem",
-  height: "1.1rem",
-  borderRadius: "999px",
-  background: t.surfaceContainer,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: "0.66rem",
-};
 const sectionHeader: CSSProperties = {
   display: "flex",
   justifyContent: "space-between",
@@ -3195,12 +3156,13 @@ const problemStack: CSSProperties = {
   gap: t.space4,
 };
 const problemCard: CSSProperties = {
-  borderTop: `1px solid ${t.outlineVariant}`,
-  padding: `${t.space4} 0 0`,
+  border: `1px solid ${t.cardBorder}`,
+  borderRadius: t.radiusLg,
+  padding: "1rem 1.125rem",
   display: "flex",
   flexDirection: "column",
   gap: t.space3,
-  background: "transparent",
+  background: t.surfaceLowest,
 };
 const problemHeader: CSSProperties = {
   display: "flex",
@@ -3583,12 +3545,4 @@ const plainList: CSSProperties = {
   paddingLeft: "1rem",
   color: t.onSurface,
   fontSize: "0.84rem",
-};
-const monoChip: CSSProperties = {
-  fontFamily: t.fontMono,
-  fontSize: "0.78rem",
-  color: t.onSurfaceVariant,
-  background: t.surfaceContainer,
-  borderRadius: t.radiusMd,
-  padding: "0.15rem 0.55rem",
 };
