@@ -73,7 +73,8 @@ medical-director override with reason.
 
 Hospice MD signs first (`hospice_md_signed_at`); attending co-signs for period 1
 (`attending_md_signed_at`). Signing before `period_start` avoids `signed_late`; late signing
-sets `signed_late` + requires `late_reason`. Step-up auth required.
+sets `signed_late` + requires `late_reason`. Step-up auth required. The attending co-sign does not
+block admission activation; it must be on file before the period-1 claim is billed (M6 §11 D3).
 
 ---
 
