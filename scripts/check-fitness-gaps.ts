@@ -184,11 +184,14 @@ const hasAppSource = existsSync(join(ROOT, "apps")) || existsSync(join(ROOT, "pa
     notes.push("phi-guards: inert (no schema/migration source yet) — armed");
   } else {
     // Heuristic: a table whose definition references organization_id is PHI/org-scoped and
-    // must have both an RLS policy and an audit trigger somewhere in the schema corpus.
+    // must have both an RLS policy and an audit trigger somewhere in the schema corpus. The match
+    // stops at the statement's `;`: an unbounded window let a platform table (e.g. hope_spec_item)
+    // borrow the organization_id of the NEXT table in the same migration, and swallowed that next
+    // table's own CREATE so it was never checked at all.
     const corpus = schemaFiles.map((f) => readFileSync(join(ROOT, f), "utf8")).join("\n");
     const orgScoped = new Set<string>();
     for (const m of corpus.matchAll(
-      /create table\s+(?:if not exists\s+)?["']?(\w+)["']?[\s\S]{0,4000}?organization_id/gi,
+      /create table\s+(?:if not exists\s+)?["']?(\w+)["']?[^;]{0,4000}?organization_id/gi,
     ))
       orgScoped.add(m[1]!);
     for (const t of orgScoped) {
