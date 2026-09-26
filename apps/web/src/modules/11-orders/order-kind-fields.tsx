@@ -330,7 +330,7 @@ const control = {
   padding: ".55rem .65rem",
   border: "1px solid var(--color-outline-variant)",
   borderRadius: ".45rem",
-  background: "var(--color-surface, #fff)",
+  background: "var(--color-surface)",
   color: "var(--color-on-surface)",
 } as const;
 const checkField = {
@@ -347,7 +347,7 @@ const help = {
   fontWeight: 400,
 } as const;
 const errorText = {
-  color: "var(--color-error, #b42318)",
+  color: "var(--color-error)",
   fontWeight: 500,
 } as const;
 const fallbackBox = {

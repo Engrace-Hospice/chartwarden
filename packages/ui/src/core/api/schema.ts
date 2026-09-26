@@ -2107,6 +2107,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Attach an uploaded, externally acknowledged notice-of-rights document (M22 document version) */
         post: operations["postApiV1AdmissionsByIdNorUploadedevidence"];
         delete?: never;
         options?: never;
@@ -6879,6 +6880,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Attach an uploaded CTI document (unsigned or signed) to the election period */
         post: operations["postApiV1ElectionperiodsByIdCtiUploadedevidence"];
         delete?: never;
         options?: never;
@@ -6895,6 +6897,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Attach an uploaded election-statement document (unsigned or signed) to the election period */
         post: operations["postApiV1ElectionperiodsByIdElectionstatementUploadedevidence"];
         delete?: never;
         options?: never;
@@ -6945,6 +6948,7 @@ export interface paths {
         };
         get?: never;
         put?: never;
+        /** Attach uploaded signature evidence to an election statement (server records documentState 'signed') */
         post: operations["postApiV1ElectionstatementsByIdSignUploadedevidence"];
         delete?: never;
         options?: never;
@@ -8382,6 +8386,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
+        /** Set the HUV completion date (Z0350) through the workflow-controlled capture path */
         patch: operations["patchApiV1HopeAssessmentsByIdHuvCompletiondate"];
         trace?: never;
     };
@@ -12341,7 +12346,8 @@ export interface paths {
         /** Patient coverage / payers — ranked coverages; payer name resolved via M40 (§3.4) */
         get: operations["getApiV1PatientsByIdPayers"];
         put?: never;
-        post?: never;
+        /** Add a patient coverage at a rank (§3.4); an active coverage at the same rank is closed, not mutated */
+        post: operations["postApiV1PatientsByIdPayers"];
         delete?: never;
         options?: never;
         head?: never;
@@ -24760,10 +24766,23 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    documentId: string;
+                    /** Format: uuid */
+                    documentVersionId: string;
+                    /** Format: date-time */
+                    acknowledgedAt?: string;
+                    acknowledgedByName?: string;
+                    acknowledgedByRole?: "patient" | "legal_representative" | "caregiver";
+                };
+            };
+        };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -38024,10 +38043,22 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    documentId: string;
+                    /** Format: uuid */
+                    documentVersionId: string;
+                    documentState: "unsigned" | "signed";
+                    /** Format: date-time */
+                    signedAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -38046,10 +38077,24 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    documentId: string;
+                    /** Format: uuid */
+                    documentVersionId: string;
+                    documentState: "unsigned" | "signed";
+                    signerName?: string;
+                    signerRole?: "patient" | "legal_representative" | "caregiver";
+                    /** Format: date-time */
+                    signedAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -38127,10 +38172,24 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    documentId: string;
+                    /** Format: uuid */
+                    documentVersionId: string;
+                    documentState: "unsigned" | "signed";
+                    signerName?: string;
+                    signerRole?: "patient" | "legal_representative" | "caregiver";
+                    /** Format: date-time */
+                    signedAt?: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
-            200: {
+            201: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -41586,14 +41645,41 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": {
+                    ifVersion: number;
+                    z0350: string;
+                };
+            };
+        };
         responses: {
             /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        assessmentId: string;
+                        version: number;
+                        answers: {
+                            itemCode: string;
+                            active: boolean;
+                            state: "unanswered" | "answered" | "skipped";
+                            value: (string | number | boolean) | null;
+                            source: ("user" | "patient_prefill" | "admission_prefill" | "derived" | "imported" | "correction_copy") | null;
+                            answeredAt: string | null;
+                            answeredByMembershipId: string | null;
+                            applicability: "applicable" | "not_applicable" | "pending";
+                            skipReason: {
+                                ruleId: string;
+                                cmsRuleId?: string;
+                                dependsOn: string[];
+                            } | null;
+                        }[];
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -52408,6 +52494,53 @@ export interface operations {
                             effectiveFrom: string;
                             effectiveTo: string | null;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdPayers: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    payerId: string;
+                    rank: number;
+                    coverageKind: string;
+                    subscriberId: string;
+                    groupNumber?: string | null;
+                    binPcn?: string | null;
+                    effectiveFrom: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        payerId: string;
+                        rank: number;
+                        coverageKind: string;
+                        subscriberId: string;
+                        groupNumber: string | null;
+                        binPcn: string | null;
+                        current: boolean;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
                     };
                 };
             };

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ApiClientProvider } from "@wardenx/ui";
 import type { ApiClient } from "@wardenx/ui";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
@@ -169,7 +169,9 @@ describe("M22 document workflows", () => {
     fireEvent.click(await screen.findByRole("button", { name: /upload document/i }));
     const file = new File(["%PDF-1.7"], "polst.pdf", { type: "application/pdf" });
     fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } });
-    fireEvent.click(screen.getByRole("button", { name: /^upload$/i }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: /^upload (document|new version)$/i }),
+    );
 
     await waitFor(() =>
       expect(client.POST).toHaveBeenCalledWith(
@@ -214,11 +216,13 @@ describe("M22 document workflows", () => {
 
     renderPatient(client);
 
-    fireEvent.click(await screen.findByRole("button", { name: /history/i }));
+    fireEvent.click(await screen.findByRole("button", { name: /more actions for/i }));
     fireEvent.click(screen.getByRole("button", { name: /upload new version/i }));
     const file = new File(["%PDF-1.7 version 2"], "polst-v2.pdf", { type: "application/pdf" });
     fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } });
-    fireEvent.click(screen.getByRole("button", { name: /^upload$/i }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: /^upload (document|new version)$/i }),
+    );
 
     await waitFor(() =>
       expect(client.POST).toHaveBeenCalledWith(
@@ -275,7 +279,9 @@ describe("M22 document workflows", () => {
     fireEvent.change(screen.getByLabelText("Fax reference"), { target: { value: "FX-9" } });
     const file = new File(["%PDF-1.7"], "referral.pdf", { type: "application/pdf" });
     fireEvent.change(document.querySelector('input[type="file"]') as HTMLInputElement, { target: { files: [file] } });
-    fireEvent.click(screen.getByRole("button", { name: /^upload$/i }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: /^upload (document|new version)$/i }),
+    );
 
     await waitFor(() =>
       expect(client.POST).toHaveBeenCalledWith(

@@ -294,7 +294,7 @@ const popoverStyle: CSSProperties = {
   border: `1px solid ${t.outlineVariant}`,
   borderRadius: t.radiusMd,
   background: t.surface,
-  boxShadow: "0 1rem 2.5rem rgba(15, 23, 42, 0.18)",
+  boxShadow: "var(--shadow-float)",
 };
 
 const optionStyle: CSSProperties = {

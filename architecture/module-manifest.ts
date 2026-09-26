@@ -76,8 +76,6 @@ export const LEAF_PACKAGES = [
   "packages/types",
   "packages/domain",
   "packages/ui",
-  "apps/web/src/shared",
-  "apps/web/src/modules/22-documents",
 ] as const;
 
 /**

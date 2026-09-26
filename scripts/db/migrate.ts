@@ -201,9 +201,10 @@ export async function bootstrapAppRole(db: Client, opts: BootstrapAppRoleOptions
   await db.query(`GRANT CONNECT ON DATABASE ${db.database} TO ${APP_ROLE}`);
 
   // BYPASSRLS makes all RLS policies decorative for the connecting role, so it is opt-in and
-  // refused outside development. Several pre-org / cross-org reads (`/auth/memberships` —
-  // membership-repository.ts; M26 cap) genuinely need a connection RLS cannot scope; the production
-  // answer is a SECOND pooled credential for those reads, not a blanket bypass on the app role.
+  // refused outside development. Some cross-org reads (M26 cap) genuinely need a connection RLS
+  // cannot scope; the production answer is a SECOND pooled credential for those reads, not a blanket
+  // bypass on the app role. (The pre-org `/auth/memberships` picker no longer needs one: it reads
+  // through the m2_list_own_memberships SECURITY DEFINER function, migration 0231.)
   // Until that pool exists, a local single-org demo opts in explicitly with WARDENX_DEV_BYPASSRLS=1.
   if (opts.bypassRlsRequested && !opts.isProduction) {
     console.log(
@@ -217,7 +218,7 @@ export async function bootstrapAppRole(db: Client, opts: BootstrapAppRoleOptions
       console.log("✗ WARDENX_DEV_BYPASSRLS ignored: NODE_ENV=production. BYPASSRLS revoked.");
     } else {
       console.log(
-        `RLS enforced for ${APP_ROLE} (set WARDENX_DEV_BYPASSRLS=1 for the local single-org demo;\n  without it, pre-org reads such as /auth/memberships return no rows and org-select is empty).`,
+        `RLS enforced for ${APP_ROLE} (set WARDENX_DEV_BYPASSRLS=1 only for local demos that need the\n  cross-org reads RLS cannot scope, e.g. M26 cap).`,
       );
     }
   }

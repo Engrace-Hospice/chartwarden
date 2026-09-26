@@ -108,7 +108,6 @@ const MEM = schema.memberships;
 const MEM_ROLE = schema.membershipRoles;
 const ROLE = schema.roles;
 const ORG = schema.organizations;
-const ADM = schema.admissions;
 
 /** Every discipline any visit purpose accepts (GAP-030) — the full `SchedulingDiscipline` vocab,
  *  derived from the policy map rather than duplicated as a literal list. */
@@ -1659,17 +1658,11 @@ export function createDbSchedulingBackend(
       },
     ) {
       const now = input.now ?? new Date();
-      const [admission] = await withOrgContext(db, { organizationId: orgId, userId }, async (tx) =>
-        tx
-          .select({
-            providerEntityId: ADM.providerEntityId,
-            locationId: ADM.locationId,
-            admissionAt: ADM.admissionAt,
-            activatedAt: ADM.activatedAt,
-          })
-          .from(ADM)
-          .where(and(eq(ADM.organizationId, orgId), eq(ADM.id, input.admissionId)))
-          .limit(1),
+      // M6 owns `admission` — read its siting through M6's published AdmissionStatusReader seam (org-explicit,
+      // self-scoped under RLS), never M6's schema (scripts/check-table-ownership.ts).
+      const admission = await getSeam("AdmissionStatusReader").getAdmissionSiting(
+        orgId,
+        input.admissionId,
       );
       if (!admission?.providerEntityId || !admission.locationId) {
         throw new ValidationError("admission is not sited for care-plan visit proposals", []);
@@ -1704,7 +1697,11 @@ export function createDbSchedulingBackend(
                 proposedDiscipline: discipline,
                 proposedDurationMinutes: 60,
                 anchorDate: localDateInTimeZone(
-                  admission.activatedAt ?? admission.admissionAt ?? now,
+                  admission.activatedAt
+                    ? new Date(admission.activatedAt)
+                    : admission.admissionAt
+                      ? new Date(admission.admissionAt)
+                      : now,
                   "UTC",
                 ),
                 windowStart: localDateInTimeZone(now, "UTC"),

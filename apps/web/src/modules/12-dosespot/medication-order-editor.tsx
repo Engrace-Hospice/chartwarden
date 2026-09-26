@@ -947,14 +947,14 @@ const editorStyles = `
 .med-editor button:disabled { cursor: not-allowed; opacity: .55; }
 .med-editor button.med-editor-secondary { color: var(--color-on-surface); border-color: var(--color-outline-variant); background: var(--color-surface); }
 .med-editor-help { margin: .35rem 0 .8rem; color: var(--color-on-surface-variant); font-size: .85rem; line-height: 1.45; }
-.med-editor-finding { display: block; margin: .25rem 0 .6rem; color: var(--color-error, #b42318); font-size: .85rem; }
-.med-editor-error { padding: .8rem 1rem; border: 1px solid var(--color-error, #b42318); border-radius: .5rem; color: var(--color-error, #b42318); }
+.med-editor-finding { display: block; margin: .25rem 0 .6rem; color: var(--color-error); font-size: .85rem; }
+.med-editor-error { padding: .8rem 1rem; border: 1px solid var(--color-error); border-radius: .5rem; color: var(--color-error); }
 .med-editor-message { padding: .8rem 1rem; }
 .med-editor-results { display: grid; gap: .35rem; max-height: 17rem; overflow: auto; padding: .6rem; border: 1px solid var(--color-outline-variant); border-radius: .5rem; }
 .med-editor-results button { text-align: left; color: var(--color-on-surface); background: var(--color-surface); border-color: var(--color-outline-variant); }
 .med-editor-results small { opacity: .7; }
 .med-editor-component { margin: 1rem 0 !important; }
-.med-editor-footer { position: sticky; bottom: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .9rem 1rem; border: 1px solid var(--color-outline-variant); border-radius: .75rem; background: var(--color-surface); box-shadow: 0 -4px 18px rgba(0,0,0,.06); }
+.med-editor-footer { position: sticky; bottom: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .75rem; padding: .9rem 1rem; border: 1px solid var(--color-outline-variant); border-radius: .75rem; background: var(--color-surface); box-shadow: 0 -4px 18px color-mix(in srgb, var(--color-on-surface) 6%, transparent); }
 .med-editor-footer-actions { display: flex; flex-wrap: wrap; gap: .65rem; }
 @media (max-width: 40rem) { .med-editor-pair, .med-editor-pair--value-unit { grid-template-columns: minmax(0, 1fr); } .med-editor fieldset, .med-editor-kind { padding: 1rem; } .med-editor-footer-actions { width: 100%; } .med-editor-footer-actions button { flex: 1; } }
 `;

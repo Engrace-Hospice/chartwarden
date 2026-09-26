@@ -726,11 +726,15 @@ function WorkflowGuide({
       </button>
     );
   } else if (!openVersion && activeVersion) {
-    heading = "Care Plan is active";
-    description = review?.nextReviewDueAt
-      ? `No action is required now. Next review: ${formatDate(review.nextReviewDueAt)}.`
-      : "No action is required now. Open a revision when the patient's condition or plan changes.";
-    state = "success";
+    // An active plan can still carry readiness blockers (e.g. no active terminal problem); never
+    // report "no action required" over them.
+    heading = blockers.length ? "Care Plan needs attention" : "Care Plan is active";
+    description = blockers.length
+      ? (blockers[0] as string)
+      : review?.nextReviewDueAt
+        ? `No action is required now. Next review: ${formatDate(review.nextReviewDueAt)}.`
+        : "No action is required now. Open a revision when the patient's condition or plan changes.";
+    state = blockers.length ? "attention" : "success";
     action = canAuthor ? (
       <button type="button" style={ghostBtn} onClick={onStartRevision}>
         Document condition change
@@ -746,6 +750,11 @@ function WorkflowGuide({
       </button>
     );
   }
+
+  // The details list repeats every blocker; it is only redundant when the description already is the
+  // single blocker.
+  const listedBlockers =
+    blockers.length > 1 || (blockers.length === 1 && description !== blockers[0]);
 
   return (
     <section
@@ -782,14 +791,14 @@ function WorkflowGuide({
         {action}
       </div>
 
-      {blockers.length > 1 ||
+      {listedBlockers ||
       proposed?.changes.length ||
       (reviewDue && openVersion) ? (
         <div style={workflowDetails}>
-          {blockers.length > 1 ? (
-            <details>
+          {listedBlockers ? (
+            <details open={description !== blockers[0]}>
               <summary style={detailsSummary}>
-                {blockers.length} items need attention
+                {blockers.length} item{blockers.length === 1 ? "" : "s"} need{blockers.length === 1 ? "s" : ""} attention
               </summary>
               <ul style={compactList}>
                 {blockers.map((blocker) => (
@@ -1303,6 +1312,8 @@ function RevisionPanel({
               Ready to continue
             </div>
           )}
+
+          <SignaturePanel readiness={readiness} version={version} />
         </section>
       ) : null}
 

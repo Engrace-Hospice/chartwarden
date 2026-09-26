@@ -1840,7 +1840,12 @@ function QuestionRenderer(props: {
     return (
       <div id={`hope-item-${item.itemCode}`} tabIndex={-1} className="wx-hope-skipped">
         <span>
-          {item.label} {optional ? <span className="wx-optional-mark">Optional</span> : null}
+          {item.label}{" "}
+          {optional ? (
+            <span className="wx-optional-mark" aria-hidden>
+              Optional
+            </span>
+          ) : null}
         </span>
         <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
           <CmsCode code={item.itemCode} />
@@ -1934,7 +1939,11 @@ function QuestionRenderer(props: {
         <label htmlFor={inputId} className="wx-question-title">
           <span className="wx-question-code">{item.itemCode}</span>
           <span>{item.label}</span>
-          {optional ? <span className="wx-optional-mark">Optional</span> : null}
+          {optional ? (
+            <span className="wx-optional-mark" aria-hidden>
+              Optional
+            </span>
+          ) : null}
         </label>
         {isRequired(item) && unanswered && !props.readonly ? <RequiredChip /> : null}
         <CmsCode code={item.itemCode} tone="primary" />
@@ -3619,7 +3628,7 @@ const successBox: CSSProperties = {
   borderRadius: 8,
   padding: "0.85rem",
   color: t.success,
-  background: "#eefaf2",
+  background: "color-mix(in srgb, var(--color-success) 10%, var(--color-surface-lowest))",
   marginBottom: "1rem",
 };
 const completedBox: CSSProperties = {
@@ -3629,7 +3638,7 @@ const completedBox: CSSProperties = {
   padding: "0.75rem 1.25rem",
   borderBottom: `1px solid ${t.outlineVariant}`,
   color: t.success,
-  background: "#eefaf2",
+  background: "color-mix(in srgb, var(--color-success) 10%, var(--color-surface-lowest))",
 };
 const conflictBanner: CSSProperties = {
   display: "flex",
@@ -3639,7 +3648,7 @@ const conflictBanner: CSSProperties = {
   padding: "0.75rem 1.25rem",
   borderBottom: `1px solid ${t.warning}`,
   color: t.onSurface,
-  background: "#fff8e5",
+  background: "color-mix(in srgb, var(--color-warning) 10%, var(--color-surface-lowest))",
 };
 const bottomNav: CSSProperties = {
   display: "flex",
@@ -3685,7 +3694,7 @@ const dangerButton: CSSProperties = {
   borderRadius: 8,
   padding: "0.6rem 0.85rem",
   background: t.error,
-  color: "#fff",
+  color: "var(--color-on-primary)",
   fontWeight: 700,
   cursor: "pointer",
 };
@@ -3704,7 +3713,7 @@ const textareaField: CSSProperties = {
 const modalBackdrop: CSSProperties = {
   position: "fixed",
   inset: 0,
-  background: "rgba(15, 23, 42, 0.45)",
+  background: "var(--color-scrim)",
   display: "grid",
   placeItems: "center",
   zIndex: 20,
@@ -3715,7 +3724,7 @@ const modal: CSSProperties = {
   borderRadius: 8,
   background: t.surface,
   padding: "1.25rem",
-  boxShadow: "0 20px 60px rgba(15, 23, 42, 0.28)",
+  boxShadow: "var(--shadow-float)",
 };
 const modalTitle: CSSProperties = {
   margin: "0 0 0.5rem",
@@ -3764,7 +3773,7 @@ const sfvModalBackdrop: CSSProperties = {
   justifyContent: "center",
 
   padding: "24px",
-  background: "rgba(15, 23, 42, 0.48)",
+  background: "var(--color-scrim)",
   backdropFilter: "blur(2px)",
 };
 
@@ -3783,7 +3792,7 @@ const sfvModal: CSSProperties = {
   borderRadius: 16,
   background: t.surface,
   color: t.onSurface,
-  boxShadow: "0 24px 64px rgba(0, 0, 0, 0.28)",
+  boxShadow: "var(--shadow-float)",
   overflow: "hidden",
 };
 

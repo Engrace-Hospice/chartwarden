@@ -350,6 +350,29 @@ export interface AdmissionStatusReader {
     organizationId: string,
     admissionId: AdmissionId,
   ): Promise<AdmissionSummary>;
+  /**
+   * The admission's raw siting + anchor instants (M17 care-plan visit proposals site each proposal on
+   * the admission's provider entity/location and anchor the frequency calendar on activation/admission).
+   * Unlike {@link getAdmissionSummary} it never throws on a draft-time gap — every field is reported as
+   * stored (nullable) so the consumer decides — and it returns null when the admission is unknown / not
+   * visible under RLS.
+   */
+  getAdmissionSiting(
+    organizationId: string,
+    admissionId: AdmissionId,
+  ): Promise<AdmissionSiting | null>;
+}
+
+/** §4.7 AdmissionStatusReader.getAdmissionSiting — the admission's siting as stored (nullable at draft). */
+export interface AdmissionSiting {
+  readonly admissionId: AdmissionId;
+  readonly organizationId: OrgId;
+  readonly providerEntityId: ProviderEntityId | null;
+  readonly locationId: string | null;
+  /** `admission.admission_at` as an ISO instant, or null (unset at draft). */
+  readonly admissionAt: IsoInstant | null;
+  /** `admission.activated_at` as an ISO instant, or null (not yet activated). */
+  readonly activatedAt: IsoInstant | null;
 }
 
 /** §4.7 — M26 (cost reporting) reads LOC days by period; current-LOC lookups for clinical screens. */

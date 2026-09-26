@@ -76,6 +76,9 @@ export function createAdmissionStatusReader(store: AdmissionReaderStore): Admiss
       if (summary === null) throw new AdmissionNotFoundError(admissionId);
       return summary;
     },
+    async getAdmissionSiting(organizationId, admissionId) {
+      return store.admissionSiting(organizationId, admissionId);
+    },
   };
 }
 

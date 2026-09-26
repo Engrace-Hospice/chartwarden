@@ -63,6 +63,9 @@ export function createDocumentReader(store: DocumentReaderStore): DocumentReader
     async documentMetadata({ documentId, organizationId }) {
       return store.documentMetadata({ documentId, organizationId });
     },
+    async activeVersionLink({ documentId, documentVersionId, organizationId }) {
+      return store.activeVersionLink({ documentId, documentVersionId, organizationId });
+    },
   };
 }
 

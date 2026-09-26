@@ -414,6 +414,26 @@ export interface DocumentReader {
     readonly documentId: DocumentId;
     readonly organizationId: OrgId;
   }): Promise<DocumentDigest | null>;
+
+  /**
+   * The patient/admission link of a document whose ACTIVE version is exactly `documentVersionId` — used by
+   * M6 to validate an uploaded admission-evidence document (NOR / election statement / CTI) before it
+   * records the evidence. Null when the document is not visible, the version does not belong to it, or the
+   * version is no longer the document's active version (superseded).
+   */
+  activeVersionLink(args: {
+    readonly documentId: DocumentId;
+    readonly documentVersionId: DocumentVersionId;
+    readonly organizationId: OrgId;
+  }): Promise<ActiveDocumentVersionLink | null>;
+}
+
+/** §4.3 DocumentReader.activeVersionLink — who/what an active document version is linked to. */
+export interface ActiveDocumentVersionLink {
+  readonly documentId: DocumentId;
+  readonly documentVersionId: DocumentVersionId;
+  readonly patientId: PatientId | null;
+  readonly admissionId: AdmissionId | null;
 }
 
 /** §4.3 — used by M31 portal; strips internal-only tags + filters SUD content per consent. */

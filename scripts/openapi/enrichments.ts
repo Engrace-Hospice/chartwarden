@@ -152,6 +152,9 @@ import {
   RevocationCreateSchema,
   TransferInSchema,
   TransferOutSchema,
+  UploadedCtiEvidenceSchema,
+  UploadedElectionEvidenceSchema,
+  UploadedNoticeOfRightsSchema,
 } from "../../apps/backend/src/modules/06-admission/routes/admission-typebox";
 import { OrderListQuerySchema } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
 import {
@@ -782,6 +785,8 @@ import {
 // avoids a redeclaration collision when this block is merged in via a later Object.assign.
 import {
   AddAddressResponseSchema as M5EAddAddressResponseSchema,
+  AddPatientPayerBodySchema as M5EAddPatientPayerBodySchema,
+  AddPatientPayerResponseSchema as M5EAddPatientPayerResponseSchema,
   AddressBodySchema as M5EAddressBodySchema,
   AdmitBodySchema as M5EAdmitBodySchema,
   AdmitResultResponseSchema as M5EAdmitResultResponseSchema,
@@ -1455,6 +1460,7 @@ import {
   RegenerateSchedulesSchema as M10RegenerateSchedulesSchema,
   RetrySubmissionSchema as M10RetrySubmissionSchema,
   ScheduleListQuerySchema as M10ScheduleListQuerySchema,
+  SetHuvCompletionDateSchema as M10SetHuvCompletionDateSchema,
   SfvWorklistQuerySchema as M10SfvWorklistQuerySchema,
   SignTimepointSchema as M10SignTimepointSchema,
   SkipScheduleSchema as M10SkipScheduleSchema,
@@ -5700,6 +5706,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Void an election statement",
     body: ElectionVoidSchema,
   },
+  "POST /api/v1/election-periods/:id/election-statement/uploaded-evidence": {
+    summary:
+      "Attach an uploaded election-statement document (unsigned or signed) to the election period",
+    body: UploadedElectionEvidenceSchema,
+    status: 201,
+  },
+  "POST /api/v1/election-statements/:id/sign/uploaded-evidence": {
+    summary:
+      "Attach uploaded signature evidence to an election statement (server records documentState 'signed')",
+    body: UploadedElectionEvidenceSchema,
+    status: 201,
+  },
   "GET /api/v1/admissions/:id/election-periods": {
     summary: "The admission's benefit-period ladder",
     response: M6SummaryItemsResponseSchema,
@@ -5721,6 +5739,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/election-periods/:id/cti": {
     summary: "Draft the certification of terminal illness for the period",
     body: CtiDraftSchema,
+  },
+  "POST /api/v1/election-periods/:id/cti/uploaded-evidence": {
+    summary: "Attach an uploaded CTI document (unsigned or signed) to the election period",
+    body: UploadedCtiEvidenceSchema,
+    status: 201,
   },
   "GET /api/v1/cti/:id": {
     summary: "One CTI's summary + state",
@@ -5803,6 +5826,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/admissions/:id/nor": {
     summary: "Acknowledge the notice of rights",
     body: NorAcknowledgeSchema,
+  },
+  "POST /api/v1/admissions/:id/nor/uploaded-evidence": {
+    summary:
+      "Attach an uploaded, externally acknowledged notice-of-rights document (M22 document version)",
+    body: UploadedNoticeOfRightsSchema,
+    status: 201,
   },
   "GET /api/v1/admissions/:id/nor": {
     summary: "The admission's notice-of-rights acknowledgment",
@@ -6228,6 +6257,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "PATCH /api/v1/hope/assessments/:id/answers": {
     summary: "Patch canonical HOPE item answers on a draft assessment",
     body: M10PatchAnswersSchema,
+    response: M10HopeAnswerPatchResponseSchema,
+  },
+  "PATCH /api/v1/hope/assessments/:id/huv/completion-date": {
+    summary: "Set the HUV completion date (Z0350) through the workflow-controlled capture path",
+    body: M10SetHuvCompletionDateSchema,
     response: M10HopeAnswerPatchResponseSchema,
   },
   "GET /api/v1/patients/:patientId/hope/assessments": {
@@ -7592,6 +7626,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Append a patient address (§7.4 cascade; isPrimary rotates the current primary)",
     body: M5EAddressBodySchema,
     response: M5EAddAddressResponseSchema,
+  },
+  "POST /api/v1/patients/:id/payers": {
+    summary:
+      "Add a patient coverage at a rank (§3.4); an active coverage at the same rank is closed, not mutated",
+    body: M5EAddPatientPayerBodySchema,
+    response: M5EAddPatientPayerResponseSchema,
+    status: 201,
   },
   "POST /api/v1/patients/:id/amendments": {
     summary: "Open a record-amendment request (§7.7, 60-day SLA)",

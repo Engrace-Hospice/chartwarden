@@ -7,6 +7,7 @@ import type {
   PatientHopeAdmissionPrefillReader,
 } from "@wardenx/types";
 import { and, eq, inArray } from "drizzle-orm";
+import { buildFoundationSiteReader } from "../../bootstrap/foundation-site-reader";
 import { getSeam } from "../../bootstrap/index";
 import { createHopeApplicabilityEngine } from "./spec/applicability-registry";
 import type { HopeIsc } from "./hope-spec-registry";
@@ -265,7 +266,8 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
   const ISC = schema.hopeSpecItemIsc;
   const OPTION = schema.hopeSpecItemOptions;
   const ANSWER = schema.hopeAssessmentAnswers;
-  const PROVIDER = schema.providerEntities;
+  // M1 owns `provider_entity` — its NPI/CCN come through M1's foundation reader, on this same tx.
+  const foundationSites = buildFoundationSiteReader();
 
   async function specItems(
     tx: DbClient,
@@ -464,21 +466,11 @@ export function createHopeAdmissionPrefillService(): HopeAdmissionPrefillService
         })
       ).filter((coverage) => isHopeCoverageInForceOn(coverage, admissionDate));
       const provider = assessment.providerEntityId
-        ? ((
-            await tx
-              .select({
-                npi: PROVIDER.npi,
-                ccn: PROVIDER.ccn,
-              })
-              .from(PROVIDER)
-              .where(
-                and(
-                  eq(PROVIDER.id, assessment.providerEntityId),
-                  eq(PROVIDER.organizationId, organizationId),
-                ),
-              )
-              .limit(1)
-          )[0] ?? null)
+        ? await foundationSites.providerEntityIdentifiers(
+            tx,
+            organizationId,
+            assessment.providerEntityId,
+          )
         : null;
       const answers = buildHopeAdmissionPrefillAnswers({
         patient,

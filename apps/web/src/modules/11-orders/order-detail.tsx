@@ -205,8 +205,8 @@ export function OrderDetail(): JSX.Element {
                           style={{
                             color:
                               item.status === "satisfied"
-                                ? "var(--color-success, #15803d)"
-                                : "var(--color-warning, #b45309)",
+                                ? "var(--color-success)"
+                                : "var(--color-warning)",
                             fontWeight: 700,
                             lineHeight: 1.5,
                           }}
@@ -656,7 +656,7 @@ const card = {
   padding: "1.25rem",
   border: "1px solid var(--color-outline-variant)",
   borderRadius: ".75rem",
-  background: "var(--color-surface, #fff)",
+  background: "var(--color-surface)",
   minWidth: 0,
 } as const;
 const summaryGrid = {
@@ -738,7 +738,7 @@ const control = {
   borderRadius: ".4rem",
   border: "1px solid var(--color-outline-variant)",
   padding: ".5rem",
-  background: "var(--color-surface, #fff)",
+  background: "var(--color-surface)",
   color: "var(--color-on-surface)",
 } as const;
 const textarea = {
@@ -754,7 +754,7 @@ const confirmBox = {
   borderRadius: ".5rem",
 } as const;
 const errorStyle = {
-  color: "var(--color-error, #b42318)",
+  color: "var(--color-error)",
   padding: ".75rem",
   border: "1px solid currentColor",
   borderRadius: ".5rem",

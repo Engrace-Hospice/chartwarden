@@ -12,7 +12,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { PatientAddressReader } from "@wardenx/types";
-import { and, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 
 export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
   const ADDRESS = schema.patientAddresses;
@@ -54,4 +54,53 @@ export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
       });
     },
   };
+}
+
+/** The current residence address row M6 snapshots onto an admission's service address. */
+export interface CurrentResidenceAddress {
+  readonly id: string;
+  readonly line1: string;
+  readonly line2: string | null;
+  readonly city: string;
+  readonly state: string | null;
+  readonly postalCode: string;
+  readonly country: string;
+}
+
+/**
+ * The patient's CURRENT residence (`effective_to IS NULL`, `kind = 'home'` or `is_primary`), primary first
+ * then most-recently effective — the address M6 snapshots onto an admission as its service address.
+ *
+ * Unlike {@link buildPatientAddressReader}'s seam methods (which open their own `withOrgContext`), this
+ * runs on the CALLER's org-context tx: M6 (which lists M5 in `dependsOn`) reads it inside the same
+ * admission-update transaction that writes the snapshot, so RLS scope and snapshot are the caller's.
+ */
+export async function readCurrentResidenceAddress(
+  tx: DbClient,
+  organizationId: string,
+  patientId: string,
+): Promise<CurrentResidenceAddress | null> {
+  const ADDRESS = schema.patientAddresses;
+  const [addr] = await tx
+    .select({
+      id: ADDRESS.id,
+      line1: ADDRESS.line1,
+      line2: ADDRESS.line2,
+      city: ADDRESS.city,
+      state: ADDRESS.state,
+      postalCode: ADDRESS.postalCode,
+      country: ADDRESS.country,
+    })
+    .from(ADDRESS)
+    .where(
+      and(
+        eq(ADDRESS.organizationId, organizationId),
+        eq(ADDRESS.patientId, patientId),
+        isNull(ADDRESS.effectiveTo),
+        or(eq(ADDRESS.kind, "home"), eq(ADDRESS.isPrimary, true)),
+      ),
+    )
+    .orderBy(desc(ADDRESS.isPrimary), desc(ADDRESS.effectiveFrom))
+    .limit(1);
+  return addr ?? null;
 }

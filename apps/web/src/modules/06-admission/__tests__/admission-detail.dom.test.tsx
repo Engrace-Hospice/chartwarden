@@ -18,6 +18,7 @@ const session: Session = {
 const admissionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const providerEntityId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const locationId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const hospicePhysicianId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
 function ok(data: unknown) {
   return { data, error: undefined, response: new Response(null, { status: 200 }) };
@@ -111,6 +112,8 @@ function clientFor(readinessResponse = readiness()): ApiClient {
           activatedAt: null,
           providerEntityId,
           locationId,
+          hospicePhysicianId,
+          hospicePhysician: { displayName: "Dr. Amara Okafor" },
           activationGate: { ready: false, missing: ["election_signed", "nor_acknowledged"] },
         });
       }
@@ -169,6 +172,23 @@ function clientFor(readinessResponse = readiness()): ApiClient {
           firstName: "Elena",
           dob: "1946-04-12",
           status: "active",
+        });
+      if (path === "/api/v1/patients/{id}/addresses")
+        return ok({
+          addresses: [
+            {
+              id: "address-1",
+              kind: "home",
+              isPrimary: true,
+              current: true,
+              line1: "12 Harbor Rd",
+              line2: null,
+              city: "Portland",
+              state: "OR",
+              postalCode: "97201",
+              country: "US",
+            },
+          ],
         });
       if (path === "/api/v1/admissions/{id}/compliance-windows")
         return ok({ items: [], nextCursor: null });
@@ -265,12 +285,12 @@ describe("Admission intake workspace", () => {
       screen.getAllByRole("button", { name: "Complete admission details" }).length,
     ).toBeGreaterThan(0);
     expect(
-      screen.getAllByRole("button", { name: "Create Election Statement" }).length,
+      screen.getAllByRole("button", { name: "Complete Election Statement" }).length,
     ).toBeGreaterThan(0);
     expect(screen.getAllByRole("button", { name: "Create CTI" }).length).toBeGreaterThan(0);
   });
 
-  it("saves admission details with the persisted provider and location ids", async () => {
+  it("saves admission details with the persisted provider and hospice physician", async () => {
     const client = clientFor(
       readiness({
         requirements: [
@@ -297,7 +317,8 @@ describe("Admission intake workspace", () => {
     expect(detailsButton).toBeTruthy();
     fireEvent.click(detailsButton!);
     expect(screen.getByText("Hospice provider")).toBeTruthy();
-    expect(screen.getByText("Service location")).toBeTruthy();
+    expect(screen.getByText("Service location / residence")).toBeTruthy();
+    expect(screen.getAllByText("12 Harbor Rd").length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "Save admission details" }));
 
@@ -310,7 +331,7 @@ describe("Admission intake workspace", () => {
             ifVersion: 4,
             admissionAt: "2026-08-28T12:00:00.000Z",
             providerEntityId,
-            locationId,
+            hospicePhysicianId,
           },
         }),
       ),

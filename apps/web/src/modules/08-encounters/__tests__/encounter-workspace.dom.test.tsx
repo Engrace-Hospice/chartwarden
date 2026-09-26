@@ -200,7 +200,7 @@ describe("Encounter workspace web workflow", () => {
     renderPatientEncounters({ GET: get, POST: post });
 
     await screen.findByText("Encounters / Visits");
-    fireEvent.click(screen.getByRole("button", { name: /new prn encounter/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^new encounter$/i }));
     fireEvent.focus(screen.getByLabelText(/active admission/i));
     await waitFor(() => expect(screen.getByText(/Admission admissio/i)).toBeTruthy());
     await waitFor(() =>
@@ -254,7 +254,7 @@ describe("Encounter workspace web workflow", () => {
     renderPatientEncounters({ GET: get, POST: post });
 
     await screen.findByText("Encounters / Visits");
-    fireEvent.click(screen.getByRole("button", { name: /new prn encounter/i }));
+    fireEvent.click(screen.getByRole("button", { name: /^new encounter$/i }));
     fireEvent.focus(screen.getByLabelText(/active admission/i));
 
     expect(

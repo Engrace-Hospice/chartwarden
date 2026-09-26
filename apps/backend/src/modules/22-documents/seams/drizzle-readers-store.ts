@@ -169,6 +169,37 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
       });
     },
 
+    async activeVersionLink(args) {
+      return withOrgContextFromRequest(db, async (tx: SeamTx) => {
+        const rows = await tx
+          .select({
+            documentId: DOC.id,
+            patientId: DOC.patientId,
+            admissionId: DOC.admissionId,
+            activeVersionId: DOC.activeVersionId,
+          })
+          .from(DOC)
+          .innerJoin(DV, eq(DV.documentId, DOC.id))
+          .where(
+            and(
+              eq(DOC.organizationId, args.organizationId),
+              eq(DOC.id, args.documentId),
+              eq(DV.id, args.documentVersionId),
+            ),
+          )
+          .limit(1);
+        const row = rows[0];
+        // Only the ACTIVE version links — a superseded version of the document resolves to nothing.
+        if (!row || row.activeVersionId !== args.documentVersionId) return null;
+        return {
+          documentId: row.documentId,
+          documentVersionId: args.documentVersionId,
+          patientId: row.patientId,
+          admissionId: row.admissionId,
+        };
+      });
+    },
+
     async activeVersionForDocument(args) {
       return withOrgContextFromRequest(db, async (tx: SeamTx) => {
         const rows = await tx
