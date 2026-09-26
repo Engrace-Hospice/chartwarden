@@ -23,7 +23,7 @@
  * CI:    exits 1 on any violation (arch:fitness stage).
  */
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { MODULES, type ModuleDef } from "../architecture/module-manifest";
 
@@ -55,6 +55,24 @@ const KEY_RING_CONTEXT_VARS = new Set<string>([
   "app.dek_kek_id",
   "app.destroyed_by_membership_id",
 ]);
+// Applied migrations whose non-canonical RLS policies a LATER migration has dropped. Migrations are
+// immutable once applied (scripts/db/migrate.ts checksums them), so a policy that violated D2 can only
+// be retired forward. An entry exempts its file from the session-variable rule ONLY IF the named
+// superseding migration exists and drops every listed policy — verified below, so a stale entry
+// fails instead of silently hiding a live policy. Reviewed change, like NON_ORG_SCOPED.
+const SUPERSEDED_RLS_MIGRATIONS: Record<string, { supersededBy: string; policies: string[] }> = {
+  // M2 pre-org membership picker: user-keyed policies replaced by the m2_list_own_memberships
+  // SECURITY DEFINER function.
+  "packages/db/migrations/0213_pre_org_membership_picker_rls.sql": {
+    supersededBy: "packages/db/migrations/0231_m2_membership_picker_definer.sql",
+    policies: ["membership_self_pre_org_read", "organization_member_pre_org_read"],
+  },
+  "packages/db/migrations/0214_pre_org_membership_picker_empty_user.sql": {
+    supersededBy: "packages/db/migrations/0231_m2_membership_picker_definer.sql",
+    policies: ["membership_self_pre_org_read", "organization_member_pre_org_read"],
+  },
+};
+
 // Tables that are NOT tenant-scoped by org_id (user-owned cross-org, or pure platform reference).
 // A spec opts a table out by adding it here with a justification (reviewed change).
 const NON_ORG_SCOPED = new Set<string>([
@@ -300,6 +318,22 @@ for (const base of allPaths) {
     const src = readFileSync(join(REPO_ROOT, file), "utf8");
 
     // Rule 2 — canonical session variable
+    const superseded = SUPERSEDED_RLS_MIGRATIONS[file];
+    const supersededOk =
+      superseded !== undefined &&
+      existsSync(join(REPO_ROOT, superseded.supersededBy)) &&
+      superseded.policies.every((policy) =>
+        new RegExp(`DROP\\s+POLICY\\s+(IF\\s+EXISTS\\s+)?"?${policy}"?`, "i").test(
+          readFileSync(join(REPO_ROOT, superseded.supersededBy), "utf8"),
+        ),
+      );
+    if (superseded && !supersededOk) {
+      violations.push({
+        file,
+        rule: "rls-session-variable",
+        detail: `listed as superseded by ${superseded.supersededBy}, but that migration is missing or does not drop ${superseded.policies.join(", ")}`,
+      });
+    }
     const isAuditCapture = /audit_phi_write|INSERT\s+INTO\s+audit_event/i.test(src);
     const isKeyRingDefiner = /m34_provision_tenant_key_ring|m34_destroy_tenant_key_ring/.test(src);
     let m: RegExpExecArray | null;
@@ -309,6 +343,7 @@ for (const base of allPaths) {
       if (m[1] !== CANONICAL_VAR) {
         if (AUDIT_CONTEXT_VARS.has(m[1]!) && isAuditCapture) continue;
         if (KEY_RING_CONTEXT_VARS.has(m[1]!) && isKeyRingDefiner) continue;
+        if (supersededOk) continue;
         violations.push({
           file,
           rule: "rls-session-variable",

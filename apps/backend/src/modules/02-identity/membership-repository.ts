@@ -140,22 +140,55 @@ export function createDbMembershipRepository(
 
     listForUser: async (userId) => {
       // Pre-org-bind (/auth/memberships): the user's memberships ACROSS orgs — there is no single org
-      // to scope to. `withUserContext` sets no org GUC: the M1 pre-org RLS policies explicitly
-      // permit only rows whose user_id matches app.user_id, which is enough for the picker and no more.
-      const rows = await withUserContext(
-        db,
-        { userId },
-        async (tx) =>
-          (await tx
-            .select(MEMBERSHIP_COLUMNS)
-            .from(schema.memberships)
-            .innerJoin(
-              schema.organizations,
-              eq(schema.organizations.id, schema.memberships.organizationId),
-            )
-            .innerJoin(schema.users, eq(schema.users.id, schema.memberships.userId))
-            .where(eq(schema.memberships.userId, userId))) as MembershipDbRow[],
-      );
+      // to scope to, and RLS keys only on app.org_id (ADR-0010 D2). The membership + org rows come
+      // from the `m2_list_own_memberships` SECURITY DEFINER function (migration 0231), which returns
+      // exactly this user's memberships and their org display names. `user`/`session` are un-RLS'd
+      // (see above), so the wrapped identity is read directly. `withUserContext` only stamps audit
+      // attribution here; it grants no visibility.
+      const rows = await withUserContext(db, { userId }, async (tx) => {
+        const result = await tx.execute(
+          sql`SELECT membership_id, user_id, organization_id, organization_name, status, default_location_ids
+              FROM m2_list_own_memberships(${userId}::uuid)`,
+        );
+        const own =
+          (
+            result as unknown as {
+              rows?: {
+                membership_id: string;
+                user_id: string;
+                organization_id: string;
+                organization_name: string;
+                status: MembershipStatus;
+                default_location_ids: unknown;
+              }[];
+            }
+          ).rows ?? [];
+        if (own.length === 0) return [];
+        const [identity] = await tx
+          .select({
+            displayName: schema.users.name,
+            email: schema.users.email,
+            accountStatus: schema.users.status,
+            lastLoginAt: sql<
+              Date | string | null
+            >`(select max(${schema.sessions.createdAt}) from ${schema.sessions} where ${schema.sessions.userId} = ${schema.users.id})`,
+          })
+          .from(schema.users)
+          .where(eq(schema.users.id, userId))
+          .limit(1);
+        if (!identity) return [];
+        return own.map(
+          (m): MembershipDbRow => ({
+            membershipId: m.membership_id,
+            userId: m.user_id,
+            organizationId: m.organization_id,
+            organizationName: m.organization_name,
+            status: m.status,
+            defaultLocationIds: m.default_location_ids,
+            ...identity,
+          }),
+        );
+      });
       // Admin status is per-org; resolve each org's admin set once.
       const orgIds = [...new Set(rows.map((r) => r.organizationId))];
       const adminByOrg = new Map<string, ReadonlySet<string>>();
