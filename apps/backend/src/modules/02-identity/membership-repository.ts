@@ -169,9 +169,11 @@ export function createDbMembershipRepository(
             displayName: schema.users.name,
             email: schema.users.email,
             accountStatus: schema.users.status,
+            // Explicitly qualified: in this single-table select Drizzle renders bare column names, and
+            // an unqualified "id" inside the subquery would bind to session.id, not the user.
             lastLoginAt: sql<
               Date | string | null
-            >`(select max(${schema.sessions.createdAt}) from ${schema.sessions} where ${schema.sessions.userId} = ${schema.users.id})`,
+            >`(select max(s."created_at") from "session" s where s."user_id" = "user"."id")`,
           })
           .from(schema.users)
           .where(eq(schema.users.id, userId))
