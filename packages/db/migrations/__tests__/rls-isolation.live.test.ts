@@ -1289,17 +1289,28 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
     });
 
     it("§3.4 the correction-supersede trigger flips the prior Org-A row to superseded (under RLS)", async () => {
-      // Insert a correction that reuses the target's patient/admission/target_date (composite self-FK) under
-      // Org A's RLS context; the AFTER-INSERT trigger flips the target row to 'superseded' in the same TX.
+      // Migration 0225 moved the supersede from AFTER INSERT to the draft→signed UPDATE: opening a
+      // correction DRAFT must not be destructive — only SIGNING it supersedes the source. So: insert a
+      // correction draft that reuses the target's patient/admission/target_date (composite self-FK) under
+      // Org A's RLS context, prove the target is still 'signed', then sign the draft and prove the
+      // AFTER-UPDATE trigger flipped the target to 'superseded' in the same TX.
+      const CORR_A10 = "ea000000-0000-0000-0000-0000000000a7";
       await withOrg(ORG_A, () =>
         db.query(
           `INSERT INTO hope_assessment
              (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,data,target_date,created_by_membership_id,status,corrects_assessment_id)
-           SELECT gen_random_uuid(),organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,
-                  '{"note":"corrected"}'::jsonb,target_date,$2,'signed',id
+           SELECT $3,organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,
+                  '{"note":"corrected"}'::jsonb,target_date,$2,'draft',id
              FROM hope_assessment WHERE id=$1`,
-          [ASMT_A10, MEM_A10],
+          [ASMT_A10, MEM_A10, CORR_A10],
         ),
+      );
+      const beforeSign = await withOrg(ORG_A, () =>
+        db.query("SELECT status FROM hope_assessment WHERE id=$1", [ASMT_A10]),
+      );
+      expect(beforeSign.rows[0].status).toBe("signed");
+      await withOrg(ORG_A, () =>
+        db.query("UPDATE hope_assessment SET status='signed' WHERE id=$1", [CORR_A10]),
       );
       const r = await withOrg(ORG_A, () =>
         db.query("SELECT status FROM hope_assessment WHERE id=$1", [ASMT_A10]),
@@ -1312,13 +1323,19 @@ describe.skipIf(!DB_URL)("RLS cross-tenant isolation — LIVE Postgres (§7.2/§
       // under Org A pointing at Org B's row updates ZERO rows — Org B's row is never reached. (The composite
       // self-FK does not deny the insert: Postgres RI checks bypass RLS, so the cross-tenant FK resolves; the
       // org-match guard is the real defense-in-depth, plus the service-layer org-match, §9.4 bullet 4.)
+      // Inserted as a draft and then signed so the 0225 AFTER-UPDATE supersede trigger actually fires —
+      // inserting it already 'signed' never reaches the trigger and the assertion would pass vacuously.
+      const CORR_X10 = "ea000000-0000-0000-0000-0000000000a8";
       await withOrg(ORG_A, () =>
         db.query(
           `INSERT INTO hope_assessment
              (id,organization_id,provider_entity_id,location_id,patient_id,admission_id,rfa_kind,data,target_date,created_by_membership_id,status,corrects_assessment_id)
-           VALUES (gen_random_uuid(),$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'01_admission','{}'::jsonb,${TGT},$4,'signed',$5)`,
-          [ORG_A, PE_A10, LOC_A10, MEM_A10, ASMT_B10],
+           VALUES ($6,$1,$2,$3,gen_random_uuid(),gen_random_uuid(),'01_admission','{}'::jsonb,${TGT},$4,'draft',$5)`,
+          [ORG_A, PE_A10, LOC_A10, MEM_A10, ASMT_B10, CORR_X10],
         ),
+      );
+      await withOrg(ORG_A, () =>
+        db.query("UPDATE hope_assessment SET status='signed' WHERE id=$1", [CORR_X10]),
       );
       // Org B's row is untouched — still signed, never flipped to superseded by Org A's cross-tenant attempt.
       const r = await db.query("SELECT status FROM hope_assessment WHERE id=$1", [ASMT_B10]);
