@@ -3,17 +3,12 @@ import {
   ConfirmDialog,
   EmptyState,
   Glyph,
-  IconButton,
-  KpiCard,
-  KpiStrip,
   LoadingSpinner,
   Modal,
   OffsetPagination,
-  PageHeader,
   RightDetailPanel,
   StatusPill,
   type StatusTone,
-  WorkQueueLayout,
   useApiClient,
   useToast,
 } from "@wardenx/ui";
@@ -22,6 +17,7 @@ import {
 // Preserves all existing business logic, auth checks, server-authoritative API calls, and permission rules.
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { FormEvent, JSX } from "react";
+import { Link } from "react-router-dom";
 import { authClient } from "./auth-client";
 import { MemberRoleEditor } from "./member-role-editor";
 
@@ -90,6 +86,10 @@ export function StaffManagement(): JSX.Element {
   // Selection & Side Drawer
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
 
+  // Each member's granted role names (M3). Best-effort: without role.read the column falls back to
+  // Org Admin / Member.
+  const [memberRoles, setMemberRoles] = useState<Map<string, readonly string[]>>(new Map());
+
   // Destructive Confirmation Dialogs
   const [confirmRescind, setConfirmRescind] = useState<Invitation | null>(null);
   const [rescindBusy, setRescindBusy] = useState(false);
@@ -130,6 +130,45 @@ export function StaffManagement(): JSX.Element {
       }
     });
   }, [load]);
+
+  useEffect(() => {
+    if (!members || members.length === 0) return;
+    let active = true;
+    void (async () => {
+      const catalog = await client.GET("/api/v1/roles").catch(() => ({ data: undefined, error: true }));
+      if (!active || catalog.error) return;
+      const names = new Map(
+        ((catalog.data as { roles?: { roleId: string; name: string }[] })?.roles ?? []).map(
+          (r) => [r.roleId, r.name] as const,
+        ),
+      );
+      const rows = await Promise.all(
+        members.slice(0, 100).map((m) =>
+          client
+            .GET("/api/v1/memberships/{id}/roles", { params: { path: { id: m.membershipId } } })
+            .then((r) =>
+              r.error
+                ? null
+                : ([
+                    m.membershipId,
+                    [
+                      ...new Set(
+                        ((r.data?.roles ?? []) as { roleId: string; roleKey: string }[]).map(
+                          (g) => names.get(g.roleId) ?? g.roleKey,
+                        ),
+                      ),
+                    ],
+                  ] as const),
+            )
+            .catch(() => null),
+        ),
+      );
+      if (active) setMemberRoles(new Map(rows.filter((r) => r !== null)));
+    })();
+    return () => {
+      active = false;
+    };
+  }, [client, members]);
 
   async function invite(e: FormEvent): Promise<void> {
     e.preventDefault();
@@ -289,257 +328,205 @@ export function StaffManagement(): JSX.Element {
 
   return (
     <>
-      <WorkQueueLayout
-        header={
-          <PageHeader
-            title="Staff Management"
-            breadcrumb="Admin / Organization"
-            actions={
-              <Button
-                tone="primary"
-                onClick={() => setInviteModalOpen(true)}
-                disabled={!orgId}
-              >
-                + Invite staff
-              </Button>
-            }
-          >
-            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-              Manage organization members, security access, roles, and pending invitations.
+      <div className={`wx-staff${selectedMember ? " has-drawer" : ""}`}>
+        <div className="wx-staff-main">
+          <header className="wx-page-head">
+            <div>
+              <h1 style={{ fontSize: "1.875rem" }}>Administration</h1>
+              <p>Users, roles, organization settings, integrations and audit.</p>
             </div>
-          </PageHeader>
-        }
-        kpis={
-          <KpiStrip>
-            <KpiCard
-              label="Active Staff"
-              value={activeCount ?? "—"}
-              detail="Active accounts"
-              tone="success"
-              accentColor="var(--color-success)"
-            />
-            <KpiCard
-              label="Admins"
-              value={adminCount ?? "—"}
-              detail="Full org access"
-              tone="info"
-              accentColor="var(--color-primary)"
-            />
-            <KpiCard
-              label="Pending Invites"
-              value={loadFailed ? "—" : pendingInvites}
-              detail="Awaiting acceptance"
-              tone={pendingInvites > 0 ? "warning" : "neutral"}
-              accentColor={
-                pendingInvites > 0 ? "var(--color-warning)" : "var(--color-outline-variant)"
-              }
-              onSelect={() => setActiveTab("invitations")}
-              selected={activeTab === "invitations"}
-            />
-            <KpiCard
-              label="Suspended"
-              value={suspendedCount ?? "—"}
-              detail="Access paused"
-              tone={(suspendedCount ?? 0) > 0 ? "warning" : "neutral"}
-              accentColor={
-                (suspendedCount ?? 0) > 0
-                  ? "var(--color-warning)"
-                  : "var(--color-outline-variant)"
-              }
-            />
-            <KpiCard
-              label="Locked Accounts"
-              value={lockedCount ?? "—"}
-              detail="Security locked"
-              tone={(lockedCount ?? 0) > 0 ? "danger" : "neutral"}
-              accentColor={
-                (lockedCount ?? 0) > 0 ? "var(--color-error)" : "var(--color-outline-variant)"
-              }
-            />
-          </KpiStrip>
-        }
-        filters={
-          <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem", padding: "0 1.5rem 0.75rem" }}>
+            <button
+              type="button"
+              className="wx-btn-primary"
+              onClick={() => setInviteModalOpen(true)}
+              disabled={!orgId}
+            >
+              <Glyph name="plus" size={16} /> Add User
+            </button>
+          </header>
+
+          <nav className="wx-subtabs" aria-label="Administration">
+            <Link to="/admin/staff" aria-current="page" className="is-current">
+              Users
+            </Link>
+            <Link to="/roles">Roles</Link>
+            <Link to="/admin/account">Organization</Link>
+            <Link to="/medicaid/billing/trading-partner-credentials">Integrations</Link>
+            <Link to="/audit">Audit Log</Link>
+          </nav>
+
             {/* Error Banner */}
-            {error ? (
-              <div
-                role="alert"
+          {error ? (
+            <div
+              role="alert"
+              style={{
+                padding: "0.625rem 1rem",
+                borderRadius: "var(--radius-md)",
+                background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
+                color: "var(--color-error)",
+                fontSize: "0.85rem",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Glyph name="alert" size={16} />
+                <span>{error}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setError(null)}
                 style={{
-                  padding: "0.625rem 1rem",
-                  borderRadius: "var(--radius-md)",
-                  background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
-                  border: "1px solid color-mix(in srgb, var(--color-error) 30%, transparent)",
-                  color: "var(--color-error)",
-                  fontSize: "0.85rem",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
+                  border: "none",
+                  background: "none",
+                  color: "inherit",
+                  cursor: "pointer",
+                  fontWeight: 600,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                  <Glyph name="alert" size={16} />
-                  <span>{error}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setError(null)}
-                  style={{
-                    border: "none",
-                    background: "none",
-                    color: "inherit",
-                    cursor: "pointer",
-                    fontWeight: 600,
-                  }}
-                >
-                  ✕
-                </button>
-              </div>
-            ) : null}
+                ✕
+              </button>
+            </div>
+          ) : null}
 
-            {/* Generated Invite URL Banner */}
-            {inviteLink ? (
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: "0.75rem",
-                  padding: "0.625rem 1rem",
-                  borderRadius: "var(--radius-md)",
-                  background: "var(--color-primary-tint)",
-                  border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
-                }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1, minWidth: 0 }}>
-                  <Glyph name="sparkle" size={16} />
-                  <span style={{ fontSize: "0.85rem", color: "var(--color-on-surface)" }}>
-                    Invitation link:
-                  </span>
-                  <code className="wx-data-md" style={inviteLinkStyle}>
-                    {inviteLink}
-                  </code>
-                </div>
-                <Button
-                  size="sm"
-                  tone="secondary"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(inviteLink);
-                    toast.show("Invite link copied to clipboard", { tone: "success" });
-                  }}
-                >
-                  Copy Link
-                </Button>
-              </div>
-            ) : null}
-
-            {/* Navigation Tabs & Search Toolbar */}
+          {/* Generated Invite URL Banner */}
+          {inviteLink ? (
             <div
               style={{
                 display: "flex",
-                flexWrap: "wrap",
                 alignItems: "center",
                 justifyContent: "space-between",
-                gap: "1rem",
+                gap: "0.75rem",
+                padding: "0.625rem 1rem",
+                borderRadius: "var(--radius-md)",
+                background: "var(--color-primary-tint)",
+                border: "1px solid color-mix(in srgb, var(--color-primary) 25%, transparent)",
               }}
             >
-              {/* Tab Navigation */}
-              <div style={{ display: "flex", gap: "0.25rem", background: "var(--color-surface-container)", padding: "0.2rem", borderRadius: "var(--radius-md)" }}>
-                <button
-                  type="button"
-                    onClick={() => setActiveTab("roster")}
-                  style={tabButtonStyle(activeTab === "roster")}
-                >
-                  Roster ({members?.length ?? 0})
-                </button>
-                <button
-                  type="button"
-                    onClick={() => setActiveTab("invitations")}
-                  style={tabButtonStyle(activeTab === "invitations")}
-                >
-                  Pending Invites ({pendingInvitationsList.length})
-                </button>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flex: 1, minWidth: 0 }}>
+                <Glyph name="sparkle" size={16} />
+                <span style={{ fontSize: "0.85rem", color: "var(--color-on-surface)" }}>
+                  Invitation link:
+                </span>
+                <code className="wx-data-md" style={inviteLinkStyle}>
+                  {inviteLink}
+                </code>
               </div>
+              <Button
+                size="sm"
+                tone="secondary"
+                onClick={() => {
+                  void navigator.clipboard.writeText(inviteLink);
+                  toast.show("Invite link copied to clipboard", { tone: "success" });
+                }}
+              >
+                Copy Link
+              </Button>
+            </div>
+          ) : null}
 
-              {/* Quick Search & Filters */}
-              {activeTab === "roster" ? (
-                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-                  <div style={{ position: "relative", minWidth: "15rem" }}>
-                    <input
-                      type="search"
-                      placeholder="Search staff by name or email..."
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setMemberPage(1);
-                      }}
-                      aria-label="Search staff"
-                      style={{
-                        width: "100%",
-                        paddingLeft: "2rem",
-                        height: "2.25rem",
-                        fontSize: "0.85rem",
-                      }}
-                    />
-                    <div style={{ position: "absolute", left: "0.625rem", top: "50%", transform: "translateY(-50%)", color: "var(--color-on-surface-variant)", pointerEvents: "none" }}>
-                      <Glyph name="eye" size={14} />
-                    </div>
-                  </div>
+          <div className="wx-staff-toolbar">
+            <fieldset className="wx-seg">
+              <legend className="wx-sr-only">Roster view</legend>
+              <button
+                type="button"
+                aria-pressed={activeTab === "roster"}
+                className={activeTab === "roster" ? "is-selected" : undefined}
+                onClick={() => setActiveTab("roster")}
+              >
+                Users
+                <span className="wx-seg-count wx-nums">{members?.length ?? 0}</span>
+              </button>
+              <button
+                type="button"
+                aria-pressed={activeTab === "invitations"}
+                className={activeTab === "invitations" ? "is-selected" : undefined}
+                onClick={() => setActiveTab("invitations")}
+              >
+                Pending Invites
+                <span className="wx-seg-count wx-nums">{pendingInvitationsList.length}</span>
+              </button>
+            </fieldset>
+            <span className="wx-row-sub wx-nums">
+              {activeCount ?? "—"} active · {adminCount ?? "—"} admins
+              {(suspendedCount ?? 0) > 0 ? ` · ${suspendedCount} suspended` : ""}
+              {(lockedCount ?? 0) > 0 ? ` · ${lockedCount} locked` : ""}
+            </span>
+          </div>
 
-                  <select
-                    value={roleFilter}
-                    onChange={(e) => {
-                      setRoleFilter(e.target.value as typeof roleFilter);
-                      setMemberPage(1);
-                    }}
-                    aria-label="Filter by role"
-                    style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
-                  >
-                    <option value="all">Role: All</option>
-                    <option value="admin">Org Admin</option>
-                    <option value="member">Member</option>
-                  </select>
-
-                  <select
-                    value={statusFilter}
-                    onChange={(e) => {
-                      setStatusFilter(e.target.value as typeof statusFilter);
-                      setMemberPage(1);
-                    }}
-                    aria-label="Filter by status"
-                    style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
-                  >
-                    <option value="all">Status: All</option>
-                    <option value="active">Active</option>
-                    <option value="suspended">Suspended</option>
-                    <option value="pending">Pending</option>
-                  </select>
-
-                  {hasActiveFilters ? (
-                    <Button
-                      size="sm"
-                      tone="tertiary"
-                      onClick={() => {
-                        setSearchQuery("");
-                        setRoleFilter("all");
-                        setStatusFilter("all");
-                        setMemberPage(1);
-                      }}
-                    >
-                      Clear
-                    </Button>
-                  ) : null}
-                </div>
+          {activeTab === "roster" ? (
+            <div className="wx-filter-panel">
+              <label className="wx-search-field">
+                <Glyph name="search" size={16} />
+                <input
+                  type="search"
+                  placeholder="Search by name or email…"
+                  value={searchQuery}
+                  onChange={(e) => {
+                    setSearchQuery(e.target.value);
+                    setMemberPage(1);
+                  }}
+                  aria-label="Search staff"
+                />
+              </label>
+              <label className="wx-filter-field">
+                <span>Access</span>
+                <select
+                  className="wx-select"
+                  value={roleFilter}
+                  onChange={(e) => {
+                    setRoleFilter(e.target.value as typeof roleFilter);
+                    setMemberPage(1);
+                  }}
+                  aria-label="Filter by role"
+                >
+                  <option value="all">All users</option>
+                  <option value="admin">Org Admin</option>
+                  <option value="member">Member</option>
+                </select>
+              </label>
+              <label className="wx-filter-field">
+                <span>Status</span>
+                <select
+                  className="wx-select"
+                  value={statusFilter}
+                  onChange={(e) => {
+                    setStatusFilter(e.target.value as typeof statusFilter);
+                    setMemberPage(1);
+                  }}
+                  aria-label="Filter by status"
+                >
+                  <option value="all">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="suspended">Suspended</option>
+                  <option value="pending">Pending</option>
+                </select>
+              </label>
+              {hasActiveFilters ? (
+                <button
+                  type="button"
+                  className="wx-btn-secondary"
+                  onClick={() => {
+                    setSearchQuery("");
+                    setRoleFilter("all");
+                    setStatusFilter("all");
+                    setMemberPage(1);
+                  }}
+                >
+                  Reset
+                </button>
               ) : null}
             </div>
-          </div>
-        }
-        table={
-          members === null ? (
-            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+          ) : null}
+
+          {members === null ? (
+            <div className="wx-list-state">
               <LoadingSpinner />
             </div>
           ) : activeTab === "invitations" ? (
-            <>
+            <div className="wx-list-table-wrap">
               <PendingInvitationsTable
                 invitations={pagedInvitations}
                 onResend={resendInvite}
@@ -557,9 +544,9 @@ export function StaffManagement(): JSX.Element {
                 pageSizeOptions={STAFF_PAGE_SIZES}
                 noun="invitations"
               />
-            </>
+            </div>
           ) : filteredMembers.length === 0 ? (
-            <div style={{ padding: "2rem 1.5rem" }}>
+            <div className="wx-list-state">
               <EmptyState
                 title={hasActiveFilters ? "No matching staff found" : "No staff members yet"}
                 description={
@@ -567,112 +554,57 @@ export function StaffManagement(): JSX.Element {
                     ? "Try adjusting your search criteria or clearing active filters."
                     : "Invite team members to your organization to get started."
                 }
-                action={
-                  hasActiveFilters ? (
-                    <Button
-                      tone="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setSearchQuery("");
-                        setRoleFilter("all");
-                        setStatusFilter("all");
-                        setMemberPage(1);
-                      }}
-                    >
-                      Clear filters
-                    </Button>
-                  ) : (
-                    <Button tone="primary" size="sm" onClick={() => setInviteModalOpen(true)}>
-                      + Invite staff member
-                    </Button>
-                  )
-                }
               />
             </div>
           ) : (
-            <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem 1.5rem" }}>
-              <table style={{ display: "table", width: "100%", borderCollapse: "collapse", fontSize: "0.875rem" }}>
+            <div className="wx-list-table-wrap">
+              <table className="wx-list-table wx-list-table-static">
+                <caption className="wx-sr-only">Organization users</caption>
                 <thead>
-                  <tr
-                    style={{
-                      textAlign: "left",
-                      color: "var(--color-on-surface-variant)",
-                      borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-                      background: "var(--color-surface-low)",
-                    }}
-                  >
-                    <th style={{ ...thStyle, width: "35%" }}>Member</th>
-                    <th style={{ ...thStyle, width: "15%" }}>Role</th>
-                    <th style={{ ...thStyle, width: "15%" }}>Last login</th>
-                    <th style={{ ...thStyle, width: "15%" }}>Locations</th>
-                    <th style={{ ...thStyle, width: "10%" }}>Status</th>
-                    <th style={{ ...thStyle, width: "10%", textAlign: "right" }}>Actions</th>
+                  <tr>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Last Login</th>
+                    <th>
+                      <span className="wx-sr-only">Actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
                   {pagedMembers.map((m) => {
-                    const isSelected = selectedMemberId === m.membershipId;
+                    const roles = memberRoles.get(m.membershipId);
                     return (
                       <tr
                         key={m.membershipId}
-                        onClick={() => setSelectedMemberId(m.membershipId)}
-                        style={{
-                          borderBottom:
-                            "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
-                          background: isSelected
-                            ? "var(--color-primary-tint)"
-                            : "transparent",
-                          cursor: "pointer",
-                          transition: "background 0.15s ease",
-                        }}
-                        className="wx-data-row-interactive"
+                        aria-selected={selectedMemberId === m.membershipId}
                       >
-                        <td style={tdStyle}>
-                          <MemberAvatarCell member={m} />
-                        </td>
-                        <td style={tdStyle}>
-                          <span
-                            style={{
-                              display: "inline-block",
-                              padding: "0.2rem 0.5rem",
-                              borderRadius: "var(--radius-sm)",
-                              fontSize: "0.75rem",
-                              fontWeight: 500,
-                              background: m.isAdmin
-                                ? "var(--color-primary-tint)"
-                                : "var(--color-surface-container)",
-                              color: m.isAdmin
-                                ? "var(--color-primary)"
-                                : "var(--color-on-surface-variant)",
-                            }}
+                        <td>
+                          <button
+                            type="button"
+                            className="wx-staff-name"
+                            onClick={() => setSelectedMemberId(m.membershipId)}
                           >
-                            {m.isAdmin ? "Org Admin" : "Member"}
-                          </span>
+                            <MemberAvatarCell member={m} />
+                          </button>
                         </td>
-                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                          {formatDate(m.lastLoginAt)}
+                        <td>
+                          {roles && roles.length > 0
+                            ? roles.join(", ")
+                            : m.isAdmin
+                              ? "Org Admin"
+                              : roles
+                                ? "No role assigned"
+                                : "Member"}
+                          {m.isAdmin && roles && roles.length > 0 ? (
+                            <div className="wx-row-sub">Org Admin</div>
+                          ) : null}
                         </td>
-                        <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                          <span
-                            style={{
-                              padding: "0.15rem 0.4rem",
-                              borderRadius: "9999px",
-                              fontSize: "0.75rem",
-                              background: "var(--color-surface-container)",
-                              color: "var(--color-on-surface-variant)",
-                            }}
-                          >
-                            {m.defaultLocationIds.length}{" "}
-                            {m.defaultLocationIds.length === 1 ? "location" : "locations"}
-                          </span>
-                        </td>
-                        <td style={tdStyle}>
+                        <td>
                           <StatusPill label={cap(m.status)} tone={STATUS_TONE[m.status]} />
                         </td>
-                        <td
-                          style={{ ...tdStyle, textAlign: "right" }}
-                          onClick={(e) => e.stopPropagation()}
-                        >
+                        <td className="wx-nums">{formatLogin(m.lastLoginAt)}</td>
+                        <td style={{ textAlign: "right" }}>
                           <StaffActionDropdown
                             member={m}
                             onViewDetails={() => setSelectedMemberId(m.membershipId)}
@@ -698,26 +630,23 @@ export function StaffManagement(): JSX.Element {
                 noun="staff members"
               />
             </div>
-          )
-        }
-        detail={
-          selectedMember ? (
-            <RightDetailPanel
-              open={selectedMember !== null}
-              title="Staff Profile"
-              onClose={() => setSelectedMemberId(null)}
-              hideScrollbar
-            >
-              <StaffDrawerContent
-                member={selectedMember}
-                onStatusChange={(status) => setStatus(selectedMember, status)}
-                onRemove={() => setConfirmRevoke(selectedMember)}
-              />
-            </RightDetailPanel>
-          ) : null
-        }
-        fullPageScroll
-      />
+          )}
+        </div>
+        {selectedMember ? (
+          <RightDetailPanel
+            open={selectedMember !== null}
+            title="Staff Profile"
+            onClose={() => setSelectedMemberId(null)}
+            hideScrollbar
+          >
+            <StaffDrawerContent
+              member={selectedMember}
+              onStatusChange={(status) => setStatus(selectedMember, status)}
+              onRemove={() => setConfirmRevoke(selectedMember)}
+            />
+          </RightDetailPanel>
+        ) : null}
+      </div>
 
       {/* Invite Staff Modal */}
       <Modal
@@ -846,16 +775,15 @@ function StaffActionDropdown({
 
   return (
     <div ref={containerRef} style={{ position: "relative", display: "inline-block" }}>
-      <IconButton
+      <button
+        type="button"
+        className="wx-icon-link"
         aria-label="Actions menu"
+        aria-expanded={open}
         onClick={() => setOpen((prev) => !prev)}
-        style={{
-          borderRadius: "var(--radius-md)",
-          padding: "0.25rem",
-        }}
       >
-        <span style={{ fontWeight: "bold", fontSize: "1.1rem", lineHeight: 1 }}>•••</span>
-      </IconButton>
+        <Glyph name="more-horizontal" size={18} />
+      </button>
 
       {open ? (
         <div
@@ -1230,6 +1158,13 @@ function formatDate(iso: string | null): string {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function formatLogin(iso: string | null): string {
+  if (!iso) return "Never";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  return `${d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} ${d.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
+}
+
 function getInitials(name: string): string {
   const parts = name.trim().split(/[\s,._@-]+/).filter(Boolean);
   if (parts.length === 0) return "U";
@@ -1263,19 +1198,6 @@ const inviteLinkStyle = {
   whiteSpace: "nowrap" as const,
   maxWidth: "20rem",
 };
-
-const tabButtonStyle = (active: boolean) => ({
-  border: "none",
-  background: active ? "var(--color-surface-lowest)" : "transparent",
-  color: active ? "var(--color-primary)" : "var(--color-on-surface-variant)",
-  boxShadow: active ? "var(--shadow-soft)" : "none",
-  fontWeight: active ? 600 : 500,
-  fontSize: "0.85rem",
-  padding: "0.35rem 0.75rem",
-  borderRadius: "var(--radius-md)",
-  cursor: "pointer",
-  transition: "all 0.15s ease",
-});
 
 const dropdownItemStyle = (isDanger: boolean) => ({
   display: "flex",
