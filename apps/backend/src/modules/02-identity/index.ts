@@ -6,10 +6,7 @@
 // `step_up_recent` predicate consumes, and the supporting ports + slice adapters. M2-T06
 // adds the `/api/v1/*` identity route inventory. M2-T07 (./seams) registers M2's published
 // cross-module seams (SessionContextResolver + AuditorSessionMinter, §4.7) into the M1 registry.
-export {
-  type IdentitySeamDeps,
-  registerIdentitySeams,
-} from "./seams";
+export { type IdentitySeamDeps, registerIdentitySeams } from "./seams";
 // GAP-043 — the §3.7 per-membership NAMED APPROVAL AUTHORITY surface: the `ElevatedApprovalReader` seam
 // M27's §4.7 approver predicate reads, and the grant/revoke service its admin routes drive.
 export {
@@ -108,6 +105,12 @@ export {
   auditUserInvited,
 } from "./audit/identity-audit";
 export { registerIdentityRoutes } from "./routes/identity-routes";
+import { registerSessionStepUpRoutes as _registerSessionStepUpRoutes } from "./routes/session-step-up";
+import {
+  createDbMfaEnrollmentReader as _dbMfaEnrollment,
+  createDbSessionStepUpWriter as _dbStepUpWriter,
+  createDbStepUpSessionResolver as _dbStepUpSessionResolver,
+} from "./step-up-adapters-db";
 export { createDbMembershipRepository } from "./membership-repository";
 
 import type { DbClient } from "@wardenx/db";
@@ -129,6 +132,7 @@ import {
 import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
 import { createDbSessionWriter as _dbSessionWriter } from "./session-writer-db";
+import type { StepUpRouteDeps } from "./step-up-ports";
 
 /**
  * Mount the M2 identity REST routes on a server (composition root, via buildServer's
@@ -154,14 +158,20 @@ import { createDbSessionWriter as _dbSessionWriter } from "./session-writer-db";
  * plus its RLS + audit trigger, which is a schema change, not a wiring change. Left explicit rather
  * than bound to something that would look durable and not be.
  */
+
+export interface IdentityStepUpMount {
+  deps: StepUpRouteDeps;
+}
+
 export function mountIdentityRoutes(
   app: FastifyInstance,
   db: DbClient,
   admin: AdminMembershipReader,
-  // TASK-030 — the M36 transactional-email transport + the web app's origin, threaded from the
-  // composition root so the invite-create/resend routes can deliver (or admin-visibly echo) the
-  // accept link. Both optional: omitted, invites still record — they just stay copy-link-only.
-  invite?: { emailTransport?: IdentityRouteDeps["emailTransport"]; webAppBaseUrl?: string },
+  invite?: {
+    emailTransport?: IdentityRouteDeps["emailTransport"];
+    webAppBaseUrl?: string;
+  },
+  stepUp?: IdentityStepUpMount,
 ): void {
   const deps: IdentityRouteDeps = {
     actors: _ctxActor(),
@@ -174,11 +184,18 @@ export function mountIdentityRoutes(
     // GAP-043 — the §3.7 named-approval-authority write surface over the real table. This is what makes
     // M27's approver predicate reachable: the seam READS `membership_elevated_approval`, these routes are
     // the only thing that ever puts a row in it.
-    elevatedApprovals: _elevatedApprovalService(_drizzleElevatedApprovalStore(db)),
-    ...(invite?.emailTransport ? { emailTransport: invite.emailTransport } : {}),
+    elevatedApprovals: _elevatedApprovalService(
+      _drizzleElevatedApprovalStore(db),
+    ),
+    ...(invite?.emailTransport
+      ? { emailTransport: invite.emailTransport }
+      : {}),
     ...(invite?.webAppBaseUrl ? { webAppBaseUrl: invite.webAppBaseUrl } : {}),
   };
   _registerIdentityRoutes(app, deps);
+  if (stepUp) {
+    _registerSessionStepUpRoutes(app, stepUp.deps);
+  }
 }
 // M2-T10 — the `identity` data eraser (two_factor/passkey + pending invitations) + its ports.
 // TASK-003/ARCH-007: `createDrizzleIdentityEraserStore` is the production store the composition
@@ -192,3 +209,17 @@ export {
   createInMemoryIdentityEraserStore,
   registerIdentityErasers,
 } from "./erasers/identity-eraser";
+
+export {
+  createDbMfaEnrollmentReader,
+  createDbSessionStepUpWriter,
+  createDbStepUpSessionResolver,
+} from "./step-up-adapters-db";
+
+export { createValkeyStepUpChallengeStore } from "./step-up-challenge-valkey";
+
+export {
+  createProductionStepUpVerifier,
+  type StepUpVerifierOptions,
+} from "./step-up-verifier";
+

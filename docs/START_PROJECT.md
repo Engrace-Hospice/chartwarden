@@ -126,6 +126,12 @@ bun run dev:web
 docker compose up -d minio
 ```
 
+
+```bash
+# Générer les migrations
+bunx drizzle-kit generate --config=drizzle.config.ts
+```
+
 The web development server proxies `/api` requests to the API at port 3000, so open
 `http://localhost:5173` rather than the API URL in your browser.
 

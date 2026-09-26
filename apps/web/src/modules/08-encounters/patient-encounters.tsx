@@ -267,52 +267,14 @@ export function PatientEncounters(): JSX.Element {
 
   return (
     <PatientWorkspaceLayout banner={banner}>
-      <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+      <div style={encounterListWorkspace}>
         <ChartModuleRail patientId={patientId ?? ""} current="encounters" />
 
-        <div
-          style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}
-        >
-          <div
-            style={{
-              display: "flex",
+        <div style={encounterListMain}>
+          <div style={encounterListHeader}>
+            <h1 style={encounterListTitle}>Encounters / Visits</h1>
 
-              alignItems: "center",
-
-              justifyContent: "space-between",
-
-              gap: "1rem",
-
-              marginBottom: "1rem",
-            }}
-          >
-            <h1
-              style={{
-                margin: 0,
-
-                fontFamily: t.fontDisplay,
-
-                fontWeight: 500,
-
-                fontSize: "1.375rem",
-
-                color: t.onSurface,
-              }}
-            >
-              Encounters / Visits
-            </h1>
-
-            <div
-              style={{
-                display: "flex",
-
-                alignItems: "center",
-
-                gap: "0.5rem",
-
-                flexWrap: "wrap",
-              }}
-            >
+            <div style={encounterListActions}>
               <select
                 aria-label="Encounter status"
                 value={status}
@@ -320,17 +282,11 @@ export function PatientEncounters(): JSX.Element {
                 style={selectStyle}
               >
                 <option value="">Any status</option>
-
                 <option value="draft">Draft</option>
-
                 <option value="finalized">Finalized</option>
-
                 <option value="signed">Signed</option>
-
                 <option value="cosign_pending">Cosign Pending</option>
-
                 <option value="cosigned">Cosigned</option>
-
                 <option value="voided">Voided</option>
               </select>
 
@@ -348,89 +304,102 @@ export function PatientEncounters(): JSX.Element {
             </div>
           </div>
 
-          {error ? (
-            <EmptyState title="Unavailable" description={error} />
-          ) : loading && items.length === 0 ? (
-            <LoadingSpinner />
-          ) : rows.length === 0 ? (
-            <EmptyState
-              title="No encounters"
-              description="No encounters match the current filter."
-            />
-          ) : (
-            <div style={{ width: "100%", overflowX: "auto" }}>
-              <DataTable
-                ariaLabel="Patient encounters"
-                caption="Encounters recorded for the selected patient"
-                rows={rows}
-                columns={ENCOUNTER_COLUMNS}
-                getRowId={(encounter) => encounter.id}
-                selectedRowId={selectedId}
-                onRowSelect={(encounter) => setSelectedId(encounter.id)}
-              />
-            </div>
-          )}
-        </div>
-
-        <RightDetailPanel
-          title={
-            selected ? stateLabel(selected.encounterType) : "Encounter detail"
-          }
-        >
-          {selected ? (
-            <>
-              <dl style={detailGrid}>
-                <dt style={dt}>Status</dt>
-
-                <dd style={dd}>
-                  <StatusPill
-                    label={stateLabel(selected.status)}
-                    tone={ENCOUNTER_TONE[selected.status] ?? "neutral"}
+          <div style={encounterListGrid}>
+            <div style={encounterTablePane}>
+              {error ? (
+                <EmptyState title="Unavailable" description={error} />
+              ) : loading && items.length === 0 ? (
+                <LoadingSpinner />
+              ) : rows.length === 0 ? (
+                <EmptyState
+                  title="No encounters"
+                  description="No encounters match the current filter."
+                />
+              ) : (
+                <div
+                  style={{
+                    width: "100%",
+                    minWidth: 0,
+                    maxWidth: "100%",
+                    overflow: "hidden",
+                  }}
+                >
+                  <DataTable
+                    ariaLabel="Patient encounters"
+                    caption="Encounters recorded for the selected patient"
+                    rows={rows}
+                    columns={ENCOUNTER_COLUMNS}
+                    getRowId={(encounter) => encounter.id}
+                    selectedRowId={selectedId}
+                    onRowSelect={(encounter) => setSelectedId(encounter.id)}
                   />
-                </dd>
+                </div>
+              )}
+            </div>
 
-                <dt style={dt}>Discipline</dt>
-
-                <dd style={dd}>{stateLabel(selected.discipline)}</dd>
-
-                <dt style={dt}>Service date</dt>
-
-                <dd style={dd} className="tabular-nums">
-                  {selected.serviceDate.slice(0, 10)}
-                </dd>
-
-                <dt style={dt}>Face-to-face</dt>
-
-                <dd style={dd}>{selected.isF2f ? "Yes" : "No"}</dd>
-
-                {selected.signedAt ? (
-                  <>
-                    <dt style={dt}>Signed</dt>
-
-                    <dd style={dd} className="tabular-nums">
-                      {selected.signedAt.slice(0, 16).replace("T", " ")}
-                    </dd>
-                  </>
-                ) : null}
-              </dl>
-
-              <Button
-                type="button"
-                onClick={() =>
-                  navigate(`/patients/${patientId}/encounters/${selected.id}`)
+            <div style={encounterDetailPane}>
+              <RightDetailPanel
+                title={
+                  selected
+                    ? stateLabel(selected.encounterType)
+                    : "Encounter detail"
                 }
-                style={{ marginTop: "1rem", width: "100%" }}
               >
-                Open encounter
-              </Button>
-            </>
-          ) : (
-            <p style={meta}>
-              Select an encounter to see its discipline, service date, and
-              lifecycle status here.
-            </p>
-          )}
-        </RightDetailPanel>
+                {selected ? (
+                  <>
+                    <dl style={detailGrid}>
+                      <dt style={dt}>Status</dt>
+
+                      <dd style={dd}>
+                        <StatusPill
+                          label={stateLabel(selected.status)}
+                          tone={ENCOUNTER_TONE[selected.status] ?? "neutral"}
+                        />
+                      </dd>
+
+                      <dt style={dt}>Discipline</dt>
+                      <dd style={dd}>{stateLabel(selected.discipline)}</dd>
+
+                      <dt style={dt}>Service date</dt>
+                      <dd style={dd} className="tabular-nums">
+                        {selected.serviceDate.slice(0, 10)}
+                      </dd>
+
+                      <dt style={dt}>Face-to-face</dt>
+                      <dd style={dd}>{selected.isF2f ? "Yes" : "No"}</dd>
+
+                      {selected.signedAt ? (
+                        <>
+                          <dt style={dt}>Signed</dt>
+                          <dd style={dd} className="tabular-nums">
+                            {selected.signedAt.slice(0, 16).replace("T", " ")}
+                          </dd>
+                        </>
+                      ) : null}
+                    </dl>
+
+                    <Button
+                      type="button"
+                      onClick={() =>
+                        navigate(
+                          `/patients/${patientId}/encounters/${selected.id}`,
+                        )
+                      }
+                      style={{ marginTop: "1rem", width: "100%" }}
+                    >
+                      Open encounter
+                    </Button>
+                  </>
+                ) : (
+                  <p style={meta}>
+                    Select an encounter to see its discipline, service date, and
+                    lifecycle status here.
+                  </p>
+                )}
+              </RightDetailPanel>
+            </div>
+          </div>
+        </div>
       </div>
 
       <PrnEncounterModal
@@ -717,6 +686,67 @@ function MonoChip({ children }: { children: ReactNode }): JSX.Element {
     </span>
   );
 }
+
+const encounterListWorkspace: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  flex: 1,
+  minWidth: 0,
+  maxWidth: "100%",
+  overflow: "hidden",
+};
+
+const encounterListMain: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  maxWidth: "100%",
+  padding: "1.5rem",
+  overflow: "hidden",
+};
+
+const encounterListHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "1rem",
+  marginBottom: "1rem",
+};
+
+const encounterListTitle: CSSProperties = {
+  margin: 0,
+  fontFamily: t.fontDisplay,
+  fontWeight: 500,
+  fontSize: "1.375rem",
+  color: t.onSurface,
+};
+
+const encounterListActions: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  flexWrap: "wrap",
+};
+
+const encounterListGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(18rem, 20rem)",
+  gap: "1rem",
+  alignItems: "start",
+  width: "100%",
+  minWidth: 0,
+  maxWidth: "100%",
+};
+
+const encounterTablePane: CSSProperties = {
+  minWidth: 0,
+};
+
+const encounterDetailPane: CSSProperties = {
+  minWidth: 0,
+  position: "sticky",
+  top: "1rem",
+  alignSelf: "start",
+};
 
 const f2fBadge: CSSProperties = {
   background: t.primaryTint,

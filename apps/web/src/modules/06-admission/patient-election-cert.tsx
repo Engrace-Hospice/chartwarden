@@ -126,7 +126,9 @@ export function PatientElectionCert(): JSX.Element {
       client.GET("/api/v1/patients/{patientId}/election-certification", {
         params: { path: { patientId } },
       }),
-      client.GET("/api/v1/patients/{id}", { params: { path: { id: patientId } } }),
+      client.GET("/api/v1/patients/{id}", {
+        params: { path: { id: patientId } },
+      }),
     ]);
     if (pRes.data) setPatient(pRes.data as PatientSummary);
     if (eRes.error) {
@@ -167,192 +169,245 @@ export function PatientElectionCert(): JSX.Element {
 
   return (
     <PatientWorkspaceLayout banner={banner}>
-      <div style={{ display: "flex", height: "100%", minHeight: 0 }}>
+      <div style={workspaceBody}>
         <ChartModuleRail patientId={patientId ?? ""} current="election" />
 
-        {/* Center — admission + benefit-period ladder */}
-        <div style={{ flex: 1, overflow: "auto", padding: "1.5rem", minWidth: 0 }}>
-          <h1
-            style={{
-              margin: "0 0 1rem",
-              fontFamily: t.fontDisplay,
-              fontWeight: 500,
-              fontSize: "1.375rem",
-              color: t.onSurface,
-            }}
-          >
-            Election &amp; Certification
-          </h1>
+        <div style={contentWithRail}>
+          {/* Center — admission + benefit-period ladder */}
+          <main style={mainContent}>
+            <h1
+              style={{
+                margin: "0 0 1rem",
+                fontFamily: t.fontDisplay,
+                fontWeight: 500,
+                fontSize: "1.375rem",
+                color: t.onSurface,
+              }}
+            >
+              Election &amp; Certification
+            </h1>
 
-          {error ? (
-            <EmptyState title="Unavailable" description={error} />
-          ) : loading && data === null ? (
-            <LoadingSpinner />
-          ) : !admission ? (
-            <EmptyState
-              title="No admission on file"
-              description="Election and certification records appear here once the patient is admitted."
-            />
-          ) : (
-            <>
-              <section
-                style={{ ...cardSurface, padding: "1.125rem 1.25rem", marginBottom: "1rem" }}
-              >
-                <div style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}>
-                  <h2 style={{ ...cardHeading, margin: 0 }}>Admission</h2>
-                  <StatusPill
-                    label={stateLabel(admission.state)}
-                    tone={ADMISSION_TONE[admission.state] ?? "neutral"}
-                  />
-                </div>
-                <dl style={detailGrid}>
-                  <dt style={dtStyle}>Admitted</dt>
-                  <dd style={ddStyle}>{fmtDate(admission.admissionAt)}</dd>
-                  <dt style={dtStyle}>Activated</dt>
-                  <dd style={ddStyle}>{fmtDate(admission.activatedAt)}</dd>
-                  {admission.dischargedAt ? (
-                    <>
-                      <dt style={dtStyle}>Discharged</dt>
-                      <dd style={ddStyle}>{fmtDate(admission.dischargedAt)}</dd>
-                    </>
-                  ) : null}
-                </dl>
-              </section>
+            {error ? (
+              <EmptyState title="Unavailable" description={error} />
+            ) : loading && data === null ? (
+              <LoadingSpinner />
+            ) : !admission ? (
+              <EmptyState
+                title="No admission on file"
+                description="Election and certification records appear here once the patient is admitted."
+              />
+            ) : (
+              <>
+                <section
+                  style={{
+                    ...cardSurface,
+                    padding: "1.125rem 1.25rem",
+                    marginBottom: "1rem",
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "0.6rem",
+                    }}
+                  >
+                    <h2 style={{ ...cardHeading, margin: 0 }}>Admission</h2>
+                    <StatusPill
+                      label={stateLabel(admission.state)}
+                      tone={ADMISSION_TONE[admission.state] ?? "neutral"}
+                    />
+                  </div>
+                  <dl style={detailGrid}>
+                    <dt style={dtStyle}>Admitted</dt>
+                    <dd style={ddStyle}>{fmtDate(admission.admissionAt)}</dd>
+                    <dt style={dtStyle}>Activated</dt>
+                    <dd style={ddStyle}>{fmtDate(admission.activatedAt)}</dd>
+                    {admission.dischargedAt ? (
+                      <>
+                        <dt style={dtStyle}>Discharged</dt>
+                        <dd style={ddStyle}>
+                          {fmtDate(admission.dischargedAt)}
+                        </dd>
+                      </>
+                    ) : null}
+                  </dl>
+                </section>
 
-              <h2 style={{ ...cardHeading, margin: "0 0 0.5rem" }}>Benefit periods</h2>
-              {data && data.periods.length === 0 ? (
-                <p style={meta}>No benefit periods opened yet for this admission.</p>
+                <h2 style={{ ...cardHeading, margin: "0 0 0.5rem" }}>
+                  Benefit periods
+                </h2>
+                {data && data.periods.length === 0 ? (
+                  <p style={meta}>
+                    No benefit periods opened yet for this admission.
+                  </p>
+                ) : (
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "0.75rem",
+                    }}
+                  >
+                    {data?.periods.map((p) => (
+                      <section
+                        key={p.id}
+                        style={{ ...cardSurface, padding: "1rem 1.125rem" }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "0.6rem",
+                            marginBottom: "0.5rem",
+                          }}
+                        >
+                          <span style={{ fontWeight: 700, color: t.onSurface }}>
+                            Period {p.sequenceNumber}
+                          </span>
+                          <span style={{ color: t.muted, fontSize: "0.78rem" }}>
+                            {stateLabel(p.periodKind)}
+                          </span>
+                          <StatusPill
+                            label={stateLabel(p.status)}
+                            tone={subTone(p.status)}
+                          />
+                          <span
+                            style={{
+                              marginLeft: "auto",
+                              color: t.muted,
+                              fontSize: "0.78rem",
+                            }}
+                          >
+                            {p.effectiveAt ? `${p.effectiveAt}` : "—"}
+                            {p.scheduledEndAt ? ` → ${p.scheduledEndAt}` : ""}
+                          </span>
+                        </div>
+                        <div style={bundleGrid}>
+                          <BundleCell
+                            label="Election statement"
+                            present={!!p.electionStatement}
+                            status={p.electionStatement?.status}
+                            detail={
+                              p.electionStatement
+                                ? `${stateLabel(p.electionStatement.signerKind)}${
+                                    p.electionStatement.signedAt
+                                      ? ` · signed ${p.electionStatement.signedAt}`
+                                      : ""
+                                  }`
+                                : "Not drafted"
+                            }
+                          />
+                          <BundleCell
+                            label="Certification (CTI)"
+                            present={!!p.cti}
+                            status={p.cti?.status}
+                            detail={
+                              p.cti
+                                ? [
+                                    p.cti.hospiceMdSigned
+                                      ? "Hospice MD ✓"
+                                      : "Hospice MD —",
+                                    p.cti.attendingMdSigned
+                                      ? "Attending ✓"
+                                      : "Attending —",
+                                    p.cti.signedLate ? "late" : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")
+                                : "Not drafted"
+                            }
+                          />
+                          <BundleCell
+                            label="Face-to-face"
+                            present={!!p.faceToFace}
+                            status={p.faceToFace?.status}
+                            detail={
+                              p.faceToFace
+                                ? [
+                                    stateLabel(p.faceToFace.performerRole),
+                                    p.faceToFace.encounterDate ?? null,
+                                    p.faceToFace.withinWindow === false
+                                      ? p.faceToFace.windowOverride
+                                        ? "override"
+                                        : "out of window"
+                                      : null,
+                                  ]
+                                    .filter(Boolean)
+                                    .join(" · ")
+                                : "Not scheduled"
+                            }
+                          />
+                        </div>
+                      </section>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </main>
+
+          <aside style={rightRail}>
+            <div style={{ ...cardSurface, padding: "1.125rem" }}>
+              <h2 style={railTitle}>Compliance windows</h2>
+
+              {windows.length === 0 ? (
+                <p style={meta}>
+                  No open compliance windows for this admission.
+                </p>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-                  {data?.periods.map((p) => (
-                    <section key={p.id} style={{ ...cardSurface, padding: "1rem 1.125rem" }}>
+                <ul
+                  style={{
+                    listStyle: "none",
+                    margin: 0,
+                    padding: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "0.6rem",
+                  }}
+                >
+                  {windows.map((w) => (
+                    <li
+                      key={w.id}
+                      style={{
+                        borderTop: `1px solid ${t.outlineVariant}`,
+                        paddingTop: "0.6rem",
+                      }}
+                    >
                       <div
                         style={{
                           display: "flex",
                           alignItems: "center",
-                          gap: "0.6rem",
-                          marginBottom: "0.5rem",
+                          gap: "0.5rem",
+                          marginBottom: "0.2rem",
                         }}
                       >
-                        <span style={{ fontWeight: 700, color: t.onSurface }}>
-                          Period {p.sequenceNumber}
+                        <span
+                          style={{
+                            fontWeight: 600,
+                            fontSize: "0.82rem",
+                            color: t.onSurface,
+                          }}
+                        >
+                          {stateLabel(w.windowKind)}
                         </span>
-                        <span style={{ color: t.muted, fontSize: "0.78rem" }}>
-                          {stateLabel(p.periodKind)}
-                        </span>
-                        <StatusPill label={stateLabel(p.status)} tone={subTone(p.status)} />
-                        <span style={{ marginLeft: "auto", color: t.muted, fontSize: "0.78rem" }}>
-                          {p.effectiveAt ? `${p.effectiveAt}` : "—"}
-                          {p.scheduledEndAt ? ` → ${p.scheduledEndAt}` : ""}
-                        </span>
-                      </div>
-                      <div style={bundleGrid}>
-                        <BundleCell
-                          label="Election statement"
-                          present={!!p.electionStatement}
-                          status={p.electionStatement?.status}
-                          detail={
-                            p.electionStatement
-                              ? `${stateLabel(p.electionStatement.signerKind)}${
-                                  p.electionStatement.signedAt
-                                    ? ` · signed ${p.electionStatement.signedAt}`
-                                    : ""
-                                }`
-                              : "Not drafted"
-                          }
-                        />
-                        <BundleCell
-                          label="Certification (CTI)"
-                          present={!!p.cti}
-                          status={p.cti?.status}
-                          detail={
-                            p.cti
-                              ? [
-                                  p.cti.hospiceMdSigned ? "Hospice MD ✓" : "Hospice MD —",
-                                  p.cti.attendingMdSigned ? "Attending ✓" : "Attending —",
-                                  p.cti.signedLate ? "late" : null,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")
-                              : "Not drafted"
-                          }
-                        />
-                        <BundleCell
-                          label="Face-to-face"
-                          present={!!p.faceToFace}
-                          status={p.faceToFace?.status}
-                          detail={
-                            p.faceToFace
-                              ? [
-                                  stateLabel(p.faceToFace.performerRole),
-                                  p.faceToFace.encounterDate ?? null,
-                                  p.faceToFace.withinWindow === false
-                                    ? p.faceToFace.windowOverride
-                                      ? "override"
-                                      : "out of window"
-                                    : null,
-                                ]
-                                  .filter(Boolean)
-                                  .join(" · ")
-                              : "Not scheduled"
-                          }
-                        />
-                      </div>
-                    </section>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
 
-        {/* Right rail — compliance windows */}
-        <aside style={rightRail}>
-          <div style={{ ...cardSurface, padding: "1.125rem" }}>
-            <h2 style={railTitle}>Compliance windows</h2>
-            {windows.length === 0 ? (
-              <p style={meta}>No open compliance windows for this admission.</p>
-            ) : (
-              <ul
-                style={{
-                  listStyle: "none",
-                  margin: 0,
-                  padding: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "0.6rem",
-                }}
-              >
-                {windows.map((w) => (
-                  <li
-                    key={w.id}
-                    style={{ borderTop: `1px solid ${t.outlineVariant}`, paddingTop: "0.6rem" }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "0.5rem",
-                        marginBottom: "0.2rem",
-                      }}
-                    >
-                      <span style={{ fontWeight: 600, fontSize: "0.82rem", color: t.onSurface }}>
-                        {stateLabel(w.windowKind)}
-                      </span>
-                      <StatusPill
-                        label={stateLabel(w.status)}
-                        tone={WINDOW_TONE[w.status] ?? "neutral"}
-                      />
-                    </div>
-                    <div style={{ color: t.muted, fontSize: "0.76rem" }}>
-                      due {fmtDate(w.mustCompleteBy)}
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </aside>
+                        <StatusPill
+                          label={stateLabel(w.status)}
+                          tone={WINDOW_TONE[w.status] ?? "neutral"}
+                        />
+                      </div>
+
+                      <div style={{ color: t.muted, fontSize: "0.76rem" }}>
+                        due {fmtDate(w.mustCompleteBy)}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </aside>
+        </div>
       </div>
     </PatientWorkspaceLayout>
   );
@@ -370,8 +425,20 @@ function BundleCell({
   detail: string;
 }): JSX.Element {
   return (
-    <div style={{ ...cardSurface, background: t.surfaceLow, padding: "0.75rem 0.85rem" }}>
-      <div style={{ fontSize: "0.72rem", color: t.onSurfaceVariant, marginBottom: "0.35rem" }}>
+    <div
+      style={{
+        ...cardSurface,
+        background: t.surfaceLow,
+        padding: "0.75rem 0.85rem",
+      }}
+    >
+      <div
+        style={{
+          fontSize: "0.72rem",
+          color: t.onSurfaceVariant,
+          marginBottom: "0.35rem",
+        }}
+      >
         {label}
       </div>
       {present && status ? (
@@ -379,7 +446,11 @@ function BundleCell({
       ) : (
         <StatusPill label="Missing" tone="neutral" />
       )}
-      <div style={{ color: t.muted, fontSize: "0.74rem", marginTop: "0.35rem" }}>{detail}</div>
+      <div
+        style={{ color: t.muted, fontSize: "0.74rem", marginTop: "0.35rem" }}
+      >
+        {detail}
+      </div>
     </div>
   );
 }
@@ -406,13 +477,44 @@ function MonoChip({ children }: { children: ReactNode }): JSX.Element {
   );
 }
 
+const workspaceBody: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  width: "100%",
+  height: "100%",
+  minHeight: 0,
+  overflow: "hidden",
+};
+
+const contentWithRail: CSSProperties = {
+  display: "flex",
+  flex: "1 1 auto",
+  minHeight: 0,
+  minWidth: 0,
+  overflow: "hidden",
+};
+
 const rightRail: CSSProperties = {
+  flex: "0 0 19rem",
   width: "19rem",
-  flexShrink: 0,
-  overflow: "auto",
+  minWidth: "19rem",
+  height: "100%",
+  overflowY: "auto",
+  overflowX: "hidden",
   padding: "1.5rem",
+  borderLeft: `1px solid ${t.outlineVariant}`,
   background: t.surfaceLow,
 };
+
+const mainContent: CSSProperties = {
+  flex: "1 1 auto",
+  minWidth: 0,
+  height: "100%",
+  overflowY: "auto",
+  overflowX: "hidden",
+  padding: "1.5rem",
+};
+
 const railTitle: CSSProperties = {
   margin: "0 0 0.625rem",
   fontFamily: t.fontDisplay,

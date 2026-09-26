@@ -121,6 +121,7 @@ export * from "./messaging/alert-payload-catalog";
 export * from "./messaging/tenant-alert-routing-override";
 export * from "./messaging/notification-template";
 export * from "./messaging/tenant-notification-template-overlay";
+export * from "./messaging/alert-receipts";
 // M40-T02 — Master Data Management schema (M40 spec §3.3–3.5). M40 owns 11 tables. The §2.3
 // canonical-vs-overlay dividing line decides org-scoping: the three CANONICAL tables
 // (external_physician, facility, payer) are org-less platform master data — registry-sourced,
