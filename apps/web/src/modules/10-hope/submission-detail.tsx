@@ -116,7 +116,12 @@ export function SubmissionDetail(): JSX.Element {
                   </button>
                 ) : null}
                 {row.status === "packaged" || row.status === "exported" ? (
-                  <button type="button" style={button} onClick={() => void markUploaded()} disabled={busy}>
+                  <button
+                    type="button"
+                    style={button}
+                    onClick={() => void markUploaded()}
+                    disabled={busy}
+                  >
                     Mark uploaded
                   </button>
                 ) : null}
@@ -180,9 +185,15 @@ export function SubmissionDetail(): JSX.Element {
           <dt style={dt}>Package</dt>
           <dd style={dd}>{row.packageFilename ?? "Not packaged"}</dd>
           <dt style={dt}>Package hash</dt>
-          <dd style={dd} className="wx-data-md">{row.packageSha256 ?? "Not recorded"}</dd>
+          <dd style={dd} className="wx-data-md">
+            {row.packageSha256 ?? "Not recorded"}
+          </dd>
           <dt style={dt}>Manual upload</dt>
-          <dd style={dd}>{row.submittedAt ? row.submittedAt.slice(0, 16).replace("T", " ") : "Awaiting iQIES upload"}</dd>
+          <dd style={dd}>
+            {row.submittedAt
+              ? row.submittedAt.slice(0, 16).replace("T", " ")
+              : "Awaiting iQIES upload"}
+          </dd>
           <dt style={dt}>Accepted at</dt>
           <dd style={dd} className="tabular-nums">
             {row.acceptedAt ? row.acceptedAt.slice(0, 16).replace("T", " ") : "—"}

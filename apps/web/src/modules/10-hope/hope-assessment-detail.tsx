@@ -1,6 +1,12 @@
 import {
+  Button,
+  CountBadge,
   EmptyState,
+  Glyph,
+  type GlyphName,
+  InfoRows,
   LoadingSpinner,
+  Panel,
   PatientBanner,
   PatientWorkspaceLayout,
   StatusPill,
@@ -14,6 +20,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ASSESSMENT_TONE, rfaLabel, stateLabel } from "./hope-status";
+import {
+  CheckboxTiles,
+  ClinicalSection,
+  CmsCode,
+  CompletionRing,
+  FieldShell,
+  LegendDot,
+  LockedValue,
+  type NavSectionView,
+  OptionRows,
+  ProgressBar,
+  RequiredChip,
+  SectionNavigator,
+} from "./hope-workspace-ui";
 
 type AnswerValue = string | number | boolean;
 type AnswerSource =
@@ -122,13 +142,7 @@ interface Workspace {
     windowStart: string | null;
     windowEnd: string | null;
     lateDeadline: string | null;
-    timingState:
-      | "upcoming"
-      | "within_window"
-      | "due_soon"
-      | "late"
-      | "completed"
-      | "unknown";
+    timingState: "upcoming" | "within_window" | "due_soon" | "late" | "completed" | "unknown";
     z0350: string | null;
   } | null;
 }
@@ -194,11 +208,19 @@ interface ReviewModel {
 }
 
 interface PatientSummary {
+  id?: string;
   mrn: string;
   lastName: string;
   firstName: string;
   dob: string;
   status: string;
+}
+
+/** Chart context for the banner + Patient Summary rail (M5 demographics / identifiers / addresses). */
+interface PatientExtra {
+  sex: string | null;
+  mbiTail: string | null;
+  address: string | null;
 }
 
 interface TimepointRow {
@@ -212,8 +234,7 @@ const SECTION_ORDER: { id: SectionId; label: string; helper: string }[] = [
   {
     id: "A",
     label: "Administrative",
-    helper:
-      "Confirm chart-prefilled identity, admission, payer, language, and residence details.",
+    helper: "Confirm chart-prefilled identity, admission, payer, language, and residence details.",
   },
   {
     id: "F",
@@ -246,8 +267,7 @@ const SECTION_ORDER: { id: SectionId; label: string; helper: string }[] = [
   {
     id: "Review",
     label: "Review",
-    helper:
-      "Check completion, blockers, warnings, SFV state, and signature readiness.",
+    helper: "Check completion, blockers, warnings, SFV state, and signature readiness.",
   },
 ];
 
@@ -284,29 +304,21 @@ const SECTION_A_GROUPS: {
   {
     label: "Admission Information",
     match: (i) =>
-      ["A0205", "A0210", "A0215", "A0220", "A0250", "A0270"].some((p) =>
-        i.itemCode.startsWith(p),
-      ),
+      ["A0205", "A0210", "A0215", "A0220", "A0250", "A0270"].some((p) => i.itemCode.startsWith(p)),
   },
   {
     label: "Patient Identity",
     match: (i) =>
-      ["A0500", "A0600", "A0700", "A0800", "A0900"].some((p) =>
-        i.itemCode.startsWith(p),
-      ),
+      ["A0500", "A0600", "A0700", "A0800", "A0900"].some((p) => i.itemCode.startsWith(p)),
   },
   {
     label: "Demographics",
-    match: (i) =>
-      ["A1005", "A1010", "A1110", "A1250"].some((p) =>
-        i.itemCode.startsWith(p),
-      ),
+    match: (i) => ["A1005", "A1010", "A1110", "A1250"].some((p) => i.itemCode.startsWith(p)),
   },
   { label: "Payer / Coverage", match: (i) => i.itemCode.startsWith("A1400") },
   {
     label: "Living Situation",
-    match: (i) =>
-      ["A1805", "A1905", "A1910"].some((p) => i.itemCode.startsWith(p)),
+    match: (i) => ["A1805", "A1905", "A1910"].some((p) => i.itemCode.startsWith(p)),
   },
 ];
 
@@ -325,48 +337,11 @@ const J_GROUPS = [
   "Symptom Follow-Up Visit",
 ];
 
-const payerGrid: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-  gap: "0.65rem",
-};
-
-const payerChoice: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "auto minmax(0, 1fr) auto",
-  alignItems: "center",
-  gap: "0.65rem",
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 8,
-  padding: "0.75rem",
-  background: t.surface,
-  color: t.onSurface,
-  cursor: "pointer",
-};
-
-const payerChoiceSelected: CSSProperties = {
-  border: `1px solid ${t.primary}`,
-  background: t.primaryTint,
-  color: t.primary,
-};
-
 const payerSource: CSSProperties = {
   display: "block",
   marginTop: 2,
   color: t.muted,
   fontSize: "0.75rem",
-};
-
-const controlledValue: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  alignItems: "center",
-  gap: "0.75rem",
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 8,
-  padding: "0.65rem 0.75rem",
-  background: t.surface,
-  color: t.onSurface,
 };
 
 export function HopeAssessmentDetail(): JSX.Element {
@@ -379,12 +354,16 @@ export function HopeAssessmentDetail(): JSX.Element {
   const [review, setReview] = useState<ReviewModel | null>(null);
   const [timeline, setTimeline] = useState<TimepointRow[]>([]);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
+  const [patientExtra, setPatientExtra] = useState<PatientExtra>({
+    sex: null,
+    mbiTail: null,
+    address: null,
+  });
+  const [lastSavedAt, setLastSavedAt] = useState<number | null>(null);
   const [activeSection, setActiveSection] = useState<SectionId>("A");
   const [sfvOpen, setSfvOpen] = useState(false);
   const [sfvReviewOpen, setSfvReviewOpen] = useState(false);
-  const [saving, setSaving] = useState<
-    "idle" | "saving" | "saved" | "failed" | "conflict"
-  >("idle");
+  const [saving, setSaving] = useState<"idle" | "saving" | "saved" | "failed" | "conflict">("idle");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -427,6 +406,13 @@ export function HopeAssessmentDetail(): JSX.Element {
 
     return () => window.clearTimeout(timeout);
   }, [activeSection, pendingItemFocus]);
+  // A new section starts at its top (unless an issue link is about to scroll to a specific item).
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: activeSection is the intentional trigger.
+  useEffect(() => {
+    if (pendingItemFocus) return;
+    workspaceRef.current?.closest(".wx-patient-workspace-body")?.scrollTo({ top: 0 });
+  }, [activeSection]);
   const [signing, setSigning] = useState(false);
   const [completionDateSaving, setCompletionDateSaving] = useState(false);
 
@@ -460,24 +446,56 @@ export function HopeAssessmentDetail(): JSX.Element {
         params: { path: { id: nextAssessment.patientId } },
       }),
     ]);
-    setTimeline(
-      (tl.data as { assessments?: TimepointRow[] } | undefined)?.assessments ??
-        [],
-    );
+    setTimeline((tl.data as { assessments?: TimepointRow[] } | undefined)?.assessments ?? []);
     if (pat.data) setPatient(pat.data as unknown as PatientSummary);
     setLoading(false);
+    // Banner + Patient Summary context — best-effort; a failure only blanks those fields.
+    const pid = nextAssessment.patientId;
+    const [demo, ids, addrs] = await Promise.all([
+      api.GET("/api/v1/patients/{id}/demographics", { params: { path: { id: pid } } }),
+      api.GET("/api/v1/patients/{id}/identifiers", { params: { path: { id: pid } } }),
+      api.GET("/api/v1/patients/{id}/addresses", { params: { path: { id: pid } } }),
+    ]);
+    const identifiers =
+      (
+        ids.data as
+          | { identifiers?: { kind: string; value: string | null; last4: string | null }[] }
+          | undefined
+      )?.identifiers ?? [];
+    const mbi = identifiers.find((i) => i.kind === "mbi");
+    const addresses =
+      (
+        addrs.data as
+          | {
+              addresses?: {
+                line1: string;
+                city: string;
+                state: string | null;
+                postalCode: string;
+                current: boolean;
+                isPrimary: boolean;
+              }[];
+            }
+          | undefined
+      )?.addresses ?? [];
+    const home =
+      addresses.find((a) => a.current && a.isPrimary) ?? addresses.find((a) => a.current);
+    setPatientExtra({
+      sex: (demo.data as { sexAssignedAtBirth?: string } | undefined)?.sexAssignedAtBirth ?? null,
+      mbiTail: mbi ? (mbi.last4 ?? mbi.value?.slice(-4) ?? null) : null,
+      address: home
+        ? `${home.line1}, ${home.city}${home.state ? `, ${home.state}` : ""} ${home.postalCode}`
+        : null,
+    });
   }, [api, id]);
 
-  const goToIssue = useCallback(
-    (section: SectionId, itemCode?: string | null) => {
-      setActiveSection(section);
+  const goToIssue = useCallback((section: SectionId, itemCode?: string | null) => {
+    setActiveSection(section);
 
-      if (itemCode) {
-        setPendingItemFocus(itemCode);
-      }
-    },
-    [],
-  );
+    if (itemCode) {
+      setPendingItemFocus(itemCode);
+    }
+  }, []);
 
   const refreshWorkspaceOnly = useCallback(async () => {
     if (!id) return;
@@ -511,22 +529,14 @@ export function HopeAssessmentDetail(): JSX.Element {
     const map = new Map<string, ReviewModel["validation"]["findings"]>();
     for (const finding of review?.validation.findings ?? []) {
       if (!finding.itemCode) continue;
-      map.set(finding.itemCode, [
-        ...(map.get(finding.itemCode) ?? []),
-        finding,
-      ]);
+      map.set(finding.itemCode, [...(map.get(finding.itemCode) ?? []), finding]);
     }
     return map;
   }, [review]);
 
   const saveAnswer = useCallback(
     async (item: WorkspaceItem, value: AnswerValue | null) => {
-      if (
-        !id ||
-        !workspace ||
-        assessment?.status !== "draft" ||
-        PROTECTED_ITEMS.has(item.itemCode)
-      )
+      if (!id || !workspace || assessment?.status !== "draft" || PROTECTED_ITEMS.has(item.itemCode))
         return;
       const run = async () => {
         setSaving("saving");
@@ -546,9 +556,7 @@ export function HopeAssessmentDetail(): JSX.Element {
           },
         });
         if (res.error || !res.data) {
-          const message = String(
-            (res.error as { message?: unknown })?.message ?? "",
-          );
+          const message = String((res.error as { message?: unknown })?.message ?? "");
           const conflict = /version|conflict|stale/i.test(message);
           setSaving(conflict ? "conflict" : "failed");
           setFieldErrors((prev) => ({
@@ -560,9 +568,9 @@ export function HopeAssessmentDetail(): JSX.Element {
           return;
         }
         latestVersionRef.current =
-          (res.data as { version?: number }).version ??
-          latestVersionRef.current;
+          (res.data as { version?: number }).version ?? latestVersionRef.current;
         setSaving("saved");
+        setLastSavedAt(Date.now());
         await refreshWorkspaceOnly();
       };
       const next = saveQueueRef.current.then(run, run);
@@ -595,13 +603,10 @@ export function HopeAssessmentDetail(): JSX.Element {
     async (z0350: string) => {
       if (!id || !workspace || assessment?.status !== "draft") return;
       setCompletionDateSaving(true);
-      const res = await api.PATCH(
-        "/api/v1/hope/assessments/{id}/huv/completion-date",
-        {
-          params: { path: { id } },
-          body: { ifVersion: workspace.assessment.version, z0350 },
-        },
-      );
+      const res = await api.PATCH("/api/v1/hope/assessments/{id}/huv/completion-date", {
+        params: { path: { id } },
+        body: { ifVersion: workspace.assessment.version, z0350 },
+      });
       setCompletionDateSaving(false);
       if (res.error) {
         setSaving("failed");
@@ -637,13 +642,10 @@ export function HopeAssessmentDetail(): JSX.Element {
     async (reason: string) => {
       if (!id || !assessment) return;
       setInactivating(true);
-      const res = await api.POST(
-        "/api/v1/hope/assessments/{id}/inactivations",
-        {
-          params: { path: { id } },
-          body: { reason: reason.trim(), ifVersion: assessment.version },
-        },
-      );
+      const res = await api.POST("/api/v1/hope/assessments/{id}/inactivations", {
+        params: { path: { id } },
+        body: { reason: reason.trim(), ifVersion: assessment.version },
+      });
       setInactivating(false);
       if (res.error || !res.data) {
         setSaving("failed");
@@ -657,8 +659,7 @@ export function HopeAssessmentDetail(): JSX.Element {
   );
 
   if (error) return <EmptyState title="Unavailable" description={error} />;
-  if (loading || !assessment)
-    return <LoadingSpinner label="Loading HOPE workspace..." />;
+  if (loading || !assessment) return <LoadingSpinner label="Loading HOPE workspace..." />;
   const workspaceRfa =
     assessment.rfaKind === "01_admission" ||
     assessment.rfaKind === "02_huv1" ||
@@ -685,207 +686,253 @@ export function HopeAssessmentDetail(): JSX.Element {
   const completed = assessment.status === "signed";
   const sections = sectionsFromWorkspace(workspace);
   const visibleSections = visibleSectionOrder(workspace);
-  const current =
-    activeSection === "Review" ? null : (sections.get(activeSection) ?? null);
+  const current = activeSection === "Review" ? null : (sections.get(activeSection) ?? null);
   const status = derivedStatus(assessment, review, workspace);
   const recordLabel = rfaLabel(assessment.rfaKind);
   const canInactivate =
-    completed &&
-    !assessment.supersededByAssessmentId &&
-    workspace.assessment.isc !== "XX";
+    completed && !assessment.supersededByAssessmentId && workspace.assessment.isc !== "XX";
+  const age = patient ? ageYears(patient.dob) : null;
+  const sex = sexLabel(patientExtra.sex);
+  const medicare = patientExtra.mbiTail;
   const banner = patient ? (
     <PatientBanner
       name={`${patient.firstName} ${patient.lastName}`}
-      meta={`DOB ${formatDate(patient.dob)}${ageYears(patient.dob) != null ? ` · ${ageYears(patient.dob)}y` : ""} · Target ${formatDate(assessment.targetDate)}`}
+      meta={
+        <span style={{ display: "inline-flex", flexWrap: "wrap", gap: "0.5rem" }}>
+          {[
+            `DOB ${formatDate(patient.dob)}${age != null ? ` (${age}y)` : ""}`,
+            sex,
+            `MRN: ...${patient.mrn.slice(-4)}`,
+            medicare ? `Medicare: ...${medicare}` : null,
+          ]
+            .filter(Boolean)
+            .map((m, i) => (
+              <span key={m as string} style={{ display: "inline-flex", gap: "0.5rem" }}>
+                {i > 0 ? <span aria-hidden>•</span> : null}
+                {m}
+              </span>
+            ))}
+        </span>
+      }
       chips={
-        <>
-          <MonoChip>{maskIdentifier(patient.mrn)}</MonoChip>
-          <StatusPill
-            label={stateLabel(patient.status)}
-            tone={ASSESSMENT_TONE[patient.status] ?? "neutral"}
-          />
-        </>
+        <StatusPill
+          label={stateLabel(patient.status)}
+          tone={ASSESSMENT_TONE[patient.status] ?? "neutral"}
+        />
+      }
+      actions={
+        <span className="wx-target-date">
+          <span style={{ color: t.onSurfaceVariant }}>Target date</span>
+          <span className="wx-target-date-box">
+            <Glyph name="calendar" size={16} strokeWidth={1.75} />
+            {formatDate(assessment.targetDate)}
+          </span>
+        </span>
       }
     />
   ) : (
-    <PatientBanner
-      name={recordLabel}
-      meta={`Target ${formatDate(assessment.targetDate)}`}
-    />
+    <PatientBanner name={recordLabel} meta={`Target ${formatDate(assessment.targetDate)}`} />
   );
 
+  const activeIndex = visibleSections.findIndex((s) => s.id === activeSection);
+  const nextSection = visibleSections[activeIndex + 1];
+  const prevSection = activeIndex > 0 ? visibleSections[activeIndex - 1] : undefined;
+  const config = visibleSections[activeIndex] ?? visibleSections[0]!;
+  const sectionTitle =
+    activeSection === "Review"
+      ? completed
+        ? "Completed Record"
+        : "Review & Sign"
+      : `${config.id}. ${config.label}`;
+  const secReview = review?.sections.find((s) => s.code === activeSection);
+  const navViews: NavSectionView[] = visibleSections.map((section) =>
+    navView(section, review, workspace),
+  );
+  const saveDraft = async (): Promise<void> => {
+    await saveQueueRef.current;
+    setSaving((s) => (s === "failed" || s === "conflict" ? s : "saved"));
+    setLastSavedAt(Date.now());
+  };
+
   return (
-    <PatientWorkspaceLayout banner={banner}>
-      <div style={shell}>
-        <header style={topBar}>
-          <div>
-            <div style={eyebrow}>Admission HOPE</div>
-            <h1 style={title}>
-              {completed
-                ? `Completed ${recordLabel}`
-                : `${recordLabel} Workspace`}
-            </h1>
-            <div style={metaLine}>
-              <span>CMS {workspace.assessment.specVersion}</span>
-              <span>ISC {workspace.assessment.isc}</span>
-              <span>Target {formatDate(assessment.targetDate)}</span>
-              {assessment.correctsAssessmentId ? (
-                <span>
-                  {workspace.assessment.isc === "XX"
-                    ? "Inactivation draft"
-                    : "Correction draft"}
+    <PatientWorkspaceLayout
+      banner={banner}
+      rail={
+        <HopeRail
+          patient={patient}
+          patientExtra={patientExtra}
+          patientId={assessment.patientId}
+          review={review}
+          workspace={workspace}
+          visibleSections={visibleSections}
+          onGoTo={goToIssue}
+        />
+      }
+    >
+      <div className="wx-hope-workspace" ref={workspaceRef}>
+        <aside className="wx-hope-admission-rail">
+          <select
+            className="wx-hope-admission-section-select"
+            aria-label="HOPE section"
+            value={activeSection}
+            onChange={(event) => setActiveSection(event.target.value as SectionId)}
+            style={mobileSectionSelect}
+          >
+            {visibleSections.map((section) => (
+              <option key={section.id} value={section.id}>
+                {section.label}
+              </option>
+            ))}
+          </select>
+          <div className="wx-hope-admission-section-nav">
+            <SectionNavigator
+              sections={navViews}
+              active={activeSection}
+              onSelect={(id) => setActiveSection(id as SectionId)}
+              ariaLabel={`${recordLabel} sections`}
+            />
+          </div>
+        </aside>
+
+        <main className="wx-hope-main">
+          <header className="wx-hope-head">
+            <div style={{ minWidth: 0 }}>
+              <h1 className="wx-hope-eyebrow">
+                {completed ? `Completed ${recordLabel}` : `${recordLabel} Workspace`}
+              </h1>
+              <h2 className="wx-hope-title">{sectionTitle}</h2>
+              <p className="wx-hope-helper">
+                {activeSection === "Review"
+                  ? `Use backend readiness to decide whether this ${recordLabel} can be completed.`
+                  : config.helper}
+              </p>
+              <div className="wx-hope-meta">
+                <span>CMS {workspace.assessment.specVersion}</span>
+                <span>ISC {workspace.assessment.isc}</span>
+                {assessment.correctsAssessmentId ? (
+                  <span>
+                    {workspace.assessment.isc === "XX" ? "Inactivation draft" : "Correction draft"}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <div className="wx-hope-head-side">
+              <div className="wx-hope-head-actions">
+                <span className={`wx-status-dot-chip wx-status-${status.tone}`}>
+                  <span className="wx-dot" aria-hidden />
+                  {status.label}
                 </span>
+                <SaveState state={saving} lastSavedAt={lastSavedAt} />
+                {completed ? (
+                  <>
+                    <Button
+                      tone="secondary"
+                      onClick={() => setInactivationOpen(true)}
+                      disabled={!canInactivate}
+                    >
+                      Inactivate
+                    </Button>
+                    <Button onClick={() => void createCorrection()}>Create correction</Button>
+                  </>
+                ) : (
+                  <>
+                    <Button tone="secondary" onClick={() => void saveDraft()}>
+                      Save draft
+                    </Button>
+                    {review?.readiness.readyToSign ? (
+                      <Button onClick={() => setSignOpen(true)}>Sign &amp; complete</Button>
+                    ) : (
+                      <Button onClick={() => setActiveSection(nextSection?.id ?? "Review")}>
+                        {activeSection === "Review" ? "Review issues" : "Review & Continue"}
+                        <Glyph name="arrow-right" size={16} />
+                      </Button>
+                    )}
+                  </>
+                )}
+              </div>
+              {secReview && activeSection !== "Review" ? (
+                <div className="wx-hope-progress">
+                  <span>
+                    {secReview.answered + secReview.skipped} of {secReview.active} complete
+                  </span>
+                  <ProgressBar
+                    value={secReview.answered + secReview.skipped}
+                    max={secReview.active}
+                  />
+                </div>
               ) : null}
             </div>
-          </div>
-          <div style={topActions}>
-            <StatusPill label={status.label} tone={status.tone} />
-            <SaveState state={saving} />
-            <button
-              type="button"
-              style={secondaryButton}
-              onClick={() => setActiveSection("Review")}
-            >
-              Review
-            </button>
-            {completed ? (
-              <>
-                <button
-                  type="button"
-                  style={secondaryButton}
-                  onClick={() => setInactivationOpen(true)}
-                  disabled={!canInactivate}
-                >
-                  Inactivate
-                </button>
-                <button
-                  type="button"
-                  style={primaryButton}
-                  onClick={() => void createCorrection()}
-                >
-                  Create correction
-                </button>
-              </>
-            ) : review?.readiness.readyToSign ? (
-              <button
-                type="button"
-                style={primaryButton}
-                onClick={() => setSignOpen(true)}
-              >
-                Sign & complete
-              </button>
-            ) : (
-              <button
-                type="button"
-                style={primaryButton}
-                onClick={() => setActiveSection("Review")}
-              >
-                Review issues
-              </button>
-            )}
-          </div>
-        </header>
+          </header>
 
-        {completed ? (
-          <CompletedSummary assessment={assessment} review={review} />
-        ) : null}
-        {workspace.huv ? (
-          <HuvTimingBanner workspace={workspace} review={review} />
-        ) : null}
-        {saving === "conflict" ? (
-          <ConflictBanner onReload={() => void load()} />
-        ) : null}
+          {completed ? <CompletedSummary assessment={assessment} review={review} /> : null}
+          {workspace.huv ? <HuvTimingBanner workspace={workspace} review={review} /> : null}
+          {saving === "conflict" ? <ConflictBanner onReload={() => void load()} /> : null}
 
-        <div className="wx-hope-admission-grid" style={workspaceGrid}>
-          <aside
-            className="wx-hope-admission-rail"
-            style={rail}
-            aria-label={`${recordLabel} sections`}
-          >
-            <select
-              className="wx-hope-admission-section-select"
-              aria-label="HOPE section"
-              value={activeSection}
-              onChange={(event) =>
-                setActiveSection(event.target.value as SectionId)
-              }
-              style={mobileSectionSelect}
-            >
-              {visibleSections.map((section) => (
-                <option key={section.id} value={section.id}>
-                  {section.label}
-                </option>
-              ))}
-            </select>
-            <nav className="wx-hope-admission-section-nav" style={sectionNav}>
-              {visibleSections.map((section) => {
-                const state = sectionState(section.id, review, workspace);
-                const active = activeSection === section.id;
-                return (
-                  <button
-                    key={section.id}
-                    type="button"
-                    style={{
-                      ...sectionButton,
-                      ...(active ? sectionButtonActive : null),
-                    }}
-                    onClick={() => setActiveSection(section.id)}
-                    title={state.detail}
-                  >
-                    <span style={stateDot(state.kind)} aria-hidden="true" />
-                    <span>
-                      <strong>
-                        {section.id === "Review"
-                          ? "Review"
-                          : `${section.id} ${section.label}`}
-                      </strong>
-                      <small style={sectionMeta}>{state.label}</small>
-                    </span>
-                  </button>
-                );
-              })}
-            </nav>
-          </aside>
-
-          <main style={mainPanel}>
-            {activeSection === "Review" ? (
-              <ReviewPanel
-                assessment={assessment}
-                review={review}
-                workspace={workspace}
-                onGoTo={goToIssue}
-                visibleSections={visibleSections}
-                onSetCompletionDate={(value) =>
-                  void setHuvCompletionDate(value)
-                }
-                completionDateSaving={completionDateSaving}
-                onSign={() => setSignOpen(true)}
-                onCorrection={() => void createCorrection()}
-              />
-            ) : current ? (
-              <SectionPanel
-                sectionId={activeSection}
-                section={current}
-                readonly={completed}
-                findingsByItem={findingsByItem}
-                fieldErrors={fieldErrors}
-                onSave={saveAnswer}
-                onCompleteSfv={() => setSfvOpen(true)}
-                onReviewSfv={() => setSfvReviewOpen(true)}
-              />
-            ) : (
-              <EmptyState
-                title="No active section items"
-                description="The imported CMS specification did not return active assessment items for this section."
-              />
-            )}
-            <BottomNav
-              active={activeSection}
-              sections={visibleSections}
-              onChange={setActiveSection}
+          {activeSection === "Review" ? (
+            <ReviewPanel
+              assessment={assessment}
+              review={review}
+              workspace={workspace}
+              onGoTo={goToIssue}
+              visibleSections={visibleSections}
+              onSetCompletionDate={(value) => void setHuvCompletionDate(value)}
+              completionDateSaving={completionDateSaving}
+              onSign={() => setSignOpen(true)}
+              onCorrection={() => void createCorrection()}
             />
-          </main>
-        </div>
+          ) : current ? (
+            <SectionPanel
+              sectionId={activeSection}
+              section={current}
+              readonly={completed}
+              findingsByItem={findingsByItem}
+              fieldErrors={fieldErrors}
+              onSave={saveAnswer}
+              onCompleteSfv={() => setSfvOpen(true)}
+              onReviewSfv={() => setSfvReviewOpen(true)}
+            />
+          ) : (
+            <EmptyState
+              title="No active section items"
+              description="The imported CMS specification did not return active assessment items for this section."
+            />
+          )}
+
+          <footer className="wx-hope-footer">
+            <Button
+              tone="secondary"
+              disabled={!prevSection}
+              onClick={() => prevSection && setActiveSection(prevSection.id)}
+            >
+              <Glyph name="arrow-right" size={16} style={{ transform: "rotate(180deg)" }} />
+              Previous Section
+            </Button>
+            <span className="wx-hope-footer-note">Answers save automatically.</span>
+            {!completed ? (
+              <span style={{ display: "flex", gap: "0.625rem" }}>
+                <Button tone="secondary" onClick={() => void saveDraft()}>
+                  Save Draft
+                </Button>
+                <Button
+                  disabled={!nextSection}
+                  onClick={() => nextSection && setActiveSection(nextSection.id)}
+                >
+                  Save &amp; Continue
+                  <Glyph name="arrow-right" size={16} />
+                </Button>
+              </span>
+            ) : (
+              <Button
+                tone="secondary"
+                disabled={!nextSection}
+                onClick={() => nextSection && setActiveSection(nextSection.id)}
+              >
+                Next Section
+                <Glyph name="arrow-right" size={16} />
+              </Button>
+            )}
+          </footer>
+        </main>
       </div>
       {signOpen ? (
         <SignDialog
@@ -928,9 +975,7 @@ export function HopeAssessmentDetail(): JSX.Element {
             workspace.sections
               .find((section) => section.code === "J")
               ?.items.filter(
-                (item) =>
-                  item.itemCode.startsWith("J2052") ||
-                  item.itemCode.startsWith("J2053"),
+                (item) => item.itemCode.startsWith("J2052") || item.itemCode.startsWith("J2053"),
               ) ?? []
           }
           onClose={() => setSfvReviewOpen(false)}
@@ -963,18 +1008,14 @@ function CompleteSfvDialog({
   const [error, setError] = useState<string | null>(null);
   const [sfvError, setSfvError] = useState<SfvError | null>(null);
 
-  const sfvQuestions = items.filter((item) =>
-    /^J2053[A-H]$/.test(item.itemCode),
-  );
+  const sfvQuestions = items.filter((item) => /^J2053[A-H]$/.test(item.itemCode));
 
   const codes = sfvQuestions.map((item) => item.itemCode);
 
   const completedCount = codes.filter((code) => Boolean(answers[code])).length;
 
   const canSubmit =
-    Boolean(assessment.admissionId) &&
-    date !== "" &&
-    completedCount === codes.length;
+    Boolean(assessment.admissionId) && date !== "" && completedCount === codes.length;
 
   async function submit() {
     if (!assessment.admissionId || !canSubmit || saving) {
@@ -1029,8 +1070,7 @@ function CompleteSfvDialog({
           type: "permission",
           title: "You don't have permission to complete this SFV",
           message:
-            message ??
-            "Your current role does not allow you to record a Symptom Follow-Up Visit.",
+            message ?? "Your current role does not allow you to record a Symptom Follow-Up Visit.",
         });
         return;
       }
@@ -1051,9 +1091,7 @@ function CompleteSfvDialog({
         setSfvError({
           type: "conflict",
           title: "The SFV could not be completed",
-          message:
-            message ??
-            "The assessment has changed. Refresh the assessment and try again.",
+          message: message ?? "The assessment has changed. Refresh the assessment and try again.",
         });
         return;
       }
@@ -1061,9 +1099,7 @@ function CompleteSfvDialog({
       setSfvError({
         type: "generic",
         title: "Unable to complete SFV",
-        message:
-          message ??
-          "Something went wrong while completing the SFV. Please try again.",
+        message: message ?? "Something went wrong while completing the SFV. Please try again.",
       });
 
       return;
@@ -1082,12 +1118,7 @@ function CompleteSfvDialog({
         }
       }}
     >
-      <dialog
-        open
-        style={sfvModal}
-        aria-modal="true"
-        aria-labelledby="sfv-dialog-title"
-      >
+      <dialog open style={sfvModal} aria-modal="true" aria-labelledby="sfv-dialog-title">
         <header style={sfvModalHeader}>
           <div style={sfvModalHeaderText}>
             <div style={sfvModalEyebrow}>Symptom Follow-Up Visit</div>
@@ -1097,8 +1128,7 @@ function CompleteSfvDialog({
             </h2>
 
             <p style={sfvModalDescription}>
-              Record the visit details and complete the symptom impact
-              reassessment.
+              Record the visit details and complete the symptom impact reassessment.
             </p>
           </div>
 
@@ -1145,9 +1175,7 @@ function CompleteSfvDialog({
                   value={discipline}
                   style={sfvInput}
                   disabled={saving}
-                  onChange={(event) =>
-                    setDiscipline(event.target.value as "RN" | "NP")
-                  }
+                  onChange={(event) => setDiscipline(event.target.value as "RN" | "NP")}
                 >
                   <option value="RN">Registered Nurse (RN)</option>
 
@@ -1163,8 +1191,7 @@ function CompleteSfvDialog({
                 <h3 style={sfvSectionTitle}>Symptom impact reassessment</h3>
 
                 <p style={sfvSectionDescription}>
-                  Complete each required J2053 item based on the follow-up
-                  visit.
+                  Complete each required J2053 item based on the follow-up visit.
                 </p>
               </div>
 
@@ -1231,9 +1258,7 @@ function CompleteSfvDialog({
             <div
               style={{
                 ...sfvErrorBox,
-                ...(sfvError.type === "permission"
-                  ? sfvPermissionErrorBox
-                  : null),
+                ...(sfvError.type === "permission" ? sfvPermissionErrorBox : null),
               }}
               role="alert"
             >
@@ -1262,12 +1287,7 @@ function CompleteSfvDialog({
           </div>
 
           <div style={sfvFooterActions}>
-            <button
-              type="button"
-              style={secondaryButton}
-              disabled={saving}
-              onClick={onCancel}
-            >
+            <button type="button" style={secondaryButton} disabled={saving} onClick={onCancel}>
               Cancel
             </button>
 
@@ -1310,12 +1330,7 @@ function ReviewSfvDialog({
         }
       }}
     >
-      <dialog
-        open
-        style={sfvModal}
-        aria-modal="true"
-        aria-labelledby="sfv-review-dialog-title"
-      >
+      <dialog open style={sfvModal} aria-modal="true" aria-labelledby="sfv-review-dialog-title">
         <header style={sfvModalHeader}>
           <div style={sfvModalHeaderText}>
             <div style={sfvModalEyebrow}>Symptom Follow-Up Visit</div>
@@ -1324,17 +1339,10 @@ function ReviewSfvDialog({
               SFV details
             </h2>
 
-            <p style={sfvModalDescription}>
-              Review the completed symptom follow-up visit.
-            </p>
+            <p style={sfvModalDescription}>Review the completed symptom follow-up visit.</p>
           </div>
 
-          <button
-            type="button"
-            aria-label="Close"
-            style={sfvCloseButton}
-            onClick={onClose}
-          >
+          <button type="button" aria-label="Close" style={sfvCloseButton} onClick={onClose}>
             ×
           </button>
         </header>
@@ -1345,9 +1353,7 @@ function ReviewSfvDialog({
               <div>
                 <h3 style={sfvSectionTitle}>Visit details</h3>
 
-                <p style={sfvSectionDescription}>
-                  Recorded information for this completed SFV.
-                </p>
+                <p style={sfvSectionDescription}>Recorded information for this completed SFV.</p>
               </div>
 
               <StatusPill label="Completed" tone="success" />
@@ -1375,9 +1381,7 @@ function ReviewSfvDialog({
               <div>
                 <h3 style={sfvSectionTitle}>Symptom impact reassessment</h3>
 
-                <p style={sfvSectionDescription}>
-                  Responses recorded during the follow-up visit.
-                </p>
+                <p style={sfvSectionDescription}>Responses recorded during the follow-up visit.</p>
               </div>
             </div>
 
@@ -1385,9 +1389,7 @@ function ReviewSfvDialog({
               {questions.map((item, index) => {
                 const value = String(item.value ?? "");
 
-                const option = item.options.find(
-                  (row) => row.valueCode === value,
-                );
+                const option = item.options.find((row) => row.valueCode === value);
 
                 return (
                   <div key={item.itemCode} style={sfvAnswerCard}>
@@ -1401,9 +1403,7 @@ function ReviewSfvDialog({
                       </div>
                     </div>
 
-                    <div style={sfvReadonlyAnswer}>
-                      {option?.label || value || "—"}
-                    </div>
+                    <div style={sfvReadonlyAnswer}>{option?.label || value || "—"}</div>
                   </div>
                 );
               })}
@@ -1425,294 +1425,312 @@ function ReviewSfvDialog({
   );
 }
 
+type SaveFn = (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
+type Findings = Map<string, ReviewModel["validation"]["findings"]>;
+
+interface ItemRenderProps {
+  readonly: boolean;
+  findingsByItem: Findings;
+  fieldErrors: Record<string, string>;
+  onSave: SaveFn;
+}
+
+const OPTIONAL_ITEMS = new Set(["A0500B", "A0500D"]);
+
+// Section A groups → the mockup's section icon + one-line description.
+const A_GROUP_META: Record<string, { icon: GlyphName; description: string }> = {
+  "Provider Information": {
+    icon: "building",
+    description: "Provider identifiers associated with this admission.",
+  },
+  "Admission Information": {
+    icon: "calendar",
+    description: "Details about this hospice admission.",
+  },
+  "Patient Identity": { icon: "user", description: "Confirm the patient's identity information." },
+  Demographics: {
+    icon: "users",
+    description: "Ethnicity, race, and language information from the patient chart.",
+  },
+  "Payer / Coverage": {
+    icon: "shield-check",
+    description: "Payer sources in effect for this admission. Select all that apply.",
+  },
+  "Living Situation": { icon: "home", description: "Where and with whom the patient lives." },
+};
+
+const GROUP_ICON: Record<string, GlyphName> = {
+  CPR: "heart-pulse",
+  "Other Life-Sustaining Treatments": "heart-pulse",
+  Hospitalization: "bed",
+  "Spiritual / Existential Concerns": "sparkle",
+  "Current status": "activity",
+  Pain: "zap",
+  "Shortness of breath": "activity",
+  "Symptom impact": "alert-circle",
+  "Skin condition screening": "droplet",
+  "Conditions identified": "clipboard-list",
+  "Treatments / interventions": "clipboard-check",
+  "Scheduled opioid": "pill",
+  "PRN opioid": "pill",
+  "Bowel regimen": "pill",
+};
+
+// CMS 0/1 items (Not checked / Checked) render as one checkbox-tile group per 5-char stem.
+const TILE_GROUP_LABEL: Record<string, string> = {
+  A1005: "Ethnicity (Select all that apply)",
+  A1010: "Race (Select all that apply)",
+  A1400: "Payer information (Select all that apply)",
+};
+
+function isCheckboxItem(item: WorkspaceItem): boolean {
+  // Only CMS "check all that apply" items (0 = Not checked, 1 = Checked). Real yes/no questions that
+  // happen to be coded 0/1 (F2000A "Yes, discussion occurred") stay single-choice rows.
+  const codes = item.options.map((o) => o.valueCode).sort();
+  return (
+    item.applicability === "applicable" &&
+    !PROTECTED_ITEMS.has(item.itemCode) &&
+    codes.length === 2 &&
+    codes[0] === "0" &&
+    codes[1] === "1" &&
+    item.options.every((o) => /check/i.test(o.label))
+  );
+}
+
+function isRequired(item: WorkspaceItem): boolean {
+  return (
+    item.applicability === "applicable" &&
+    !OPTIONAL_ITEMS.has(item.itemCode) &&
+    !PROTECTED_ITEMS.has(item.itemCode)
+  );
+}
+
+/** Split a group's items into checkbox-tile runs (same 5-char stem, ≥2 items) and single items. */
+function partitionTiles(
+  items: WorkspaceItem[],
+): (
+  | { kind: "tiles"; stem: string; items: WorkspaceItem[] }
+  | { kind: "item"; item: WorkspaceItem }
+)[] {
+  const out: (
+    | { kind: "tiles"; stem: string; items: WorkspaceItem[] }
+    | { kind: "item"; item: WorkspaceItem }
+  )[] = [];
+  const byStem = new Map<string, WorkspaceItem[]>();
+  for (const item of items) {
+    if (!isCheckboxItem(item)) continue;
+    const stem = item.itemCode.slice(0, 5);
+    byStem.set(stem, [...(byStem.get(stem) ?? []), item]);
+  }
+  const emitted = new Set<string>();
+  for (const item of items) {
+    const stem = item.itemCode.slice(0, 5);
+    const run = byStem.get(stem);
+    if (isCheckboxItem(item) && run && run.length >= 2) {
+      if (!emitted.has(stem)) {
+        emitted.add(stem);
+        out.push({ kind: "tiles", stem, items: run });
+      }
+      continue;
+    }
+    out.push({ kind: "item", item });
+  }
+  return out;
+}
+
 function SectionPanel(props: {
   sectionId: Exclude<SectionId, "Review">;
   section: WorkspaceSection;
   readonly: boolean;
-  findingsByItem: Map<string, ReviewModel["validation"]["findings"]>;
+  findingsByItem: Findings;
   fieldErrors: Record<string, string>;
-  onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
+  onSave: SaveFn;
   onCompleteSfv?: () => void;
   onReviewSfv?: () => void;
 }): JSX.Element {
-  const config = SECTION_ORDER.find((s) => s.id === props.sectionId)!;
-  return (
-    <section>
-      <SectionHeader
-        code={props.sectionId}
-        title={config.label}
-        helper={config.helper}
-      />
-      {props.sectionId === "A" ? (
-        <GroupedItems groups={groupSectionA(props.section.items)} {...props} />
-      ) : props.sectionId === "F" ? (
-        <GroupedItems
-          groups={groupByCodes(props.section.items, F_GROUPS)}
-          conversational
-          {...props}
-        />
-      ) : props.sectionId === "I" ? (
-        <DiagnosisSection {...props} />
-      ) : props.sectionId === "J" ? (
-        <SectionJ {...props} />
-      ) : props.sectionId === "M" ? (
-        <GroupedItems
-          groups={groupGeneric(props.section.items, [
-            "Skin condition screening",
-            "Conditions identified",
-            "Treatments / interventions",
-          ])}
-          {...props}
-        />
-      ) : (
-        <GroupedItems
-          groups={groupGeneric(props.section.items, [
-            "Scheduled opioid",
-            "PRN opioid",
-            "Bowel regimen",
-          ])}
-          {...props}
-        />
-      )}
-    </section>
-  );
-}
-
-function PayerCoverageGroup(props: {
-  items: WorkspaceItem[];
-  readonly: boolean;
-  findingsByItem: Map<string, ReviewModel["validation"]["findings"]>;
-  fieldErrors: Record<string, string>;
-  onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
-}): JSX.Element {
-  return (
-    <div id="hope-item-A1400" tabIndex={-1} style={payerGrid}>
-      {props.items.map((item) => {
-        const selected = String(item.value ?? "") === "1";
-
-        return (
-          <label
-            key={item.itemCode}
-            style={{
-              ...payerChoice,
-              ...(selected ? payerChoiceSelected : null),
-            }}
+  const common: ItemRenderProps = {
+    readonly: props.readonly,
+    findingsByItem: props.findingsByItem,
+    fieldErrors: props.fieldErrors,
+    onSave: props.onSave,
+  };
+  if (props.sectionId === "A") {
+    return (
+      <div className="wx-hope-stack">
+        {groupSectionA(props.section.items).map((group) => (
+          <ClinicalSection
+            key={group.label}
+            id={
+              group.label === "Demographics"
+                ? "hope-group-demographics"
+                : group.label === "Payer / Coverage"
+                  ? "hope-item-A1400"
+                  : undefined
+            }
+            icon={A_GROUP_META[group.label]?.icon ?? "file-text"}
+            title={group.label}
+            description={A_GROUP_META[group.label]?.description}
           >
-            <input
-              type="checkbox"
-              checked={selected}
-              disabled={props.readonly}
-              onChange={(event) => {
-                void props.onSave(
-                  item,
-                  event.currentTarget.checked ? "1" : "0",
-                );
-              }}
-            />
-
-            <span>
-              <strong>
-                {item.label}{" "}
-                {(item.itemCode === "A0500B" || item.itemCode === "A0500D") && (
-                  <span style={optionalLabel}>Optional</span>
-                )}
-              </strong>
-
-              {item.source && item.source !== "user" ? (
-                <small style={payerSource}>
-                  {item.source === "patient_prefill"
-                    ? "From patient coverage"
-                    : item.source === "admission_prefill"
-                      ? "From admission"
-                      : "Prefilled"}
-                </small>
-              ) : null}
-            </span>
-
-            <span style={codePill}>{item.itemCode}</span>
-          </label>
-        );
-      })}
-    </div>
+            <FieldGridItems items={group.items} {...common} />
+          </ClinicalSection>
+        ))}
+      </div>
+    );
+  }
+  if (props.sectionId === "F") {
+    return <QuestionGroups groups={groupByCodes(props.section.items, F_GROUPS)} {...common} />;
+  }
+  if (props.sectionId === "I") return <DiagnosisSection {...props} />;
+  if (props.sectionId === "J") return <SectionJ {...props} />;
+  return (
+    <QuestionGroups
+      groups={groupGeneric(
+        props.section.items,
+        props.sectionId === "M"
+          ? ["Skin condition screening", "Conditions identified", "Treatments / interventions"]
+          : ["Scheduled opioid", "PRN opioid", "Bowel regimen"],
+      )}
+      {...common}
+    />
   );
 }
 
-function DemographicsGroup(props: {
-  items: WorkspaceItem[];
-  readonly: boolean;
-  findingsByItem: Map<string, ReviewModel["validation"]["findings"]>;
-  fieldErrors: Record<string, string>;
-  onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
-}): JSX.Element {
-  const ethnicity = props.items.filter((item) =>
-    item.itemCode.startsWith("A1005"),
-  );
-
-  const race = props.items.filter((item) => item.itemCode.startsWith("A1010"));
-
-  const other = props.items.filter(
-    (item) =>
-      !item.itemCode.startsWith("A1005") && !item.itemCode.startsWith("A1010"),
-  );
-
+/** Section A layout: fields flow in a responsive grid; 0/1 runs become one tile group spanning the row. */
+function FieldGridItems(props: ItemRenderProps & { items: WorkspaceItem[] }): JSX.Element {
   return (
-    <div style={questionList}>
-      {ethnicity.length > 0 ? (
-        <section id="hope-item-A1005" tabIndex={-1} style={questionGroup}>
-          <h4 style={groupTitle}>Ethnicity</h4>
-
-          <div style={questionList}>
-            {ethnicity.map((item) => (
-              <QuestionRenderer
-                key={item.itemCode}
-                item={item}
-                readonly={props.readonly}
-                findings={props.findingsByItem.get(item.itemCode) ?? []}
-                fieldError={props.fieldErrors[item.itemCode]}
-                onSave={props.onSave}
-              />
-            ))}
+    <div className="wx-field-grid">
+      {partitionTiles(props.items).map((part) =>
+        part.kind === "tiles" ? (
+          <div key={part.stem} className="wx-field-grid-full">
+            <TileGroup {...props} stem={part.stem} items={part.items} />
           </div>
-        </section>
-      ) : null}
-
-      {race.length > 0 ? (
-        <section id="hope-item-A1010" tabIndex={-1} style={questionGroup}>
-          <h4 style={groupTitle}>Race</h4>
-
-          <div style={questionList}>
-            {race.map((item) => (
-              <QuestionRenderer
-                key={item.itemCode}
-                item={item}
-                readonly={props.readonly}
-                findings={props.findingsByItem.get(item.itemCode) ?? []}
-                fieldError={props.fieldErrors[item.itemCode]}
-                onSave={props.onSave}
-              />
-            ))}
-          </div>
-        </section>
-      ) : null}
-
-      {other.map((item) => (
-        <QuestionRenderer
-          key={item.itemCode}
-          item={item}
-          readonly={props.readonly}
-          findings={props.findingsByItem.get(item.itemCode) ?? []}
-          fieldError={props.fieldErrors[item.itemCode]}
-          onSave={props.onSave}
-        />
-      ))}
-    </div>
-  );
-}
-
-function GroupedItems(props: {
-  groups: {
-    label: string;
-    items: WorkspaceItem[];
-  }[];
-  readonly: boolean;
-  findingsByItem: Map<string, ReviewModel["validation"]["findings"]>;
-  fieldErrors: Record<string, string>;
-  onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
-  conversational?: boolean;
-}): JSX.Element {
-  return (
-    <div style={groupStack}>
-      {props.groups.map((group) => (
-        <section
-          key={group.label}
-          id={
-            group.label === "Demographics"
-              ? "hope-group-demographics"
-              : group.label === "Payer / Coverage"
-                ? "hope-item-A1400"
-                : undefined
-          }
-          tabIndex={-1}
-          style={questionGroup}
-        >
-          <h3 style={groupTitle}>{group.label}</h3>
-
-          {group.label === "Payer / Coverage" ? (
-            <PayerCoverageGroup
-              items={group.items}
-              readonly={props.readonly}
-              findingsByItem={props.findingsByItem}
-              fieldErrors={props.fieldErrors}
-              onSave={props.onSave}
-            />
-          ) : group.label === "Demographics" ? (
-            <DemographicsGroup
-              items={group.items}
-              readonly={props.readonly}
-              findingsByItem={props.findingsByItem}
-              fieldErrors={props.fieldErrors}
-              onSave={props.onSave}
-            />
-          ) : (
-            <div style={props.conversational ? cardGrid : questionList}>
-              {group.items.map((item) => (
-                <QuestionRenderer
-                  key={item.itemCode}
-                  item={item}
-                  readonly={props.readonly}
-                  findings={props.findingsByItem.get(item.itemCode) ?? []}
-                  fieldError={props.fieldErrors[item.itemCode]}
-                  onSave={props.onSave}
-                />
-              ))}
-            </div>
-          )}
-        </section>
-      ))}
-    </div>
-  );
-}
-
-function DiagnosisSection(
-  props: Parameters<typeof SectionPanel>[0],
-): JSX.Element {
-  const principal = props.section.items.filter((i) => i.itemCode === "I0010");
-  const others = props.section.items.filter((i) => i.itemCode !== "I0010");
-  return (
-    <div style={groupStack}>
-      <section style={questionGroup}>
-        <h3 style={groupTitle}>Principal Diagnosis Category</h3>
-        <p style={muted}>
-          Use the chart diagnosis as context only. The HOPE category remains a
-          clinician-selected answer.
-        </p>
-        {principal.map((item) => (
+        ) : (
           <QuestionRenderer
-            key={item.itemCode}
-            item={item}
+            key={part.item.itemCode}
+            item={part.item}
+            layout="field"
             readonly={props.readonly}
-            findings={props.findingsByItem.get(item.itemCode) ?? []}
-            fieldError={props.fieldErrors[item.itemCode]}
+            findings={props.findingsByItem.get(part.item.itemCode) ?? []}
+            fieldError={props.fieldErrors[part.item.itemCode]}
             onSave={props.onSave}
           />
-        ))}
-      </section>
-      <section style={questionGroup}>
-        <h3 style={groupTitle}>Other Conditions</h3>
-        <div style={twoColumn}>
-          {others.map((item) => (
+        ),
+      )}
+    </div>
+  );
+}
+
+function TileGroup(props: ItemRenderProps & { stem: string; items: WorkspaceItem[] }): JSX.Element {
+  const messages = props.items.flatMap((i) => [
+    ...(props.findingsByItem.get(i.itemCode) ?? []).map((f) => f.message),
+    ...(props.fieldErrors[i.itemCode] ? [props.fieldErrors[i.itemCode]!] : []),
+  ]);
+  const sourced = props.items.find((i) => i.source && i.source !== "user");
+  return (
+    <div id={`hope-item-${props.stem}`} tabIndex={-1}>
+      <CheckboxTiles
+        legend={TILE_GROUP_LABEL[props.stem] ?? "Select all that apply"}
+        code={props.stem}
+        required={props.items.some(isRequired)}
+        disabled={props.readonly}
+        columns={3}
+        options={props.items.map((item) => ({
+          key: item.itemCode,
+          label: item.label,
+          code: item.itemCode,
+          checked: String(item.value ?? "") === "1",
+        }))}
+        onToggle={(code, checked) => {
+          const item = props.items.find((i) => i.itemCode === code);
+          if (item) void props.onSave(item, checked ? "1" : "0");
+        }}
+      />
+      {sourced ? (
+        <div className="wx-hope-field-hint">
+          <SourceBadge source={sourced.source} />
+        </div>
+      ) : null}
+      {messages.length ? (
+        <div className="wx-hope-field-msg wx-hope-field-msg-error">
+          {[...new Set(messages)].map((m) => (
+            <div key={m}>{m}</div>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/** F / J / M / N: one section card per clinical concept, questions stacked flat inside it. */
+function QuestionGroups(
+  props: ItemRenderProps & { groups: { label: string; items: WorkspaceItem[] }[] },
+): JSX.Element {
+  return (
+    <div className="wx-hope-stack">
+      {props.groups.map((group) => (
+        <ClinicalSection
+          key={group.label}
+          icon={GROUP_ICON[group.label] ?? "clipboard-list"}
+          title={group.label}
+        >
+          <div className="wx-question-stack">
+            {partitionTiles(group.items).map((part) =>
+              part.kind === "tiles" ? (
+                <TileGroup key={part.stem} stem={part.stem} items={part.items} {...props} />
+              ) : (
+                <QuestionRenderer
+                  key={part.item.itemCode}
+                  item={part.item}
+                  layout="block"
+                  readonly={props.readonly}
+                  findings={props.findingsByItem.get(part.item.itemCode) ?? []}
+                  fieldError={props.fieldErrors[part.item.itemCode]}
+                  onSave={props.onSave}
+                />
+              ),
+            )}
+          </div>
+        </ClinicalSection>
+      ))}
+    </div>
+  );
+}
+
+function DiagnosisSection(props: Parameters<typeof SectionPanel>[0]): JSX.Element {
+  const principal = props.section.items.filter((i) => i.itemCode === "I0010");
+  const others = props.section.items.filter((i) => i.itemCode !== "I0010");
+  const common: ItemRenderProps = {
+    readonly: props.readonly,
+    findingsByItem: props.findingsByItem,
+    fieldErrors: props.fieldErrors,
+    onSave: props.onSave,
+  };
+  return (
+    <div className="wx-hope-stack">
+      <ClinicalSection
+        icon="stethoscope"
+        title="Principal Diagnosis Category"
+        description="Use the chart diagnosis as context only. The HOPE category remains a clinician-selected answer."
+      >
+        <div className="wx-question-stack">
+          {principal.map((item) => (
             <QuestionRenderer
               key={item.itemCode}
               item={item}
+              layout="block"
               readonly={props.readonly}
               findings={props.findingsByItem.get(item.itemCode) ?? []}
               fieldError={props.fieldErrors[item.itemCode]}
               onSave={props.onSave}
-              compact
             />
           ))}
         </div>
-      </section>
+      </ClinicalSection>
+      {others.length ? (
+        <ClinicalSection icon="clipboard-list" title="Other Conditions">
+          <FieldGridItems items={others} {...common} />
+        </ClinicalSection>
+      ) : null}
     </div>
   );
 }
@@ -1729,114 +1747,72 @@ function SfvWorkflowSection({
   onReview?: () => void;
 }): JSX.Element {
   const j2052a = items.find((item) => item.itemCode === "J2052A");
-
   const completed = String(j2052a?.value ?? "") === "1";
-
   const required = j2052a?.applicability === "applicable";
-
   return (
-    <section id="hope-item-J2052A" tabIndex={-1} style={questionGroup}>
-      <h3 style={groupTitle}>Symptom Follow-Up Visit</h3>
-
-      <div style={questionCard}>
-        <div style={questionHead}>
-          <div>
-            <strong>
-              {completed
-                ? "SFV completed"
-                : required
-                  ? "SFV required"
-                  : "SFV status"}
-            </strong>
-
-            <p style={muted}>
-              {completed
-                ? "The follow-up visit has been recorded by the SFV workflow."
-                : required
-                  ? "A moderate or severe symptom impact requires a follow-up visit."
-                  : "The need for a follow-up visit is determined from the symptom impact assessment."}
-            </p>
-          </div>
-
-          <StatusPill
-            label={completed ? "Completed" : required ? "Required" : "Pending"}
-            tone={completed ? "success" : required ? "warning" : "neutral"}
-          />
-        </div>
-
-        {completed ? (
-          <div style={actionRow}>
-            <button type="button" style={secondaryButton} onClick={onReview}>
-              View SFV details
-            </button>
-          </div>
-        ) : !readonly && required ? (
-          <div style={actionRow}>
-            <button type="button" style={primaryButton} onClick={onComplete}>
-              Complete SFV
-            </button>
-          </div>
-        ) : null}
-      </div>
-
+    <ClinicalSection
+      id="hope-item-J2052A"
+      icon="calendar-check"
+      title="Symptom Follow-Up Visit"
+      description={
+        completed
+          ? "The follow-up visit has been recorded by the SFV workflow."
+          : required
+            ? "A moderate or severe symptom impact requires a follow-up visit."
+            : "The need for a follow-up visit is determined from the symptom impact assessment."
+      }
+      aside={
+        <StatusPill
+          label={completed ? "Completed" : required ? "Required" : "Pending"}
+          tone={completed ? "success" : required ? "warning" : "neutral"}
+        />
+      }
+    >
       {completed ? (
-        <div
-          style={{
-            ...muted,
-            marginTop: "0.75rem",
-          }}
-        >
-          J2052 and J2053 are workflow-controlled and were populated from the
-          completed SFV.
+        <p style={muted}>
+          J2052 and J2053 are workflow-controlled and were populated from the completed SFV.
+        </p>
+      ) : null}
+      {completed || (!readonly && required) ? (
+        <div style={actionRow}>
+          {completed ? (
+            <Button tone="secondary" onClick={onReview}>
+              View SFV details
+            </Button>
+          ) : (
+            <Button onClick={onComplete}>Complete SFV</Button>
+          )}
         </div>
       ) : null}
-    </section>
+    </ClinicalSection>
   );
 }
 
 function SectionJ(props: Parameters<typeof SectionPanel>[0]): JSX.Element {
   const sfvItems = props.section.items.filter(
-    (item) =>
-      item.itemCode.startsWith("J2052") || item.itemCode.startsWith("J2053"),
+    (item) => item.itemCode.startsWith("J2052") || item.itemCode.startsWith("J2053"),
   );
-
   const regularItems = props.section.items.filter(
-    (item) =>
-      !item.itemCode.startsWith("J2052") && !item.itemCode.startsWith("J2053"),
+    (item) => !item.itemCode.startsWith("J2052") && !item.itemCode.startsWith("J2053"),
   );
-
   const groups = J_GROUPS.filter((label) => label !== "Symptom Follow-Up Visit")
     .map((label) => ({
       label,
-      items: regularItems.filter(
-        (item) => (item.group ?? groupJItem(item.itemCode)) === label,
-      ),
+      items: regularItems.filter((item) => (item.group ?? groupJItem(item.itemCode)) === label),
     }))
     .filter((group) => group.items.length > 0);
-
-  const grouped = new Set(
-    groups.flatMap((group) => group.items.map((item) => item.itemCode)),
-  );
-
+  const grouped = new Set(groups.flatMap((group) => group.items.map((item) => item.itemCode)));
   const leftover = regularItems.filter((item) => !grouped.has(item.itemCode));
-
-  if (leftover.length) {
-    groups.push({
-      label: "Other Health Conditions",
-      items: leftover,
-    });
-  }
-
+  if (leftover.length) groups.push({ label: "Other Health Conditions", items: leftover });
   return (
-    <div style={groupStack}>
-      <GroupedItems
+    <div className="wx-hope-stack">
+      <QuestionGroups
         groups={groups}
         readonly={props.readonly}
         findingsByItem={props.findingsByItem}
         fieldErrors={props.fieldErrors}
         onSave={props.onSave}
       />
-
       {sfvItems.length > 0 ? (
         <SfvWorkflowSection
           items={sfvItems}
@@ -1851,46 +1827,42 @@ function SectionJ(props: Parameters<typeof SectionPanel>[0]): JSX.Element {
 
 function QuestionRenderer(props: {
   item: WorkspaceItem;
+  /** `field` = compact grid field (Section A); `block` = full-width question with option rows. */
+  layout: "field" | "block";
   readonly: boolean;
   findings: ReviewModel["validation"]["findings"];
   fieldError?: string;
-  onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
-  compact?: boolean;
+  onSave: SaveFn;
 }): JSX.Element {
   const { item } = props;
+  const optional = OPTIONAL_ITEMS.has(item.itemCode);
   if (item.applicability === "not_applicable") {
     return (
-      <div id={`hope-item-${item.itemCode}`} tabIndex={-1} style={skippedRow}>
+      <div id={`hope-item-${item.itemCode}`} tabIndex={-1} className="wx-hope-skipped">
         <span>
-          {item.label}{" "}
-          {(item.itemCode === "A0500B" || item.itemCode === "A0500D") && (
-            <span style={optionalLabel}>Optional</span>
-          )}
+          {item.label} {optional ? <span className="wx-optional-mark">Optional</span> : null}
         </span>
-        <StatusPill label="Skipped" tone="neutral" />
+        <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+          <CmsCode code={item.itemCode} />
+          <StatusPill label="Skipped" tone="neutral" />
+        </span>
       </div>
     );
   }
   if (item.applicability === "pending") {
     return (
-      <div id={`hope-item-${item.itemCode}`} tabIndex={-1} style={pendingRow}>
+      <div id={`hope-item-${item.itemCode}`} tabIndex={-1} className="wx-hope-pending">
         <strong>
-          {" "}
-          {(item.itemCode === "A0500B" || item.itemCode === "A0500D") && (
-            <span style={optionalLabel}>Optional</span>
-          )}
+          {item.label} <CmsCode code={item.itemCode} />
         </strong>
         <span>{pendingApplicabilityMessage(item)}</span>
-        <small style={pendingMeta}>{pendingApplicabilityDetail(item)}</small>
+        <small>{pendingApplicabilityDetail(item)}</small>
       </div>
     );
   }
 
   const workflowControlled = PROTECTED_ITEMS.has(item.itemCode);
-
   const readonly = props.readonly || workflowControlled;
-
-  // const readonly = props.readonly || PROTECTED_ITEMS.has(item.itemCode);
   const inputId = `hope-${item.itemCode}`;
   const errorId = `${inputId}-error`;
   const hintId = `${inputId}-hint`;
@@ -1898,50 +1870,85 @@ function QuestionRenderer(props: {
     ...props.findings.map((f) => f.message),
     ...(props.fieldError ? [props.fieldError] : []),
   ];
+  const messageTone =
+    props.findings.some((f) => f.severity === "warning") && !props.fieldError ? "warning" : "error";
+  const describedBy = `${hintId}${messages.length ? ` ${errorId}` : ""}`;
+  const hintParts: ReactNode[] = [];
+  // A locked value says where it came from: its prefill source when it has one ("From admission"),
+  // else the workflow that owns it ("From Hospice Provider (Organization settings)").
+  const prefilled = item.source && item.source !== "user" && item.source !== "derived";
+  if (workflowControlled && !prefilled) hintParts.push(workflowControlledMessage(item));
+  else if (item.source && item.source !== "user")
+    hintParts.push(<SourceBadge key="src" source={item.source} />);
+  const coverageHint = coverageNumberHint(item);
+  if (coverageHint) hintParts.push(coverageHint);
+  if (props.readonly && !workflowControlled)
+    hintParts.push("Read-only — this record is completed.");
+  const hint = hintParts.length ? (
+    <>
+      {hintParts.map((h, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: static hint fragments.
+        <span key={i}>{h}</span>
+      ))}
+    </>
+  ) : null;
+
+  const control = workflowControlled ? (
+    <LockedValue id={inputId} value={controlledValueLabel(item)} describedBy={describedBy} />
+  ) : (
+    <AnswerControl
+      item={item}
+      inputId={inputId}
+      readonly={readonly}
+      describedBy={describedBy}
+      onSave={props.onSave}
+      layout={props.layout}
+    />
+  );
+
+  if (props.layout === "field") {
+    return (
+      <FieldShell
+        id={`hope-item-${item.itemCode}`}
+        htmlFor={inputId}
+        label={item.label}
+        code={item.itemCode}
+        required={isRequired(item)}
+        optional={optional}
+        hint={hint}
+        hintId={hintId}
+        errorId={errorId}
+        messages={messages}
+        messageTone={messageTone}
+      >
+        {control}
+      </FieldShell>
+    );
+  }
+
+  // Block question (mockup J0200): code + bold title + Required chip, code tag right, then rows.
+  const unanswered = item.state === "unanswered";
   return (
-    <div
-      id={`hope-item-${item.itemCode}`}
-      tabIndex={-1}
-      style={props.compact ? compactQuestion : questionCard}
-    >
-      <div style={questionHead}>
-        <label htmlFor={inputId} style={questionLabel}>
-          {item.label}
-          {(item.itemCode === "A0500B" || item.itemCode === "A0500D") && (
-            <span style={optionalLabel}>Optional</span>
-          )}
+    <div id={`hope-item-${item.itemCode}`} tabIndex={-1} className="wx-question-block">
+      <div className="wx-question-head">
+        <label htmlFor={inputId} className="wx-question-title">
+          <span className="wx-question-code">{item.itemCode}</span>
+          <span>{item.label}</span>
+          {optional ? <span className="wx-optional-mark">Optional</span> : null}
         </label>
-        <span style={codePill}>{item.itemCode}</span>
+        {isRequired(item) && unanswered && !props.readonly ? <RequiredChip /> : null}
+        <CmsCode code={item.itemCode} tone="primary" />
       </div>
-      <div id={hintId} style={hintLine}>
-        <SourceBadge source={item.source} />
-
-        {coverageNumberHint(item) ? (
-          <span>{coverageNumberHint(item)}</span>
-        ) : null}
-
-        {readonly ? <span>{workflowControlledMessage(item)}</span> : null}
-      </div>
-      {workflowControlled ? (
-        <WorkflowControlledValue item={item} />
+      {hint ? (
+        <div id={hintId} className="wx-hope-field-hint">
+          {hint}
+        </div>
       ) : (
-        <AnswerControl
-          item={item}
-          inputId={inputId}
-          readonly={readonly}
-          describedBy={`${hintId}${messages.length ? ` ${errorId}` : ""}`}
-          onSave={props.onSave}
-        />
+        <span id={hintId} hidden />
       )}
+      {control}
       {messages.length ? (
-        <div
-          id={errorId}
-          style={
-            props.findings.some((f) => f.severity === "warning")
-              ? warningText
-              : errorText
-          }
-        >
+        <div id={errorId} className={`wx-hope-field-msg wx-hope-field-msg-${messageTone}`}>
           {messages.map((message) => (
             <div key={message}>{message}</div>
           ))}
@@ -1951,24 +1958,11 @@ function QuestionRenderer(props: {
   );
 }
 
-function WorkflowControlledValue({
-  item,
-}: {
-  item: WorkspaceItem;
-}): JSX.Element {
+/** The display value of a workflow-controlled item (option label when coded). */
+function controlledValueLabel(item: WorkspaceItem): string {
   const current = String(item.value ?? "");
-
-  const option = item.options.find(
-    (candidate) => candidate.valueCode === current,
-  );
-
-  return (
-    <div style={controlledValue}>
-      <span>{option?.label || current || "Not available"}</span>
-
-      <span style={sourceBadge}>Workflow controlled</span>
-    </div>
-  );
+  const option = item.options.find((candidate) => candidate.valueCode === current);
+  return option?.label || current || "Not available";
 }
 
 const PREFERRED_LANGUAGE_OPTIONS = [
@@ -1993,12 +1987,11 @@ function AnswerControl(props: {
   inputId: string;
   readonly: boolean;
   describedBy: string;
-  onSave: (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
+  onSave: SaveFn;
+  layout: "field" | "block";
 }): JSX.Element {
   const value = props.item.value == null ? "" : String(props.item.value);
-  const dateLike = /date|dt|dte/i.test(
-    props.item.cmsItemTypeCode ?? props.item.label,
-  );
+  const dateLike = /date|dt|dte/i.test(props.item.cmsItemTypeCode ?? props.item.label);
   if (dateLike) {
     return (
       <input
@@ -2018,10 +2011,7 @@ function AnswerControl(props: {
   const displayOptions = answerOptionsForControl(props.item);
 
   if (props.item.itemCode === "A1110A") {
-    const knownLanguage = PREFERRED_LANGUAGE_OPTIONS.some(
-      (option) => option.value === value,
-    );
-
+    const knownLanguage = PREFERRED_LANGUAGE_OPTIONS.some((option) => option.value === value);
     return (
       <select
         id={props.inputId}
@@ -2029,16 +2019,10 @@ function AnswerControl(props: {
         disabled={props.readonly}
         aria-describedby={props.describedBy}
         style={inputStyle}
-        onChange={(event) =>
-          void props.onSave(props.item, event.target.value || null)
-        }
+        onChange={(event) => void props.onSave(props.item, event.target.value || null)}
       >
         <option value="">Select preferred language...</option>
-
-        {!knownLanguage && value ? (
-          <option value={value}>{value}</option>
-        ) : null}
-
+        {!knownLanguage && value ? <option value={value}>{value}</option> : null}
         {PREFERRED_LANGUAGE_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>
             {option.label}
@@ -2066,33 +2050,18 @@ function AnswerControl(props: {
       />
     );
   }
-  if (displayOptions.length > 0 && displayOptions.length <= 6) {
+  // Block questions show their choices as full-width option rows (mockup); grid fields use a select.
+  if (props.layout === "block" && displayOptions.length > 0 && displayOptions.length <= 8) {
     return (
-      <fieldset
-        style={radioSet}
-        aria-describedby={props.describedBy}
+      <OptionRows
+        name={props.item.itemCode}
+        legend={props.item.label}
+        options={displayOptions}
+        value={value}
         disabled={props.readonly}
-      >
-        <legend style={srOnly}>{props.item.label}</legend>
-        {displayOptions.map((option) => (
-          <label
-            key={option.valueCode}
-            style={{
-              ...radioChoice,
-              ...(value === option.valueCode ? radioChoiceSelected : null),
-            }}
-          >
-            <input
-              type="radio"
-              name={props.item.itemCode}
-              value={option.valueCode}
-              checked={value === option.valueCode}
-              onChange={() => void props.onSave(props.item, option.valueCode)}
-            />
-            <span>{option.label}</span>
-          </label>
-        ))}
-      </fieldset>
+        describedBy={props.describedBy}
+        onChange={(code) => void props.onSave(props.item, code)}
+      />
     );
   }
   if (displayOptions.length > 0) {
@@ -2103,9 +2072,7 @@ function AnswerControl(props: {
         disabled={props.readonly}
         aria-describedby={props.describedBy}
         style={inputStyle}
-        onChange={(event) =>
-          void props.onSave(props.item, event.target.value || null)
-        }
+        onChange={(event) => void props.onSave(props.item, event.target.value || null)}
       >
         <option value="">Select...</option>
         {displayOptions.map((option) => (
@@ -2139,12 +2106,9 @@ function isTextItem(item: WorkspaceItem): boolean {
   );
 }
 
-function answerOptionsForControl(
-  item: WorkspaceItem,
-): WorkspaceItem["options"] {
+function answerOptionsForControl(item: WorkspaceItem): WorkspaceItem["options"] {
   return item.options.filter(
-    (option) =>
-      option.valueCode !== "Text" && !/^YYYY(MM(DD)?)?$/.test(option.valueCode),
+    (option) => option.valueCode !== "Text" && !/^YYYY(MM(DD)?)?$/.test(option.valueCode),
   );
 }
 
@@ -2179,21 +2143,13 @@ function PayerCoverageReview({
     return null;
   }
 
-  const payerItems = sectionA.items.filter((item) =>
-    item.itemCode.startsWith("A1400"),
-  );
+  const payerItems = sectionA.items.filter((item) => item.itemCode.startsWith("A1400"));
 
-  const selectedPayers = payerItems.filter(
-    (item) => String(item.value ?? "") === "1",
-  );
+  const selectedPayers = payerItems.filter((item) => String(item.value ?? "") === "1");
 
-  const medicareNumber = sectionA.items.find(
-    (item) => item.itemCode === "A0600B",
-  );
+  const medicareNumber = sectionA.items.find((item) => item.itemCode === "A0600B");
 
-  const medicaidNumber = sectionA.items.find(
-    (item) => item.itemCode === "A0700",
-  );
+  const medicaidNumber = sectionA.items.find((item) => item.itemCode === "A0700");
 
   const hasMedicare = payerItems.some(
     (item) =>
@@ -2212,16 +2168,10 @@ function PayerCoverageReview({
       <div style={reviewSubsectionHeader}>
         <div>
           <h3 style={groupTitle}>Payer / Coverage</h3>
-          <p style={muted}>
-            Review the payer sources recorded for this HOPE assessment.
-          </p>
+          <p style={muted}>Review the payer sources recorded for this HOPE assessment.</p>
         </div>
 
-        <button
-          type="button"
-          style={secondaryButton}
-          onClick={() => onGoTo("A")}
-        >
+        <button type="button" style={secondaryButton} onClick={() => onGoTo("A")}>
           View Section A
         </button>
       </div>
@@ -2257,9 +2207,7 @@ function PayerCoverageReview({
           ))}
         </div>
       ) : (
-        <div style={payerReviewEmpty}>
-          No payer source is currently selected.
-        </div>
+        <div style={payerReviewEmpty}>No payer source is currently selected.</div>
       )}
 
       {hasMedicare || hasMedicaid ? (
@@ -2311,12 +2259,7 @@ function ReviewPanel(props: {
   const completed = props.assessment.status === "signed";
   const isHuv = props.workspace.assessment.isc === "HUV";
   return (
-    <section>
-      <SectionHeader
-        code="Review"
-        title={completed ? "Completed Record" : "Review & Sign"}
-        helper={`Use backend readiness to decide whether this ${rfaLabel(props.assessment.rfaKind)} can be completed.`}
-      />
+    <section className="wx-hope-stack">
       <div style={reviewHero}>
         <div>
           <h3 style={groupTitle}>
@@ -2337,8 +2280,7 @@ function ReviewPanel(props: {
         <div style={progressRing} aria-label="Completion progress">
           {props.workspace.progress.active
             ? Math.round(
-                ((props.workspace.progress.answered +
-                  props.workspace.progress.skipped) /
+                ((props.workspace.progress.answered + props.workspace.progress.skipped) /
                   props.workspace.progress.active) *
                   100,
               )
@@ -2359,11 +2301,7 @@ function ReviewPanel(props: {
         {props.visibleSections
           .filter((s) => s.id !== "Review")
           .map((section) => {
-            const state = sectionState(
-              section.id,
-              props.review,
-              props.workspace,
-            );
+            const state = sectionState(section.id, props.review, props.workspace);
             return (
               <button
                 key={section.id}
@@ -2382,17 +2320,12 @@ function ReviewPanel(props: {
       <PayerCoverageReview workspace={props.workspace} onGoTo={props.onGoTo} />
 
       <IssueList review={props.review} onGoTo={props.onGoTo} />
-      {props.workspace.assessment.isc === "HA" ||
-      props.workspace.assessment.isc === "HUV" ? (
+      {props.workspace.assessment.isc === "HA" || props.workspace.assessment.isc === "HUV" ? (
         <SfvSummary review={props.review} />
       ) : null}
       <div style={actionRow}>
         {completed ? (
-          <button
-            type="button"
-            style={primaryButton}
-            onClick={props.onCorrection}
-          >
+          <button type="button" style={primaryButton} onClick={props.onCorrection}>
             Create correction
           </button>
         ) : (
@@ -2438,9 +2371,7 @@ function IssueList({
   const seen = new Set<string>();
 
   const rows = candidates.filter((row) => {
-    const key = [row.ruleId, row.section, row.itemCode ?? "", row.message].join(
-      ":",
-    );
+    const key = [row.ruleId, row.section, row.itemCode ?? "", row.message].join(":");
 
     if (seen.has(key)) {
       return false;
@@ -2451,9 +2382,7 @@ function IssueList({
   });
 
   if (!rows.length) {
-    return (
-      <div style={successBox}>No blocking issues from the backend review.</div>
-    );
+    return <div style={successBox}>No blocking issues from the backend review.</div>;
   }
 
   return (
@@ -2474,9 +2403,7 @@ function IssueList({
               {row.message}
             </span>
 
-            <span>
-              {row.severity === "warning" ? "Warning" : "Go to question"}
-            </span>
+            <span>{row.severity === "warning" ? "Warning" : "Go to question"}</span>
           </button>
         ))}
       </div>
@@ -2504,18 +2431,10 @@ function SfvSummary({ review }: { review: ReviewModel | null }): JSX.Element {
       <div style={sfvBox}>
         <StatusPill
           label={label}
-          tone={
-            sfv?.status === "overdue"
-              ? "critical"
-              : sfv?.required
-                ? "warning"
-                : "neutral"
-          }
+          tone={sfv?.status === "overdue" ? "critical" : sfv?.required ? "warning" : "neutral"}
         />
         {sfv?.dueAt ? <span>Due {formatDate(sfv.dueAt)}</span> : null}
-        {sfv?.completedAt ? (
-          <span>Completed {formatDate(sfv.completedAt)}</span>
-        ) : null}
+        {sfv?.completedAt ? <span>Completed {formatDate(sfv.completedAt)}</span> : null}
       </div>
     </section>
   );
@@ -2529,10 +2448,7 @@ function HuvTimingBanner({
   review: ReviewModel | null;
 }): JSX.Element | null {
   if (!workspace.huv) return null;
-  const stateLabelByCode: Record<
-    NonNullable<Workspace["huv"]>["timingState"],
-    string
-  > = {
+  const stateLabelByCode: Record<NonNullable<Workspace["huv"]>["timingState"], string> = {
     upcoming: "Upcoming",
     within_window: "Within window",
     due_soon: "Due soon",
@@ -2540,30 +2456,24 @@ function HuvTimingBanner({
     completed: "Completed",
     unknown: "Schedule pending",
   };
-  const warning = review?.validation.findings.find(
-    (finding) => finding.ruleId === "-3110",
-  );
+  const warning = review?.validation.findings.find((finding) => finding.ruleId === "-3110");
   return (
     <section style={timingBanner}>
       <div>
         <strong>{stateLabelByCode[workspace.huv.timingState]}</strong>
         <span style={muted}>
-          Recommended completion window {formatDate(workspace.huv.windowStart)}{" "}
-          - {formatDate(workspace.huv.windowEnd)}
+          Recommended completion window {formatDate(workspace.huv.windowStart)} -{" "}
+          {formatDate(workspace.huv.windowEnd)}
         </span>
       </div>
       <div style={timingBannerMeta}>
         <StatusPill
           label={
-            workspace.huv.scheduleStatus
-              ? stateLabel(workspace.huv.scheduleStatus)
-              : "No schedule"
+            workspace.huv.scheduleStatus ? stateLabel(workspace.huv.scheduleStatus) : "No schedule"
           }
           tone={workspace.huv.timingState === "late" ? "warning" : "neutral"}
         />
-        {workspace.huv.z0350 ? (
-          <span>Z0350 {formatDate(workspace.huv.z0350)}</span>
-        ) : null}
+        {workspace.huv.z0350 ? <span>Z0350 {formatDate(workspace.huv.z0350)}</span> : null}
         {warning ? <span style={warningText}>CMS warning -3110</span> : null}
       </div>
     </section>
@@ -2606,9 +2516,7 @@ function HuvCompletionDateControl(props: {
           <button
             type="button"
             style={secondaryButton}
-            disabled={
-              props.readonly || props.saving || !draft || draft === value
-            }
+            disabled={props.readonly || props.saving || !draft || draft === value}
             onClick={() => props.onSave(draft)}
           >
             {props.saving ? "Saving..." : "Confirm date"}
@@ -2628,29 +2536,19 @@ function SignDialog(props: {
 }): JSX.Element {
   return (
     <div style={modalBackdrop} role="presentation">
-      <dialog
-        style={modal}
-        open
-        aria-modal="true"
-        aria-labelledby="hope-sign-title"
-      >
+      <dialog style={modal} open aria-modal="true" aria-labelledby="hope-sign-title">
         <h2 id="hope-sign-title" style={modalTitle}>
           {props.title}
         </h2>
         <p style={muted}>
-          By signing, you confirm this HOPE record is complete. After signing,
-          it becomes read-only.
+          By signing, you confirm this HOPE record is complete. After signing, it becomes read-only.
         </p>
         <div style={modalStats}>
           <span>Warnings: {props.review?.validation.warningCount ?? 0}</span>
           <span>Errors: {props.review?.validation.errorCount ?? 0}</span>
         </div>
         <div style={actionRow}>
-          <button
-            type="button"
-            style={secondaryButton}
-            onClick={props.onCancel}
-          >
+          <button type="button" style={secondaryButton} onClick={props.onCancel}>
             Cancel
           </button>
           <button
@@ -2677,18 +2575,13 @@ function InactivationDialog(props: {
   const trimmed = reason.trim();
   return (
     <div style={modalBackdrop} role="presentation">
-      <dialog
-        style={modal}
-        open
-        aria-modal="true"
-        aria-labelledby="hope-inactivation-title"
-      >
+      <dialog style={modal} open aria-modal="true" aria-labelledby="hope-inactivation-title">
         <h2 id="hope-inactivation-title" style={modalTitle}>
           Inactivate {props.recordLabel}
         </h2>
         <p style={muted}>
-          This creates a CMS inactivation draft for the selected signed record.
-          The original remains current until the inactivation draft is signed.
+          This creates a CMS inactivation draft for the selected signed record. The original remains
+          current until the inactivation draft is signed.
         </p>
         <label style={fieldLabel}>
           Reason
@@ -2702,11 +2595,7 @@ function InactivationDialog(props: {
           />
         </label>
         <div style={actionRow}>
-          <button
-            type="button"
-            style={secondaryButton}
-            onClick={props.onCancel}
-          >
+          <button type="button" style={secondaryButton} onClick={props.onCancel}>
             Cancel
           </button>
           <button
@@ -2735,10 +2624,8 @@ function CompletedSummary({
       <span aria-hidden="true">✓</span>
       <span>
         Completed {formatDate(assessment.signedAt)} · Signed by{" "}
-        {assessment.signedBy ??
-          review?.signedByMembershipId ??
-          "recorded signer"}{" "}
-        · Z0500B {formatDate(review?.z0500b ?? assessment.signedAt)}
+        {assessment.signedBy ?? review?.signedByMembershipId ?? "recorded signer"} · Z0500B{" "}
+        {formatDate(review?.z0500b ?? assessment.signedAt)}
       </span>
     </div>
   );
@@ -2748,40 +2635,251 @@ function disciplineForCorrection(value: string): "RN" | "NP" | "MD" {
   return value === "NP" || value === "MD" ? value : "RN";
 }
 
-function BottomNav({
-  active,
-  sections,
-  onChange,
+const SEX_LABEL: Record<string, string> = {
+  M: "Male",
+  F: "Female",
+  male: "Male",
+  female: "Female",
+};
+function sexLabel(code: string | null): string | null {
+  if (!code) return null;
+  return SEX_LABEL[code] ?? code.charAt(0).toUpperCase() + code.slice(1);
+}
+
+/** Section nav entry with an actionable status line ("2 required fields", not "Needs attention"). */
+function navView(
+  section: { id: SectionId; label: string },
+  review: ReviewModel | null,
+  workspace: Workspace,
+): NavSectionView {
+  const title = section.id === "Review" ? "Review" : `${section.id}. ${section.label}`;
+  const accessibleName = section.id === "Review" ? "Review" : `${section.id} ${section.label}`;
+  if (section.id === "Review") {
+    const blockers = review?.readiness.blockers.length ?? 0;
+    return {
+      id: section.id,
+      title,
+      accessibleName,
+      state: review?.readiness.readyToSign ? "complete" : blockers ? "attention" : "empty",
+      statusLine: review?.readiness.readyToSign
+        ? "Ready to sign"
+        : blockers
+          ? `${blockers} blocker${blockers === 1 ? "" : "s"}`
+          : "Not started",
+    };
+  }
+  const sec = review?.sections.find((s) => s.code === section.id);
+  if (sec) {
+    const done = sec.answered + sec.skipped;
+    if (sec.state === "complete")
+      return { id: section.id, title, accessibleName, state: "complete", statusLine: "Complete" };
+    if (sec.errors > 0 || (done > 0 && sec.unanswered > 0 && sec.state === "needs_attention")) {
+      const n = sec.unanswered || sec.errors;
+      const what = sec.unanswered ? "required field" : "issue";
+      return {
+        id: section.id,
+        title,
+        accessibleName,
+        state: "attention",
+        statusLine: `${n} ${what}${n === 1 ? "" : "s"}`,
+      };
+    }
+    if (done === 0)
+      return { id: section.id, title, accessibleName, state: "empty", statusLine: "Not started" };
+    return {
+      id: section.id,
+      title,
+      accessibleName,
+      state: "progress",
+      statusLine: `${done} of ${sec.active} complete`,
+    };
+  }
+  const state = sectionState(section.id, review, workspace);
+  return {
+    id: section.id,
+    title,
+    accessibleName,
+    state: state.kind,
+    statusLine: state.kind === "progress" ? state.detail : state.label,
+  };
+}
+
+/** Right context rail: patient summary, section completion, open issues, quick links (mockups). */
+function HopeRail({
+  patient,
+  patientExtra,
+  patientId,
+  review,
+  workspace,
+  visibleSections,
+  onGoTo,
 }: {
-  active: SectionId;
-  sections: { id: SectionId; label: string; helper: string }[];
-  onChange: (id: SectionId) => void;
+  patient: PatientSummary | null;
+  patientExtra: PatientExtra;
+  patientId: string;
+  review: ReviewModel | null;
+  workspace: Workspace;
+  visibleSections: { id: SectionId; label: string; helper: string }[];
+  onGoTo: (section: SectionId, itemCode?: string | null) => void;
 }): JSX.Element {
-  const index = sections.findIndex((section) => section.id === active);
-  const previous = sections[Math.max(0, index - 1)] ?? sections[0]!;
-  const next =
-    sections[Math.min(sections.length - 1, index + 1)] ??
-    sections[sections.length - 1]!;
+  const age = patient ? ageYears(patient.dob) : null;
+  const progress = workspace.progress;
+  const percent = progress.active
+    ? Math.round(((progress.answered + progress.skipped) / progress.active) * 100)
+    : 0;
+  const clinical = visibleSections.filter((s) => s.id !== "Review");
+  const views = clinical.map((s) => navView(s, review, workspace));
+  const completedCount = views.filter((v) => v.state === "complete").length;
+  const issueCount = views.filter((v) => v.state === "attention").length;
+  const issues = [
+    ...(review?.readiness.blockers ?? []).map((b) => ({
+      key: `b:${b.code}:${b.itemCode ?? ""}:${b.message}`,
+      section: b.section ?? "Review",
+      itemCode: b.itemCode ?? null,
+      message: b.message,
+      severity: "error" as const,
+    })),
+    ...(review?.validation.findings ?? []).map((f) => ({
+      key: `f:${f.ruleId}:${f.itemCode ?? ""}:${f.message}`,
+      section: f.section,
+      itemCode: f.itemCode,
+      message: f.message,
+      severity: f.severity,
+    })),
+  ].filter((row, i, all) => all.findIndex((r) => r.key === row.key) === i);
+  const links: { label: string; icon: GlyphName; to: string }[] = [
+    { label: "View patient chart", icon: "user", to: `/patients/${patientId}` },
+    { label: "Previous assessments", icon: "clipboard-check", to: `/patients/${patientId}/hope` },
+    {
+      label: "Election & certification",
+      icon: "file-check",
+      to: `/patients/${patientId}/election-certification`,
+    },
+    { label: "Documents", icon: "file-text", to: `/patients/${patientId}/documents` },
+    { label: "Care plan", icon: "clipboard-list", to: `/patients/${patientId}/care-plan` },
+  ];
   return (
-    <div style={bottomNav}>
-      <button
-        type="button"
-        style={secondaryButton}
-        disabled={index <= 0}
-        onClick={() => onChange(previous.id)}
+    <>
+      <Panel
+        title="Patient Summary"
+        icon="users"
+        action={<Link to={`/patients/${patientId}?view=demographics`}>Edit</Link>}
       >
-        Previous
-      </button>
-      <span style={muted}>Answers save automatically.</span>
-      <button
-        type="button"
-        style={secondaryButton}
-        disabled={index >= sections.length - 1}
-        onClick={() => onChange(next.id)}
+        {patient ? (
+          <InfoRows
+            labelWidth="5.5rem"
+            rows={[
+              { label: "Name", value: `${patient.firstName} ${patient.lastName}` },
+              {
+                label: "DOB",
+                value: `${formatDate(patient.dob)}${age != null ? ` (${age}y)` : ""}`,
+              },
+              { label: "Sex", value: sexLabel(patientExtra.sex) ?? "—" },
+              { label: "MRN", value: `...${patient.mrn.slice(-4)}` },
+              {
+                label: "Medicare",
+                value: patientExtra.mbiTail ? `...${patientExtra.mbiTail}` : "—",
+              },
+              { label: "Address", value: patientExtra.address ?? "—" },
+            ]}
+          />
+        ) : (
+          <p style={muted}>Patient details unavailable.</p>
+        )}
+      </Panel>
+      <Panel title="Section Completion" icon="clipboard-check">
+        <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+          <CompletionRing percent={percent} />
+          <div style={{ display: "flex", flexDirection: "column", gap: "0.4rem" }}>
+            <LegendDot color={t.success} label={`${completedCount} Completed`} />
+            <LegendDot color={t.outline} label={`${clinical.length - completedCount} Remaining`} />
+            <LegendDot color={t.error} label={`${issueCount} With issues`} />
+          </div>
+        </div>
+      </Panel>
+      <Panel
+        title={
+          <span style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem" }}>
+            Assessment Issues {issues.length ? <CountBadge count={issues.length} /> : null}
+          </span>
+        }
+        icon="alert-circle"
+        tone={issues.some((i) => i.severity === "error") ? "danger" : "default"}
+        flush
       >
-        Next
-      </button>
-    </div>
+        {issues.length === 0 ? (
+          <p style={{ ...muted, padding: "0 1.125rem 0.875rem" }}>No open validation issues.</p>
+        ) : (
+          <ul className="wx-rail-list">
+            {issues.slice(0, 5).map((issue) => (
+              <li key={issue.key}>
+                <button
+                  type="button"
+                  className="wx-rail-alert"
+                  style={{
+                    width: "100%",
+                    border: 0,
+                    background: "transparent",
+                    textAlign: "left",
+                    cursor: "pointer",
+                  }}
+                  onClick={() => onGoTo(asSection(issue.section), issue.itemCode)}
+                >
+                  <span
+                    aria-hidden
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 9999,
+                      flexShrink: 0,
+                      background: issue.severity === "warning" ? t.warning : t.error,
+                    }}
+                  />
+                  <span style={{ flex: 1, minWidth: 0, fontSize: "0.8125rem" }}>
+                    {issue.itemCode ? <strong>{issue.itemCode} — </strong> : null}
+                    {issue.message}
+                  </span>
+                  <Glyph name="chevron-right" size={16} strokeWidth={1.75} />
+                </button>
+              </li>
+            ))}
+            {issues.length > 5 ? (
+              <li>
+                <button
+                  type="button"
+                  className="wx-rail-alert"
+                  style={{
+                    width: "100%",
+                    border: 0,
+                    background: "transparent",
+                    color: t.primary,
+                    cursor: "pointer",
+                  }}
+                  onClick={() => onGoTo("Review")}
+                >
+                  View all {issues.length} issues
+                </button>
+              </li>
+            ) : null}
+          </ul>
+        )}
+      </Panel>
+      <Panel title="Quick Links" icon="link" flush>
+        <ul className="wx-rail-links">
+          {links.map((l) => (
+            <li key={l.label}>
+              <Link to={l.to}>
+                <span style={{ color: t.primary }}>
+                  <Glyph name={l.icon} size={17} strokeWidth={1.75} />
+                </span>
+                <span style={{ flex: 1 }}>{l.label}</span>
+                <Glyph name="chevron-right" size={16} strokeWidth={1.75} />
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </Panel>
+    </>
   );
 }
 
@@ -2800,11 +2898,7 @@ function LegacyTimepointView({
     <PatientWorkspaceLayout
       banner={
         <PatientBanner
-          name={
-            patient
-              ? `${patient.firstName} ${patient.lastName}`
-              : "HOPE Assessment"
-          }
+          name={patient ? `${patient.firstName} ${patient.lastName}` : "HOPE Assessment"}
         />
       }
     >
@@ -2814,8 +2908,7 @@ function LegacyTimepointView({
             <div style={eyebrow}>HOPE Timepoint</div>
             <h1 style={title}>{rfaLabel(assessment.rfaKind)}</h1>
             <p style={muted}>
-              HUV and Discharge capture keep their existing workflow until their
-              UI phase.
+              HUV and Discharge capture keep their existing workflow until their UI phase.
             </p>
           </div>
           {assessment.status === "draft" ? (
@@ -2829,11 +2922,7 @@ function LegacyTimepointView({
         <div style={questionGroup}>
           <h3 style={groupTitle}>Timeline</h3>
           {timeline.map((tp) => (
-            <Link
-              key={tp.id}
-              to={`/hope/assessments/${tp.id}`}
-              style={legacyLink}
-            >
+            <Link key={tp.id} to={`/hope/assessments/${tp.id}`} style={legacyLink}>
               {rfaLabel(tp.rfaKind)} · {formatDate(tp.targetDate)}
             </Link>
           ))}
@@ -2876,21 +2965,21 @@ function SourceBadge({
     imported: "Imported",
     correction_copy: "Copied from original",
   };
-  return <span style={sourceBadge}>{label[source]}</span>;
+  return <span>{label[source]}</span>;
 }
 
 function workflowControlledMessage(item: WorkspaceItem): string {
   if (item.itemCode === "A0100A" || item.itemCode === "A0100B") {
-    return "Set automatically from the selected Hospice Provider.";
+    return "From Hospice Provider (Organization settings)";
   }
   if (item.itemCode === "A0050") {
-    return "Set automatically from whether this is a new record, correction, or inactivation.";
+    return "From record type (new, correction, or inactivation)";
   }
   if (item.itemCode === "A0220") {
-    return "Set automatically from the assessment target date.";
+    return "From assessment target date";
   }
   if (item.itemCode === "A0250") {
-    return "Set automatically from the selected HOPE timepoint.";
+    return "From selected HOPE timepoint";
   }
   if (item.itemCode === "A0270") {
     return "Set automatically when this record corrects or inactivates a previous HOPE record.";
@@ -2928,29 +3017,42 @@ function pendingApplicabilityDetail(item: WorkspaceItem): string {
 
 function SaveState({
   state,
+  lastSavedAt,
 }: {
   state: "idle" | "saving" | "saved" | "failed" | "conflict";
+  lastSavedAt: number | null;
 }): JSX.Element {
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const timer = window.setInterval(() => tick((n) => n + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, []);
+  const ago = (): string => {
+    if (!lastSavedAt) return "just now";
+    const min = Math.floor((Date.now() - lastSavedAt) / 60_000);
+    return min < 1 ? "just now" : `${min} min ago`;
+  };
   const label =
     state === "saving"
       ? "Saving..."
       : state === "saved"
-        ? "Saved"
+        ? `Auto-saved ${ago()}`
         : state === "failed"
           ? "Save failed"
           : state === "conflict"
             ? "Reload needed"
-            : "Auto-save";
-  return <span style={saveState(state)}>{label}</span>;
+            : "Auto-save on";
+  return (
+    <span style={saveState(state)} aria-live="polite">
+      {label}
+    </span>
+  );
 }
 
 function ConflictBanner({ onReload }: { onReload: () => void }): JSX.Element {
   return (
     <div style={conflictBanner}>
-      <span>
-        This assessment changed elsewhere. Reload the latest version before
-        continuing.
-      </span>
+      <span>This assessment changed elsewhere. Reload the latest version before continuing.</span>
       <button type="button" style={secondaryButton} onClick={onReload}>
         Reload assessment
       </button>
@@ -2972,15 +3074,11 @@ function sectionsFromWorkspace(
 function visibleSectionOrder(
   workspace: Workspace,
 ): { id: SectionId; label: string; helper: string }[] {
-  const activeCodes = new Set(
-    workspace.sections.map((section) => section.code),
-  );
+  const activeCodes = new Set(workspace.sections.map((section) => section.code));
   const visible = SECTION_ORDER.filter(
     (section) => section.id === "Review" || activeCodes.has(section.id),
   );
-  return visible.length
-    ? visible
-    : SECTION_ORDER.filter((section) => section.id === "Review");
+  return visible.length ? visible : SECTION_ORDER.filter((section) => section.id === "Review");
 }
 
 function sectionState(
@@ -3026,8 +3124,7 @@ function sectionState(
     };
   }
   const raw = workspace.sections.find((s) => s.code === section);
-  const answered =
-    raw?.items.filter((i) => i.state !== "unanswered").length ?? 0;
+  const answered = raw?.items.filter((i) => i.state !== "unanswered").length ?? 0;
   if (!raw || raw.items.length === 0)
     return { kind: "empty", label: "Not started", detail: "No active items" };
   if (answered === 0)
@@ -3053,23 +3150,16 @@ function derivedStatus(
   label: string;
   tone: "neutral" | "progress" | "warning" | "critical" | "success";
 } {
-  if (assessment.status === "signed")
-    return { label: "Completed", tone: "success" };
-  if (review?.readiness.readyToSign)
-    return { label: "Ready to sign", tone: "success" };
-  if (
-    (review?.validation.errorCount ?? 0) > 0 ||
-    (review?.readiness.blockers.length ?? 0) > 0
-  )
+  if (assessment.status === "signed") return { label: "Completed", tone: "success" };
+  if (review?.readiness.readyToSign) return { label: "Ready to sign", tone: "success" };
+  if ((review?.validation.errorCount ?? 0) > 0 || (review?.readiness.blockers.length ?? 0) > 0)
     return { label: "Needs attention", tone: "critical" };
   if (workspace.progress.answered > 0 || workspace.progress.skipped > 0)
     return { label: "In progress", tone: "progress" };
   return { label: "Not started", tone: "neutral" };
 }
 
-function groupSectionA(
-  items: WorkspaceItem[],
-): { label: string; items: WorkspaceItem[] }[] {
+function groupSectionA(items: WorkspaceItem[]): { label: string; items: WorkspaceItem[] }[] {
   const used = new Set<string>();
   const groups = SECTION_A_GROUPS.map((group) => {
     const rows = items.filter((item) => group.match(item));
@@ -3077,8 +3167,7 @@ function groupSectionA(
     return { label: group.label, items: rows };
   }).filter((group) => group.items.length > 0);
   const other = items.filter((item) => !used.has(item.itemCode));
-  if (other.length)
-    groups.push({ label: "Other Administrative Items", items: other });
+  if (other.length) groups.push({ label: "Other Administrative Items", items: other });
   return groups;
 }
 
@@ -3115,19 +3204,15 @@ function groupGeneric(
 function groupJItem(itemCode: string): string {
   if (itemCode === "J0050") return "Current status";
   if (itemCode.startsWith("J09")) return "Pain";
-  if (itemCode.startsWith("J203") || itemCode.startsWith("J204"))
-    return "Shortness of breath";
-  if (itemCode.startsWith("J2050") || itemCode.startsWith("J2051"))
-    return "Symptom impact";
+  if (itemCode.startsWith("J203") || itemCode.startsWith("J204")) return "Shortness of breath";
+  if (itemCode.startsWith("J2050") || itemCode.startsWith("J2051")) return "Symptom impact";
   if (itemCode.startsWith("J2052") || itemCode.startsWith("J2053"))
     return "Symptom Follow-Up Visit";
   return "Other Health Conditions";
 }
 
 function asSection(value: string): SectionId {
-  return SECTION_ORDER.some((section) => section.id === value)
-    ? (value as SectionId)
-    : "Review";
+  return SECTION_ORDER.some((section) => section.id === value) ? (value as SectionId) : "Review";
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -3135,10 +3220,13 @@ function formatDate(value: string | null | undefined): string {
   const date = value.slice(0, 10);
   const [year, month, day] = date.split("-").map(Number);
   if (!year || !month || !day) return value;
+  // A calendar date built at UTC midnight must also be FORMATTED in UTC — formatting it in the
+  // viewer's zone showed the day before everywhere west of Greenwich (DOB, target date).
   return new Intl.DateTimeFormat(undefined, {
     month: "short",
     day: "numeric",
     year: "numeric",
+    timeZone: "UTC",
   }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
@@ -3165,9 +3253,7 @@ function maskCoverageIdentifier(value: string | null | undefined): string {
   return `••••${normalized.slice(-4)}`;
 }
 
-function stateDot(
-  kind: "complete" | "progress" | "attention" | "empty",
-): CSSProperties {
+function stateDot(kind: "complete" | "progress" | "attention" | "empty"): CSSProperties {
   const colors = {
     complete: t.success,
     progress: t.primary,
@@ -3393,13 +3479,6 @@ const hintLine: CSSProperties = {
   margin: "0.35rem 0",
   color: t.muted,
   fontSize: "0.78rem",
-};
-const sourceBadge: CSSProperties = {
-  border: `1px solid ${t.outlineVariant}`,
-  borderRadius: 999,
-  padding: "0.1rem 0.45rem",
-  background: t.surface,
-  color: t.muted,
 };
 const inputStyle: CSSProperties = {
   width: "100%",

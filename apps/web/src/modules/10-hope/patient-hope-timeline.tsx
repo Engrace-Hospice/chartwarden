@@ -17,12 +17,7 @@ import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  ASSESSMENT_TONE,
-  J2051_TONE,
-  rfaLabel,
-  stateLabel,
-} from "./hope-status";
+import { ASSESSMENT_TONE, J2051_TONE, rfaLabel, stateLabel } from "./hope-status";
 
 interface AssessmentRow {
   id: string;
@@ -143,16 +138,12 @@ export function PatientHopeTimeline(): JSX.Element {
                       }}
                       style={{
                         cursor: "pointer",
-                        textDecoration: a.supersededByAssessmentId
-                          ? "line-through"
-                          : "none",
+                        textDecoration: a.supersededByAssessmentId ? "line-through" : "none",
                       }}
                     >
                       <td>{rfaLabel(a.rfaKind)}</td>
 
-                      <td className="tabular-nums">
-                        {a.targetDate.slice(0, 10)}
-                      </td>
+                      <td className="tabular-nums">{a.targetDate.slice(0, 10)}</td>
 
                       <td>{stateLabel(a.authorDiscipline)}</td>
 
@@ -180,11 +171,7 @@ export function PatientHopeTimeline(): JSX.Element {
                           )}
 
                           {a.j2051TriggerFired ? (
-                            <StatusPill
-                              label="SFV"
-                              tone="warning"
-                              glyph="alert"
-                            />
+                            <StatusPill label="SFV" tone="warning" glyph="alert" />
                           ) : null}
                         </span>
                       </td>
@@ -202,9 +189,7 @@ export function PatientHopeTimeline(): JSX.Element {
                             tone={ASSESSMENT_TONE[a.status] ?? "neutral"}
                           />
 
-                          {a.wasLate ? (
-                            <StatusPill label="Late" tone="warning" />
-                          ) : null}
+                          {a.wasLate ? <StatusPill label="Late" tone="warning" /> : null}
                         </span>
                       </td>
                     </tr>
