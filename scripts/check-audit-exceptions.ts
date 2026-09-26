@@ -30,7 +30,17 @@ const ACCEPTED_ADVISORIES: ReadonlyArray<{
   readonly ghsaId: string;
   readonly reason: string;
   readonly until: string;
-}> = [];
+}> = [
+  {
+    ghsaId: "GHSA-82fw-gwwq-j7x9",
+    reason:
+      "Vitest/@vitest/mocker path traversal via a redirect mock. Test-runner only: vitest is a devDependency " +
+      "(and an optional peer of better-auth), never bundled or run in production, and the vector needs an " +
+      "attacker-authored test file. The fix is only in vitest 4.1.11+, a major upgrade from our 3.x config.",
+    until:
+      "the repo upgrades to vitest >= 4.1.11 (tracked as its own change; drop this entry then)",
+  },
+];
 
 const result = spawnSync("bun", ["audit", "--json"], { encoding: "utf8" });
 // bun audit exits 1 when it finds ANY advisory — that is not itself a failure for this gate; only an
