@@ -1,12 +1,12 @@
 {
   "totals": {
-    "routes": 1274,
-    "enriched": 1267,
+    "routes": 1287,
+    "enriched": 1280,
     "deficit": 7,
-    "mutating": 725,
+    "mutating": 735,
     "mutatingNoBody": 89,
-    "gets": 516,
-    "getsNoResponse": 8
+    "gets": 519,
+    "getsNoResponse": 9
   },
   "modules": [
     {
@@ -41,20 +41,20 @@
     },
     {
       "module": "05-patient",
-      "routes": 14,
-      "enriched": 14,
+      "routes": 15,
+      "enriched": 15,
       "deficit": 0,
-      "mutating": 5,
+      "mutating": 6,
       "mutatingNoBody": 1,
       "gets": 9,
       "getsNoResponse": 0
     },
     {
       "module": "06-admission",
-      "routes": 63,
-      "enriched": 63,
+      "routes": 67,
+      "enriched": 67,
       "deficit": 0,
-      "mutating": 47,
+      "mutating": 51,
       "mutatingNoBody": 0,
       "gets": 16,
       "getsNoResponse": 0
@@ -91,13 +91,13 @@
     },
     {
       "module": "10-hope",
-      "routes": 21,
-      "enriched": 21,
+      "routes": 29,
+      "enriched": 29,
       "deficit": 0,
-      "mutating": 10,
+      "mutating": 15,
       "mutatingNoBody": 0,
-      "gets": 11,
-      "getsNoResponse": 0
+      "gets": 14,
+      "getsNoResponse": 1
     },
     {
       "module": "11-orders",

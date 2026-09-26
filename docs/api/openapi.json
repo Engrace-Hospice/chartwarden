@@ -18401,6 +18401,7 @@
         "tags": [
           "06-admission"
         ],
+        "summary": "Attach an uploaded, externally acknowledged notice-of-rights document (M22 document version)",
         "parameters": [
           {
             "name": "id",
@@ -18412,7 +18413,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK"
           },
           "4XX": {
@@ -18420,6 +18421,55 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "documentId",
+                  "documentVersionId"
+                ],
+                "properties": {
+                  "documentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "documentVersionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "acknowledgedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "acknowledgedByName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "acknowledgedByRole": {
+                    "anyOf": [
+                      {
+                        "const": "patient",
+                        "type": "string"
+                      },
+                      {
+                        "const": "legal_representative",
+                        "type": "string"
+                      },
+                      {
+                        "const": "caregiver",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -73165,6 +73215,7 @@
         "tags": [
           "06-admission"
         ],
+        "summary": "Attach an uploaded CTI document (unsigned or signed) to the election period",
         "parameters": [
           {
             "name": "id",
@@ -73176,7 +73227,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK"
           },
           "4XX": {
@@ -73184,6 +73235,47 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "documentId",
+                  "documentVersionId",
+                  "documentState"
+                ],
+                "properties": {
+                  "documentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "documentVersionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "documentState": {
+                    "anyOf": [
+                      {
+                        "const": "unsigned",
+                        "type": "string"
+                      },
+                      {
+                        "const": "signed",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "signedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -73194,6 +73286,7 @@
         "tags": [
           "06-admission"
         ],
+        "summary": "Attach an uploaded election-statement document (unsigned or signed) to the election period",
         "parameters": [
           {
             "name": "id",
@@ -73205,7 +73298,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK"
           },
           "4XX": {
@@ -73213,6 +73306,68 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "documentId",
+                  "documentVersionId",
+                  "documentState"
+                ],
+                "properties": {
+                  "documentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "documentVersionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "documentState": {
+                    "anyOf": [
+                      {
+                        "const": "unsigned",
+                        "type": "string"
+                      },
+                      {
+                        "const": "signed",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "signerName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "signerRole": {
+                    "anyOf": [
+                      {
+                        "const": "patient",
+                        "type": "string"
+                      },
+                      {
+                        "const": "legal_representative",
+                        "type": "string"
+                      },
+                      {
+                        "const": "caregiver",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "signedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -73358,6 +73513,7 @@
         "tags": [
           "06-admission"
         ],
+        "summary": "Attach uploaded signature evidence to an election statement (server records documentState 'signed')",
         "parameters": [
           {
             "name": "id",
@@ -73369,7 +73525,7 @@
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK"
           },
           "4XX": {
@@ -73377,6 +73533,68 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "documentId",
+                  "documentVersionId",
+                  "documentState"
+                ],
+                "properties": {
+                  "documentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "documentVersionId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "documentState": {
+                    "anyOf": [
+                      {
+                        "const": "unsigned",
+                        "type": "string"
+                      },
+                      {
+                        "const": "signed",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "signerName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "signerRole": {
+                    "anyOf": [
+                      {
+                        "const": "patient",
+                        "type": "string"
+                      },
+                      {
+                        "const": "legal_representative",
+                        "type": "string"
+                      },
+                      {
+                        "const": "caregiver",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "signedAt": {
+                    "format": "date-time",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -85407,6 +85625,7 @@
         "tags": [
           "10-hope"
         ],
+        "summary": "Set the HUV completion date (Z0350) through the workflow-controlled capture path",
         "parameters": [
           {
             "name": "id",
@@ -85419,13 +85638,217 @@
         ],
         "responses": {
           "200": {
-            "description": "OK"
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "assessmentId",
+                    "version",
+                    "answers"
+                  ],
+                  "properties": {
+                    "assessmentId": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "answers": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "itemCode",
+                          "active",
+                          "state",
+                          "value",
+                          "source",
+                          "answeredAt",
+                          "answeredByMembershipId",
+                          "applicability",
+                          "skipReason"
+                        ],
+                        "properties": {
+                          "itemCode": {
+                            "type": "string"
+                          },
+                          "active": {
+                            "type": "boolean"
+                          },
+                          "state": {
+                            "anyOf": [
+                              {
+                                "const": "unanswered",
+                                "type": "string"
+                              },
+                              {
+                                "const": "answered",
+                                "type": "string"
+                              },
+                              {
+                                "const": "skipped",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "value": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "number"
+                                  },
+                                  {
+                                    "type": "boolean"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "source": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "user",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "patient_prefill",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "admission_prefill",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "derived",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "imported",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "correction_copy",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "answeredAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "answeredByMembershipId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "applicability": {
+                            "anyOf": [
+                              {
+                                "const": "applicable",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_applicable",
+                                "type": "string"
+                              },
+                              {
+                                "const": "pending",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "skipReason": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "ruleId",
+                                  "dependsOn"
+                                ],
+                                "properties": {
+                                  "ruleId": {
+                                    "type": "string"
+                                  },
+                                  "cmsRuleId": {
+                                    "type": "string"
+                                  },
+                                  "dependsOn": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ifVersion",
+                  "z0350"
+                ],
+                "properties": {
+                  "ifVersion": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "z0350": {
+                    "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
@@ -125317,6 +125740,165 @@
           },
           "5XX": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1PatientsByIdPayers",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Add a patient coverage at a rank (§3.4); an active coverage at the same rank is closed, not mutated",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "payerId",
+                    "rank",
+                    "coverageKind",
+                    "subscriberId",
+                    "groupNumber",
+                    "binPcn",
+                    "current",
+                    "effectiveFrom",
+                    "effectiveTo"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "payerId": {
+                      "type": "string"
+                    },
+                    "rank": {
+                      "type": "integer"
+                    },
+                    "coverageKind": {
+                      "type": "string"
+                    },
+                    "subscriberId": {
+                      "type": "string"
+                    },
+                    "groupNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "binPcn": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "current": {
+                      "type": "boolean"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "payerId",
+                  "rank",
+                  "coverageKind",
+                  "subscriberId",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "payerId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "rank": {
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "coverageKind": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "subscriberId": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "groupNumber": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "binPcn": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "effectiveFrom": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
           }
         }
       }
