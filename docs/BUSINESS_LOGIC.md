@@ -117,7 +117,9 @@ module.
   `active`).
 - **Certification/recert**: period 1 requires both hospice-MD and attending signatures (if an
   attending is on file); recert periods ≥2 require only the hospice-MD. Only a signed recert
-  auto-advances the election period.
+  auto-advances the election period. The period-1 attending co-sign is a **billing** prerequisite
+  (42 CFR 418.22(a)(3)), not an activation one: activation needs only the hospice-MD signature, and
+  M23's `cti_signed_per_period` rule blocks the claim while the CTI is still `awaiting_attending`.
 - **Face-to-face encounter**: `scheduled → completed → attested`, with a Medical-Director-only
   window-override self-loop (documented reason required). Attestation requires a minimum-length
   narrative from the actual performer.

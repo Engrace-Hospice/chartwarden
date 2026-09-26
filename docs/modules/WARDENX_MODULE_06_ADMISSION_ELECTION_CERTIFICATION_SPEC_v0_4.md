@@ -8,7 +8,7 @@
 **Depends on:** 1 (Foundation — `packages/db`, `packages/tenancy`, `withOrgContext`, RLS generator, `audit()` helper, outbox helper, idempotency, error envelope), 2 (Identity — session/actor resolution), 3 (Authorization — `requirePermission` / `requireAbac` contract; the catalog this module contributes to), 4 (Audit — write-audit trigger generator, read-audit helper, destruction-cert workflow, retention classes), 5 (Patient & Demographics — `Patient`, `Payer`, `PrivacyFlag`), 29 (External Interfaces — inbound HL7 v2 ADT proposal-accepted outbox events consumed by the `AdmissionEventApplier`), 38 (Terminology — ICD-10 validation, hospice diagnosis value sets, level-of-care revenue/Q-code mapping), 39 (Consent & Authorization Management — election authority verification, DPOA gating for proxy-signed elections, 42 CFR Part 2 redaction), 40 (Master Data Management — `ExternalPhysician` for attending NPIs, `Facility` for transfer/place-of-service references, `ReferralSource`)
 **Consumed by:** 7 (Care Plan — initial care plan tied to admission), 8 (Encounters — visit notes scoped to active admission), 11 (Orders — orders gated by active election), 14 (IDG — meeting scope is the active caseload of admitted patients; also consumes `m6.referral.withdrawn` for the cancellation notification template), 16 (Bereavement — listens for `bereavement.eligible`), 22 (Document Management — listens for `election.signed`, `revocation.signed`, `discharge.executed`, `notice_of_rights.required`, `cti.signed` to render and store forms), 23 (Billing — Medicare — reads `ElectionPeriod`, `CertificationOfTerminalIllness`, `FaceToFaceEncounter`, `LevelOfCarePeriod`, `RevocationEvent`, `DischargeEvent`; owns the NOE/NOTR wire artifact and emits acceptance back to M6 via outbox), 26 (Cap Management — reads admission and discharge dates to drive cap accrual), 27 (Cost Report — patient-day census derives from M6), 28 (FHIR Gateway — maps Admission → `Encounter`/`EpisodeOfCare`, CTI → `Condition`/`Composition`), 30 (HQRP & Quality — survey readiness queries the F2F window log and CTI lateness register; also consumes `m6.applier.refused` and the `info`-severity external-signal windows), 33 (Reporting — admission/discharge/recert reports), 36 (Secure Messaging — subscribes to compliance-window outbox events), 37 (Inpatient Unit Management — admission's `LevelOfCarePeriod` drives IPU bed assignment for GIP/IRC)
 **Owns:** `apps/backend/src/modules/06-admission` (the admission spine, election periods, CTI/F2F compliance, the `AdmissionEventApplier`), `packages/domain/admission`, and the twelve owned tables (`referral`, `admission`, `election_period`, `election_statement`, `certification_of_terminal_illness`, `face_to_face_encounter`, `level_of_care_period`, `revocation_event`, `transfer_event`, `discharge_event`, `notice_of_rights_acknowledgment`, `compliance_window`, **`election_addendum`** — M06-F02/ADR-0015 D1).
-**Spec status:** Re-locked v0.5 (Phase-4 remediation — election & certification correctness; supersedes Locked v0.4)
+**Spec status:** Re-locked v0.6 (attending CTI signature is a billing prerequisite, not an activation gate — D3 amended; supersedes Re-locked v0.5)
 
 > **Phase-4 remediation (2026-06-11; ADR-0015) — 6 BLOCKERs.**
 > - **M06-F02:** `election_addendum` entity added (Patient Notification of Non-Covered Items, 418.24(c)) — a **condition of payment**: furnished within 5 days of election (72 h if requested later), signed/dated, versioned, amendable on POC change. The M21 non-covered DME path terminates here.
@@ -20,6 +20,7 @@
 
 ## Changelog
 
+- **v0.6 (Re-locked)** — Aligned the period-1 attending-physician CTI signature with 42 CFR 418.22 and the as-built code. The attending signature is still required on the period-1 CTI when the patient has an attending, but it gates **claim submission** (M23 rule `cti_signed_per_period`, `packages/billing/src/rules/cti-signed.ts`), not admission activation: §418.22(a)(3) requires the written certification before the claim is submitted, not before care starts. `R-CTI-03` now enforces the attending sign on the CTI's `signByAttending` transition (attending NPI match); a period-1 CTI stays `awaiting_attending` — not `signed` — until then. Removed `attending_signed` from the §4.2.2 activate 412 list, the §5.2.3 wizard and §5.2.5 activation checklist, and the §8 `m6_admission_activation_blocked_total` reasons; D3 amended.
 - **v0.4 (Consolidated)** — Rolls the v0.2 base and v0.3 delta into a single self-contained specification. No scope change; no decision reversals.
 - **v0.3 (Locked)** — Closed the M29 forward-stub gap on the M6 side. Shipped the narrow M29 consumer surface: the `AdmissionEventApplier` service (internal, not a seam) consuming `m29.hl7_inbound_proposal.accepted` for `ownerModule='m6'`, handling three resource kinds (`discharge_event`, `admission_event`, `cancel_admission`); three new informational compliance window types (`concurrent_hospital_admission`, `external_discharge_notice`, `hl7_admission_cancellation`); the new `info` severity level; one new outbox event `m6.referral.withdrawn` (distinct from `m6.referral.declined`); the `m6.applier.refused` event; schema additions (three new `compliance_window_type` enum values, the `info` severity, the `withdrawn` referral status, the `referral.external_message_ref` JSONB column + GIN index, migration `0036_m6_v03_hl7_consumers.sql`); four decisions (D13–D16); five workflow acceptance criteria (W-M6-31 through W-M6-35); and five implementation tasks (T-M6-23 through T-M6-27). M6's state machines remained the only path to active-state mutations; M29 is a workflow-context contributor only.
 - **v0.2 (Locked)** — Resolved all twelve open questions into binding decisions (§11). Wrote full Drizzle for all twelve owned tables; complete migration DDL (`0006_admission.sql`) including enums, RLS via M1 generator, write-audit triggers via M4 generator, FK constraints, and partial/btree indexes. Added complete per-route TypeBox schemas (§4.3) and the exact permission-key set this module registers into Module 3 (§4.5). Defined the binding outbox-event contract (§4.4) every downstream consumer (M16, M22, M23, M28, M36, M37) depends on. Wired the F2F window math and benefit-period sequencing as `packages/domain/admission` pure functions, with property-based tests called out in §9. Lock-grade sign-off. Phase boundary: every section of this spec is Phase 1.
@@ -42,7 +43,7 @@ Concretely M6 delivers:
 - **The Referral → Admission funnel.** Inbound referrals from hospitals, SNFs, physicians, families, and self-referrals; evaluation; accept/reject; conversion to Admission. (Pre-admission state — `Patient` may exist as a prospect in M5 but no PHI clinical activity is allowed until M6 transitions the Admission to `active`.)
 - **The Admission lifecycle** (`referred → pending → notice_of_rights_acknowledged → active → on_hold → discharged → bereavement → closed`) as the single source of truth for "is this person a hospice patient right now."
 - **The Election lifecycle** (`pending → signed → active → completed`) per benefit period, with the CMS benefit-period sequence enforced server-side (two 90-day periods, then unlimited 60-day periods; sequence inherited on transfer-in from prior hospice).
-- **The Certification of Terminal Illness (CTI)** lifecycle per period: hospice Medical Director signature required before every period; attending physician co-signature required for period 1 if the patient has an attending; narrative attribution; late-signing capture.
+- **The Certification of Terminal Illness (CTI)** lifecycle per period: hospice Medical Director signature required before every period; attending physician co-signature required on the period-1 CTI if the patient has an attending (a claim-submission prerequisite enforced by M23, not an activation gate — §11 D3); narrative attribution; late-signing capture.
 - **The Face-to-Face Encounter (F2F)** requirement from the 3rd benefit period onward: window calculation (30 calendar days prior to recert period start), scheduling, attestation, late/missed handling per CMS.
 - **The Level-of-Care assignment** per admission (`routine_home_care`, `continuous_home_care`, `inpatient_respite_care`, `general_inpatient_care`) — the clinical assignment that M23 turns into per-diem and per-line revenue codes, and that M37 turns into bed/staffing.
 - **Revocation, Transfer, and Discharge** workflows with the signed-form facts, effective dates, reasons, and the cascade into bereavement (for death) or onward-hospice (for transfer-out).
@@ -574,7 +575,7 @@ Two kinds: **synchronous** (run inside the service, return inline errors before 
 | `R-EL-04` Curative-care acknowledgment must be `true` (CMS election statement requirement) | `signElectionStatement` (DB CHECK + service) | `CURATIVE_CARE_ACK_REQUIRED` (422) |
 | `R-CTI-01` CTI must be signed by hospice MD before `election_period.effective_at` to avoid `signed_late=true` (signed_late is **not** a block — it is a flag with reason; the block lives in M23) | `signByHospiceMd` | warning surfaced + late_reason required |
 | `R-CTI-02` Terminal diagnosis ICD-10 must be a valid current code (M38 lookup) AND on the CMS hospice-allowable list | `submitToHospiceMd` | `TERMINAL_DX_NOT_ALLOWABLE` (422) |
-| `R-CTI-03` Attending signature required for period 1 if `patient.attending_physician_id IS NOT NULL` | `setActive` | `ATTENDING_SIGNATURE_REQUIRED` (409) |
+| `R-CTI-03` Attending signature required on the period-1 CTI if `patient.attending_physician_id IS NOT NULL`; the signer's NPI must match the attending on file. The CTI stays `awaiting_attending` (not `signed`) until then. **Not an activation gate** — M23 `cti_signed_per_period` blocks the claim instead (§11 D3) | `signByAttending` | `ATTENDING_SIGNATURE_REQUIRED` (409) |
 | `R-F2F-01` Performer must be hospice MD or hospice NP (not attending) | `recordCompletion` | `F2F_INVALID_PERFORMER` (422) |
 | `R-F2F-02` Encounter date must be in [period_start - 30 days, period_start - 1 day] (CMS 418.22 prior-to-window) | `recordCompletion` | `F2F_OUTSIDE_WINDOW` (409) unless override |
 | `R-F2F-03` Window override requires actor role `hospice_medical_director` AND a reason ≥ 20 chars | `requestWindowOverride` | `F2F_OVERRIDE_FORBIDDEN` (403) / `F2F_OVERRIDE_REASON_TOO_SHORT` (422) |
@@ -1921,7 +1922,8 @@ Type.Object({
 // Body (no fields beyond version) — server validates preconditions
 Type.Object({ ifVersion: Type.Integer() })
 // 200 -> { id, state:'active', activatedAt, version }
-// 412 PRECONDITION_FAILED { missing: ('election_signed'|'nor_acknowledged'|'cti_signed'|'attending_signed')[] }
+// 412 PRECONDITION_FAILED { missing: ('election_signed'|'nor_acknowledged'|'cti_signed')[] }
+// cti_signed = signed by the hospice medical director; the period-1 attending co-sign is a billing gate (D3)
 ```
 
 **POST /api/v1/admissions/:id/hold** — `admission.hold`
@@ -1966,7 +1968,7 @@ Type.Object({
 ```typescript
 Type.Object({
   hospiceMedicalDirectorId: Type.String({ format:'uuid' }),
-  attendingPhysicianId: Type.Optional(Type.String({ format:'uuid' })), // required for period 1
+  attendingPhysicianId: Type.Optional(Type.String({ format:'uuid' })), // if set, the period-1 CTI needs the attending's co-sign before billing (D3)
   prognosisStatement: Type.String({ minLength:1, maxLength:200 }),
   narrative: Type.String({ minLength:1, maxLength:4000 }),
   clinicalFindings: Type.Object({}, { additionalProperties:true }), // FHIR-like blob, exact shape in §8
@@ -2848,9 +2850,9 @@ Five-step `Stepper` (Mantine), persisting per-step state to a draft admission ro
 
 1. **Patient** — link to existing M5 patient (autocomplete) or create-new (calls into M5's create flow inline); shows demographic mismatch warnings if linking to existing record with differing DOB.
 2. **Election** — period-1 dates (start = today by default, editable), level of care = RHC (default), elected provider entity, attending physician selector, waiver acknowledgment checkbox, optional state addendum (rich text).
-3. **CTI** — hospice MD selector, attending physician selector (required for period 1), prognosis + narrative, clinical findings (templated form).
+3. **CTI** — hospice MD selector, attending physician selector (period 1: collects the attending co-sign, which gates billing, not activation — D3), prognosis + narrative, clinical findings (templated form).
 4. **NOR** — delivery method picker; "Mark acknowledged at signing" if patient is present.
-5. **Review & Activate** — preconditions checklist (election signed? NOR ack'd? CTI signed by hospice MD + attending?). Activate button is disabled until all green.
+5. **Review & Activate** — preconditions checklist (election signed? NOR ack'd? CTI signed by hospice MD?); an outstanding period-1 attending co-sign shows as an informational "needed before billing" row, not a blocker. Activate button is disabled until all green.
 
 - **Step persistence:** each step's "Save & continue" calls the corresponding draft POST; navigating back loads draft values. Closing the wizard preserves draft; banner on Referral/Admission detail surfaces "Resume admission setup".
 - **Signature capture:** typed-signature inputs (Mantine `TextInput` with monospace; full name + role + automatic `signed_at` timestamp). Wet-signature scanning is out of scope for v0.2; D-AUTHZ-01 covers staff-captured patient signatures.
@@ -2877,9 +2879,8 @@ Single-card checklist. Each precondition row shows green check or amber X with a
 - ☐ Election statement signed (period 1)
 - ☐ NOR acknowledged
 - ☐ CTI signed by hospice medical director
-- ☐ CTI signed by attending physician (period 1 only)
 
-Activate button is disabled until all are checked. On click, calls route 14; on `412 PRECONDITION_FAILED` re-renders with server-truth (in case of races).
+Activate button is disabled until all are checked. When the patient has an attending and the period-1 CTI is still `awaiting_attending`, the card shows a non-blocking "Attending co-signature needed before billing" row (D3). On click, calls route 14; on `412 PRECONDITION_FAILED` re-renders with server-truth (in case of races).
 
 #### 5.2.6 Election Statement Editor (6)
 
@@ -3378,7 +3379,7 @@ All metrics are emitted by the M1 metrics middleware (auto) plus M6-specific cou
 | `m6_referral_time_to_triage_seconds` | histogram | `tenant_id` | intake responsiveness |
 | `m6_referral_time_to_accept_seconds` | histogram | `tenant_id` | end-to-end intake SLA |
 | `m6_admission_activated_total` | counter | `tenant_id, intake_method` | new admissions |
-| `m6_admission_activation_blocked_total` | counter | `tenant_id, reason` | preconditions failed; reason ∈ (election_signed, nor_acknowledged, cti_signed, attending_signed) |
+| `m6_admission_activation_blocked_total` | counter | `tenant_id, reason` | preconditions failed; reason ∈ (election_signed, nor_acknowledged, cti_signed) |
 | `m6_admission_state_total` | gauge | `tenant_id, state` | census by state (sampled every 60s) |
 | `m6_cti_signing_latency_seconds` | histogram | `tenant_id, signer_role` | time from CTI draft → signature |
 | `m6_cti_late_total` | counter | `tenant_id` | CTIs flagged as late under D4 |
@@ -3720,7 +3721,9 @@ Sixteen decisions are in force. Each lists the question, the chosen answer, the 
 
 **Why.** 42 CFR 418.22(c) requires both the medical director's (or designated hospice physician's) and the attending physician's certification on the initial period; the regulation requires only the medical director on recerts.
 
-**Rejected.** Always requiring attending — over-burdens recerts unnecessarily and diverges from CMS norm.
+**Enforcement point (amended v0.6).** The attending co-sign is **not** an admission-activation precondition. 42 CFR 418.22(a)(3) allows care to begin on a verbal certification (obtained within 2 days) and requires the written certification before the claim is submitted — so the gate belongs at billing. Activation requires the hospice medical director's CTI signature only (`computeActivationGate`, `apps/backend/src/modules/06-admission/intake/activation-gate.ts`). The period-1 CTI remains `awaiting_attending` until the attending signs (`R-CTI-03` on `signByAttending`), and M23's `cti_signed_per_period` rule fails the claim for any covered period whose CTI lacks a required attending co-sign.
+
+**Rejected.** Always requiring attending — over-burdens recerts unnecessarily and diverges from CMS norm. Blocking activation on the attending co-sign (v0.2–v0.5 text) — delays the start of care for a signature the regulation only requires before billing.
 
 **Surface.** §4.2.4 (route 25 returns `412 ATTENDING_NOT_REQUIRED` for period >1); §2.2 CTI state machine; §6.2.
 
