@@ -1,14 +1,5 @@
 import { createWardenxAuthClient } from "@wardenx/auth/client";
-import {
-  DegradedBanner,
-  EmptyState,
-  Glyph,
-  type GlyphName,
-  NavGroup,
-  NavLink,
-  groupByNavGroup,
-  setSearchTerm,
-} from "@wardenx/ui";
+import { DegradedBanner, EmptyState, Glyph, setSearchTerm } from "@wardenx/ui";
 // apps/web/src/shell — app-shell chrome (M1, ADR-0030). Renders the primary nav (built from the
 // registered screens), the degraded-mode banner, a header with the session identity, and the routed
 // <Outlet/>. Imports only @wardenx/ui + @wardenx/auth/client (leaves) + react-router — never a
@@ -16,10 +7,14 @@ import {
 // `auth-client.ts` wraps (a leaf, not a feature-module import) — the shell needs its own instance to
 // offer sign-out from the header (live-browser audit #6), the same mechanism the idle screen-lock's
 // "Sign out instead" escape hatch already uses.
-import { type MouseEvent, useEffect, useRef, useState } from "react";
+//
+// 2026-09-25 redesign: a full-height sidebar (brand + curated nav, primary-nav.ts) beside a column
+// holding the top bar and the routed workspace — the mockups' shell.
+import { type MouseEvent, useEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, JSX, ReactNode } from "react";
-import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { Link, Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { canSeeScreen, needsOrgSelection } from "./actor-session";
+import { type NavEntry, activeEntryKey, buildPrimaryNav } from "./primary-nav";
 import type { WebScreenDescriptor } from "./screen-registry";
 import type { Session } from "./session";
 import { useSession } from "./session";
@@ -37,41 +32,16 @@ function getInitials(name: string): string {
   return `${parts[0]![0]}${parts[1]![0]}`.toUpperCase();
 }
 
-function getScreenIcon(title: string, group?: string): GlyphName {
-  const t = title.toLowerCase();
-  const g = group?.toLowerCase() ?? "";
-
-  if (g.includes("clinical")) return "heart";
-  if (g.includes("billing")) return "dollar";
-  if (g.includes("compliance")) return "clipboard-check";
-  if (g.includes("supplies")) return "truck";
-  if (g.includes("scheduling")) return "calendar";
-  if (g.includes("admin")) return "settings";
-
-  if (t.includes("patient")) return "heart";
-  if (t.includes("member") || t.includes("staff") || t.includes("user"))
-    return "users";
-  if (t.includes("billing") || t.includes("invoice") || t.includes("payment"))
-    return "dollar";
-  if (t.includes("schedule") || t.includes("calendar")) return "calendar";
-  if (t.includes("supply") || t.includes("inventory")) return "truck";
-  if (t.includes("document") || t.includes("file") || t.includes("record"))
-    return "file-text";
-  if (
-    t.includes("chat") ||
-    t.includes("message") ||
-    t.includes("portal") ||
-    t.includes("communication")
-  )
-    return "message-square";
-  if (t.includes("ai") || t.includes("copilot") || t.includes("intelligence"))
-    return "cpu";
-  if (t.includes("security") || t.includes("credential") || t.includes("auth"))
-    return "shield";
-  if (t.includes("activity") || t.includes("log") || t.includes("audit"))
-    return "activity";
-
-  return "dot";
+/** A human role line under the actor's name ("Administrator", "Registered Nurse", …). */
+function roleLine(session: Session): string | null {
+  if (session.isAdmin) return "Administrator";
+  const role = session.roles?.[0];
+  if (!role) return null;
+  return role
+    .split(/[_\s-]+/)
+    .filter(Boolean)
+    .map((w) => (w.length <= 3 ? w.toUpperCase() : `${w[0]!.toUpperCase()}${w.slice(1)}`))
+    .join(" ");
 }
 
 export interface AppLayoutProps {
@@ -82,10 +52,9 @@ export interface AppLayoutProps {
 
 export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   const session = useSession();
-  const navigate = useNavigate();
   // Below the responsive breakpoint (TASK-033 / UI-004) the sidebar becomes an off-canvas drawer —
-  // a fixed 14rem sidebar plus content leaves under 170px at 390px wide, so it's hidden by default
-  // and toggled by the header's hamburger button instead of always occupying the viewport.
+  // a fixed-width sidebar plus content leaves too little room at 390px wide, so it's hidden by
+  // default and toggled by the header's hamburger button instead of always occupying the viewport.
   const [navOpen, setNavOpen] = useState(false);
   // `.wx-main` (not the window) is the scroll container (`overflow: auto` — see index.css), so
   // react-router doesn't reset it on navigation. Without this, a deep scroll into a long page
@@ -107,10 +76,7 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
     const root = document.documentElement;
     const previous = root.style.getPropertyValue("--wx-app-header-height");
     const update = (): void =>
-      root.style.setProperty(
-        "--wx-app-header-height",
-        `${header.offsetHeight}px`,
-      );
+      root.style.setProperty("--wx-app-header-height", `${header.offsetHeight}px`);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(header);
@@ -120,6 +86,13 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
       else root.style.removeProperty("--wx-app-header-height");
     };
   }, []);
+  // Detail screens (param paths like /patients/:id) are reached programmatically, not via nav.
+  // Gated screens show only when the actor holds the key (FB-T15 — server still enforces).
+  const sections = useMemo(
+    () => buildPrimaryNav(screens.filter((s) => canSeeScreen(s, session))),
+    [screens, session],
+  );
+  const activeKey = activeEntryKey(sections, pathname);
   // Pre-org guard (ADR-0030): an authenticated session with no bound organization can't use ANY
   // org-scoped screen — the server 401/403s every org route, so the shell would render screens that
   // all read "Unavailable". Send the actor to organization-select instead. `/login/organization` is
@@ -127,163 +100,153 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
   if (needsOrgSelection(session)) {
     return <Navigate to="/login/organization" replace />;
   }
-  // A click on a nav link closes the drawer; a click on a NavGroup's own expand/collapse toggle
-  // (not an <a>) should not, or the group would collapse AND the drawer close in the same tap.
+  // A click on a nav link closes the drawer; a click on an entry's own disclosure toggle (not an
+  // <a>) should not, or the entry would expand AND the drawer close in the same tap.
   function closeNavOnLinkClick(e: MouseEvent<HTMLElement>): void {
     if ((e.target as HTMLElement).closest("a")) setNavOpen(false);
   }
   return (
     <div className="wx-shell">
-      <DegradedBanner />
-      <header ref={headerRef} className="wx-header">
-        <button
-          type="button"
-          className="wx-icon-btn wx-nav-toggle"
-          onClick={() => setNavOpen((open) => !open)}
-          aria-label={navOpen ? "Close navigation" : "Open navigation"}
-          aria-expanded={navOpen}
-          aria-controls="wx-primary-nav"
-        >
-          <Glyph name={navOpen ? "close" : "menu"} size={18} />
-        </button>
-        <div
-          className="wx-brand-container"
-          style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-        >
-          <div
-            className="wx-brand-logo"
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              width: "1.75rem",
-              height: "1.75rem",
-              borderRadius: "var(--radius-md)",
-              background:
-                "linear-gradient(135deg, var(--color-primary), var(--color-primary-strong))",
-              color: "white",
-              boxShadow: "var(--shadow-soft)",
-            }}
-          >
-            <Glyph name="shield" size={14} />
-          </div>
-          <span
-            className="wx-brand"
-            style={{
-              fontWeight: 700,
-              fontSize: "1.15rem",
-              letterSpacing: "-0.02em",
-            }}
-          >
-            WardenX
+      {navOpen ? (
+        // biome-ignore lint/a11y/useKeyWithClickEvents: a dismiss backdrop, not a control.
+        <div className="wx-nav-backdrop" onClick={() => setNavOpen(false)} />
+      ) : null}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: closes the mobile nav on a bubbled click from
+          a nav link descendant, which is already keyboard-navigable — the aside itself isn't a control. */}
+      <aside
+        className={navOpen ? "wx-sidebar wx-nav-open" : "wx-sidebar"}
+        onClick={closeNavOnLinkClick}
+      >
+        <Link to="/" className="wx-brand-block" aria-label="WardenX home">
+          <span className="wx-brand-logo" aria-hidden>
+            <svg width="22" height="24" viewBox="0 0 22 24" fill="none" aria-hidden="true">
+              <path
+                d="M11 1 2 4.6v6.2C2 16.6 5.9 21.5 11 23c5.1-1.5 9-6.4 9-12.2V4.6L11 1Z"
+                fill="currentColor"
+              />
+              <path
+                d="M11 7.2a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8Zm0 2.2a2.2 2.2 0 1 1 0 4.4 2.2 2.2 0 0 1 0-4.4Z"
+                fill="var(--color-on-emphasis)"
+              />
+            </svg>
           </span>
-        </div>
-        {/* Top-nav global search (FB-T11). Module-free: it only navigates to the registered
-            /search route — the Global Search screen (M5) owns the query + facets. */}
-        <TopNavSearch />
-
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "0.5rem",
-            marginLeft: "auto",
-          }}
-        >
-          <button
-            type="button"
-            className="wx-icon-btn"
-            onClick={() => navigate("/calendar")}
-            aria-label="Open calendar"
-            title="Calendar"
-            aria-current={pathname === "/calendar" ? "page" : undefined}
-            style={
-              pathname === "/calendar"
-                ? {
-                    background: "var(--color-primary-tint)",
-                    color: "var(--color-primary)",
-                  }
-                : undefined
-            }
-          >
-            <Glyph name="calendar" size={18} />
-          </button>
-
-          <ThemeToggle />
-
-          <div
-            style={{
-              width: "1px",
-              height: "1.25rem",
-              background:
-                "color-mix(in srgb, var(--color-outline-variant) 50%, transparent)",
-            }}
-          />
-
-          <ActorMenu session={session} />
-        </div>
-      </header>
-      <div className="wx-body">
-        {navOpen ? (
-          // biome-ignore lint/a11y/useKeyWithClickEvents: a dismiss backdrop, not a control.
-          <div className="wx-nav-backdrop" onClick={() => setNavOpen(false)} />
-        ) : null}
-        {/* biome-ignore lint/a11y/useKeyWithClickEvents: closes the mobile nav on a bubbled click from
-            a NavLink descendant, which is already keyboard-navigable — the nav itself isn't a control. */}
-        <nav
-          id="wx-primary-nav"
-          className={
-            navOpen
-              ? "wx-nav wx-nav-open wx-no-scrollbar"
-              : "wx-nav wx-no-scrollbar"
-          }
-          aria-label="Primary"
-          onClick={closeNavOnLinkClick}
-        >
-          <NavLink to="/" end>
-            <div
-              style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
-            >
-              <Glyph name="home" size={16} style={{ opacity: 0.8 }} />
-              <span>Home</span>
-            </div>
-          </NavLink>
-          {/* Detail screens (param paths like /patients/:id) are reached programmatically, not via nav.
-              Gated screens show only when the actor holds the key (FB-T15 — server still enforces).
-              Grouped by navGroup (UI-001) — 35 module screen-sets already declare one; ungrouped
-              screens fall into "General" so nothing silently disappears from the sidebar. */}
-          {groupByNavGroup(
-            screens
-              .filter((s) => !s.path.includes(":"))
-              .filter((s) => canSeeScreen(s, session)),
-          ).map(([group, items]) => (
-            <NavGroup key={group} label={group}>
-              {items.map((s) => (
-                <NavLink key={s.id} to={s.path}>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "0.5rem",
-                    }}
-                  >
-                    <Glyph
-                      name={getScreenIcon(s.title, s.navGroup)}
-                      size={14}
-                      style={{ opacity: 0.8 }}
-                    />
-                    <span>{s.title}</span>
-                  </div>
-                </NavLink>
+          <span className="wx-brand-text">
+            <span className="wx-brand">WardenX</span>
+            <span className="wx-brand-sub">Hospice EHR</span>
+          </span>
+        </Link>
+        <nav id="wx-primary-nav" className="wx-nav wx-no-scrollbar" aria-label="Primary">
+          {sections.map((section) => (
+            <div key={section.label ?? "main"} className="wx-nav-section">
+              {section.label ? <div className="wx-nav-section-label">{section.label}</div> : null}
+              {section.entries.map((entry) => (
+                <PrimaryNavEntry
+                  key={entry.key}
+                  entry={entry}
+                  active={entry.key === activeKey}
+                  pathname={pathname}
+                />
               ))}
-            </NavGroup>
+            </div>
           ))}
         </nav>
+      </aside>
+      <div className="wx-shell-column">
+        <DegradedBanner />
+        <header ref={headerRef} className="wx-header">
+          <button
+            type="button"
+            className="wx-icon-btn wx-nav-toggle"
+            onClick={() => setNavOpen((open) => !open)}
+            aria-label={navOpen ? "Close navigation" : "Open navigation"}
+            aria-expanded={navOpen}
+            aria-controls="wx-primary-nav"
+          >
+            <Glyph name={navOpen ? "close" : "menu"} size={18} />
+          </button>
+          {/* Top-nav global search (FB-T11). Module-free: it only navigates to the registered
+              /search route — the Global Search screen (M5) owns the query + facets. */}
+          <TopNavSearch />
+          <div className="wx-header-actions">
+            <Link
+              to="/notifications"
+              className="wx-icon-btn"
+              aria-label="Notifications"
+              title="Notifications"
+            >
+              <Glyph name="bell" size={20} strokeWidth={1.75} />
+            </Link>
+            <ThemeToggle />
+            <ActorMenu session={session} />
+          </div>
+        </header>
         <main className="wx-main wx-no-scrollbar" ref={mainRef}>
           <Outlet />
         </main>
       </div>
       {overlay}
+    </div>
+  );
+}
+
+/**
+ * One primary-nav row. An entry with several screens gets a disclosure chevron that reveals them;
+ * it opens by itself while one of its screens is current.
+ */
+function PrimaryNavEntry({
+  entry,
+  active,
+  pathname,
+}: {
+  entry: NavEntry;
+  active: boolean;
+  pathname: string;
+}): JSX.Element {
+  const [open, setOpen] = useState(active);
+  useEffect(() => {
+    if (active) setOpen(true);
+  }, [active]);
+  const hasChildren = entry.children.length > 0;
+  const listId = `wx-nav-${entry.key}`;
+  return (
+    <div className="wx-nav-entry">
+      <div className="wx-nav-row">
+        <Link
+          to={entry.href ?? "/"}
+          className={active ? "wx-nav-link active" : "wx-nav-link"}
+          aria-current={active && pathname === entry.href ? "page" : undefined}
+        >
+          <Glyph name={entry.icon} size={18} strokeWidth={1.75} />
+          <span>{entry.label}</span>
+        </Link>
+        {hasChildren ? (
+          <button
+            type="button"
+            className="wx-nav-disclosure"
+            aria-expanded={open}
+            aria-controls={listId}
+            aria-label={`${open ? "Hide" : "Show"} ${entry.label} pages`}
+            onClick={() => setOpen((o) => !o)}
+          >
+            <Glyph name={open ? "chevron-down" : "chevron-right"} size={16} strokeWidth={1.75} />
+          </button>
+        ) : null}
+      </div>
+      {hasChildren && open ? (
+        <ul id={listId} className="wx-nav-children">
+          {entry.children.map((c) => (
+            <li key={c.id}>
+              <Link
+                to={c.path}
+                className={pathname === c.path ? "wx-nav-child active" : "wx-nav-child"}
+                aria-current={pathname === c.path ? "page" : undefined}
+              >
+                {c.title}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -300,6 +263,18 @@ export function AppLayout({ screens, overlay }: AppLayoutProps): JSX.Element {
 function TopNavSearch(): JSX.Element {
   const navigate = useNavigate();
   const [q, setQ] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  // ⌘K / Ctrl+K focuses the search from anywhere (the hint chip advertises it).
+  useEffect(() => {
+    function onKey(e: KeyboardEvent): void {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        inputRef.current?.focus();
+      }
+    }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
   function submit(e: FormEvent): void {
     e.preventDefault();
     setSearchTerm(q);
@@ -307,41 +282,21 @@ function TopNavSearch(): JSX.Element {
   }
   return (
     // biome-ignore lint/a11y/useSemanticElements: role="search" on the form is the intended, widely-supported pattern.
-    <form
-      className="wx-topnav-search"
-      onSubmit={submit}
-      role="search"
-      style={{ position: "relative" }}
-    >
-      <div
-        style={{
-          position: "absolute",
-          left: "0.75rem",
-          top: "50%",
-          transform: "translateY(-50%)",
-          color: "var(--color-on-surface-variant)",
-          opacity: 0.6,
-          pointerEvents: "none",
-        }}
-      >
-        <Glyph name="search" size={16} />
-      </div>
+    <form className="wx-topnav-search" onSubmit={submit} role="search">
+      <span className="wx-topnav-search-icon" aria-hidden>
+        <Glyph name="search" size={18} strokeWidth={1.75} />
+      </span>
       <input
+        ref={inputRef}
         type="search"
         aria-label="Global search"
-        placeholder="Search patients, staff…"
+        placeholder="Search patients, staff, orders, documents..."
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        style={{
-          width: "100%",
-          paddingLeft: "2.25rem",
-          background: "var(--color-surface-low)",
-          border:
-            "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
-          borderRadius: "var(--radius-md)",
-          transition: "all 0.15s ease",
-        }}
       />
+      <kbd className="wx-topnav-search-kbd" aria-hidden>
+        ⌘ K
+      </kbd>
     </form>
   );
 }
@@ -376,6 +331,7 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   }
 
   const displayName = session.displayName ?? session.userId;
+  const role = roleLine(session);
 
   return (
     <div className="wx-actor" ref={ref}>
@@ -385,28 +341,15 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
         onClick={() => setOpen((o) => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
       >
-        <div
-          style={{
-            width: "1.75rem",
-            height: "1.75rem",
-            borderRadius: "9999px",
-            background: "var(--color-primary-tint)",
-            color: "var(--color-primary)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            fontWeight: 600,
-            fontSize: "0.75rem",
-          }}
-        >
+        <span className="wx-actor-avatar" aria-hidden>
           {getInitials(displayName)}
-        </div>
-        <span className="wx-actor-name">{displayName}</span>
-        <span aria-hidden style={{ fontSize: "0.65rem", opacity: 0.7 }}>
-          ▾
         </span>
+        <span className="wx-actor-text">
+          <span className="wx-actor-name">{displayName}</span>
+          {role ? <span className="wx-actor-role">{role}</span> : null}
+        </span>
+        <Glyph name="chevron-down" size={16} strokeWidth={1.75} />
       </button>
       {open ? (
         <div className="wx-actor-menu" role="menu">
@@ -424,7 +367,7 @@ function ActorMenu({ session }: { session: Session | null }): JSX.Element {
   );
 }
 
-/** Light ⇄ twilight-dark toggle (DESIGN.md §11). Persists the choice; sun in dark, moon in light. */
+/** Light ⇄ dark toggle (DESIGN.md §11). Persists the choice; sun in dark, moon in light. */
 function ThemeToggle(): JSX.Element {
   const { mode, toggle } = useTheme();
   const dark = mode === "dark";
@@ -437,7 +380,7 @@ function ThemeToggle(): JSX.Element {
       aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
       title={dark ? "Light theme" : "Dark theme"}
     >
-      <Glyph name={dark ? "sun" : "moon"} size={18} />
+      <Glyph name={dark ? "sun" : "moon"} size={20} strokeWidth={1.75} />
     </button>
   );
 }

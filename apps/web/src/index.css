@@ -17,52 +17,57 @@
  */
 @import "tailwindcss";
 
-/* WardenX Lantern tokens → Tailwind theme vars (light). Dark values under `.dark`. */
+/* WardenX tokens → Tailwind theme vars (light). Dark values under `.dark`.
+   2026-09-25 redesign: the palette moved from Lantern's twilight indigo on warm paper to the clinical
+   blue-on-slate palette of the adopted mockups (docs/design/DESIGN.md §2 is the running record).
+   Token NAMES are unchanged so every `t.*` consumer follows automatically. */
 @theme {
-  /* Brand — twilight indigo */
-  --color-primary: #3b45a8;
-  --color-primary-strong: #2b338a;
-  --color-primary-tint: #ecedfb;
-  --color-primary-dim: #aeb4ec;
+  /* Brand — clinical blue */
+  --color-primary: #1a56eb;
+  --color-primary-strong: #1443c6;
+  --color-primary-tint: #e6edfd;
+  --color-primary-dim: #a9c1f8;
   --color-on-primary: #ffffff;
-  --color-accent: #c98a1f; /* Lantern gold — brand warmth only, never status */
-  --color-accent-tint: #fbf1dd;
+  --color-accent: #d97706; /* warm amber — brand warmth only, never status */
+  --color-accent-tint: #fef3c7;
 
   /* Semantic */
-  --color-success: #1f8a5b;
-  --color-warning: #9a5b00;
-  --color-error: #c12b3b;
-  --color-alert: #e0413f;
-  /* WX-PR-022: StatusPill "success" text on its own 12%-tint bg fails WCAG AA at #1f8a5b
-     (~3.7:1, needs 4.5:1) — this darker variant gives ~6.1:1. Text-only; the pill's background
-     tint still derives from --color-success unchanged. */
-  --color-success-pill-fg: #14653f;
+  --color-success: #16a34a;
+  --color-warning: #b45309;
+  --color-error: #dc2626;
+  --color-alert: #e5484d;
+  /* WX-PR-022: StatusPill "success" text must hold WCAG AA (4.5:1) on its own tint — #166534 on the
+     ~#dcf5e4 tint gives ~6.4:1. Text-only; the pill's background still derives from --color-success. */
+  --color-success-pill-fg: #166534;
 
-  /* Surfaces — warm paper hierarchy */
-  --color-background: #f6f5f2;
-  --color-surface: #f6f5f2;
+  /* Surfaces — cool slate hierarchy */
+  --color-background: #f7f8fa;
+  --color-surface: #f7f8fa;
   --color-surface-lowest: #ffffff;
-  --color-surface-low: #f1f0ec;
-  --color-surface-container: #eceae5;
-  --color-surface-high: #e5e3dd;
-  --color-surface-highest: #dedbd4;
+  --color-surface-low: #f4f6f9;
+  --color-surface-container: #eef1f5;
+  --color-surface-high: #e5e9ef;
+  --color-surface-highest: #dce1e8;
+  /* Shell sidebar — a faint blue-slate wash distinct from the white workspace (mockup nav column). */
+  --color-sidebar: #f2f5f9;
+  /* Card edge — the mockups' hairline card border (replaces Lantern's borderless shadow cards). */
+  --color-card-border: #e4e8ee;
 
   /* Text & line */
-  --color-on-surface: #1c1b1a;
-  --color-on-surface-variant: #56524c;
-  /* WX-PR-018: was #8c877f (~3.57:1 on --color-surface-lowest — fails WCAG AA), caught by the E2E
-     suite's axe scan on the nav-group toggle buttons. #726d64 gives ~5.1:1. */
-  --color-muted: #726d64;
-  --color-outline: #6e6a62;
-  --color-outline-variant: #d7d3cb;
-  --color-focus-ring: #3b45a8;
+  --color-on-surface: #0f172a;
+  --color-on-surface-variant: #475569;
+  /* WX-PR-018: muted text must hold ≥4.5:1 on white — slate #64748b gives ~4.8:1. */
+  --color-muted: #64748b;
+  --color-outline: #94a3b8;
+  --color-outline-variant: #dfe4eb;
+  --color-focus-ring: #1a56eb;
 
   /* On-emphasis — text/icons on a SATURATED brand/status fill (primary button, break-glass banner,
-     status-flood CTA). White in light; twilight ink in dark (the dark status colors are light
-     pastels, so white-on-them fails contrast — dark text is correct, mirroring --color-on-primary). */
+     status-flood CTA). White in light; deep ink in dark (the dark status colors are light pastels,
+     so white-on-them fails contrast — dark text is correct, mirroring --color-on-primary). */
   --color-on-emphasis: #ffffff;
   /* Scrim — modal/overlay backdrop. Dims the content behind in both themes. */
-  --color-scrim: rgba(17, 24, 39, 0.55);
+  --color-scrim: rgba(15, 23, 42, 0.5);
 
   /* Legacy aliases (kept so existing wx-* refs resolve) */
   --color-brand: var(--color-primary);
@@ -70,8 +75,9 @@
 
   /* Type — WardenX trio. Variable faces register "<Name> Variable" (see main.tsx); name those
      first, then the static family, then system fallbacks. */
-  --font-display: "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
-    Roboto, sans-serif;
+  /* The redesign sets headings in Inter too (mockups); Manrope stays registered as a fallback face. */
+  --font-display: "Inter Variable", "Inter", "Manrope Variable", ui-sans-serif, system-ui,
+    -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI",
     Roboto, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
@@ -84,9 +90,9 @@
   --radius-2xl: 1.5rem;
 
   /* Elevation */
-  --shadow-soft: 0 4px 24px rgba(28, 27, 26, 0.05);
-  --shadow-float: 0 12px 48px rgba(28, 27, 26, 0.1);
-  --shadow-ambient: 0 8px 32px rgba(59, 69, 168, 0.06);
+  --shadow-soft: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --shadow-float: 0 12px 40px rgba(15, 23, 42, 0.12);
+  --shadow-ambient: 0 4px 16px rgba(26, 86, 235, 0.06);
 }
 
 /* Spacing scale (4px base, DESIGN.md §4.1). Theme-invariant; consumed ONLY from inline styles via the
@@ -111,38 +117,66 @@
   --space-9: 3rem; /* 48 — page vertical rhythm */
 }
 
-/* Twilight dark mode (class strategy on <html>). Designed, not inverted. */
+/* Data-viz palette (2026-09-25 redesign) — categorical hues for avatars, diagnosis dots, symptom
+   icons and list accent bars. Decorative identity only, never a status signal (status keeps the
+   semantic --color-success/-warning/-error). Plain :root so Tailwind cannot drop them. */
+:root {
+  --color-viz-blue: #1a56eb;
+  --color-viz-teal: #0d9488;
+  --color-viz-green: #16a34a;
+  --color-viz-amber: #d97706;
+  --color-viz-yellow: #eab308;
+  --color-viz-orange: #ea580c;
+  --color-viz-cyan: #0891b2;
+  --color-viz-violet: #7c3aed;
+  --color-viz-rose: #e11d48;
+  --color-viz-pink: #db2777;
+}
 .dark {
-  --color-primary: #aeb4f0;
-  --color-primary-strong: #8e95e0;
-  --color-primary-tint: #262a52;
-  --color-primary-dim: #3a4080;
-  --color-on-primary: #13163a;
-  --color-accent: #e7b35a;
-  --color-accent-tint: #3a2f16;
-  --color-success: #5fd6a0;
-  /* Dark mode's --color-success already passes WCAG AA on its own pill tint (~7.35:1) — same value. */
-  --color-success-pill-fg: #5fd6a0;
-  --color-warning: #e0a24a;
-  --color-error: #f2939e;
-  --color-alert: #ff6b68;
-  --color-background: #15151b;
-  --color-surface: #15151b;
-  --color-surface-lowest: #1c1c24;
-  --color-surface-low: #21212b;
-  --color-surface-container: #272732;
-  --color-surface-high: #30303c;
-  --color-surface-highest: #3a3a47;
-  --color-on-surface: #eceae6;
-  --color-on-surface-variant: #b8b4ad;
-  /* WX-PR-018: was #7e7a72 (~3.96:1 on --color-surface-lowest — fails WCAG AA). #96918a gives ~5.4:1. */
-  --color-muted: #96918a;
-  --color-outline: #8a857c;
-  --color-outline-variant: #45444e;
-  --color-focus-ring: #aeb4f0;
-  /* Dark on-emphasis = twilight ink (dark text on the light-pastel dark-mode fills). */
-  --color-on-emphasis: #15151b;
-  /* Scrim slightly stronger over the darker canvas. */
+  --color-viz-blue: #7c9cff;
+  --color-viz-teal: #2dd4bf;
+  --color-viz-green: #4ade80;
+  --color-viz-amber: #fbbf24;
+  --color-viz-yellow: #facc15;
+  --color-viz-orange: #fb923c;
+  --color-viz-cyan: #22d3ee;
+  --color-viz-violet: #a78bfa;
+  --color-viz-rose: #fb7185;
+  --color-viz-pink: #f472b6;
+}
+
+/* Dark mode (class strategy on <html>). Designed, not inverted — deep navy slate with a lifted blue. */
+.dark {
+  --color-primary: #7aa2ff;
+  --color-primary-strong: #9bb8ff;
+  --color-primary-tint: #16264d;
+  --color-primary-dim: #1e3a8a;
+  --color-on-primary: #0b1120;
+  --color-accent: #f5b544;
+  --color-accent-tint: #3a2a10;
+  --color-success: #4ade80;
+  /* Dark --color-success already passes WCAG AA on its own pill tint — same value. */
+  --color-success-pill-fg: #4ade80;
+  --color-warning: #fbbf24;
+  --color-error: #f87171;
+  --color-alert: #fb7185;
+  --color-background: #0b1120;
+  --color-surface: #0b1120;
+  --color-surface-lowest: #111827;
+  --color-surface-low: #151e2e;
+  --color-surface-container: #1b2436;
+  --color-surface-high: #232e42;
+  --color-surface-highest: #2c384e;
+  --color-sidebar: #0e1626;
+  --color-card-border: #222c3e;
+  --color-on-surface: #e5e9f0;
+  --color-on-surface-variant: #a7b1c2;
+  /* WX-PR-018: muted must hold ≥4.5:1 on --color-surface-lowest — #8b97ab gives ~5.6:1. */
+  --color-muted: #8b97ab;
+  --color-outline: #6b778c;
+  --color-outline-variant: #263145;
+  --color-focus-ring: #7aa2ff;
+  --color-on-emphasis: #0b1120;
   --color-scrim: rgba(0, 0, 0, 0.62);
 }
 
@@ -160,7 +194,8 @@
   h5,
   h6 {
     font-family: var(--font-display);
-    font-weight: 650;
+    font-weight: 700;
+    letter-spacing: -0.01em;
   }
   /* Screens author bare elements (<a>/<input>/<select>/<button>) and lean on these defaults. */
   a {
@@ -177,11 +212,12 @@
   select,
   textarea {
     font: inherit;
-    padding: 0.4rem 0.6rem;
-    /* Ghost border — No-Line rule (DESIGN.md §10): low-opacity outline, not a hard 1px line. */
-    border: 1px solid color-mix(in srgb, var(--color-outline-variant) 60%, transparent);
+    padding: 0.45rem 0.7rem;
+    /* Controls carry the redesign's hairline edge on a white field (mockups). */
+    border: 1px solid var(--color-card-border);
     border-radius: var(--radius-md);
-    background: var(--color-surface-low);
+    background: var(--color-surface-lowest);
+    color: var(--color-on-surface);
   }
   input:focus,
   select:focus,
@@ -236,15 +272,14 @@
   th,
   td {
     text-align: left;
-    padding: 0.5rem 0.75rem;
-    /* Ghost separator at ~15% opacity rather than an opaque rule. */
-    border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent);
+    padding: 0.625rem 0.875rem;
+    /* Hairline row separator (mockup tables). */
+    border-bottom: 1px solid var(--color-card-border);
   }
   th {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-on-surface);
   }
   /* Financial/numeric alignment per DESIGN.md §6.7. */
   td:has(> .tabular),
@@ -266,61 +301,273 @@
      simply invalid and dropped, per cascade). */
   .wx-shell {
     display: flex;
-    flex-direction: column;
     height: 100vh;
     height: 100dvh;
+    background: var(--color-background);
+  }
+  /* ---- Sidebar: brand + curated primary nav (primary-nav.ts), full viewport height ---- */
+  .wx-sidebar {
+    display: flex;
+    flex-direction: column;
+    width: 13.25rem;
+    flex-shrink: 0;
+    background: var(--color-sidebar);
+    border-right: 1px solid var(--color-card-border);
+    min-height: 0;
+  }
+  .wx-brand-block {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 1rem 1.125rem 1.25rem;
+    color: inherit;
+  }
+  .wx-brand-block:hover {
+    text-decoration: none;
+  }
+  .wx-brand-logo {
+    display: inline-flex;
+    color: var(--color-primary);
+  }
+  .wx-brand-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.15;
+  }
+  .wx-brand {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    font-size: 1.0625rem;
+    letter-spacing: -0.01em;
+    color: var(--color-on-surface);
+    white-space: nowrap;
+  }
+  .wx-brand-sub {
+    font-size: 0.6875rem;
+    color: var(--color-muted);
+  }
+  .wx-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    flex: 1;
+    min-height: 0;
+    padding: 0 0.625rem 1rem;
+    overflow-y: auto;
+  }
+  .wx-nav-section + .wx-nav-section {
+    margin-top: 0.75rem;
+    padding-top: 0.875rem;
+    border-top: 1px solid var(--color-card-border);
+  }
+  .wx-nav-section-label {
+    padding: 0.25rem 0.75rem 0.375rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+  .wx-nav-row {
+    display: flex;
+    align-items: center;
+    position: relative;
+  }
+  .wx-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex: 1;
+    min-width: 0;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-md);
+    color: var(--color-on-surface-variant);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  .wx-nav-link:hover {
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+    color: var(--color-on-surface);
+    text-decoration: none;
+  }
+  .wx-nav-link.active {
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+  .wx-nav-link:focus-visible,
+  .wx-nav-child:focus-visible,
+  .wx-nav-disclosure:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+  }
+  .wx-nav-disclosure {
+    position: absolute;
+    right: 0.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-muted);
+    cursor: pointer;
+  }
+  .wx-nav-disclosure:hover {
+    color: var(--color-on-surface);
+  }
+  /* The mockup's rows are clean: the disclosure chevron appears on hover/focus or once expanded. */
+  .wx-nav-disclosure[aria-expanded="false"] {
+    opacity: 0;
+  }
+  .wx-nav-row:hover .wx-nav-disclosure,
+  .wx-nav-disclosure:focus-visible {
+    opacity: 1;
+  }
+  .wx-nav-children {
+    list-style: none;
+    margin: 0.125rem 0 0.25rem;
+    padding: 0 0 0 2.375rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.0625rem;
+  }
+  .wx-nav-child {
+    display: block;
+    padding: 0.3rem 0.625rem;
+    border-radius: var(--radius-sm);
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-nav-child:hover {
+    background: color-mix(in srgb, var(--color-primary) 6%, transparent);
+    text-decoration: none;
+  }
+  .wx-nav-child.active {
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+
+  /* ---- Column right of the sidebar: top bar + routed workspace ---- */
+  .wx-shell-column {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
   }
   .wx-header {
     display: flex;
     align-items: center;
     gap: 1rem;
-    padding: 0.75rem 1.5rem;
-    border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent);
-    background: color-mix(in srgb, var(--color-surface-lowest) 85%, transparent);
-    -webkit-backdrop-filter: blur(20px) saturate(1.1);
-    backdrop-filter: blur(20px) saturate(1.1);
-  }
-  .wx-brand {
-    font-family: var(--font-display);
-    font-weight: 600;
-    font-size: 1.125rem;
-    color: var(--color-primary);
-    white-space: nowrap;
+    min-height: 3.75rem;
+    padding: 0.5rem 1.5rem;
+    border-bottom: 1px solid var(--color-card-border);
+    background: var(--color-surface-lowest);
   }
   .wx-topnav-search {
+    position: relative;
     flex: 1;
-    max-width: 28rem;
+    max-width: 34rem;
   }
   .wx-topnav-search input {
     width: 100%;
+    height: 2.5rem;
+    padding: 0 3.5rem 0 2.5rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-low);
+    font-size: 0.875rem;
+  }
+  .wx-topnav-search input::placeholder {
+    color: var(--color-muted);
+  }
+  .wx-topnav-search-icon {
+    position: absolute;
+    left: 0.8rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-muted);
+    pointer-events: none;
+  }
+  .wx-topnav-search-kbd {
+    position: absolute;
+    right: 0.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0.1rem 0.4rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-lowest);
+    color: var(--color-muted);
+    font-family: var(--font-sans);
+    font-size: 0.6875rem;
+    pointer-events: none;
+  }
+  .wx-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-left: auto;
   }
   .wx-actor {
-    margin-left: auto;
     position: relative;
+    margin-left: 0.5rem;
+    padding-left: 1rem;
+    border-left: 1px solid var(--color-card-border);
   }
-  /* The signed-in actor's name — a menu trigger, not inert text (live-browser audit #6: a shared
+  /* The signed-in actor — a menu trigger, not inert text (live-browser audit #6: a shared
      clinical workstation needs a discoverable, direct way to sign out). */
   .wx-actor-trigger {
     display: inline-flex;
     align-items: center;
-    gap: 0.3rem;
+    gap: 0.625rem;
     border: none;
     background: transparent;
-    padding: 0.3rem 0.5rem;
+    padding: 0.25rem 0.375rem;
     border-radius: var(--radius-md);
     color: var(--color-on-surface-variant);
-    font-size: 0.875rem;
-    white-space: nowrap;
     cursor: pointer;
+    text-align: left;
   }
   .wx-actor-trigger:hover,
   .wx-actor-trigger[aria-expanded="true"] {
     background: var(--color-surface-container);
-    color: var(--color-on-surface);
   }
   .wx-actor-trigger:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 1px;
+  }
+  .wx-actor-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 9999px;
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+    font-weight: 600;
+    font-size: 0.8125rem;
+  }
+  .wx-actor-text {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.25;
+  }
+  .wx-actor-name {
+    color: var(--color-on-surface);
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .wx-actor-role {
+    color: var(--color-muted);
+    font-size: 0.75rem;
+    white-space: nowrap;
   }
   .wx-actor-menu {
     position: absolute;
@@ -331,9 +578,9 @@
     flex-direction: column;
     padding: 0.375rem;
     border-radius: var(--radius-md);
-    border: 1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent);
+    border: 1px solid var(--color-card-border);
     background: var(--color-surface-lowest);
-    box-shadow: 0 8px 24px color-mix(in srgb, black 18%, transparent);
+    box-shadow: var(--shadow-float);
     z-index: 60;
   }
   .wx-actor-menu-item {
@@ -351,13 +598,13 @@
   .wx-actor-menu-item:hover {
     background: var(--color-surface-container);
   }
-  /* Header icon button (theme toggle) — tonal, no hard border (No-Line §10.3). */
+  /* Header icon button (bell, theme toggle). */
   .wx-icon-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 2rem;
-    height: 2rem;
+    width: 2.25rem;
+    height: 2.25rem;
     border: none;
     border-radius: var(--radius-md);
     background: transparent;
@@ -367,78 +614,11 @@
   .wx-icon-btn:hover {
     background: var(--color-surface-container);
     color: var(--color-on-surface);
+    text-decoration: none;
   }
   .wx-icon-btn:focus-visible {
     outline: 2px solid var(--color-primary);
     outline-offset: 1px;
-  }
-  .wx-body {
-    display: flex;
-    flex: 1;
-    min-height: 0;
-  }
-  .wx-nav {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-    width: 14rem;
-    flex-shrink: 0;
-    padding: 1rem 0.75rem;
-    border-right: 1px solid color-mix(in srgb, var(--color-outline-variant) 50%, transparent);
-    background: var(--color-surface-lowest);
-    overflow-y: auto;
-  }
-  .wx-nav a {
-    display: block;
-    padding: 0.45rem 0.6rem;
-    border-radius: var(--radius-md);
-    color: var(--color-on-surface-variant);
-    font-size: 0.925rem;
-    position: relative;
-    transition: all 0.15s ease;
-  }
-  .wx-nav a:hover {
-    background: var(--color-surface-container);
-    text-decoration: none;
-    padding-left: 0.75rem;
-  }
-  /* Active nav item — indigo text on primary-tint fill (DESIGN.md §6.1). */
-  .wx-nav a[aria-current="page"],
-  .wx-nav a.active {
-    background: var(--color-primary-tint);
-    color: var(--color-primary);
-    font-weight: 600;
-    padding-left: 0.85rem;
-  }
-  .wx-nav a[aria-current="page"]::before,
-  .wx-nav a.active::before {
-    content: "";
-    position: absolute;
-    left: 0.25rem;
-    top: 0.5rem;
-    bottom: 0.5rem;
-    width: 3px;
-    background: var(--color-primary);
-    border-radius: var(--radius-sm);
-  }
-
-  /* Collapsible group content grid-based transition */
-  .wx-nav-group-content {
-    display: grid;
-    grid-template-rows: 0fr;
-    transition: grid-template-rows 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-    overflow: hidden;
-  }
-  .wx-nav-group-content.open {
-    grid-template-rows: 1fr;
-  }
-  .wx-nav-group-content > div {
-    min-height: 0;
-    opacity: 0;
-    transition: opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-  .wx-nav-group-content.open > div {
-    opacity: 1;
   }
 
   /* Hide scrollbars visually */
@@ -502,11 +682,8 @@
       flex-basis: 100%;
       max-width: none;
     }
-    .wx-actor {
-      margin-left: 0;
-    }
-    .wx-body {
-      position: relative;
+    .wx-actor-text {
+      display: none;
     }
     .wx-nav-backdrop {
       position: fixed;
@@ -514,21 +691,21 @@
       background: var(--color-scrim);
       z-index: 40;
     }
-    .wx-nav {
+    .wx-sidebar {
       position: fixed;
       inset: 0 auto 0 0;
       z-index: 50;
       width: 85vw;
-      max-width: 20rem;
+      max-width: 18rem;
       transform: translateX(-100%);
       transition: transform 0.2s ease;
-      box-shadow: 0 0 0 1px color-mix(in srgb, var(--color-outline-variant) 50%, transparent);
+      box-shadow: var(--shadow-float);
     }
-    .wx-nav.wx-nav-open {
+    .wx-sidebar.wx-nav-open {
       transform: translateX(0);
     }
     @media (prefers-reduced-motion: reduce) {
-      .wx-nav {
+      .wx-sidebar {
         transition: none;
       }
     }
@@ -743,38 +920,66 @@
     padding-right: var(--space-5);
   }
 
-  /* Patient workspaces: shared polish for every /patients/* route that uses PatientWorkspaceLayout. */
+  /* Patient workspaces: shared chrome for every /patients/* route that uses PatientWorkspaceLayout
+     (2026-09-25 redesign — white banner + tab strip over the slate canvas, optional right rail). */
   .wx-patient-workspace {
     background: var(--color-background);
   }
-  .wx-patient-workspace > div:last-child {
-    min-width: 0;
+  /* A screen's workspace row that starts with the chart tab strip stacks vertically: the strip
+     spans the top, the screen's own content fills below (chart-module-rail.tsx). */
+  div:has(> .wx-chart-tabs) {
+    flex-direction: column !important;
   }
-  .wx-patient-workspace .wx-left-rail {
-    width: 16.5rem;
+  .wx-chart-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    flex-shrink: 0;
     background: var(--color-surface-lowest);
+    border-bottom: 1px solid var(--color-card-border);
+    padding: 0 1.5rem;
+    overflow-x: auto;
   }
-  .wx-chart-module-list {
-    gap: 0.25rem !important;
+  .wx-chart-tabs ul {
+    display: flex;
+    gap: 1.75rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
   }
-  .wx-chart-module-item {
-    min-height: 2.35rem;
-    transition: background-color 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+  .wx-chart-tab {
+    display: block;
+    padding: 0.8rem 0.125rem 0.7rem;
+    border-bottom: 2px solid transparent;
+    color: var(--color-on-surface-variant);
+    font-size: 0.9375rem;
+    font-weight: 500;
+    white-space: nowrap;
   }
-  .wx-chart-module-item:hover {
-    background: var(--color-surface-low);
+  .wx-chart-tab:hover {
     color: var(--color-on-surface);
     text-decoration: none;
   }
-  .wx-chart-module-item:focus-visible {
+  .wx-chart-tab.active {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
+    font-weight: 600;
+  }
+  .wx-chart-tab:focus-visible {
     outline: 2px solid var(--color-focus-ring);
-    outline-offset: 2px;
+    outline-offset: -2px;
   }
-  .wx-chart-module-item.is-active {
-    box-shadow: inset 3px 0 0 var(--color-primary);
+  .wx-patient-rail > * {
+    flex-shrink: 0;
   }
-  .wx-patient-banner {
-    box-shadow: 0 1px 0 color-mix(in srgb, var(--color-outline-variant) 35%, transparent);
+  .wx-patient-rail {
+    width: 18rem;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1.125rem 1.25rem 1.5rem 0;
+    overflow-y: auto;
   }
   .wx-patient-card {
     margin-bottom: var(--space-4);
@@ -782,20 +987,910 @@
   .wx-patient-card table {
     min-width: 36rem;
   }
+  /* Tables inside panels read as the mockups' clean lists: no forced min-width block scroll. */
+  .wx-panel table {
+    display: table;
+    font-size: 0.8125rem;
+  }
+  .wx-panel th,
+  .wx-panel td {
+    padding: 0.55rem 1.125rem;
+  }
+  .wx-panel tbody tr:last-child td {
+    border-bottom: none;
+  }
 
+  /* Patient Overview (patient-overview.tsx) — 24-col grid with the mockup's unequal row splits. */
+  .wx-overview-grid {
+    display: grid;
+    grid-template-columns: repeat(24, minmax(0, 1fr));
+    gap: 1rem;
+    align-items: stretch;
+  }
+  .wx-overview-grid > .wx-c7 {
+    grid-column: span 7;
+  }
+  .wx-overview-grid > .wx-c8 {
+    grid-column: span 8;
+  }
+  .wx-overview-grid > .wx-c9 {
+    grid-column: span 9;
+  }
+  .wx-overview-grid > .wx-c11 {
+    grid-column: span 11;
+  }
+  .wx-overview-grid > .wx-c12 {
+    grid-column: span 12;
+  }
+  .wx-overview-grid > .wx-c13 {
+    grid-column: span 13;
+  }
+  .wx-overview-grid > .wx-c24 {
+    grid-column: span 24;
+  }
+  @media (max-width: 1400px) {
+    .wx-overview-grid > * {
+      grid-column: span 12 !important;
+    }
+  }
   @media (max-width: 900px) {
-    .wx-patient-workspace .wx-left-rail {
-      width: 100% !important;
-      border-right: 0 !important;
-      border-bottom: 1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent);
+    .wx-overview-grid > * {
+      grid-column: span 24 !important;
     }
-    .wx-patient-workspace > div:last-child > div {
-      flex-direction: column;
+  }
+  /* Dated activity timeline (Recent Activity). */
+  .wx-timeline {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+  }
+  .wx-timeline li {
+    position: relative;
+    display: grid;
+    grid-template-columns: 1rem 6.25rem 2rem 1fr;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0;
+    font-size: 0.8125rem;
+  }
+  .wx-timeline li::before {
+    content: "";
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 9999px;
+    background: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-tint);
+  }
+  .wx-timeline li:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 0.28rem;
+    top: 1.6rem;
+    bottom: -0.9rem;
+    width: 1px;
+    background: var(--color-card-border);
+  }
+  .wx-timeline-date {
+    color: var(--color-on-surface-variant);
+  }
+  .wx-timeline-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: var(--radius-md);
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+  }
+  .wx-timeline-text {
+    color: var(--color-on-surface);
+  }
+  /* Right-rail lists (Alerts & Safety, Quick Links). */
+  .wx-rail-list,
+  .wx-rail-links {
+    list-style: none;
+    margin: 0;
+    padding: 0 0.5rem 0.5rem;
+  }
+  .wx-rail-list li + li {
+    border-top: 1px solid var(--color-card-border);
+  }
+  .wx-rail-alert,
+  .wx-rail-links a {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.625rem;
+    border-radius: var(--radius-md);
+    color: var(--color-on-surface);
+    font-size: 0.875rem;
+  }
+  .wx-rail-alert:hover,
+  .wx-rail-links a:hover {
+    background: var(--color-surface-low);
+    text-decoration: none;
+  }
+  .wx-rail-links a > :last-child,
+  .wx-rail-alert > :last-child {
+    color: var(--color-muted);
+  }
+  /* A router <Link> dressed as the primary button (navigation must stay a link, not a fake button). */
+  .wx-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 2.5rem;
+    padding: 0.5rem 1.125rem;
+    border-radius: var(--radius-md);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    font-size: 0.875rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .wx-btn-primary:hover {
+    background: var(--color-primary-strong);
+    text-decoration: none;
+  }
+  .wx-btn-primary.wx-btn-sm {
+    min-height: 2rem;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+  /* A router <Link> dressed as the outlined secondary button ("View all diagnoses", "View visit"). */
+  .wx-btn-secondary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    min-height: 2.5rem;
+    padding: 0.5rem 1.125rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+    color: var(--color-primary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .wx-btn-secondary:hover {
+    background: var(--color-surface-low);
+    text-decoration: none;
+  }
+  .wx-btn-secondary.wx-btn-sm {
+    min-height: 2rem;
+    padding: 0.3rem 0.75rem;
+    font-size: 0.8125rem;
+  }
+
+  button.wx-btn-primary,
+  button.wx-btn-secondary {
+    font: inherit;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+  button.wx-btn-primary {
+    border: none;
+    font-weight: 600;
+  }
+  button.wx-btn-primary:disabled,
+  button.wx-btn-secondary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Chart list tabs (Medications, Orders, Care Plans) — KPI cards, status chips, list table with a
+     colored accent bar, and an inline detail card for the selected row. */
+  .wx-chart-section {
+    display: grid;
+    gap: 1rem;
+    min-width: 0;
+  }
+  .wx-stat-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+  }
+  .wx-stat-card {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    padding: 1rem 1.125rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+    min-width: 0;
+  }
+  .wx-stat-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 3rem;
+    height: 3rem;
+    border-radius: var(--radius-md);
+    flex-shrink: 0;
+  }
+  .wx-stat-label {
+    color: var(--color-muted);
+    font-size: 0.8125rem;
+  }
+  .wx-stat-value {
+    font-size: 1.625rem;
+    font-weight: 700;
+    line-height: 1.2;
+    color: var(--color-on-surface);
+  }
+  .wx-list-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .wx-list-toolbar-end {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    flex: 1 1 20rem;
+    justify-content: flex-end;
+  }
+  .wx-seg {
+    margin: 0;
+    min-width: 0;
+    justify-self: start;
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding: 0.25rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+  }
+  .wx-seg button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-height: 2.125rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-muted);
+    font: inherit;
+    font-size: 0.8125rem;
+    cursor: pointer;
+  }
+  .wx-seg button:hover {
+    background: var(--color-surface-low);
+  }
+  .wx-seg button.is-selected {
+    border-color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 8%, var(--color-surface-lowest));
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+  .wx-seg-count {
+    min-width: 1.375rem;
+    padding: 0 0.375rem;
+    border-radius: 9999px;
+    background: var(--color-surface-low);
+    color: var(--color-muted);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    text-align: center;
+  }
+  .wx-seg button.is-selected .wx-seg-count {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+  .wx-search-field {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1 1 14rem;
+    max-width: 22rem;
+    min-height: 2.5rem;
+    padding: 0 0.75rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+    color: var(--color-muted);
+  }
+  .wx-search-field input {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--color-on-surface);
+    font: inherit;
+    font-size: 0.875rem;
+  }
+  .wx-search-field input::placeholder {
+    color: var(--color-muted);
+    opacity: 1;
+  }
+  .wx-search-field:focus-within {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 1px;
+  }
+  .wx-list-state {
+    display: grid;
+    justify-items: center;
+    gap: 0.75rem;
+    padding: 1.5rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+  }
+  .wx-list-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+  }
+  .wx-list-table {
+    display: table;
+    width: 100%;
+    min-width: 48rem;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .wx-list-table th {
+    padding: 0.7rem 1rem;
+    background: var(--color-surface-low);
+    color: var(--color-on-surface);
+    font-weight: 600;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .wx-list-table td {
+    padding: 0.6rem 1rem;
+    border-top: 1px solid var(--color-card-border);
+    color: var(--color-on-surface);
+    vertical-align: middle;
+  }
+  .wx-list-table td:first-child {
+    position: relative;
+    padding-left: 1.25rem;
+  }
+  .wx-list-table tbody tr {
+    cursor: pointer;
+  }
+  .wx-list-table tbody tr:hover,
+  .wx-list-table tbody tr.is-selected {
+    background: color-mix(in srgb, var(--color-primary) 5%, var(--color-surface-lowest));
+  }
+  .wx-row-bar {
+    position: absolute;
+    left: 0.375rem;
+    top: 0.5rem;
+    bottom: 0.5rem;
+    width: 3px;
+    border-radius: 2px;
+  }
+  .wx-row-title {
+    display: block;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--color-on-surface);
+    font: inherit;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+  }
+  .wx-row-title:hover {
+    color: var(--color-primary);
+  }
+  .wx-row-sub {
+    display: block;
+    color: var(--color-muted);
+    font-size: 0.75rem;
+  }
+  .wx-icon-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--color-on-surface);
+    cursor: pointer;
+  }
+  .wx-icon-link:hover {
+    background: var(--color-surface-low);
+  }
+  .wx-detail-card {
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+    overflow: hidden;
+  }
+  .wx-detail-card > header {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.875rem 1.125rem 0.5rem;
+  }
+  .wx-detail-card h3 {
+    margin: 0;
+    font-size: 1.0625rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-detail-tabs {
+    display: flex;
+    gap: 1.5rem;
+    padding: 0 1.125rem;
+    border-bottom: 1px solid var(--color-card-border);
+    font-size: 0.8125rem;
+    overflow-x: auto;
+  }
+  .wx-detail-tabs > * {
+    padding: 0.6rem 0;
+    color: var(--color-muted);
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+  }
+  .wx-detail-tabs > [aria-current="page"] {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
+    font-weight: 600;
+  }
+  .wx-detail-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr);
+    gap: 1rem;
+    padding: 1rem 1.125rem 1.125rem;
+  }
+  .wx-detail-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem 1.25rem;
+    padding: 1rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    align-content: start;
+  }
+  .wx-detail-field > :first-child {
+    color: var(--color-muted);
+    font-size: 0.75rem;
+    margin-bottom: 0.25rem;
+  }
+  .wx-detail-field > :last-child {
+    color: var(--color-on-surface);
+    font-size: 0.875rem;
+    font-weight: 500;
+  }
+  .wx-danger-chip {
+    display: inline-block;
+    padding: 0.15rem 0.5rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--color-error) 12%, var(--color-surface-lowest));
+    color: var(--color-error);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .wx-note-box {
+    padding: 0.75rem 0.875rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-low);
+    color: var(--color-on-surface);
+    font-size: 0.8125rem;
+  }
+  .wx-note-box strong {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-weight: 700;
+  }
+  .wx-note-box p {
+    margin: 0.25rem 0 0;
+  }
+  .wx-note-box ul {
+    margin: 0.4rem 0 0;
+    padding-left: 1.125rem;
+    list-style: disc;
+  }
+  .wx-note-box-danger {
+    border-color: color-mix(in srgb, var(--color-error) 25%, var(--color-card-border));
+    background: color-mix(in srgb, var(--color-error) 5%, var(--color-surface-lowest));
+  }
+  .wx-note-box-danger strong {
+    color: var(--color-error);
+  }
+  .wx-ring-dot {
+    width: 0.75rem;
+    height: 0.75rem;
+    margin-top: 0.2rem;
+    border: 2px solid var(--color-error);
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+  @media (max-width: 1200px) {
+    .wx-stat-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+    .wx-detail-body {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 700px) {
+    .wx-detail-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .wx-list-toolbar-end {
+      justify-content: stretch;
+    }
+    .wx-search-field {
+      max-width: none;
+    }
+  }
+
+  .wx-list-table-static tbody tr {
+    cursor: default;
+  }
+  .wx-list-table-static tbody tr:hover {
+    background: none;
+  }
+
+  /* Care Plans tab (07-care-plan/care-plan-overview.tsx). */
+  .wx-page-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+  }
+  .wx-page-head h1 {
+    margin: 0;
+    font-size: 1.625rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-page-head p {
+    margin: 0.25rem 0 0;
+    color: var(--color-muted);
+    font-size: 0.875rem;
+  }
+  .wx-version-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 16rem;
+    padding: 0.5rem 0.875rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+    color: var(--color-on-surface);
+    font-size: 0.875rem;
+  }
+  .wx-version-card:hover {
+    background: var(--color-surface-low);
+    text-decoration: none;
+  }
+  .wx-version-card > span:nth-child(2) {
+    display: grid;
+    gap: 0.25rem;
+    flex: 1;
+  }
+  .wx-version-dot {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+  .wx-subtabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    border-bottom: 1px solid var(--color-card-border);
+  }
+  .wx-goal-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.625rem;
+  }
+  .wx-goal-card {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+  }
+  .wx-goal-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    border-radius: var(--radius-md);
+    flex-shrink: 0;
+  }
+  .wx-goal-main {
+    flex: 1;
+    min-width: 0;
+  }
+  .wx-goal-main h3 {
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-goal-facts {
+    display: grid;
+    grid-template-columns: 1.3fr 1.1fr 1fr 0.9fr;
+    gap: 0.75rem 1.25rem;
+    margin-top: 0.5rem;
+    font-size: 0.8125rem;
+  }
+  .wx-goal-facts > div {
+    display: grid;
+    gap: 0.15rem;
+    min-width: 0;
+  }
+  .wx-goal-facts > div > :first-child {
+    color: var(--color-muted);
+    font-size: 0.75rem;
+  }
+  .wx-goal-facts > div > :last-child {
+    color: var(--color-on-surface);
+  }
+  .wx-goal-side {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    width: 9rem;
+  }
+  .wx-mini-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.625rem;
+    height: 1.625rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, var(--color-primary) 12%, var(--color-surface-lowest));
+    color: var(--color-primary);
+    font-size: 0.625rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .wx-legend {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.4rem;
+    font-size: 0.8125rem;
+    color: var(--color-on-surface);
+  }
+  .wx-legend li {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+  }
+  .wx-legend li > span {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+  }
+  .wx-rail-link-button {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.625rem;
+    border: none;
+    border-radius: var(--radius-md);
+    background: none;
+    color: var(--color-on-surface);
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .wx-rail-link-button:hover {
+    background: var(--color-surface-low);
+  }
+  .wx-rail-link-button > :last-child {
+    color: var(--color-muted);
+  }
+  @media (max-width: 1100px) {
+    .wx-goal-facts {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  /* Patient Clinical tab (patient-clinical.tsx) — extra spans on the Overview's 24-col grid. */
+  .wx-overview-grid > .wx-c10 {
+    grid-column: span 10;
+  }
+  .wx-overview-grid > .wx-c14 {
+    grid-column: span 14;
+  }
+  .wx-overview-grid > .wx-c15 {
+    grid-column: span 15;
+  }
+  .wx-dx-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    gap: 0.75rem;
+  }
+  .wx-subcard {
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    padding: 0.75rem 0.875rem;
+    min-width: 0;
+  }
+  .wx-subcard-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--color-on-surface);
+  }
+  .wx-code-chip {
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-low);
+    color: var(--color-muted);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .wx-dx-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+  }
+  .wx-dx-list li {
+    display: grid;
+    grid-template-columns: 0.625rem 3.75rem minmax(0, 1fr);
+    align-items: center;
+    gap: 0.5rem;
+  }
+  .wx-dx-dot {
+    width: 0.625rem;
+    height: 0.625rem;
+    border-radius: 9999px;
+  }
+  .wx-dx-code {
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-dx-desc {
+    color: var(--color-on-surface);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .wx-status-rows {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.6rem;
+    font-size: 0.8125rem;
+  }
+  .wx-status-rows li {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+  }
+  .wx-symptom-grid {
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  .wx-symptom-card {
+    display: grid;
+    gap: 0.375rem;
+    padding: 0.75rem 0.875rem 0.5rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    min-width: 0;
+  }
+  .wx-symptom-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-vitals-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.625rem;
+  }
+  .wx-vital-tile {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    min-width: 0;
+    color: var(--color-on-surface);
+  }
+  .wx-kpi-chip {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.375rem 0.875rem;
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-primary) 9%, var(--color-surface-lowest));
+    color: var(--color-muted);
+    font-size: 0.75rem;
+  }
+  .wx-kpi-chip strong {
+    color: var(--color-primary);
+    font-size: 1.25rem;
+    font-weight: 700;
+  }
+  .wx-contact-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.875rem;
+    font-size: 0.8125rem;
+    color: var(--color-on-surface);
+  }
+  .wx-contact-list li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+  }
+  .wx-contact-list strong {
+    font-weight: 600;
+  }
+  @media (max-width: 1400px) {
+    .wx-symptom-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 700px) {
+    .wx-dx-split,
+    .wx-vitals-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-symptom-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (max-width: 1200px) {
+    .wx-patient-workspace {
+      flex-direction: column !important;
+      overflow: auto;
+    }
+    .wx-patient-rail {
+      width: 100%;
+      padding: 0 1.5rem 1.5rem;
+    }
+  }
+  @media (max-width: 900px) {
     .wx-patient-workspace .wx-right-panel {
       width: 100% !important;
       border-left: 0 !important;
-      border-top: 1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent);
+      border-top: 1px solid var(--color-card-border);
     }
     .wx-patient-banner {
       align-items: flex-start !important;
@@ -806,23 +1901,588 @@
     }
   }
 
+  /* ---- HOPE assessment workspace (hope-assessment-detail.tsx + hope-workspace-ui.tsx) ----
+     2026-09-25 redesign: section navigator | flat clinical sections | context rail (layout rail). */
+  .wx-hope-workspace {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr);
+    min-height: 100%;
+    background: var(--color-background);
+  }
+  .wx-hope-admission-rail {
+    background: var(--color-surface-lowest);
+    border-right: 1px solid var(--color-card-border);
+    padding: 1.25rem 0.875rem;
+  }
+  /* The section navigator stays in view while a long section scrolls. */
+  .wx-hope-admission-section-nav {
+    position: sticky;
+    top: 1.25rem;
+  }
   .wx-hope-admission-section-select {
     display: none !important;
   }
+  .wx-hope-nav-title {
+    padding: 0 0.5rem 0.875rem;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-hope-nav ol {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .wx-hope-nav li {
+    position: relative;
+  }
+  .wx-hope-nav li:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    left: 1.5rem;
+    top: 2.6rem;
+    bottom: -0.55rem;
+    width: 1px;
+    background: var(--color-card-border);
+  }
+  .wx-hope-nav button {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    width: 100%;
+    padding: 0.625rem 0.5rem;
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    text-align: left;
+    cursor: pointer;
+    color: var(--color-on-surface);
+  }
+  .wx-hope-nav button:hover {
+    background: var(--color-surface-low);
+  }
+  .wx-hope-nav li.active button {
+    background: var(--color-primary-tint);
+  }
+  .wx-hope-nav button:focus-visible {
+    outline: 2px solid var(--color-focus-ring);
+    outline-offset: 1px;
+  }
+  .wx-hope-step {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 9999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    background: var(--color-surface-high);
+    color: var(--color-on-surface-variant);
+  }
+  .wx-hope-step-active {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+  .wx-hope-step-complete {
+    background: var(--color-success);
+    color: var(--color-on-emphasis);
+  }
+  .wx-hope-step-attention {
+    background: color-mix(in srgb, var(--color-error) 14%, var(--color-surface-lowest));
+    color: var(--color-error);
+  }
+  .wx-hope-nav-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+    min-width: 0;
+  }
+  .wx-hope-nav-label {
+    font-size: 0.875rem;
+    font-weight: 600;
+  }
+  .wx-hope-nav li.active .wx-hope-nav-label {
+    color: var(--color-primary);
+  }
+  .wx-hope-nav-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+  .wx-hope-nav-status-attention {
+    color: var(--color-error);
+  }
+  .wx-hope-nav-status-complete {
+    color: var(--color-success-pill-fg);
+  }
+  .wx-dot {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: currentColor;
+  }
+  .wx-hope-main {
+    min-width: 0;
+    padding: 1.25rem 1.5rem 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .wx-hope-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+  }
+  .wx-hope-eyebrow {
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--color-on-surface-variant);
+  }
+  .wx-hope-title {
+    margin: 0.2rem 0 0;
+    font-size: 1.625rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-hope-helper {
+    margin: 0.3rem 0 0;
+    font-size: 0.875rem;
+    color: var(--color-on-surface-variant);
+  }
+  .wx-hope-meta {
+    display: flex;
+    gap: 0.75rem;
+    margin-top: 0.3rem;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+  .wx-hope-head-side {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.6rem;
+  }
+  .wx-hope-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .wx-hope-progress {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.8125rem;
+    color: var(--color-on-surface-variant);
+  }
+  .wx-progress {
+    width: 10rem;
+    height: 0.375rem;
+    border-radius: 9999px;
+    background: var(--color-surface-high);
+    overflow: hidden;
+  }
+  .wx-progress > span {
+    display: block;
+    height: 100%;
+    border-radius: 9999px;
+    background: var(--color-primary);
+  }
+  .wx-status-dot-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 9999px;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    background: var(--color-surface-container);
+    color: var(--color-on-surface-variant);
+  }
+  .wx-status-critical,
+  .wx-status-warning {
+    background: color-mix(in srgb, var(--color-error) 9%, var(--color-surface-lowest));
+    color: var(--color-error);
+  }
+  .wx-status-success {
+    background: color-mix(in srgb, var(--color-success) 12%, var(--color-surface-lowest));
+    color: var(--color-success-pill-fg);
+  }
+  .wx-status-progress {
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+  }
+  .wx-hope-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .wx-clinical-section {
+    background: var(--color-surface-lowest);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+  }
+  .wx-clinical-section > header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    padding: 1rem 1.25rem;
+    border-bottom: 1px solid var(--color-card-border);
+  }
+  .wx-clinical-section-icon {
+    display: inline-flex;
+    color: var(--color-primary);
+    margin-top: 0.125rem;
+  }
+  .wx-clinical-section h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-clinical-section > header p {
+    margin: 0.15rem 0 0;
+    font-size: 0.8125rem;
+    color: var(--color-on-surface-variant);
+  }
+  .wx-clinical-section-body {
+    padding: 1.125rem 1.25rem 1.25rem;
+  }
+  .wx-field-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr));
+    gap: 1.125rem 1.25rem;
+  }
+  .wx-field-grid-full {
+    grid-column: 1 / -1;
+  }
+  .wx-hope-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    min-width: 0;
+  }
+  .wx-hope-field:focus {
+    outline: none;
+  }
+  .wx-hope-field-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .wx-hope-field-label {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-on-surface);
+  }
+  .wx-hope-field input,
+  .wx-hope-field select,
+  .wx-question-block input:not([type="radio"]):not([type="checkbox"]),
+  .wx-question-block select {
+    width: 100%;
+    min-height: 2.5rem;
+  }
+  .wx-hope-field-hint {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--color-on-surface-variant);
+  }
+  .wx-hope-field-msg {
+    font-size: 0.8125rem;
+    line-height: 1.35;
+  }
+  .wx-hope-field-msg-error {
+    color: var(--color-error);
+  }
+  .wx-hope-field-msg-warning {
+    color: var(--color-warning);
+  }
+  .wx-required-mark {
+    color: var(--color-error);
+  }
+  .wx-optional-mark {
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--color-muted);
+  }
+  .wx-required-chip {
+    padding: 0.1rem 0.5rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--color-error) 10%, var(--color-surface-lowest));
+    color: var(--color-error);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .wx-cms-code {
+    display: inline-block;
+    padding: 0.05rem 0.4rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-sm);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    color: var(--color-muted);
+    background: var(--color-surface-low);
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+  }
+  .wx-cms-code-primary {
+    margin-left: auto;
+    border-color: color-mix(in srgb, var(--color-primary) 22%, transparent);
+    background: var(--color-primary-tint);
+    color: var(--color-primary);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .wx-locked-value {
+    position: relative;
+  }
+  .wx-locked-value input {
+    padding-right: 2.25rem;
+    background: var(--color-surface-low);
+    color: var(--color-on-surface);
+    cursor: default;
+  }
+  .wx-locked-value > span {
+    position: absolute;
+    right: 0.75rem;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-muted);
+    pointer-events: none;
+  }
+  .wx-choice-fieldset {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+  }
+  .wx-choice-fieldset > legend.wx-hope-field-label {
+    margin-bottom: 0.6rem;
+    padding: 0;
+  }
+  .wx-tile-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--wx-tile-cols, 3), minmax(0, 1fr));
+    gap: 0.625rem;
+  }
+  .wx-tile {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+    padding: 0.7rem 0.8rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+    font-size: 0.8125rem;
+    cursor: pointer;
+  }
+  .wx-tile:hover {
+    border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-card-border));
+  }
+  .wx-tile.checked {
+    border-color: var(--color-primary);
+    background: var(--color-primary-tint);
+  }
+  .wx-tile input,
+  .wx-option-row input {
+    margin: 0.1rem 0 0;
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--color-primary);
+    flex-shrink: 0;
+  }
+  .wx-tile-text {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    color: var(--color-on-surface);
+  }
+  .wx-tile-text small {
+    color: var(--color-muted);
+  }
+  .wx-question-stack {
+    display: flex;
+    flex-direction: column;
+  }
+  .wx-question-stack > * + * {
+    margin-top: 1.125rem;
+    padding-top: 1.125rem;
+    border-top: 1px solid var(--color-card-border);
+  }
+  .wx-question-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+  }
+  .wx-question-block:focus {
+    outline: none;
+  }
+  .wx-question-head {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+  }
+  .wx-question-title {
+    display: flex;
+    align-items: baseline;
+    gap: 0.625rem;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-question-code {
+    color: var(--color-on-surface);
+    font-weight: 700;
+  }
+  .wx-option-rows {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .wx-option-rows.two-col {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .wx-option-row {
+    display: flex;
+    align-items: center;
+    gap: 0.875rem;
+    min-height: 2.5rem;
+    padding: 0.45rem 0.875rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+    font-size: 0.875rem;
+    color: var(--color-on-surface);
+    cursor: pointer;
+  }
+  .wx-option-row:hover {
+    border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-card-border));
+  }
+  .wx-option-row.checked {
+    border-color: color-mix(in srgb, var(--color-primary) 55%, transparent);
+    background: var(--color-primary-tint);
+  }
+  .wx-option-code {
+    min-width: 1rem;
+    font-weight: 600;
+    color: var(--color-on-surface-variant);
+  }
+  .wx-hope-skipped {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.625rem 0.875rem;
+    border-radius: var(--radius-md);
+    background: var(--color-surface-low);
+    color: var(--color-muted);
+    font-size: 0.875rem;
+  }
+  .wx-hope-pending {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 0.625rem 0.875rem;
+    border: 1px dashed var(--color-outline);
+    border-radius: var(--radius-md);
+    color: var(--color-muted);
+    font-size: 0.8125rem;
+  }
+  .wx-hope-pending strong {
+    color: var(--color-on-surface-variant);
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+  .wx-hope-footer {
+    position: sticky;
+    bottom: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    margin: 0.5rem -1.5rem 0;
+    padding: 0.875rem 1.5rem;
+    background: color-mix(in srgb, var(--color-background) 92%, transparent);
+    backdrop-filter: blur(6px);
+    border-top: 1px solid var(--color-card-border);
+  }
+  .wx-hope-footer-note {
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+  }
+  .wx-target-date {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.625rem;
+    font-size: 0.875rem;
+  }
+  .wx-target-date-box {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    font-weight: 600;
+    color: var(--color-on-surface);
+  }
+  .wx-sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
 
+  @media (max-width: 1100px) {
+    .wx-tile-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
   @media (max-width: 820px) {
-    .wx-hope-admission-grid {
-      grid-template-columns: 1fr !important;
+    .wx-hope-workspace {
+      grid-template-columns: 1fr;
     }
     .wx-hope-admission-rail {
-      border-right: 0 !important;
-      border-bottom: 1px solid var(--color-outline-variant);
+      border-right: 0;
+      border-bottom: 1px solid var(--color-card-border);
     }
     .wx-hope-admission-section-select {
       display: block !important;
     }
     .wx-hope-admission-section-nav {
       display: none !important;
+    }
+    .wx-tile-grid,
+    .wx-option-rows.two-col {
+      grid-template-columns: 1fr;
     }
   }
 
@@ -849,6 +2509,1465 @@
   .wx-page-actions button:hover,
   .wx-sticky-footer button:hover {
     background: var(--color-surface-container);
+  }
+
+  /* Orders tab (11-orders/patient-orders.tsx) — also the shared sub-tab buttons. */
+  .wx-subtabs > button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: -1px;
+    padding: 0.7rem 0.875rem;
+    border: none;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    color: var(--color-on-surface-variant);
+    font: inherit;
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .wx-subtabs > button:hover {
+    color: var(--color-on-surface);
+  }
+  .wx-subtabs > button[aria-selected="true"] {
+    border-bottom-color: var(--color-primary);
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+  .wx-subtabs-scroll {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  .wx-filter-panel {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+  }
+  .wx-filter-panel .wx-search-field {
+    flex: 1 1 16rem;
+    max-width: none;
+  }
+  .wx-filter-field {
+    display: grid;
+    gap: 0.3rem;
+    flex: 0 1 9.5rem;
+    min-width: 7.5rem;
+    color: var(--color-on-surface);
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+  .wx-filter-field .wx-select {
+    width: 100%;
+  }
+  .wx-select {
+    min-height: 2.5rem;
+    padding: 0 2rem 0 0.75rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest)
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%236b7280' stroke-width='2' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")
+      no-repeat right 0.7rem center;
+    color: var(--color-on-surface);
+    font: inherit;
+    font-size: 0.8125rem;
+    appearance: none;
+  }
+  .wx-table-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.625rem 1rem;
+    border-top: 1px solid var(--color-card-border);
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-table-footer .wx-select {
+    min-height: 2rem;
+  }
+  .wx-icon-link:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .wx-orders-foot {
+    display: grid;
+    grid-template-columns: minmax(0, 1.75fr) minmax(15rem, 1fr);
+    gap: 1rem;
+  }
+  .wx-foot-card {
+    display: grid;
+    align-content: start;
+    gap: 0.875rem;
+    padding: 1rem 1.125rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+  }
+  .wx-foot-card > header {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+  }
+  .wx-foot-card h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-foot-card header p {
+    margin: 0.2rem 0 0;
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-attention-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 0.75rem;
+  }
+  .wx-attention-item {
+    display: grid;
+    align-content: start;
+    justify-items: start;
+    gap: 0.35rem;
+    padding: 0.75rem 0.875rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    font-size: 0.8125rem;
+    color: var(--color-on-surface);
+  }
+  .wx-attention-item > a:last-child {
+    justify-self: end;
+    margin-top: 0.25rem;
+  }
+  .wx-action-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.125rem;
+  }
+  .wx-action-list a,
+  .wx-action-list button {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    width: 100%;
+    padding: 0.35rem 0.25rem;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: none;
+    color: var(--color-on-surface);
+    font: inherit;
+    font-size: 0.875rem;
+    text-align: left;
+    cursor: pointer;
+  }
+  .wx-action-list a:hover,
+  .wx-action-list button:hover {
+    background: var(--color-surface-low);
+    text-decoration: none;
+  }
+  .wx-action-list svg {
+    color: var(--color-primary);
+  }
+  .wx-recent-orders {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+    font-size: 0.8125rem;
+  }
+  .wx-recent-orders li {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+  }
+  .wx-recent-orders li a {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-on-surface);
+    font-weight: 600;
+  }
+  .wx-recent-orders .wx-status-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+  @media (max-width: 1100px) {
+    .wx-orders-foot {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* Home dashboard (shell/role-home.tsx). */
+  .wx-home {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20rem;
+    gap: 1.25rem;
+    padding: 1.5rem 1.5rem 2rem;
+    min-width: 0;
+  }
+  .wx-home-main {
+    display: grid;
+    align-content: start;
+    gap: 1rem;
+    min-width: 0;
+  }
+  .wx-home-rail {
+    display: grid;
+    align-content: start;
+    gap: 1rem;
+    min-width: 0;
+  }
+  .wx-home-kpis {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+    gap: 0.875rem;
+  }
+  .wx-home-kpi {
+    display: grid;
+    align-content: start;
+    gap: 0.5rem;
+    padding: 1rem 1.125rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+    color: var(--color-on-surface);
+    min-width: 0;
+  }
+  a.wx-home-kpi:hover {
+    border-color: color-mix(in srgb, var(--color-primary) 40%, var(--color-card-border));
+    text-decoration: none;
+  }
+  .wx-home-kpi-head {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-home-kpi-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.375rem;
+    height: 2.375rem;
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+  .wx-home-kpi-value {
+    padding-left: 0.25rem;
+    font-size: 1.875rem;
+    font-weight: 700;
+    line-height: 1.1;
+  }
+  .wx-home-kpi-detail {
+    padding-left: 0.25rem;
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-home-degraded {
+    display: block;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid color-mix(in srgb, var(--color-warning) 35%, var(--color-card-border));
+    border-radius: var(--radius-md);
+    background: color-mix(in srgb, var(--color-warning) 8%, var(--color-surface-lowest));
+    color: var(--color-on-surface);
+    font-size: 0.8125rem;
+  }
+  .wx-home-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    align-items: stretch;
+  }
+  .wx-home-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wx-home-list li + li {
+    border-top: 1px solid var(--color-card-border);
+  }
+  .wx-home-list a {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0.25rem;
+    color: var(--color-on-surface-variant);
+    font-size: 0.875rem;
+  }
+  .wx-home-list a:hover {
+    background: var(--color-surface-low);
+    text-decoration: none;
+  }
+  .wx-home-list-main {
+    display: grid;
+    flex: 1;
+    min-width: 0;
+  }
+  .wx-home-list-main strong {
+    overflow: hidden;
+    color: var(--color-on-surface);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .wx-task-ring {
+    width: 1.125rem;
+    height: 1.125rem;
+    border: 4px solid;
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+  .wx-home-pill {
+    padding: 0.2rem 0.55rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .wx-home-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .wx-home-visit-time {
+    width: 4.25rem;
+    flex-shrink: 0;
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-alert-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .wx-alert-list li + li {
+    border-top: 1px solid var(--color-card-border);
+  }
+  .wx-alert-list a {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.625rem 0;
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-alert-list a:hover {
+    text-decoration: none;
+  }
+  .wx-alert-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+  .wx-home-figures {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem 1.75rem;
+  }
+  .wx-home-figures > div {
+    display: grid;
+    gap: 0.15rem;
+  }
+  .wx-home-figures span {
+    color: var(--color-on-surface-variant);
+    font-size: 0.8125rem;
+  }
+  .wx-home-figures strong {
+    color: var(--color-on-surface);
+    font-size: 1.5rem;
+    font-weight: 700;
+  }
+  .wx-home-charts {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+    gap: 1.25rem;
+  }
+  .wx-home-charts figure {
+    margin: 0;
+    display: grid;
+    align-content: start;
+    gap: 0.5rem;
+  }
+  .wx-home-charts figcaption {
+    color: var(--color-on-surface-variant);
+    font-size: 0.75rem;
+    font-weight: 600;
+  }
+  .wx-bars {
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 0.625rem;
+    height: 9rem;
+    border-bottom: 1px solid var(--color-card-border);
+  }
+  .wx-bars > div {
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    align-items: end;
+    justify-items: center;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+  .wx-bar {
+    width: min(2.25rem, 70%);
+    border-radius: 4px 4px 0 0;
+  }
+  .wx-bar-value,
+  .wx-bar-label {
+    color: var(--color-on-surface-variant);
+    font-size: 0.6875rem;
+    white-space: nowrap;
+  }
+  .wx-bar-label {
+    transform: translateY(1.2rem);
+  }
+  .wx-hbars {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+  }
+  .wx-hbars li {
+    display: grid;
+    grid-template-columns: 6.5rem minmax(0, 1fr) 2rem;
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--color-on-surface-variant);
+  }
+  .wx-hbars strong {
+    color: var(--color-on-surface);
+    text-align: right;
+  }
+  .wx-hbar-track {
+    height: 0.5rem;
+    border-radius: 9999px;
+    background: var(--color-surface-low);
+    overflow: hidden;
+  }
+  .wx-hbar-track > span {
+    display: block;
+    height: 100%;
+    border-radius: 9999px;
+    background: var(--color-viz-blue);
+  }
+  .wx-seg-compact {
+    gap: 0.375rem;
+    padding: 0;
+    border: none;
+    background: none;
+  }
+  .wx-seg-compact button {
+    min-height: 1.875rem;
+    padding: 0.2rem 0.625rem;
+    border-color: var(--color-card-border);
+    font-size: 0.75rem;
+  }
+  .wx-skeleton {
+    display: block;
+    height: 0.875rem;
+    border-radius: var(--radius-sm);
+    background: var(--color-surface-low);
+  }
+  @media (max-width: 1280px) {
+    .wx-home {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-home-rail {
+      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    }
+  }
+  @media (max-width: 900px) {
+    .wx-home-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-home {
+      padding: 1rem;
+    }
+  }
+
+  /* Admissions (06-admission/admission-census.tsx) — list + right drawer. */
+  .wx-admissions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+    padding: 1.5rem 1.5rem 2rem;
+    min-width: 0;
+  }
+  .wx-admissions.has-drawer {
+    grid-template-columns: minmax(0, 1fr) 23rem;
+  }
+  .wx-admissions-main {
+    display: grid;
+    align-content: start;
+    gap: 1rem;
+    min-width: 0;
+  }
+  .wx-subtabs > a {
+    display: inline-flex;
+    align-items: center;
+    margin-bottom: -1px;
+    padding: 0.7rem 0.875rem;
+    border-bottom: 2px solid transparent;
+    color: var(--color-on-surface-variant);
+    font-size: 0.875rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .wx-subtabs > a:hover {
+    color: var(--color-on-surface);
+    text-decoration: none;
+  }
+  .wx-subtabs > a.is-current {
+    border-bottom-color: var(--color-primary);
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+  .wx-admission-drawer {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    display: grid;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-lg);
+    background: var(--color-surface-lowest);
+    overflow: hidden;
+  }
+  .wx-drawer-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.875rem;
+    padding: 1.125rem 1.125rem 0.75rem;
+  }
+  .wx-drawer-head h2 {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-avatar-lg {
+    width: 3.25rem;
+    height: 3.25rem;
+    font-size: 1rem;
+  }
+  .wx-drawer-body {
+    display: grid;
+    gap: 0.875rem;
+    padding: 0.875rem;
+    background: var(--color-surface-low);
+  }
+  .wx-drawer-card {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+  }
+  .wx-drawer-card h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-drawer-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+  .wx-stepper {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .wx-stepper li {
+    position: relative;
+    display: grid;
+    justify-items: center;
+    gap: 0.4rem;
+    color: var(--color-on-surface-variant);
+    font-size: 0.75rem;
+    text-align: center;
+  }
+  .wx-stepper li + li::before {
+    content: "";
+    position: absolute;
+    top: 0.75rem;
+    right: calc(50% + 0.95rem);
+    width: calc(100% - 1.9rem);
+    height: 2px;
+    background: var(--color-card-border);
+  }
+  .wx-stepper li.is-done + li::before {
+    background: var(--color-primary);
+  }
+  .wx-step-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    border: 2px solid var(--color-card-border);
+    border-radius: 9999px;
+    background: var(--color-surface-lowest);
+    font-size: 0.6875rem;
+    font-weight: 700;
+  }
+  .wx-stepper li.is-done .wx-step-dot {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+  .wx-stepper li.is-current {
+    color: var(--color-on-surface);
+    font-weight: 600;
+  }
+  .wx-stepper li.is-current .wx-step-dot {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 22%, transparent);
+  }
+  .wx-kv {
+    display: grid;
+    grid-template-columns: 8.5rem minmax(0, 1fr);
+    gap: 0.5rem 0.75rem;
+    margin: 0;
+    font-size: 0.8125rem;
+  }
+  .wx-kv dt {
+    color: var(--color-on-surface-variant);
+  }
+  .wx-kv dd {
+    margin: 0;
+    color: var(--color-on-surface);
+    font-weight: 500;
+  }
+  .wx-checklist {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--color-on-surface);
+  }
+  .wx-checklist li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.625rem;
+  }
+  .wx-checklist li.is-done > span:nth-child(2) {
+    color: var(--color-on-surface-variant);
+    text-decoration: line-through;
+  }
+  .wx-check-box {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.125rem;
+    height: 1.125rem;
+    margin-top: 0.05rem;
+    border: 1.5px solid var(--color-outline);
+    border-radius: 4px;
+    flex-shrink: 0;
+  }
+  .wx-checklist li.is-done .wx-check-box {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+  .wx-link-button {
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--color-primary);
+    font: inherit;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  @media (max-width: 1280px) {
+    .wx-admissions.has-drawer {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-admission-drawer {
+      position: static;
+    }
+  }
+
+  /* IDG tab (14-idg/patient-idg-history.tsx). */
+  .wx-idg-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(16rem, 1fr);
+    gap: 1rem;
+    align-items: start;
+  }
+  .wx-idg-grid > :nth-child(n + 3) {
+    align-self: stretch;
+  }
+  .wx-mini-table {
+    display: table;
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.8125rem;
+  }
+  .wx-mini-table th {
+    padding: 0.4rem 0.5rem;
+    border-bottom: 1px solid var(--color-card-border);
+    color: var(--color-on-surface);
+    font-weight: 600;
+    text-align: left;
+    white-space: nowrap;
+  }
+  .wx-mini-table td {
+    padding: 0.55rem 0.5rem;
+    border-bottom: 1px solid var(--color-card-border);
+    color: var(--color-on-surface);
+    vertical-align: middle;
+  }
+  .wx-mini-table tr:last-child td {
+    border-bottom: none;
+  }
+  .wx-meeting-facts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 0.75rem;
+    font-size: 0.875rem;
+  }
+  .wx-meeting-facts li {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    color: var(--color-primary);
+  }
+  .wx-meeting-facts li > div {
+    display: grid;
+    gap: 0.15rem;
+    color: var(--color-on-surface-variant);
+  }
+  .wx-meeting-facts strong {
+    color: var(--color-on-surface);
+    font-weight: 600;
+  }
+  .wx-count-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.375rem;
+    height: 1.375rem;
+    padding: 0 0.35rem;
+    border-radius: 9999px;
+    background: var(--color-surface-high);
+    color: var(--color-on-surface-variant);
+    font-size: 0.6875rem;
+    font-weight: 700;
+  }
+  .wx-count-dot[data-tone="open"] {
+    background: var(--color-error);
+    color: var(--color-on-emphasis);
+  }
+  @media (max-width: 1100px) {
+    .wx-idg-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  /* Scheduling (2026-09-25 redesign) */
+  .wx-sched,
+  .wx-with-rail {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 18.5rem;
+    gap: 1.25rem;
+    padding: 1.5rem 1.5rem 2rem;
+    min-width: 0;
+  }
+  .wx-sched-main,
+  .wx-sched-rail,
+  .wx-with-rail-main,
+  .wx-with-rail-side {
+    display: grid;
+    align-content: start;
+    gap: 1rem;
+    min-width: 0;
+  }
+  /* Administration / Users (2026-09-25 redesign) */
+  .wx-staff {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.25rem;
+    padding: 1.5rem 1.5rem 2rem;
+    min-width: 0;
+  }
+  .wx-staff.has-drawer {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .wx-staff > .wx-right-panel {
+    align-self: start;
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 6rem);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+  }
+  .wx-staff-main {
+    display: grid;
+    align-content: start;
+    gap: 1rem;
+    min-width: 0;
+  }
+  .wx-staff-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .wx-staff-name {
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .wx-staff .wx-list-table tbody tr[aria-selected="true"] {
+    background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface-lowest));
+  }
+  @media (max-width: 1100px) {
+    .wx-staff.has-drawer {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  /* Reports (2026-09-25 redesign) */
+  .wx-reports {
+    display: grid;
+    align-content: start;
+    gap: 1rem;
+    padding: 1.5rem 1.5rem 2rem;
+    min-width: 0;
+  }
+  .wx-reports-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .wx-reports-toolbar .wx-search-field {
+    flex: 0 1 18rem;
+  }
+  .wx-action-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    padding: 0.25rem 0.5rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-primary);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .wx-action-link:hover {
+    background: color-mix(in srgb, var(--color-primary) 8%, transparent);
+  }
+  .wx-action-link:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+  /* Patient documents (2026-09-25 redesign) */
+  .wx-doc-name {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    min-width: 0;
+  }
+  .wx-doc-name .wx-link-button {
+    padding: 0;
+    color: var(--color-on-surface);
+    font-weight: 600;
+    text-align: left;
+  }
+  .wx-doc-name .wx-link-button:hover {
+    color: var(--color-primary);
+  }
+  .wx-checklist-status li.is-done > span:nth-child(2) {
+    text-decoration: none;
+    color: var(--color-on-surface);
+  }
+  .wx-sched-rail .wx-panel > header h2,
+  .wx-with-rail-side .wx-panel > header h2 {
+    font-size: 0.9375rem !important;
+    white-space: nowrap;
+  }
+  .wx-sched .wx-status-dot {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    flex-shrink: 0;
+  }
+  .wx-menu {
+    position: relative;
+  }
+  .wx-menu > summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .wx-menu > summary::-webkit-details-marker {
+    display: none;
+  }
+  .wx-menu-list {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 0.375rem);
+    z-index: 20;
+    display: grid;
+    min-width: 14rem;
+    padding: 0.375rem;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+    box-shadow: 0 10px 30px color-mix(in srgb, var(--color-on-surface) 12%, transparent);
+  }
+  .wx-menu-list > a,
+  .wx-menu-list > label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.625rem;
+    border-radius: var(--radius-sm);
+    color: var(--color-on-surface);
+    font-size: 0.8125rem;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .wx-menu-list > a:hover,
+  .wx-menu-list > label:hover {
+    background: var(--color-surface-low);
+  }
+  .wx-btn-square {
+    width: 2.375rem;
+    padding-inline: 0 !important;
+    justify-content: center;
+  }
+  .wx-cal-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .wx-cal-range {
+    margin: 0 0 0 0.75rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-cal-toolbar .wx-seg {
+    margin-left: auto;
+  }
+  .wx-seg-solid button {
+    min-width: 4rem;
+    justify-content: center;
+  }
+  .wx-seg-solid button.is-selected {
+    border-color: var(--color-primary);
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+  .wx-cal-panel {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+    overflow: hidden;
+    min-width: 0;
+  }
+  .wx-cal-panel.has-staff {
+    grid-template-columns: 10.5rem minmax(0, 1fr);
+  }
+  .wx-cal-body {
+    min-width: 0;
+  }
+  .wx-cal-empty {
+    margin: 0;
+    padding: 0.75rem 1rem;
+    border-top: 1px solid var(--color-card-border);
+    color: var(--color-muted);
+    font-size: 0.8125rem;
+    text-align: center;
+  }
+  .wx-cal-staff {
+    display: grid;
+    align-content: start;
+    gap: 0.125rem;
+    padding: 0 0.5rem 0.75rem;
+    border-right: 1px solid var(--color-card-border);
+  }
+  .wx-cal-staff-head {
+    display: flex;
+    align-items: center;
+    height: 3.25rem;
+    padding: 0 0.375rem;
+    margin: 0 -0.5rem 0.375rem;
+    padding-left: 0.875rem;
+    border-bottom: 1px solid var(--color-card-border);
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-staff-check {
+    --c: var(--color-primary);
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.375rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    line-height: 1.25;
+    cursor: pointer;
+  }
+  .wx-staff-check:hover {
+    background: var(--color-surface-low);
+  }
+  .wx-staff-check input {
+    width: 1rem;
+    height: 1rem;
+    margin: 0.0625rem 0 0;
+    accent-color: var(--c);
+    flex-shrink: 0;
+  }
+  .wx-staff-check strong {
+    display: block;
+    font-weight: 600;
+    color: var(--color-on-surface);
+  }
+  .wx-staff-check small {
+    display: block;
+    color: var(--color-muted);
+    font-size: 0.75rem;
+  }
+  .wx-cal-scroll {
+    overflow-x: auto;
+  }
+  .wx-cal-grid {
+    display: grid;
+    grid-template-columns: 4.5rem repeat(var(--days), minmax(7.25rem, 1fr));
+  }
+  .wx-cal-corner,
+  .wx-cal-dayhead {
+    height: 3.25rem;
+    border-bottom: 1px solid var(--color-card-border);
+  }
+  .wx-cal-dayhead {
+    display: grid;
+    place-content: center;
+    justify-items: center;
+    border-left: 1px solid var(--color-card-border);
+    font-size: 0.75rem;
+    color: var(--color-on-surface-variant);
+  }
+  .wx-cal-dayhead strong {
+    font-size: 0.8125rem;
+    color: var(--color-on-surface);
+  }
+  .wx-cal-dayhead.is-today,
+  .wx-cal-col.is-today {
+    background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface-lowest));
+  }
+  .wx-cal-dayhead.is-today strong,
+  .wx-cal-dayhead.is-today span {
+    color: var(--color-primary);
+  }
+  .wx-cal-times {
+    display: grid;
+    align-content: start;
+  }
+  .wx-cal-times span {
+    padding: 0.25rem 0.5rem 0 0;
+    color: var(--color-muted);
+    font-size: 0.6875rem;
+    text-align: right;
+    white-space: nowrap;
+  }
+  .wx-cal-col {
+    position: relative;
+    border-left: 1px solid var(--color-card-border);
+    background-image: repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent calc(var(--hour) - 1px),
+      var(--color-card-border) calc(var(--hour) - 1px),
+      var(--color-card-border) var(--hour)
+    );
+  }
+  .wx-cal-event {
+    --c: var(--color-primary);
+    position: absolute;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.4rem;
+    min-width: 0;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid color-mix(in srgb, var(--c) 32%, transparent);
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--c) 11%, var(--color-surface-lowest));
+    color: var(--c);
+    font: inherit;
+    text-align: left;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  .wx-cal-event:hover {
+    background: color-mix(in srgb, var(--c) 18%, var(--color-surface-lowest));
+  }
+  .wx-cal-event.is-selected {
+    outline: 2px solid var(--c);
+    outline-offset: 0;
+    z-index: 1;
+  }
+  .wx-cal-event.is-inactive {
+    opacity: 0.55;
+    text-decoration: line-through;
+  }
+  .wx-cal-event > svg {
+    flex-shrink: 0;
+    margin-top: 0.0625rem;
+  }
+  .wx-cal-event > span {
+    min-width: 0;
+  }
+  .wx-cal-event strong,
+  .wx-cal-event small {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-on-surface);
+    font-size: 0.71875rem;
+    line-height: 1.3;
+  }
+  .wx-cal-event strong {
+    font-weight: 600;
+  }
+  .wx-cal-event small {
+    color: var(--color-on-surface-variant);
+  }
+  .wx-cal-month {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(6.5rem, 1fr));
+  }
+  .wx-cal-month-head {
+    padding: 0.625rem;
+    border-bottom: 1px solid var(--color-card-border);
+    color: var(--color-on-surface-variant);
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-align: center;
+  }
+  .wx-cal-month-cell {
+    display: grid;
+    align-content: start;
+    gap: 0.2rem;
+    min-height: 6.5rem;
+    padding: 0.375rem;
+    border-bottom: 1px solid var(--color-card-border);
+    border-left: 1px solid var(--color-card-border);
+    min-width: 0;
+  }
+  .wx-cal-month-cell:nth-child(7n + 1) {
+    border-left: 0;
+  }
+  .wx-cal-month-cell.is-outside {
+    background: var(--color-surface-low);
+  }
+  .wx-cal-month-cell.is-outside .wx-cal-month-day {
+    color: var(--color-muted);
+  }
+  .wx-cal-month-day {
+    justify-self: start;
+    min-width: 1.625rem;
+    height: 1.625rem;
+    border: 0;
+    border-radius: 9999px;
+    background: transparent;
+    color: var(--color-on-surface);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .wx-cal-month-cell.is-today .wx-cal-month-day {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+  }
+  .wx-cal-chip {
+    --c: var(--color-primary);
+    display: block;
+    width: 100%;
+    padding: 0.15rem 0.375rem;
+    border: 0;
+    border-left: 3px solid var(--c);
+    border-radius: 4px;
+    background: color-mix(in srgb, var(--c) 10%, var(--color-surface-lowest));
+    color: var(--color-on-surface);
+    font: inherit;
+    font-size: 0.6875rem;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  .wx-cal-month-cell .wx-link-button {
+    justify-self: start;
+    font-size: 0.6875rem;
+  }
+  .wx-cal-body .wx-list-table tbody tr[aria-selected="true"] {
+    background: color-mix(in srgb, var(--color-primary) 6%, var(--color-surface-lowest));
+  }
+  .wx-visit-panel {
+    display: grid;
+    border: 1px solid var(--color-card-border);
+    border-radius: var(--radius-md);
+    background: var(--color-surface-lowest);
+    min-width: 0;
+  }
+  .wx-visit-panel-head {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem 0.5rem;
+  }
+  .wx-visit-panel-head h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-on-surface);
+  }
+  .wx-visit-panel > .wx-detail-tabs {
+    padding: 0 1.25rem;
+  }
+  .wx-visit-panel-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0.875rem;
+    padding: 1rem 1.25rem 1.25rem;
+  }
+  .wx-kv-icons {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.875rem 1.25rem;
+    margin: 0;
+    font-size: 0.8125rem;
+  }
+  .wx-kv-icons dt {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    color: var(--color-on-surface-variant);
+    white-space: nowrap;
+  }
+  .wx-kv-icons dt svg {
+    color: var(--color-primary);
+  }
+  .wx-kv-icons dd {
+    margin: 0;
+    color: var(--color-on-surface);
+    font-weight: 500;
+  }
+  .wx-rail-filters {
+    display: grid;
+    gap: 0.5rem;
+  }
+  .wx-rail-filters .wx-select {
+    width: 100%;
+  }
+  .wx-rail-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 0 0.375rem;
+  }
+  .wx-rail-list li {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 1.125rem;
+    font-size: 0.8125rem;
+  }
+  .wx-rail-list strong,
+  .wx-rail-list li div > span {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .wx-rail-list strong {
+    font-weight: 600;
+    color: var(--color-on-surface);
+  }
+  .wx-rail-list li div > span {
+    color: var(--color-muted);
+    font-size: 0.75rem;
+  }
+  .wx-rail-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 9999px;
+    background: color-mix(in srgb, currentColor 12%, var(--color-surface-lowest));
+    flex-shrink: 0;
+  }
+  .wx-rail-tag {
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    background: var(--color-surface-low);
+    color: var(--color-on-surface-variant);
+    font-size: 0.6875rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .wx-rail-empty {
+    margin: 0;
+    padding: 0.25rem 1.125rem 1rem;
+    color: var(--color-muted);
+    font-size: 0.8125rem;
+  }
+  .wx-avail {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .wx-mini-cal-head {
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-bottom: 0.5rem;
+  }
+  .wx-mini-cal-head strong {
+    flex: 1;
+    font-size: 0.875rem;
+    color: var(--color-on-surface);
+  }
+  .wx-mini-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 0.125rem;
+    text-align: center;
+  }
+  .wx-mini-cal-dow {
+    padding-bottom: 0.25rem;
+    color: var(--color-muted);
+    font-size: 0.6875rem;
+  }
+  .wx-mini-cal-grid button {
+    position: relative;
+    height: 1.875rem;
+    border: 0;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--color-on-surface);
+    font: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+  }
+  .wx-mini-cal-grid button:hover {
+    background: var(--color-surface-low);
+  }
+  .wx-mini-cal-grid button.is-today {
+    font-weight: 700;
+    color: var(--color-primary);
+  }
+  .wx-mini-cal-grid button.is-selected {
+    background: var(--color-primary);
+    color: var(--color-on-primary);
+    font-weight: 700;
+  }
+  .wx-mini-cal-grid button.has-visits::after {
+    content: "";
+    position: absolute;
+    bottom: 0.2rem;
+    left: 50%;
+    width: 0.25rem;
+    height: 0.25rem;
+    margin-left: -0.125rem;
+    border-radius: 9999px;
+    background: currentColor;
+  }
+  @media (max-width: 1280px) {
+    .wx-sched,
+    .wx-with-rail {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-sched-rail,
+    .wx-with-rail-side {
+      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    }
+    .wx-visit-panel-body {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  @media (max-width: 720px) {
+    .wx-cal-panel.has-staff {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .wx-cal-staff {
+      display: none;
+    }
+    .wx-cal-toolbar .wx-seg {
+      margin-left: 0;
+    }
   }
 }
 
