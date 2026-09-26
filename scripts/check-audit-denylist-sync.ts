@@ -97,7 +97,10 @@ const MODULES: ReadonlyArray<{
   {
     mod: "M10",
     denylist: M10_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0035_hope_m10_rls_audit_triggers.sql"],
+    migrations: [
+      "packages/db/migrations/0035_hope_m10_rls_audit_triggers.sql",
+      "packages/db/migrations/0234_hope_submission_result_event_audit.sql",
+    ],
   },
   {
     mod: "M11",
