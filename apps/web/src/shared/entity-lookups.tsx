@@ -22,7 +22,7 @@ type MdmKind =
   | "funeral_home";
 
 function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
+  return id.length > 8 ? id.slice(0, 5) : id;
 }
 
 function optionLabel(primary: ReactNode, secondary?: string | null): JSX.Element {
@@ -139,7 +139,7 @@ async function loadAdmissions(
     options: items.map((a) => ({
       id: a.id,
       label: optionLabel(`Admission ${shortId(a.id)}`, a.state),
-      searchLabel: a.id,
+      searchLabel: `Admission ${shortId(a.id)}...`,
       description: "Admission record",
     })),
     nextCursor: (data as { nextCursor?: string | null } | undefined)?.nextCursor ?? null,

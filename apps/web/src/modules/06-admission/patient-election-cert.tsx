@@ -10,6 +10,7 @@ import {
   useApiClient,
 } from "@wardenx/ui";
 import type { StatusTone } from "@wardenx/ui";
+import { useSession } from "../../shell/session";
 // apps/web/src/modules/06-admission — patient-scoped Election & Certification (M6 §5.2/§5.3, Track B).
 // Spec: docs/modules/WARDENX_MODULE_06_ADMISSION_SPEC — the per-patient slice reached from the patient
 // chart "Election & Certification" tab. A Patient Workspace (banner + shared module rail) over the
@@ -20,7 +21,7 @@ import type { StatusTone } from "@wardenx/ui";
 // patient with no admission renders an honest empty state, never fabricated certification data.
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { ChartModuleRail } from "../../shell/chart-module-rail";
 import { ADMISSION_TONE, WINDOW_TONE, stateLabel } from "./admission-status";
 
@@ -31,6 +32,7 @@ interface Bundle {
 interface ElectionStatement extends Bundle {
   signerKind: string;
   signedAt: string | null;
+  sourceType: "structured" | "uploaded";
 }
 interface Cti extends Bundle {
   hospiceMdSigned: boolean;
@@ -38,6 +40,7 @@ interface Cti extends Bundle {
   signedLate: boolean;
   periodStart: string | null;
   periodEnd: string | null;
+  sourceType?: "structured" | "uploaded";
 }
 interface F2f extends Bundle {
   performerRole: string;
@@ -112,11 +115,30 @@ const PATIENT_TONE: Record<string, StatusTone> = {
 
 export function PatientElectionCert(): JSX.Element {
   const client = useApiClient();
+  const session = useSession();
   const { patientId } = useParams<{ patientId: string }>();
   const [data, setData] = useState<ElectionCert | null>(null);
   const [patient, setPatient] = useState<PatientSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [signingCtiId, setSigningCtiId] = useState<string | null>(null);
+
+  const roles = session?.roles ?? [];
+
+  const canPrepareCti =
+    roles.includes("rn") ||
+    roles.includes("registered_nurse") ||
+    roles.includes("medical_director") ||
+    roles.includes("hospice_physician");
+
+  const canSignCti =
+    roles.includes("medical_director") || roles.includes("hospice_physician");
+
+  const canManageF2f =
+    roles.includes("medical_director") ||
+    roles.includes("hospice_physician") ||
+    roles.includes("np");
 
   const load = useCallback(async () => {
     if (!patientId) return;
@@ -145,6 +167,62 @@ export function PatientElectionCert(): JSX.Element {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const signCti = useCallback(
+    async (ctiId: string): Promise<void> => {
+      if (!canSignCti) return;
+
+      setSigningCtiId(ctiId);
+      setActionError(null);
+
+      const { data: currentCti, error: readError } = await client.GET(
+        "/api/v1/cti/{id}",
+        {
+          params: {
+            path: {
+              id: ctiId,
+            },
+          },
+        },
+      );
+
+      if (readError || !currentCti) {
+        setActionError("Could not load the current CTI.");
+        setSigningCtiId(null);
+        return;
+      }
+
+      const detail = currentCti as unknown as {
+        version: number;
+      };
+
+      const { error: signError } = await client.POST(
+        "/api/v1/cti/{id}/sign-hospice-md",
+        {
+          params: {
+            path: {
+              id: ctiId,
+            },
+          },
+          body: {
+            ifVersion: detail.version,
+          } as never,
+        },
+      );
+
+      if (signError) {
+        setActionError(
+          "Could not sign the CTI. Check your permissions and the current CTI status.",
+        );
+        setSigningCtiId(null);
+        return;
+      }
+
+      setSigningCtiId(null);
+      await load();
+    },
+    [canSignCti, client, load],
+  );
 
   const banner = patient ? (
     <PatientBanner
@@ -290,52 +368,196 @@ export function PatientElectionCert(): JSX.Element {
                             status={p.electionStatement?.status}
                             detail={
                               p.electionStatement
-                                ? `${stateLabel(p.electionStatement.signerKind)}${
-                                    p.electionStatement.signedAt
-                                      ? ` · signed ${p.electionStatement.signedAt}`
-                                      : ""
-                                  }`
+                                ? p.electionStatement.sourceType === "uploaded"
+                                  ? [
+                                      "Uploaded document",
+                                      p.electionStatement.signedAt
+                                        ? `Signed ${fmtDate(p.electionStatement.signedAt)}`
+                                        : "Signature pending",
+                                    ].join(" · ")
+                                  : [
+                                      stateLabel(
+                                        p.electionStatement.signerKind,
+                                      ),
+                                      p.electionStatement.signedAt
+                                        ? `Signed ${fmtDate(p.electionStatement.signedAt)}`
+                                        : "Signature pending",
+                                    ].join(" · ")
                                 : "Not drafted"
                             }
                           />
-                          <BundleCell
-                            label="Certification (CTI)"
-                            present={!!p.cti}
-                            status={p.cti?.status}
-                            detail={
+                          <CertificationCard
+                            title="Certification of Terminal Illness"
+                            status={p.cti?.status ?? "missing"}
+                            summary={
                               p.cti
-                                ? [
-                                    p.cti.hospiceMdSigned
-                                      ? "Hospice MD ✓"
-                                      : "Hospice MD —",
-                                    p.cti.attendingMdSigned
-                                      ? "Attending ✓"
-                                      : "Attending —",
-                                    p.cti.signedLate ? "late" : null,
-                                  ]
-                                    .filter(Boolean)
-                                    .join(" · ")
-                                : "Not drafted"
+                                ? p.cti.sourceType === "uploaded"
+                                  ? [
+                                      "Uploaded document",
+                                      p.cti.hospiceMdSigned
+                                        ? "Hospice MD signed"
+                                        : "Hospice MD signature pending",
+                                    ].join(" · ")
+                                  : [
+                                      p.cti.hospiceMdSigned
+                                        ? "Hospice MD signed"
+                                        : "Hospice MD pending",
+                                      p.cti.attendingMdSigned
+                                        ? "Attending signed"
+                                        : "Attending pending",
+                                      p.cti.signedLate ? "Signed late" : null,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(" · ")
+                                : "No CTI created for this period."
+                            }
+                            details={
+                              p.cti ? (
+                                <dl style={compactDetailGrid}>
+                                  <dt style={dtStyle}>Source</dt>
+                                  <dd style={ddStyle}>
+                                    {p.cti.sourceType === "uploaded"
+                                      ? "Uploaded document"
+                                      : "Structured CTI"}
+                                  </dd>
+
+                                  <dt style={dtStyle}>Status</dt>
+                                  <dd style={ddStyle}>
+                                    {stateLabel(p.cti.status)}
+                                  </dd>
+
+                                  <dt style={dtStyle}>Period start</dt>
+                                  <dd style={ddStyle}>
+                                    {fmtDate(p.cti.periodStart)}
+                                  </dd>
+
+                                  <dt style={dtStyle}>Period end</dt>
+                                  <dd style={ddStyle}>
+                                    {fmtDate(p.cti.periodEnd)}
+                                  </dd>
+
+                                  <dt style={dtStyle}>Hospice MD</dt>
+                                  <dd style={ddStyle}>
+                                    {p.cti.hospiceMdSigned
+                                      ? "Signed"
+                                      : "Pending"}
+                                  </dd>
+
+                                  <dt style={dtStyle}>Attending</dt>
+                                  <dd style={ddStyle}>
+                                    {p.cti.attendingMdSigned
+                                      ? "Signed"
+                                      : "Pending"}
+                                  </dd>
+
+                                  <dt style={dtStyle}>Late</dt>
+                                  <dd style={ddStyle}>
+                                    {p.cti.signedLate ? "Yes" : "No"}
+                                  </dd>
+                                </dl>
+                              ) : null
+                            }
+                            actions={
+                              <>
+                                {canPrepareCti && !p.cti ? (
+                                  <Link
+                                    to={`/admissions/${admission.id}`}
+                                    style={primaryLinkAction}
+                                  >
+                                    Create CTI
+                                  </Link>
+                                ) : null}
+
+                                {canSignCti &&
+                                p.cti &&
+                                p.cti.sourceType !== "uploaded" &&
+                                !p.cti.hospiceMdSigned &&
+                                p.cti.status !== "voided" ? (
+                                  <button
+                                    type="button"
+                                    style={primaryAction}
+                                    disabled={signingCtiId === p.cti.id}
+                                    onClick={() => {
+                                      return p?.cti && void signCti(p.cti.id);
+                                    }}
+                                  >
+                                    {signingCtiId === p.cti.id
+                                      ? "Signing..."
+                                      : "Sign CTI"}
+                                  </button>
+                                ) : null}
+                              </>
                             }
                           />
-                          <BundleCell
-                            label="Face-to-face"
-                            present={!!p.faceToFace}
-                            status={p.faceToFace?.status}
-                            detail={
+
+                          <CertificationCard
+                            title="Face-to-Face"
+                            status={p.faceToFace?.status ?? "missing"}
+                            summary={
                               p.faceToFace
                                 ? [
                                     stateLabel(p.faceToFace.performerRole),
-                                    p.faceToFace.encounterDate ?? null,
-                                    p.faceToFace.withinWindow === false
-                                      ? p.faceToFace.windowOverride
-                                        ? "override"
-                                        : "out of window"
+                                    p.faceToFace.encounterDate
+                                      ? fmtDate(p.faceToFace.encounterDate)
                                       : null,
+                                    p.faceToFace.attested
+                                      ? "Attested"
+                                      : "Pending attestation",
                                   ]
                                     .filter(Boolean)
                                     .join(" · ")
-                                : "Not scheduled"
+                                : "No Face-to-Face encounter scheduled."
+                            }
+                            details={
+                              p.faceToFace ? (
+                                <dl style={compactDetailGrid}>
+                                  <dt style={dtStyle}>Status</dt>
+                                  <dd style={ddStyle}>
+                                    {stateLabel(p.faceToFace.status)}
+                                  </dd>
+
+                                  <dt style={dtStyle}>Performer</dt>
+                                  <dd style={ddStyle}>
+                                    {stateLabel(p.faceToFace.performerRole)}
+                                  </dd>
+
+                                  <dt style={dtStyle}>Encounter date</dt>
+                                  <dd style={ddStyle}>
+                                    {fmtDate(p.faceToFace.encounterDate)}
+                                  </dd>
+
+                                  <dt style={dtStyle}>Within window</dt>
+                                  <dd style={ddStyle}>
+                                    {p.faceToFace.withinWindow == null
+                                      ? "—"
+                                      : p.faceToFace.withinWindow
+                                        ? "Yes"
+                                        : "No"}
+                                  </dd>
+
+                                  <dt style={dtStyle}>Window override</dt>
+                                  <dd style={ddStyle}>
+                                    {p.faceToFace.windowOverride ? "Yes" : "No"}
+                                  </dd>
+
+                                  <dt style={dtStyle}>Attestation</dt>
+                                  <dd style={ddStyle}>
+                                    {p.faceToFace.attested
+                                      ? "Attested"
+                                      : "Pending"}
+                                  </dd>
+                                </dl>
+                              ) : null
+                            }
+                            footer={
+                              canManageF2f ? (
+                                <span style={permissionHint}>
+                                  Hospice MD / NP actions available for this
+                                  record.
+                                </span>
+                              ) : (
+                                <span style={permissionHint}>Read only</span>
+                              )
                             }
                           />
                         </div>
@@ -345,6 +567,12 @@ export function PatientElectionCert(): JSX.Element {
                 )}
               </>
             )}
+
+            {actionError ? (
+              <div role="alert" style={actionErrorStyle}>
+                {actionError}
+              </div>
+            ) : null}
           </main>
 
           <aside style={rightRail}>
@@ -410,6 +638,53 @@ export function PatientElectionCert(): JSX.Element {
         </div>
       </div>
     </PatientWorkspaceLayout>
+  );
+}
+
+function CertificationCard({
+  title,
+  status,
+  summary,
+  details,
+  actions,
+  footer,
+}: {
+  title: string;
+  status: string;
+  summary: string;
+  details?: ReactNode;
+  actions?: ReactNode;
+  footer?: ReactNode;
+}): JSX.Element {
+  const missing = status === "missing";
+
+  return (
+    <div style={certificationCard}>
+      <div style={certificationHeader}>
+        <div style={{ minWidth: 0 }}>
+          <div style={certificationTitle}>{title}</div>
+
+          <div style={certificationSummary}>{summary}</div>
+        </div>
+
+        <StatusPill
+          label={missing ? "Missing" : stateLabel(status)}
+          tone={missing ? "neutral" : subTone(status)}
+        />
+      </div>
+
+      {details ? (
+        <details style={detailsBlock}>
+          <summary style={detailsSummary}>View details</summary>
+
+          <div style={detailsContent}>{details}</div>
+        </details>
+      ) : null}
+
+      {actions ? <div style={certificationActions}>{actions}</div> : null}
+
+      {footer ? <div style={certificationFooter}>{footer}</div> : null}
+    </div>
   );
 }
 
@@ -547,4 +822,109 @@ const meta: CSSProperties = {
   fontSize: "0.8rem",
   color: t.onSurfaceVariant,
   margin: "0.25rem 0 0",
+};
+
+const certificationCard: CSSProperties = {
+  ...cardSurface,
+  background: t.surfaceLow,
+  padding: "0.9rem",
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.7rem",
+  minWidth: 0,
+};
+
+const certificationHeader: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "0.75rem",
+};
+
+const certificationTitle: CSSProperties = {
+  fontSize: "0.78rem",
+  fontWeight: 650,
+  color: t.onSurface,
+};
+
+const certificationSummary: CSSProperties = {
+  marginTop: "0.3rem",
+  fontSize: "0.74rem",
+  lineHeight: 1.45,
+  color: t.onSurfaceVariant,
+};
+
+const certificationActions: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  flexWrap: "wrap",
+  gap: "0.5rem",
+};
+
+const certificationFooter: CSSProperties = {
+  paddingTop: "0.15rem",
+};
+
+const detailsBlock: CSSProperties = {
+  borderTop: `1px solid ${t.outlineVariant}`,
+  paddingTop: "0.55rem",
+};
+
+const detailsSummary: CSSProperties = {
+  cursor: "pointer",
+  color: t.primary,
+  fontSize: "0.76rem",
+  fontWeight: 600,
+  userSelect: "none",
+};
+
+const detailsContent: CSSProperties = {
+  marginTop: "0.65rem",
+};
+
+const compactDetailGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(7rem, auto) 1fr",
+  gap: "0.4rem 0.85rem",
+  margin: 0,
+  fontSize: "0.76rem",
+};
+
+const primaryAction: CSSProperties = {
+  border: 0,
+  borderRadius: "var(--radius-sm)",
+  background: t.primary,
+  color: t.onPrimary,
+  padding: "0.5rem 0.8rem",
+  font: "inherit",
+  fontSize: "0.76rem",
+  fontWeight: 650,
+  cursor: "pointer",
+};
+
+const permissionHint: CSSProperties = {
+  fontSize: "0.72rem",
+  color: t.onSurfaceVariant,
+};
+
+const actionErrorStyle: CSSProperties = {
+  margin: "0 0 1rem",
+  padding: "0.75rem 0.9rem",
+  borderRadius: "var(--radius-sm)",
+  background: "color-mix(in srgb, var(--color-error) 10%, transparent)",
+  color: t.error,
+  fontSize: "0.8rem",
+};
+
+const primaryLinkAction: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: "var(--radius-sm)",
+  background: t.primary,
+  color: t.onPrimary,
+  padding: "0.5rem 0.8rem",
+  fontSize: "0.76rem",
+  fontWeight: 650,
+  textDecoration: "none",
 };

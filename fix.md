@@ -52,24 +52,25 @@
 - In the patient views Demographics & Identifiers & Addresses, improve the UI/UX - Ok
 - SHow the Coverage / Payers from the HOPE assessment or in the beggining they give it to use in the referral box, it needs to auto complete - Ok
 - Review the care plan view - Ok
+- Show alerts to the users - Ok
+- When a F2F or CTI is needed is due (7 days before, 3 days before and 1 day after the due day), the system should alert the responsible party (doctor, nurse and administrator) - Ok
+- When signing the Election Statement, auto complete the current user's name in the signer name field - Ok (Not what the business logic waits)
+- Move CTI (Certify Terminal Illness) and Face 2 Face in the patient subview (can be modified only by the doctor/MD and viewed by the other) - Ok
+- In the Election & Certification, we should have the possibility to create a CTI and a F2F (only by the MD) and the others can view it - Ok
+- WHen selecting "other" in prefered language in the HOPE admission, we need to have an input to collect that language - Ok
+- The signature of the CTI, add a window of 3 days for the doctor to sign it - Ok
 
-- Show alerts to the users
 - Add a calendar so that the nurse can see all the encouters, HUV1, HOPE, CTI, F2F, MSW visits,...
 So when there is something regarding a patient, everybody can see it
-- Move CTI (Certify Terminal Illness) and Face 2 Face in the patient subview (can be modified only by the doctor/MD and viewed by the other)
-- The signature of the CTI, add a window of 3 days for the doctor to sign it
-- When signing the Election Statement, auto complete the current user's name in the signer name field - Ok (Not what the business logic waits)
-- When a F2F or CTI is needed is due (7 days before, 3 days before and 1 day after the due day), the system should alert the responsible party (doctor, nurse and administrator)
 - In the care plan, show properly the error to the user
 - Review and Fix the error when signing a care plan
 - Election Statement we need to register who uplaoded the document
 - admissions/c9b161bc-4d91-4159-b2b7-ca930260e9ad/hope should be in the patient view
-- WHen selecting "other" in prefered language in the HOPE admission, we need to have an input to collect that language
 - Payer / Coverage in the HOPE admission (need attention)
 - Completed Admission in the HOPE admission after signing, the message should show the name of the user who signed
-- In the Election & Certification, we should have the possibility to create a CTI and a F2F (only by the MD) and the others can view it
 - An RN should have the possibility to manage a patient HOPE and Care Plan, create an encounter
  She is also the one assigning the care team in the Care Team & Assignments tab
 - Remove the verbal order Tab and add a button in the Order tab called Verbal order
 Create a verbal order: physician communication, created by, created at, check box "read back and verified", effective date, and the order, then send it for sigature
 - Erreur 404 sur le rôle nurse (RN)
+ORG_WIDE_SCOPE_ROLES

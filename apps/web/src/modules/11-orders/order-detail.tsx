@@ -19,6 +19,7 @@ import type { JSX } from "react";
 import { useParams } from "react-router-dom";
 import { OrderEditor } from "./order-editor";
 import type { EditableOrder } from "./order-editor";
+import type { CSSProperties } from "react";
 import {
   COSIGN_TONE,
   ORDER_TONE,
@@ -86,6 +87,14 @@ export function OrderDetail(): JSX.Element {
   const [verbalAttestation, setVerbalAttestation] = useState("");
   const [cosignAttestation, setCosignAttestation] = useState("");
   const [confirmDiscontinue, setConfirmDiscontinue] = useState(false);
+  const [verbalEffectiveAt, setVerbalEffectiveAt] = useState(() => {
+    const now = new Date();
+    const local = new Date(now.getTime() - now.getTimezoneOffset() * 60_000);
+
+    return local.toISOString().slice(0, 16);
+  });
+
+  const [readBackVerified, setReadBackVerified] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -335,9 +344,41 @@ export function OrderDetail(): JSX.Element {
             ) : null}
             {row.allowedActions.record_verbal ? (
               <div style={actionGroup}>
-                <h3 style={subheading}>Verbal order</h3>
+                <div style={{ marginBottom: 16 }}>
+                  <h3 style={{ ...subheading, marginBottom: 4 }}>
+                    Verbal order
+                  </h3>
+
+                  <p style={{ ...muted, margin: 0 }}>
+                    Document the physician communication and verify the order
+                    before recording it as verbal.
+                  </p>
+                </div>
+
+                {/* Physician */}
+                <div style={verbalInfoGrid}>
+                  <div style={verbalInfoItem}>
+                    <span style={verbalInfoLabel}>Physician</span>
+
+                    <strong style={verbalInfoValue}>
+                      {
+                      // row.orderingPhysicianName ??
+                      row.orderingPhysicianMdmId ?
+                        `Physician ${row.orderingPhysicianMdmId.slice(0, 5)}...` :
+                        "Not assigned"}
+                    </strong>
+                  </div>
+
+                  <div style={verbalInfoItem}>
+                    <span style={verbalInfoLabel}>Created by</span>
+
+                    <strong style={verbalInfoValue}>Current user</strong>
+                  </div>
+                </div>
+
+                {/* Physician communication */}
                 <label style={field}>
-                  Attestation
+                  Physician communication
                   <textarea
                     value={verbalAttestation}
                     onChange={(event) =>
@@ -345,25 +386,90 @@ export function OrderDetail(): JSX.Element {
                     }
                     disabled={busy}
                     style={textarea}
-                    placeholder="Document the verbal order and how it was received"
+                    placeholder="Document the physician communication, the verbal order received, and any relevant instructions..."
                     minLength={100}
+                    maxLength={2000}
+                    rows={5}
                   />
                 </label>
+
                 <small style={muted}>
                   {verbalAttestation.trim().length}/100 characters minimum
                 </small>
+
+                {/* Dates */}
+                <div style={verbalFieldGrid}>
+                  <label style={field}>
+                    Effective date
+                    <input
+                      type="datetime-local"
+                      value={verbalEffectiveAt}
+                      onChange={(event) =>
+                        setVerbalEffectiveAt(event.target.value)
+                      }
+                      disabled={busy}
+                      style={control}
+                      required
+                    />
+                  </label>
+
+                  <label style={field}>
+                    Received at
+                    <input
+                      type="text"
+                      value="Recorded automatically when submitted"
+                      disabled
+                      style={control}
+                    />
+                  </label>
+                </div>
+
+                {/* Read back */}
+                <label style={readBackBox}>
+                  <input
+                    type="checkbox"
+                    checked={readBackVerified}
+                    onChange={(event) =>
+                      setReadBackVerified(event.target.checked)
+                    }
+                    disabled={busy}
+                  />
+
+                  <span>
+                    <strong>Read back and verified</strong>
+
+                    <span style={readBackDescription}>
+                      I read the order back to the physician and verified that
+                      it accurately reflects the physician's instructions.
+                    </span>
+                  </span>
+                </label>
+
                 <div style={actions}>
                   <Button
                     tone="secondary"
                     onClick={() =>
                       void mutate("/api/v1/orders/{id}/verbal", {
                         recorderDiscipline: discipline,
+
                         verbalAttestation: verbalAttestation.trim(),
+
+                        readBackVerified,
+
+                        effectiveAt: new Date(verbalEffectiveAt).toISOString(),
+
                         receivedAt: new Date().toISOString(),
+
                         orderingPhysicianMdmId: row.orderingPhysicianMdmId,
                       })
                     }
-                    disabled={busy || verbalAttestation.trim().length < 100}
+                    disabled={
+                      busy ||
+                      verbalAttestation.trim().length < 100 ||
+                      !readBackVerified ||
+                      !verbalEffectiveAt ||
+                      !row.orderingPhysicianMdmId
+                    }
                   >
                     Record verbal order
                   </Button>
@@ -759,3 +865,53 @@ const errorStyle = {
   border: "1px solid currentColor",
   borderRadius: ".5rem",
 } as const;
+const verbalInfoGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 12,
+  marginBottom: 16,
+};
+
+const verbalInfoItem: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 4,
+  padding: "12px 14px",
+  border: "1px solid var(--wx-border)",
+  borderRadius: 8,
+};
+
+const verbalInfoLabel: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: "var(--wx-text-muted)",
+};
+
+const verbalInfoValue: CSSProperties = {
+  fontSize: 14,
+};
+
+const verbalFieldGrid: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gap: 12,
+};
+
+const readBackBox: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: 10,
+  padding: 14,
+  marginTop: 12,
+  border: "1px solid var(--wx-border)",
+  borderRadius: 8,
+  cursor: "pointer",
+};
+
+const readBackDescription: CSSProperties = {
+  display: "block",
+  marginTop: 3,
+  fontSize: 12,
+  lineHeight: 1.45,
+  color: "var(--wx-text-muted)",
+};

@@ -13,10 +13,35 @@ import type { LocalDate } from "@wardenx/types";
 export const DEFAULT_ORG_TIME_ZONE = "America/Los_Angeles";
 
 /** Whole calendar days CMS 418.22 spans the F2F prior-to window over (§7.4 / R-F2F-02). */
-export const F2F_PRIOR_WINDOW = { earliestDaysBefore: 30, latestDaysBefore: 1 } as const;
+export const F2F_PRIOR_WINDOW = {
+  earliestDaysBefore: 30,
+  latestDaysBefore: 1,
+} as const;
 
 /** Calendar days the oral-then-written CTI path allows before the written cert is overdue (D4). */
 export const WRITTEN_CERT_DEADLINE_DAYS = 2 as const;
+
+/**
+ * Operational SLA requested for a hospice physician to sign a newly assigned CTI.
+ *
+ * This is deliberately separate from WRITTEN_CERT_DEADLINE_DAYS:
+ * - WRITTEN_CERT_DEADLINE_DAYS = regulatory oral→written certification path
+ * - CTI_SIGNATURE_WINDOW_DAYS = WardenX operational signature SLA
+ */
+export const CTI_SIGNATURE_WINDOW_DAYS = 3 as const;
+
+/**
+ * Compute the CTI hospice-physician signature deadline.
+ *
+ * The current workflow begins the SLA when the CTI is drafted/assigned.
+ * This is an exact 72-hour window rather than the separate CMS
+ * oral→written certification deadline.
+ */
+export function computeCtiSignatureDueAt(signatureRequestedAt: Date): string {
+  return new Date(
+    signatureRequestedAt.getTime() + CTI_SIGNATURE_WINDOW_DAYS * 86_400_000,
+  ).toISOString();
+}
 
 const pad = (n: number): string => String(n).padStart(2, "0");
 
@@ -26,7 +51,9 @@ const toLocalDate = (dt: Date): LocalDate =>
 
 /** Add (or subtract) whole calendar days to a `yyyy-mm-dd` date; returns a `yyyy-mm-dd` date. */
 export function addCalendarDays(date: LocalDate, days: number): LocalDate {
-  return toLocalDate(new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000));
+  return toLocalDate(
+    new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000),
+  );
 }
 
 /**
@@ -46,7 +73,8 @@ function tzOffsetMs(utcMs: number, timeZone: string): number {
     minute: "2-digit",
   });
   const parts = dtf.formatToParts(new Date(utcMs));
-  const get = (t: string): number => Number(parts.find((p) => p.type === t)?.value);
+  const get = (t: string): number =>
+    Number(parts.find((p) => p.type === t)?.value);
   const localMinute = Date.UTC(
     get("year"),
     get("month") - 1,
@@ -74,12 +102,21 @@ export function endOfOrgDayInstant(date: LocalDate, timeZone: string): string {
  * at 23:59 in the org's timezone, returned as a UTC instant (§7.3 late-cert path). If the written
  * cert is not captured by this instant, the caller fires `m6.compliance.window.overdue`.
  */
-export function computeWrittenCertDeadline(periodStartDate: LocalDate, timeZone: string): string {
-  return endOfOrgDayInstant(addCalendarDays(periodStartDate, WRITTEN_CERT_DEADLINE_DAYS), timeZone);
+export function computeWrittenCertDeadline(
+  periodStartDate: LocalDate,
+  timeZone: string,
+): string {
+  return endOfOrgDayInstant(
+    addCalendarDays(periodStartDate, WRITTEN_CERT_DEADLINE_DAYS),
+    timeZone,
+  );
 }
 
 /** Has `asOfInstant` passed the written-cert `deadlineInstant`? (strictly after → overdue). */
-export function isWrittenCertOverdue(deadlineInstant: string, asOfInstant: string): boolean {
+export function isWrittenCertOverdue(
+  deadlineInstant: string,
+  asOfInstant: string,
+): boolean {
   return Date.parse(asOfInstant) > Date.parse(deadlineInstant);
 }
 
@@ -91,15 +128,33 @@ export interface F2fWindow {
 }
 
 /** Compute the F2F window `[period_start − 30, period_start − 1]` in org-local calendar days (§7.4). */
-export function computeF2fWindow(periodStartDate: LocalDate, timeZone: string): F2fWindow {
-  const windowStart = addCalendarDays(periodStartDate, -F2F_PRIOR_WINDOW.earliestDaysBefore);
-  const windowEnd = addCalendarDays(periodStartDate, -F2F_PRIOR_WINDOW.latestDaysBefore);
-  return { windowStart, windowEnd, windowEndInstant: endOfOrgDayInstant(windowEnd, timeZone) };
+export function computeF2fWindow(
+  periodStartDate: LocalDate,
+  timeZone: string,
+): F2fWindow {
+  const windowStart = addCalendarDays(
+    periodStartDate,
+    -F2F_PRIOR_WINDOW.earliestDaysBefore,
+  );
+  const windowEnd = addCalendarDays(
+    periodStartDate,
+    -F2F_PRIOR_WINDOW.latestDaysBefore,
+  );
+  return {
+    windowStart,
+    windowEnd,
+    windowEndInstant: endOfOrgDayInstant(windowEnd, timeZone),
+  };
 }
 
 /** W-F2F-01: is the scheduled F2F date inside the window? (`yyyy-mm-dd` lexical compare is date order). */
-export function isF2fScheduledWithinWindow(scheduledDate: LocalDate, window: F2fWindow): boolean {
-  return scheduledDate >= window.windowStart && scheduledDate <= window.windowEnd;
+export function isF2fScheduledWithinWindow(
+  scheduledDate: LocalDate,
+  window: F2fWindow,
+): boolean {
+  return (
+    scheduledDate >= window.windowStart && scheduledDate <= window.windowEnd
+  );
 }
 
 /** F2F window monitor verdict (§7.4 W-F2F-04): `attested` closes it; an unattested past-end is `missed`. */

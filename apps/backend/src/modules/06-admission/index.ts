@@ -178,6 +178,7 @@ export { M6_OUTBOX_EVENTS } from "./events-by-m6";
 export {
   M6_QUEUES,
   M6_JOB_SCHEDULES,
+  M6_PLATFORM_JOB_ID,
   CLOSING_SOON_LEAD_MS,
   type M6QueueName,
   type ComplianceWindowSnapshot,
@@ -189,6 +190,21 @@ export {
   planRecomputeWindows,
   planWindowAlert,
 } from "./jobs/index";
+export { wireM6Tenancy } from "./wiring";
+
+export {
+  buildM6WorkerDeps,
+  registerM6CronWorkers,
+  runCtiSignatureNotifyCron,
+  runF2fDueNotifyCron,
+  scheduleM6Jobs,
+} from "./jobs/cron-workers";
+
+export type {
+  ActiveOrgListPort as M6ActiveOrgListPort,
+  AdmissionOutboxPublishPort,
+  M6WorkerDeps,
+} from "./jobs/cron-workers";
 
 // M6-T11 — the `AdmissionEventApplier` decision core (§4.8): the M29 `hl7_inbound_proposal.accepted`
 // consumer for `ownerModule='m6'`. PURE + tested now; the M29 producer is Wave H so the outbox binding

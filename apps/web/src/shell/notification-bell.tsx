@@ -192,14 +192,25 @@ export function NotificationBell(): JSX.Element {
         title="Notifications"
         style={triggerStyle}
       >
-        <Glyph
-          name="bell"
-          size={20}
-          strokeWidth={1.75}
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          aria-hidden="true"
           style={{
+            display: "block",
+            flexShrink: 0,
             color: "var(--color-on-surface-variant)",
           }}
-        />
+        >
+          <path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" />
+          <path d="M10 21h4" />
+        </svg>
 
         {unreadCount > 0 ? (
           <span style={badgeStyle}>
@@ -324,15 +335,19 @@ const rootStyle: CSSProperties = {
   position: "relative",
   display: "inline-flex",
   alignItems: "center",
-  color: "var(--color-on-surface-variant)",
+  flexShrink: 0,
 };
 
 const triggerStyle: CSSProperties = {
   position: "relative",
-  color: "var(--color-on-surface-variant)",
+  width: "2.25rem",
+  height: "2.25rem",
+  minWidth: "2.25rem",
+  padding: 0,
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  color: "var(--color-on-surface-variant)",
 };
 
 const badgeStyle: CSSProperties = {

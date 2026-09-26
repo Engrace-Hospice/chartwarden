@@ -31,6 +31,7 @@ export type ChartSection =
 type ChartTabKey =
   | "overview"
   | "clinical"
+  | "election"
   | "assessments"
   | "care-plans"
   | "orders"
@@ -51,7 +52,7 @@ const SECTION_TAB: Record<ChartSection, ChartTabKey> = {
   coverage: "overview",
   "care-team": "overview",
   privacy: "overview",
-  election: "overview",
+  election: "election",
   clinical: "clinical",
   hope: "assessments",
   assessments: "assessments",
@@ -65,16 +66,49 @@ const SECTION_TAB: Record<ChartSection, ChartTabKey> = {
   claims: "claims",
 };
 
-const TABS: { key: ChartTabKey; label: string; route: (id: string) => string }[] = [
+const TABS: {
+  key: ChartTabKey;
+  label: string;
+  route: (id: string) => string;
+}[] = [
   { key: "overview", label: "Overview", route: (id) => `/patients/${id}` },
-  { key: "clinical", label: "Clinical", route: (id) => `/patients/${id}?view=clinical` },
-  { key: "assessments", label: "Assessments", route: (id) => `/patients/${id}/assessments` },
-  { key: "care-plans", label: "Care Plans", route: (id) => `/patients/${id}/care-plan` },
+  {
+    key: "clinical",
+    label: "Clinical",
+    route: (id) => `/patients/${id}?view=clinical`,
+  },
+  {
+    key: "election",
+    label: "Election & Certification",
+    route: (id) => `/patients/${id}/election-certification`,
+  },
+  {
+    key: "assessments",
+    label: "Assessments",
+    route: (id) => `/patients/${id}/assessments`,
+  },
+  {
+    key: "care-plans",
+    label: "Care Plans",
+    route: (id) => `/patients/${id}/care-plan`,
+  },
   { key: "orders", label: "Orders", route: (id) => `/patients/${id}/orders` },
-  { key: "medications", label: "Medications", route: (id) => `/patients/${id}/medications` },
-  { key: "visits", label: "Visits", route: (id) => `/patients/${id}/encounters` },
+  {
+    key: "medications",
+    label: "Medications",
+    route: (id) => `/patients/${id}/medications`,
+  },
+  {
+    key: "visits",
+    label: "Visits",
+    route: (id) => `/patients/${id}/encounters`,
+  },
   { key: "idg", label: "IDG", route: (id) => `/patients/${id}/idg-history` },
-  { key: "documents", label: "Documents", route: (id) => `/patients/${id}/documents` },
+  {
+    key: "documents",
+    label: "Documents",
+    route: (id) => `/patients/${id}/documents`,
+  },
   { key: "claims", label: "Claims", route: (id) => `/patients/${id}/claims` },
   // Communication is an organization workspace today (no patient-scoped route yet).
   { key: "communication", label: "Communication", route: () => "/messaging" },
@@ -132,7 +166,9 @@ export function PatientChartBail({
   return (
     <PatientWorkspaceLayout banner={banner}>
       <div style={{ display: "flex", flex: 1, minHeight: 0 }}>
-        {current && patientId ? <ChartModuleRail patientId={patientId} current={current} /> : null}
+        {current && patientId ? (
+          <ChartModuleRail patientId={patientId} current={current} />
+        ) : null}
         <div
           style={{
             flex: 1,

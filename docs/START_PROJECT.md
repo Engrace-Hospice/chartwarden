@@ -119,6 +119,7 @@ bun --cwd=apps/backend run worker
 ```bash
 # Terminal 3 — browser UI: http://localhost:5173
 bun run dev:web
+notFoundOnDeny: true
 ```
 
 ```bash

@@ -158,9 +158,11 @@ import {
 import { m34TenantPatientIds } from "./modules/05-patient/m34-shred-subjects";
 import {
   M6_OUTBOX_EVENTS,
+  M6_PLATFORM_JOB_ID,
   activeAdmissionDraftContextForPatient,
   admissionIsActiveForOrg,
   buildM6ProposalAcceptedConsumer,
+  buildM6WorkerDeps,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   mountAdmissionRoutes,
@@ -168,6 +170,9 @@ import {
   registerAdmissionErasers,
   registerAdmissionRoutes,
   registerAdmissionSeams,
+  registerM6CronWorkers,
+  scheduleM6Jobs,
+  wireM6Tenancy,
 } from "./modules/06-admission/index";
 import {
   M7_OUTBOX_EVENTS,
@@ -1339,6 +1344,7 @@ export function wireModuleSeams(
   wireM25Tenancy(); // M25 — allowlist the cron job id so the denial-aging/appeal-deadline fan-outs may enter withPlatformContext
   wireM27Tenancy(); // M27 (WX-PR-013) — allowlist the cron job id so filing-deadline-scan may enter withPlatformContext
   // TASK-040D — allowlist M7/M9/M10's cron platform job ids (same fail-closed posture as M25/M30/M33/M34).
+  wireM6Tenancy();
   wireM7Tenancy();
   wireM9Tenancy();
   wireM10Tenancy();
@@ -4339,6 +4345,45 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       "M8 Phase-3 encounter automation crons constructed",
     );
 
+    // ── M6 admission F2F due-reminder cron ───────────────────────────────────────────────────────────────
+    const m6ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M6_PLATFORM_JOB_ID,
+      reason:
+        "M6 admission F2F due-reminder cron fan-out (active-org enumeration)",
+    });
+
+    const m6WorkerDeps = buildM6WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m6OutboxPublisher,
+      activeOrgs: m6ActiveOrgs,
+    });
+
+    const m6Workers = registerM6CronWorkers(m6WorkerDeps);
+
+    attachDlqAlertsToAll(m6Workers, "m6");
+
+    app.addHook("onClose", async () => {
+      await Promise.all(m6Workers.map((w) => w.close()));
+    });
+
+    try {
+      const m6ScheduleQueues = await scheduleM6Jobs(queueConnection);
+
+      app.addHook("onClose", async () => {
+        await Promise.all(m6ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M6 cron-schedule registration failed");
+    }
+
+    app.log.info(
+      { queues: m6Workers.length },
+      "M6 admission due-reminder crons constructed",
+    );
+
     // ── M9 §4.8 `license`/`changes`/`cadence` crons (TASK-040D — the M25 worker-runner shape) ────────────
     // `summary`/`eraser` (M9_QUEUES) stay out of scope — event-driven / M4-destruction-cert consumers.
     const m9ActiveOrgs = buildActiveOrgEnumerator({
@@ -4354,6 +4399,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       outbox: m9OutboxPublisher,
       activeOrgs: m9ActiveOrgs,
     });
+
     const m9Workers = registerM9CronWorkers(m9WorkerDeps);
     attachDlqAlertsToAll(m9Workers, "m9");
     app.addHook("onClose", async () => {
