@@ -89,7 +89,10 @@ export function SecurityPasskeys(): JSX.Element {
   const hasActiveFilters = searchQuery.trim() !== "" || deviceFilter !== "all";
   const pageCount = Math.max(1, Math.ceil(filteredPasskeys.length / pageSize));
   const activePage = Math.min(page, pageCount);
-  const pagedPasskeys = filteredPasskeys.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const pagedPasskeys = filteredPasskeys.slice(
+    (activePage - 1) * pageSize,
+    activePage * pageSize,
+  );
 
   const clearFilters = (): void => {
     setSearchQuery("");
@@ -101,8 +104,14 @@ export function SecurityPasskeys(): JSX.Element {
     <WorkQueueLayout
       header={
         <PageHeader title="Passkeys" breadcrumb="Security / Account">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Manage device biometrics and security keys used for passwordless sign-in.
+          <div
+            style={{
+              color: "var(--color-on-surface-variant)",
+              fontSize: "0.875rem",
+            }}
+          >
+            Manage device biometrics and security keys used for passwordless
+            sign-in.
           </div>
         </PageHeader>
       }
@@ -128,13 +137,23 @@ export function SecurityPasskeys(): JSX.Element {
               }}
               style={registerFormStyle}
             >
-              <input
-                aria-label="Passkey name"
-                placeholder="Name this passkey..."
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                style={searchInputStyle}
-              />
+              <div style={passkeyNameFieldStyle}>
+                <label htmlFor="passkey-name" style={fieldLabelStyle}>
+                  Passkey name{" "}
+                  <span style={optionalLabelStyle}>(optional)</span>
+                </label>
+
+                <input
+                  id="passkey-name"
+                  placeholder="e.g. Work laptop"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  disabled={busy}
+                  autoComplete="off"
+                  maxLength={100}
+                  style={searchInputStyle}
+                />
+              </div>
               <Button type="submit" tone="primary" disabled={busy}>
                 {busy ? "Registering..." : "Register passkey"}
               </Button>
@@ -209,7 +228,9 @@ export function SecurityPasskeys(): JSX.Element {
                   <th style={{ ...thStyle, width: "38%" }}>Passkey</th>
                   <th style={{ ...thStyle, width: "22%" }}>Device</th>
                   <th style={{ ...thStyle, width: "20%" }}>Created</th>
-                  <th style={{ ...thStyle, width: "20%", textAlign: "right" }}>Actions</th>
+                  <th style={{ ...thStyle, width: "20%", textAlign: "right" }}>
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -228,11 +249,17 @@ export function SecurityPasskeys(): JSX.Element {
                         }
                       />
                     </td>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                    <td
+                      style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}
+                    >
                       {formatDate(passkey.createdAt)}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right" }}>
-                      <Button size="sm" tone="danger" onClick={() => void remove(passkey.id)}>
+                      <Button
+                        size="sm"
+                        tone="danger"
+                        onClick={() => void remove(passkey.id)}
+                      >
                         Remove
                       </Button>
                     </td>
@@ -298,11 +325,17 @@ function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function shortId(value: string): string {
-  return value.length > 18 ? `${value.slice(0, 8)}...${value.slice(-6)}` : value;
+  return value.length > 18
+    ? `${value.slice(0, 8)}...${value.slice(-6)}`
+    : value;
 }
 
 const filterShellStyle: CSSProperties = {
@@ -349,7 +382,8 @@ const errorBannerStyle: CSSProperties = {
   gap: "0.75rem",
 };
 const searchInputStyle: CSSProperties = {
-  flex: 1,
+  // flex: 1,
+  width: "100%",
   minWidth: "12rem",
   height: "2.25rem",
   padding: "0.45rem 0.65rem",
@@ -394,11 +428,13 @@ const tableStyle: CSSProperties = {
 const headRowStyle: CSSProperties = {
   textAlign: "left",
   color: "var(--color-on-surface-variant)",
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
+  borderBottom:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 40%, transparent)",
   background: "var(--color-surface-low)",
 };
 const rowStyle: CSSProperties = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
+  borderBottom:
+    "1px solid color-mix(in srgb, var(--color-outline-variant) 30%, transparent)",
 };
 const thStyle: CSSProperties = {
   padding: "0.625rem 1rem",
@@ -438,5 +474,24 @@ const primaryTextStyle: CSSProperties = {
 };
 const secondaryCodeStyle: CSSProperties = {
   fontSize: "0.75rem",
+  color: "var(--color-on-surface-variant)",
+};
+const passkeyNameFieldStyle: CSSProperties = {
+  display: "flex",
+  flex: 1,
+  alignItems: "center",
+  minWidth: "12rem",
+  flexDirection: "column",
+  gap: "0.3rem",
+};
+
+const fieldLabelStyle: CSSProperties = {
+  fontSize: "0.75rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+
+const optionalLabelStyle: CSSProperties = {
+  fontWeight: 400,
   color: "var(--color-on-surface-variant)",
 };

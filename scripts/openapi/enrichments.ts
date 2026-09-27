@@ -7747,6 +7747,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M36AlertRulePatchSchema,
     response: M36AlertRuleResponseSchema,
   },
+  "POST /api/v1/alerts/:id/read": {
+    summary: "Mark one alert read for the current actor (204)",
+  },
 
   // vendor delivery webhooks (§4.9) — signature-authed, raw urlencoded vendor body, 204 → summary-only
   "POST /webhooks/twilio/sms-status": {

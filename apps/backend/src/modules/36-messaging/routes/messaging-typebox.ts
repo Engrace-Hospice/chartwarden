@@ -273,6 +273,7 @@ const AlertInboxItemSchema = Type.Object({
   summary: Type.String(),
   createdAt: Type.String(),
   deliveryStatus: DeliveryStatusSchema,
+  readAt: NullableString(),
 });
 export const AlertInboxResponseSchema = Type.Object({
   alerts: Type.Array(AlertInboxItemSchema),
@@ -289,6 +290,9 @@ export const AlertRuleResponseSchema = Type.Object({
 });
 export const AlertRuleListResponseSchema = Type.Object({
   rules: Type.Array(AlertRuleResponseSchema),
+});
+export const AlertParamsSchema = Type.Object({
+  id: Id,
 });
 
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service

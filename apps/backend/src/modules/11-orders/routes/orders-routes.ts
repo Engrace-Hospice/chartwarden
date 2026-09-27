@@ -44,24 +44,33 @@ import {
 import type { OrderDetailActor, OrderRouteService } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
-type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
+type PreHandler = (
+  request: FastifyRequest,
+  reply: FastifyReply,
+) => Promise<void>;
 
 export interface OrderRouteDeps {
   service: OrderRouteService;
 }
 
-function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
+function actorOf(request: FastifyRequest): {
+  organizationId: string;
+  userId: string;
+} {
   const ctx = request.context;
   // `userId` here is the codebase-wide convention of "the acting MEMBERSHIP id" — same bug/fix as
   // M7/M8/M9/M10: this used to read `ctx.userId` (the raw Better Auth user id, a DIFFERENT id from
   // the org membership), FK-violating `order_record_drafter_membership_id_membership_id_fk`.
   const membershipId = ctx?.attributes.membershipId;
-  if (!ctx?.organizationId || typeof membershipId !== "string") throw new UnauthorizedError();
+  if (!ctx?.organizationId || typeof membershipId !== "string")
+    throw new UnauthorizedError();
   return { organizationId: ctx.organizationId, userId: membershipId };
 }
 
 /** Assemble the read-projection actor from the authenticated request context and M3's existing resolver. */
-async function detailActorOf(request: FastifyRequest): Promise<OrderDetailActor> {
+async function detailActorOf(
+  request: FastifyRequest,
+): Promise<OrderDetailActor> {
   const { organizationId, userId: membershipId } = actorOf(request);
   const ctx = request.context;
   const granted = await resolveActorPermissions({ organizationId, userId: ctx.userId });
@@ -100,15 +109,24 @@ const ABAC_AMEND = requireAbac("orders.amend", "discipline_can_order", {
   getTarget: kindTarget,
 }) as PreHandler;
 const ABAC_SIGN = requireAbac("orders.sign", "signer_eligible") as PreHandler; // target = :id
-const ABAC_COSIGN = requireAbac("orders.cosign", "m11.cosigner_role_match") as PreHandler; // target = :id
+const ABAC_COSIGN = requireAbac(
+  "orders.cosign",
+  "m11.cosigner_role_match",
+) as PreHandler; // target = :id
 
-export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps): void {
+export function registerOrderRoutes(
+  app: FastifyInstance,
+  deps: OrderRouteDeps,
+): void {
   const { service } = deps;
 
   // 1 — list orders by patient / admission / kind / status.
   app.get(
     "/api/v1/orders",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "order", list: true } } },
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "order", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const q = parse(OrderListQuerySchema, request.query);
@@ -125,7 +143,10 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // 13 — physician's pending-signature inbox.
   app.get(
     "/api/v1/orders/pending-signature",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "order", list: true } } },
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "order", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       return service.pendingSignature(organizationId);
@@ -134,7 +155,10 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // 14 — RN's verbal-expiring queue.
   app.get(
     "/api/v1/orders/verbal-expiring",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "order", list: true } } },
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "order", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       return service.verbalExpiring(organizationId);
@@ -143,7 +167,10 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // 15 — RN's cosign-pending queue.
   app.get(
     "/api/v1/orders/cosign-pending",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "order", list: true } } },
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "order", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       return service.cosignPending(organizationId);
@@ -152,7 +179,10 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // 16 — lab orders with results awaiting clinician review (D17).
   app.get(
     "/api/v1/orders/results-pending-review",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "lab_order", list: true } } },
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "lab_order", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       return service.resultsPendingReview(organizationId);
@@ -163,7 +193,12 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/orders/suggestions/:patientId",
     {
       preHandler: [READ],
-      config: { auditRead: { resourceKind: "order_suggestion", patientIdParam: "patientId" } },
+      config: {
+        auditRead: {
+          resourceKind: "order_suggestion",
+          patientIdParam: "patientId",
+        },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
@@ -200,7 +235,10 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // 2 — order detail with signatures + discontinuation history.
   app.get(
     "/api/v1/orders/:id",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "order", resourceIdParam: "id" } } },
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "order", resourceIdParam: "id" } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(OrderParamsSchema, request.params);
@@ -290,6 +328,8 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       {
         recorderDiscipline: body.recorderDiscipline,
         verbalAttestation: body.verbalAttestation,
+        readBackVerified: body.readBackVerified,
+        effectiveAt: body.effectiveAt,
         receivedAt: body.receivedAt,
         orderingPhysicianMdmId: body.orderingPhysicianMdmId,
       },
@@ -379,7 +419,10 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
   // 18 — list standing orders.
   app.get(
     "/api/v1/standing-orders",
-    { preHandler: [READ], config: { auditRead: { resourceKind: "standing_order", list: true } } },
+    {
+      preHandler: [READ],
+      config: { auditRead: { resourceKind: "standing_order", list: true } },
+    },
     async (request) => {
       const { organizationId } = actorOf(request);
       return service.listStandingOrders(organizationId);
@@ -390,7 +433,9 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     "/api/v1/standing-orders/:id",
     {
       preHandler: [READ],
-      config: { auditRead: { resourceKind: "standing_order", resourceIdParam: "id" } },
+      config: {
+        auditRead: { resourceKind: "standing_order", resourceIdParam: "id" },
+      },
     },
     async (request) => {
       const { organizationId } = actorOf(request);
@@ -399,34 +444,42 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
     },
   );
   // 20 — create template.
-  app.post("/api/v1/standing-orders", { preHandler: [STANDING_MANAGE] }, async (request, reply) => {
-    const { organizationId, userId } = actorOf(request);
-    const body = parse(CreateStandingOrderRequest, request.body);
-    const res = await service.createStandingOrder(organizationId, userId, {
-      patientId: body.patientId,
-      admissionId: body.admissionId,
-      kind: body.kind,
-      signerDiscipline: body.signerDiscipline,
-      orderingPhysicianMdmId: body.orderingPhysicianMdmId,
-      cadence: body.cadence,
-      data: body.data,
-      effectiveFrom: body.effectiveFrom,
-      effectiveUntil: body.effectiveUntil,
-      maxSpawns: body.maxSpawns,
-    });
-    return reply.code(201).send(res);
-  });
+  app.post(
+    "/api/v1/standing-orders",
+    { preHandler: [STANDING_MANAGE] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const body = parse(CreateStandingOrderRequest, request.body);
+      const res = await service.createStandingOrder(organizationId, userId, {
+        patientId: body.patientId,
+        admissionId: body.admissionId,
+        kind: body.kind,
+        signerDiscipline: body.signerDiscipline,
+        orderingPhysicianMdmId: body.orderingPhysicianMdmId,
+        cadence: body.cadence,
+        data: body.data,
+        effectiveFrom: body.effectiveFrom,
+        effectiveUntil: body.effectiveUntil,
+        maxSpawns: body.maxSpawns,
+      });
+      return reply.code(201).send(res);
+    },
+  );
   // 21 — edit (limited fields when active).
-  app.patch("/api/v1/standing-orders/:id", { preHandler: [STANDING_MANAGE] }, async (request) => {
-    const { organizationId } = actorOf(request);
-    const { id } = parse(StandingOrderParamsSchema, request.params);
-    const body = parse(UpdateStandingOrderRequest, request.body);
-    return service.editStandingOrder(organizationId, id, {
-      data: body.data,
-      effectiveUntil: body.effectiveUntil,
-      maxSpawns: body.maxSpawns,
-    });
-  });
+  app.patch(
+    "/api/v1/standing-orders/:id",
+    { preHandler: [STANDING_MANAGE] },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(StandingOrderParamsSchema, request.params);
+      const body = parse(UpdateStandingOrderRequest, request.body);
+      return service.editStandingOrder(organizationId, id, {
+        data: body.data,
+        effectiveUntil: body.effectiveUntil,
+        maxSpawns: body.maxSpawns,
+      });
+    },
+  );
   // 22 — pause (no new spawns).
   app.post(
     "/api/v1/standing-orders/:id/pause",
@@ -514,7 +567,11 @@ export function registerOrderRoutes(app: FastifyInstance, deps: OrderRouteDeps):
       const { organizationId } = actorOf(request);
       const { id } = parse(VerbalTimerParamsSchema, request.params);
       parse(RegenerateVerbalTimerRequest, request.body);
-      return service.regenerateVerbalTimer(organizationId, id, await detailActorOf(request));
+      return service.regenerateVerbalTimer(
+        organizationId,
+        id,
+        await detailActorOf(request),
+      );
     },
   );
 }

@@ -121,6 +121,7 @@ export function OrderActionModal({
   const [reason, setReason] = useState<DiscontinueReason>(DISCONTINUE_REASONS[0]);
   const [notes, setNotes] = useState("");
   const [orderingPhysicianMdmId, setOrderingPhysicianMdmId] = useState("");
+  const [readBackVerified, setReadBackVerified] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -130,6 +131,7 @@ export function OrderActionModal({
     setAttestation("");
     setNotes("");
     setOrderingPhysicianMdmId("");
+    setReadBackVerified(false);
   }, [open, signerRoles]);
 
   if (!open) return null;
@@ -140,7 +142,8 @@ export function OrderActionModal({
 
   const blocked =
     (needsSigner && signerDiscipline === "") ||
-    (action === "verbal" && (signerDiscipline === "" || orderingPhysicianMdmId.trim() === "")) ||
+    (action === "verbal" &&
+      (signerDiscipline === "" || orderingPhysicianMdmId.trim() === "" || !readBackVerified)) ||
     (needsAttestation && attestation.trim().length < min);
 
   async function submit(): Promise<void> {
@@ -164,14 +167,18 @@ export function OrderActionModal({
       case "complete":
         res = await completeOrder(client, orderId, notes.trim() ? { reason: notes.trim() } : {});
         break;
-      case "verbal":
+      case "verbal": {
+        const receivedAt = nowIso();
         res = await recordVerbalOrder(client, orderId, {
           recorderDiscipline: signerDiscipline,
           verbalAttestation: attestation,
-          receivedAt: nowIso(),
+          readBackVerified,
+          effectiveAt: receivedAt,
+          receivedAt,
           orderingPhysicianMdmId: orderingPhysicianMdmId.trim(),
         });
         break;
+      }
     }
     setBusy(false);
     if (!res.ok) {
@@ -254,6 +261,17 @@ export function OrderActionModal({
           </>
         ) : null}
 
+        {action === "verbal" ? (
+          <label style={checkRow}>
+            <input
+              type="checkbox"
+              checked={readBackVerified}
+              onChange={(e) => setReadBackVerified(e.target.checked)}
+            />
+            <span>I read this order back to the ordering physician and they confirmed it.</span>
+          </label>
+        ) : null}
+
         {action === "discontinue" || action === "complete" ? (
           <TextAreaField
             label={action === "complete" ? "Note (optional)" : "Notes (optional)"}
@@ -285,3 +303,9 @@ export function OrderActionModal({
 const title = { margin: 0, fontSize: "1.05rem", fontWeight: 600 } as const;
 const meta = { margin: 0, fontSize: "0.75rem", color: "var(--color-on-surface-variant)" } as const;
 const errorText = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" } as const;
+const checkRow = {
+  display: "flex",
+  alignItems: "center",
+  gap: "0.5rem",
+  fontSize: "0.8125rem",
+} as const;

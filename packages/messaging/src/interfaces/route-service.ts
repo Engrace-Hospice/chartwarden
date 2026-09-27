@@ -113,6 +113,9 @@ export interface AlertInboxItem {
   readonly summary: string;
   readonly createdAt: string;
   readonly deliveryStatus: "delivered" | "partial" | "failed" | "pending";
+
+  /** Null until the current actor explicitly opens/reads the alert. */
+  readonly readAt: string | null;
 }
 
 /**
@@ -126,11 +129,20 @@ export interface MessagingRouteService {
   /** Channels the user is an active member of (§4.2 GET /channels). */
   listChannels(orgId: string, userId: string): Promise<ChannelSummary[]>;
   /** Channel detail + recent members; NOT_FOUND if absent (§4.2 GET /channels/:id). */
-  getChannel(orgId: string, userId: string, channelId: string): Promise<ChannelDetail>;
+  getChannel(
+    orgId: string,
+    userId: string,
+    channelId: string,
+  ): Promise<ChannelDetail>;
   /** Paginated channel history — bodies decrypted for entitled readers only (§4.2). */
   listMessages(
     orgId: string,
-    input: { channelId: string; userId: string; cursor?: string; limit?: number },
+    input: {
+      channelId: string;
+      userId: string;
+      cursor?: string;
+      limit?: number;
+    },
   ): Promise<{ messages: readonly ResolvedMessage[]; nextCursor?: string }>;
   /** Post a message; CHANNEL_ARCHIVED (410) on an archived channel (§4.2). */
   sendMessage(
@@ -152,7 +164,10 @@ export interface MessagingRouteService {
     input: { userId: string; messageId: string; body: string },
   ): Promise<{ messageId: string; editedAt: string }>;
   /** Soft-delete (tombstone); FORBIDDEN unless the actor authored it (§4.2 DELETE). */
-  deleteMessage(orgId: string, input: { userId: string; messageId: string }): Promise<void>;
+  deleteMessage(
+    orgId: string,
+    input: { userId: string; messageId: string },
+  ): Promise<void>;
   /** Mark message(s) read — single or up-through-id (§4.2 POST /messages/:id/read). */
   markRead(
     orgId: string,
@@ -170,7 +185,10 @@ export interface MessagingRouteService {
     input: { channelId: string; userId: string; role?: ChannelMemberRole },
   ): Promise<void>;
   /** Remove a member (§4.2 DELETE /channels/:id/members/:userId). */
-  removeMember(orgId: string, input: { channelId: string; userId: string }): Promise<void>;
+  removeMember(
+    orgId: string,
+    input: { channelId: string; userId: string },
+  ): Promise<void>;
   /** Post to the tenant `announcement` channel (org_admin) (§4.2 POST /announce). */
   announce(
     orgId: string,
@@ -180,11 +198,18 @@ export interface MessagingRouteService {
   /** Whether the actor may see a channel — the `channel_visibility` ABAC predicate's resolver
    *  (§4.5): caseload membership for care_team, bereavement membership for bereavement, a
    *  channel-member check otherwise. NOT_FOUND channels resolve to `false` (no existence oracle). */
-  canViewChannel(orgId: string, userId: string, channelId: string): Promise<boolean>;
+  canViewChannel(
+    orgId: string,
+    userId: string,
+    channelId: string,
+  ): Promise<boolean>;
 
   // ── notification preferences & endpoints (§4.2; SELF-only) ────────────────────────────────
   /** The actor's preferences, creating the default row on first read (§4.2 GET). */
-  getPreferences(orgId: string, userId: string): Promise<NotificationPreferencesView>;
+  getPreferences(
+    orgId: string,
+    userId: string,
+  ): Promise<NotificationPreferencesView>;
   /** Replace the actor's preferences; INVALID_ROUTING_MAP (422) / VACATION_FORWARD_* (409). */
   putPreferences(
     orgId: string,
@@ -205,11 +230,17 @@ export interface MessagingRouteService {
     token: string,
   ): Promise<DeliveryEndpointView>;
   /** Remove an endpoint (§4.2 DELETE /notifications/endpoints/:id). */
-  removeEndpoint(orgId: string, userId: string, endpointId: string): Promise<void>;
+  removeEndpoint(
+    orgId: string,
+    userId: string,
+    endpointId: string,
+  ): Promise<void>;
 
   // ── alerts (§4.2) ─────────────────────────────────────────────────────────────────────────
   /** The actor's recent alerts with delivery status (§4.2 GET /alerts/inbox). */
   alertInbox(orgId: string, userId: string): Promise<AlertInboxItem[]>;
+  /** Mark one alert as read for the current actor. Idempotent. */
+  markAlertRead(orgId: string, userId: string, alertId: string): Promise<void>;
   /** Tenant + inherited platform alert rules (§4.2 GET /alert-rules). */
   listAlertRules(orgId: string): Promise<AlertRuleView[]>;
   /** Override a rule: clones a platform default into an org-scoped row on first edit;

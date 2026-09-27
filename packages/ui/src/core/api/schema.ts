@@ -2667,6 +2667,23 @@ export interface paths {
         patch: operations["patchApiV1AlertrulesById"];
         trace?: never;
     };
+    "/api/v1/alerts/{id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark one alert read for the current actor (204) */
+        post: operations["postApiV1AlertsByIdRead"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/alerts/inbox": {
         parameters: {
             query?: never;
@@ -26804,6 +26821,28 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    postApiV1AlertsByIdRead: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     getApiV1AlertsInbox: {
         parameters: {
             query?: never;
@@ -26828,6 +26867,7 @@ export interface operations {
                             summary: string;
                             createdAt: string;
                             deliveryStatus: "delivered" | "partial" | "failed" | "pending";
+                            readAt: string | null;
                         }[];
                     };
                 };
@@ -52873,6 +52913,9 @@ export interface operations {
                 "application/json": {
                     recorderDiscipline: string;
                     verbalAttestation: string;
+                    readBackVerified: boolean;
+                    /** Format: date-time */
+                    effectiveAt: string;
                     /** Format: date-time */
                     receivedAt: string;
                     /** Format: uuid */

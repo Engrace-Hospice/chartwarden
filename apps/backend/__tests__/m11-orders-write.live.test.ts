@@ -224,6 +224,8 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
     const verbal = await svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
       recorderDiscipline: "rn_case_manager",
       verbalAttestation: ATTESTATION,
+      readBackVerified: true,
+      effectiveAt: new Date().toISOString(),
       receivedAt: new Date().toISOString(),
       orderingPhysicianMdmId: PHYSICIAN_MDM,
     });
@@ -346,6 +348,8 @@ describe.skipIf(!DB_URL)("M11 order write lifecycle — LIVE Postgres (M11L)", (
     await svc.recordVerbal(ORG_A, memberOf[ORG_A], draft.id, {
       recorderDiscipline: "rn_case_manager",
       verbalAttestation: ATTESTATION,
+      readBackVerified: true,
+      effectiveAt: new Date().toISOString(),
       receivedAt: new Date().toISOString(),
       orderingPhysicianMdmId: PHYSICIAN_MDM,
     });

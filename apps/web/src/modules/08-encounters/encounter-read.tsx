@@ -17,11 +17,24 @@ import {
 import { useCallback, useEffect, useState } from "react";
 import type { CSSProperties, JSX, ReactNode } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { ChartModuleRail, PatientChartBail } from "../../shell/chart-module-rail";
-import { COSIGN_TONE, ENCOUNTER_TONE, lateEntryTone, stateLabel } from "./encounter-status";
+import {
+  ChartModuleRail,
+  PatientChartBail,
+} from "../../shell/chart-module-rail";
+import {
+  COSIGN_TONE,
+  ENCOUNTER_TONE,
+  lateEntryTone,
+  stateLabel,
+} from "./encounter-status";
 import { authFailureRedirect } from "./write-workflow";
 
-type CeremonyMode = "sign" | "acknowledge" | "cosign-sign" | "supervisor-release" | null;
+type CeremonyMode =
+  | "sign"
+  | "acknowledge"
+  | "cosign-sign"
+  | "supervisor-release"
+  | null;
 
 const REASON_MIN = 40;
 
@@ -101,6 +114,14 @@ interface AssessmentRow {
   assessmentIdLabel?: string;
 }
 
+type EncounterSection =
+  | "documentation"
+  | "vitals"
+  | "carePlan"
+  | "assessments"
+  | "mileage"
+  | "global";
+
 function errorMessage(error: unknown, fallback: string): string {
   const body = error as {
     message?: string;
@@ -127,7 +148,9 @@ function errorMessage(error: unknown, fallback: string): string {
 
 type FieldErrors = Record<string, string>;
 
-function validationDetails(error: unknown): Array<{ field?: string; message?: string }> {
+function validationDetails(
+  error: unknown,
+): Array<{ field?: string; message?: string }> {
   const body = error as {
     details?: unknown;
     error?: {
@@ -229,7 +252,9 @@ function hasCarePlanLink(
  * Its only purpose is to tell the UI whether a section appears to contain
  * information so the visit workflow can orient the user.
  */
-function hasAnyValue(record: Record<string, unknown> | null | undefined): boolean {
+function hasAnyValue(
+  record: Record<string, unknown> | null | undefined,
+): boolean {
   if (!record) return false;
 
   return Object.values(record).some(
@@ -260,10 +285,15 @@ export function EncounterRead(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
 
   const [ceremony, setCeremony] = useState<CeremonyMode>(null);
-  const [utilityModal, setUtilityModal] = useState<"void" | "addendum" | "assessment" | null>(null);
+  const [utilityModal, setUtilityModal] = useState<
+    "void" | "addendum" | "assessment" | null
+  >(null);
 
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [sectionErrors, setSectionErrors] = useState<
+    Partial<Record<EncounterSection, string>>
+  >({});
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [reason, setReason] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
@@ -310,13 +340,16 @@ export function EncounterRead(): JSX.Element {
     setLoading(true);
     setError(null);
 
-    const { data, error: err } = await client.GET("/api/v1/encounters/{encounterId}", {
-      params: {
-        path: {
-          encounterId,
+    const { data, error: err } = await client.GET(
+      "/api/v1/encounters/{encounterId}",
+      {
+        params: {
+          path: {
+            encounterId,
+          },
         },
       },
-    });
+    );
 
     if (err || !data?.id) {
       setError("Could not load the encounter.");
@@ -506,6 +539,27 @@ export function EncounterRead(): JSX.Element {
     });
   }, []);
 
+  const clearSectionError = useCallback((section: EncounterSection) => {
+    setSectionErrors((current) => {
+      if (!current[section]) return current;
+
+      const next = { ...current };
+      delete next[section];
+
+      return next;
+    });
+  }, []);
+
+  const setSectionError = useCallback(
+    (section: EncounterSection, message: string) => {
+      setSectionErrors((current) => ({
+        ...current,
+        [section]: message,
+      }));
+    },
+    [],
+  );
+
   const clearFieldErrors = useCallback((fields: readonly string[]) => {
     if (fields.length === 0) return;
 
@@ -582,7 +636,10 @@ export function EncounterRead(): JSX.Element {
         ...(body ? { body } : {}),
       };
 
-      const { error: err, response } = (await client.POST(path as never, init as never)) as {
+      const { error: err, response } = (await client.POST(
+        path as never,
+        init as never,
+      )) as {
         error?: {
           message?: string;
           error?: {
@@ -598,7 +655,12 @@ export function EncounterRead(): JSX.Element {
         const errMessage = err?.error?.message ?? err?.message;
         const currentPath = `${window.location.pathname}${window.location.search}`;
 
-        const redirect = authFailureRedirect(response?.status, errCode, currentPath, errMessage);
+        const redirect = authFailureRedirect(
+          response?.status,
+          errCode,
+          currentPath,
+          errMessage,
+        );
 
         if (redirect) {
           navigate(redirect);
@@ -618,7 +680,9 @@ export function EncounterRead(): JSX.Element {
         if (response?.status === 412 && errCode === "STEP_UP_AUTH_REQUIRED") {
           setActionError("Your step-up expired — try again.");
         } else if (response?.status === 412) {
-          setActionError("This encounter changed since you opened it — reload to retry.");
+          setActionError(
+            "This encounter changed since you opened it — reload to retry.",
+          );
         } else if (response?.status === 403) {
           setActionError("You do not have permission for this action.");
         } else {
@@ -633,7 +697,15 @@ export function EncounterRead(): JSX.Element {
 
       void load();
     },
-    [encounterId, reason, client, navigate, closeCeremony, load, clearFieldError],
+    [
+      encounterId,
+      reason,
+      client,
+      navigate,
+      closeCeremony,
+      load,
+      clearFieldError,
+    ],
   );
 
   async function runMutation(
@@ -644,10 +716,14 @@ export function EncounterRead(): JSX.Element {
     }>,
     success: string,
     supportedFields: readonly string[] = [],
+    section?: EncounterSection,
   ): Promise<void> {
     setBusy(true);
     setActionError(null);
     setNotice(null);
+    if (section) {
+      clearSectionError(section);
+    }
     clearFieldErrors(supportedFields);
 
     const res = await action();
@@ -662,9 +738,17 @@ export function EncounterRead(): JSX.Element {
           ...current,
           ...mapped,
         }));
+
         setActionError(null);
       } else {
-        setActionError(errorMessage(res.error, "The encounter action could not be completed."));
+        const message = errorMessage(res.error, "The encounter action could not be completed.");
+
+        if (section) {
+          setSectionError(section, message);
+          setActionError(null);
+        } else {
+          setActionError(message);
+        }
       }
 
       return;
@@ -675,13 +759,18 @@ export function EncounterRead(): JSX.Element {
     setReason("");
     setNotice(success);
 
+    if (section) {
+      clearSectionError(section);
+    }
+
     await load();
   }
 
   async function saveVitals(): Promise<void> {
     if (!encounterId) return;
 
-    const n = (value: string): number | undefined => (value.trim() ? Number(value) : undefined);
+    const n = (value: string): number | undefined =>
+      value.trim() ? Number(value) : undefined;
 
     await runMutation(
       () =>
@@ -697,7 +786,9 @@ export function EncounterRead(): JSX.Element {
             heartRate: n(vitals.heartRate),
             respiratoryRate: n(vitals.respiratoryRate),
             temperature: vitals.temperature || undefined,
-            temperatureUnit: vitals.temperature ? vitals.temperatureUnit : undefined,
+            temperatureUnit: vitals.temperature
+              ? vitals.temperatureUnit
+              : undefined,
             spo2: n(vitals.spo2),
             painScore: n(vitals.painScore),
             painScale: vitals.painScore ? vitals.painScale : undefined,
@@ -715,13 +806,15 @@ export function EncounterRead(): JSX.Element {
         "painScore",
         "painScale",
       ],
+      "vitals",
     );
   }
 
   async function saveMileage(): Promise<void> {
     if (!encounterId) return;
 
-    const n = (value: string): number | undefined => (value.trim() ? Number(value) : undefined);
+    const n = (value: string): number | undefined =>
+      value.trim() ? Number(value) : undefined;
 
     await runMutation(
       () =>
@@ -741,6 +834,7 @@ export function EncounterRead(): JSX.Element {
         }),
       "Mileage saved.",
       ["odometerStart", "odometerEnd", "milesDriven", "source", "manualOverrideReason"],
+      "mileage",
     );
   }
 
@@ -923,7 +1017,9 @@ export function EncounterRead(): JSX.Element {
         setFieldErrors((current) => ({ ...current, ...mapped }));
         setActionError(null);
       } else {
-        setActionError(errorMessage(res.error, "Assessment could not be created."));
+        setActionError(
+          errorMessage(res.error, "Assessment could not be created."),
+        );
       }
 
       return;
@@ -959,7 +1055,11 @@ export function EncounterRead(): JSX.Element {
 
   if (loading) {
     return (
-      <PatientChartBail banner={bailBanner} patientId={patientId} current="encounters">
+      <PatientChartBail
+        banner={bailBanner}
+        patientId={patientId}
+        current="encounters"
+      >
         <LoadingSpinner />
       </PatientChartBail>
     );
@@ -967,7 +1067,11 @@ export function EncounterRead(): JSX.Element {
 
   if (error || !encounter) {
     return (
-      <PatientChartBail banner={bailBanner} patientId={patientId} current="encounters">
+      <PatientChartBail
+        banner={bailBanner}
+        patientId={patientId}
+        current="encounters"
+      >
         <EmptyState title="Unavailable" description={error ?? "Not found."} />
       </PatientChartBail>
     );
@@ -982,11 +1086,14 @@ export function EncounterRead(): JSX.Element {
   const canSign = e.status === "finalized";
 
   const canAcknowledge =
-    cosignStatus === "pending" || cosignStatus === "routed" || cosignStatus === "escalated";
+    cosignStatus === "pending" ||
+    cosignStatus === "routed" ||
+    cosignStatus === "escalated";
 
   const canCosignSign = cosignStatus === "acknowledged";
 
-  const canSupervisorRelease = cosignStatus === "escalated" || cosignStatus === "hard_cap_reached";
+  const canSupervisorRelease =
+    cosignStatus === "escalated" || cosignStatus === "hard_cap_reached";
 
   /*
    * UX progress.
@@ -994,7 +1101,7 @@ export function EncounterRead(): JSX.Element {
    * This does NOT mean that all five sections are mandatory.
    * It is not sent to the backend and does not gate Finalize.
    */
-  const documentationStarted = noteText.trim().length > 0 || Boolean(e.finalDocumentation);
+  const documentationStarted = noteText.trim().length > 0;
 
   const vitalsStarted =
     hasAnyValue(e.vitals) ||
@@ -1042,17 +1149,20 @@ export function EncounterRead(): JSX.Element {
       label: "Assessments",
       started: assessmentsStarted,
     },
-    {
-      key: "mileage",
-      label: "Mileage",
-      started: mileageStarted,
-    },
+    // {
+    //   key: "mileage",
+    //   label: "Mileage",
+    //   started: mileageStarted,
+    // },
   ] as const;
 
-  const startedSections = workflowSections.filter((section) => section.started).length;
+  const startedSections = workflowSections.filter(
+    (section) => section.started,
+  ).length;
 
   const nextSuggestedSection =
-    workflowSections.find((section) => !section.started)?.label ?? "Review & finalize";
+    workflowSections.find((section) => !section.started)?.label ??
+    "Review & finalize";
 
   const banner = patient ? (
     <PatientBanner
@@ -1099,94 +1209,106 @@ export function EncounterRead(): JSX.Element {
       <div style={workspace}>
         <div style={workspaceBody}>
           <ChartModuleRail patientId={e.patientId} current="encounters" />
-
-          {/* ─────────────────────────────────────────────────────────────
+          <div style={encounterContent}>
+            {/* ─────────────────────────────────────────────────────────────
               MAIN VISIT DOCUMENTATION
           ────────────────────────────────────────────────────────────── */}
-          <main style={mainColumn}>
-            <header style={encounterHeader}>
-              <div>
-                <div style={titleLine}>
-                  <h1 style={pageTitle}>{stateLabel(e.encounterType)}</h1>
+            <main style={mainColumn}>
+              <header style={encounterHeader}>
+                <div>
+                  <div style={titleLine}>
+                    <h1 style={pageTitle}>{stateLabel(e.encounterType)}</h1>
 
-                  <StatusPill
-                    label={stateLabel(e.status)}
-                    tone={ENCOUNTER_TONE[e.status] ?? "neutral"}
-                  />
+                    <StatusPill
+                      label={stateLabel(e.status)}
+                      tone={ENCOUNTER_TONE[e.status] ?? "neutral"}
+                    />
+                  </div>
+
+                  <p style={meta}>
+                    {stateLabel(e.discipline)} ·{" "}
+                    <span className="tabular-nums">{e.serviceDate}</span>
+                    {e.isF2f ? " · F2F" : ""} · v{e.version}
+                  </p>
                 </div>
+              </header>
 
-                <p style={meta}>
-                  {stateLabel(e.discipline)} · <span className="tabular-nums">{e.serviceDate}</span>
-                  {e.isF2f ? " · F2F" : ""} · v{e.version}
-                </p>
-              </div>
-            </header>
-
-            {/* ───────────────────────────────────────────────────────
+              {/* ───────────────────────────────────────────────────────
                 PRIMARY UX GUIDANCE
             ──────────────────────────────────────────────────────── */}
 
-            {e.status === "draft" ? (
-              <section style={workflowCard}>
-                <div style={workflowCardTop}>
-                  <div>
-                    <span style={eyebrow}>VISIT WORKFLOW</span>
+              {e.status === "draft" ? (
+                <section style={workflowCard}>
+                  <div style={workflowCardTop}>
+                    <div>
+                      <span style={eyebrow}>VISIT WORKFLOW</span>
 
-                    <h2 style={workflowTitle}>Complete the visit note</h2>
+                      <h2 style={workflowTitle}>Complete the visit note</h2>
 
-                    <p style={workflowHint}>
-                      Suggested next:{" "}
-                      <strong
-                        style={{
-                          color: t.onSurface,
-                        }}
-                      >
-                        {nextSuggestedSection}
-                      </strong>
-                    </p>
+                      <p style={workflowHint}>
+                        Suggested next:{" "}
+                        <strong
+                          style={{
+                            color: t.onSurface,
+                          }}
+                        >
+                          {nextSuggestedSection}
+                        </strong>
+                      </p>
+                    </div>
+
+                    <span style={workflowCount}>
+                      {startedSections}/{workflowSections.length} sections
+                      started
+                    </span>
                   </div>
 
-                  <span style={workflowCount}>
-                    {startedSections}/{workflowSections.length} sections started
-                  </span>
+                  <div
+                    style={workflowSteps}
+                    aria-label="Visit documentation progress"
+                  >
+                    {workflowSections.map((section, index) => (
+                      <div key={section.key} style={workflowStep}>
+                        <span
+                          style={
+                            section.started ? workflowDotDone : workflowDot
+                          }
+                        >
+                          {section.started ? "✓" : index + 1}
+                        </span>
+
+                        <span
+                          style={{
+                            color: section.started
+                              ? t.onSurface
+                              : t.onSurfaceVariant,
+                            fontWeight: section.started ? 650 : 500,
+                          }}
+                        >
+                          {section.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <p style={workflowDisclaimer}>
+                    This guide helps with navigation only. Existing backend
+                    rules remain the source of truth for finalization,
+                    signatures, cosignature and compliance.
+                  </p>
+                </section>
+              ) : null}
+
+              {notice ? <div style={noticeStyle}>{notice}</div> : null}
+
+              {actionError ? (
+                <div role="alert" aria-live="assertive" style={pageAlertStyle}>
+                  <Glyph name="alert" size={16} />
+                  <span>{actionError}</span>
                 </div>
+              ) : null}
 
-                <div style={workflowSteps} aria-label="Visit documentation progress">
-                  {workflowSections.map((section, index) => (
-                    <div key={section.key} style={workflowStep}>
-                      <span style={section.started ? workflowDotDone : workflowDot}>
-                        {section.started ? "✓" : index + 1}
-                      </span>
-
-                      <span
-                        style={{
-                          color: section.started ? t.onSurface : t.onSurfaceVariant,
-                          fontWeight: section.started ? 650 : 500,
-                        }}
-                      >
-                        {section.label}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-
-                <p style={workflowDisclaimer}>
-                  This guide helps with navigation only. Existing backend rules remain the source of
-                  truth for finalization, signatures, cosignature and compliance.
-                </p>
-              </section>
-            ) : null}
-
-            {notice ? <div style={noticeStyle}>{notice}</div> : null}
-
-            {actionError ? (
-              <div role="alert" aria-live="assertive" style={pageAlertStyle}>
-                <Glyph name="alert" size={16} />
-                <span>{actionError}</span>
-              </div>
-            ) : null}
-
-            {/* ───────────────────────────────────────────────────────
+              {/* ───────────────────────────────────────────────────────
                 1. DOCUMENTATION
             ──────────────────────────────────────────────────────── */}
 
@@ -1232,31 +1354,42 @@ export function EncounterRead(): JSX.Element {
               )}
             </section>
 
-            {/* ───────────────────────────────────────────────────────
+              {/* ───────────────────────────────────────────────────────
                 2. VITALS
             ──────────────────────────────────────────────────────── */}
 
-            <section style={sectionCard}>
-              <div style={sectionHeader}>
-                <SectionHeading
-                  step="2"
-                  eyebrowText="OBSERVATIONS"
-                  title="Vitals"
-                  description="Capture measurements collected during the visit."
-                  complete={vitalsStarted}
-                />
+              <section style={sectionCard}>
+                <div style={sectionHeader}>
+                  <SectionHeading
+                    step="2"
+                    eyebrowText="OBSERVATIONS"
+                    title="Vitals"
+                    description="Capture measurements collected during the visit."
+                    complete={vitalsStarted}
+                  />
 
-                {e.status === "draft" ? (
-                  <button
-                    type="button"
-                    onClick={() => void saveVitals()}
-                    disabled={busy}
-                    style={secondaryBtn}
+                  {e.status === "draft" ? (
+                    <button
+                      type="button"
+                      onClick={() => void saveVitals()}
+                      disabled={busy}
+                      style={secondaryBtn}
+                    >
+                      Save vitals
+                    </button>
+                  ) : null}
+                </div>
+
+                {sectionErrors.vitals ? (
+                  <div
+                    role="alert"
+                    aria-live="assertive"
+                    style={pageAlertStyle}
                   >
-                    Save vitals
-                  </button>
+                    <Glyph name="alert" size={16} />
+                    <span>{sectionErrors.vitals}</span>
+                  </div>
                 ) : null}
-              </div>
 
               <div style={vitalsGrid}>
                 <Input
@@ -1362,519 +1495,597 @@ export function EncounterRead(): JSX.Element {
                 3. CARE PLAN
             ──────────────────────────────────────────────────────── */}
 
-            <section style={sectionCard}>
-              <div style={sectionHeader}>
-                <SectionHeading
-                  step="3"
-                  eyebrowText="PLAN OF CARE"
-                  title="Care Plan"
-                  description="Link only the problems, goals and interventions addressed during this encounter."
-                  complete={carePlanStarted}
-                />
+              <section style={sectionCard}>
+                <div style={sectionHeader}>
+                  <SectionHeading
+                    step="3"
+                    eyebrowText="PLAN OF CARE"
+                    title="Care Plan"
+                    description="Link only the problems, goals and interventions addressed during this encounter."
+                    complete={carePlanStarted}
+                  />
 
-                {carePlan?.redacted ? (
-                  <span style={restrictedBadge}>
-                    <Glyph name="lock" size={13} />
-                    Restricted content omitted
+                  {carePlan?.redacted ? (
+                    <span style={restrictedBadge}>
+                      <Glyph name="lock" size={13} />
+                      Restricted content omitted
+                    </span>
+                  ) : null}
+
+                  {/* {e.status === "draft" && !carePlan ? (
+                    <button
+                      type="button"
+                      onClick={() => void createCarePlanFromEncounter()}
+                      disabled={busy}
+                      style={secondaryBtn}
+                    >
+                      Create care plan
+                    </button>
+                  ) : null} */}
+                </div>
+
+                <div style={sectionExplanation}>
+                  <Glyph name="info" size={15} />
+
+                  <span>
+                    These links document what part of the active Care Plan was
+                    addressed during this visit. If the patient does not have a
+                    Care Plan yet, create it from this encounter using the
+                    current patient and admission context.
                   </span>
-                ) : null}
+                </div>
 
-                {e.status === "draft" && !carePlan ? (
-                  <button
-                    type="button"
-                    onClick={() => void createCarePlanFromEncounter()}
-                    disabled={busy}
-                    style={secondaryBtn}
-                  >
-                    Create care plan
-                  </button>
-                ) : null}
-              </div>
+                <CarePlanPicker
+                  encounter={e}
+                  carePlan={carePlan}
+                  onSelect={(kind, id) => void addCarePlanLink(kind, id)}
+                  onCreate={() => void createCarePlanFromEncounter()}
+                  onOpen={() => navigate(`/patients/${e.patientId}/care-plan`)}
+                  busy={busy || e.status !== "draft"}
+                />
+              </section>
 
-              <div style={sectionExplanation}>
-                <Glyph name="info" size={15} />
-
-                <span>
-                  These links document what part of the active Care Plan was addressed during this
-                  visit. If the patient does not have a Care Plan yet, create it from this encounter
-                  using the current patient and admission context.
-                </span>
-              </div>
-
-              <CarePlanPicker
-                encounter={e}
-                carePlan={carePlan}
-                onSelect={(kind, id) => void addCarePlanLink(kind, id)}
-                busy={busy || e.status !== "draft"}
-              />
-            </section>
-
-            {/* ───────────────────────────────────────────────────────
+              {/* ───────────────────────────────────────────────────────
                 4. ASSESSMENTS
             ──────────────────────────────────────────────────────── */}
 
-            <section style={sectionCard}>
-              <div style={sectionHeader}>
-                <SectionHeading
-                  step="4"
-                  eyebrowText="ASSESSMENTS"
-                  title="Assessments"
-                  description="Review assessments linked to this encounter or launch one when clinically appropriate."
-                  complete={assessmentsStarted}
-                />
+              <section style={sectionCard}>
+                <div style={sectionHeader}>
+                  <SectionHeading
+                    step="4"
+                    eyebrowText="ASSESSMENTS"
+                    title="Assessments"
+                    description="Review assessments linked to this encounter or launch one when clinically appropriate."
+                    complete={assessmentsStarted}
+                  />
 
-                {e.status === "draft" ? (
-                  <button
-                    type="button"
-                    onClick={() => setUtilityModal("assessment")}
-                    style={secondaryBtn}
-                  >
-                    New assessment
-                  </button>
-                ) : null}
-              </div>
-
-              <div style={assessmentPanel}>
-                <div>
-                  <div style={subsectionHeader}>
-                    <div>
-                      <span style={subsectionTitle}>Encounter assessments</span>
-
-                      <p style={subsectionHelp}>Assessments linked directly to this encounter.</p>
-                    </div>
-
+                  {e.status === "draft" ? (
                     <button
                       type="button"
-                      onClick={() => navigate(`/patients/${e.patientId}/assessments`)}
-                      style={textBtn}
+                      onClick={() => setUtilityModal("assessment")}
+                      style={secondaryBtn}
                     >
-                      View M9 timeline
+                      New assessment
                     </button>
-                  </div>
-
-                  <LinkedRows
-                    rows={assessments}
-                    empty="No M9 assessments are linked to this encounter."
-                  />
+                  ) : null}
                 </div>
 
-                <div style={divider} />
+                <div style={assessmentPanel}>
+                  <div>
+                    <div style={subsectionHeader}>
+                      <div>
+                        <span style={subsectionTitle}>
+                          Encounter assessments
+                        </span>
 
-                <div>
-                  <div style={subsectionHeader}>
-                    <div>
-                      <span style={subsectionTitle}>HOPE context</span>
+                        <p style={subsectionHelp}>
+                          Assessments linked directly to this encounter.
+                        </p>
+                      </div>
 
-                      <p style={subsectionHelp}>Recent HOPE records visible for this patient.</p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate(`/patients/${e.patientId}/assessments`)
+                        }
+                        style={textBtn}
+                      >
+                        View M9 timeline
+                      </button>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => navigate(`/patients/${e.patientId}/hope`)}
-                      style={textBtn}
-                    >
-                      View HOPE timeline
-                    </button>
+                    <LinkedRows
+                      rows={assessments}
+                      empty="No M9 assessments are linked to this encounter."
+                    />
                   </div>
 
-                  <LinkedRows
-                    rows={hopeAssessments.slice(0, 3)}
-                    empty="No HOPE records are visible for this patient."
-                  />
-                </div>
-              </div>
-            </section>
+                  <div style={divider} />
 
-            {/* ───────────────────────────────────────────────────────
+                  <div>
+                    <div style={subsectionHeader}>
+                      <div>
+                        <span style={subsectionTitle}>HOPE context</span>
+
+                        <p style={subsectionHelp}>
+                          Recent HOPE records visible for this patient.
+                        </p>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate(`/patients/${e.patientId}/hope`)
+                        }
+                        style={textBtn}
+                      >
+                        View HOPE timeline
+                      </button>
+                    </div>
+
+                    <LinkedRows
+                      rows={hopeAssessments.slice(0, 3)}
+                      empty="No HOPE records are visible for this patient."
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {/* ───────────────────────────────────────────────────────
                 5. MILEAGE
             ──────────────────────────────────────────────────────── */}
 
-            <section
-              style={{
-                ...sectionCard,
-                marginBottom: "1.5rem",
-              }}
-            >
-              <div style={sectionHeader}>
-                <SectionHeading
-                  step="5"
-                  eyebrowText="VISIT LOGISTICS"
-                  title="Mileage"
-                  description="Record travel information associated with this visit."
-                  complete={mileageStarted}
-                />
-
-                {e.status === "draft" ? (
-                  <button
-                    type="button"
-                    onClick={() => void saveMileage()}
-                    disabled={busy}
-                    style={secondaryBtn}
-                  >
-                    Save mileage
-                  </button>
+              <section
+                style={{
+                  ...sectionCard,
+                  marginBottom: "1.5rem",
+                }}
+              >
+                {sectionErrors.mileage ? (
+                  <div role="alert" aria-live="assertive" style={pageAlertStyle}>
+                    <Glyph name="alert" size={16} />
+                    <span>{sectionErrors.mileage}</span>
+                  </div>
                 ) : null}
-              </div>
-
-              <div style={mileageGrid}>
-                <Input
-                  label="Odometer start"
-                  value={mileage.odometerStart}
-                  onChange={(value) => {
-                    setMileage((current) => ({
-                      ...current,
-                      odometerStart: value,
-                    }));
-                    clearFieldError("odometerStart");
-                  }}
-                  error={fieldErrors.odometerStart}
-                />
-
-                <Input
-                  label="Odometer end"
-                  value={mileage.odometerEnd}
-                  onChange={(value) => {
-                    setMileage((current) => ({
-                      ...current,
-                      odometerEnd: value,
-                    }));
-                    clearFieldError("odometerEnd");
-                  }}
-                  error={fieldErrors.odometerEnd}
-                />
-
-                <Input
-                  label="Miles driven"
-                  value={mileage.milesDriven}
-                  onChange={(value) => {
-                    setMileage((current) => ({
-                      ...current,
-                      milesDriven: value,
-                    }));
-                    clearFieldError("milesDriven");
-                  }}
-                  error={fieldErrors.milesDriven}
-                />
-
-                <label style={fieldStyle}>
-                  <span style={fieldLabelStyle}>Source</span>
-
-                  <select
-                    value={mileage.source}
-                    onChange={(event) => {
-                      setMileage((current) => ({
-                        ...current,
-                        source: event.target.value,
-                      }));
-                      clearFieldError("source");
-                    }}
-                    style={{
-                      ...inputStyle,
-                      ...(fieldErrors.source ? fieldControlErrorStyle : null),
-                    }}
-                    aria-invalid={Boolean(fieldErrors.source)}
-                  >
-                    <option value="odometer">Odometer</option>
-
-                    <option value="route_calc">Route calculation</option>
-
-                    <option value="manual_override">Manual override</option>
-                  </select>
-                  <FieldError message={fieldErrors.source} />
-                </label>
-              </div>
-
-              {mileage.source === "manual_override" ? (
-                <label
-                  style={{
-                    ...fieldStyle,
-                    marginTop: "0.875rem",
-                  }}
-                >
-                  <span style={fieldLabelStyle}>Override reason</span>
-
-                  <textarea
-                    value={mileage.manualOverrideReason}
-                    onChange={(event) => {
-                      setMileage((current) => ({
-                        ...current,
-                        manualOverrideReason: event.target.value,
-                      }));
-                      clearFieldError("manualOverrideReason");
-                    }}
-                    rows={3}
-                    placeholder="Explain why mileage is being entered manually..."
-                    style={{
-                      ...textareaStyle,
-                      ...(fieldErrors.manualOverrideReason ? fieldControlErrorStyle : null),
-                    }}
-                    aria-invalid={Boolean(fieldErrors.manualOverrideReason)}
+                <div style={sectionHeader}>
+                  <SectionHeading
+                    step="5"
+                    eyebrowText="VISIT LOGISTICS"
+                    title="Mileage"
+                    description="Record travel information associated with this visit."
+                    complete={mileageStarted}
                   />
-                  <FieldError message={fieldErrors.manualOverrideReason} />
-                </label>
-              ) : null}
-            </section>
-          </main>
 
-          {/* ─────────────────────────────────────────────────────────
+                  {e.status === "draft" ? (
+                    <button
+                      type="button"
+                      onClick={() => void saveMileage()}
+                      disabled={busy}
+                      style={secondaryBtn}
+                    >
+                      Save mileage
+                    </button>
+                  ) : null}
+                </div>
+
+                <div style={mileageGrid}>
+                  <Input
+                    label="Odometer start"
+                    value={mileage.odometerStart}
+                    onChange={(value) => {
+                      setMileage((current) => ({
+                        ...current,
+                        odometerStart: value,
+                      }));
+                      clearFieldError("odometerStart");
+                    }}
+                    error={fieldErrors.odometerStart}
+                  />
+
+                  <Input
+                    label="Odometer end"
+                    value={mileage.odometerEnd}
+                    onChange={(value) => {
+                      setMileage((current) => ({
+                        ...current,
+                        odometerEnd: value,
+                      }));
+                      clearFieldError("odometerEnd");
+                    }}
+                    error={fieldErrors.odometerEnd}
+                  />
+
+                  <Input
+                    label="Miles driven"
+                    value={mileage.milesDriven}
+                    onChange={(value) => {
+                      setMileage((current) => ({
+                        ...current,
+                        milesDriven: value,
+                      }));
+                      clearFieldError("milesDriven");
+                    }}
+                    error={fieldErrors.milesDriven}
+                  />
+
+                  <label style={fieldStyle}>
+                    <span style={fieldLabelStyle}>Source</span>
+
+                    <select
+                      value={mileage.source}
+                      onChange={(event) => {
+                        setMileage((current) => ({
+                          ...current,
+                          source: event.target.value,
+                        }));
+                        clearFieldError("source");
+                      }}
+                      style={{
+                        ...inputStyle,
+                        ...(fieldErrors.source ? fieldControlErrorStyle : null),
+                      }}
+                      aria-invalid={Boolean(fieldErrors.source)}
+                    >
+                      <option value="odometer">Odometer</option>
+
+                      <option value="route_calc">Route calculation</option>
+
+                      <option value="manual_override">Manual override</option>
+                    </select>
+                    <FieldError message={fieldErrors.source} />
+                  </label>
+                </div>
+
+                {mileage.source === "manual_override" ? (
+                  <label
+                    style={{
+                      ...fieldStyle,
+                      marginTop: "0.875rem",
+                    }}
+                  >
+                    <span style={fieldLabelStyle}>Override reason</span>
+
+                    <textarea
+                      value={mileage.manualOverrideReason}
+                      onChange={(event) => {
+                        setMileage((current) => ({
+                          ...current,
+                          manualOverrideReason: event.target.value,
+                        }));
+                        clearFieldError("manualOverrideReason");
+                      }}
+                      rows={3}
+                      placeholder="Explain why mileage is being entered manually..."
+                      style={{
+                        ...textareaStyle,
+                        ...(fieldErrors.manualOverrideReason
+                          ? fieldControlErrorStyle
+                          : null),
+                      }}
+                      aria-invalid={Boolean(fieldErrors.manualOverrideReason)}
+                    />
+                    <FieldError message={fieldErrors.manualOverrideReason} />
+                  </label>
+                ) : null}
+              </section>
+            </main>
+
+            {/* ─────────────────────────────────────────────────────────
               RIGHT CONTEXT RAIL
           ────────────────────────────────────────────────────────── */}
 
-          <aside style={rightRail}>
-            <div style={railCard}>
-              <div style={railHeading}>
-                <div style={railIconBox}>
-                  <Glyph name="shield" size={16} />
+            <aside style={rightRail}>
+              {/* ─────────────────────────────────────────────────────────
+      QUICK ACTIONS
+  ────────────────────────────────────────────────────────── */}
+              <div style={quickActionsCard}>
+                <div style={railHeading}>
+                  <div style={railIconBox}>
+                    <Glyph name="arrow-right" size={16} />
+                  </div>
+
+                  <div>
+                    <h2 style={railTitle}>Quick actions</h2>
+                    <p style={railDescription}>Encounter workflow</p>
+                  </div>
                 </div>
 
-                <div>
-                  <h2 style={railTitle}>Sign-off</h2>
+                <div style={quickActionContext}>
+                  {cosignStatus && !e.cosignedAt ? (
+                    <>
+                      <span style={guardChip}>
+                        <Glyph name="lock" size={14} />
+                        Co-signature pending
+                      </span>
 
-                  <p style={railDescription}>Signature and review status</p>
-                </div>
-              </div>
+                      <span style={quickActionHelp}>
+                        Complete the appropriate cosignature action to continue
+                        the workflow.
+                      </span>
+                    </>
+                  ) : e.status === "draft" ? (
+                    <>
+                      <strong style={quickActionTitle}>Draft visit</strong>
 
-              <dl style={lifeGrid}>
-                <dt style={dt}>Encounter</dt>
+                      <span style={quickActionHelp}>
+                        Complete the visit documentation, then finalize when
+                        ready.
+                      </span>
+                    </>
+                  ) : e.status === "finalized" ? (
+                    <>
+                      <strong style={quickActionTitle}>
+                        Ready for signature
+                      </strong>
 
-                <dd style={dd}>
-                  <StatusPill
-                    label={stateLabel(e.status)}
-                    tone={ENCOUNTER_TONE[e.status] ?? "neutral"}
-                  />
-                </dd>
-
-                <dt style={dt}>Cosignature</dt>
-
-                <dd style={dd}>
-                  {cosignStatus ? (
-                    <StatusPill
-                      label={stateLabel(cosignStatus)}
-                      tone={COSIGN_TONE[cosignStatus] ?? "neutral"}
-                    />
+                      <span style={quickActionHelp}>
+                        The encounter has been finalized and can now be signed.
+                      </span>
+                    </>
                   ) : (
-                    <span style={mutedValue}>No request</span>
+                    <>
+                      <strong style={quickActionTitle}>
+                        {stateLabel(e.status)}
+                      </strong>
+
+                      <span style={quickActionHelp}>
+                        Encounter workflow status
+                      </span>
+                    </>
                   )}
-                </dd>
-
-                <dt style={dt}>Late-entry</dt>
-
-                <dd style={dd}>
-                  <StatusPill
-                    label={stateLabel(e.lateEntryTier)}
-                    tone={lateEntryTone(e.lateEntryTier)}
-                  />
-                </dd>
-
-                {e.signedAt ? (
-                  <>
-                    <dt style={dt}>Signed</dt>
-
-                    <dd style={dd} className="tabular-nums">
-                      {e.signedAt.slice(0, 16).replace("T", " ")}
-                    </dd>
-                  </>
-                ) : null}
-
-                {e.cosignedAt ? (
-                  <>
-                    <dt style={dt}>Cosigned</dt>
-
-                    <dd style={dd} className="tabular-nums">
-                      {e.cosignedAt.slice(0, 16).replace("T", " ")}
-                    </dd>
-                  </>
-                ) : null}
-              </dl>
-
-              {cosignStatus && !e.cosignedAt ? (
-                <div style={railWarningBox}>
-                  <Glyph name="lock" size={14} />
-
-                  <span>Co-signature is still pending.</span>
-                </div>
-              ) : null}
-            </div>
-
-            <div style={railCard}>
-              <div style={railHeading}>
-                <div style={railIconBox}>
-                  <Glyph name="calendar" size={16} />
                 </div>
 
-                <div>
-                  <h2 style={railTitle}>Visit</h2>
+                <div style={quickActionButtons}>
+                  {canSupervisorRelease ? (
+                    <button
+                      type="button"
+                      onClick={() => setCeremony("supervisor-release")}
+                      style={{
+                        ...secondaryBtn,
+                        width: "100%",
+                      }}
+                    >
+                      Supervisor release
+                    </button>
+                  ) : null}
 
-                  <p style={railDescription}>Scheduling and EVV context</p>
-                </div>
-              </div>
+                  {canAcknowledge ? (
+                    <button
+                      type="button"
+                      onClick={() => setCeremony("acknowledge")}
+                      style={{
+                        ...secondaryBtn,
+                        width: "100%",
+                      }}
+                    >
+                      Acknowledge cosignature
+                    </button>
+                  ) : null}
 
-              <dl style={lifeGrid}>
-                <dt style={dt}>Source</dt>
+                  {canCosignSign ? (
+                    <button
+                      type="button"
+                      onClick={() => setCeremony("cosign-sign")}
+                      style={{
+                        ...primaryBtn,
+                        width: "100%",
+                      }}
+                    >
+                      Sign cosignature
+                    </button>
+                  ) : null}
 
-                <dd style={dd}>{e.visitId ? "Scheduled visit" : "PRN / unscheduled"}</dd>
+                  {canSign ? (
+                    <button
+                      type="button"
+                      onClick={() => setCeremony("sign")}
+                      style={{
+                        ...primaryBtn,
+                        width: "100%",
+                      }}
+                    >
+                      Sign encounter
+                    </button>
+                  ) : null}
 
-                <dt style={dt}>Service date</dt>
-
-                <dd style={dd} className="tabular-nums">
-                  {e.serviceDate}
-                </dd>
-
-                {e.visitId ? (
-                  <>
-                    <dt style={dt}>Linked visit</dt>
-
-                    <dd style={dd}>
+                  {e.status === "draft" ? (
+                    <>
                       <button
                         type="button"
-                        onClick={() => navigate(`/scheduling/visits/${e.visitId}`)}
-                        style={linkBtn}
+                        onClick={() => void finalizeEncounter()}
+                        disabled={busy}
+                        style={{
+                          ...primaryBtn,
+                          width: "100%",
+                        }}
                       >
-                        Open visit
+                        {busy ? "Working…" : "Review & finalize"}
                       </button>
-                    </dd>
-                  </>
+
+                      <button
+                        type="button"
+                        onClick={() => setUtilityModal("void")}
+                        style={{
+                          ...dangerGhostBtn,
+                          width: "100%",
+                        }}
+                      >
+                        Void draft
+                      </button>
+                    </>
+                  ) : null}
+
+                  {e.status === "signed" || e.status === "cosigned" ? (
+                    <button
+                      type="button"
+                      onClick={() => setUtilityModal("addendum")}
+                      style={{
+                        ...secondaryBtn,
+                        width: "100%",
+                      }}
+                    >
+                      Add addendum
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* ─────────────────────────────────────────────────────────
+      SIGN-OFF
+  ────────────────────────────────────────────────────────── */}
+              <div style={railCard}>
+                <div style={railHeading}>
+                  <div style={railIconBox}>
+                    <Glyph name="shield" size={16} />
+                  </div>
+
+                  <div>
+                    <h2 style={railTitle}>Sign-off</h2>
+                    <p style={railDescription}>Signature and review status</p>
+                  </div>
+                </div>
+
+                <dl style={lifeGrid}>
+                  <dt style={dt}>Encounter</dt>
+
+                  <dd style={dd}>
+                    <StatusPill
+                      label={stateLabel(e.status)}
+                      tone={ENCOUNTER_TONE[e.status] ?? "neutral"}
+                    />
+                  </dd>
+
+                  <dt style={dt}>Cosignature</dt>
+
+                  <dd style={dd}>
+                    {cosignStatus ? (
+                      <StatusPill
+                        label={stateLabel(cosignStatus)}
+                        tone={COSIGN_TONE[cosignStatus] ?? "neutral"}
+                      />
+                    ) : (
+                      <span style={mutedValue}>No request</span>
+                    )}
+                  </dd>
+
+                  <dt style={dt}>Late-entry</dt>
+
+                  <dd style={dd}>
+                    <StatusPill
+                      label={stateLabel(e.lateEntryTier)}
+                      tone={lateEntryTone(e.lateEntryTier)}
+                    />
+                  </dd>
+
+                  {e.signedAt ? (
+                    <>
+                      <dt style={dt}>Signed</dt>
+
+                      <dd style={dd} className="tabular-nums">
+                        {e.signedAt.slice(0, 16).replace("T", " ")}
+                      </dd>
+                    </>
+                  ) : null}
+
+                  {e.cosignedAt ? (
+                    <>
+                      <dt style={dt}>Cosigned</dt>
+
+                      <dd style={dd} className="tabular-nums">
+                        {e.cosignedAt.slice(0, 16).replace("T", " ")}
+                      </dd>
+                    </>
+                  ) : null}
+                </dl>
+
+                {cosignStatus && !e.cosignedAt ? (
+                  <div style={railWarningBox}>
+                    <Glyph name="lock" size={14} />
+                    <span>Co-signature is still pending.</span>
+                  </div>
                 ) : null}
-              </dl>
-            </div>
-
-            <div style={railCard}>
-              <div style={railHeading}>
-                <div style={railIconBox}>
-                  <Glyph name="arrow-right" size={16} />
-                </div>
-
-                <div>
-                  <h2 style={railTitle}>Navigation</h2>
-
-                  <p style={railDescription}>Secondary actions</p>
-                </div>
               </div>
 
-              <div style={navigationActions}>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/patients/${e.patientId}`)}
-                  style={railActionBtn}
-                >
-                  Back to patient chart
-                </button>
+              <div style={railCard}>
+                <div style={railHeading}>
+                  <div style={railIconBox}>
+                    <Glyph name="calendar" size={16} />
+                  </div>
 
-                <button
-                  type="button"
-                  onClick={() => navigate("/work/cosignatures")}
-                  style={railActionBtn}
-                >
-                  Open cosignature queue
-                </button>
+                  <div>
+                    <h2 style={railTitle}>Visit</h2>
+
+                    <p style={railDescription}>Scheduling and EVV context</p>
+                  </div>
+                </div>
+
+                <dl style={lifeGrid}>
+                  <dt style={dt}>Source</dt>
+
+                  <dd style={dd}>
+                    {e.visitId ? "Scheduled visit" : "PRN / unscheduled"}
+                  </dd>
+
+                  <dt style={dt}>Service date</dt>
+
+                  <dd style={dd} className="tabular-nums">
+                    {e.serviceDate}
+                  </dd>
+
+                  {e.visitId ? (
+                    <>
+                      <dt style={dt}>Linked visit</dt>
+
+                      <dd style={dd}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            navigate(`/scheduling/visits/${e.visitId}`)
+                          }
+                          style={linkBtn}
+                        >
+                          Open visit
+                        </button>
+                      </dd>
+                    </>
+                  ) : null}
+                </dl>
               </div>
-            </div>
-          </aside>
+
+              <div style={railCard}>
+                <div style={railHeading}>
+                  <div style={railIconBox}>
+                    <Glyph name="arrow-right" size={16} />
+                  </div>
+
+                  <div>
+                    <h2 style={railTitle}>Navigation</h2>
+
+                    <p style={railDescription}>Secondary actions</p>
+                  </div>
+                </div>
+
+                <div style={navigationActions}>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/patients/${e.patientId}`)}
+                    style={railActionBtn}
+                  >
+                    Back to patient chart
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => navigate("/work/cosignatures")}
+                    style={railActionBtn}
+                  >
+                    Open cosignature queue
+                  </button>
+                </div>
+              </div>
+            </aside>
+          </div>
         </div>
-
-        {/* ───────────────────────────────────────────────────────────
-            CONTEXTUAL STICKY FOOTER
-        ──────────────────────────────────────────────────────────── */}
-
-        <footer style={footer}>
-          <div style={footerContext}>
-            {cosignStatus && !e.cosignedAt ? (
-              <>
-                <span style={guardChip}>
-                  <Glyph name="lock" size={14} />
-                  Co-signature pending
-                </span>
-
-                <span style={footerHelp}>
-                  Complete the appropriate cosignature action to continue the workflow.
-                </span>
-              </>
-            ) : e.status === "draft" ? (
-              <>
-                <strong style={footerContextTitle}>Draft visit</strong>
-
-                <span style={footerHelp}>
-                  Complete the visit documentation, then finalize when ready.
-                </span>
-              </>
-            ) : e.status === "finalized" ? (
-              <>
-                <strong style={footerContextTitle}>Ready for signature</strong>
-
-                <span style={footerHelp}>
-                  The encounter has been finalized and can now be signed.
-                </span>
-              </>
-            ) : (
-              <>
-                <strong style={footerContextTitle}>{stateLabel(e.status)}</strong>
-
-                <span style={footerHelp}>Encounter workflow status</span>
-              </>
-            )}
-          </div>
-
-          <div style={footerActions}>
-            {canSupervisorRelease ? (
-              <button
-                type="button"
-                onClick={() => setCeremony("supervisor-release")}
-                style={secondaryBtn}
-              >
-                Supervisor release
-              </button>
-            ) : null}
-
-            {canAcknowledge ? (
-              <button type="button" onClick={() => setCeremony("acknowledge")} style={secondaryBtn}>
-                Acknowledge cosignature
-              </button>
-            ) : null}
-
-            {canCosignSign ? (
-              <button type="button" onClick={() => setCeremony("cosign-sign")} style={primaryBtn}>
-                Sign cosignature
-              </button>
-            ) : null}
-
-            {canSign ? (
-              <button type="button" onClick={() => setCeremony("sign")} style={primaryBtn}>
-                Sign encounter
-              </button>
-            ) : null}
-
-            {e.status === "draft" ? (
-              <>
-                <button
-                  type="button"
-                  onClick={() => setUtilityModal("void")}
-                  style={dangerGhostBtn}
-                >
-                  Void draft
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => void finalizeEncounter()}
-                  disabled={busy}
-                  style={primaryBtn}
-                >
-                  {busy ? "Working…" : "Review & finalize"}
-                </button>
-              </>
-            ) : null}
-
-            {e.status === "signed" || e.status === "cosigned" ? (
-              <button
-                type="button"
-                onClick={() => setUtilityModal("addendum")}
-                style={secondaryBtn}
-              >
-                Add addendum
-              </button>
-            ) : null}
-          </div>
-        </footer>
       </div>
 
       {/* ─────────────────────────────────────────────────────────────
@@ -1946,7 +2157,8 @@ export function EncounterRead(): JSX.Element {
                 color: t.onSurfaceVariant,
               }}
             >
-              Confirms you have opened this encounter for cosignature review. This does not sign it.
+              Confirms you have opened this encounter for cosignature review.
+              This does not sign it.
             </span>
 
             {actionError ? (
@@ -2067,7 +2279,10 @@ export function EncounterRead(): JSX.Element {
               id="supervisor-release-reason-count"
               style={{
                 fontSize: "0.7rem",
-                color: reason.trim().length >= REASON_MIN ? t.onSurfaceVariant : t.warning,
+                color:
+                  reason.trim().length >= REASON_MIN
+                    ? t.onSurfaceVariant
+                    : t.warning,
               }}
             >
               {reason.trim().length}/{REASON_MIN}
@@ -2095,7 +2310,9 @@ export function EncounterRead(): JSX.Element {
 
       <Modal
         open={
-          utilityModal === "void" || utilityModal === "addendum" || utilityModal === "assessment"
+          utilityModal === "void" ||
+          utilityModal === "addendum" ||
+          utilityModal === "assessment"
         }
         onClose={busy ? undefined : () => setUtilityModal(null)}
         ariaLabel="Encounter action"
@@ -2244,7 +2461,9 @@ function SectionHeading({
 }): JSX.Element {
   return (
     <div style={sectionHeading}>
-      <div style={complete ? sectionNumberComplete : sectionNumber}>{complete ? "✓" : step}</div>
+      <div style={complete ? sectionNumberComplete : sectionNumber}>
+        {complete ? "✓" : step}
+      </div>
 
       <div>
         <span style={eyebrow}>{eyebrowText}</span>
@@ -2300,30 +2519,75 @@ function CarePlanPicker({
   carePlan,
   busy,
   onSelect,
+  onCreate,
+  onOpen,
 }: {
   encounter: Encounter;
   carePlan: CarePlanRelevant | null;
   busy: boolean;
   onSelect: (kind: "problem" | "goal" | "intervention", id: string) => void;
+  onCreate: () => void;
+  onOpen: () => void;
 }): JSX.Element {
   if (!carePlan) {
     return (
-      <EmptySection
-        title="Care Plan unavailable"
-        description="Care Plan context could not be loaded for this encounter."
-      />
+      <div style={carePlanEmptyState}>
+        <div style={carePlanEmptyIcon}>
+          <Glyph name="clipboard-list" size={20} />
+        </div>
+
+        <div style={carePlanEmptyContent}>
+          <strong style={carePlanEmptyTitle}>No Care Plan yet</strong>
+
+          <span style={carePlanEmptyDescription}>
+            Create the patient's Care Plan before linking problems, goals, or
+            interventions to this visit.
+          </span>
+
+          {encounter.status === "draft" ? (
+            <button
+              type="button"
+              onClick={onCreate}
+              disabled={busy}
+              style={primaryBtn}
+            >
+              {busy ? "Creating…" : "Create Care Plan"}
+            </button>
+          ) : (
+            <button type="button" onClick={onOpen} style={secondaryBtn}>
+              Open Care Plan
+            </button>
+          )}
+        </div>
+      </div>
     );
   }
 
   const totalItems =
-    carePlan.problems.length + carePlan.goals.length + carePlan.interventions.length;
+    carePlan.problems.length +
+    carePlan.goals.length +
+    carePlan.interventions.length;
 
   if (totalItems === 0) {
     return (
-      <EmptySection
-        title="No active Care Plan items"
-        description="There are no relevant problems, goals or interventions available to link to this encounter."
-      />
+      <div style={carePlanEmptyState}>
+        <div style={carePlanEmptyIcon}>
+          <Glyph name="clipboard-list" size={20} />
+        </div>
+
+        <div style={carePlanEmptyContent}>
+          <strong style={carePlanEmptyTitle}>No active Care Plan items</strong>
+
+          <span style={carePlanEmptyDescription}>
+            The patient's Care Plan exists, but there are no active problems,
+            goals, or interventions available to link to this visit.
+          </span>
+
+          <button type="button" onClick={onOpen} style={secondaryBtn}>
+            Open Care Plan
+          </button>
+        </div>
+      </div>
     );
   }
 
@@ -2335,7 +2599,11 @@ function CarePlanPicker({
         rows={carePlan.problems.map((problem) => ({
           id: problem.problemId,
           label: problem.description,
-          checked: hasCarePlanLink(encounter.carePlanLinks, "problem", problem.problemId),
+          checked: hasCarePlanLink(
+            encounter.carePlanLinks,
+            "problem",
+            problem.problemId,
+          ),
         }))}
         disabled={busy}
         onSelect={(id) => onSelect("problem", id)}
@@ -2347,7 +2615,11 @@ function CarePlanPicker({
         rows={carePlan.goals.map((goal) => ({
           id: goal.goalId,
           label: goal.text,
-          checked: hasCarePlanLink(encounter.carePlanLinks, "goal", goal.goalId),
+          checked: hasCarePlanLink(
+            encounter.carePlanLinks,
+            "goal",
+            goal.goalId,
+          ),
         }))}
         disabled={busy}
         onSelect={(id) => onSelect("goal", id)}
@@ -2410,7 +2682,10 @@ function PickerGroup({
       ) : (
         <div style={pickerRows}>
           {rows.map((row) => (
-            <label key={row.id} style={row.checked ? checkboxLineChecked : checkboxLine}>
+            <label
+              key={row.id}
+              style={row.checked ? checkboxLineChecked : checkboxLine}
+            >
               <input
                 type="checkbox"
                 checked={row.checked}
@@ -2474,7 +2749,9 @@ function LinkedRows({
             </span>
 
             {row.capturedAt ? (
-              <span style={meta}>{row.capturedAt.slice(0, 16).replace("T", " ")}</span>
+              <span style={meta}>
+                {row.capturedAt.slice(0, 16).replace("T", " ")}
+              </span>
             ) : null}
           </div>
 
@@ -2546,11 +2823,7 @@ function RowField({
   );
 }
 
-function MonoChip({
-  children,
-}: {
-  children: ReactNode;
-}): JSX.Element {
+function MonoChip({ children }: { children: ReactNode }): JSX.Element {
   return <span style={monoChip}>{children}</span>;
 }
 
@@ -2561,20 +2834,30 @@ function MonoChip({
 const workspace: CSSProperties = {
   display: "flex",
   flexDirection: "column",
-  height: "100%",
-  minHeight: 0,
+  width: "100%",
+  minWidth: 0,
+  maxWidth: "100%",
 };
 
 const workspaceBody: CSSProperties = {
   display: "flex",
+  alignItems: "stretch",
+  width: "100%",
+  minWidth: 0,
+  maxWidth: "100%",
+};
+
+const encounterContent: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 20rem",
+  alignItems: "start",
   flex: 1,
-  minHeight: 0,
+  minWidth: 0,
 };
 
 const mainColumn: CSSProperties = {
   flex: 1,
   minWidth: 0,
-  overflow: "auto",
   padding: "1.5rem",
   background: t.surfaceLowest,
 };
@@ -2830,7 +3113,8 @@ const fieldErrorStyle: CSSProperties = {
 
 const fieldControlErrorStyle: CSSProperties = {
   borderColor: t.error,
-  boxShadow: "0 0 0 1px color-mix(in srgb, var(--color-error) 25%, transparent)",
+  boxShadow:
+    "0 0 0 1px color-mix(in srgb, var(--color-error) 25%, transparent)",
 };
 
 const inputWrapper: CSSProperties = {
@@ -3068,12 +3352,16 @@ const emptyDescription: CSSProperties = {
 ────────────────────────────────────────────────────────────────────────── */
 
 const rightRail: CSSProperties = {
-  width: "19rem",
-  flexShrink: 0,
-  overflow: "auto",
+  minWidth: 0,
+
+  position: "sticky",
+  top: "1rem",
+  alignSelf: "start",
+
   padding: "1.25rem",
   background: t.surfaceLow,
   borderLeft: ghostBorder,
+
   display: "flex",
   flexDirection: "column",
   gap: "0.9rem",
@@ -3117,6 +3405,37 @@ const railDescription: CSSProperties = {
   color: t.muted,
 };
 
+const quickActionsCard: CSSProperties = {
+  ...cardSurface,
+  padding: "1rem",
+  border: `1px solid ${t.outlineVariant}`,
+};
+
+const quickActionContext: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.3rem",
+  marginBottom: "0.9rem",
+};
+
+const quickActionTitle: CSSProperties = {
+  fontSize: "0.82rem",
+  fontWeight: 650,
+  color: t.onSurface,
+};
+
+const quickActionHelp: CSSProperties = {
+  fontSize: "0.72rem",
+  lineHeight: 1.45,
+  color: t.onSurfaceVariant,
+};
+
+const quickActionButtons: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.5rem",
+};
+
 const lifeGrid: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "auto 1fr",
@@ -3155,46 +3474,6 @@ const railWarningBox: CSSProperties = {
 const navigationActions: CSSProperties = {
   display: "grid",
   gap: "0.45rem",
-};
-
-/* ──────────────────────────────────────────────────────────────────────────
-   FOOTER
-────────────────────────────────────────────────────────────────────────── */
-
-const footer: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: "1rem",
-  padding: "0.8rem 1.25rem",
-  borderTop: ghostBorder,
-  background: t.surfaceLowest,
-  flexShrink: 0,
-};
-
-const footerContext: CSSProperties = {
-  display: "flex",
-  flexDirection: "column",
-  gap: "0.12rem",
-  minWidth: 0,
-};
-
-const footerContextTitle: CSSProperties = {
-  fontSize: "0.8rem",
-  color: t.onSurface,
-};
-
-const footerHelp: CSSProperties = {
-  fontSize: "0.7rem",
-  color: t.onSurfaceVariant,
-};
-
-const footerActions: CSSProperties = {
-  marginLeft: "auto",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "flex-end",
-  flexWrap: "wrap",
-  gap: "0.55rem",
 };
 
 const guardChip: CSSProperties = {
@@ -3304,6 +3583,7 @@ const pageAlertStyle: CSSProperties = {
   alignItems: "flex-start",
   gap: "0.45rem",
   marginTop: "1rem",
+  marginBottom: "1rem",
   padding: "0.65rem 0.8rem",
   borderRadius: t.radiusMd,
   background: "color-mix(in srgb, var(--color-error) 12%, transparent)",
@@ -3351,4 +3631,45 @@ const meta: CSSProperties = {
   fontSize: "0.76rem",
   color: t.onSurfaceVariant,
   margin: "0.25rem 0 0",
+};
+
+const carePlanEmptyState: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  gap: "0.875rem",
+  padding: "1rem",
+  border: ghostBorder,
+  borderRadius: "0.75rem",
+  background: t.surfaceLow,
+};
+
+const carePlanEmptyIcon: CSSProperties = {
+  width: "2.5rem",
+  height: "2.5rem",
+  flexShrink: 0,
+  display: "grid",
+  placeItems: "center",
+  borderRadius: "0.65rem",
+  background: t.surface,
+  color: t.primary,
+};
+
+const carePlanEmptyContent: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  alignItems: "flex-start",
+  gap: "0.5rem",
+};
+
+const carePlanEmptyTitle: CSSProperties = {
+  fontSize: "0.9rem",
+  fontWeight: 700,
+  color: t.onSurface,
+};
+
+const carePlanEmptyDescription: CSSProperties = {
+  maxWidth: "42rem",
+  fontSize: "0.8rem",
+  lineHeight: 1.5,
+  color: t.onSurfaceVariant,
 };

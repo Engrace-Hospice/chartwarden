@@ -216,6 +216,7 @@ exports.MODULES = [
     ownedTables: [
       "alert",
       "alert_payload_catalog",
+      "alert_receipt",
       "alert_rule",
       "channel",
       "channel_member",

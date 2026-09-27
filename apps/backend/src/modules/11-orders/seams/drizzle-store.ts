@@ -381,6 +381,7 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
             recordingMembershipId: input.recordingMembershipId,
             orderingPhysicianMdmId: input.orderingPhysicianMdmId,
             verbalAttestation: input.verbalAttestation,
+            effectiveAt: new Date(input.effectiveAt),
             receivedAt: new Date(input.receivedAt),
             deadlineAt: new Date(input.deadlineAt),
             // The provider computed `deadlineAt` with the DEFAULT platform-floor policy (it reads no

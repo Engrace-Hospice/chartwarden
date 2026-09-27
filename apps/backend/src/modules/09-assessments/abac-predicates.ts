@@ -63,7 +63,6 @@ export const M9_ABAC_PREDICATES = [
 /** The disciplines that may attest an assessment cosignature (§6 `assessment.cosign`; lower-case keys). */
 const COSIGN_ELIGIBLE_DISCIPLINES = ["rn", "rn_case_manager", "clinical_supervisor"] as const;
 
-/** Roles that read/scope any patient's assessments without caseload (mirrors M7/M8's `caseload_or_scope`). */
 const hasRole = (context: AbacContext, role: string): boolean => context.roles.includes(role);
 const targetStr = (target: AbacTarget, field: string): string | null => {
   const value = target[field];

@@ -26888,6 +26888,36 @@
         }
       }
     },
+    "/api/v1/alerts/{id}/read": {
+      "post": {
+        "operationId": "postApiV1AlertsByIdRead",
+        "tags": [
+          "36-messaging"
+        ],
+        "summary": "Mark one alert read for the current actor (204)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/alerts/inbox": {
       "get": {
         "operationId": "getApiV1AlertsInbox",
@@ -26918,7 +26948,8 @@
                           "severity",
                           "summary",
                           "createdAt",
-                          "deliveryStatus"
+                          "deliveryStatus",
+                          "readAt"
                         ],
                         "properties": {
                           "alertId": {
@@ -26994,6 +27025,16 @@
                               {
                                 "const": "pending",
                                 "type": "string"
+                              }
+                            ]
+                          },
+                          "readAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
                               }
                             ]
                           }
@@ -128500,6 +128541,8 @@
                 "required": [
                   "recorderDiscipline",
                   "verbalAttestation",
+                  "readBackVerified",
+                  "effectiveAt",
                   "receivedAt",
                   "orderingPhysicianMdmId"
                 ],
@@ -128512,6 +128555,13 @@
                   "verbalAttestation": {
                     "minLength": 100,
                     "maxLength": 2000,
+                    "type": "string"
+                  },
+                  "readBackVerified": {
+                    "type": "boolean"
+                  },
+                  "effectiveAt": {
+                    "format": "date-time",
                     "type": "string"
                   },
                   "receivedAt": {

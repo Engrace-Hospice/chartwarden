@@ -58,6 +58,8 @@ describe("M11-T09 §5 workflow acceptance", () => {
     const verbal = await svc.recordVerbal(ORG, "rn_1", draft.id, {
       recorderDiscipline: "rn_case_manager",
       verbalAttestation: ATTEST,
+      readBackVerified: true,
+      effectiveAt: NOW,
       receivedAt: NOW,
       orderingPhysicianMdmId: PHYS,
     });
@@ -91,6 +93,8 @@ describe("M11-T09 §5 workflow acceptance", () => {
     const verbal = await svc.recordVerbal(ORG, "rn_1", draft.id, {
       recorderDiscipline: "rn_case_manager",
       verbalAttestation: ATTEST,
+      readBackVerified: true,
+      effectiveAt: NOW,
       receivedAt: NOW,
       orderingPhysicianMdmId: PHYS,
     });

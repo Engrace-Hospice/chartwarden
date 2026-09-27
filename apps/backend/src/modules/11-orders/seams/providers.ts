@@ -83,6 +83,7 @@ export function createOrderSignatureProvider(
         recordingMembershipId: input.recordingMembershipId,
         orderingPhysicianMdmId: input.orderingPhysicianMdmId,
         verbalAttestation: input.verbalAttestation,
+        effectiveAt: input.receivedAt,
         receivedAt: input.receivedAt,
         deadlineAt,
       });

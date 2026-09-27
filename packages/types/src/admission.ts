@@ -177,6 +177,12 @@ export const M6_EVENT_NAMES = [
   "m6.cti.signed",
   "m6.cti.late_flagged",
   "m6.cti.voided",
+  "m6.cti.due_7d",
+  "m6.cti.due_3d",
+  "m6.cti.overdue_1d",
+  "m6.cti.signature_requested",
+  "m6.cti.signature_due_1d",
+  "m6.cti.signature_overdue",
   "m6.f2f.scheduled",
   // F-100 — completion used to re-emit `m6.f2f.scheduled`, which this union happily accepted: it pins
   // NAMES, and a real name emitted from the wrong transition with the wrong payload is still a real name.
@@ -184,6 +190,9 @@ export const M6_EVENT_NAMES = [
   "m6.f2f.attested",
   "m6.f2f.window_overridden",
   "m6.f2f.window_missed",
+  "m6.f2f.due_7d",
+  "m6.f2f.due_3d",
+  "m6.f2f.overdue_1d",
   "m6.loc.changed",
   "m6.revocation.created",
   "m6.transfer.created",

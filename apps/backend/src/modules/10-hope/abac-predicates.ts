@@ -51,8 +51,6 @@ export const M10_ABAC_PREDICATES = [
   "hope.scope",
 ] as const;
 
-/** Roles that read/scope any patient's HOPE data or any ProviderEntity's submissions without caseload/PE
- * membership (mirrors M7/M8/M9's `caseload_or_scope` org-wide escape). */
 /** The HOPE clinical-lead role token that may correct any signed assessment (§4.7 / §4.6). */
 const CLINICAL_LEAD_ROLES = ["clinical_lead", "clinical_supervisor"] as const;
 

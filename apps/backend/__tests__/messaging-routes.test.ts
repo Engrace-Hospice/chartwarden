@@ -95,6 +95,7 @@ function makeServer(): { app: ReturnType<typeof buildServer>; service: Messaging
             summary: "SFV follow-up due",
             createdAt: "2026-06-14T00:00:00Z",
             deliveryStatus: "delivered",
+            readAt: null,
           },
         },
       ],

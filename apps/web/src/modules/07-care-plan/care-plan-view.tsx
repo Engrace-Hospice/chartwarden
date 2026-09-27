@@ -107,7 +107,9 @@ function formatDate(value: string | null | undefined): string {
   if (!value) return "Not set";
   // Date-only values are calendar dates: parse locally so they don't shift a day west of UTC.
   const ymd = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  const d = ymd ? new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3])) : new Date(value);
+  const d = ymd
+    ? new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]))
+    : new Date(value);
   return Number.isNaN(d.getTime())
     ? value
     : d.toLocaleDateString(undefined, {
@@ -155,6 +157,7 @@ export function CarePlanView(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   // F-066 (#161) — the open admission `POST /patients/:id/care-plan` is keyed by, resolved only when no
   // plan exists. Automatic bootstrap on activation is the normal path; this is the recovery control when
@@ -216,7 +219,7 @@ export function CarePlanView(): JSX.Element {
   // earlier refusal is not replayed inside an unrelated dialog.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the dialog identity is the boundary.
   useEffect(() => {
-    setError(null);
+    setModalError(null);
   }, [modal]);
 
   async function mutate(
@@ -224,7 +227,8 @@ export function CarePlanView(): JSX.Element {
     success: string,
   ): Promise<void> {
     setBusy(true);
-    setError(null);
+    if (modal) setModalError(null);
+    else setError(null);
 
     const res = await action();
     setBusy(false);
@@ -256,7 +260,12 @@ export function CarePlanView(): JSX.Element {
         return;
       }
 
-      setError(errorMessage(res.error, "The Care Plan action could not be completed."));
+      const userMessage = errorMessage(
+        res.error,
+        "The Care Plan action could not be completed. Please try again.",
+      );
+      if (modal) setModalError(userMessage);
+      else setError(userMessage);
 
       return;
     }
@@ -359,7 +368,10 @@ export function CarePlanView(): JSX.Element {
     Boolean(openVersion) &&
     openVersion?.status !== "in_review";
   const addGoal = (): void =>
-    setModal({ kind: "goal", problemId: activeTerminal?.id ?? plan.problems[0]?.id });
+    setModal({
+      kind: "goal",
+      problemId: activeTerminal?.id ?? plan.problems[0]?.id,
+    });
 
   return (
     <PatientWorkspaceLayout
@@ -374,7 +386,10 @@ export function CarePlanView(): JSX.Element {
                     <Glyph name="lock" size={12} /> restricted content omitted
                   </span>
                 ) : null}
-                <Link to={`/patients/${patientId}/idg-history`} className="wx-btn-primary">
+                <Link
+                  to={`/patients/${patientId}/idg-history`}
+                  className="wx-btn-primary"
+                >
                   IDG History
                 </Link>
               </>
@@ -444,21 +459,40 @@ export function CarePlanView(): JSX.Element {
             }}
           />
 
-          <div className="wx-subtabs" role="tablist" aria-label="Care Plan workspace views">
+          <div
+            className="wx-subtabs"
+            role="tablist"
+            aria-label="Care Plan workspace views"
+          >
             <TabButton active={tab === "goals"} onClick={() => setTab("goals")}>
-              Goals<span className="wx-seg-count wx-nums">{plan.goals.length}</span>
+              Goals
+              <span className="wx-seg-count wx-nums">{plan.goals.length}</span>
             </TabButton>
-            <TabButton active={tab === "interventions"} onClick={() => setTab("interventions")}>
+            <TabButton
+              active={tab === "interventions"}
+              onClick={() => setTab("interventions")}
+            >
               Interventions
             </TabButton>
-            <TabButton active={tab === "problems"} onClick={() => setTab("problems")}>
+            <TabButton
+              active={tab === "problems"}
+              onClick={() => setTab("problems")}
+            >
               Problems
             </TabButton>
-            <TabButton active={tab === "revision"} onClick={() => setTab("revision")}>
+            <TabButton
+              active={tab === "revision"}
+              onClick={() => setTab("revision")}
+            >
               Review & Sign
-              {openVersion ? <span className="wx-seg-count wx-nums">1</span> : null}
+              {openVersion ? (
+                <span className="wx-seg-count wx-nums">1</span>
+              ) : null}
             </TabButton>
-            <TabButton active={tab === "history"} onClick={() => setTab("history")}>
+            <TabButton
+              active={tab === "history"}
+              onClick={() => setTab("history")}
+            >
               Revisions
             </TabButton>
           </div>
@@ -467,7 +501,9 @@ export function CarePlanView(): JSX.Element {
             <GoalsList
               plan={plan}
               editable={editable && plan.problems.length > 0}
-              onEdit={(goal) => setModal({ kind: "goal", goal, problemId: goal.problemId })}
+              onEdit={(goal) =>
+                setModal({ kind: "goal", goal, problemId: goal.problemId })
+              }
               onAdd={addGoal}
             />
           ) : null}
@@ -477,7 +513,11 @@ export function CarePlanView(): JSX.Element {
               plan={plan}
               editable={editable && plan.problems.length > 0}
               onEdit={(intervention) =>
-                setModal({ kind: "intervention", intervention, problemId: intervention.problemId })
+                setModal({
+                  kind: "intervention",
+                  intervention,
+                  problemId: intervention.problemId,
+                })
               }
               onDiscontinue={(intervention) =>
                 setModal({ kind: "discontinue_intervention", intervention })
@@ -559,7 +599,7 @@ export function CarePlanView(): JSX.Element {
           goals={plan.goals}
           problems={plan.problems}
           busy={busy}
-          error={error}
+          error={modalError}
           onClose={() => setModal(null)}
           onSubmit={mutate}
         />
@@ -689,7 +729,9 @@ function WorkflowGuide({
   } else if (!openVersion && activeVersion) {
     // An active plan can still carry readiness blockers (e.g. no active terminal problem); never
     // report "no action required" over them.
-    heading = blockers.length ? "Care Plan needs attention" : "Care Plan is active";
+    heading = blockers.length
+      ? "Care Plan needs attention"
+      : "Care Plan is active";
     description = blockers.length
       ? (blockers[0] as string)
       : review?.nextReviewDueAt
@@ -714,7 +756,8 @@ function WorkflowGuide({
   // The details list repeats every blocker; it is only redundant when the description already is the
   // single blocker.
   const listedBlockers =
-    blockers.length > 1 || (blockers.length === 1 && description !== blockers[0]);
+    blockers.length > 1 ||
+    (blockers.length === 1 && description !== blockers[0]);
 
   return (
     <section
@@ -1533,8 +1576,8 @@ function InterventionRow({
       <div style={{ flex: 1, minWidth: 0 }}>
         <p style={rowTitle}>{intervention.scopeText}</p>
         <p style={muted}>
-          {disciplineLabel(intervention.discipline)} · {intervention.frequencyText} ·{" "}
-          {intervention.frequencyValue}
+          {disciplineLabel(intervention.discipline)} ·{" "}
+          {intervention.frequencyText} · {intervention.frequencyValue}
           {linkedGoals.length
             ? ` · linked to ${linkedGoals.map((g) => g.revisedText ?? g.originalText).join(", ")}`
             : ""}
@@ -1612,7 +1655,7 @@ function CarePlanModal({
         <h2 style={sectionTitle}>{title}</h2>
         {error ? <Notice tone="error">{error}</Notice> : null}
         {state.kind === "problem" ? (
-          <ProblemForm state={state} plan={plan} busy={busy} onSubmit={onSubmit} />
+          <ProblemForm state={state} plan={plan} busy={busy} error={error} onSubmit={onSubmit} />
         ) : null}
         {state.kind === "resolve_problem" ? (
           <NoteForm
@@ -1637,7 +1680,14 @@ function CarePlanModal({
           />
         ) : null}
         {state.kind === "goal" ? (
-          <GoalForm state={state} plan={plan} problems={problems} busy={busy} onSubmit={onSubmit} />
+          <GoalForm
+            state={state}
+            plan={plan}
+            problems={problems}
+            busy={busy}
+            error={error}
+            onSubmit={onSubmit}
+          />
         ) : null}
         {state.kind === "intervention" ? (
           <InterventionForm
@@ -1646,6 +1696,7 @@ function CarePlanModal({
             problems={problems}
             goals={goals}
             busy={busy}
+            error={error}
             onSubmit={onSubmit}
           />
         ) : null}
@@ -1672,7 +1723,13 @@ function CarePlanModal({
           />
         ) : null}
         {state.kind === "sign" ? (
-          <SignForm state={state} plan={plan} busy={busy} onSubmit={onSubmit} />
+          <SignForm
+            state={state}
+            plan={plan}
+            busy={busy}
+            error={error}
+            onSubmit={onSubmit}
+          />
         ) : null}
         {state.kind === "return_to_draft" ? (
           <ConfirmPanel
@@ -1707,11 +1764,13 @@ function ProblemForm({
   state,
   plan,
   busy,
+  error,
   onSubmit,
 }: {
   state: Extract<NonNullable<ModalState>, { kind: "problem" }>;
   plan: CarePlan;
   busy: boolean;
+  error: string | null;
   onSubmit: (action: () => Promise<{ error?: unknown }>, success: string) => Promise<void>;
 }): JSX.Element {
   const client = useApiClient();
@@ -1835,6 +1894,7 @@ function ProblemForm({
           onChange={setDescription}
           placeholder="e.g. End-stage heart failure with dyspnea"
           required
+          error={fieldError(error, "description")}
         />
         <div style={fieldGrid2}>
           <Select
@@ -1860,12 +1920,14 @@ function ProblemForm({
             value={icd10Code}
             onChange={(value) => setIcd10Code(value.toUpperCase())}
             placeholder="e.g. I50.84"
+            error={fieldError(error, "icd10Code")}
           />
           <TextField
             label="SNOMED code"
             value={snomedCode}
             onChange={setSnomedCode}
             placeholder="Optional"
+            error={fieldError(error, "snomedCode")}
           />
         </div>
         <SnomedSuggestionList
@@ -1963,12 +2025,14 @@ function GoalForm({
   plan,
   problems,
   busy,
+  error,
   onSubmit,
 }: {
   state: Extract<NonNullable<ModalState>, { kind: "goal" }>;
   plan: CarePlan;
   problems: Problem[];
   busy: boolean;
+  error: string | null;
   onSubmit: (action: () => Promise<{ error?: unknown }>, success: string) => Promise<void>;
 }): JSX.Element {
   const client = useApiClient();
@@ -2035,6 +2099,10 @@ function GoalForm({
           onChange={setText}
           placeholder="e.g. Patient will report dyspnea is manageable at rest"
           required
+          error={
+            fieldError(error, "originalText") ??
+            fieldError(error, "revisedText")
+          }
         />
       </FormSection>
 
@@ -2044,6 +2112,7 @@ function GoalForm({
           value={outcome}
           onChange={setOutcome}
           placeholder="e.g. Dyspnea rated 3/10 or less at rest"
+          error={fieldError(error, "measurableOutcome")}
         />
         <div style={fieldGrid2}>
           <TextField label="Target date" value={targetAt} onChange={setTargetAt} type="date" />
@@ -2070,6 +2139,7 @@ function InterventionForm({
   problems,
   goals,
   busy,
+  error,
   onSubmit,
 }: {
   state: Extract<NonNullable<ModalState>, { kind: "intervention" }>;
@@ -2077,6 +2147,7 @@ function InterventionForm({
   problems: Problem[];
   goals: Goal[];
   busy: boolean;
+  error: string | null;
   onSubmit: (action: () => Promise<{ error?: unknown }>, success: string) => Promise<void>;
 }): JSX.Element {
   const client = useApiClient();
@@ -2152,6 +2223,7 @@ function InterventionForm({
           onChange={setScopeText}
           placeholder="e.g. Assess respiratory status and reinforce comfort measures"
           required
+          error={fieldError(error, "scopeText")}
         />
       </FormSection>
 
@@ -2166,6 +2238,7 @@ function InterventionForm({
             onChange={setFrequencyText}
             placeholder="e.g. Twice weekly"
             required
+            error={fieldError(error, "frequencyText")}
           />
           <TextField
             label="Frequency value"
@@ -2173,6 +2246,7 @@ function InterventionForm({
             onChange={setFrequencyValue}
             placeholder="e.g. 2"
             required
+            error={fieldError(error, "frequencyValue")}
           />
         </div>
       </FormSection>
@@ -2222,11 +2296,13 @@ function SignForm({
   state,
   plan,
   busy,
+  error,
   onSubmit,
 }: {
   state: Extract<NonNullable<ModalState>, { kind: "sign" }>;
   plan: CarePlan;
   busy: boolean;
+  error: string | null;
   onSubmit: (action: () => Promise<{ error?: unknown }>, success: string) => Promise<void>;
 }): JSX.Element {
   const client = useApiClient();
@@ -2274,6 +2350,7 @@ function SignForm({
         label="Patient/family understanding note"
         value={understanding}
         onChange={setUnderstanding}
+        error={fieldError(error, "patientUnderstandingText")}
       />
       <Notice tone="info">
         The backend validates permission, signer role, caseload, authenticated membership, and
@@ -2355,6 +2432,15 @@ function FormSection({
   );
 }
 
+/** Fastify schema errors name the rejected body property; keep that feedback by its input. */
+function fieldError(message: string | null, property: string): string | null {
+  if (!message) return null;
+  const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?:body[/.]|\\b)${escaped}\\b`, "i").test(message)
+    ? message
+    : null;
+}
+
 function TextField({
   label,
   value,
@@ -2363,6 +2449,7 @@ function TextField({
   required = false,
   placeholder,
   hint,
+  error,
 }: {
   label: string;
   value: string;
@@ -2371,6 +2458,7 @@ function TextField({
   required?: boolean;
   placeholder?: string;
   hint?: string;
+  error?: string | null;
 }): JSX.Element {
   return (
     <label style={field}>
@@ -2387,6 +2475,7 @@ function TextField({
         onChange={(e) => onChange(e.target.value)}
         style={input}
       />
+      {error ? <span style={fieldErrorText}>{error}</span> : null}
       {hint ? <span style={fieldHint}>{hint}</span> : null}
     </label>
   );
@@ -2399,6 +2488,7 @@ function TextArea({
   required = false,
   placeholder,
   hint,
+  error,
 }: {
   label: string;
   value: string;
@@ -2406,6 +2496,7 @@ function TextArea({
   required?: boolean;
   placeholder?: string;
   hint?: string;
+  error?: string | null;
 }): JSX.Element {
   return (
     <label style={field}>
@@ -2422,6 +2513,7 @@ function TextArea({
         rows={4}
         style={textarea}
       />
+      {error ? <span style={fieldErrorText}>{error}</span> : null}
       {hint ? <span style={fieldHint}>{hint}</span> : null}
     </label>
   );
@@ -3253,6 +3345,11 @@ const input: CSSProperties = {
 const fieldHint: CSSProperties = {
   color: t.onSurfaceVariant,
   fontSize: "0.69rem",
+  lineHeight: 1.35,
+};
+const fieldErrorText: CSSProperties = {
+  color: t.error,
+  fontSize: "0.75rem",
   lineHeight: 1.35,
 };
 const requiredMark: CSSProperties = { color: t.error };

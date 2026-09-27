@@ -1,13 +1,13 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - develop
+  # push:
+  #   branches:
+  #     - develop
 
   pull_request:
     branches:
-      - develop
+      # - develop
       - main
 
   # Callable as a reusable workflow so `deploy.yml` can require THIS ENTIRE workflow — every job

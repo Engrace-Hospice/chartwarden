@@ -7,6 +7,7 @@ import {
   GateStepper,
   GuardChip,
   LoadingSpinner,
+  Modal,
   PageHeader,
   RightDetailPanel,
   StatusPill,
@@ -1280,10 +1281,25 @@ export function AdmissionDetail(): JSX.Element {
   function renderCeremonies(): JSX.Element {
     return (
       <>
-        <CeremonyModal
+        <Modal
           open={ceremony === "admission-details"}
-          title="Complete admission details"
-          attestation={
+          onClose={busy ? undefined : closeCeremony}
+          ariaLabel="Complete admission details"
+          width="36rem"
+        >
+          <div style={admissionDetailsModalStyle}>
+            <div style={admissionDetailsModalHeaderStyle}>
+              <h2 style={admissionDetailsModalTitleStyle}>
+                Complete admission details
+              </h2>
+
+              <p style={admissionDetailsModalDescriptionStyle}>
+                Set the planned admission/SOC date, hospice provider and Hospice
+                Physician. The CTI step records the terminal diagnosis and
+                certification details.
+              </p>
+            </div>
+
             <div style={formStackStyle}>
               <span style={hintTextStyle}>
                 Set the planned admission/SOC date first. The CTI step records the terminal
@@ -1305,10 +1321,12 @@ export function AdmissionDetail(): JSX.Element {
                 onChange={setProviderEntityId}
                 required
               />
+
               <ServiceLocationBlock
                 patientId={admission!.patientId}
                 address={currentResidenceAddress(patientAddresses)}
               />
+
               <MdmEntityLookupField
                 kind="physician"
                 label="Hospice Physician"
@@ -1317,18 +1335,41 @@ export function AdmissionDetail(): JSX.Element {
                 valueLabel={admission!.hospicePhysician?.displayName}
                 required
               />
+
               {actionError ? (
                 <p role="alert" aria-live="assertive" style={alertStyle}>
                   {actionError}
                 </p>
               ) : null}
             </div>
-          }
-          signer={{ name: "Admission coordinator", role: "This session" }}
-          commitLabel={busy ? "Saving..." : "Save admission details"}
-          onCommit={() => void completeAdmissionDetails()}
-          onCancel={closeCeremony}
-        />
+
+            <div style={admissionDetailsModalSignerStyle}>
+              <span style={fieldLabelStyle}>Recorded by</span>
+              <strong>Admission coordinator</strong>
+              <span style={hintTextStyle}>This session</span>
+            </div>
+
+            <div style={admissionDetailsModalActionsStyle}>
+              <button
+                type="button"
+                style={ghostBtn}
+                onClick={closeCeremony}
+                disabled={busy}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                style={busy ? disabledBtn : primaryBtn}
+                disabled={busy}
+                onClick={() => void completeAdmissionDetails()}
+              >
+                {busy ? "Saving..." : "Save admission details"}
+              </button>
+            </div>
+          </div>
+        </Modal>
 
         <CeremonyModal
           open={ceremony === "nor"}
@@ -2379,6 +2420,54 @@ const formStackStyle: CSSProperties = {
   display: "flex",
   flexDirection: "column",
   gap: "0.6rem",
+};
+
+const admissionDetailsModalStyle: CSSProperties = {
+  width: "100%",
+  padding: "1.5rem",
+  display: "flex",
+  flexDirection: "column",
+  gap: "1.25rem",
+};
+
+const admissionDetailsModalHeaderStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.35rem",
+};
+
+const admissionDetailsModalTitleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "1.125rem",
+  fontWeight: 700,
+  color: "var(--color-on-surface)",
+};
+
+const admissionDetailsModalDescriptionStyle: CSSProperties = {
+  margin: 0,
+  fontSize: "0.8125rem",
+  lineHeight: 1.5,
+  color: "var(--color-on-surface-variant)",
+};
+
+const admissionDetailsModalSignerStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "auto 1fr auto",
+  alignItems: "center",
+  gap: "0.5rem",
+  padding: "0.75rem",
+  borderRadius: "var(--radius-md)",
+  background: "var(--color-surface-container)",
+  color: "var(--color-on-surface)",
+  fontSize: "0.8rem",
+};
+
+const admissionDetailsModalActionsStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "flex-end",
+  alignItems: "center",
+  gap: "0.75rem",
+  paddingTop: "0.25rem",
 };
 
 const contentShellStyle: CSSProperties = {

@@ -69,6 +69,57 @@ export function createContextSessionResolver(): SessionResolver {
 }
 
 /**
+ * Resolve the step-up subject straight off the `session` row rather than `request.context`. Used by
+ * the alternate DB-only mount path (no context-derived membership needed): the caller passes a bare
+ * `userId`/`organizationId`/`sessionId`/`membershipId` and this reads the row's persisted
+ * `lastStepUpAt`/`lastStepUpFactor` back, rather than reporting them null.
+ */
+export function createDbStepUpSessionResolver(db: DbClient): SessionResolver {
+  return {
+    async resolve(request) {
+      const userId = request.context.userId;
+      const organizationId = request.context.organizationId;
+      const sessionId = request.context.attributes?.sessionId;
+      const membershipId = request.context.attributes?.membershipId;
+
+      if (
+        !userId ||
+        !organizationId ||
+        typeof sessionId !== "string" ||
+        typeof membershipId !== "string"
+      ) {
+        return null;
+      }
+
+      const [session] = await db
+        .select({
+          lastStepUpAt: schema.sessions.lastStepUpAt,
+          lastStepUpFactor: schema.sessions.lastStepUpFactor,
+        })
+        .from(schema.sessions)
+        .where(
+          and(
+            eq(schema.sessions.id, sessionId),
+            eq(schema.sessions.userId, userId),
+          ),
+        )
+        .limit(1);
+
+      if (!session) return null;
+
+      return {
+        sessionId,
+        userId,
+        organizationId,
+        membershipId,
+        lastStepUpAt: session.lastStepUpAt,
+        lastStepUpFactor: session.lastStepUpFactor,
+      };
+    },
+  };
+}
+
+/**
  * The paired-write (D8) over the M1-owned `session` row, plus lockout termination.
  *
  * Both columns move together or neither does — that is what "paired write" means here, and it is why

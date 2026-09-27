@@ -508,10 +508,12 @@ export interface PatientElectionCertificationView {
       readonly status: string;
       readonly signerKind: string;
       readonly signedAt: string | null;
+      readonly sourceType: "structured" | "uploaded";
     } | null;
     readonly cti: {
       readonly id: string;
       readonly status: string;
+      readonly sourceType: "structured" | "uploaded";
       readonly hospiceMdSigned: boolean;
       readonly attendingMdSigned: boolean;
       readonly signedLate: boolean;
@@ -1800,13 +1802,16 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
                   status: es.state,
                   signerKind: "patient",
                   signedAt: null,
+                  sourceType: "structured" as const,
                 }
               : null,
+
             cti: cti
               ? {
                   id: cti.id,
                   status: cti.state,
                   version: Number(cti.version),
+                  sourceType: "structured" as const,
                   hospiceMdSigned: cti.state === "awaiting_attending" || cti.state === "signed",
                   attendingMdSigned: cti.state === "signed",
                   signedLate: false,

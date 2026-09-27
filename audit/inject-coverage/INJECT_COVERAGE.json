@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1299,
-    "coveredRoutes": 1299,
-    "directRoutesReferenced": 1243
+    "routes": 1300,
+    "coveredRoutes": 1300,
+    "directRoutesReferenced": 1244
   },
   "modules": [
     {
@@ -352,14 +352,14 @@
     },
     {
       "module": "36-messaging",
-      "routes": 22,
+      "routes": 23,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/messaging-routes-mount.test.ts",
         "apps/backend/__tests__/messaging-routes.test.ts",
         "apps/backend/__tests__/messaging-webhooks.test.ts"
       ],
-      "directRoutesReferenced": 21
+      "directRoutesReferenced": 22
     },
     {
       "module": "37-ipu",

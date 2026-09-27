@@ -6,10 +6,7 @@
 // `step_up_recent` predicate consumes, and the supporting ports + slice adapters. M2-T06
 // adds the `/api/v1/*` identity route inventory. M2-T07 (./seams) registers M2's published
 // cross-module seams (SessionContextResolver + AuditorSessionMinter, §4.7) into the M1 registry.
-export {
-  type IdentitySeamDeps,
-  registerIdentitySeams,
-} from "./seams";
+export { type IdentitySeamDeps, registerIdentitySeams } from "./seams";
 // GAP-043 — the §3.7 per-membership NAMED APPROVAL AUTHORITY surface: the `ElevatedApprovalReader` seam
 // M27's §4.7 approver predicate reads, and the grant/revoke service its admin routes drive.
 export {
@@ -72,25 +69,33 @@ export {
   createDbMfaEnrollmentReader,
   createDbMfaVerifier,
   createDbSessionStepUpWriter,
+  createDbStepUpSessionResolver,
 } from "./step-up-adapters-db";
 
 /**
  * Mount the step-up routes with the production adapters.
  *
- * The challenge + lockout store is a per-process Map with TTL/window eviction rather than Valkey. Both
- * halves fail CLOSED across replicas — a challenge minted on one instance cannot be spent on another
- * (the caller retries), and the consecutive-failure counter is per-instance, so a distributed attacker
- * gets the threshold per replica rather than once. That second half is a real weakening and is why it
- * is registered as an in-memory binding at the composition root rather than left for someone to find.
- * Moving it to Valkey is a store swap behind `StepUpChallengeStore`.
+ * The challenge + lockout store is Valkey-backed when `redis` is supplied (a dedicated,
+ * non-lazy-connect client — the queue connection, per the composition root), which is what makes a
+ * challenge minted on one replica spendable on another and the consecutive-failure counter
+ * cluster-wide rather than per-instance. Without one it falls back to a per-process Map with
+ * TTL/window eviction: it still fails CLOSED across replicas (the caller retries), but a distributed
+ * attacker gets the threshold per replica rather than once — a real weakening, which is why the
+ * fallback is a documented in-memory binding rather than left for someone to find.
  */
-export function mountSessionStepUpRoutes(app: FastifyInstance, db: DbClient): void {
+export function mountSessionStepUpRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  redis?: Redis | null,
+): void {
   _registerSessionStepUpRoutes(app, {
     sessions: _contextSessionResolver(),
     writer: _dbSessionStepUpWriter(db),
     enrollment: _dbMfaEnrollmentReader(db),
     verifier: _dbMfaVerifier(db),
-    challenges: createInMemoryStepUpChallengeStore(),
+    challenges: redis
+      ? createValkeyStepUpChallengeStore(redis)
+      : createInMemoryStepUpChallengeStore(),
     audit: db,
   });
 }
@@ -241,6 +246,8 @@ import {
   createDbSessionStepUpWriter as _dbSessionStepUpWriter,
 } from "./step-up-adapters-db";
 import { createInMemoryStepUpChallengeStore } from "./step-up-ports";
+import { createValkeyStepUpChallengeStore } from "./step-up-challenge-valkey";
+import type Redis from "ioredis";
 
 /**
  * Mount the M2 identity REST routes on a server (composition root, via buildServer's
@@ -266,6 +273,7 @@ import { createInMemoryStepUpChallengeStore } from "./step-up-ports";
  * plus its RLS + audit trigger, which is a schema change, not a wiring change. Left explicit rather
  * than bound to something that would look durable and not be.
  */
+
 export function mountIdentityRoutes(
   app: FastifyInstance,
   db: DbClient,
@@ -294,8 +302,12 @@ export function mountIdentityRoutes(
     // GAP-043 — the §3.7 named-approval-authority write surface over the real table. This is what makes
     // M27's approver predicate reachable: the seam READS `membership_elevated_approval`, these routes are
     // the only thing that ever puts a row in it.
-    elevatedApprovals: _elevatedApprovalService(_drizzleElevatedApprovalStore(db)),
-    ...(invite?.emailTransport ? { emailTransport: invite.emailTransport } : {}),
+    elevatedApprovals: _elevatedApprovalService(
+      _drizzleElevatedApprovalStore(db),
+    ),
+    ...(invite?.emailTransport
+      ? { emailTransport: invite.emailTransport }
+      : {}),
     ...(invite?.webAppBaseUrl ? { webAppBaseUrl: invite.webAppBaseUrl } : {}),
     ...(invite?.roleAttacher ? { roleAttacher: invite.roleAttacher } : {}),
   };
@@ -313,3 +325,10 @@ export {
   createInMemoryIdentityEraserStore,
   registerIdentityErasers,
 } from "./erasers/identity-eraser";
+
+export { createValkeyStepUpChallengeStore } from "./step-up-challenge-valkey";
+
+export {
+  createProductionStepUpVerifier,
+  type StepUpVerifierOptions,
+} from "./step-up-verifier";

@@ -22,7 +22,7 @@ type MdmKind =
   | "funeral_home";
 
 function shortId(id: string): string {
-  return id.length > 8 ? id.slice(0, 8) : id;
+  return id.length > 8 ? id.slice(0, 5) : id;
 }
 
 function optionLabel(primary: ReactNode, secondary?: string | null): JSX.Element {

@@ -48,7 +48,10 @@ import {
   requirementsForUploadedElectionStatement,
   requirementsForUploadedNoticeOfRights,
 } from "./admission-uploaded-evidence";
-import { computeWrittenCertDeadline } from "./certification/window-math";
+import {
+  computeCtiSignatureDueAt,
+  computeWrittenCertDeadline,
+} from "./certification/window-math";
 import { resolveForCauseDischarge } from "./discharge/for-cause";
 import {
   type DischargeReason,
@@ -1809,6 +1812,22 @@ export function createDbAdmissionRouteService(
               .from(CTI)
               .where(inArray(CTI.electionPeriodId, periodIds))
           : [];
+        const evidenceService = createAdmissionEvidenceService(tx);
+
+        const evidenceByPeriod = new Map<
+          string,
+          Awaited<ReturnType<typeof evidenceService.readFacts>>
+        >();
+
+        for (const periodId of periodIds) {
+          const facts = await evidenceService.readFacts({
+            organizationId,
+            admissionId: adm.id,
+            electionPeriodId: periodId,
+          });
+
+          evidenceByPeriod.set(periodId, facts);
+        }
         const f2fRows = periodIds.length
           ? await tx
               .select({
@@ -1832,6 +1851,25 @@ export function createDbAdmissionRouteService(
           const es = esBy.get(p.id);
           const cti = ctiBy.get(p.id);
           const f2f = f2fBy.get(p.id);
+
+          const evidenceFacts = evidenceByPeriod.get(p.id);
+
+          const electionEvidence = evidenceFacts?.electionStatement;
+          const electionSignatureEvidence = evidenceFacts?.electionSignature;
+
+          const uploadedElection =
+            electionEvidence?.sourceType === "uploaded"
+              ? electionEvidence
+              : undefined;
+
+          const uploadedElectionSignature =
+            electionSignatureEvidence?.sourceType === "uploaded"
+              ? electionSignatureEvidence
+              : undefined;
+
+          const uploadedCti = evidenceFacts?.cti;
+          const uploadedCtiSignature = evidenceFacts?.ctiSignature;
+
           return {
             id: p.id,
             sequenceNumber: p.sequenceNumber,
@@ -1846,20 +1884,46 @@ export function createDbAdmissionRouteService(
                   status: es.status,
                   signerKind: es.signerKind,
                   signedAt: es.signedAt,
+                  sourceType: "structured" as const,
                 }
-              : null,
+              : uploadedElection
+                ? {
+                    id:
+                      uploadedElection.documentId ??
+                      `uploaded-election-${p.id}`,
+                    status: uploadedElectionSignature ? "signed" : "drafted",
+                    signerKind: uploadedElectionSignature
+                      ? "uploaded"
+                      : "unknown",
+                    signedAt: uploadedElectionSignature?.completedAt ?? null,
+                    sourceType: "uploaded" as const,
+                  }
+                : null,
             cti: cti
               ? {
                   id: cti.id,
                   status: cti.status,
                   version: Number(cti.version),
+                  sourceType: "structured" as const,
                   hospiceMdSigned: !!cti.hospiceMdSignedAt,
                   attendingMdSigned: !!cti.attendingMdSignedAt,
                   signedLate: cti.signedLate,
                   periodStart: cti.periodStart,
                   periodEnd: cti.periodEnd,
                 }
-              : null,
+              : uploadedCti
+                ? {
+                    id: uploadedCti.documentId ?? `uploaded-cti-${p.id}`,
+                    status: uploadedCtiSignature ? "signed" : "drafted",
+                    version: 0,
+                    sourceType: "uploaded" as const,
+                    hospiceMdSigned: !!uploadedCtiSignature,
+                    attendingMdSigned: false,
+                    signedLate: false,
+                    periodStart: p.effectiveAt,
+                    periodEnd: p.scheduledEndAt,
+                  }
+                : null,
             faceToFace: f2f
               ? {
                   id: f2f.id,
@@ -2910,6 +2974,8 @@ export function createDbAdmissionRouteService(
         );
         // Draft the CTI the form's hospiceMedicalDirectorId/attendingPhysicianId are for (mirrors
         // draftCti) — without this the id the user was required to enter had nowhere to go.
+        const signatureRequestedAt = now();
+        const signatureDueAt = new Date(computeCtiSignatureDueAt(signatureRequestedAt));
         const cti = firstOrThrow(
           await tx
             .insert(CTI)
@@ -2918,6 +2984,8 @@ export function createDbAdmissionRouteService(
               electionPeriodId: period.id,
               hospiceMdId: input.hospiceMedicalDirectorId,
               attendingMdId: null,
+              signatureRequestedAt,
+              signatureDueAt,
             })
             .returning({ id: CTI.id }),
           "cti insert returned no row",
@@ -2928,6 +2996,18 @@ export function createDbAdmissionRouteService(
             ctiId: cti.id,
             electionPeriodId: period.id,
             isRecert: false,
+          },
+          organizationId,
+          aggregateKind: "certification_of_terminal_illness",
+          aggregateId: cti.id,
+        });
+        await outbox.publish(tx, {
+          eventName: "m6.cti.signature_requested",
+          payload: {
+            ctiId: cti.id,
+            hospiceMdId: input.hospiceMedicalDirectorId,
+            requestedAt: signatureRequestedAt.toISOString(),
+            dueAt: signatureDueAt.toISOString(),
           },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
@@ -3763,6 +3843,11 @@ export function createDbAdmissionRouteService(
             400,
           );
         }
+        const signatureRequestedAt = now();
+        const signatureDueAt = new Date(
+          computeCtiSignatureDueAt(signatureRequestedAt),
+        );
+
         const cti = firstOrThrow(
           await tx
             .insert(CTI)
@@ -3774,6 +3859,8 @@ export function createDbAdmissionRouteService(
               terminalDiagnosisIcd10: input.terminalDiagnosisIcd10,
               relatedConditionsIcd10: [...(input.secondaryDiagnoses ?? [])],
               narrative: input.narrative,
+              signatureRequestedAt,
+              signatureDueAt,
             })
             .returning({
               id: CTI.id,
@@ -3801,6 +3888,18 @@ export function createDbAdmissionRouteService(
             ctiId: cti.id,
             electionPeriodId: input.electionPeriodId,
             isRecert: input.isRecert,
+          },
+          organizationId,
+          aggregateKind: "certification_of_terminal_illness",
+          aggregateId: cti.id,
+        });
+        await outbox.publish(tx, {
+          eventName: "m6.cti.signature_requested",
+          payload: {
+            ctiId: cti.id,
+            hospiceMdId: input.hospiceMedicalDirectorId,
+            requestedAt: signatureRequestedAt.toISOString(),
+            dueAt: signatureDueAt.toISOString(),
           },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",
@@ -4076,6 +4175,7 @@ export function createDbAdmissionRouteService(
               electionPeriodId: input.electionPeriodId,
               performedByUserId: input.scheduledClinicianId,
               performerRole: role,
+              scheduledDate: input.scheduledDate,
             })
             .returning({
               id: F2F.id,
@@ -4695,6 +4795,8 @@ export function createDbAdmissionRouteService(
         // D9 — draft OUR CTI against the next period (the inherited period runs on the sending
         // hospice's certification; `signCtiHospiceMd` derives the no-attending-needed rule from this
         // period's own sequenceNumber, which is never 1 for a transfer-in, so no special-casing here).
+        const signatureRequestedAt = now();
+        const signatureDueAt = new Date(computeCtiSignatureDueAt(signatureRequestedAt));
         const cti = firstOrThrow(
           await tx
             .insert(CTI)
@@ -4703,6 +4805,8 @@ export function createDbAdmissionRouteService(
               electionPeriodId: nextPeriod.id,
               hospiceMdId: selectedHospicePhysicianId,
               attendingMdId: null,
+              signatureRequestedAt,
+              signatureDueAt,
             })
             .returning({ id: CTI.id }),
           "cti insert returned no row",
@@ -4724,6 +4828,18 @@ export function createDbAdmissionRouteService(
             ctiId: cti.id,
             electionPeriodId: nextPeriod.id,
             isRecert: true,
+          },
+          organizationId,
+          aggregateKind: "certification_of_terminal_illness",
+          aggregateId: cti.id,
+        });
+        await outbox.publish(tx, {
+          eventName: "m6.cti.signature_requested",
+          payload: {
+            ctiId: cti.id,
+            hospiceMdId: selectedHospicePhysicianId,
+            requestedAt: signatureRequestedAt.toISOString(),
+            dueAt: signatureDueAt.toISOString(),
           },
           organizationId,
           aggregateKind: "certification_of_terminal_illness",

@@ -271,26 +271,18 @@ export function PatientEncounters(): JSX.Element {
           <div
             style={{
               display: "flex",
-
               alignItems: "center",
-
               justifyContent: "space-between",
-
               gap: "1rem",
-
               marginBottom: "1rem",
             }}
           >
             <h1
               style={{
                 margin: 0,
-
                 fontFamily: t.fontDisplay,
-
                 fontWeight: 500,
-
                 fontSize: "1.375rem",
-
                 color: t.onSurface,
               }}
             >
@@ -300,11 +292,8 @@ export function PatientEncounters(): JSX.Element {
             <div
               style={{
                 display: "flex",
-
                 alignItems: "center",
-
                 gap: "0.5rem",
-
                 flexWrap: "wrap",
               }}
             >
@@ -315,17 +304,11 @@ export function PatientEncounters(): JSX.Element {
                 style={selectStyle}
               >
                 <option value="">Any status</option>
-
                 <option value="draft">Draft</option>
-
                 <option value="finalized">Finalized</option>
-
                 <option value="signed">Signed</option>
-
                 <option value="cosign_pending">Cosign Pending</option>
-
                 <option value="cosigned">Cosigned</option>
-
                 <option value="voided">Voided</option>
               </select>
 

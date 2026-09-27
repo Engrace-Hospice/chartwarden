@@ -41,7 +41,9 @@ export const M6_ROLE_PREDICATE_NAMES = {
   complianceWindowOverride: "compliance.window_override",
 } as const;
 
-const MD_OR_NP = ["medical_director", "hospice_physician", "np"] as const;
+const MD_OR_NP = ["medical_director", "hospice_physician", "np","rn_case_manager",
+  "rn",] as const;
+  
 const UNSITED_ADMISSION_ROLES = [
   "intake_coordinator",
   "intake_supervisor",

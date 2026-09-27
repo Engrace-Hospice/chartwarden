@@ -30,13 +30,37 @@ export const certificationsOfTerminalIllness = pgTable(
       .notNull()
       .references(() => electionPeriods.id, { onDelete: "restrict" }),
     hospiceMdId: uuid("hospice_md_id").notNull(), // M40 physician (app-validated)
-    hospiceMdSignedAt: timestamp("hospice_md_signed_at", { withTimezone: true }),
+    /**
+     * Start and end of the hospice-physician signature SLA.
+     *
+     * For the current M6 workflow the CTI is assigned to the hospice physician
+     * when it is drafted, so the request starts at creation time.
+     *
+     * If M6 later introduces an explicit "submit to hospice MD" transition,
+     * signatureRequestedAt should move to that transition without changing
+     * the reminder/watchdog contract.
+     */
+    signatureRequestedAt: timestamp("signature_requested_at", {
+      withTimezone: true,
+    }),
+
+    signatureDueAt: timestamp("signature_due_at", {
+      withTimezone: true,
+    }),
+    hospiceMdSignedAt: timestamp("hospice_md_signed_at", {
+      withTimezone: true,
+    }),
     attendingMdId: uuid("attending_md_id"), // M40 physician (app-validated)
-    attendingMdSignedAt: timestamp("attending_md_signed_at", { withTimezone: true }),
+    attendingMdSignedAt: timestamp("attending_md_signed_at", {
+      withTimezone: true,
+    }),
     // Nullable at draft (M6L-T03): a `drafted` CTI carries only the physicians + period ref; the clinical
     // fields are filled when known / on completion. See migration 0124.
     terminalDiagnosisIcd10: text("terminal_diagnosis_icd10"),
-    relatedConditionsIcd10: text("related_conditions_icd10").array().notNull().default(sql`'{}'`),
+    relatedConditionsIcd10: text("related_conditions_icd10")
+      .array()
+      .notNull()
+      .default(sql`'{}'`),
     narrative: text("narrative"),
     periodStart: date("period_start"),
     periodEnd: date("period_end"),
@@ -45,17 +69,27 @@ export const certificationsOfTerminalIllness = pgTable(
     status: ctiStatus("status").notNull().default("drafted"),
     documentId: uuid("document_id"), // M22 document (app-validated)
     voidedSupersedesId: uuid("voided_supersedes_id"), // self-reference (logical)
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     version: bigint("version", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
     periodActiveUnique: uniqueIndex("cti_period_active_idx")
       .on(t.electionPeriodId)
       .where(sql`status <> 'voided'`),
-    orgStatusIdx: index("cti_org_status_idx").on(t.organizationId, t.status, t.periodStart),
+    orgSignatureDueIdx: index("cti_org_signature_due_idx")
+      .on(t.organizationId, t.status, t.signatureDueAt)
+      .where(
+        sql`signature_due_at IS NOT NULL AND hospice_md_signed_at IS NULL`,
+      ),
   }),
 );
 
-export type CertificationOfTerminalIllness = typeof certificationsOfTerminalIllness.$inferSelect;
-export type NewCertificationOfTerminalIllness = typeof certificationsOfTerminalIllness.$inferInsert;
+export type CertificationOfTerminalIllness =
+  typeof certificationsOfTerminalIllness.$inferSelect;
+export type NewCertificationOfTerminalIllness =
+  typeof certificationsOfTerminalIllness.$inferInsert;

@@ -59,6 +59,9 @@ export interface InsertVerbalOrderInput {
   readonly recordingMembershipId: string;
   readonly orderingPhysicianMdmId: string;
   readonly verbalAttestation: string;
+  // No separate effective-date concept reaches this cross-module seam (M12/M19 callers record the
+  // verbal order as it happened) — it takes effect the moment it was received.
+  readonly effectiveAt: IsoInstant;
   readonly receivedAt: IsoInstant;
   readonly deadlineAt: IsoInstant;
 }
