@@ -25,8 +25,11 @@
 //     receiving the SOS and the RN who took over would not. There is nothing to re-sync, so there is
 //     nothing to consume.
 //
-//   • `m36.notification.delivery_failed` and `m5.patient.deceased` are M20-T06's (the M36 alert wiring and
-//     the §4.8 delivery-failed escalation), not part of the M17/M18/M19 binding this task owns.
+//   • `m36.notification.delivery_failed` was M20-T06's, out of scope for the M17/M18/M19 binding F-043
+//     landed — it now has its own binding, `./m36-delivery-failed`'s `buildSosDeliveryFailureConsumer`,
+//     appended directly in `./bindings` rather than re-exported through this barrel (#205 M36 follow-up).
+//   • `m5.patient.deceased` remains unbound: a patient death should close that patient's open safety
+//     obligations, and no consumer for it has been written yet (`outbox-subscription-exceptions.ts`).
 export * from "./bindings";
 export * from "./m17-no-show";
 export * from "./m17-visit-cadence";

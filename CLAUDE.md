@@ -813,6 +813,29 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   DELETE on nothing in M20 and both statements were written before anything executed one. Migration 0238
   grants it on that one table: a `proposed` row is a plan the system MADE, not evidence of anything that
   happened, and 0111's own M4 trigger fires on DELETE so the retirement stays on the record.
+
+  **A second M20 mechanism sits entirely outside the outbox and is invisible to every gate above it
+  (F-111, #249).** `lifecycle/sos-escalator.ts` (§4.8 `m20.sos-sla-watchdog.cron`, D7, M20-F05/S13/
+  INT-031) is a complete, pure, unit-tested per-alert decider for the SOS escalation ladder — the
+  5-second stale-cancel-window sweep, tier-1/2/3 SLA-dwell escalation via `escalateSos`, and the
+  `emergency_terminus` re-page loop via `repageTerminus`. **Nothing calls it.** No file under
+  `20-field-safety/` matches `*cron*`/`*worker*`/`*job*`; no queue name or BullMQ registration
+  mentions `sos-sla-watchdog` anywhere outside the decider's own header comment; the composition root
+  wires M20's outbox consumers (F-043/#103) but registers no cron worker for this module at all. A
+  field clinician's SOS alert that nobody acknowledges within its tier-1 SLA sits in `acknowledging`
+  forever — not an error path, the absence of a background process, so nothing logs it. The ladder
+  fires today only on a supervisor's manual escalate or when an M36 delivery failure happens to
+  trigger it (`consumers/m36-delivery-failed.ts`, capped short of the terminus, #205's M36
+  follow-up). **Why neither outbox gate caught it**: `check-outbox-bindings.ts` and
+  `check-live-suite-coverage.ts` both reason about the outbox — catalog↔binding agreement, live
+  suites wired to CI — and this is a scheduled decider with no producer event to wait on, invisible
+  to both gate classes this repo has built. **Reported, not fixed**: a from-scratch build (a BullMQ
+  worker under the reserved `m20.sos-sla-watchdog.cron` name, per-org/per-alert scanning via the
+  active-org enumerator pattern M30's wiring batch established, locking against double-escalation,
+  composition-root wiring) — comparable in scope to the M36 out-of-band dispatch pipeline and M27
+  async cost-report processing, both reported and deferred elsewhere in this document rather than
+  built inline.
+
   **M19 followed M20 out of the registry's launch-critical tier (F-043, #103).** Its two D10 inbound
   triggers — `consumers/m17-no-show.ts` and `m18-late-checkout.ts` over the shared `inbound-trigger.ts`
   core — were complete deciders whose only caller was their own test, so the relay deferred both. What that
