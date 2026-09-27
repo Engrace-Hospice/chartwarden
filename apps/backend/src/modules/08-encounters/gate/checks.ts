@@ -53,23 +53,17 @@ export const GATE_CHECKS: Readonly<Record<GateCheckId, GateCheck>> = {
   required_vitals: {
     ordinal: 2,
     spec: "required vitals captured per encounter type, or marked clinically_not_indicated with a reason",
-    state: {
-      kind: "deferred",
-      blocker:
-        "the requirement set does not exist as data anywhere. The template engine declares required SECTIONS and nothing about vitals; the spec names the roster for two encounter types in prose (routine_visit: BP/HR/RR/T/SpO2/pain; telephonic: none) and for none of the others. Writing the missing rosters here would be authoring clinical policy inside a gate, and getting one wrong is a signature refused for a visit that was documented correctly.",
-      needs:
-        "#125 — a per-encounter-type required-vitals roster declared where the templates are (packages/hearthnote), so the gate reads it rather than deciding it",
-    },
+    // #125 — the roster is DERIVED from the resolved template's own `vitals_review` section rather than
+    // a second hand-authored list (packages/hearthnote/templates/requirements.ts `requiredVitalsFor`),
+    // so it cannot drift from what the template already decided per (type × discipline) pair.
+    state: { kind: "evaluated" },
   },
   required_scales: {
     ordinal: 3,
     spec: "required clinical scales captured per encounter type — via M9's LatestAssessmentProvider",
-    state: {
-      kind: "deferred",
-      blocker:
-        "the seam is real and registered (M9 is 🟢), but WHICH scales an encounter type mandates is declared nowhere — §2.6 says 'if mandated by the type' and no type mandates one in data. The reader exists; the requirement does not.",
-      needs: "#125 — a per-encounter-type required-scale roster, alongside the required-vitals one",
-    },
+    // #125 — the per-type roster (packages/hearthnote/templates/requirements.ts REQUIRED_SCALES) is
+    // consulted through M9's LatestAssessmentProvider, real and registered (M9 is 🟢).
+    state: { kind: "evaluated" },
   },
   required_hope_items: {
     ordinal: 4,

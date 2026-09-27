@@ -9,10 +9,25 @@
 // What each of the twelve §2.6 checks is today — evaluated here, enforced elsewhere in the same
 // transition, or deferred with a named blocker — is the register in ./checks. Read that first; it is
 // the honest inventory, and `gate.test.ts` pins it against what this file actually decides.
-import { resolveTemplate } from "@wardenx/hearthnote";
-import type { CarePlanOverdueStatus, EncounterDiscipline, EncounterType } from "@wardenx/types";
+import { type VitalField, requiredScalesFor, requiredVitalsFor, resolveTemplate } from "@wardenx/hearthnote";
+import type {
+  CarePlanOverdueStatus,
+  EncounterDiscipline,
+  EncounterType,
+  ScaleType,
+} from "@wardenx/types";
 import { EncounterStateError } from "../lifecycle/errors";
 import type { GateCheckId } from "./checks";
+
+/** §2.6 check 2's remediation copy, keyed by the roster field (`STANDARD_VITALS_ROSTER`'s vocabulary). */
+const VITAL_FIELD_LABEL: Readonly<Record<VitalField, string>> = {
+  bp: "BP",
+  heartRate: "HR",
+  respiratoryRate: "RR",
+  temperature: "T",
+  spo2: "SpO2",
+  pain: "pain",
+};
 
 /**
  * One section as the gate sees it: the id, how many vocabulary entries it carries, and whether the
@@ -36,6 +51,24 @@ export interface EncounterGateFacts {
    * is NOT a failure: there is no review window to have missed. Only `overdue: true` blocks.
    */
   readonly carePlanOverdue: CarePlanOverdueStatus | null;
+  /**
+   * §2.6 check 2 — the union, across every `vitals` row this encounter carries, of fields with a
+   * non-null value (`bp` needs BOTH `bpSystolic`/`bpDiastolic`). Resolved upstream because the gate
+   * takes no IO; see `requiredVitalsFor` (@wardenx/hearthnote) for what a template requires.
+   */
+  readonly vitalsCaptured: ReadonlySet<VitalField>;
+  /**
+   * §2.6 check 2's escape hatch — the union of fields named in any `vitals` row's
+   * `clinically_not_indicated_fields`, restricted to the {@link VitalField} vocabulary (an unrecognized
+   * string in that free-text column is neither a capture nor a valid escape).
+   */
+  readonly vitalsClinicallyNotIndicated: ReadonlySet<VitalField>;
+  /**
+   * §2.6 check 3 — which of `requiredScalesFor(encounterType)`'s scales M9's `LatestAssessmentProvider`
+   * already has an active row for, on this patient. Resolved upstream (the gate takes no IO); empty
+   * when the type requires none, in which case this set is never consulted.
+   */
+  readonly scalesPresent: ReadonlySet<ScaleType>;
 }
 
 /** One structured remediation hint — the §2.6 "422 with remediation" payload, one entry per failure. */
@@ -87,6 +120,28 @@ export function runEncounterComplianceGate(facts: EncounterGateFacts): GateResul
         message: `'${section.heading}' is required for a ${facts.encounterType} note and has no selections`,
       });
     }
+
+    // ── Check 2 — required vitals per (type × discipline) template, or clinically_not_indicated (#125) ─
+    for (const field of requiredVitalsFor(template)) {
+      if (facts.vitalsCaptured.has(field) || facts.vitalsClinicallyNotIndicated.has(field)) continue;
+      remediation.push({
+        check: "required_vitals",
+        code: "MISSING_VITAL",
+        field,
+        message: `${VITAL_FIELD_LABEL[field]} not captured — required for ${facts.encounterType}`,
+      });
+    }
+  }
+
+  // ── Check 3 — required clinical scales per encounter type, via M9's LatestAssessmentProvider (#125) ──
+  for (const scale of requiredScalesFor(facts.encounterType)) {
+    if (facts.scalesPresent.has(scale)) continue;
+    remediation.push({
+      check: "required_scales",
+      code: "MISSING_SCALE",
+      field: scale,
+      message: `${scale.toUpperCase()} not captured — required for ${facts.encounterType}`,
+    });
   }
 
   // ── Check 6 — the M7 care-plan review window (CoP 418.56) ─────────────────────────────────────────

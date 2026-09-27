@@ -40,7 +40,7 @@ import {
   createDbEncounterRouteService,
   createHearthnoteCiphers,
 } from "../src/modules/08-encounters/index";
-import { requiredSectionSelections } from "./_hearthnote-fixtures";
+import { requiredSectionSelections, requiredVitalsCapture } from "./_hearthnote-fixtures";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -95,6 +95,8 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   let noCipherSvc: ReturnType<typeof createDbEncounterRouteService>;
   /** What the faked M7 reader answers (see the seam registration in beforeAll). */
   let carePlanOverdue: unknown = null;
+  /** §2.6 check 3 (#125) — what the faked M9 reader answers `latestBatch` for any scale asked. */
+  let latestScales: Set<string> = new Set();
   /** The RN case manager's membership id — what a cosignature must route to (#124). */
   let CASE_MANAGER_MEMBERSHIP_ID: string;
   const membershipOf: Record<string, string> = {};
@@ -248,6 +250,17 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
       fifteenDayCycleCountsForOrg: async () => ({ numerator: 0, denominator: 0 }),
       terminologyCodeUsageForOrg: async () => [],
     } as never);
+    // §2.6 check 3 (#125) — the gate consults M9's LatestAssessmentProvider for recert_visit's PPS/ESAS
+    // roster. Faked for the same reason CarePlanReader is: M9's real store also reads under the
+    // caller's ambient request context, which this suite (driving the service directly) has none of.
+    // `latestScales` is the switch the check-3 tests below flip.
+    registerSeam("LatestAssessmentProvider", {
+      latest: async () => null,
+      latestBatch: async (_patientId: unknown, scaleTypes: readonly string[]) =>
+        scaleTypes
+          .filter((s) => latestScales.has(s))
+          .map((scaleType) => ({ scaleType }) as never),
+    } as never);
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
     handle = createDbClient({
       connectionString: appRoleUrl(DB_URL as string),
@@ -282,7 +295,11 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   async function draft(
     encounterType: string,
     discipline: string,
-    extra: { faceToFaceEncounterId?: string; document?: boolean } = {},
+    extra: {
+      faceToFaceEncounterId?: string;
+      document?: boolean;
+      captureVitals?: boolean;
+    } = {},
   ): Promise<string> {
     const d = await svc.createDraft(ORG_A, membershipOf[ORG_A], {
       patientId: PATIENT,
@@ -308,6 +325,12 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
         0,
         requiredSectionSelections(encounterType as never, discipline as never),
       );
+    }
+    // §2.6 check 2 (#125) — same posture as `document`: capture the roster `requiredVitalsFor` itself
+    // names for this pair, unless the caller is exercising check 2's own refusal/escape-hatch behavior.
+    if (extra.captureVitals !== false) {
+      const vitals = requiredVitalsCapture(encounterType as never, discipline as never);
+      if (vitals) await svc.captureVitals(ORG_A, d.id, vitals);
     }
     return d.id;
   }
@@ -696,7 +719,9 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   // suite proves the projection over in-memory Maps; only this proves the SELECT returns the columns
   // the write actually persisted, that `captured_at` orders them, and that RLS scopes them by tenant.
   it("#92 listVitals round-trips the persisted measurements, newest capture first", async () => {
-    const id = await draft("routine_visit", "rn");
+    // captureVitals: false — this test asserts the EXACT row list its own two captures produce; the
+    // #125 auto-capture default would add a third.
+    const id = await draft("routine_visit", "rn", { captureVitals: false });
     const first = await svc.captureVitals(ORG_A, id, {
       heartRate: 60,
       temperature: "37.1",
@@ -744,8 +769,20 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
   });
 
   it("#92 listVitals survives the encounter being signed (the record stays retrievable)", async () => {
-    const id = await draft("routine_visit", "rn");
-    const written = await svc.captureVitals(ORG_A, id, { heartRate: 72 });
+    // captureVitals: false + the full roster in ONE call — §2.6 check 2 (#125) now requires it for a
+    // routine_visit to finalize at all, and this test's own assertion is the exact single row it wrote.
+    const id = await draft("routine_visit", "rn", { captureVitals: false });
+    const written = await svc.captureVitals(ORG_A, id, {
+      heartRate: 72,
+      bpSystolic: 118,
+      bpDiastolic: 76,
+      respiratoryRate: 16,
+      temperature: "98.6",
+      temperatureUnit: "f",
+      spo2: 98,
+      painScore: 0,
+      painScale: "nrs_0_10",
+    });
     await svc.finalize(ORG_A, id, SERVICE_DATE as never);
     await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
     // Writing is refused after signing (§2.7); READING must not be — 42 CFR 418.104 requires the
@@ -902,6 +939,57 @@ describe.skipIf(!DB_URL)("M8 encounter write lifecycle — LIVE Postgres (M8L-T0
     const err = await svc.finalize(ORG_A, id, SERVICE_DATE as never).catch((e: unknown) => e);
     const details = (err as { details?: Array<{ field?: string }> }).details ?? [];
     expect(details.map((d) => d.field).sort()).toEqual(["plan", "vitals_review"]);
+  });
+
+  it("§2.6 check 2 (#125) — a routine_visit missing a required vital is refused at finalize, per field; clinically_not_indicated is a real escape", async () => {
+    const id = await draft("routine_visit", "rn", { captureVitals: false });
+    // Every roster field but BP: the gate runs as a PREVIEW at finalize (same as check 1), so a note
+    // missing a required vital never reaches `finalized` in the first place.
+    await svc.captureVitals(ORG_A, id, {
+      heartRate: 72,
+      respiratoryRate: 16,
+      temperature: "98.6",
+      temperatureUnit: "f",
+      spo2: 98,
+      painScore: 0,
+      painScale: "nrs_0_10",
+    });
+    const err = await svc.finalize(ORG_A, id, SERVICE_DATE as never).catch((e: unknown) => e);
+    const details = (err as { details?: Array<{ field?: string; code?: string }> }).details ?? [];
+    expect(details).toContainEqual(expect.objectContaining({ field: "bp", code: "MISSING_VITAL" }));
+    const draftRow = await admin.query("SELECT status FROM encounter WHERE id=$1", [id]);
+    expect(draftRow.rows[0].status).toBe("draft");
+
+    // The same encounter, with BP marked clinically not indicated and a reason ≥20 chars, finalizes
+    // and signs — the escape hatch, reachable for the first time (#125's acceptance criterion).
+    await svc.captureVitals(ORG_A, id, {
+      clinicallyNotIndicatedFields: ["bp"],
+      clinicallyNotIndicatedReason: "patient refused cuff placement this visit",
+    });
+    await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+    const signed = await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+    expect(signed.status).toBe("signed");
+  });
+
+  it("§2.6 check 3 (#125) — a recert_visit missing a required scale blocks the SIGN of a fully documented note; the row stays finalized on the refusal", async () => {
+    latestScales = new Set(["pps", "esas_r"]); // both present — finalize sees a satisfied gate.
+    try {
+      const id = await draft("recert_visit", "rn");
+      await svc.finalize(ORG_A, id, SERVICE_DATE as never);
+      latestScales = new Set(["pps"]); // ESAS drops out before sign — mirrors the M7-overdue shape.
+      await expect(
+        svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never }),
+      ).rejects.toMatchObject({ statusCode: 422, code: "COMPLIANCE_GATE_FAILED" });
+      const rows = await admin.query("SELECT status FROM encounter WHERE id=$1", [id]);
+      expect(rows.rows[0].status).toBe("finalized");
+      expect(await eventsFor(id)).not.toContain("m8.encounter.signed");
+
+      latestScales = new Set(["pps", "esas_r"]);
+      const signed = await svc.sign(ORG_A, id, ACTOR_A, { at: SERVICE_DATE as never });
+      expect(signed.status).toBe("signed");
+    } finally {
+      latestScales = new Set();
+    }
   });
 
   it("§2.6 check 6 — an overdue M7 care plan blocks the SIGN of a fully documented note", async () => {

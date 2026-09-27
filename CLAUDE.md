@@ -119,6 +119,43 @@ Proven by `m28-fhir-gateway.live.test.ts` — mint at R3, read a real US Core Pa
 refused org B's patient and vice versa, the ledger row visible to the disclosing tenant only, the
 append-only grants, and a revoked client's still-in-TTL bearer dying on its next request.
 
+**M8's §2.6 Layer-3 gate shipped with two of its twelve checks permanently deferred, and the reason was
+data, not code (F-112, #125).** `gate/checks.ts` registered `required_vitals` (check 2) and
+`required_scales` (check 3) as `deferred` from the day the gate went real (#121): the spec states a
+vitals roster for exactly two of the fourteen encounter types in prose (`routine_visit`: BP/HR/RR/T/
+SpO2/pain; `telephonic`: none) and a scales roster for one (`recert_visit`: PPS/ESAS), and nowhere else
+— so a clinician could finalize and sign a `routine_visit` note that never captured a blood pressure,
+and `clinically_not_indicated_fields` + its ≥20-char reason (the escape hatch §2.2 specifies) was built
+and unreachable, because nothing enforced the requirement it escapes. **Both checks are now evaluated.**
+The scales half is a small literal map (`REQUIRED_SCALES`, `packages/hearthnote/templates/
+requirements.ts`) — thirteen of fourteen types are a deliberate `[]`, because the spec never names a
+roster for them and check 3's own gloss is "if mandated by the type." The vitals half is NOT a second
+hand-authored list: `registry.ts`'s `baseSectionIds` had already decided, per DISCIPLINE, which
+(encounterType × discipline) pairs carry a required `vitals_review` narrative section — rn/lpn/md/np get
+one (stripped only for `telephonic`); chha/msw/chaplain/volunteer never do — and `requiredVitalsFor`
+reads that section's presence rather than re-deciding the same question a second way, so the two cannot
+drift. That resolves every type the spec's prose left silent (`admission_visit`, `recert_visit`,
+`face_to_face`, `lpn_visit`, `idg_followup` — the last genuinely discipline-dependent: an RN's IDG
+follow-up requires vitals, an MSW's does not, because the template does) the same way the template
+author already decided it. **One deliberate departure from the obvious per-type reading**: `chha_visit`
+is NOT given the CHHA-scoped roster (BP/weight/pain) the §4.5 role table's capture-SCOPE note might
+suggest, because `baseSectionIds("chha")` carries no `vitals_review` section at all — the template's own
+design is that a CHHA visit does not narratively review vitals, and requiring the numbers while the
+template requires no discussion of them would have been the exact drift this fix exists to prevent.
+Wiring it live surfaced the same "the suite invented the fact its own production path cannot produce"
+shape this document has seen repeatedly: **every `draft()` helper across the M8 live write suite
+documented sections but captured no vitals**, so the moment check 2 went live every finalize/sign case
+for a vitals-requiring pair would have failed identically — fixed in the suite's own shared fixture
+(`requiredVitalsCapture`, mirroring the existing `requiredSectionSelections`), never by weakening the
+gate. `db:seed:scenario-clinical-core.ts`'s M8 section had already been capturing the full roster before
+finalize (written against #121, coincidentally complete for #125 too) and needed no change. M8's manifest
+`dependsOn` gains `9` (M9, for the `LatestAssessmentProvider` seam check 3 reads) alongside the M7
+`CarePlanReader` it already consumed. Proven live in `m8-encounters-write.live.test.ts`: a routine_visit
+missing BP refuses at finalize naming the field, `clinically_not_indicated` reaches it for the first time
+and lets the same note sign, and a recert_visit with PPS present but ESAS missing blocks specifically at
+SIGN (the M9 fact, unlike M7's, is faked per-test the same way `carePlanOverdue` is, so the gap between
+finalize and sign is real and not an artifact of the harness).
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

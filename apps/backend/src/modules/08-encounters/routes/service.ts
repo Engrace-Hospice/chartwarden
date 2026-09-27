@@ -15,6 +15,8 @@ import {
   type SelectionState,
   assemble,
   templateKey as hearthnoteTemplateKey,
+  requiredScalesFor,
+  requiredVitalsFor,
   resolveTemplate,
 } from "@wardenx/hearthnote";
 import { VOCAB_VERSION, activeNarrativeVocabRelease, entriesFor } from "@wardenx/narrative-vocab";
@@ -908,15 +910,22 @@ export function createInMemoryEncounterBackend(seed: EncounterRouteSeed = {}): {
    * records. `carePlanOverdue: null` is this slice's convention, not a verdict: it binds no seams (the
    * M7 reader reads under the caller's ambient request context and this dataset has none), the same
    * reason `stepUpFresh` is `true` here and resolved for real in the Drizzle backend. So the slice
-   * decides the checks it CAN — every required template section populated — and defers the one it
-   * cannot to the production path, where the verdict is real.
+   * decides the checks it CAN — every required template section populated — and defers the ones it
+   * cannot to the production path, where the verdict is real. Checks 2/3 (#125) join that list: this
+   * slice tracks no `vitals` rows and binds no M9 seam, so it reports every roster entry already
+   * satisfied (the template's OWN required roster, not an empty one — an empty one would silently
+   * WIDEN what this slice's callers can sign relative to production for any type that requires vitals).
    */
   const gate = (r: EncounterRecord, at: "finalize" | "sign"): boolean => {
+    const template = resolveTemplate(r.encounterType, r.discipline);
     const verdict = runEncounterComplianceGate({
       encounterType: r.encounterType,
       discipline: r.discipline,
       sections: toGateSections(r.selections),
       carePlanOverdue: null,
+      vitalsCaptured: new Set(template ? requiredVitalsFor(template) : []),
+      vitalsClinicallyNotIndicated: new Set(),
+      scalesPresent: new Set(requiredScalesFor(r.encounterType)),
     });
     assertGatePassed(verdict, at);
     return verdict.pass;

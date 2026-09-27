@@ -373,7 +373,7 @@ exports.MODULES = [
       "packages/narrative-vocab",
       "apps/web/src/modules/08-encounters",
     ], // +web: Track B in-task screens (ADR-0030), land in M8-T12
-    dependsOn: [1, 6, 7, 36, 38], // +1: M8 registers its §4.7 owned seams (+ consumes M7's CarePlanReader) via the M1-owned bootstrap registry (M8-T08)
+    dependsOn: [1, 6, 7, 9, 36, 38], // +1: M8 registers its §4.7 owned seams (+ consumes M7's CarePlanReader, M9's LatestAssessmentProvider #125) via the M1-owned bootstrap registry (M8-T08)
     ownedTables: [
       "encounter",
       "encounter_signature",

@@ -15,3 +15,4 @@ export {
   runAddendumComplianceGate,
   runEncounterComplianceGate,
 } from "./gate";
+export { type VitalsRowFacts, deriveVitalsGateFacts } from "./vitals-facts";

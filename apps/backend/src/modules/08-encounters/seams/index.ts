@@ -9,13 +9,16 @@
 //
 // M8 also CONSUMES M7's §7.8 CarePlanReader (the encounter authoring picker + the 5-/15-day overdue
 // sign-gate): `getCarePlanReader()` resolves it from the M1 registry — a boot-validated seam, NOT a
-// schema import — so the encounter routes (M8-T09) gate signing on the care-plan review window.
+// schema import — so the encounter routes (M8-T09) gate signing on the care-plan review window. And
+// M9's §4.7/D7 LatestAssessmentProvider (`getLatestAssessmentProvider()`) — the §2.6 check 3 (#125)
+// "is the mandated scale present" read.
 import type {
   BillableEncounterReader,
   CarePlanReader,
   CareTeamProvider,
   EncounterCreator,
   EvvBracketResolver,
+  LatestAssessmentProvider,
   MileagePayrollReader,
   SignedEncountersReader,
 } from "@wardenx/types";
@@ -105,4 +108,14 @@ export function getCareTeamProvider(): CareTeamProvider {
  */
 export function getEvvBracketResolver(): EvvBracketResolver {
   return getSeam("EvvBracketResolver");
+}
+
+/**
+ * M8 CONSUMES M9's §4.7/D7 LatestAssessmentProvider — §2.6 check 3 (#125), which scale is "present"
+ * for a patient is the one question this seam answers. M9 is 🟢 (real impl registered at boot); a
+ * deny-stub throw here is a genuine seam-unreachable state, handled the same way as `getCarePlanReader`
+ * failing — the check could not run, so it must not read as passed.
+ */
+export function getLatestAssessmentProvider(): LatestAssessmentProvider {
+  return getSeam("LatestAssessmentProvider");
 }

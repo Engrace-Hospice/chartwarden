@@ -24,6 +24,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import {
   DEFAULT_HEARTHNOTE_FLAGS,
   enhanceNarrative,
+  requiredScalesFor,
   templateKey as hearthnoteTemplateKey,
 } from "@wardenx/hearthnote";
 import { VOCAB_VERSION, activeNarrativeVocabRelease } from "@wardenx/narrative-vocab";
@@ -35,6 +36,7 @@ import {
   type LocalDate,
   NotFoundError,
   type PatientId,
+  type ScaleType,
   STEP_UP_POLICY,
   type StepUpFactor,
   ValidationError,
@@ -64,6 +66,7 @@ import type { CosignatureState } from "./cosignature/index";
 import {
   type GateSectionSelection,
   assertGatePassed,
+  deriveVitalsGateFacts,
   runAddendumComplianceGate,
   runEncounterComplianceGate,
 } from "./gate/index";
@@ -90,7 +93,7 @@ import type {
   SelectionSectionInput,
 } from "./routes/service";
 import { assembleSelections, buildTemplateMenu } from "./routes/service";
-import { getCarePlanReader, getCareTeamProvider } from "./seams/index";
+import { getCarePlanReader, getCareTeamProvider, getLatestAssessmentProvider } from "./seams/index";
 
 const ENC = schema.encounters;
 const LINK = schema.encounterCarePlanLinks;
@@ -515,6 +518,35 @@ export function createDbEncounterRouteService(
     }
   }
 
+  /**
+   * §2.6 check 3 (#125) — which of `requiredScalesFor(encounterType)`'s scales M9 already has an
+   * active row for on this patient. Empty roster short-circuits without asking the seam at all, the
+   * same posture as `requiredHopeItems` — no need to fail closed on a seam this encounter type never
+   * consults. A seam failure is `COMPLIANCE_GATE_UNAVAILABLE`, same as the care-plan/cosigner checks:
+   * a check that could not run must not read as passed.
+   */
+  async function scalesPresentFor(
+    patientId: string,
+    encounterType: (typeof ENC.$inferSelect)["encounterType"],
+  ): Promise<Set<ScaleType>> {
+    const required = requiredScalesFor(encounterType);
+    if (required.length === 0) return new Set();
+    try {
+      const rows = await getLatestAssessmentProvider().latestBatch(
+        patientId as PatientId,
+        required,
+      );
+      return new Set(rows.map((row) => row.scaleType));
+    } catch (cause) {
+      throw new EncounterStateError(
+        "COMPLIANCE_GATE_UNAVAILABLE",
+        `the §2.6 required-scales check could not be decided: M9's LatestAssessmentProvider is unreachable (${
+          cause instanceof Error ? cause.message : String(cause)
+        })`,
+      );
+    }
+  }
+
   /** Run the §2.6 gate for one encounter and raise the 422 + remediation list when it does not pass. */
   async function gateEncounter(
     t: DbClient,
@@ -526,11 +558,28 @@ export function createDbEncounterRouteService(
       .from(SEL)
       .where(eq(SEL.encounterId, r.id))
       .limit(1);
+    const vitalsRows = await t
+      .select({
+        bpSystolic: VITALS.bpSystolic,
+        bpDiastolic: VITALS.bpDiastolic,
+        heartRate: VITALS.heartRate,
+        respiratoryRate: VITALS.respiratoryRate,
+        temperature: VITALS.temperature,
+        spo2: VITALS.spo2,
+        painScore: VITALS.painScore,
+        clinicallyNotIndicatedFields: VITALS.clinicallyNotIndicatedFields,
+      })
+      .from(VITALS)
+      .where(eq(VITALS.encounterId, r.id));
+    const { captured, clinicallyNotIndicated } = deriveVitalsGateFacts(vitalsRows);
     const verdict = runEncounterComplianceGate({
       encounterType: r.encounterType,
       discipline: r.discipline,
       sections: gateSections(sel?.selections ?? null),
       carePlanOverdue: await carePlanOverdueFor(r.patientId),
+      vitalsCaptured: captured,
+      vitalsClinicallyNotIndicated: clinicallyNotIndicated,
+      scalesPresent: await scalesPresentFor(r.patientId, r.encounterType),
     });
     assertGatePassed(verdict, at);
     return verdict.pass;

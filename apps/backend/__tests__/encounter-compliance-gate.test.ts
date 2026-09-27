@@ -6,8 +6,13 @@
 // calls deferred carries a blocker and what would lift it. The second half is why this file exists:
 // the defect (#121) was not a check answering wrongly, it was twelve checks being nowhere while
 // `transitionEncounter` enforced a literal `true` and looked like it was enforcing them.
-import { resolveTemplate } from "@wardenx/hearthnote";
-import type { CarePlanOverdueStatus } from "@wardenx/types";
+import { STANDARD_VITALS_ROSTER, resolveTemplate } from "@wardenx/hearthnote";
+import type {
+  CarePlanOverdueStatus,
+  EncounterDiscipline,
+  EncounterType,
+  ScaleType,
+} from "@wardenx/types";
 import { describe, expect, it } from "vitest";
 import {
   EVALUATED_CHECKS,
@@ -22,13 +27,24 @@ import {
 const CODE = "nv.cv.stable";
 
 /** One selection per required section of a template — the smallest tree that passes check 1. */
-function documented(encounterType: "routine_visit", discipline: "rn"): GateSectionSelection[] {
+function documented(
+  encounterType: EncounterType,
+  discipline: EncounterDiscipline,
+): GateSectionSelection[] {
   const template = resolveTemplate(encounterType, discipline);
   if (!template) throw new Error("no template");
   return template.sections
     .filter((s) => s.required)
     .map((s) => ({ sectionId: s.id, entryCount: 1, hasFreeText: false }));
 }
+
+/** Every §2.6 check-2 vital field captured — the smallest fact set that passes check 2 for a type
+ *  whose template requires the standard roster (routine_visit, admission_visit, recert_visit,
+ *  face_to_face, lpn_visit, and an rn/lpn/md/np-authored idg_followup — see `requiredVitalsFor`). */
+const ALL_VITALS_CAPTURED = new Set(STANDARD_VITALS_ROSTER);
+const NO_VITALS_CAPTURED = new Set<(typeof STANDARD_VITALS_ROSTER)[number]>();
+const NO_CNI = new Set<(typeof STANDARD_VITALS_ROSTER)[number]>();
+const NO_SCALES_PRESENT = new Set<ScaleType>();
 
 const NOT_OVERDUE: CarePlanOverdueStatus = {
   planId: "cp_1" as CarePlanOverdueStatus["planId"],
@@ -47,6 +63,10 @@ describe("§2.6 Layer-3 gate — check 1, required HearthNote sections", () => {
       discipline: "rn",
       sections: [],
       carePlanOverdue: null,
+      // Checks 2/3 held satisfied so this case isolates check 1's own remediation list.
+      vitalsCaptured: ALL_VITALS_CAPTURED,
+      vitalsClinicallyNotIndicated: NO_CNI,
+      scalesPresent: NO_SCALES_PRESENT,
     });
     expect(r.pass).toBe(false);
     if (r.pass) return;
@@ -66,6 +86,9 @@ describe("§2.6 Layer-3 gate — check 1, required HearthNote sections", () => {
         discipline: "rn",
         sections: documented("routine_visit", "rn"),
         carePlanOverdue: NOT_OVERDUE,
+        vitalsCaptured: ALL_VITALS_CAPTURED,
+        vitalsClinicallyNotIndicated: NO_CNI,
+        scalesPresent: NO_SCALES_PRESENT,
       }).pass,
     ).toBe(true);
   });
@@ -80,6 +103,9 @@ describe("§2.6 Layer-3 gate — check 1, required HearthNote sections", () => {
         discipline: "rn",
         sections,
         carePlanOverdue: null,
+        vitalsCaptured: ALL_VITALS_CAPTURED,
+        vitalsClinicallyNotIndicated: NO_CNI,
+        scalesPresent: NO_SCALES_PRESENT,
       }).pass,
     ).toBe(true);
   });
@@ -91,6 +117,9 @@ describe("§2.6 Layer-3 gate — check 1, required HearthNote sections", () => {
       discipline: "rn",
       sections: [{ sectionId: "symptom_management", entryCount: 3, hasFreeText: true }],
       carePlanOverdue: null,
+      vitalsCaptured: ALL_VITALS_CAPTURED,
+      vitalsClinicallyNotIndicated: NO_CNI,
+      scalesPresent: NO_SCALES_PRESENT,
     });
     expect(r.pass).toBe(false);
     if (!r.pass) expect(r.remediation).toHaveLength(4);
@@ -104,9 +133,151 @@ describe("§2.6 Layer-3 gate — check 1, required HearthNote sections", () => {
       discipline: "volunteer",
       sections: [{ sectionId: "chief_concern", entryCount: 1, hasFreeText: false }],
       carePlanOverdue: null,
+      vitalsCaptured: NO_VITALS_CAPTURED,
+      vitalsClinicallyNotIndicated: NO_CNI,
+      scalesPresent: NO_SCALES_PRESENT,
     });
     expect(r.pass).toBe(false);
     if (!r.pass) expect(r.remediation[0]?.code).toBe("NO_TEMPLATE_FOR_PAIR");
+  });
+});
+
+describe("§2.6 Layer-3 gate — check 2, required vitals (#125)", () => {
+  it("refuses a routine_visit missing a required vital, naming the field and the standard remediation copy", () => {
+    const r = runEncounterComplianceGate({
+      encounterType: "routine_visit",
+      discipline: "rn",
+      sections: documented("routine_visit", "rn"),
+      carePlanOverdue: null,
+      vitalsCaptured: new Set(["heartRate", "respiratoryRate", "temperature", "spo2", "pain"]),
+      vitalsClinicallyNotIndicated: NO_CNI,
+      scalesPresent: NO_SCALES_PRESENT,
+    });
+    expect(r.pass).toBe(false);
+    if (r.pass) return;
+    expect(r.remediation).toContainEqual(
+      expect.objectContaining({
+        check: "required_vitals",
+        code: "MISSING_VITAL",
+        field: "bp",
+        message: "BP not captured — required for routine_visit",
+      }),
+    );
+  });
+
+  it("the `clinically_not_indicated` escape hatch satisfies check 2 for the field it names", () => {
+    expect(
+      runEncounterComplianceGate({
+        encounterType: "routine_visit",
+        discipline: "rn",
+        sections: documented("routine_visit", "rn"),
+        carePlanOverdue: null,
+        vitalsCaptured: new Set(["heartRate", "respiratoryRate", "temperature", "spo2", "pain"]),
+        vitalsClinicallyNotIndicated: new Set(["bp"]),
+        scalesPresent: NO_SCALES_PRESENT,
+      }).pass,
+    ).toBe(true);
+  });
+
+  it("requires nothing for telephonic — the template strips vitals_review for that type", () => {
+    expect(
+      runEncounterComplianceGate({
+        encounterType: "telephonic",
+        discipline: "rn",
+        sections: documented("telephonic", "rn"),
+        carePlanOverdue: null,
+        vitalsCaptured: NO_VITALS_CAPTURED,
+        vitalsClinicallyNotIndicated: NO_CNI,
+        scalesPresent: NO_SCALES_PRESENT,
+      }).pass,
+    ).toBe(true);
+  });
+
+  it("requires nothing for chha_visit — the CHHA base template carries no vitals_review section", () => {
+    expect(
+      runEncounterComplianceGate({
+        encounterType: "chha_visit",
+        discipline: "chha",
+        sections: documented("chha_visit", "chha"),
+        carePlanOverdue: null,
+        vitalsCaptured: NO_VITALS_CAPTURED,
+        vitalsClinicallyNotIndicated: NO_CNI,
+        scalesPresent: NO_SCALES_PRESENT,
+      }).pass,
+    ).toBe(true);
+  });
+
+  it("is discipline-dependent for idg_followup — RN requires vitals, MSW does not", () => {
+    const rn = runEncounterComplianceGate({
+      encounterType: "idg_followup",
+      discipline: "rn",
+      sections: documented("idg_followup", "rn"),
+      carePlanOverdue: null,
+      vitalsCaptured: NO_VITALS_CAPTURED,
+      vitalsClinicallyNotIndicated: NO_CNI,
+      scalesPresent: NO_SCALES_PRESENT,
+    });
+    expect(rn.pass).toBe(false);
+    if (!rn.pass) expect(rn.remediation.some((x) => x.check === "required_vitals")).toBe(true);
+
+    expect(
+      runEncounterComplianceGate({
+        encounterType: "idg_followup",
+        discipline: "msw",
+        sections: documented("idg_followup", "msw"),
+        carePlanOverdue: null,
+        vitalsCaptured: NO_VITALS_CAPTURED,
+        vitalsClinicallyNotIndicated: NO_CNI,
+        scalesPresent: NO_SCALES_PRESENT,
+      }).pass,
+    ).toBe(true);
+  });
+});
+
+describe("§2.6 Layer-3 gate — check 3, required clinical scales (#125)", () => {
+  it("refuses a recert_visit missing a required scale, naming the scale", () => {
+    const r = runEncounterComplianceGate({
+      encounterType: "recert_visit",
+      discipline: "rn",
+      sections: documented("recert_visit", "rn"),
+      carePlanOverdue: null,
+      vitalsCaptured: ALL_VITALS_CAPTURED,
+      vitalsClinicallyNotIndicated: NO_CNI,
+      scalesPresent: new Set(["pps"]),
+    });
+    expect(r.pass).toBe(false);
+    if (r.pass) return;
+    expect(r.remediation).toContainEqual(
+      expect.objectContaining({ check: "required_scales", code: "MISSING_SCALE", field: "esas_r" }),
+    );
+  });
+
+  it("passes once every required scale is present", () => {
+    expect(
+      runEncounterComplianceGate({
+        encounterType: "recert_visit",
+        discipline: "rn",
+        sections: documented("recert_visit", "rn"),
+        carePlanOverdue: null,
+        vitalsCaptured: ALL_VITALS_CAPTURED,
+        vitalsClinicallyNotIndicated: NO_CNI,
+        scalesPresent: new Set(["pps", "esas_r"]),
+      }).pass,
+    ).toBe(true);
+  });
+
+  it("requires nothing for routine_visit — no scale roster is declared for it", () => {
+    expect(
+      runEncounterComplianceGate({
+        encounterType: "routine_visit",
+        discipline: "rn",
+        sections: documented("routine_visit", "rn"),
+        carePlanOverdue: null,
+        vitalsCaptured: ALL_VITALS_CAPTURED,
+        vitalsClinicallyNotIndicated: NO_CNI,
+        scalesPresent: NO_SCALES_PRESENT,
+      }).pass,
+    ).toBe(true);
   });
 });
 
@@ -117,6 +288,9 @@ describe("§2.6 Layer-3 gate — check 6, the M7 care-plan review window", () =>
       discipline: "rn",
       sections: documented("routine_visit", "rn"),
       carePlanOverdue: { ...NOT_OVERDUE, overdue: true, reviewOverdue: true },
+      vitalsCaptured: ALL_VITALS_CAPTURED,
+      vitalsClinicallyNotIndicated: NO_CNI,
+      scalesPresent: NO_SCALES_PRESENT,
     });
     expect(r.pass).toBe(false);
     if (!r.pass) expect(r.remediation[0]?.code).toBe("CARE_PLAN_REVIEW_OVERDUE");
@@ -128,6 +302,9 @@ describe("§2.6 Layer-3 gate — check 6, the M7 care-plan review window", () =>
       discipline: "rn",
       sections: documented("routine_visit", "rn"),
       carePlanOverdue: { ...NOT_OVERDUE, overdue: true, initialOverdue: true },
+      vitalsCaptured: ALL_VITALS_CAPTURED,
+      vitalsClinicallyNotIndicated: NO_CNI,
+      scalesPresent: NO_SCALES_PRESENT,
     });
     expect(r.pass).toBe(false);
     if (!r.pass) expect(r.remediation[0]?.message).toContain("5-day initial review");
@@ -140,6 +317,9 @@ describe("§2.6 Layer-3 gate — check 6, the M7 care-plan review window", () =>
         discipline: "rn",
         sections: documented("routine_visit", "rn"),
         carePlanOverdue: null,
+        vitalsCaptured: ALL_VITALS_CAPTURED,
+        vitalsClinicallyNotIndicated: NO_CNI,
+        scalesPresent: NO_SCALES_PRESENT,
       }).pass,
     ).toBe(true);
   });
@@ -172,6 +352,9 @@ describe("assertGatePassed — the §2.6 '422 with remediation' contract", () =>
       discipline: "rn",
       sections: [],
       carePlanOverdue: null,
+      vitalsCaptured: ALL_VITALS_CAPTURED,
+      vitalsClinicallyNotIndicated: NO_CNI,
+      scalesPresent: NO_SCALES_PRESENT,
     });
     try {
       assertGatePassed(r, "sign");
@@ -218,13 +401,23 @@ describe("the §2.6 check register", () => {
     // Forward: every evaluated check can produce a remediation. Reverse: no remediation cites a check
     // the register does not call evaluated. Together these are why a check cannot quietly stop being
     // run (it would produce no remediation) and a deferral cannot quietly start being run.
-    expect([...EVALUATED_CHECKS].sort()).toEqual(["care_plan_review", "required_sections"]);
+    expect([...EVALUATED_CHECKS].sort()).toEqual([
+      "care_plan_review",
+      "required_scales",
+      "required_sections",
+      "required_vitals",
+    ]);
 
+    // recert_visit × rn: undocumented (check 1), missing a vital (check 2), missing a scale (check 3),
+    // and overdue (check 6) — one call that trips all four evaluated checks at once.
     const failing = runEncounterComplianceGate({
-      encounterType: "routine_visit",
+      encounterType: "recert_visit",
       discipline: "rn",
       sections: [],
       carePlanOverdue: { ...NOT_OVERDUE, overdue: true, reviewOverdue: true },
+      vitalsCaptured: NO_VITALS_CAPTURED,
+      vitalsClinicallyNotIndicated: NO_CNI,
+      scalesPresent: NO_SCALES_PRESENT,
     });
     expect(failing.pass).toBe(false);
     if (failing.pass) return;
