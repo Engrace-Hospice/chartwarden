@@ -15,10 +15,9 @@
 // who never arrived at a dying patient's home, and one who never checked out of it, each raised an event
 // that the relay re-claimed every thirty minutes and delivered to nobody.
 //
-// This also gives `m19.oncall_shift.coverage_gap` its first producer. `events-by-m19.ts`'s own header says
-// so: the event is "declared in `M19_EVENT_NAMES` but never actually published anywhere in this codebase
-// yet (the watchdog that would fire `coverage_gap` is `consumers/inbound-trigger.ts`'s
-// `TriggerCoverageGap`, whose shape this schema mirrors exactly)".
+// This also gives `m19.oncall_shift.coverage_gap` its first producer — `events-by-m19.ts`'s header used
+// to record it as declared in `M19_EVENT_NAMES` but never actually published anywhere in this codebase;
+// updated there now that this file is the producer.
 //
 // ── TENANCY: THE SCOPE IS ESTABLISHED HERE, NOT INHERITED ────────────────────────────────────────────
 //

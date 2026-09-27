@@ -16,12 +16,15 @@
 //
 // Payload shapes are transcribed from each event's actual construction site in `write-service-drizzle.ts`
 // (the `payloads: {...}` object literal passed to `runEffects`, or `dispositionPayloads()`), NOT invented.
-// The two exceptions — `m19.oncall_shift.coverage_gap` and `m19.triage.summary_requested` — are declared
-// in `M19_EVENT_NAMES` but never actually published anywhere in this codebase yet (the watchdog that would
-// fire `coverage_gap` is `consumers/inbound-trigger.ts`'s `TriggerCoverageGap`, whose shape this schema
-// mirrors exactly; `summary_requested` has no producer at all, so its schema is the same conservative
-// call-scoped base every other `m19.triage_call.*` event carries — a future implementer may need to widen
-// it, but a closed, too-narrow schema here is strictly safer than an unregistered event name).
+// One exception was true at the time this file was written and no longer is: `m19.oncall_shift.
+// coverage_gap`'s schema mirrors `consumers/inbound-trigger.ts`'s `TriggerCoverageGap`, and at the time
+// nothing published it. `consumers/bindings.ts` (F-043/#103) now does — the D10 `no_coverage` outcome
+// publishes it INSTEAD of a call, since `triage_call.on_call_shift_id` is NOT NULL and a thrown DLQ entry
+// would park a patient-welfare check where no clinician would see it. `m19.triage.summary_requested`
+// still has no producer at all: reserved for a future M32 AI call-summary request, its schema is the same
+// conservative call-scoped base every other `m19.triage_call.*` event carries — a future implementer may
+// need to widen it, but a closed, too-narrow schema here is strictly safer than an unregistered event
+// name.
 import { Type } from "@sinclair/typebox";
 import type { ModuleEventContribution } from "@wardenx/types";
 
@@ -217,7 +220,7 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m19.oncall_shift.coverage_gap",
     moduleOwner: "m19",
     description:
-      "The §4.8 D10 inbound-trigger watchdog found no covering shift for the RN discipline CoP 418.100(c)(2) requires — schema mirrors `TriggerCoverageGap` (`consumers/inbound-trigger.ts`), the one producer this event has today (not yet wired to actually publish).",
+      "The §4.8 D10 inbound-trigger watchdog found no covering shift for the RN discipline CoP 418.100(c)(2) requires — schema mirrors `TriggerCoverageGap` (`consumers/inbound-trigger.ts`), published by `consumers/bindings.ts`'s `no_coverage` outcome (#103).",
     payloadSchema: Type.Object({
       organizationId: id,
       providerEntityId: id,
