@@ -29,7 +29,7 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m30.measure.value_emitted",
     moduleOwner: "m30",
     description:
-      "An append-only `quality_measure_value` row was inserted (recompute worker); M28 streams the FHIR MeasureReport, M33 refreshes the dashboard tile.",
+      "An append-only `quality_measure_value` row was inserted (recompute worker); M28 projects the FHIR MeasureReport (F-115/#248: at request time, not via this event), M33 refreshes the dashboard tile.",
     payloadSchema: Type.Object({
       orgId: id,
       measureId: id,
@@ -39,7 +39,7 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       bandColor: id,
       snapshotContentHash: id,
     }),
-    declaredConsumers: ["m28"],
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -66,7 +66,7 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m30.incident.submitted",
     moduleOwner: "m30",
     description:
-      "An incident transitioned draft→submitted (R-54); M22 renders the PDF on request, M28 streams the FHIR AdverseEvent, M33 reflects it, M36 raises the sentinel/abuse §4.9 alerts.",
+      "An incident transitioned draft→submitted (R-54); M22 renders the PDF on request, M28 projects the FHIR AdverseEvent (F-115/#248: at request time, not via this event), M33 reflects it, M36 raises the sentinel/abuse §4.9 alerts.",
     payloadSchema: Type.Object({
       orgId: id,
       incidentId: id,
@@ -75,7 +75,7 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       reportedAt: isoInstant,
       hasPatientLink: Type.Boolean(),
     }),
-    declaredConsumers: ["m22", "m28"],
+    declaredConsumers: ["m22"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -148,13 +148,13 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m30.cahps.results_ingested",
     moduleOwner: "m30",
     description:
-      "The R-16 system route ingested aggregated vendor results; M28 streams the FHIR mapping, M33 refreshes the CAHPS result tiles.",
+      "The R-16 system route ingested aggregated vendor results; M28 projects the FHIR mapping (F-115/#248: at request time, not via this event), M33 refreshes the CAHPS result tiles.",
     payloadSchema: Type.Object({
       orgId: id,
       period,
       measuresAffected: Type.Array(id),
     }),
-    declaredConsumers: ["m28"],
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -296,7 +296,7 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m30.infection.event_recorded",
     moduleOwner: "m30",
     description:
-      "A surveillance event was recorded (R-91); the M30 outbreak-detection worker consumes it to evaluate the ≥3-events/14d cluster threshold (self-subscriber).",
+      "A surveillance event was recorded (R-91); the ≥3-events/14d cluster threshold is evaluated INLINE, in the same transaction, immediately after this emit — never via an outbox round-trip.",
     payloadSchema: Type.Object({
       orgId: id,
       eventId: id,
@@ -304,7 +304,10 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       bodySite: id,
       patientId: id,
     }),
-    declaredConsumers: ["m30"],
+    // F-115 (#248) — "self-subscriber" was wrong: `write-service-drizzle.ts`'s `recordInfectionEvent`
+    // runs the §7.8 outbreak-window scan synchronously right after this emit, in the same tx. Nothing
+    // has ever consumed this event via the outbox, and nothing needs to — record-only.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

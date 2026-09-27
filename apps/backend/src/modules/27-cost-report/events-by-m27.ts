@@ -132,8 +132,16 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       submittedByMembershipId: id,
       attestation: Type.Object({ attestedByMembershipId: id, attestedAt: isoInstant }),
     }),
-    declaredConsumers: ["m22", "m28", "m30", "m34"],
-    seamConsumers: ["m33", "m36"],
+    // F-115 (#248) — m28 removed (never subscribes, F-035); m30 moved to seamConsumers: reads filing
+    // posture via `QualityCostReportConsumer.filingStatusForOrg` (cost_report_filing_compliance, CoP
+    // 418.310) on its nightly cadence — same for `accepted`/`reopened` below.
+    // F-117 (#248) — m22 removed: `submit` does NOT emit `m27.artifact.render_requested` itself
+    // (F-108 — "the emit is gone from submit: the job owns it"); the `ecr-generation` job enqueued
+    // one line above is what emits the real, already-live-bound render request, carrying the real
+    // artifacts rather than a snapshot placeholder. Declaring m22 directly on `submitted` was the
+    // same handshake named twice, one hop earlier than where it's actually produced.
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -147,8 +155,8 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       mcrefAcknowledgmentNumber: id,
       acceptedAt: isoInstant,
     }),
-    declaredConsumers: ["m30", "m34"],
-    seamConsumers: ["m33", "m36"],
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -179,8 +187,13 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: id,
       reasonCategory: id,
     }),
-    declaredConsumers: ["m22", "m28", "m30", "m34"],
-    seamConsumers: ["m33", "m36"],
+    // F-115 (#248) — m28 removed (never subscribes, F-035); m30 moved to seamConsumers (same
+    // `filingStatusForOrg` seam as `submitted` above).
+    // F-117 (#248) — m22 removed: `reopen()` resets the report to `draft` (write-service-drizzle.ts)
+    // and neither enqueues a render job nor emits any request event — there is no artifact for M22
+    // to produce at reopen; the next real render happens on the following `submitted`.
+    declaredConsumers: ["m34"],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {

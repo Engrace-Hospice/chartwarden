@@ -148,8 +148,10 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       evvBracketState: id,
     }),
     // F-043/#103 — M20 retires the mid-visit prompts a short visit outran (`m20.retire-cadence`).
-    declaredConsumers: ["m18", "m20", "m30"],
-    seamConsumers: ["m33"],
+    // F-115 (#248) — m30 moved to seamConsumers: reads visit on-time counts via
+    // `VisitMetricsProvider.getOnTimeVisitCounts` (visit_on_time_rate) on its nightly cadence.
+    declaredConsumers: ["m18", "m20"],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {

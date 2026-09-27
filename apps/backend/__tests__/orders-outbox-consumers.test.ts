@@ -63,9 +63,11 @@ describe("M11 outbox event contract (§4.4)", () => {
 
   it("`m11.order.signed` fans out to the clinical-record + interop subscriber set (§4.4)", () => {
     const signed = M11_OUTBOX_EVENTS.find((e) => e.eventName === "m11.order.signed");
-    expect(signed?.declaredConsumers).toEqual(
-      expect.arrayContaining(["m21", "m22", "m28", "m29", "m30"]),
-    );
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    // F-117 (#248) — m22 removed: redundant with `m11.order.document_requested`, emitted in the
+    // same `signOrder`/`signOnBehalf` transaction.
+    expect(signed?.declaredConsumers).toEqual(expect.arrayContaining(["m21", "m29", "m30"]));
+    expect(signed?.declaredConsumers).not.toContain("m22");
     // M33's reporting intake is a pull over `report_mv.*` — recorded, but not an outbox subscription
     // (#103).
     expect(signed?.seamConsumers).toContain("m33");

@@ -61,11 +61,15 @@ describe("M8 outbox event contract (§4.4)", () => {
     const signed = M8_OUTBOX_EVENTS.find((e) => e.eventName === "m8.encounter.signed");
     // m36 is declared because it now BINDS it live (`m36.clinical-visit-encounter-alerts`); a declared
     // module with no binding is what deferred every signed encounter's row forever (#103).
+    // F-115 (#248) — m28/m30 removed from declaredConsumers: m28 never subscribes to anything
+    // (request-time-only FHIR reads, F-035); m30 reads this fact via `SignedEncountersReader` on its
+    // nightly recompute cadence, so it moved to seamConsumers instead.
     expect(signed?.declaredConsumers).toEqual(
-      expect.arrayContaining(["m9", "m10", "m14", "m22", "m28", "m30", "m31", "m36"]),
+      expect.arrayContaining(["m9", "m10", "m14", "m22", "m31", "m36"]),
     );
-    // m33 (MetricsProvider pull) receives this synchronously, not from the outbox.
-    expect(signed?.seamConsumers).toEqual(["m33"]);
+    // m33 (MetricsProvider pull) and m30 (measure-recompute seam) receive this synchronously, not from
+    // the outbox.
+    expect(signed?.seamConsumers).toEqual(["m30", "m33"]);
   });
 
   it("`m8.encounter.cosigned` reaches the billing readers (§7.2 billable flip)", () => {

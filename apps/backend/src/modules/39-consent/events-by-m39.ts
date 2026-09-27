@@ -56,7 +56,9 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       typeKey,
       supersededAt: Type.String(),
     }),
-    declaredConsumers: ["m22", "m5", "m3", "m28"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035; M28's D3 egress consent gate
+    // reads M39 live at request time via `ConsentEvaluator`, not via subscription).
+    declaredConsumers: ["m22", "m5", "m3"],
     isOutboxOnly: true,
   },
   {
@@ -72,7 +74,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       revokedByKind: Type.String(),
       cascadeKind: Type.String(),
     }),
-    declaredConsumers: ["m5", "m22", "m28", "m16", "m2"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    declaredConsumers: ["m5", "m22", "m16", "m2"],
     isOutboxOnly: true,
   },
   {
@@ -148,7 +151,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       recipientKind: Type.String(),
       recipientEntityId: Type.Optional(Type.String()),
     }),
-    declaredConsumers: ["m22", "m28"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   {
@@ -161,7 +165,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       recipientId: Type.String(),
       removedAt: Type.String(),
     }),
-    declaredConsumers: ["m22", "m28", "m5"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    declaredConsumers: ["m22", "m5"],
     isOutboxOnly: true,
   },
   {

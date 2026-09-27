@@ -240,11 +240,17 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m23",
       "m26",
       "m27",
-      "m28",
-      "m30",
       "m37",
     ],
-    seamConsumers: ["m33", "m36"],
+    // F-115 (#248) — m28 REMOVED: the FHIR gateway resolves every seam it reads (M5/M6/M7/M8/M11/M12/M13)
+    // fresh at REQUEST time (§164.528 D3, F-035) and holds no cached/derived state an admission event
+    // would ever need to invalidate — it never subscribes to anything. m30 REMOVED from declaredConsumers
+    // and added to seamConsumers: it has no reactive handler for this event (packages/quality/src/
+    // consumers/ covers exactly six upstream topics, per M30_OUTBOX_SUBSCRIPTIONS, and this is not one of
+    // them); it reads this fact via `AdmissionOnsetReader.listAdmissionsStartedInPeriod` on its own nightly
+    // recompute cadence (the `opioid_on_admission_rate` denominator) instead — the m33/m36 shape, not an
+    // outbox subscription that will ever bind.
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -302,12 +308,14 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m23",
       "m26",
       "m27",
-      "m28",
-      "m30",
       "m37",
       "m36",
     ],
-    seamConsumers: ["m33"],
+    // F-115 (#248) — m28/m30 removed for the same reason as `m6.admission.activated` just above: m28
+    // never subscribes to anything (request-time-only reads), and m30 reads this fact via
+    // `DischargeReader.liveDischargeTimingCounts` (HCI indicators 3/4) on its nightly cadence rather than
+    // reacting to this event.
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   // ── election ──────────────────────────────────────────────────────────────────────────────────
@@ -658,8 +666,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       admissionId: Type.String({ minLength: 1 }),
     }),
     // F-101 — `m22` was first in this list. A level-of-care change is a revenue and quality fact with
-    // no M22 template behind it. Still defers, on m23/m26/m27/m30.
-    declaredConsumers: ["m23", "m26", "m27", "m30"],
+    // no M22 template behind it. Still defers, on m23/m26/m27.
+    declaredConsumers: ["m23", "m26", "m27"],
+    // F-115 (#248) — m30 moved here from declaredConsumers: it reads LOC data via
+    // `LevelOfCarePeriodReader.chcOrGipCoverageCounts`/`.levelOfCareDaySpans` (HCI indicators 1/8/9) on
+    // its own nightly cadence, not by reacting to this event — no consumer binds it or ever will.
+    seamConsumers: ["m30"],
     isOutboxOnly: true,
   },
   // ── revocation / transfer ───────────────────────────────────────────────────────────────────────

@@ -60,7 +60,11 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       encounterId: Type.Union([id, Type.Null()]),
       scheduledDoseId: Type.Union([id, Type.Null()]),
     }),
-    declaredConsumers: ["m14", "m28", "m30", "m31"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared: the measures
+    // that read this domain (`missedDoseCountsForOrg`/`prnReassessmentObligationsForOrg`) scan
+    // `scheduled_dose`/PRN-specific rows, not the general administration-recorded stream — no current
+    // seam covers this event.
+    declaredConsumers: ["m14", "m30", "m31"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -114,7 +118,9 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       newAdministrationId: id,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m28", "m30"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared (same
+    // scheduled-dose/PRN-specific reasoning as `administration.recorded` above).
+    declaredConsumers: ["m30"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -128,7 +134,9 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       voidReason: Type.String(),
       voidedBy: id,
     }),
-    declaredConsumers: ["m28", "m30"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared (same
+    // scheduled-dose/PRN-specific reasoning as `administration.recorded` above).
+    declaredConsumers: ["m30"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
@@ -144,7 +152,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       caregiverSessionId: id,
       requiresRnReview: Type.Boolean(),
     }),
-    declaredConsumers: ["m14", "m28"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    declaredConsumers: ["m14"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
@@ -186,7 +195,10 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       reassessmentDueAt: isoInstant,
       recommendedReassessmentScale: id,
     }),
-    declaredConsumers: ["m9", "m14", "m30"],
+    // F-115 (#248) — m30 moved to seamConsumers: reads PRN-effectiveness data via
+    // `MedicationAdministrationProvider.getPrnEffectivenessCountsForOrg` on its nightly cadence.
+    declaredConsumers: ["m9", "m14"],
+    seamConsumers: ["m30"],
     isOutboxOnly: true,
   },
   // ── scheduled-dose pipeline (§2.3 / §2.5 / §4.4) ────────────────────────────────────────────────────────
@@ -217,8 +229,10 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       isControlled: Type.Boolean(),
       isComfortKitMedication: Type.Boolean(),
     }),
-    declaredConsumers: ["m14", "m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-115 (#248) — m30 moved to seamConsumers: reads `getMissedDoseCountsForOrg` (missed_dose_rate) on
+    // its nightly cadence, not by reacting to this event.
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -345,7 +359,8 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     eventName: "m13.reconciliation.completed",
     moduleOwner: "m13",
     description:
-      "`finalize-reconciliation` finalized the worksheet (every line decided); M22 renders the PDF.",
+      "`finalize-reconciliation` finalized the worksheet (every line decided); the same transaction " +
+      "also emits `m13.reconciliation.document_requested`, the actual live-bound M22 render request.",
     payloadSchema: Type.Object({
       worksheetId: id,
       triggerKind: id,
@@ -355,7 +370,9 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       finalizedBy: id,
       lineSummary: Type.Unknown(),
     }),
-    declaredConsumers: ["m14", "m22", "m30"],
+    // F-117 (#248) — m22 removed: redundant with `document_requested`, emitted alongside this
+    // event in the same transaction (emar-route-service-db.ts).
+    declaredConsumers: ["m14", "m30"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

@@ -166,8 +166,11 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       // have refused the binding for three of the six D8 sources while accepting the other three.
       "m14",
       "m21",
-      "m22",
-      "m28",
+      // F-117 (#248) — m22 removed: `signOrder`/`signOnBehalf` also emits
+      // `m11.order.document_requested` in the SAME transaction (orders-route-service-db.ts) —
+      // the actual live-bound M22 render request. Declaring m22 here too was the same handshake
+      // named twice.
+      // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
       "m29",
       "m30",
     ],
@@ -200,8 +203,11 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       signedAt: isoInstant,
       hoursBeforeDeadline: Type.Number(),
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    // F-115 (#248) — m30 moved to seamConsumers: reads verbal-order timeliness via
+    // `VerbalTimelinessCountsView.getVerbalTimelinessCountsForOrg` (verbal_order_signature_on_time) on
+    // its nightly cadence — same for `verbal_expired_unsigned` just below.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -216,8 +222,9 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       hoursOverdue: Type.Number(),
       orderingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-115 (#248) — m30 moved to seamConsumers (same `getVerbalTimelinessCountsForOrg` seam).
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -232,7 +239,9 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       actorMembershipId: Type.Union([id, Type.Null()]),
       effectiveAt: isoInstant,
     }),
-    declaredConsumers: ["m21", "m22", "m28", "m30"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared — this fact
+    // is not part of any current M30 seam (order discontinuation isn't verbal-timeliness data).
+    declaredConsumers: ["m21", "m22", "m30"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -251,7 +260,8 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       // on this event, and this list did not name m14, so `assertBindableAgainstCatalog` would
       // have refused the binding for three of the six D8 sources while accepting the other three.
       "m14",
-      "m28",
+      // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared —
+      // "completed" isn't verbal-order-timeliness data, so no current seam covers it either.
       "m30",
     ],
     seamConsumers: ["m33"],
@@ -261,14 +271,14 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m11.order.corrected",
     moduleOwner: "m11",
     description:
-      "`correctOrder` (via the supersede trigger, §164.526) created a replacement `order_record` and discontinued the original; M22/M28 re-render.",
+      "`correctOrder` (via the supersede trigger, §164.526) created a replacement `order_record` and discontinued the original; M22 re-renders, M28 re-projects (F-115/#248: at request time, not via this event).",
     payloadSchema: Type.Object({
       newOrderId: id,
       replacedOrderId: id,
       kind: orderKind,
       drafterMembershipId: id,
     }),
-    declaredConsumers: ["m22", "m28"],
+    declaredConsumers: ["m22"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -378,7 +388,7 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m11.order.results_received",
     moduleOwner: "m11",
     description:
-      "`LabResultsApplier` bound a returned lab observation (D17 — does NOT auto-complete the order); M22 renders the results PDF, M28 projects a FHIR DiagnosticReport.",
+      "`LabResultsApplier` bound a returned lab observation (D17 — does NOT auto-complete the order); M22 renders the results PDF, M28 projects a FHIR DiagnosticReport (F-115/#248: at request time, not via this event).",
     payloadSchema: Type.Object({
       orderId: id,
       organizationId: id,
@@ -387,7 +397,7 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       orderingPhysicianMdmId: id,
       signedAt: isoInstant,
     }),
-    declaredConsumers: ["m22", "m28"],
+    declaredConsumers: ["m22"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -466,7 +476,10 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       orderId: id,
       spawnedBy: id,
     }),
-    declaredConsumers: ["m22"],
+    // F-117 (#248) — m22 removed: the spawn path also emits `m11.order.document_requested` for
+    // the spawned order in the same transaction (`spawnScheduled`/`spawnFromTemplate`), the
+    // actual live-bound M22 render request — the same redundant declaration as `order.signed`.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

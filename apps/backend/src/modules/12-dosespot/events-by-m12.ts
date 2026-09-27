@@ -101,8 +101,10 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       // on this event, and this list did not name m14, so `assertBindableAgainstCatalog` would
       // have refused the binding for three of the six D8 sources while accepting the other three.
       "m14",
-      "m22",
-      "m28",
+      // F-117 (#248) — m22 removed: `emitDocumentRequest` fires
+      // `m12.medication_order.document_requested` from the same activation/sign path
+      // (dosespot-route-service-db.ts) — the actual live-bound M22 render request.
+      // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
     ],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
@@ -193,7 +195,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     description:
       "The post-ack transition activated the medication order; the broad eMAR/IDG/FHIR/portal fan-out.",
     payloadSchema: Type.Object({ orderId: id, fullDto: Type.Unknown() }),
-    declaredConsumers: ["m13", "m14", "m28", "m31"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    declaredConsumers: ["m13", "m14", "m31"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -237,7 +240,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       actorMembershipId: Type.Union([id, Type.Null()]),
       effectiveAt: isoInstant,
     }),
-    declaredConsumers: ["m13", "m14", "m28"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    declaredConsumers: ["m13", "m14"],
     isOutboxOnly: true,
   },
   {
@@ -249,7 +253,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       completedAt: isoInstant,
       reason: Type.Optional(Type.String()),
     }),
-    declaredConsumers: ["m28"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

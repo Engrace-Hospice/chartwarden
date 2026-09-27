@@ -190,6 +190,46 @@ scripts/report-e2e-axe-coverage.ts` (`arch:e2e-coverage`, in `arch:fitness`) cro
 19/157 statically-routable web screens were E2E-reached and 151/157 axe-reached at the time this
 landed, both numbers the report itself will keep current rather than this paragraph.
 
+**#248's two biggest `no-consumer-surface` groups were both misclassified, in opposite directions
+(F-115).** `outbox-deferred-consumers.ts` held 509 declared-but-unbound pairs; M30 (93) and M28 (52) were
+its two largest groups, both carrying a one-line "this module is a producer/gateway, not a subscriber; no
+consumer directory exists" reason — the exact shape that already correctly described M33's 319 and M36's
+269 pairs before those were moved wholesale to `seamConsumers`. Checked per event rather than assumed,
+because F-099/F-101/F-108 each found a blanket reason wrong for a handful of members: **M28's reason was
+right, completely** — the FHIR gateway resolves every seam it reads (M5/M6/M7/M8/M11/M12/M13) fresh at
+REQUEST time (§164.528 D3, F-035) and holds no cached or derived state any push event would ever need to
+invalidate, so all 52 declaredConsumers entries naming it were simply wrong; they are gone, with no
+`seamConsumers` replacement, because there is no seam relationship either. **M30's reason was false on its
+face**: `packages/quality/src/consumers/` is a real, unit-tested §4.10 consumer directory
+(`handlers.ts`/`subscription-map.ts`, RULE 3(d) — pure + a topic map, no boot-wired binding, the same
+shape M23/M25/M26/M27 already carry), and `outbox-subscription-exceptions.ts` had already recorded two of
+its six subscribed topics as `handler-unbound` because the catalog didn't declare M30 on them. The other
+four subscribed topics (`m10.hope.submission_accepted`, `m12.medication.error_reported`,
+`m18.evv.visit_verified`, `m23.claim.adjudicated`) *were* declared and sat in this "no consumer directory"
+group anyway — reclassified `handlers-unbound`, the mirror case. Of the remaining 89, 27 are the facts
+M30's own nightly recompute already reads via seam for a currently-registered measure
+(`AdmissionOnsetReader`/`DischargeReader`/`LevelOfCarePeriodReader` for M6, `CarePlanCycleCountsView` for
+M7, `SignedEncountersReader` for M8, the live M10 HOPE rollup, `VerbalTimelinessCountsView` for M11,
+PRN/missed-dose counts for M13, `IdgScheduleProvider` for M14, supervisory counts for M15,
+`copOutreachCounts` for M16, `VisitMetricsProvider` for M17, `QualityCostReportConsumer` for M27) —
+verified against the actual Drizzle query each seam runs, not inferred from module proximity, which is
+what caught two plausible-looking false positives before they landed: `m16.bereavement.plan_closed_*`/
+`plan_skipped_per_patient_opt_out` (M30's `copOutreachCounts` sums outreach-touchpoint status, not plan
+closure reasons — a `planClosureCounts` method exists on the same seam interface and is simply unused by
+any of the eleven measures `m30-jobs.ts` currently registers, "bound is not computing" a third time) and
+`m13.administration.recorded`/`refused`/`corrected`/`voided` (the missed-dose/PRN measures scan
+`scheduled_dose` and PRN-specific rows, not the general administration stream). Those 27 moved to
+`seamConsumers` on their own `events-by-mNN.ts` entries and out of `declaredConsumers`. One more was a
+different defect: `m30.infection.event_recorded` declared itself a "self-subscriber," but
+`recordInfectionEvent` runs the §7.8 outbreak-window scan INLINE in the same transaction — nothing has
+ever consumed that event via the outbox, so the declaration was dead and is now record-only. Net: 509 →
+429 declared-but-unbound pairs; the honest remainder is 61 M30 facts with no current seam (M9/M20/M21/
+M23-noe-notr/M25/M26/M37/M39, three M6 facts outside the four M6 readers' documented scope, and
+`m8.hearthnote.layer2_enhanced`) plus everything else #248 hasn't triaged yet. Proven by the full
+non-live suite (three tests pinned the old declaredConsumers/seamConsumers arrays and now pin the
+corrected ones) and `arch:outbox-bindings`, which is the only gate that can see this class of drift at
+all.
+
 **A newly provisioned org's `/reports` is no longer empty (F-116, #138).** M33 §1 names "the
 catalog-of-platform-shipped dashboards that lets an agency go live on day one … without the agency
 authoring a single definition" as the reason the module exists at all; `find . -name
@@ -227,6 +267,63 @@ org A's rows (the isolation claim, made from a genuinely org-B-scoped read rathe
 read that could pass vacuously on a reverted `app.org_id` GUC — the exact hazard the F-030
 `session_scope_chk` finding documents), and two concurrent seeder calls for the same brand-new org
 create each base exactly once, never six.
+
+**#248's own quoted rationale for the m22 group was a per-MODULE claim about a per-EVENT fact, and it
+was checked, not assumed (F-117).** The register said "for M11/M12/M13/M21/M23/M33 the request half IS
+wired, so the source declaration is redundant" — true of exactly 4 of the roughly twenty events those
+six modules contribute to the group, and false of the rest, which are separate order/claim/billing
+lifecycle transitions on the same modules with no such sibling. Confirmed redundant by tracing the
+actual emit sites to a `*.document_requested` co-emission in the SAME transaction: `m11.order.signed` /
+`.standing_spawned` (`orders-route-service-db.ts`), `m12.medication_order.signed`
+(`dosespot-route-service-db.ts`'s `emitDocumentRequest` helper), `m13.reconciliation.completed`
+(`emar-route-service-db.ts`) — all four dropped from `declaredConsumers`, no `seamConsumers` added,
+because the artifact is delivered by the other event and there is no seam relationship to record. Two
+more were dropped for a DIFFERENT reason — not redundant, simply nothing to render:
+`m37.body_release.completed`, whose own prior transition (`releaseBody`) REFUSES unless the M22
+`body_release_authorization` document already exists, so completion produces no new artifact; and
+`m27.cost_report.reopened`, which resets the report to `draft` with no job enqueued and nothing
+requested. `m27.cost_report.submitted` follows the F-108 precedent directly — it enqueues the
+`ecr-generation` job rather than requesting a render itself, and that job's own (already-bound)
+`m27.artifact.render_requested` is the real handshake. `m37.body_release.funeral_home_identified` is the
+ordinary case: `identifyFuneralHome` co-emits `m37.body_release.document_requested` in the same
+transition. **Net: 8 of 66 m22 pairs resolved (429 → 421).** The other 58 divide three ways, verified
+against the M22 spec's own §4.11 consumer table (`WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md`) rather than
+assumed: events the spec explicitly names for a dedicated per-source consumer that was never built —
+`packages/22-documents` has no `consumers/` directory at all, only the generic `outbox-consumers/`
+document-request mirror, so EVERY spec-named dedicated consumer (`m11-order-results-received.ts`,
+`m8-encounter-document-requested.ts`, `m5-patient-merged.ts`, and the rest) is unbuilt, not merely
+unbound — these stay declared as real, spec-endorsed gaps (`m11.order.results_received`,
+`m12.medication_order.{list_changed,draft_created_from_extraction}`, `m14.{packet.render_requested,
+minutes.signed}`, `m15.plan.version_signed`, `m18.evv.aggregator_accepted`, `m5.patient.{merged,
+draft_created_from_extraction}`, `m8.encounter.{signed,addendum_signed}`, `m39.consent.revoked`); events
+named by no part of the spec with no redundant sibling, kept declared rather than dropped absent
+stronger evidence (the F-101 sweep this needs has not been run on them); and one confirmed STALE
+cross-reference worth its own line: `m9.assessment.summary_requested` is real, catalogued, request-
+shaped, and already declares m22, while `M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS`' own comment calls the
+same need `m9.assessment.document_requested` and asserts it is "declared by no catalog under any
+spelling" — false, under this one, the F-100 `m37.body_release.document_requested` shape a second time,
+where a wrong note in an anticipated-events list is what hid an already-bindable event. **A tooling
+defect surfaced running `--update` on a module with two deferred-consumer groups** (M30, split by F-115
+into `handlers-unbound` and `no-consumer-surface`), and is now fixed rather than merely reported.
+`regenerate()`'s anchor lookup was `out.indexOf('module: "m30",')` with no search-from offset, so BOTH
+groups' iterations resolved to the SAME first occurrence — the second iteration overwrote what the first
+just wrote with its own (by then already-deleted) leftover, silently emptying one group's `events` array
+while the other kept whatever was there. Caught immediately by the gate itself (4 pairs it could no
+longer find in any registered deferral) and fixed by hand in that run rather than by re-running
+`--update`, which would have repeated it identically. `regenerate()` now anchors on `module` + `kind`
+TOGETHER, which is exact even when a module has several groups, and — the deeper half of the bug — never
+lets one group's `--update` pass adopt an event a SIBLING group might actually own: a multi-group
+module's existing groups only ever lose an event that resolved (no longer unbound), never gain one they
+did not already list, and a genuinely new unbound pair for that module surfaces as its own fresh
+`unclassified` stub rather than being guessed into whichever sibling group happened to run first.
+Verified by running `--update` against the now-correct register: a no-op (byte-identical output), which
+is the actual regression test — the exact case that used to corrupt M30's `handlers-unbound` group now
+round-trips clean. Proven by `bun run scripts/check-outbox-bindings.ts` (0 disagreements post-fix), the
+full non-live suite (one test pinned `m11.order.signed`'s exact consumer array and now asserts m22's
+absence explicitly), and a clean `check:boot:platform` run against a freshly migrated, RLS-enforced
+disposable Postgres — `assertBindableAgainstCatalog` is the real boot-time proof that every dropped
+declaration and untouched
+gap still agrees with what is actually bound.
 
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in

@@ -62,8 +62,11 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       layer2Involved: Type.Boolean(),
       lateEntryTier,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    // F-115 (#248) — m30 moved to seamConsumers: it reads the org-level late-entry tally via
+    // `SignedEncountersReader.lateEntryCountsForOrg` (late_encounter_entry_rate) on its nightly cadence,
+    // not by reacting to this event — no consumer binds it or ever will.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -108,8 +111,11 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
         ),
       }),
     }),
-    declaredConsumers: ["m9", "m10", "m14", "m17", "m22", "m28", "m30", "m31", "m36"],
-    seamConsumers: ["m33"],
+    // F-115 (#248) — m28/m30 removed: m28 never subscribes to anything (F-035, request-time-only reads);
+    // m30 reads signed-encounter data via `SignedEncountersReader` (HVLDL / HCI-10 / the late-entry
+    // tally) on its nightly cadence, not by reacting to this event.
+    declaredConsumers: ["m9", "m10", "m14", "m17", "m22", "m31", "m36"],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -138,7 +144,8 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       signedAt: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m28"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    declaredConsumers: ["m22"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -207,8 +214,10 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       overrideReason: Type.String({ minLength: 1 }),
       daysLate: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    // F-115 (#248) — m30 moved to seamConsumers: part of the same late-entry tally as
+    // `m8.encounter.finalized` above, read on M30's nightly cadence.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -222,8 +231,9 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       overrideReason: Type.String({ minLength: 1 }),
       daysLate: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    // F-115 (#248) — same as `late_entry_override` just above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {

@@ -28,7 +28,9 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "Patient demographics changed (e.g. an M29 proposal apply); carries the changed-field list.",
     payloadSchema: Type.Object({ ...corePatient, changed: Type.Array(Type.String()) }),
-    declaredConsumers: ["m28"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035; M28's Patient projection reads
+    // this live at request time via `PatientReader`).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -82,25 +84,28 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The patient_privacy_flag_snapshot was recomputed (e.g. a SUD flag added) — redaction consumers refresh.",
     payloadSchema: Type.Object({ ...corePatient, flags: Type.Array(Type.String()) }),
-    declaredConsumers: ["m22", "m28"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035; SUD redaction is applied fresh
+    // per read at D3 egress, not via a cached flag this event would invalidate).
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   {
     eventName: "m5.patient.deceased",
     moduleOwner: "m5",
     description:
-      "Patient death recorded; seeds bereavement (M16), enables final claim (M23), FHIR sync (M28), IDG alert (M36).",
+      "Patient death recorded; seeds bereavement (M16), enables final claim (M23), FHIR sync (M28, F-115/#248: at request time, not via this event), IDG alert (M36).",
     payloadSchema: Type.Object({ ...corePatient, deceasedDate: Type.String() }),
-    declaredConsumers: ["m16", "m23", "m28"],
+    declaredConsumers: ["m16", "m23"],
     seamConsumers: ["m36"],
     isOutboxOnly: false,
   },
   {
     eventName: "m5.patient.merged",
     moduleOwner: "m5",
-    description: "Two charts merged; document re-attach (M22) + FHIR Patient.link write (M28).",
+    description:
+      "Two charts merged; document re-attach (M22) + FHIR Patient.link projection (M28, F-115/#248: at request time, not via this event).",
     payloadSchema: Type.Object({ ...corePatient, sourcePatientId: Type.String() }),
-    declaredConsumers: ["m22", "m28"],
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   {
@@ -108,7 +113,8 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m5",
     description: "A merge was reversed within the 30-day window.",
     payloadSchema: Type.Object({ ...corePatient, sourcePatientId: Type.String() }),
-    declaredConsumers: ["m22", "m28"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   {

@@ -274,8 +274,11 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       actionItemsAssignedCount: Type.Integer({ minimum: 0 }),
       attendanceSnapshot: Type.Unknown(),
     }),
-    declaredConsumers: ["m22", "m28", "m30"],
-    seamConsumers: ["m33"],
+    // F-115 (#248) — m28 removed (never subscribes, F-035); m30 moved to seamConsumers: reads IDG
+    // cadence via `IdgScheduleProvider.getCadenceCountsForOrg` (idg_cadence_adherence) on its nightly
+    // cadence, not by reacting to this event.
+    declaredConsumers: ["m22"],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -365,7 +368,7 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     eventName: "m14.minutes.amended",
     moduleOwner: "m14",
     description:
-      "`POST /amendments` approved a minutes amendment; M22 re-renders, M28 re-projects.",
+      "`POST /amendments` approved a minutes amendment; M22 re-renders, M28 re-projects (F-115/#248: at request time, not via this event).",
     payloadSchema: Type.Object({
       amendmentId: id,
       minutesId: id,
@@ -373,7 +376,7 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       approvedByMembershipId: id,
       amendmentReasonHash: id,
     }),
-    declaredConsumers: ["m22", "m28"],
+    declaredConsumers: ["m22"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

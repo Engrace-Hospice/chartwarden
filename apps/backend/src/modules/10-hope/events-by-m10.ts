@@ -61,8 +61,12 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       j2051TriggerFired: Type.Boolean(),
       wasLate: Type.Boolean(),
     }),
-    declaredConsumers: ["m14", "m28", "m30"],
-    seamConsumers: ["m33"],
+    // F-115 (#248) — m28/m30 removed: m28 never subscribes to anything (F-035); m30 reads HOPE data via
+    // the live M10 `QualityHopeConsumer` rollup seam (`j2051FollowUpRollup`/`sfvTimelinessRollup`/
+    // `submissionPostureRollup`) on its nightly cadence, not by reacting to individual HOPE events — same
+    // for every `m10.hope.*` entry below that names it.
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m30", "m33"],
     // ALSO live: server → patient room `hope:assessment:signed` (§4.5).
     isOutboxOnly: false,
   },
@@ -76,8 +80,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       rfaKind,
       expiredAt: isoInstant,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   // ── J2051 trigger + SFV chain (§2.4 / §4.9) ─────────────────────────────────────────────────────────
@@ -93,8 +97,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       triggeredAt: isoInstant,
       dueAt: isoInstant,
     }),
-    declaredConsumers: ["m14", "m30"],
-    seamConsumers: ["m33"],
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -122,8 +126,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       completingAssessmentId: Type.String({ minLength: 1 }),
       completedAt: isoInstant,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -135,8 +139,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       sfvId: Type.String({ minLength: 1 }),
       hoursPastDue: Type.Number(),
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m36"],
     isOutboxOnly: false,
   },
   {
@@ -147,8 +151,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       sfvId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   // ── correction-of-record (§2.4 / D7) ────────────────────────────────────────────────────────────────
@@ -161,7 +165,8 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       correctionAssessmentId: Type.String({ minLength: 1 }),
       originalAssessmentId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m28"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

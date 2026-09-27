@@ -48,7 +48,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       assignedCounselorUserId: Id,
       archivesAt: Iso,
     }),
-    declaredConsumers: ["m22", "m28"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    declaredConsumers: ["m22"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -78,7 +79,11 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The 13-month CoP 418.64(d) clock ran out (or a pre-death patient opt-out closed the program as completed). M22 renders the closeout summary; M36's channel auto-archives (§7.11).",
     payloadSchema: Type.Object({ planId: Id, closedAt: Iso, outreachStats: OutreachStats }),
-    declaredConsumers: ["m22", "m28", "m30"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared: the seam's
+    // `BereavementComplianceProvider.planClosureCounts` method exists for this domain but no currently-
+    // registered M30 measure calls it (only `copOutreachCounts`, for `bereavement_coverage_rate`, is
+    // wired) — a dormant capability is not a seam relationship yet ("bound is not computing", F-042).
+    declaredConsumers: ["m22", "m30"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -88,6 +93,7 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "EVERY enrollee opted out (D6) — distinct from `closed_completed` because the survey record must show the family refused, not that the program ran its course.",
     payloadSchema: Type.Object({ planId: Id, closedAt: Iso }),
+    // F-115 (#248) — same as `plan_closed_completed` above: `planClosureCounts` exists, unused.
     declaredConsumers: ["m22", "m30"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
@@ -103,6 +109,7 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       closedAt: Iso,
       cosignedByUserId: IdN,
     }),
+    // F-115 (#248) — same as `plan_closed_completed` above: `planClosureCounts` exists, unused.
     declaredConsumers: ["m22", "m30"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
@@ -113,6 +120,9 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "M6 declared the admission bereavement-eligible but the M5 patient-level directive said no (D9). Carries NO planId: nothing opened, and no M36 channel was created.",
     payloadSchema: Type.Object({ patientId: Id, admissionId: Id, deathDate: Str }),
+    // F-115 (#248) — m30 stays declared: whether an opt-out-skipped case belongs in
+    // `copOutreachCounts`'s denominator is a real product question (F-099 shape), not a settled seam
+    // relationship — left as a genuine gap rather than guessed.
     declaredConsumers: ["m30"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
@@ -156,9 +166,9 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m16.bereavement.contact_active",
     moduleOwner: "m16",
     description:
-      "A bereaved person confirmed with a verified M39 bereavement-outreach consent (D6). M36 adds their portal account to the channel; M28 projects the FHIR `RelatedPerson`.",
+      "A bereaved person confirmed with a verified M39 bereavement-outreach consent (D6). M36 adds their portal account to the channel; M28 projects the FHIR `RelatedPerson` (F-115/#248: at request time, not via this event).",
     payloadSchema: Type.Object({ planId: Id, contactId: Id, portalAccountId: IdN }),
-    declaredConsumers: ["m28", "m31"],
+    declaredConsumers: ["m31"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -240,8 +250,11 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       outcome: Str,
       sourceEncounterId: Type.Optional(Id),
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    // F-115 (#248) — m30 moved to seamConsumers: this outcome is literally the numerator/denominator
+    // `copOutreachCounts` sums (bereavement_coverage_rate), read on M30's nightly cadence — same for
+    // `outreach_missed` just below.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -250,8 +263,8 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The hourly worker's verdict once `late_grace_until` passed with no state change — the M30 rate denominator and the M36 counselor alert (§2.4).",
     payloadSchema: Type.Object({ planId: Id, contactId: Id, outreachId: Id, dueAt: Iso }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -286,6 +299,11 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       dataCompleteness: Str,
       confidenceBand: Str,
     }),
+    // F-115 (#248) — m30 stays declared, not moved to seamConsumers: `BereavementComplianceProvider.
+    // riskScreeningCompletenessCounts` exists for exactly this D17 filter, but no measure code in
+    // `apps/backend/src/modules/30-quality/jobs/m30-jobs.ts`'s registered set calls it yet — a screening-
+    // completeness measure is not among the eleven currently bound. The description's "M30's screening
+    // measure" describes a capability that exists on the seam, not one wired to a running recompute.
     declaredConsumers: ["m30", "m32"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,

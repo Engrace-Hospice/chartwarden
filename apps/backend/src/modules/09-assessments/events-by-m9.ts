@@ -47,7 +47,10 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       sourceEncounterId: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
       isCorrection: Type.Boolean(),
     }),
-    declaredConsumers: ["m7", "m14", "m28", "m30"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared — unlike its
+    // M6/M7/M8 siblings this fact has no current M30 seam (no assessment reader exists in
+    // apps/backend/src/modules/30-quality/), so this remains a genuine gap, not a seam-pull.
+    declaredConsumers: ["m7", "m14", "m30"],
     seamConsumers: ["m33"],
     // ALSO live: server → patient room live chart refresh (§4.4).
     isOutboxOnly: false,
@@ -63,7 +66,8 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       scaleType,
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m28"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
+    declaredConsumers: ["m14"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

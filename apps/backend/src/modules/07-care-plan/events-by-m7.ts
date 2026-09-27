@@ -59,8 +59,12 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: versionKind,
       snapshotRef: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m8", "m14", "m17", "m22", "m28", "m30"],
-    seamConsumers: ["m33"],
+    declaredConsumers: ["m8", "m14", "m17", "m22"],
+    // F-115 (#248) — m28/m30 removed: m28 never subscribes to anything (its FHIR reads resolve seams
+    // fresh per-request, F-035); m30 reads the care-plan review cycle via
+    // `CarePlanCycleCountsView.fifteenDayCycleCountsForOrg` (care_plan_15_day_adherence) on its nightly
+    // cadence, not by reacting to this event.
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -152,10 +156,18 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m16", "m30"],
-    seamConsumers: ["m33"],
+    declaredConsumers: ["m16"],
+    // F-115 (#248) — m30 moved here: same `fifteenDayCycleCountsForOrg` seam as `care_plan.version_signed`
+    // above, read on M30's nightly cadence rather than a per-event reaction.
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
+  // F-115 (#248) — `m28` dropped from every problem/goal/intervention `declaredConsumers` below. M28's
+  // FHIR Condition projection was never built (F-035: "Condition ... has no reader seam at all"), and even
+  // once it is, M28 resolves every FHIR resource fresh at REQUEST time through a seam (§164.528 D3) — it
+  // never subscribes to an outbox event to stay current, so these were never going to bind regardless of
+  // whether the Condition seam lands. The description text below still names M28 as the eventual FHIR
+  // consumer of this DATA; only the outbox subscription claim was wrong.
   // ── problems ────────────────────────────────────────────────────────────────────────────────────
   {
     eventName: "m7.problem.added",
@@ -167,7 +179,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       problemId: Type.String({ minLength: 1 }),
       status: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m28"],
+    declaredConsumers: ["m14"],
     isOutboxOnly: true,
   },
   {
@@ -179,7 +191,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       problemId: Type.String({ minLength: 1 }),
       status: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m28"],
+    declaredConsumers: ["m14"],
     isOutboxOnly: true,
   },
   {
@@ -191,7 +203,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       problemId: Type.String({ minLength: 1 }),
       status: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m28"],
+    declaredConsumers: ["m14"],
     isOutboxOnly: true,
   },
   // ── goals ───────────────────────────────────────────────────────────────────────────────────────
@@ -206,7 +218,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       source: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m28"],
+    declaredConsumers: ["m14"],
     isOutboxOnly: true,
   },
   {
@@ -220,7 +232,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       source: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m28"],
+    declaredConsumers: ["m14"],
     isOutboxOnly: true,
   },
   {
@@ -233,7 +245,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       source: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m28"],
+    declaredConsumers: ["m14"],
     isOutboxOnly: true,
   },
   {
@@ -246,7 +258,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       source: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m28"],
+    declaredConsumers: ["m14"],
     isOutboxOnly: true,
   },
   // ── interventions ───────────────────────────────────────────────────────────────────────────────
@@ -261,7 +273,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       discipline: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m11", "m14", "m28"],
+    declaredConsumers: ["m11", "m14"],
     isOutboxOnly: true,
   },
   {
@@ -274,7 +286,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       discipline: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m11", "m14", "m28"],
+    declaredConsumers: ["m11", "m14"],
     isOutboxOnly: true,
   },
   {
@@ -287,7 +299,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       discipline: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m11", "m14", "m28"],
+    declaredConsumers: ["m11", "m14"],
     isOutboxOnly: true,
   },
 ];

@@ -286,22 +286,54 @@ const subscriptionExcepted = (module: string, eventType: string): boolean =>
  * append a stub group for a consumer module that has newly acquired unbound pairs. The stub is written
  * `unclassified` with an EMPTY reason, which fails the gate — `--update` may not create a passing state
  * out of a fact nobody has explained.
+ *
+ * A MODULE CAN HAVE MULTIPLE GROUPS (F-115 split M30 into `handlers-unbound` and `no-consumer-surface`),
+ * and this function used to get both halves of that wrong at once (found running `--update` in #248's
+ * F-117 pass). First, the anchor was `module: "${module}",` alone: `indexOf` resolves every group sharing
+ * a module name to the SAME first occurrence, so the second group's iteration silently overwrote the
+ * first group's just-written block. Anchoring on `module` + `kind` TOGETHER fixes that — it is exact
+ * even when a module has several groups, where a bare module search cannot be. Second, and worse: this
+ * function has no way to know which of a module's several groups a newly-unbound pair BELONGS to
+ * (`unbound` carries no `kind`), so a naive "give the fresh list to whichever group I'm looking at"
+ * would guess, and `byModule.delete()` after the first guess made every LATER group for that module come
+ * out empty — not a guess, silent data loss. Multi-group modules are therefore never redistributed: each
+ * existing group only ever LOSES an event that resolved (is no longer unbound), never gains one it did
+ * not already claim, and any newly-unbound pair for that module that no existing group claims surfaces as
+ * its own fresh `unclassified` stub (the same mechanism a brand-new module gets) rather than vanishing
+ * into one sibling group's list. A single-group module keeps the original full-replace behaviour, since
+ * there is no sibling to guess wrong against.
  */
 function regenerate(source: string, unbound: readonly Pair[]): string {
-  const byModule = new Map<string, string[]>();
+  const unboundByModule = new Map<string, Set<string>>();
   for (const { eventType, module } of unbound) {
-    const events = byModule.get(module) ?? [];
-    events.push(eventType);
-    byModule.set(module, events);
+    const set = unboundByModule.get(module) ?? new Set<string>();
+    set.add(eventType);
+    unboundByModule.set(module, set);
   }
-  let out = source;
+
+  const groupCountByModule = new Map<string, number>();
   for (const group of DEFERRED_CONSUMERS) {
-    const events = (byModule.get(group.module) ?? []).sort();
-    byModule.delete(group.module);
-    // Locate the group's OWN block and replace only its events array. Regex across the whole file
-    // would run past a single-line `events: [...]` (biome collapses short arrays) into the next
-    // group's list, silently reassigning events between modules — which is what the first cut did.
-    const anchor = out.indexOf(`module: "${group.module}",`);
+    groupCountByModule.set(group.module, (groupCountByModule.get(group.module) ?? 0) + 1);
+  }
+
+  let out = source;
+  const claimedByModule = new Map<string, Set<string>>();
+  for (const group of DEFERRED_CONSUMERS) {
+    const stillUnbound = unboundByModule.get(group.module) ?? new Set<string>();
+    const isMultiGroup = (groupCountByModule.get(group.module) ?? 0) > 1;
+    // Multi-group: only drop what resolved — never adopt an event this group didn't already list,
+    // since that would be guessing which sibling group a new pair belongs to. Single-group: the
+    // original full-replace, there being no sibling to guess wrong against.
+    const events = (isMultiGroup ? group.events.filter((e) => stillUnbound.has(e)) : [...stillUnbound])
+      .slice()
+      .sort();
+    const claimed = claimedByModule.get(group.module) ?? new Set<string>();
+    for (const e of events) claimed.add(e);
+    claimedByModule.set(group.module, claimed);
+
+    // Anchor on (module, kind) TOGETHER — precise even when a module has multiple groups, unlike a
+    // bare module search, which resolves to the same first occurrence for every group sharing it.
+    const anchor = out.indexOf(`module: "${group.module}",\n    kind: "${group.kind}",`);
     if (anchor === -1) continue;
     const listStart = out.indexOf("events: [", anchor);
     const blockEnd = out.indexOf("\n  },", anchor);
@@ -310,18 +342,22 @@ function regenerate(source: string, unbound: readonly Pair[]): string {
     const rendered = events.map((e) => `\n      "${e}",`).join("");
     out = `${out.slice(0, listStart)}events: [${rendered}\n    ${out.slice(listEnd)}`;
   }
-  const additions = [...byModule.entries()].sort();
-  if (additions.length > 0) {
-    const stubs = additions
-      .map(
-        ([module, events]) =>
-          `  {\n    module: "${module}",\n    kind: "unclassified",\n    reason: "",\n    events: [${events
-            .sort()
-            .map((e) => `\n      "${e}",`)
-            .join("")}\n    ],\n  },\n`,
-      )
-      .join("");
-    out = out.replace(/\n\];\n$/, `\n${stubs}];\n`);
+
+  // Leftover: a brand-new module (no existing group at all), OR a newly-unbound pair on a module
+  // whose existing group(s) correctly declined to adopt it. Either way it needs a human, not a guess.
+  const stubs: string[] = [];
+  for (const [module, all] of [...unboundByModule].sort(([a], [b]) => a.localeCompare(b))) {
+    const claimed = claimedByModule.get(module) ?? new Set<string>();
+    const leftover = [...all].filter((e) => !claimed.has(e)).sort();
+    if (leftover.length === 0) continue;
+    stubs.push(
+      `  {\n    module: "${module}",\n    kind: "unclassified",\n    reason: "",\n    events: [${leftover
+        .map((e) => `\n      "${e}",`)
+        .join("")}\n    ],\n  },\n`,
+    );
+  }
+  if (stubs.length > 0) {
+    out = out.replace(/\n\];\n$/, `\n${stubs.join("")}];\n`);
   }
   return out;
 }

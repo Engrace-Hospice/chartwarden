@@ -301,7 +301,11 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: id,
       funeralHomeId: id,
     }),
-    declaredConsumers: ["m22"],
+    // F-117 (#248) — m22 removed: `identifyFuneralHome` also emits
+    // `m37.body_release.document_requested` in the SAME transition (ipu-body-release.ts), the
+    // actual live-bound M22 render request that issues the magic-link session this description
+    // describes.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -322,7 +326,11 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m37",
     description: "Body release completed (bed resumes cleaning).",
     payloadSchema: Type.Object({ organizationId: id, bodyReleaseId: id, patientId: id }),
-    declaredConsumers: ["m22"],
+    // F-117 (#248) — m22 removed: `releaseBody`'s own guard requires the signed M22
+    // `body_release_authorization` document to already exist before this transition is legal
+    // (ipu-body-release.ts) — the document was rendered earlier, at `funeral_home_identified`.
+    // Nothing is left for M22 to produce when release COMPLETES.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   // ── census (§2.13) ────────────────────────────────────────────────────────────────────────────────

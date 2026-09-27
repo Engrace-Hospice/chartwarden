@@ -65,7 +65,10 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
         }),
       ),
     }),
-    declaredConsumers: ["m22", "m28", "m14", "m30"],
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035; the CarePlan projection is read
+    // live at request time). m30 stays declared — no current M30 measure reads discipline-plan
+    // signing data, so this remains a genuine gap.
+    declaredConsumers: ["m22", "m14", "m30"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -98,8 +101,10 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       performanceSatisfactory: Type.Boolean(),
       nextDueAt: Iso,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-115 (#248) — m30 moved to seamConsumers: reads `DisciplineComplianceProvider.supervisoryOnTimeCounts`
+    // (supervisory_visit_on_time, CoP 418.76(h)) on its nightly cadence, not by reacting to this event.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
