@@ -378,9 +378,12 @@ M2 §D3 is recorded as **Decided** — "Membership→role assignment is Module 3
 repeats it. Nothing performed it. `POST /api/v1/invitations/accept` consumed the token, created the
 membership, and returned, carrying the comment "proposedRoleKeys are carried to M3 on accept (role attach
 is M3-owned, §7.1)" — a line naming the mechanism as someone else's while nobody had it. There is no event
-path either: **M2 contributes no outbox catalog at all** (the absence #205 already recorded as the blocker
-for M35's four `m2.*` subscriptions), so `m2.membership.accepted` is an AUDIT action and nothing can
-subscribe to it. An admin invites an RN as `clinical_rn`, the RN accepts, the RN holds nothing — no error,
+path either: at the time this was found, **M2 contributed no outbox catalog at all** (the absence #205
+later recorded as the blocker for M35's four `m2.*` subscriptions), so `m2.membership.accepted` was an
+AUDIT action and nothing could subscribe to it. **M2 now catalogues it** (`events-by-m2.ts`, #205), and it
+stays deliberately record-only (`declaredConsumers: []`) — its own catalog comment says why: the §D3 role
+attach this finding fixes below is "the real, synchronous mechanism for downstream role-grant effects;
+this event has no consumer." An admin invites an RN as `clinical_rn`, the RN accepts, the RN holds nothing — no error,
 no warning, and the `organization_invitation` row still lists the roles that were requested, so the admin
 surface reports access the user does not have. The handshake is now performed by
 `03-authorization/proposed-role-attacher.ts`, bound at the composition root because M2 is `dependsOn: [1]`
@@ -1268,10 +1271,18 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   directory, and the twelve §4.4 queue names in `jobs/queues.ts` are pure data referenced by nothing but
   their own test, so no `Queue`, no `Worker` and no producer has ever been constructed. Calling a push
   nobody sent `delivered` would move the lie rather than remove it. **Reported, not fixed**: that whole
-  out-of-band tier, and the standing #205 absence it sits inside — M36 contributes NO event catalog, so
-  `m36.notification.delivery_failed` has no producer and the three written deciders that subscribe to it
-  (M19's `consumers/m36-delivery-failed.ts`, M20's `delivery_failed` SOS escalation reason, M26's) cannot
-  run. M19's file already names itself as the one place to reconcile when M36 publishes the real payload.
+  out-of-band tier, and the standing #205 absence it sat inside — at the time, M36 contributed NO event
+  catalog, so `m36.notification.delivery_failed` had no producer and the three written deciders that
+  subscribe to it (M19's `consumers/m36-delivery-failed.ts`, M20's `delivery_failed` SOS escalation reason,
+  M26's) could not run. **M36 now catalogues the event (`events-by-m36.ts`, #205) and M19/M20 are real,
+  live-bound consumers** — M19 escalates an open call, opens an operational call, or reports a coverage
+  gap; M20 advances the SOS ladder, capped at `escalation_tier_3` since its dial/page/PSAP terminus
+  effects have no implementation anywhere (M26's stays `no-handler`: its own handler is a no-op stub and
+  its whole consumer relay is unbound, `outbox-subscription-exceptions.ts`). The gap this paragraph is
+  actually about still stands: **no producer exists** — nothing publishes the event, because the
+  out-of-band dispatch/reconciliation pipeline (Twilio/push/email/voice) that would detect a delivery
+  failure and emit it is unbuilt, the separate project named above. M19's file already names itself as the
+  one place to reconcile when that pipeline lands and publishes the real payload.
   Proven by `m36-alert-outcome.live.test.ts` — the real Drizzle `AlertEmitter` over a real platform-default
   `alert_rule`, the real route service, real RLS, org B's poll unable to settle org A's row; 3 of its 7
   fail with the two production changes reverted, and the migration case fails on a schema without
@@ -1304,12 +1315,22 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   delivery into a row re-claimed every thirty minutes — **for the other consumers too**. The gate deletes
   each entry's own excuse when it expires: a pair that comes to agree both ways fails, one no longer
   named by either side fails, a `no-producer` entry whose event gets catalogued fails, and any other kind
-  naming an uncatalogued event fails. **`no-producer` is the standing finding and prints on every run**:
-  **M2 and M36 contribute NO event catalog to the boot dispatcher** — there is no `M2_OUTBOX_EVENTS` and
-  no `M36_OUTBOX_EVENTS` — so `m36.notification.delivery_failed` (named by M19, M20 and M26, with a
-  written decider in `19-oncall/consumers/m36-delivery-failed.ts` and a matching `delivery_failed` SOS
-  escalation reason in M20) and M35's four `m2.*` organization/session topics have no producer at all.
-  That is half of M35's entire subscription list, and its §4.12 per-seat billing is specified on it.
+  naming an uncatalogued event fails. **`no-producer` was the standing finding, printed on every run, and
+  is now resolved (#205) — the group has zero members.** M2 and M36 used to contribute NO event catalog to
+  the boot dispatcher at all — no `M2_OUTBOX_EVENTS`, no `M36_OUTBOX_EVENTS` — so `m36.notification.
+  delivery_failed` (named by M19, M20 and M26) and M35's four `m2.*` organization/session topics, half of
+  its entire subscription list and the trigger for its §4.12 per-seat billing, had no producer at all.
+  **M2 now catalogues and publishes 16 identity-lifecycle events** (`events-by-m2.ts`), including the real
+  §11 D19 org activate/suspend/close capability (`organization-lifecycle.ts`) and the `select-organization`
+  producer for `m2.session.created` — the exact four events M35 needed. **M36 now catalogues
+  `m36.notification.delivery_failed`** (`events-by-m36.ts`), with M19's written decider and M20's SOS
+  escalation reason both live-bound to it for the first time. Neither is `no-producer` any more: M35's four
+  topics moved to `no-handler` (M35 has no `consumers/` directory yet), and M26's moved to `no-handler` too
+  (its handler is a no-op stub, its relay is unbound) — both filed in `outbox-subscription-exceptions.ts`.
+  `m36.notification.delivery_failed` itself still has no PRODUCER emitting it in practice, but for a
+  different reason now: the out-of-band dispatch/reconciliation pipeline that would detect a failed
+  delivery and raise the event is unbuilt (see the alert-outcome finding above) — a gap in what M36 does,
+  not in what it declares.
 
   **Rule 6 saw six modules of nineteen, and its own comment said otherwise (F-095, #208).** It enumerated
   `M<N>_SUBSCRIBED_EVENT_NAMES` off the `@wardenx/types` barrel and claimed "a seventh module publishing one
@@ -1348,10 +1369,16 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   `handlers-unbound` set seen from the list side, which `outbox-deferred-consumers.ts` cannot hold because it
   can only carry pairs the catalog DECLARES). The gate DECIDES `no-producer` vs `no-such-event` itself off
   whether the owning module contributes a catalog, rather than trusting the entry — getting those the wrong
-  way round is how a permanent defect gets filed as a staging gap. **The standing finding grew: M28 is a
-  third module contributing no event catalog**, alongside M2 and M36 — there is no `M28_OUTBOX_EVENTS`
-  anywhere in the repo, so the FHIR gateway publishes nothing and M33's `mv_fhir_bulk_export_org_month` has
-  no invalidation source.
+  way round is how a permanent defect gets filed as a staging gap. **The standing finding had grown to a
+  third module — M28 contributed no event catalog either**, alongside M2 and M36, so the FHIR gateway
+  published nothing and M33's `mv_fhir_bulk_export_org_month` had no invalidation source. **Resolved with
+  the same #205 pass**: M28 now catalogues 13 events (`events-by-m28.ts`) on real write paths — client
+  lifecycle, bulk-export, inbound proposals, including the revocation cascade that cancels an inflight job
+  — and `m28.fhir.bulk_export.completed` is the one `mv_fhir_bulk_export_org_month` keys off. It is filed
+  `handler-unbound` rather than closed outright: M33's consumer-side mechanism
+  (`handleUpstreamInvalidation`) is written and unit-tested but still has no live `OutboxConsumerBinding`,
+  deferred with the rest of M33's ~60 MV-refresh topics under `M33_MV_REFRESH_SUBSCRIPTIONS_DEFERRED` —
+  a separate M33 composition-root task, not an M28 one.
 
 
 - `scripts/check-architecture-docs.ts` — **architecture-corpus freshness gate**
