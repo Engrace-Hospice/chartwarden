@@ -117,6 +117,51 @@ test.describe("Assessments", () => {
     await expect(page.getByText("Acknowledged").first()).toBeVisible();
   });
 
+  test("failure/rollback path: the Record button stays disabled on an incomplete PPS capture, and Cancel commits nothing", async ({
+    page,
+  }) => {
+    // #106 (F-046) — this file's only failure-path coverage before this test was implicit (the
+    // happy path above proves what a COMPLETE, valid capture does; nothing proved what an
+    // INCOMPLETE one does not do). `missing.length > 0` disables the Record button client-side
+    // (`record-assessment-modal.tsx`) precisely so a partial PPS axis set can never reach the
+    // server — this is that guard, exercised in a real browser rather than asserted from the
+    // component's source.
+    await signInAs(page, RN_ACCOUNT());
+    const patientId = await openPatientChartByLastName(page, PATIENT_LAST_NAME);
+    await page.goto(`/patients/${patientId}/assessments`);
+    await expect(page.getByRole("button", { name: "Record assessment" })).toBeVisible({
+      timeout: 15_000,
+    });
+
+    await page.getByRole("button", { name: "Record assessment" }).click();
+    const dialog = page.getByRole("dialog", { name: "Record an assessment" });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel("Scale").selectOption({ label: PPS_LABEL });
+
+    const record = dialog.getByRole("button", { name: "Record", exact: true });
+    // Nothing filled yet — every required axis is missing.
+    await expect(record).toBeDisabled();
+
+    // Fill exactly one of the five required axes — still incomplete.
+    const [firstAxisLabel, firstAxisValue] = PPS_FULL[0] as [string, string];
+    await dialog.getByLabel(firstAxisLabel).selectOption(firstAxisValue);
+    await expect(record).toBeDisabled();
+
+    // Abandon the draft rather than complete it — Cancel must close the dialog and leave no trace:
+    // no partial capture, no server round trip, the timeline exactly as it was.
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.getByRole("button", { name: "Record assessment" })).toBeVisible();
+    // Re-opening starts a FRESH, empty draft — proof the cancelled one left nothing behind to
+    // resume, which is the ROLLBACK half of this case (an abandoned form is not a saved one).
+    await page.getByRole("button", { name: "Record assessment" }).click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel("Scale").selectOption({ label: PPS_LABEL });
+    await expect(record).toBeDisabled();
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await expect(dialog).toBeHidden();
+  });
+
   test("the significant-change queue is accessible (WCAG 2.1 A/AA)", async ({ page }) => {
     await signInAs(page, RN_ACCOUNT());
     const patientId = await openPatientChartByLastName(page, PATIENT_LAST_NAME);

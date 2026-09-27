@@ -156,6 +156,40 @@ and lets the same note sign, and a recert_visit with PPS present but ESAS missin
 SIGN (the M9 fact, unlike M7's, is faked per-test the same way `carePlanOverdue` is, so the gap between
 finalize and sign is real and not an artifact of the harness).
 
+**#106's own premise had partly gone stale, and the part that hadn't pointed at two real bugs
+(F-114, #106/#250).** It read "18 E2E tests and 12 axe assertions cover 290 registered screens" and
+"none of the repo's `scripts/db/seed*.ts` scripts insert any claim data" — both true when filed, both
+false by the time this pass re-verified them: the corpus had grown to 19 spec files / 301 screens, and
+`seed-scenario-billing.ts` (added since) assembles, validates, and submits one real Medicaid (M24)
+claim per `db:seed:all` run. That is NOT the M23 Medicare lifecycle the issue asked for, though — the
+same seed file's own header names why, in more detail than #106 had: `POST /billing/claims/assemble`
+is unconditionally unreachable (M23's whole §4.4 reader-seam bundle sits behind fail-closed deny-stubs
+at boot), and 835/remittance posting (M25) has no reachable creation route for EITHER payer (its one
+route gates on `systemPrincipal`, a fact nothing in the codebase writes — the F-030 naming-collision
+shape one module over, `actorKind` under a second, unwired name). Both are real, independent production
+defects, not test-coverage gaps, and are now filed as their own issue (**#250**) rather than fixed
+inline — un-stubbing a six-seam bundle across five modules is its own project. `billing.spec.ts` now
+proves the REACHABLE half of #106's first acceptance criterion end to end (Medicaid: a seeded claim
+shows `SUBMITTED`, not the empty-claims state its old "reachability + empty-state" framing settled
+for) and keeps the Medicare empty-state tests, now correctly attributed to #250 rather than to a
+seeding gap. **The other three acceptance criteria are addressed in proportion, not in full.**
+Failure/rollback-path coverage was added where it was genuinely absent — `assessments.spec.ts` had
+none at all (every other critical-workflow spec already carried some, per a text survey of this
+session, so the honest scope was the one file at zero, not a rewrite of all sixteen) — plus a
+Medicaid-billing failure case (an invalid filter value degrades to a visible non-crash rather than the
+uncaught-exception overlay). The accessibility strategy is now genuinely proportional to the registry
+rather than to which sixteen specs happen to call `expectNoAxeViolations`: `e2e/specs/
+axe-route-walk.spec.ts` walks every statically-routable, post-auth `web` screen (157 of them) under the
+admin persona and WCAG-2A/AA-scans each — structural coverage, explicitly NOT a substitute for the
+keyboard/focus/zoom/contrast/screen-reader review #106 itself says needs scheduling by a human.
+`admin`/`portal` (47 screens, two Vite dev servers this suite's single `baseURL` does not reach) and
+dynamic routes (116 screens needing a real resource id per screen) are out of its scope, stated rather
+than silently absent. And the coverage is now MEASURED rather than counted by hand: `bun run
+scripts/report-e2e-axe-coverage.ts` (`arch:e2e-coverage`, in `arch:fitness`) cross-references the
+`ui:parity` registry against `e2e/specs/` source text and writes `audit/e2e-coverage/E2E_COVERAGE.md` —
+19/157 statically-routable web screens were E2E-reached and 151/157 axe-reached at the time this
+landed, both numbers the report itself will keep current rather than this paragraph.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit
