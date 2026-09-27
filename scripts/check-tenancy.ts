@@ -119,17 +119,20 @@ const NON_ORG_SCOPED = new Set<string>([
   "hope_spec_item",
   "hope_spec_item_isc",
   "hope_spec_item_option",
-  // M36 Secure Messaging (§3.4–3.6, §3.11): five tables carry no organization_id BY DESIGN.
+  // M36 Secure Messaging (§3.4–3.6, §3.11): six tables carry no organization_id BY DESIGN.
   // `presence` + `delivery_endpoint` are user-owned and cross-org (the human, not the tenant —
-  // same posture as `session`). `message_attachment` + `notification_delivery` are pure children
-  // of `message`/`alert` (ON DELETE cascade) and inherit tenancy via the parent FK; RLS is
-  // applied through the parent-join in M36-T03. `alert_payload_catalog` is platform-floor
-  // reference, read-all, populated at boot from the §3.12 Foundation Registry. The ten remaining
-  // M36 tables carry organization_id and get standard app.org_id RLS in M36-T03.
+  // same posture as `session`). `message_attachment` + `notification_delivery` + `alert_receipt`
+  // are pure children of `message`/`alert` (ON DELETE cascade) and inherit tenancy via the parent
+  // FK; RLS is applied through the parent-join — `alert_receipt` (migration 0243) shipped with
+  // neither the join policy nor the wardenx_app grant its siblings got in M36-T03, so every real
+  // request touching it 42501'd; migration 0247 gives it the same shape. `alert_payload_catalog`
+  // is platform-floor reference, read-all, populated at boot from the §3.12 Foundation Registry.
+  // The remaining M36 tables carry organization_id and get standard app.org_id RLS in M36-T03.
   "presence",
   "delivery_endpoint",
   "message_attachment",
   "notification_delivery",
+  "alert_receipt",
   "alert_payload_catalog",
   // M40 Master Data Management (§2.3, §3.3–3.5): seven tables carry no organization_id BY DESIGN.
   // The §2.3 canonical-vs-overlay dividing line makes canonical master data org-less — one row

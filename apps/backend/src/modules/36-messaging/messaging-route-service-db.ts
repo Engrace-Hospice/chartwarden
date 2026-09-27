@@ -14,8 +14,9 @@
 // RLS shape (M36-T03, §3.7–3.9):
 //   • `channel` / `channel_member` / `message` / `message_receipt` / `alert` are ORG-SCOPED PHI-class
 //     (app.org_id RLS) — read/written inside `withOrgContext`.
-//   • `notification_delivery` carries no organization_id; its RLS is the parent-join into `alert`, so
-//     the alert-inbox join is visible exactly when the parent alert is (still inside `withOrgContext`).
+//   • `notification_delivery` / `alert_receipt` carry no organization_id; their RLS is the parent-join
+//     into `alert`, so the alert-inbox join/receipt is visible exactly when the parent alert is (still
+//     inside `withOrgContext`). `alert_receipt` (migration 0243) shipped without this — see 0247.
 //   • `user_notification_preferences` / `delivery_endpoint` are user-scoped (app.user_id RLS) — the
 //     SELF-only writes run inside `withOrgContext` (which sets both app.org_id and app.user_id).
 //   • `alert_rule` is org-scoped but its platform-default rows (organization_id IS NULL) are read-all

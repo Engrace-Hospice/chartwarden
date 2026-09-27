@@ -1288,6 +1288,28 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   fail with the two production changes reverted, and the migration case fails on a schema without
   0240/0241.
 
+  **A sibling table in the same subsystem shipped with no RLS and no grant at all (F-110, #247),
+  found re-verifying this fix live.** `alert_receipt` (migration 0243 — per-user read-receipt state
+  for the alert inbox, distinct from `notification_delivery`'s transport-lifecycle rows) has no
+  `GRANT` to `wardenx_app` and no RLS policy anywhere, unlike `notification_delivery` — its exact
+  structural sibling, also a pure child of `alert` — which has carried a parent-join policy + grant
+  since migration 0017. Every real request touching it (`listAlertInbox`'s left-join,
+  `markAlertRead`'s insert, both in `messaging-route-service-db.ts`) threw Postgres 42501 "permission
+  denied for table alert_receipt" — confirmed live, 4 of 7 cases in `m36-alert-outcome.live.test.ts`
+  failed before the fix. Migration 0247 mirrors `notification_delivery`'s parent-join RLS shape,
+  adding the NULLIF empty-GUC guard from migration 0246's `device_attestation` precedent (this table
+  is only ever touched inside `withOrgContext` today, unlike that guard's original bare-pool case,
+  but the guard is free insurance against the identical failure mode). **A gate blind spot sits
+  underneath and is reported, not fixed**: `check-tenancy.ts`'s Rule 1 three-column check never
+  flagged the missing `organization_id` handling either, because its schema-scanning regex assumes a
+  two-argument `pgTable(name, columns)` call ending in a bare `\n})` — `alert_receipt`'s three-argument
+  form (`pgTable(name, columns, (t) => ({ indexes… }))`) never matches it, so the table was invisible
+  to Rule 1 regardless of the `NON_ORG_SCOPED` allowlist. A MISS, not a false alarm, and it applies to
+  any other three-argument `pgTable()` table in the schema — filed as its own issue (#247) rather than
+  attempting a regex fix with repo-wide blast radius in the same pass. `alert_receipt` is now
+  explicitly added to `NON_ORG_SCOPED`'s M36 entry regardless, so the exemption is documented intent
+  rather than an accident of what the regex happens to match.
+
   **Rule 6 (F-094, #205) is the direction rule 4 still did not run.** Six modules publish an
   `M*_SUBSCRIBED_EVENT_NAMES` constant, and each carries the same doc comment — it exists "so an upstream
   rename breaks the build rather than silently orphaning a handler". **Nothing compared any of them to
