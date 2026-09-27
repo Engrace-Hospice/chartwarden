@@ -1378,7 +1378,14 @@ F-029 said it would take. See its entry below — it found two more surfaces in 
   `handler-unbound` rather than closed outright: M33's consumer-side mechanism
   (`handleUpstreamInvalidation`) is written and unit-tested but still has no live `OutboxConsumerBinding`,
   deferred with the rest of M33's ~60 MV-refresh topics under `M33_MV_REFRESH_SUBSCRIPTIONS_DEFERRED` —
-  a separate M33 composition-root task, not an M28 one.
+  a separate M33 composition-root task, not an M28 one. **The catalog entry's own comment records a second,
+  producer-side gap the consumer-binding framing doesn't capture**: no worker anywhere transitions a bulk-
+  export job to `completed`, because §2.3's async job processing is unbuilt — the same absence F-035
+  records as why `$export`/`$everything` were dropped from `SERVED_RESOURCES`/the CapabilityStatement
+  rather than left advertising an operation the gateway cannot perform. So even once M33 binds, the event
+  has no live producer yet either; the catalog entry exists to pin the payload contract for when one does.
+  Re-verified live against a fresh disposable Postgres (2026-09-27): `test:m28:outbox-catalog:live` (4/4),
+  `test:m28:fhir-gateway:live` (9/9) and `test:rls:live:m28` (11/11) all pass unchanged since #205 landed.
 
 
 - `scripts/check-architecture-docs.ts` — **architecture-corpus freshness gate**
