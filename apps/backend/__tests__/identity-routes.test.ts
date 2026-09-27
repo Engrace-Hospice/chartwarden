@@ -100,6 +100,7 @@ function makeServer(
     emailTransport?: IdentityRouteDeps["emailTransport"];
     webAppBaseUrl?: string;
     roleAttacher?: IdentityRouteDeps["roleAttacher"];
+    dashboardSeeder?: IdentityRouteDeps["dashboardSeeder"];
   } = {},
 ) {
   const memberships = createInMemoryMembershipRepository(opts.seed ?? [ADMIN_MEMBERSHIP]);
@@ -146,6 +147,7 @@ function makeServer(
     ...(opts.emailTransport ? { emailTransport: opts.emailTransport } : {}),
     ...(opts.webAppBaseUrl ? { webAppBaseUrl: opts.webAppBaseUrl } : {}),
     ...(opts.roleAttacher ? { roleAttacher: opts.roleAttacher } : {}),
+    ...(opts.dashboardSeeder ? { dashboardSeeder: opts.dashboardSeeder } : {}),
   };
   registerIdentityRoutes(app, deps);
   return { app, memberships, sessions, invitations, collaborators, users, auditSink };
@@ -477,6 +479,59 @@ describe("M2-T06 identity route inventory", () => {
       expect(calls).toHaveLength(1); // called, and correctly found nothing to do
       expect(server.auditSink.rows.some((r) => r.eventType === "m3.role.assigned")).toBe(false);
       await server.app.close();
+    });
+  });
+
+  describe("#138/F-060/F-116 accept seeds the day-one dashboards", () => {
+    function capturingDashboardSeeder() {
+      const calls: { organizationId: string; userId: string; ownerMembershipId: string }[] = [];
+      return {
+        calls,
+        seeder: {
+          async ensureSystemDashboards(input: {
+            organizationId: string;
+            userId: string;
+            ownerMembershipId: string;
+          }) {
+            calls.push(input);
+            return { created: ["census_org_daily"], alreadyPresent: [] };
+          },
+        } satisfies NonNullable<IdentityRouteDeps["dashboardSeeder"]>,
+      };
+    }
+
+    async function acceptAsDashboardSeederFixture(
+      dashboardSeeder: NonNullable<IdentityRouteDeps["dashboardSeeder"]> | undefined,
+    ) {
+      const server = makeServer(dashboardSeeder ? { dashboardSeeder } : {});
+      await server.app.inject({
+        method: "POST",
+        url: "/api/v1/orgs/org_a/invitations",
+        headers: ADMIN,
+        payload: { email: "dash@example.com", proposedRoleKeys: [] },
+      });
+      const res = await server.app.inject({
+        method: "POST",
+        url: "/api/v1/invitations/accept",
+        headers: { "x-test-user": "invitee_dash" },
+        payload: { token: server.invitations.tokenFor("dash@example.com") },
+      });
+      return { server, res };
+    }
+
+    it("calls the seeder with the new membership as owner, after the membership is created", async () => {
+      const { calls, seeder } = capturingDashboardSeeder();
+      const { res } = await acceptAsDashboardSeederFixture(seeder);
+      expect(res.statusCode).toBe(200);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]!.organizationId).toBe("org_a");
+      expect(calls[0]!.userId).toBe("invitee_dash");
+      expect(calls[0]!.ownerMembershipId).toBe(res.json().membershipId);
+    });
+
+    it("does not fail accept when no seeder is bound", async () => {
+      const { res } = await acceptAsDashboardSeederFixture(undefined);
+      expect(res.statusCode).toBe(200);
     });
   });
 

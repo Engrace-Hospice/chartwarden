@@ -4,7 +4,8 @@
 // (writes additionally require report.definition.write, §3.5). `base_key` refs report_base_catalog;
 // cross-module refs (owner/published-by membership → M2) are plain uuid app-validated. RLS + grants
 // + the M4 write-audit trigger land in the M33 RLS migration.
-import { index, integer, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { reportBaseCatalog } from "./report-base-catalog";
 
 export const reportDefinition = pgTable(
@@ -36,6 +37,11 @@ export const reportDefinition = pgTable(
     ),
     // §3.4: the "where used" admin surface.
     baseStatus: index("report_definition_base_status_idx").on(t.baseKey, t.status),
+    // #138/F-060/F-116 — at most one SYSTEM-authored definition per (org, base): the idempotency guard
+    // for the day-one dashboard seeder, which runs on every accepted invitation (migration 0248).
+    systemOrgBaseUq: uniqueIndex("report_definition_system_org_base_uq")
+      .on(t.organizationId, t.baseKey)
+      .where(sql`authorship = 'system'`),
   }),
 );
 

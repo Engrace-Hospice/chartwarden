@@ -472,6 +472,18 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       );
     }
 
+    // #138/F-060/F-116 — the day-one dashboard seed. Same placement rule as the role attach above:
+    // AFTER the membership exists, best-effort, never rolling back an already-consumed one-time
+    // invitation token over a reporting-side failure. Idempotent (report_definition_system_org_base_uq,
+    // migration 0248) — every accept for this org after the first is a cheap no-op.
+    if (deps.dashboardSeeder) {
+      await deps.dashboardSeeder.ensureSystemDashboards({
+        organizationId: detail.organizationId,
+        userId: actor.userId,
+        ownerMembershipId: membership.membershipId,
+      });
+    }
+
     // `rolesAttached` is on the wire so the caller can tell the three states apart: roles granted, roles
     // REQUESTED BUT UNRESOLVABLE (the org has no such role — which is every key in a freshly provisioned
     // tenant, since nothing materializes ROLE_TEMPLATES), and no attacher bound at all. Reporting only

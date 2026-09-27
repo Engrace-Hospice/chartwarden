@@ -342,6 +342,9 @@ export function mountIdentityRoutes(
     emailTransport?: IdentityRouteDeps["emailTransport"];
     webAppBaseUrl?: string;
     roleAttacher?: IdentityRouteDeps["roleAttacher"];
+    /** #138/F-060/F-116 — threaded the same way as `roleAttacher`, for the same import-boundary reason
+     *  (M33's implementation, M2 is `dependsOn: [1]`). Omitted → accept seeds no dashboards. */
+    dashboardSeeder?: IdentityRouteDeps["dashboardSeeder"];
     /** The `m2.*` outbox publisher (#205). Omitted → record-only, no-op. */
     outbox?: M2RawOutboxPublisher;
   },
@@ -367,6 +370,7 @@ export function mountIdentityRoutes(
       : {}),
     ...(invite?.webAppBaseUrl ? { webAppBaseUrl: invite.webAppBaseUrl } : {}),
     ...(invite?.roleAttacher ? { roleAttacher: invite.roleAttacher } : {}),
+    ...(invite?.dashboardSeeder ? { dashboardSeeder: invite.dashboardSeeder } : {}),
     ...(invite?.outbox ? { outbox: _orgScopedIdentityOutbox(db, invite.outbox) } : {}),
     // §11 D19 — real auth-time enforcement: `select-organization` refuses to bind a fresh session to a
     // non-active org. The reader needs no outbox (it never writes); see organization-lifecycle.ts.

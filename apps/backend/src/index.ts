@@ -665,6 +665,7 @@ import {
   buildM33MvRefreshEnqueue,
   buildM33ReadEnqueue,
   buildM33WorkerDeps,
+  createDbSystemDashboardSeeder,
   createDrizzleReportingEraseStore,
   mountM33ExportDrilldownRoutes,
   mountM33ReadRoutes,
@@ -2884,6 +2885,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             emailTransport,
             webAppBaseUrl,
             roleAttacher: createDbProposedRoleAttacher(dbHandle.db),
+            // #138/F-060/F-116 — the day-one dashboard seed, bound the same way as roleAttacher just
+            // above and for the identical import-boundary reason (M33's implementation; M2 cannot
+            // import it).
+            dashboardSeeder: createDbSystemDashboardSeeder(dbHandle.db),
             outbox: m2OutboxPublisher,
           });
           // TASK-001 ledger — the external-collaborator magic-link store is process-local: there is

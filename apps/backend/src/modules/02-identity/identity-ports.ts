@@ -288,6 +288,27 @@ export interface ProposedRoleAttacher {
   }): Promise<{ readonly attached: readonly string[]; readonly unresolved: readonly string[] }>;
 }
 
+/**
+ * Seeds the org's platform-shipped ("day-one") dashboards on accept.
+ *
+ * Declared locally, like {@link ProposedRoleAttacher} above and for the same reason: the implementation
+ * is M33's (`33-reporting/system-dashboard-seeder.ts`) and M2 is `dependsOn: [1]`, so the composition
+ * root binds it by structural typing rather than M2 taking an edge on M33.
+ *
+ * #138/F-060/F-116 — M33's own spec names a "catalog-of-platform-shipped dashboards that lets an agency
+ * go live on day one … without the agency authoring a single definition" and nothing built it: a
+ * freshly provisioned tenant's `/reports` was empty until someone authored a report. This runs HERE,
+ * on invitation accept, rather than in M34's `tenant.provision` job — `report_view.owner_membership_id`
+ * is NOT NULL, and no membership exists yet when that job runs; this is the earliest point one does.
+ */
+export interface DashboardSeeder {
+  ensureSystemDashboards(input: {
+    readonly organizationId: string;
+    readonly userId: string;
+    readonly ownerMembershipId: string;
+  }): Promise<{ readonly created: readonly string[]; readonly alreadyPresent: readonly string[] }>;
+}
+
 /** Mint / consume / rescind / re-mint / peek org invitations (M2-owned table). */
 export interface InvitationStore {
   pendingExists(organizationId: string, email: string): Promise<boolean> | boolean;
@@ -410,6 +431,13 @@ export interface IdentityRouteDeps {
    * conflating them is how the missing handshake stayed invisible for as long as it did.
    */
   roleAttacher?: ProposedRoleAttacher;
+  /**
+   * #138/F-060/F-116 — the day-one dashboard seed. Optional for the same reason `roleAttacher` is: a
+   * no-db slice boot has no M33 store to bind. When absent, accept simply does not seed dashboards
+   * (no error) — the same "the difference matters" rule as `roleAttacher`, but here there is nothing on
+   * the wire to report either way, since a missing seeder is not something the invitee asked for.
+   */
+  dashboardSeeder?: DashboardSeeder;
   /** §11 D19 — omitted → `select-organization` skips the active-org check (a no-db slice boot has no
    *  organization-lifecycle writer to read back). See {@link OrganizationStatusReader}. */
   organizations?: OrganizationStatusReader;

@@ -190,6 +190,44 @@ scripts/report-e2e-axe-coverage.ts` (`arch:e2e-coverage`, in `arch:fitness`) cro
 19/157 statically-routable web screens were E2E-reached and 151/157 axe-reached at the time this
 landed, both numbers the report itself will keep current rather than this paragraph.
 
+**A newly provisioned org's `/reports` is no longer empty (F-116, #138).** M33 §1 names "the
+catalog-of-platform-shipped dashboards that lets an agency go live on day one … without the agency
+authoring a single definition" as the reason the module exists at all; `find . -name
+"system-definitions-seed*"` found nothing, and no migration, provisioning step, boot hook or worker
+created a `system`-authored `report_definition` for an org — a fresh tenant's `/reports` was empty
+until someone authored a report, which the M33 spec's own file tree names as a missing artifact.
+**Not fixed at M34's `tenant.provision` job**, which is where the spec's file tree places it and where
+this finding was first scoped to land: `report_view.owner_membership_id` is NOT NULL — a saved view is
+always owned by a real membership — and that job runs before any membership exists (it creates the org,
+the key ring, storage prefixes, onboarding tasks, and the first-admin INVITATION, not a membership). The
+earliest point an owner membership exists is `POST /api/v1/invitations/accept`, which is also where
+F-097's M2→M3 role-attach handshake runs for the identical reason; `createDbSystemDashboardSeeder`
+(`33-reporting/system-dashboard-seeder.ts`) binds there, threaded into `mountIdentityRoutes` exactly the
+way `roleAttacher` is (M2 is `dependsOn: [1]` and cannot import M33, so the port is declared locally in
+`identity-ports.ts` and bound by structural typing at the composition root). **Scoped honestly, not to
+the spec's full claim**: only `report_base_catalog.status = 'active'` bases get a dashboard — 3 of ~36
+registered MV keys today (`census_org_daily`, `encounter_productivity_membership_day`,
+`evv_compliance_org_week`; migration 0061) — read from the catalog rather than hardcoded, so a base
+going `active` later needs no code change here, only a re-run of the idempotent backfill. The HQRP/HOPE/
+cap/bereavement half of the spec's claim remains unmet until those bases land; this does not restate the
+spec, because the code now genuinely delivers as much of it as is real. Each dashboard's
+dimensions/measures are the base's OWN full catalog arrays, not a hand-picked subset — reading the
+existing decision instead of re-deciding it, the same rule F-112 applied to HearthNote's `vitals_review`
+sections. **Idempotency is a database constraint, not a pre-read**: `ensureSystemDashboards` runs on
+EVERY accepted invitation for an org (cheap after the first), and `report_definition_system_org_base_uq`
+(migration 0248 — a partial unique index on `(organization_id, base_key) WHERE authorship = 'system'`)
+is what makes two admins racing to accept the first two invitations for a brand-new org create each
+dashboard exactly once, via `.onConflictDoNothing()` (the `elevated-approvals.ts` `grant()` precedent)
+rather than a duplicate row. `scripts/backfill-system-dashboards.ts` (`db:backfill-system-dashboards`)
+covers orgs provisioned before this landed — one non-revoked membership per org picked deterministically
+as the nominal owner — and is safe to re-run against every org whenever a new base goes active. Proven
+by `m33-system-dashboards.live.test.ts`: a fresh org gets all 3 dashboards with the correct owner and
+`share_scope='org'`, a second accept is a full no-op, org B's own tenant-scoped connection cannot read
+org A's rows (the isolation claim, made from a genuinely org-B-scoped read rather than a bare pooled
+read that could pass vacuously on a reverted `app.org_id` GUC — the exact hazard the F-030
+`session_scope_chk` finding documents), and two concurrent seeder calls for the same brand-new org
+create each base exactly once, never six.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

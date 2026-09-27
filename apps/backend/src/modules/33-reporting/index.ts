@@ -4,6 +4,15 @@
 // catalog at boot (the M34 events-by-m34 precedent).
 export { M33_OUTBOX_EVENTS } from "./events-by-m33";
 
+// #138/F-060/F-116 — the "day-one dashboards" seeder. Structurally typed into M2's `identity-ports.ts`
+// (the `roleAttacher`/F-097 precedent) rather than M2 taking a `dependsOn` edge on M33; bound at the
+// composition root.
+export {
+  type DashboardSeeder,
+  type SystemDashboardSeedResult,
+  createDbSystemDashboardSeeder,
+} from "./system-dashboard-seeder";
+
 // GAP-051 — the §1.1 render handshake's DOWNSTREAM half: the live `m22.document.rendered` consumer that
 // settles a scheduled-report occurrence `delivered` with its M22 `document_id`.
 export {
