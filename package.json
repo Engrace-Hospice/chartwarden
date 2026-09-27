@@ -167,6 +167,7 @@
     "test:rls:live:m28": "vitest run packages/db/migrations/__tests__/m28-rls-isolation.live.test.ts",
     "test:rls:live:m40": "vitest run packages/db/migrations/__tests__/m40-rls-isolation.live.test.ts",
     "test:auth:live": "vitest run apps/backend/__tests__/auth.live.test.ts",
+    "test:device-attestation-guc:live": "vitest run apps/backend/__tests__/device-attestation-guc-empty-string.live.test.ts",
     "scaffold": "bun run scripts/scaffold-from-manifest.ts",
     "scaffold:check": "bun run scripts/scaffold-from-manifest.ts --check",
     "arch:boundaries": "depcruise apps packages --config architecture/.dependency-cruiser.cjs",

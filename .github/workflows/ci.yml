@@ -570,6 +570,8 @@ jobs:
         run: bun run test:db:client:live
       - name: Better Auth sign-up/sign-in over the reconciled schema (real Postgres)
         run: bun run test:auth:live
+      - name: device_attestation RLS survives a reused pooled connection (empty-GUC regression)
+        run: bun run test:device-attestation-guc:live
 
   outbox-boot:
     # F-020 (issue #49): the backend refused to START in the documented production configuration —
