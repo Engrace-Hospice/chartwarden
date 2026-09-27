@@ -24,8 +24,16 @@ import { type PermissionDef, type PermissionMirrorRow, permissionMirrorRows } fr
  */
 export const CONTRIBUTED_PERMISSIONS = {
   // --- Module 2 (Identity & Org) admin keys (M2 spec §4.7) ---
-  // Org/ProviderEntity/Location CRUD + HearthNote opt-in (org_admin, platform_ops).
-  "org.manage": { resource: "org", action: "manage", category: "admin", abac: "none" },
+  // Org/ProviderEntity/Location CRUD + HearthNote opt-in (org_admin, platform_ops). §11 D19's
+  // POST /api/v1/platform/organizations/:organizationId/status (organization-lifecycle-routes.ts) is
+  // the first route bound to this key, narrowed by `organization_lifecycle_platform_ops` — RBAC alone
+  // would let any org_admin transition an ARBITRARY other org, not just their own.
+  "org.manage": {
+    resource: "org",
+    action: "manage",
+    category: "admin",
+    abac: "organization_lifecycle_platform_ops",
+  },
   // POST /orgs/:id/invitations (+ rescind) — invite a user to an org (org_admin).
   "member.invite": { resource: "member", action: "invite", category: "admin", abac: "none" },
   // Suspend/reinstate/revoke a membership + default-scope edits (org_admin).

@@ -20,7 +20,12 @@ export const M34_LIFECYCLE_EVENTS = [
   "m34.tenant.provision_started",
   "m34.tenant.provisioned",
   "m34.tenant.activated",
-  "m34.tenant.suspended",
+  // "suspension_initiated", not "suspended" — the wire name is `events-by-m34.ts`'s (that catalog is
+  // authoritative; this list mirrors it, per the file header). A mismatch here meant every suspend
+  // transition's outbox effect named an event no catalog declared — the dispatcher would refuse the
+  // publish outright, which is exactly why `runSideEffects` (service-drizzle.ts) had to gate this
+  // event out entirely rather than emit it (#103, found + fixed alongside the M2 hard-half, #205).
+  "m34.tenant.suspension_initiated",
   "m34.tenant.reactivated",
   "m34.tenant.at_risk",
   "m34.tenant.offboarding_initiated",

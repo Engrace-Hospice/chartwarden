@@ -59,6 +59,7 @@ import { decideVisitNoShow } from "./m17-no-show";
 import { decideVisitCompleted, decideVisitReassigned, planVisitCadence } from "./m17-visit-cadence";
 import { decideEvvCheckIn, decideEvvCheckOut } from "./m18-evv-brackets";
 import type { SafetyClinicianSignalCache } from "./m18-gps-spoof";
+import { buildSosDeliveryFailureConsumer } from "./m36-delivery-failed";
 import type { SafetyConsumerDecision, SafetyVisitAnchors } from "./schedule-plan";
 import {
   applyScheduleMutations,
@@ -368,5 +369,16 @@ export function buildFieldSafetyConsumers(
         );
       },
     },
+
+    // §4.8 M36 delivery-failure trigger (#205 follow-up) — a page that never reached the on-call
+    // responder for an open SOS alert. See ./m36-delivery-failed's header for why it does not reuse
+    // `visitConsumer` (no visit anchor at all) and why `escalation_tier_3` dead-letters rather than
+    // completing a transition into `emergency_terminus`. NO PRODUCER EXISTS YET (events-by-m36.ts).
+    buildSosDeliveryFailureConsumer({
+      db: deps.db,
+      outbox: deps.outbox,
+      ...(deps.alerts ? { alerts: deps.alerts } : {}),
+      ...(deps.now ? { now: deps.now } : {}),
+    }),
   ];
 }

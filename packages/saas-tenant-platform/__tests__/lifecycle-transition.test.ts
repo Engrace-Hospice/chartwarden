@@ -148,11 +148,11 @@ const LEGAL_EDGES: ReadonlyArray<{
   },
   { from: "provisioning", type: "provisioned", to: "onboarding", outbox: "m34.tenant.provisioned" },
   { from: "onboarding", type: "activate", to: "active", outbox: "m34.tenant.activated" },
-  { from: "active", type: "suspend", to: "suspended", outbox: "m34.tenant.suspended" },
+  { from: "active", type: "suspend", to: "suspended", outbox: "m34.tenant.suspension_initiated" },
   { from: "suspended", type: "reactivate", to: "active", outbox: "m34.tenant.reactivated" },
   { from: "active", type: "flagAtRisk", to: "at_risk", outbox: "m34.tenant.at_risk" },
   { from: "at_risk", type: "resolveAtRisk", to: "active", outbox: "m34.tenant.reactivated" },
-  { from: "at_risk", type: "suspendFromAtRisk", to: "suspended", outbox: "m34.tenant.suspended" },
+  { from: "at_risk", type: "suspendFromAtRisk", to: "suspended", outbox: "m34.tenant.suspension_initiated" },
   {
     from: "active",
     type: "initiateOffboarding",
@@ -454,7 +454,7 @@ describe("§2.5 r4 active → suspended side effects", () => {
   const t = transitionTenant("active", validEvent("suspend"));
   it("cascades session revocation, alerts compliance + security, emits suspended", () => {
     expect(effectKinds(t)).toContain("session_cascade");
-    expect(outboxEvents(t)).toEqual(["m34.tenant.suspended"]);
+    expect(outboxEvents(t)).toEqual(["m34.tenant.suspension_initiated"]);
     expect(alertKeys(t)).toEqual(["tenant.suspension_initiated"]);
     const alert = t.effects.find(
       (e): e is Extract<LifecycleSideEffect, { kind: "alert" }> => e.kind === "alert",
@@ -468,7 +468,7 @@ describe("§2.2 at_risk → suspended mirrors active → suspended", () => {
     const fromActive = transitionTenant("active", validEvent("suspend"));
     const fromAtRisk = transitionTenant("at_risk", validEvent("suspendFromAtRisk"));
     expect(effectKinds(fromAtRisk)).toEqual(effectKinds(fromActive));
-    expect(outboxEvents(fromAtRisk)).toEqual(["m34.tenant.suspended"]);
+    expect(outboxEvents(fromAtRisk)).toEqual(["m34.tenant.suspension_initiated"]);
   });
 });
 

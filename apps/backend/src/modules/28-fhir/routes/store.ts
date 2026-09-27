@@ -35,6 +35,23 @@ import {
   cascadeClientRevocation,
 } from "./revocation-cascade";
 
+/** The transactional-outbox port the composition root binds (the catalog-validating `m28` publisher;
+ *  the M37 `WriteOutboxPort` shape). */
+export interface FhirWriteOutboxPort {
+  publish(
+    tx: unknown,
+    input: {
+      readonly eventName: string;
+      readonly payload: Record<string, unknown>;
+      readonly organizationId: string;
+      readonly aggregateKind: string;
+      readonly aggregateId: string;
+    },
+  ): Promise<void>;
+}
+
+export const NOOP_FHIR_OUTBOX: FhirWriteOutboxPort = { async publish() {} };
+
 /** sha256 hex — what `fhir_client_credential.secret_digest_sha256` holds (never the plaintext). */
 const sha256Hex = (value: string): string =>
   createHash("sha256").update(value, "utf8").digest("hex");

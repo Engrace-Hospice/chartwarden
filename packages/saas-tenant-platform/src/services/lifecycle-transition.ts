@@ -258,7 +258,7 @@ export function transitionTenant(
     }
 
     case "suspend": {
-      // §2.5 r4 — session revocation cascade + M35 pause (outbox) + M36 alert + `m34.tenant.suspended`.
+      // §2.5 r4 — session revocation cascade + M35 pause (outbox) + M36 alert + `m34.tenant.suspension_initiated`.
       return result(from, event.type, "suspended", [
         { kind: "status_event" },
         { kind: "set_timestamp", field: "suspendedAt" },
@@ -268,7 +268,7 @@ export function transitionTenant(
           alertKey: "tenant.suspension_initiated",
           audience: ["tenant_compliance_officer", "platform_security_owner"],
         },
-        { kind: "outbox", event: "m34.tenant.suspended" },
+        { kind: "outbox", event: "m34.tenant.suspension_initiated" },
       ]);
     }
 
@@ -308,7 +308,7 @@ export function transitionTenant(
           alertKey: "tenant.suspension_initiated",
           audience: ["tenant_compliance_officer", "platform_security_owner"],
         },
-        { kind: "outbox", event: "m34.tenant.suspended" },
+        { kind: "outbox", event: "m34.tenant.suspension_initiated" },
       ]);
     }
 

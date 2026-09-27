@@ -136,9 +136,11 @@ import {
 import type { QualityHopeConsumer } from "@wardenx/quality";
 import type { DsarDocumentUploadRequest } from "@wardenx/saas-tenant-platform";
 import {
+  M2_OUTBOX_EVENTS,
   createDrizzleIdentityEraserStore,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
+  mountOrganizationLifecycleRoutes,
   mountSessionStepUpRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
@@ -566,6 +568,7 @@ import {
 // their M1 deny-stubs ONLY when a Drizzle store is supplied; M28's routes/repos (the store's home) land in
 // T08, so the store is unbound this wave and the fail-closed deny-stubs stand (the M19/M20 posture).
 import {
+  M28_OUTBOX_EVENTS,
   buildDrizzleFhirGatewayAbacResolver,
   createDrizzleFhirGatewayEraseStore,
   createDrizzleFhirGatewayStore,
@@ -717,6 +720,7 @@ import {
   registerM35AbacPredicates,
 } from "./modules/35-subscription/index";
 import {
+  M36_OUTBOX_EVENTS,
   buildM36ClinicalAlertConsumer,
   createDbMessagingProvider,
   createDrizzleAlertEmitter,
@@ -2437,6 +2441,24 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // `m40OutboxPublisher` runs every publish through this catalog and an unlisted name throws
     // `unknown_event`, which would fail the delivery and retry the canonical write forever.
     M40_OUTBOX_EVENTS,
+    // M28 (FHIR Gateway) had NO catalog contribution at all — alongside M2 and M36 (#205). T07's lifecycle
+    // cores (packages/fhir/src/lifecycle/*.ts) have built and typed every one of these event envelopes
+    // since M28-T07 and nothing could ever publish one: the route store had no outbox dependency at all.
+    // REQUIRED for `m28OutboxPublisher` (below) to validate the client/bulk-export/inbound emits now bound
+    // in `store-drizzle.ts`.
+    M28_OUTBOX_EVENTS,
+    // M2 (Identity) had NO catalog contribution at all either (#205) — the second of the three. Fourteen
+    // membership/invitation/device-attestation/step-up facts were already recorded as AUDIT events at
+    // their real call sites; only the outbox publish was missing. §11 D19's four org-lifecycle/session
+    // events M35's per-seat billing needs (m2.organization.*, m2.session.created) are here too now — the
+    // real org activate/suspend/close capability (organization-lifecycle.ts) and the select-organization
+    // producer closed that gap in the same pass.
+    M2_OUTBOX_EVENTS,
+    // M36 (Messaging) had NO catalog contribution at all either — the third of the three (#205). The spec
+    // declares exactly one cross-module event, `m36.notification.delivery_failed`; see events-by-m36.ts's
+    // header for why it has no producer yet (the out-of-band dispatch pipeline is unbuilt) and why the
+    // catalog + the two real consumer bindings (M19, M20) are worth landing anyway.
+    M36_OUTBOX_EVENTS,
   ]);
   const txOutboxPublisher = buildTxOutboxPublisher(bootOutboxCatalog);
   // Per-module adapters that pin `callerModule` (the module-scoped `WriteOutboxPort` omits it; the
@@ -2511,6 +2533,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // canonical change for M40 to announce; migration 0202 built the write path and events-by-m40.ts the
   // catalog. Publishes platform-wide (`organizationId: null`) — a canonical belongs to no tenant.
   const m40OutboxPublisher = bindCallerModule(txOutboxPublisher, "m40");
+  const m28OutboxPublisher = bindCallerModule(txOutboxPublisher, "m28");
+  const m2OutboxPublisher = bindCallerModule(txOutboxPublisher, "m2");
   // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
   // here, not on the first tenant write; left undefined when no key is configured, which makes credential
   // WRITES fail closed while every other M24 route keeps working (production requires the key via env.ts).
@@ -2860,6 +2884,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             emailTransport,
             webAppBaseUrl,
             roleAttacher: createDbProposedRoleAttacher(dbHandle.db),
+            outbox: m2OutboxPublisher,
           });
           // TASK-001 ledger — the external-collaborator magic-link store is process-local: there is
           // no M2 table for pending tokens (see mountIdentityRoutes' header), so a minted link exists
@@ -2882,7 +2907,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // The challenge + lockout store is Valkey-backed via `stepUpRedisClient` when the queue
           // connection is configured, so a challenge minted on one replica is spendable on another;
           // without it, it falls back to a per-process Map (lockout threshold per-replica).
-          mountSessionStepUpRoutes(app, dbHandle.db, stepUpRedisClient);
+          mountSessionStepUpRoutes(app, dbHandle.db, stepUpRedisClient, m2OutboxPublisher);
           if (!stepUpRedisClient) {
             noteInMemoryBinding({
               kind: "route-dep",
@@ -2891,13 +2916,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               task: "configure a queue connection (REDIS_URL) so the Valkey-backed challenge store is used",
             });
           }
-          mountDeviceAttestationRoutes(app, dbHandle.db);
+          mountDeviceAttestationRoutes(app, dbHandle.db, m2OutboxPublisher);
           noteInMemoryBinding({
             kind: "route-dep",
             label:
               "M2 mountDeviceAttestationRoutes — the attestation CHALLENGE store is a per-process Map, so a challenge minted on one replica cannot be spent on another",
             task: "move the challenge store to Valkey behind DeviceAttestationChallengeStore",
           });
+          // §11 D19 (#205 hard half) — the real org activate/suspend/close capability. This is what
+          // makes M35's `m2.organization.*` subscriptions have a producer at all; `organization.status`
+          // had no UPDATE anywhere in the codebase before this.
+          mountOrganizationLifecycleRoutes(app, dbHandle.db, m2OutboxPublisher);
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
           mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
@@ -3578,7 +3607,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // otherwise — the same posture as the credential throttle and the signup limiter above, and
           // for the same reason: on a single-replica deployment one replica IS the cluster.
           mountM28Routes(app, {
-            store: createDrizzleFhirGatewayStore(dbHandle.db),
+            store: createDrizzleFhirGatewayStore(dbHandle.db, { outbox: m28OutboxPublisher }),
             jwks: createHttpFhirJwksFetcher(),
             replay: rateLimitRedisClient
               ? createRedisFhirReplayGuard(rateLimitRedisClient)
@@ -4904,6 +4933,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         reason: "outbox relay: active-org poll list",
         statuses: ["created", "active", "suspended"],
       });
+      // Shared by the M19 D10 triggers AND the §4.8 M36 delivery-failure binding below (#205 follow-up) —
+      // one object, since createDrizzleInboundTriggerPorts's return type already satisfies both port
+      // interfaces.
+      const m19TriggerPorts = createDrizzleInboundTriggerPorts(dbHandle.db);
       const outboxDispatcher = createOutboxDispatcher({
         db: dbHandle.db,
         orgs: outboxRelayOrgs,
@@ -5013,9 +5046,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // as declared and never published: when no shift covers the trigger instant the consumer emits
           // the gap rather than opening a call it cannot anchor (`on_call_shift_id` is NOT NULL) or
           // throwing, which would park a patient welfare check in a DLQ.
+          //
+          // §4.8 M36 delivery-failure trigger (#205 M36 follow-up) rides the same `ports` object —
+          // `m19TriggerPorts` (below) satisfies `DeliveryFailureTriggerPorts` too
+          // (createDrizzleInboundTriggerPorts's return type is the intersection). No producer publishes
+          // `m36.notification.delivery_failed` yet (events-by-m36.ts's header), so this binding is wired
+          // and ready, not yet exercised.
           ...buildOncallTriggerConsumers({
             db: dbHandle.db,
-            ports: createDrizzleInboundTriggerPorts(dbHandle.db),
+            ports: m19TriggerPorts,
+            deliveryPorts: m19TriggerPorts,
             outbox: m19OutboxPublisher,
             // No `alerts` port, matching M19's own route path: the §4.9 pages ride the outbox events,
             // which M36 resolves through its seam. Binding one here and not there would give the same

@@ -37,8 +37,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import { createDbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { ensurePolicyVersionForConsumer } from "../src/modules/20-field-safety/consumers/schedule-store";
 
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { registerSchedulingSeams } from "../src/modules/17-scheduling/index";
@@ -245,9 +247,12 @@ describe.skipIf(!DB_URL)("F-043 M20 field-safety visit consumers — LIVE Postgr
 
   beforeEach(async () => {
     await admin.query("DELETE FROM outbox_event");
+    await admin.query("DELETE FROM safety_sos_alert_state_history");
+    await admin.query("DELETE FROM safety_sos_alert");
+    await admin.query("DELETE FROM safety_emergency_contact_consent");
   });
 
-  it("every §4.8 visit trigger has a live binding, and each names m20", () => {
+  it("every §4.8 visit trigger plus the M36 delivery-failure trigger has a live binding, and each names m20", () => {
     const bound = consumers.flatMap((c) => c.eventTypes).sort();
     expect(bound).toEqual([
       "m17.visit.assigned",
@@ -257,6 +262,7 @@ describe.skipIf(!DB_URL)("F-043 M20 field-safety visit consumers — LIVE Postgr
       "m18.evv.check_in_recorded",
       "m18.evv.check_out_recorded",
       "m18.evv.gps_spoof_suspected",
+      "m36.notification.delivery_failed",
     ]);
     for (const c of consumers) expect(c.consumerModule).toBe("m20");
   });
@@ -465,5 +471,220 @@ describe.skipIf(!DB_URL)("F-043 M20 field-safety visit consumers — LIVE Postgr
     expect(signals.gpsSpoofSuspected(ORG_A, member, "2026-09-01T18:00:00.000Z")).toBe(true);
     // Twelve hours from when M18 saw it, not from delivery — a late redelivery cannot extend a suspicion.
     expect(signals.gpsSpoofSuspected(ORG_A, member, "2026-09-02T06:00:00.000Z")).toBe(false);
+  });
+
+  // ── #205 M36 follow-up — the §4.8 SOS delivery-failure trigger (no producer exists yet; see
+  // events-by-m36.ts's header) ───────────────────────────────────────────────────────────────────────
+  describe("§4.8 M36 delivery-failure trigger", () => {
+    async function seedSos(
+      org: string,
+      lifecycleState: string,
+      postedAt = new Date("2026-09-01T17:00:00.000Z"),
+    ): Promise<string> {
+      const s = seeded[org] as Seed;
+      const policyVersionId = await withOrgContext(
+        handle.db,
+        { organizationId: org, userId: "" },
+        (tx) => ensurePolicyVersionForConsumer(tx as never, org as never, postedAt),
+      );
+      // m20_ssa_ack_stamped — acknowledged/resolving/resolved all require the ack pair stamped.
+      const acked = ["acknowledged", "resolving", "resolved"].includes(lifecycleState);
+      const { rows } = await admin.query(
+        `INSERT INTO safety_sos_alert
+           (organization_id, provider_entity_id, posted_by_membership_id, posted_at,
+            posted_coordinates_cipher, posted_coordinates_accuracy_m, coordinates_consent_at,
+            cancel_window_expired_at, lifecycle_state, safety_policy_version_id,
+            acknowledged_at, acknowledged_by_membership_id)
+         VALUES ($1,$2,$3,$4,$5,10,$4,$6,$7,$8,$9,$10) RETURNING id`,
+        [
+          org,
+          s.pe,
+          s.member,
+          postedAt,
+          Buffer.from([0]),
+          new Date(postedAt.getTime() + 5_000),
+          lifecycleState,
+          policyVersionId,
+          acked ? postedAt : null,
+          acked ? s.member : null,
+        ],
+      );
+      return rows[0].id as string;
+    }
+
+    async function grantEmergencyContactConsent(org: string): Promise<void> {
+      const s = seeded[org] as Seed;
+      await admin.query(
+        `INSERT INTO safety_emergency_contact_consent
+           (organization_id, clinician_membership_id, consent_purpose, consent_scope_detail,
+            acknowledgment_text_snapshot)
+         VALUES ($1,$2,'emergency_contact_call','{"contact":{}}'::jsonb,'ack')`,
+        [org, s.member],
+      );
+    }
+
+    const deliveryFailedPayload = (input: {
+      recipientKind: string;
+      alertEventType: string | null;
+      sourceAggregateId: string | null;
+    }) => ({
+      notificationId: crypto.randomUUID(),
+      organizationId: ORG_A,
+      channel: "sms",
+      failureReason: "vendor_timeout",
+      failedAt: "2026-09-01T17:05:00.000Z",
+      recipientKind: input.recipientKind,
+      recipientMembershipId: null,
+      providerEntityId: (seeded[ORG_A] as Seed).pe,
+      alertEventType: input.alertEventType,
+      sourceAggregateId: input.sourceAggregateId,
+    });
+
+    it("ignores a delivery-failed event with no named SOS alert", async () => {
+      await deliver(
+        "m36.notification.delivery_failed",
+        ORG_A,
+        deliveryFailedPayload({ recipientKind: "on_call", alertEventType: null, sourceAggregateId: null }),
+      );
+      const { rows } = await admin.query("SELECT id FROM safety_sos_alert_state_history");
+      expect(rows).toHaveLength(0);
+    });
+
+    it("escalates an acknowledging alert to escalation_tier_1, without emergency-contact consent", async () => {
+      const sosAlertId = await seedSos(ORG_A, "acknowledging");
+      await deliver(
+        "m36.notification.delivery_failed",
+        ORG_A,
+        deliveryFailedPayload({
+          recipientKind: "on_call",
+          alertEventType: "m20.safety.sos_alert_raised",
+          sourceAggregateId: sosAlertId,
+        }),
+      );
+      const { rows: alert } = await admin.query(
+        "SELECT lifecycle_state, version FROM safety_sos_alert WHERE id=$1",
+        [sosAlertId],
+      );
+      expect(alert[0]).toMatchObject({ lifecycle_state: "escalation_tier_1", version: 2 });
+
+      const { rows: history } = await admin.query(
+        "SELECT from_state, to_state, transitioned_by_membership_id FROM safety_sos_alert_state_history WHERE sos_alert_id=$1",
+        [sosAlertId],
+      );
+      expect(history).toHaveLength(1);
+      expect(history[0]).toMatchObject({
+        from_state: "acknowledging",
+        to_state: "escalation_tier_1",
+        transitioned_by_membership_id: null, // §3.3 — a system-driven tier advance names no actor.
+      });
+
+      const { rows: outbox } = await admin.query(
+        "SELECT event_type, payload FROM outbox_event WHERE aggregate_id=$1",
+        [sosAlertId],
+      );
+      expect(outbox.map((r) => r.event_type)).toEqual(["m20.safety.sos_alert_escalated"]);
+      expect(outbox[0].payload).toMatchObject({
+        sosAlertId,
+        fromTier: "acknowledging",
+        toTier: "escalation_tier_1",
+        reasonCode: "delivery_failed",
+      });
+    });
+
+    it("an already-settled alert (acknowledged) is a no-op — re-paging a channel that already worked is wrong", async () => {
+      const sosAlertId = await seedSos(ORG_A, "acknowledged");
+      await deliver(
+        "m36.notification.delivery_failed",
+        ORG_A,
+        deliveryFailedPayload({
+          recipientKind: "on_call",
+          alertEventType: "m20.safety.sos_alert_raised",
+          sourceAggregateId: sosAlertId,
+        }),
+      );
+      const { rows } = await admin.query(
+        "SELECT lifecycle_state, version FROM safety_sos_alert WHERE id=$1",
+        [sosAlertId],
+      );
+      expect(rows[0]).toMatchObject({ lifecycle_state: "acknowledged", version: 1 });
+    });
+
+    it("escalation_tier_3 DEAD-LETTERS rather than completing a transition into emergency_terminus", async () => {
+      const sosAlertId = await seedSos(ORG_A, "escalation_tier_3");
+      await expect(
+        deliver(
+          "m36.notification.delivery_failed",
+          ORG_A,
+          deliveryFailedPayload({
+            recipientKind: "on_call",
+            alertEventType: "m20.safety.sos_alert_raised",
+            sourceAggregateId: sosAlertId,
+          }),
+        ),
+      ).rejects.toThrow(/emergency_terminus/);
+      const { rows } = await admin.query(
+        "SELECT lifecycle_state, version FROM safety_sos_alert WHERE id=$1",
+        [sosAlertId],
+      );
+      // Unchanged — the throw happens before any write, never a half-applied terminus.
+      expect(rows[0]).toMatchObject({ lifecycle_state: "escalation_tier_3", version: 1 });
+    });
+
+    it("an aggregate id from a NON-m20 alert is never trusted as a safety_sos_alert id", async () => {
+      const sosAlertId = await seedSos(ORG_A, "acknowledging");
+      await deliver(
+        "m36.notification.delivery_failed",
+        ORG_A,
+        deliveryFailedPayload({
+          recipientKind: "on_call",
+          alertEventType: "m19.triage.case_opened",
+          sourceAggregateId: sosAlertId,
+        }),
+      );
+      const { rows } = await admin.query(
+        "SELECT lifecycle_state, version FROM safety_sos_alert WHERE id=$1",
+        [sosAlertId],
+      );
+      expect(rows[0]).toMatchObject({ lifecycle_state: "acknowledging", version: 1 });
+    });
+
+    it("org A cannot escalate org B's SOS alert — RLS answers 'no such alert'", async () => {
+      const sosAlertId = await seedSos(ORG_B, "acknowledging");
+      await deliver(
+        "m36.notification.delivery_failed",
+        ORG_A,
+        deliveryFailedPayload({
+          recipientKind: "on_call",
+          alertEventType: "m20.safety.sos_alert_raised",
+          sourceAggregateId: sosAlertId,
+        }),
+      );
+      const { rows } = await admin.query(
+        "SELECT lifecycle_state, version FROM safety_sos_alert WHERE id=$1",
+        [sosAlertId],
+      );
+      expect(rows[0]).toMatchObject({ lifecycle_state: "acknowledging", version: 1 });
+    });
+
+    it("consent is read for the clinician who posted the alert, not hardcoded false", async () => {
+      const sosAlertId = await seedSos(ORG_A, "escalation_tier_2");
+      await grantEmergencyContactConsent(ORG_A);
+      await deliver(
+        "m36.notification.delivery_failed",
+        ORG_A,
+        deliveryFailedPayload({
+          recipientKind: "on_call",
+          alertEventType: "m20.safety.sos_alert_raised",
+          sourceAggregateId: sosAlertId,
+        }),
+      );
+      // escalation_tier_2 → escalation_tier_3 is still a non-terminus rung, so this succeeds; the
+      // granted consent is exercised (read, not defaulted) even though tier_3 carries no dial effect yet.
+      const { rows } = await admin.query(
+        "SELECT lifecycle_state FROM safety_sos_alert WHERE id=$1",
+        [sosAlertId],
+      );
+      expect(rows[0].lifecycle_state).toBe("escalation_tier_3");
+    });
   });
 });

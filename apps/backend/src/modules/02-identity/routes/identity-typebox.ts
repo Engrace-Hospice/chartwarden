@@ -14,6 +14,11 @@ import type {
   MembershipView,
   OrgBinding,
 } from "../identity-ports";
+import type {
+  OrganizationLifecycleEvent,
+  OrganizationLifecycleStatus,
+  OrganizationTransitionResult,
+} from "../organization-lifecycle";
 import type { StepUpQualifyingFactor } from "../step-up-ports";
 
 // ── Shared enums (mirrored from the M1-owned enums the ports re-declare) ─────────────────────────
@@ -276,6 +281,27 @@ export const StepUpVerifyResponseSchema = Type.Object({
   lastStepUpFactor: StepUpFactorSchema,
 });
 
+/** POST /api/v1/platform/organizations/:organizationId/status — §11 D19 (#205 hard half). */
+export const OrganizationLifecycleEventSchema = Type.Union([
+  Type.Literal("activate"),
+  Type.Literal("suspend"),
+  Type.Literal("close"),
+]);
+export const OrganizationTransitionRequestSchema = Type.Object({
+  event: OrganizationLifecycleEventSchema,
+  reason: Type.String({ minLength: 1 }),
+});
+export const OrganizationLifecycleStatusSchema = Type.Union([
+  Type.Literal("created"),
+  Type.Literal("active"),
+  Type.Literal("suspended"),
+  Type.Literal("closed"),
+]);
+export const OrganizationTransitionResponseSchema = Type.Object({
+  status: OrganizationLifecycleStatusSchema,
+  sessionsRevoked: Type.Integer({ minimum: 0 }),
+});
+
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (the service view).
 type Conforms<T extends V, V> = T;
 type _MembershipView = Conforms<Static<typeof MembershipViewSchema>, MembershipView>;
@@ -284,3 +310,15 @@ type _OrgBinding = Conforms<Static<typeof OrgBindingResponseSchema>, OrgBinding>
 type _MembershipStatus = Conforms<Static<typeof MembershipStatusSchema>, MembershipStatus>;
 type _AccountStatus = Conforms<Static<typeof AccountStatusSchema>, AccountStatus>;
 type _StepUpFactor = Conforms<Static<typeof StepUpFactorSchema>, StepUpQualifyingFactor>;
+type _OrganizationLifecycleEvent = Conforms<
+  Static<typeof OrganizationLifecycleEventSchema>,
+  OrganizationLifecycleEvent
+>;
+type _OrganizationLifecycleStatus = Conforms<
+  Static<typeof OrganizationLifecycleStatusSchema>,
+  OrganizationLifecycleStatus
+>;
+type _OrganizationTransitionResponse = Conforms<
+  Static<typeof OrganizationTransitionResponseSchema>,
+  OrganizationTransitionResult
+>;

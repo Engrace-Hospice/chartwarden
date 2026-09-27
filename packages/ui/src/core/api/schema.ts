@@ -13140,6 +13140,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/platform/organizations/{organizationId}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Activate/suspend/close an organization (platform-ops, §11 D19) */
+        post: operations["postApiV1PlatformOrganizationsByOrganizationIdStatus"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/platform/signup-intents": {
         parameters: {
             query?: never;
@@ -55760,6 +55777,40 @@ export interface operations {
                         /** Format: date-time */
                         createdAt: string;
                         id: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PlatformOrganizationsByOrganizationIdStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                organizationId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    event: "activate" | "suspend" | "close";
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        status: "created" | "active" | "suspended" | "closed";
+                        sessionsRevoked: number;
                     };
                 };
             };

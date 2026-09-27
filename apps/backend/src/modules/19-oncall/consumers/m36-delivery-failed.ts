@@ -24,14 +24,16 @@
 //   • NEITHER, because the recipient was not on-call → `ignore`. §4.8's filter, honoured rather than
 //     widened: M19 does not own every failed notification in the platform.
 //
-// ── THE PAYLOAD IS FORWARD-DECLARED ───────────────────────────────────────────────────────────────────
+// ── THE PAYLOAD IS REAL NOW, BUT NO PRODUCER EXISTS YET ─────────────────────────────────────────────────
 //
-// M36 publishes no typed payload for this topic today (M26's consumer forward-declares it the same way,
-// `modules/26-cap/consumers/subscription-map.ts`). The shape below is what M19 REQUIRES to act, and every
-// field it cannot get is handled: an absent `providerEntityId` on an on-call failure cannot anchor a row
+// `events-by-m36.ts` catalogues the wire payload (#205 hard-half follow-up); the type below is this
+// module's own domain-shaped VIEW of it, mapped from the catalog's generic `sourceAggregateId` by
+// `./bindings.ts` (`triageCallId: payload.alertEventType?.startsWith("m19.") ? sourceAggregateId : null` —
+// M19 only trusts an aggregate id when the alert that failed to deliver was one of its own). Every field
+// M19 cannot get is still handled: an absent `providerEntityId` on an on-call failure cannot anchor a row
 // (`triage_call.provider_entity_id` is NOT NULL), so it dead-letters for a human rather than being
-// anchored to a guess. When M36 publishes the real payload this interface is what must be reconciled
-// against it — one place, named.
+// anchored to a guess. No producer publishes this event yet — see `events-by-m36.ts`'s header — so this
+// decider is wired and ready, not yet exercised in production.
 import type {
   IsoInstant,
   M19SubscribedEventName,

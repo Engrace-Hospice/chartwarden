@@ -48,6 +48,9 @@ export {
   getAlertEmitter,
   getMessagingProvider,
 } from "./seams";
+// §8.1.2 / #205 — M36's one cross-module outbox event. See events-by-m36.ts's header for why it
+// has no producer yet.
+export { M36_OUTBOX_EVENTS } from "./events-by-m36";
 // M36-T07 — the §4.1–4.2 route inventory behind `requirePermission`/`requireAbac` on the §4.5
 // keys, composed over the injected `MessagingRouteService`; plus the `channel_visibility` ABAC
 // predicate (§4.5) the channel-scoped routes gate on.

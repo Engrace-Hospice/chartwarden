@@ -63,6 +63,12 @@ const noActiveMembership = () =>
   new WardenXError("NO_ACTIVE_MEMBERSHIP", "no active membership in the chosen org", 403);
 const orgAlreadyBound = () =>
   new WardenXError("ORG_ALREADY_BOUND", "session already org-scoped; re-login to switch", 409);
+const organizationNotActive = () =>
+  new WardenXError(
+    "ORGANIZATION_NOT_ACTIVE",
+    "this organization is not active; sign-in is refused (§11 D19 auth-time enforcement)",
+    403,
+  );
 const pendingInviteExists = () =>
   new WardenXError("PENDING_INVITE_EXISTS", "a pending invite already exists for this email", 409);
 const lastAdminLockout = () =>
@@ -131,6 +137,20 @@ function auditContextFor(
     sourceIp: request.context.ip,
     userAgent: request.context.userAgent,
   };
+}
+
+/** Publish through `deps.outbox` if bound — record-only until a consumer is declared. */
+function publishM2(
+  deps: IdentityRouteDeps,
+  input: {
+    eventName: string;
+    payload: Record<string, unknown>;
+    organizationId: string | null;
+    aggregateKind: string;
+    aggregateId: string;
+  },
+): Promise<void> {
+  return deps.outbox?.publish(input) ?? Promise.resolve();
 }
 
 const toView = (r: MembershipRecord): MembershipView => ({
@@ -252,10 +272,22 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
     const membership = await deps.memberships.findActive(actor.userId, organizationId);
     if (!membership) throw noActiveMembership();
 
+    if (deps.organizations) {
+      const status = await deps.organizations.getStatus(organizationId);
+      if (status !== null && status !== "active") throw organizationNotActive();
+    }
+
     const binding = await deps.sessions.bindOrganization({
       sessionId: actor.sessionId,
       organizationId,
       organizationName: membership.organizationName,
+    });
+    await publishM2(deps, {
+      eventName: "m2.session.created",
+      payload: { sessionId: actor.sessionId, userId: actor.userId, organizationId },
+      organizationId,
+      aggregateKind: "session",
+      aggregateId: actor.sessionId,
     });
     return reply.code(200).send(binding);
   });
@@ -289,6 +321,15 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       auditContextFor(request, { organizationId: orgId, userId: actor.userId }),
       { invitationId: created.invitationId, organizationId: orgId, email },
     );
+    // Email is deliberately NOT in the payload: the audit trail redacts it through the field
+    // denylist, and an outbox row has no equivalent protection.
+    await publishM2(deps, {
+      eventName: "m2.user.invited",
+      payload: { invitationId: created.invitationId, organizationId: orgId },
+      organizationId: orgId,
+      aggregateKind: "organization_invitation",
+      aggregateId: created.invitationId,
+    });
     const inviteUrl = await deliverInvite(deps, orgName, email, created.token);
     return reply.code(201).send({
       invitationId: created.invitationId,
@@ -325,6 +366,13 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       auditContextFor(request, { organizationId: orgId, userId: actor.userId }),
       { invitationId: invId, organizationId: orgId, email: target.email },
     );
+    await publishM2(deps, {
+      eventName: "m2.user.invited",
+      payload: { invitationId: invId, organizationId: orgId },
+      organizationId: orgId,
+      aggregateKind: "organization_invitation",
+      aggregateId: invId,
+    });
     const orgName = await organizationNameFor(deps, actor.userId, orgId);
     const inviteUrl = await deliverInvite(deps, orgName, target.email, reminted.token);
     return reply.code(200).send({
@@ -377,12 +425,23 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
         userId: actor.userId,
       },
     );
+    await publishM2(deps, {
+      eventName: "m2.membership.accepted",
+      payload: {
+        membershipId: membership.membershipId,
+        organizationId: detail.organizationId,
+        userId: actor.userId,
+      },
+      organizationId: detail.organizationId,
+      aggregateKind: "membership",
+      aggregateId: membership.membershipId,
+    });
 
     // F-097 — the §D3 handshake, performed. This line used to be the comment
     // "proposedRoleKeys are carried to M3 on accept (role attach is M3-owned, §7.1)" followed by a
     // return: the keys reached here and went nowhere, so every invitation produced a membership with no
-    // grants at all. There is no event path to fall back on — M2 contributes no outbox catalog, so
-    // `m2.membership.accepted` is an audit action and nothing can subscribe to it.
+    // grants at all. `m2.membership.accepted` now publishes above (M2's catalog gap, #205), but no
+    // consumer is declared on it yet — the role attach below stays the real, synchronous mechanism.
     //
     // AFTER the membership audit, deliberately: the membership exists whether or not the grants land,
     // and an attach failure must not roll back an invitation that has already been atomically consumed
@@ -440,6 +499,13 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       auditContextFor(request, { organizationId: orgId, userId: actor.userId }),
       { invitationId: invId, organizationId: orgId },
     );
+    await publishM2(deps, {
+      eventName: "m2.invitation.rescinded",
+      payload: { invitationId: invId, organizationId: orgId },
+      organizationId: orgId,
+      aggregateKind: "organization_invitation",
+      aggregateId: invId,
+    });
     return reply.code(200).send({ rescinded: true });
   });
 
@@ -492,6 +558,20 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
         auditContextFor(request, { organizationId: orgId, userId: actor.userId }),
         { membershipId: mId, organizationId: orgId, from, to: nextStatus },
       );
+      // Mirrors IDENTITY_AUDIT_EVENTS' own from/to → eventName mapping (audit/identity-audit.ts).
+      const eventName =
+        nextStatus === "suspended"
+          ? "m2.membership.suspended"
+          : from === "suspended" && nextStatus === "active"
+            ? "m2.membership.reinstated"
+            : "m2.membership.updated";
+      await publishM2(deps, {
+        eventName,
+        payload: { membershipId: mId, organizationId: orgId, from, to: nextStatus },
+        organizationId: orgId,
+        aggregateKind: "membership",
+        aggregateId: mId,
+      });
     }
 
     if (body.defaultLocationIds !== undefined) {
@@ -525,6 +605,13 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       auditContextFor(request, { organizationId: orgId, userId: actor.userId }),
       { membershipId: mId, organizationId: orgId },
     );
+    await publishM2(deps, {
+      eventName: "m2.membership.revoked",
+      payload: { membershipId: mId, organizationId: orgId },
+      organizationId: orgId,
+      aggregateKind: "membership",
+      aggregateId: mId,
+    });
     return reply.code(200).send({ revoked: true });
   });
 
@@ -646,6 +733,13 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       }),
       { userId, reason },
     );
+    await publishM2(deps, {
+      eventName: "m2.user.deactivated",
+      payload: { userId, reason },
+      organizationId: request.context.organizationId,
+      aggregateKind: "user",
+      aggregateId: userId,
+    });
     return reply.code(200).send({ deactivated: true });
   });
 
@@ -677,6 +771,13 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       auditContextFor(request, { organizationId: actor.organizationId, userId: actor.userId }),
       { linkId: link.linkId, organizationId: actor.organizationId, patientId },
     );
+    await publishM2(deps, {
+      eventName: "m2.collaborator.invited",
+      payload: { linkId: link.linkId, organizationId: actor.organizationId, patientId },
+      organizationId: actor.organizationId,
+      aggregateKind: "collaborator_link",
+      aggregateId: link.linkId,
+    });
     // Token delivered out-of-band (email/SMS via the transactional sender) — never in body.
     return reply.code(201).send({ linkId: link.linkId, expiresAt: link.expiresAt });
   });
@@ -703,6 +804,13 @@ export function registerIdentityRoutes(app: FastifyInstance, deps: IdentityRoute
       }),
       { sessionId, organizationId: scope.organizationId, patientId: scope.patientId },
     );
+    await publishM2(deps, {
+      eventName: "m2.collaborator.session_started",
+      payload: { sessionId, organizationId: scope.organizationId, patientId: scope.patientId },
+      organizationId: scope.organizationId,
+      aggregateKind: "session",
+      aggregateId: sessionId,
+    });
     // Production sets the external_collaborator session cookie here; scope is exactly 1 patient.
     return reply.code(200).send({
       sessionClass: "external_collaborator",

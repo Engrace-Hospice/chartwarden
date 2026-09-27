@@ -40,6 +40,7 @@ import {
   buildOncallTriggerConsumers,
   createDrizzleInboundTriggerPorts,
 } from "../src/modules/19-oncall/index";
+import { M36_OUTBOX_EVENTS } from "../src/modules/36-messaging/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -211,10 +212,14 @@ describe.skipIf(!DB_URL)("F-043 M19 D10 inbound triggers — LIVE Postgres", () 
     // the tenant from the ambient scope each binding establishes.
     registerSchedulingSeams({ store: createDrizzleSchedulingSeamStore(handle.db) });
 
-    const txPublisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M19_OUTBOX_EVENTS]));
+    const txPublisher = buildTxOutboxPublisher(
+      buildBootOutboxCatalog([M19_OUTBOX_EVENTS, M36_OUTBOX_EVENTS]),
+    );
+    const triggerPorts = createDrizzleInboundTriggerPorts(handle.db);
     consumers = buildOncallTriggerConsumers({
       db: handle.db,
-      ports: createDrizzleInboundTriggerPorts(handle.db),
+      ports: triggerPorts,
+      deliveryPorts: triggerPorts,
       outbox: {
         publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m19" }),
       },
@@ -228,16 +233,18 @@ describe.skipIf(!DB_URL)("F-043 M19 D10 inbound triggers — LIVE Postgres", () 
   });
 
   beforeEach(async () => {
+    await admin.query("DELETE FROM triage_escalation");
     await admin.query("DELETE FROM triage_call_state_history");
     await admin.query("DELETE FROM triage_call");
     await admin.query("DELETE FROM on_call_shift");
     await admin.query("DELETE FROM outbox_event");
   });
 
-  it("binds both §4.8 D10 triggers, and each names m19", () => {
+  it("binds both §4.8 D10 triggers plus the M36 delivery-failure trigger, and each names m19", () => {
     expect(consumers.flatMap((c) => c.eventTypes).sort()).toEqual([
       "m17.visit.no_show_detected",
       "m18.evv.late_check_out_detected",
+      "m36.notification.delivery_failed",
     ]);
     for (const c of consumers) expect(c.consumerModule).toBe("m19");
   });
@@ -411,5 +418,179 @@ describe.skipIf(!DB_URL)("F-043 M19 D10 inbound triggers — LIVE Postgres", () 
     await deliver("m17.visit.no_show_detected", ORG_B, noShowPayload(visitB, ORG_B));
     expect(await callsFor(ORG_A)).toHaveLength(1);
     expect(await callsFor(ORG_B)).toHaveLength(1);
+  });
+
+  // ── #205 M36 follow-up — the §4.8 delivery-failure trigger (no producer exists yet; see
+  // events-by-m36.ts's header) ───────────────────────────────────────────────────────────────────────
+  describe("§4.8 M36 delivery-failure trigger", () => {
+    async function seedOpenCall(org: string, shiftId: string): Promise<string> {
+      const s = seeded[org] as Seed;
+      const { rows } = await admin.query(
+        `INSERT INTO triage_call
+           (organization_id, provider_entity_id, on_call_shift_id, caller_kind, inbound_channel, source,
+            chief_complaint_text, opened_at, state)
+         VALUES ($1,$2,$3,'system_inbound','inbound_alert_failure','m36_delivery_failure','test call',$4,'open')
+         RETURNING id`,
+        [org, s.pe, shiftId, TRIGGER_AT],
+      );
+      return rows[0].id as string;
+    }
+
+    const deliveryFailedPayload = (input: {
+      recipientKind: string;
+      providerEntityId: string | null;
+      alertEventType: string | null;
+      sourceAggregateId: string | null;
+    }) => ({
+      notificationId: crypto.randomUUID(),
+      organizationId: ORG_A,
+      channel: "sms",
+      failureReason: "vendor_timeout",
+      failedAt: TRIGGER_AT.toISOString(),
+      recipientKind: input.recipientKind,
+      recipientMembershipId: null,
+      providerEntityId: input.providerEntityId,
+      alertEventType: input.alertEventType,
+      sourceAggregateId: input.sourceAggregateId,
+    });
+
+    it("ignores a non-on-call recipient", async () => {
+      await seedShift(ORG_A);
+      await deliver(
+        "m36.notification.delivery_failed",
+        ORG_A,
+        deliveryFailedPayload({
+          recipientKind: "role_set",
+          providerEntityId: (seeded[ORG_A] as Seed).pe,
+          alertEventType: null,
+          sourceAggregateId: null,
+        }),
+      );
+      expect(await callsFor(ORG_A)).toHaveLength(0);
+      const { rows } = await admin.query("SELECT id FROM triage_escalation WHERE organization_id=$1", [
+        ORG_A,
+      ]);
+      expect(rows).toHaveLength(0);
+    });
+
+    it("escalates an already-open call one rung at sla_breach, to the covering shift's primary", async () => {
+      const shiftId = await seedShift(ORG_A);
+      const callId = await seedOpenCall(ORG_A, shiftId);
+      await deliver(
+        "m36.notification.delivery_failed",
+        ORG_A,
+        deliveryFailedPayload({
+          recipientKind: "on_call",
+          providerEntityId: (seeded[ORG_A] as Seed).pe,
+          alertEventType: "m19.triage.case_opened",
+          sourceAggregateId: callId,
+        }),
+      );
+      const { rows } = await admin.query(
+        "SELECT tier, trigger_kind, trigger_detail, escalated_to_membership_id FROM triage_escalation WHERE triage_call_id=$1",
+        [callId],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0]).toMatchObject({
+        tier: "tier_1_rn_supervisor",
+        trigger_kind: "sla_breach",
+        trigger_detail: "m36.notification.delivery_failed",
+        escalated_to_membership_id: (seeded[ORG_A] as Seed).member,
+      });
+      // No new triage_call was opened — the existing one was escalated, not duplicated.
+      expect(await callsFor(ORG_A)).toHaveLength(1);
+    });
+
+    it("REPORTED, NOT FIXED: a redelivery double-escalates (the decider's §2.6 guard covers new calls, not escalate_existing)", async () => {
+      const shiftId = await seedShift(ORG_A);
+      const callId = await seedOpenCall(ORG_A, shiftId);
+      const eventId = crypto.randomUUID();
+      const payload = deliveryFailedPayload({
+        recipientKind: "on_call",
+        providerEntityId: (seeded[ORG_A] as Seed).pe,
+        alertEventType: "m19.triage.case_opened",
+        sourceAggregateId: callId,
+      });
+      await deliver("m36.notification.delivery_failed", ORG_A, payload, eventId);
+      await deliver("m36.notification.delivery_failed", ORG_A, payload, eventId);
+      // `findCallBySourceEvent` (the decider's redelivery guard) matches on `triage_call
+      // .source_outbox_event_id`, which `escalate_existing` never writes — no NEW call is opened, so
+      // there is nothing for the guard to find. A relay redelivery of the SAME outbox row (retried after
+      // a timeout, a replica restart) therefore escalates a second time. Out of scope to fix here (the
+      // decider's own logic, not this pass's wiring), and worth flagging: this pins the finding rather
+      // than hiding it behind a loose assertion.
+      const { rows } = await admin.query(
+        "SELECT id FROM triage_escalation WHERE triage_call_id=$1",
+        [callId],
+      );
+      expect(rows).toHaveLength(2);
+    });
+
+    it("opens a patient-less operational call when no call is named, anchored to the covering shift", async () => {
+      const shiftId = await seedShift(ORG_A);
+      await deliver(
+        "m36.notification.delivery_failed",
+        ORG_A,
+        deliveryFailedPayload({
+          recipientKind: "on_call",
+          providerEntityId: (seeded[ORG_A] as Seed).pe,
+          alertEventType: null,
+          sourceAggregateId: null,
+        }),
+      );
+      const calls = await callsFor(ORG_A);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toMatchObject({
+        source: "m36_delivery_failure",
+        inbound_channel: "inbound_alert_failure",
+        caller_kind: "system_inbound",
+        patient_id: null,
+        on_call_shift_id: shiftId,
+      });
+    });
+
+    it("no coverage → publishes the coverage gap instead of a patient-less call", async () => {
+      await deliver(
+        "m36.notification.delivery_failed",
+        ORG_A,
+        deliveryFailedPayload({
+          recipientKind: "on_call",
+          providerEntityId: (seeded[ORG_A] as Seed).pe,
+          alertEventType: null,
+          sourceAggregateId: null,
+        }),
+      );
+      expect(await callsFor(ORG_A)).toHaveLength(0);
+      const { rows } = await admin.query(
+        "SELECT event_type FROM outbox_event WHERE organization_id=$1",
+        [ORG_A],
+      );
+      expect(rows.map((r) => r.event_type)).toEqual(["m19.oncall_shift.coverage_gap"]);
+    });
+
+    it("an aggregate id from a NON-m19 alert is never trusted as a triage_call id", async () => {
+      const shiftId = await seedShift(ORG_A);
+      const callId = await seedOpenCall(ORG_A, shiftId);
+      // Named as if it were the open call, but `alertEventType` says the failed page was M20's — the
+      // decider must not escalate a call it was never told about.
+      await deliver(
+        "m36.notification.delivery_failed",
+        ORG_A,
+        deliveryFailedPayload({
+          recipientKind: "on_call",
+          providerEntityId: (seeded[ORG_A] as Seed).pe,
+          alertEventType: "m20.safety.sos_alert_raised",
+          sourceAggregateId: callId,
+        }),
+      );
+      const { rows } = await admin.query(
+        "SELECT id FROM triage_escalation WHERE triage_call_id=$1",
+        [callId],
+      );
+      expect(rows).toHaveLength(0);
+      // Falls through to the operational-call path instead of trusting the aggregate id (no coverage
+      // gap here: a shift IS seeded) — a SECOND call, beside the one `seedOpenCall` already wrote.
+      expect(await callsFor(ORG_A)).toHaveLength(2);
+    });
   });
 });

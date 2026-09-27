@@ -24,7 +24,82 @@
 // controls. The external-collaborator link carries a `patientId` *scope* (not a clinical
 // record); M3's caseload ABAC predicate (deny-stubbed here) governs which patient an actor
 // may scope a link to.
+import type { DbClient } from "@wardenx/db";
+import { withOrgContextFromRequest } from "@wardenx/tenancy";
 import type { FastifyRequest } from "fastify";
+
+/**
+ * The transactional-outbox port M2's route files publish `m2.*` events through. Takes no `tx` at the call
+ * site — the production adapter (`createOrgScopedIdentityOutbox` below) wraps each publish in
+ * `withOrgContextFromRequest` internally, for the same reason `createOrgScopedAuditExecutor` wraps
+ * `audit()`: see that function's doc for the RLS bug this closes.
+ */
+export interface IdentityOutboxPort {
+  publish(input: {
+    readonly eventName: string;
+    readonly payload: Record<string, unknown>;
+    readonly organizationId: string | null;
+    readonly aggregateKind: string;
+    readonly aggregateId: string;
+  }): Promise<void>;
+}
+
+/**
+ * Adapts a tx-taking outbox publisher (the composition root's catalog-validating `m2OutboxPublisher`,
+ * `bindCallerModule(txOutboxPublisher, "m2")`) into an `IdentityOutboxPort` that opens its own
+ * `withOrgContextFromRequest` transaction per publish — the same fix `createOrgScopedAuditExecutor`
+ * applies to `audit()`, for the identical reason: `outbox_event`'s RLS policy is org-scoped
+ * (`current_setting('app.org_id', true)::uuid`), and nothing sets that GUC outside a `withOrgContext` tx.
+ */
+export function createOrgScopedIdentityOutbox(
+  db: DbClient,
+  publisher: {
+    publish(
+      tx: DbClient,
+      input: {
+        eventName: string;
+        payload: Record<string, unknown>;
+        organizationId: string | null;
+        aggregateKind: string;
+        aggregateId: string;
+      },
+    ): Promise<void>;
+  },
+): IdentityOutboxPort {
+  return {
+    publish: (input) => withOrgContextFromRequest(db, (tx) => publisher.publish(tx as DbClient, input)),
+  };
+}
+
+/**
+ * Adapts a bare `DbClient` into an `AuditExecutor` that opens its own `withOrgContextFromRequest`
+ * transaction per audit() call.
+ *
+ * FIXES A REAL BUG (found while wiring M2's outbox catalog, #205). `mountIdentityRoutes` used to construct
+ * `audit: db` directly — a bare, non-org-context client — even though `audit/identity-audit.ts`'s own
+ * header says "production passes the Drizzle transaction so the audit row commits atomically with the
+ * membership/invitation write". `audit_event`'s RLS policy (`audit_event_org_append`, migration 0119)
+ * requires `organization_id = current_setting('app.org_id', true)::uuid`, and nothing sets that GUC outside
+ * a `withOrgContext` transaction — so a bare `db` insert could never satisfy it. Confirmed empirically
+ * against a real NOBYPASSRLS `wardenx_app` connection: every M2 mutation route's `audit()` call threw
+ * "new row violates row-level security policy for table audit_event", AFTER the underlying store write had
+ * already committed — so the route 500'd on a write that had, in fact, succeeded, and no audit row was ever
+ * written. Migration 0119's own header names "M2's identity/step-up events" as one of the things it was
+ * written to fix; the policy landed but the application code never opened the transaction the policy
+ * assumes. (The OTHER thing that migration named, the PHI read-audit path, was fixed correctly —
+ * `bootstrap/plugins/read-audit.ts` already wraps in `withOrgContext`.)
+ */
+export function createOrgScopedAuditExecutor(
+  db: DbClient,
+): import("@wardenx/audit").AuditExecutor {
+  return {
+    insert(table) {
+      return {
+        values: (row) => withOrgContextFromRequest(db, (tx) => tx.insert(table).values(row)),
+      };
+    },
+  };
+}
 
 /** Membership lifecycle status mirrored from the M1-owned `membership` enum (spec §2.2.2). */
 export type MembershipStatus = "active" | "suspended" | "revoked";
@@ -266,6 +341,23 @@ export interface UserDirectory {
   deactivate(userId: string, reason: string): Promise<void> | void;
 }
 
+/**
+ * §11 D19 auth-time enforcement — reads the `organization.status` this module's own
+ * `organization-lifecycle.ts` writer now maintains. `select-organization` refuses to bind a fresh
+ * session to a non-`active` org (the reverse of `organization-lifecycle.ts`'s own session_cascade,
+ * which revokes sessions ALREADY bound at the moment of suspension/close — this closes the other
+ * direction: a suspended org's user retrying sign-in afterward). `null` ⇒ unreadable/unknown, which
+ * this port's ONE caller treats as "skip the check" rather than "deny" — the same non-fabrication
+ * posture as every other optional M2 port; the composition root binds a real reader.
+ */
+export interface OrganizationStatusReader {
+  getStatus(
+    organizationId: string,
+  ):
+    | Promise<"created" | "active" | "suspended" | "closed" | null>
+    | ("created" | "active" | "suspended" | "closed" | null);
+}
+
 /** A typed error the stores throw so routes can map link failures to the spec's HTTP codes. */
 export class LinkError extends Error {
   constructor(
@@ -287,6 +379,9 @@ export interface IdentityRouteDeps {
   users: UserDirectory;
   /** Audit sink for the M2 lifecycle events (audit() executor — denylist runs there). */
   audit: import("@wardenx/audit").AuditExecutor;
+  /** The `m2.*` transactional-outbox publisher. Omitted → record-only, no-op (the M28 `NOOP_FHIR_OUTBOX`
+   *  precedent) — every existing route keeps working without it. */
+  outbox?: IdentityOutboxPort;
   /** Org-binding session TTL in seconds (spec §SESSION_POLICY); default 12h. */
   sessionTtlSec?: number;
   /** External-collaborator session TTL in seconds (spec §7.6, up to 8h); default 8h. */
@@ -315,6 +410,9 @@ export interface IdentityRouteDeps {
    * conflating them is how the missing handshake stayed invisible for as long as it did.
    */
   roleAttacher?: ProposedRoleAttacher;
+  /** §11 D19 — omitted → `select-organization` skips the active-org check (a no-db slice boot has no
+   *  organization-lifecycle writer to read back). See {@link OrganizationStatusReader}. */
+  organizations?: OrganizationStatusReader;
 }
 
 // --- Slice in-memory adapters ------------------------------------------------------------

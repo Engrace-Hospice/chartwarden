@@ -32,7 +32,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { IsoInstant, OnCallShiftId, ProviderEntityId, TriageCallId } from "@wardenx/types";
 import { and, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 import type { CoveringShiftCandidate } from "./inbound-trigger";
-import type { InboundTriggerPorts } from "./trigger-context";
+import type { DeliveryFailureTriggerPorts, InboundTriggerPorts } from "./trigger-context";
 
 const CALL = schema.triageCall;
 const SHIFT = schema.onCallShift;
@@ -69,7 +69,9 @@ const OPEN_CALL_STATES = [
 const LOOKAHEAD_HOURS = 24;
 
 /** The production {@link InboundTriggerPorts} over M19's own tables. */
-export function createDrizzleInboundTriggerPorts(db: DbClient): InboundTriggerPorts {
+export function createDrizzleInboundTriggerPorts(
+  db: DbClient,
+): InboundTriggerPorts & DeliveryFailureTriggerPorts {
   return {
     async findCallBySourceEvent(organizationId, sourceOutboxEventId) {
       return withOrgContext(db, { organizationId, userId: PORT_USER_ID }, async (tx) => {
@@ -160,6 +162,17 @@ export function createDrizzleInboundTriggerPorts(db: DbClient): InboundTriggerPo
           closedAt: row.closedAt === null ? null : (row.closedAt.toISOString() as IsoInstant),
         }),
       );
+    },
+
+    async isCallOpen(organizationId, triageCallId) {
+      return withOrgContext(db, { organizationId, userId: PORT_USER_ID }, async (tx) => {
+        const [row] = await (tx as DbClient)
+          .select({ state: CALL.state })
+          .from(CALL)
+          .where(and(eq(CALL.organizationId, organizationId), eq(CALL.id, triageCallId)))
+          .limit(1);
+        return row !== undefined && (OPEN_CALL_STATES as readonly string[]).includes(row.state);
+      });
     },
   };
 }

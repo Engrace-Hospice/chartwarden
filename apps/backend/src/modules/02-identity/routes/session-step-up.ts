@@ -212,6 +212,18 @@ export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRo
         failureReason: verdict.reason ?? "verification_failed",
         failureCount,
       });
+      await deps.outbox?.publish({
+        eventName: "m2.session.step_up.failed",
+        payload: {
+          sessionId: session.sessionId,
+          factor,
+          failureReason: verdict.reason ?? "verification_failed",
+          failureCount,
+        },
+        organizationId: session.organizationId,
+        aggregateKind: "session",
+        aggregateId: session.sessionId,
+      });
 
       if (failureCount >= STEP_UP_POLICY.lockoutThreshold) {
         await deps.writer.terminate({ sessionId: session.sessionId, reason: "step_up_lockout" });
@@ -219,6 +231,13 @@ export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRo
           sessionId: session.sessionId,
           factor,
           failureCount,
+        });
+        await deps.outbox?.publish({
+          eventName: "m2.session.terminated_step_up_lockout",
+          payload: { sessionId: session.sessionId, factor, failureCount },
+          organizationId: session.organizationId,
+          aggregateKind: "session",
+          aggregateId: session.sessionId,
         });
         return reply.code(423).send({ error: "session_locked", reason: "step_up_lockout" });
       }
@@ -234,6 +253,13 @@ export function registerSessionStepUpRoutes(app: FastifyInstance, deps: StepUpRo
       sessionId: session.sessionId,
       factor,
       source: "explicit_route",
+    });
+    await deps.outbox?.publish({
+      eventName: "m2.session.step_up.completed",
+      payload: { sessionId: session.sessionId, factor, source: "explicit_route" },
+      organizationId: session.organizationId,
+      aggregateKind: "session",
+      aggregateId: session.sessionId,
     });
 
     return reply.code(200).send({

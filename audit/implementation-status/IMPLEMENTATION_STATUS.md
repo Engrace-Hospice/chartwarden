@@ -11,7 +11,7 @@ Columns: Spec · Schema (Drizzle defs for owned tables) · Migration (all owned 
 | Module | Status | Spec | Schema | Migration | Routes | Enriched | Screens | Tests | Adapter | Live |
 |---|---|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|:--:|
 | M01 Foundation | 🟢 Implemented | ✅ | ✅ | ✅ | ❌ | — | ❌ | ✅ | — | 18/18 ✅ |
-| M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 24/24 ✅ | ✅ | ✅ | — | 6/6 ✅ |
+| M02 Identity & Org | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 25/25 ✅ | ✅ | ✅ | — | 6/6 ✅ |
 | M03 Authorization | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 17/17 ✅ | ✅ | ❌ | — | 6/6 ✅ |
 | M04 Audit & Compliance Log | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 13/13 ✅ | ✅ | ✅ | — | 7/7 ✅ |
 | M05 Patient & Demographics | 🟢 Implemented | ✅ | ✅ | ✅ | ✅ | 15/15 ✅ | ✅ | ✅ | — | 16/16 ✅ |

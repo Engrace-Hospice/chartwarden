@@ -127,24 +127,10 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
   },
   {
     module: "m19",
-    kind: "no-producer",
-    reason:
-      "M36 contributes NO event catalog to the boot dispatcher — there is no `M36_OUTBOX_EVENTS` in `buildBootOutboxCatalog([...])` and no `events-by-m36.ts` in the repo — so this topic has no producer under this or any other name. M19's `consumers/m36-delivery-failed.ts` is a written decider waiting on it, and M20 carries a matching `delivery_failed` SOS escalation reason, so the subscription is kept as the record that the integration is intended. Ends when M36 catalogues its notification events.",
-    events: ["m36.notification.delivery_failed"],
-  },
-  {
-    module: "m19",
     kind: "no-handler",
     reason:
-      "M19's `consumers/` decides on the M17 no-show, the M18 late check-out and the (unproducible) M36 delivery failure. These three are §4.8 triage-context inputs with no decider written; declaring them would defer events other modules are already waiting on and produce no handler. Ends with M19 Phase 2.",
+      "M19's `consumers/` decides on the M17 no-show and the M18 late check-out (the M36 delivery-failure trigger is now bound — see bindings.ts — and dropped from here). These two are §4.8 triage-context inputs with no decider written; declaring them would defer events other modules are already waiting on and produce no handler. Ends with M19 Phase 2.",
     events: ["m5.patient.deceased", "m8.encounter.signed", "m11.order.verbal_expired_unsigned"],
-  },
-  {
-    module: "m20",
-    kind: "no-producer",
-    reason:
-      "Same absence as M19's: M36 catalogues no events, so `m36.notification.delivery_failed` cannot be published. M20 keeps the subscription because `lifecycle/sos-alert.ts` defines a `delivery_failed` SOS escalation reason for exactly it — 'a page that did not arrive is a breach' — which is the record that this rung of the D4 ladder is designed and unreachable.",
-    events: ["m36.notification.delivery_failed"],
   },
   {
     module: "m20",
@@ -181,9 +167,9 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
   },
   {
     module: "m35",
-    kind: "no-producer",
+    kind: "no-handler",
     reason:
-      "M2 contributes NO event catalog to the boot dispatcher — there is no `M2_OUTBOX_EVENTS` — so none of the four organization/session lifecycle topics M35's §4.12 per-seat billing is specified against can be published. This is half of M35's entire subscription list. The absence is M2's to close; M35 keeps the names because the seat-count, suspension and dunning logic are written against them.",
+      "M2 now catalogues and publishes all four (events-by-m2.ts, organization-lifecycle.ts, §11 D19 — #205 hard-half). Investigated and closed: M34's `tenant_account` lifecycle is a deliberately separate, platform-ops/compliance/destruction-driven state machine (provisioning/onboarding/BAA/DSAR/shred) with no equivalent of `session.created` at all, and the M35 spec's own D19 decision table explicitly rejects 'another module owns suspension authority' as splitting responsibility M2 should hold — redirecting was never the right fix. M35 has no `consumers/` directory (same reason as the `m5.patient.deceased`/`.merged` entry below), so these stay `no-handler` until it grows one.",
     events: [
       "m2.organization.activated",
       "m2.organization.closed",
@@ -357,9 +343,9 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
   },
   {
     module: "m26",
-    kind: "no-producer",
+    kind: "no-handler",
     reason:
-      "The same absence M19 and M20 record: M36 contributes NO event catalog to the boot dispatcher, so this topic has no producer under any name. M26 is the third module subscribed to it.",
+      "M36 now catalogues this event (events-by-m36.ts, #205 follow-up; M19 and M20 are bound to it). M26's own `consumers/subscription-map.ts` names a handler (`surface-stuck-alert`) but it is a no-op stub (`dispatchM26UpstreamEvent`'s own comment: 'operational surfacing only; no ledger effect'), and M26's ENTIRE consumer relay is unbound — `consumers/index.ts`'s own header: 'NO live inbound relay loop exists yet … the composition root calls this with NO registrar', deferred pending the M5/M6 reader dependencies `CapConsumerStore` needs. Binding just this one topic would mean standing up the relay for a stub; the real producer (the out-of-band dispatch pipeline, events-by-m36.ts's header) doesn't exist yet either.",
     events: ["m36.notification.delivery_failed"],
   },
   {
@@ -454,9 +440,9 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
   },
   {
     module: "m33",
-    kind: "no-producer",
+    kind: "handler-unbound",
     reason:
-      "M28 contributes NO event catalog to the boot dispatcher — there is no `M28_OUTBOX_EVENTS` anywhere in the repo and none is registered in `buildBootOutboxCatalog([...])` — so the FHIR gateway publishes nothing at all, and `mv_fhir_bulk_export_org_month` has no invalidation source. M28 is the THIRD module in this state, after M2 and M36 (#205).",
+      "M28 now catalogues `m28.fhir.bulk_export.completed` (events-by-m28.ts), and `packages/reporting/src/catalog/outbox-subscription-map.ts` already keys `mv_fhir_bulk_export_org_month` off this exact name — so the catalog entry documents the relationship via `seamConsumers: ['m33']`, not `declaredConsumers`, to avoid deferring the event forever the moment M33 lands its binding. The consumer-side mechanism (`packages/reporting/src/refresh/outbox-subscriber.ts`'s `handleUpstreamInvalidation`) is written and unit-tested but has no live `OutboxConsumerBinding` — `M33_MV_REFRESH_SUBSCRIPTIONS_DEFERRED = true` covers all ~60 of its topics, not just this one, so binding it is a separate M33 composition-root task spanning far more than M28. Ends when that binding lands.",
     events: ["m28.fhir.bulk_export.completed"],
   },
   {

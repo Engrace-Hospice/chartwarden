@@ -47,6 +47,7 @@ import {
   startSupportSession,
   transitionTenant,
 } from "@wardenx/saas-tenant-platform";
+import type { AlertEmitter } from "@wardenx/messaging";
 import { type PlatformBypassAuditor, withPlatformContext } from "@wardenx/tenancy";
 import { NotFoundError, WardenXError } from "@wardenx/types";
 import { and, desc, eq } from "drizzle-orm";
@@ -132,6 +133,8 @@ export interface DrizzleTenantPlatformDeps {
   readonly organizations: OrganizationProvisionPort;
   /** M1's FeatureFlagAdmin seam (§4.7 / D13). */
   readonly featureFlags: FeatureFlagAdminPort;
+  /** M36's `AlertEmitter` seam (§2.5 `alert` side effects — suspend/offboard/at-risk transitions). */
+  readonly lifecycleAlerts: AlertEmitter;
   /** Support-session side-effect ports (audit/alert/outbox/now) — the per-tx repo is bound here. */
   readonly supportSessionPorts: {
     readonly audit: SupportSessionAuditPort;
@@ -153,15 +156,61 @@ const SCG = schema.supportConsentGrant;
 const iso = (d: Date | null | undefined): string | null => (d ? d.toISOString() : null);
 const isoReq = (d: Date): string => d.toISOString();
 
-// The lifecycle MACHINE emits a wider set of `m34.tenant.*` effect names than events-by-m34.ts catalogs, and
-// the per-event payload schemas differ from the generic payload below. With the live transactional-outbox
-// dispatcher now bound (#107), a non-conformant publish would ROLL BACK the lifecycle mutation — so this gate
-// emits ONLY the event whose generic payload provably conforms to its registered schema: `m34.tenant.provisioned`
-// ({ tenantAccountId, orgId, legalBusinessName, billingContactEmail } — an exact match). The other lifecycle
-// transitions (suspension/offboarding/retention/destruction) need per-event payloads (reason / purpose /
-// initiatedByMembershipId / initiatedAt …) threaded from the command context + their catalog entries — a noted
-// follow-up (#107) — so they stay un-emitted (the mutation still lands) rather than rolling back.
-const CATALOG_LIFECYCLE_EVENTS = new Set<string>(["m34.tenant.provisioned"]);
+/**
+ * Build the exact catalog-conforming payload for the `m34.tenant.*` outbox effects reachable from
+ * `applyTransition`'s two production callers (`transitionStatus` → suspend/reactivate/flagAtRisk/
+ * resolveAtRisk/suspendFromAtRisk; `offboardTenant` → initiateOffboarding).
+ *
+ * FIXES A REAL BUG (found while investigating M2's hard half, #205/#103). This used to be a single
+ * generic payload (`{tenantAccountId, orgId, legalBusinessName, billingContactEmail}`) gated by a
+ * one-item `CATALOG_LIFECYCLE_EVENTS` Set containing only `"m34.tenant.provisioned"` — every OTHER
+ * event effect (suspend/reactivate/at_risk/offboard) was silently DROPPED, not published, with no
+ * error and no log line. Two independent things made that the only safe-looking choice at the time:
+ * the generic payload doesn't conform to those events' real schemas (a non-conformant publish rolls
+ * back the whole lifecycle mutation — worse than dropping it), AND the pure kernel emitted
+ * `m34.tenant.suspended`, a name no catalog entry has EVER declared (`events-by-m34.ts` names it
+ * `suspension_initiated` — fixed alongside this, see lifecycle-effects.ts). So even a correct payload
+ * would have been refused outright. Every suspend/offboard tenant-lifecycle transition — including the
+ * ones the code comments already claimed happened ("sessions terminated immediately at transition") —
+ * has never published anything.
+ */
+function outboxPayloadFor(
+  eventName: string,
+  account: schema.TenantAccount,
+  event: LifecycleEvent,
+  actorMembershipId: string,
+  occurredAt: string,
+): Record<string, unknown> | null {
+  const base = { tenantAccountId: account.id, orgId: account.organizationId };
+  switch (eventName) {
+    case "m34.tenant.provisioned":
+      return {
+        ...base,
+        legalBusinessName: account.legalBusinessName,
+        billingContactEmail: account.billingContactEmail,
+      };
+    case "m34.tenant.suspension_initiated":
+      return { ...base, reason: event.transitionReason, initiatedByMembershipId: actorMembershipId, initiatedAt: occurredAt };
+    case "m34.tenant.reactivated":
+      return { ...base, reason: event.transitionReason, actorMembershipId, reactivatedAt: occurredAt };
+    case "m34.tenant.at_risk":
+      return { ...base, reason: event.transitionReason, actorMembershipId, flaggedAt: occurredAt };
+    case "m34.tenant.offboarding_initiated":
+      return event.type === "initiateOffboarding"
+        ? { ...base, purpose: event.exportPurpose, initiatedByMembershipId: actorMembershipId, initiatedAt: occurredAt }
+        : null;
+    default:
+      // `activated`/`final_export_pending`/`retained`/`destruction_pending` — the machine can name
+      // these, but no current caller of applyTransition reaches the events that emit them (`activate`
+      // fires from the onboarding worker outside this file; `requestFinalExport`/`completeExport`/
+      // `scheduleDestruction`/`shred` have no route here at all — see lifecycleEventForStatus below).
+      // Scoped out of this fix deliberately (#103/#205 fixed the reachable four: suspend/reactivate/
+      // at_risk/offboard); null here means "skip the publish", never "crash the mutation that already
+      // committed" — the same posture the dropped-silently bug had, kept for names outside this fix's
+      // scope rather than extended to the ones now built.
+      return null;
+  }
+}
 
 export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDeps): {
   service: TenantPlatformRouteService;
@@ -198,11 +247,21 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
     return { account, orgSlug };
   }
 
-  /** Run the lifecycle machine + commit the §2.5 in-tx effects (ledger / timestamps / enqueue / outbox). */
+  /**
+   * Run the lifecycle machine + commit the §2.5 in-tx effects (ledger / timestamps / enqueue / outbox /
+   * session revocation / M36 alert).
+   *
+   * `actorMembershipId` — despite `transitionStatus`/`offboardTenant`'s OWN parameter being named
+   * `actorUserId` (their §4.1 interface shape, `service.ts`), the route (`tenants.ts` `actorOf()`) has
+   * always passed the caller's MEMBERSHIP id there, with a comment explaining exactly this. This
+   * function used to `void` the parameter and hardcode `actorMembershipId: null` on the ledger row —
+   * fixed alongside the outbox bug below, since both trace back to the same "the plumbing was never
+   * finished" cause.
+   */
   async function applyTransition(
     tx: PlatformTx,
     account: schema.TenantAccount,
-    actorUserId: string,
+    actorMembershipId: string,
     actorKind: LifecycleActorKind,
     event: LifecycleEvent,
   ): Promise<schema.TenantAccount> {
@@ -225,22 +284,24 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
       fromStatus: res.from as schema.TenantAccount["status"],
       toStatus: res.to as schema.TenantAccount["status"],
       transitionReason: event.transitionReason,
-      actorMembershipId: null,
+      actorMembershipId,
       actorKind,
       sideEffectsRecorded: { effects: res.effects.map((e) => e.kind) },
     });
 
-    // 3) enqueue worker jobs + 4) emit catalog outbox, both in this same tx
-    await runSideEffects(tx, updated, res.effects);
-    void actorUserId;
+    // 3) enqueue worker jobs + 4) emit catalog outbox + 5) session revocation + 6) M36 alert, same tx
+    await runSideEffects(tx, updated, event, actorMembershipId, res.effects);
     return updated;
   }
 
   async function runSideEffects(
     tx: PlatformTx,
     account: schema.TenantAccount,
+    event: LifecycleEvent,
+    actorMembershipId: string,
     effects: ReadonlyArray<LifecycleSideEffect>,
   ): Promise<void> {
+    const occurredAt = new Date().toISOString();
     for (const eff of effects) {
       if (eff.kind === "queue_job") {
         const queue = eff.job === "tenant.provision" ? "tenant.provision" : "tenant.shred";
@@ -248,18 +309,30 @@ export function createDrizzleTenantPlatformBackend(deps: DrizzleTenantPlatformDe
           await deps.enqueue.enqueue(queue, account.id, { tenantAccountId: account.id });
         }
         // tenant.shred_eligibility_check is a scheduled cron job, not a request-thread enqueue.
-      } else if (eff.kind === "outbox" && CATALOG_LIFECYCLE_EVENTS.has(eff.event)) {
-        await deps.outbox.publish(tx, {
-          eventName: eff.event,
-          organizationId: account.organizationId,
-          aggregateKind: "tenant_account",
-          aggregateId: account.id,
-          payload: {
-            tenantAccountId: account.id,
-            orgId: account.organizationId,
-            legalBusinessName: account.legalBusinessName,
-            billingContactEmail: account.billingContactEmail,
-          },
+      } else if (eff.kind === "outbox") {
+        const payload = outboxPayloadFor(eff.event, account, event, actorMembershipId, occurredAt);
+        if (payload) {
+          await deps.outbox.publish(tx, {
+            eventName: eff.event,
+            organizationId: account.organizationId,
+            aggregateKind: "tenant_account",
+            aggregateId: account.id,
+            payload,
+          });
+        }
+      } else if (eff.kind === "session_cascade") {
+        // Sessions ALREADY bound to this org, revoked immediately — `session` is NON_ORG_SCOPED
+        // (migration 0001), so this needs no RLS context beyond the platform tx it already runs in.
+        // Deliberately just this — it does NOT also call M2's organization-lifecycle writer (a SEPARATE
+        // platform-ops action, per the M35 spec's own worked example naming M2's admin route, not this
+        // one); a platform-ops actor who wants both suspends the tenant here AND the org there.
+        await tx.delete(schema.sessions).where(eq(schema.sessions.activeOrganizationId, account.organizationId));
+      } else if (eff.kind === "alert") {
+        await deps.lifecycleAlerts.emit(account.organizationId, {
+          eventType: eff.alertKey,
+          payload: { tenantAccountId: account.id, reason: event.transitionReason, actorMembershipId },
+          severity: eff.audience.includes("platform_security_owner") ? "critical" : "warn",
+          correlationId: `m34-lifecycle-${account.id}-${occurredAt}`,
         });
       }
     }

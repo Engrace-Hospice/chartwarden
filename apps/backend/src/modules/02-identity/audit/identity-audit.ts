@@ -26,6 +26,9 @@ export const IDENTITY_AUDIT_EVENTS = {
   userDeactivated: "m2.user.deactivated",
   collaboratorInvited: "m2.collaborator.invited",
   collaboratorSessionStarted: "m2.collaborator.session_started",
+  organizationActivated: "m2.organization.activated",
+  organizationSuspended: "m2.organization.suspended",
+  organizationClosed: "m2.organization.closed",
 } as const;
 
 /** Record an org invitation being minted (token never enters the payload; email redacted). */
@@ -41,6 +44,34 @@ export async function auditUserInvited(
     outcome: "success",
     retentionClass: "compliance",
     after: { organizationId: input.organizationId, email: input.email },
+  });
+}
+
+/** Record a §11 D19 organization-lifecycle transition (organization-lifecycle.ts). */
+export async function auditOrganizationTransition(
+  tx: AuditExecutor,
+  ctx: AuditContext,
+  input: {
+    eventType:
+      | typeof IDENTITY_AUDIT_EVENTS.organizationActivated
+      | typeof IDENTITY_AUDIT_EVENTS.organizationSuspended
+      | typeof IDENTITY_AUDIT_EVENTS.organizationClosed;
+    organizationId: string;
+    fromStatus: string;
+    toStatus: string;
+    reason: string;
+    sessionsRevoked: number;
+  },
+): Promise<void> {
+  await audit(tx, ctx, {
+    eventType: input.eventType,
+    resourceKind: "organization",
+    resourceId: input.organizationId,
+    outcome: "success",
+    retentionClass: "compliance",
+    before: { status: input.fromStatus },
+    after: { status: input.toStatus, sessionsRevoked: input.sessionsRevoked },
+    context: { reason: input.reason },
   });
 }
 

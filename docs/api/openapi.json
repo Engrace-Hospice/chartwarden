@@ -139959,6 +139959,109 @@
         }
       }
     },
+    "/api/v1/platform/organizations/{organizationId}/status": {
+      "post": {
+        "operationId": "postApiV1PlatformOrganizationsByOrganizationIdStatus",
+        "tags": [
+          "02-identity"
+        ],
+        "summary": "Activate/suspend/close an organization (platform-ops, §11 D19)",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "status",
+                    "sessionsRevoked"
+                  ],
+                  "properties": {
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "created",
+                          "type": "string"
+                        },
+                        {
+                          "const": "active",
+                          "type": "string"
+                        },
+                        {
+                          "const": "suspended",
+                          "type": "string"
+                        },
+                        {
+                          "const": "closed",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "sessionsRevoked": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "event",
+                  "reason"
+                ],
+                "properties": {
+                  "event": {
+                    "anyOf": [
+                      {
+                        "const": "activate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suspend",
+                        "type": "string"
+                      },
+                      {
+                        "const": "close",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/platform/signup-intents": {
       "get": {
         "operationId": "getApiV1PlatformSignupintents",

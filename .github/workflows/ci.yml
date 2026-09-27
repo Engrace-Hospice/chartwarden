@@ -318,6 +318,34 @@ jobs:
               name: "M28 FHIR gateway — token mint, projection, §164.528 ledger",
               scripts: "test:m28:fhir-gateway:live",
             }
+          # #205 — M28 contributed NO outbox event catalog at all (alongside M2 and M36), so nothing could
+          # ever publish a client/bulk-export/inbound event: the fail-closed dispatcher refuses any publish
+          # whose name is not in the boot catalog. LIVE by necessity — the catalog-validating publisher's
+          # Value.Check refuse-on-failure behavior, and the transactional rollback it causes, are both
+          # statements about the real dispatcher that a no-op-outboxed or in-memory suite cannot exhibit.
+          - {
+              name: "M28 outbox catalog — real publisher, schema validation, cascade wiring",
+              scripts: "test:m28:outbox-catalog:live",
+            }
+          # #205 — M2 contributed NO outbox event catalog at all either. Wiring it surfaced a real RLS bug:
+          # `mountIdentityRoutes` built `audit: db` (bare, no org context), and `audit_event`'s RLS policy
+          # (migration 0119) requires `app.org_id` to be set — which nothing did, so every M2 mutation
+          # route's audit() call threw under real NOBYPASSRLS, AFTER the underlying write had already
+          # committed. LIVE by necessity — an in-memory audit sink and the one prior live test that touches
+          # mountIdentityRoutes (a superuser connection) both cannot exhibit an RLS refusal.
+          - {
+              name: "M2 audit/outbox RLS — real wardenx_app role",
+              scripts: "test:m2:outbox-audit-rls:live",
+            }
+          # §11 D19 (#205 hard half) — `organization.status` had no UPDATE anywhere in the codebase, so
+          # M35's four `m2.organization.*` / `m2.session.created` subscriptions had no producer. LIVE by
+          # necessity — the transition graph runs under real RLS (organization_self), the session
+          # revocation is a real cross-table DELETE, and the catalog-validating publisher's refuse-on-
+          # mismatch behavior is a statement about the real dispatcher.
+          - {
+              name: "M2 organization-lifecycle — real wardenx_app role",
+              scripts: "test:m2:organization-lifecycle:live",
+            }
           # GAP-063: M38's platform-ops write door. Migration 0015 granted `terminology_loader`
           # INSERT/UPDATE on the canonical tables but created no row POLICY for it, so the grant was
           # dead — every loader write matched zero rows. This suite runs as NOBYPASSRLS wardenx_app,
@@ -332,6 +360,18 @@ jobs:
               scripts:
                 "test:m34:hold-discovery:live test:m34:dsar-export:live test:m34:tenant-export:live
                 test:m34:tenant-export-approval:live",
+            }
+          # #103/#205 — the §2.5 lifecycle machine emitted a wider set of `m34.tenant.*` outbox names than
+          # events-by-m34.ts catalogs (and one of them, `suspended`, matched no catalog entry at all — the
+          # real name is `suspension_initiated`), so `runSideEffects`' payload gate silently dropped every
+          # suspend/reactivate/at_risk/offboard transition's outbox effect. Every tenant suspension the
+          # platform has ever performed published nothing, and `session_cascade`/`alert` were declared
+          # effect kinds with no executor anywhere. LIVE by necessity — the catalog-validating publisher's
+          # refuse-on-mismatch behavior, the real session DELETE, and the real AlertEmitter seam are all
+          # statements about production wiring an in-memory/no-op-ported suite cannot exhibit.
+          - {
+              name: "M34 lifecycle outbox — suspend/reactivate/at_risk/offboard",
+              scripts: "test:m34:lifecycle-outbox:live",
             }
           # F-045 (#105): the per-tenant DEK chain, which four modules' encryption surfaces terminated at
           # and which had never once run. Its own runner because it DROPs and re-CREATEs the cluster roles

@@ -40,6 +40,7 @@ import type {
   DeviceAttestationStore,
   DeviceAttestationVerifier,
 } from "../device-attestation-ports";
+import type { IdentityOutboxPort } from "../identity-ports";
 
 /** How long a minted challenge stays usable. Short: the device MACs it immediately. */
 const CHALLENGE_TTL_SEC = 120;
@@ -59,6 +60,8 @@ export interface DeviceAttestationRouteDeps {
   readonly verifier: DeviceAttestationVerifier;
   readonly store: DeviceAttestationStore;
   readonly audit: AuditExecutor;
+  /** The `m2.*` transactional-outbox publisher. Omitted → record-only, no-op. */
+  readonly outbox?: IdentityOutboxPort;
   /** Injectable for tests; production mints a uuid. */
   readonly newChallengeId?: () => string;
   readonly newNonce?: () => string;
@@ -233,6 +236,18 @@ export function registerDeviceAttestationRoutes(
         platform: assertion.platform,
         reason: verdict.reason,
       });
+      await deps.outbox?.publish({
+        eventName: "m2.device.attestation_failed",
+        payload: {
+          attestationId: failedRow.id,
+          provider: assertion.provider,
+          platform: assertion.platform,
+          reason: verdict.reason,
+        },
+        organizationId: challenge.organizationId,
+        aggregateKind: "device_attestation",
+        aggregateId: failedRow.id,
+      });
       return reply.code(401).send({ error: "attestation_failed", reason: verdict.reason });
     }
 
@@ -252,6 +267,18 @@ export function registerDeviceAttestationRoutes(
       provider: assertion.provider,
       platform: assertion.platform,
       expiresAt: record.expiresAt,
+    });
+    await deps.outbox?.publish({
+      eventName: "m2.device.attested",
+      payload: {
+        attestationId: record.id,
+        provider: assertion.provider,
+        platform: assertion.platform,
+        expiresAt: record.expiresAt,
+      },
+      organizationId: challenge.organizationId,
+      aggregateKind: "device_attestation",
+      aggregateId: record.id,
     });
     return reply.code(201).send({
       attestationId: record.id,
@@ -294,6 +321,13 @@ export function registerDeviceAttestationRoutes(
       await auditDeviceAttestationRevoked(deps.audit, auditContextFor(request, session), {
         attestationId: record.id,
         membershipId: record.membershipId,
+      });
+      await deps.outbox?.publish({
+        eventName: "m2.device.attestation_revoked",
+        payload: { attestationId: record.id, membershipId: record.membershipId },
+        organizationId: session.organizationId,
+        aggregateKind: "device_attestation",
+        aggregateId: record.id,
       });
       return reply.code(200).send({ attestationId: record.id, verdict: record.verdict });
     },

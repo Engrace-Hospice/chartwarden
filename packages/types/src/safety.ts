@@ -605,9 +605,9 @@ export const M20_SUBSCRIBED_EVENT_NAMES = [
   "m18.evv.check_in_recorded",
   "m18.evv.check_out_recorded",
   "m18.evv.gps_spoof_suspected",
-  // Subscribed and NOT routed here — both registered in `scripts/outbox-subscription-exceptions.ts`.
-  // `m5.patient.deceased` and the M36 trigger are M20-T06's, which is why `consumers/index.ts` lists
-  // them as out of scope for the M17/M18 binding #204 landed.
+  // The M36 trigger is now bound (consumers/m36-delivery-failed.ts, #205 follow-up) — no exception entry
+  // needed for it any more. `m5.patient.deceased` is still M20-T06's, out of scope for the M17/M18
+  // binding #204 landed, and stays registered in `scripts/outbox-subscription-exceptions.ts`.
   "m36.notification.delivery_failed",
   "m5.patient.deceased",
 ] as const;

@@ -2,14 +2,14 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1300,
-    "coveredRoutes": 1300,
+    "routes": 1301,
+    "coveredRoutes": 1301,
     "directRoutesReferenced": 1244
   },
   "modules": [
     {
       "module": "02-identity",
-      "routes": 24,
+      "routes": 25,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/audit-accounting.test.ts",

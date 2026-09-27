@@ -19,14 +19,18 @@
 //     producer construction. Enqueue remains capability-disabled until every mandatory worker port is live.
 //   • TYPED-TODO (genuinely-missing infra accessors at the composition root — each FAILS CLOSED, never a
 //     silent no-op): the M4 `platform.bypass_invoked` auditor, the live
-//     transactional-outbox dispatcher, the M1 `FeatureFlagAdmin` seam, the M36 alert router, and the
+//     transactional-outbox dispatcher, the M1 `FeatureFlagAdmin` seam, the M36 support-session alert
+//     port (§7.4 grantor notification — a NARROWER shape than the lifecycle alert below), and the
 //     M1 MinIO presign/object-store seam. Until these land, the platform-ops route service + the worker
 //     ports that need them fail closed (a 5xx / a typed throw), which is the correct posture for an
 //     unaudited cross-tenant read or an unbacked irreversible effect.
+//   • LIVE also (#103/#205): the §2.5 lifecycle `alert` side effect (suspend/offboard/at-risk), bound to
+//     `getSeam("AlertEmitter")` — the same seam `jobs/saas-jobs.ts` already resolves it through.
 import type { ConnectionOptions } from "bullmq";
 import { Queue } from "bullmq";
 
 import type { DbClient } from "@wardenx/db";
+import type { AlertEmitter } from "@wardenx/messaging";
 import {
   type PlatformBypassAuditor,
   registerPlatformJob,
@@ -344,6 +348,15 @@ export function buildDrizzlePlatformService(deps: {
     outbox,
     organizations,
     featureFlags,
+    // §2.5 `alert` side effects (suspend/offboard/at-risk transitions, #103/#205) — the M34 `saas-jobs.ts`
+    // `getSeam("AlertEmitter")` precedent, decoupled the same way `organizations` above resolves M2's
+    // `TenantOrgCreationProvider`: this file adds no new M36 import edge. Resolved LAZILY (only when
+    // `.emit()` actually runs), not at construction time — `buildDrizzlePlatformService` is called by
+    // every M34 live suite regardless of whether that particular suite's flow ever reaches a lifecycle
+    // transition, and `getSeam` throws on an unregistered name eagerly would break every one of them.
+    lifecycleAlerts: {
+      emit: (orgId, input) => (getSeam("AlertEmitter") as AlertEmitter).emit(orgId, input),
+    },
     supportSessionPorts: {
       audit: {
         async emitCriticalAudit() {

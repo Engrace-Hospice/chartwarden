@@ -7,6 +7,7 @@
 // adds the `/api/v1/*` identity route inventory. M2-T07 (./seams) registers M2's published
 // cross-module seams (SessionContextResolver + AuditorSessionMinter, §4.7) into the M1 registry.
 export { type IdentitySeamDeps, registerIdentitySeams } from "./seams";
+export { M2_OUTBOX_EVENTS } from "./events-by-m2";
 // GAP-043 — the §3.7 per-membership NAMED APPROVAL AUTHORITY surface: the `ElevatedApprovalReader` seam
 // M27's §4.7 approver predicate reads, and the grant/revoke service its admin routes drive.
 export {
@@ -87,6 +88,8 @@ export function mountSessionStepUpRoutes(
   app: FastifyInstance,
   db: DbClient,
   redis?: Redis | null,
+  /** The `m2.*` outbox publisher (#205). Omitted → record-only, no-op. */
+  outbox?: M2RawOutboxPublisher,
 ): void {
   _registerSessionStepUpRoutes(app, {
     sessions: _contextSessionResolver(),
@@ -96,7 +99,10 @@ export function mountSessionStepUpRoutes(
     challenges: redis
       ? createValkeyStepUpChallengeStore(redis)
       : createInMemoryStepUpChallengeStore(),
-    audit: db,
+    // #205 — fixes a real RLS bug: `audit: db` (bare, no org context) could never satisfy
+    // `audit_event_org_append`'s WITH CHECK. See createOrgScopedAuditExecutor's doc.
+    audit: _orgScopedAuditExecutor(db),
+    ...(outbox ? { outbox: _orgScopedIdentityOutbox(db, outbox) } : {}),
   });
 }
 
@@ -139,12 +145,20 @@ export {
  * path does not require — the same call the collaborator magic-link store makes two functions up, and
  * for the same reason. Moving it to Valkey is a store swap behind `DeviceAttestationChallengeStore`.
  */
-export function mountDeviceAttestationRoutes(app: FastifyInstance, db: DbClient): void {
+export function mountDeviceAttestationRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  /** The `m2.*` outbox publisher (#205). Omitted → record-only, no-op. */
+  outbox?: M2RawOutboxPublisher,
+): void {
   _registerDeviceAttestationRoutes(app, {
     challenges: createInMemoryDeviceAttestationChallengeStore(),
     verifier: _managedEnrollmentVerifier(),
     store: _dbDeviceAttestationStore(db),
-    audit: db,
+    // #205 — fixes a real RLS bug: `audit: db` (bare, no org context) could never satisfy
+    // `audit_event_org_append`'s WITH CHECK. See createOrgScopedAuditExecutor's doc.
+    audit: _orgScopedAuditExecutor(db),
+    ...(outbox ? { outbox: _orgScopedIdentityOutbox(db, outbox) } : {}),
   });
 }
 
@@ -176,6 +190,7 @@ export {
   type ActorResolver,
   type CollaboratorLinkStore,
   type CollaboratorScope,
+  type IdentityOutboxPort,
   type IdentityRouteDeps,
   type InvitationDetail,
   type InvitationEmailTransport,
@@ -211,6 +226,17 @@ export {
 } from "./audit/identity-audit";
 export { registerIdentityRoutes } from "./routes/identity-routes";
 export { createDbMembershipRepository } from "./membership-repository";
+// §11 D19 (#205 hard half) — the real org activate/suspend/close capability + its one ABAC predicate.
+export {
+  type OrganizationLifecycleEvent,
+  type OrganizationLifecycleOutboxPort,
+  type OrganizationLifecycleStatus,
+  type OrganizationLifecycleWriter,
+  type OrganizationTransitionResult,
+  createDrizzleOrganizationLifecycleWriter,
+} from "./organization-lifecycle";
+export { M2_ABAC_PREDICATES, registerM2AbacPredicates } from "./abac-predicates";
+export { registerOrganizationLifecycleRoutes } from "./routes/organization-lifecycle-routes";
 
 import type { DbClient } from "@wardenx/db";
 import type { AdminMembershipReader } from "@wardenx/types";
@@ -227,16 +253,24 @@ import {
 } from "./elevated-approvals";
 import {
   type IdentityRouteDeps,
-  createInMemoryCollaboratorLinkStore as _collabStore,
   createContextActorResolver as _ctxActor,
+  createInMemoryCollaboratorLinkStore as _collabStore,
+  createOrgScopedAuditExecutor as _orgScopedAuditExecutor,
+  createOrgScopedIdentityOutbox as _orgScopedIdentityOutbox,
 } from "./identity-ports";
 import {
   createDbInvitationStore as _dbInvitations,
   createDbUserDirectory as _dbUserDirectory,
 } from "./identity-stores-db";
 import { createDbMembershipRepository as _dbMemberships } from "./membership-repository";
+import {
+  type OrganizationLifecycleOutboxPort,
+  createDrizzleOrganizationLifecycleWriter as _organizationLifecycleWriter,
+} from "./organization-lifecycle";
+import { registerM2AbacPredicates as _registerM2AbacPredicates } from "./abac-predicates";
 import { registerDeviceAttestationRoutes as _registerDeviceAttestationRoutes } from "./routes/device-attestation";
 import { registerIdentityRoutes as _registerIdentityRoutes } from "./routes/identity-routes";
+import { registerOrganizationLifecycleRoutes as _registerOrganizationLifecycleRoutes } from "./routes/organization-lifecycle-routes";
 import { registerSessionStepUpRoutes as _registerSessionStepUpRoutes } from "./routes/session-step-up";
 import { createDbSessionWriter as _dbSessionWriter } from "./session-writer-db";
 import {
@@ -274,6 +308,25 @@ import type Redis from "ioredis";
  * than bound to something that would look durable and not be.
  */
 
+/**
+ * The composition root's catalog-validating `m2OutboxPublisher` shape (`bindCallerModule(txOutboxPublisher,
+ * "m2")`) — takes the open tx, so `mountIdentityRoutes`/`mountDeviceAttestationRoutes`/
+ * `mountSessionStepUpRoutes` can wrap it in `createOrgScopedIdentityOutbox` themselves rather than making
+ * every caller do it.
+ */
+export interface M2RawOutboxPublisher {
+  publish(
+    tx: DbClient,
+    input: {
+      eventName: string;
+      payload: Record<string, unknown>;
+      organizationId: string | null;
+      aggregateKind: string;
+      aggregateId: string;
+    },
+  ): Promise<void>;
+}
+
 export function mountIdentityRoutes(
   app: FastifyInstance,
   db: DbClient,
@@ -289,6 +342,8 @@ export function mountIdentityRoutes(
     emailTransport?: IdentityRouteDeps["emailTransport"];
     webAppBaseUrl?: string;
     roleAttacher?: IdentityRouteDeps["roleAttacher"];
+    /** The `m2.*` outbox publisher (#205). Omitted → record-only, no-op. */
+    outbox?: M2RawOutboxPublisher;
   },
 ): void {
   const deps: IdentityRouteDeps = {
@@ -298,7 +353,9 @@ export function mountIdentityRoutes(
     invitations: _dbInvitations(db),
     collaborators: _collabStore().store, // no table exists — see the header
     users: _dbUserDirectory(db),
-    audit: db,
+    // #205 — fixes a real RLS bug found while wiring the outbox: `audit: db` (bare, no org context)
+    // could never satisfy `audit_event_org_append`'s WITH CHECK. See createOrgScopedAuditExecutor's doc.
+    audit: _orgScopedAuditExecutor(db),
     // GAP-043 — the §3.7 named-approval-authority write surface over the real table. This is what makes
     // M27's approver predicate reachable: the seam READS `membership_elevated_approval`, these routes are
     // the only thing that ever puts a row in it.
@@ -310,8 +367,31 @@ export function mountIdentityRoutes(
       : {}),
     ...(invite?.webAppBaseUrl ? { webAppBaseUrl: invite.webAppBaseUrl } : {}),
     ...(invite?.roleAttacher ? { roleAttacher: invite.roleAttacher } : {}),
+    ...(invite?.outbox ? { outbox: _orgScopedIdentityOutbox(db, invite.outbox) } : {}),
+    // §11 D19 — real auth-time enforcement: `select-organization` refuses to bind a fresh session to a
+    // non-active org. The reader needs no outbox (it never writes); see organization-lifecycle.ts.
+    organizations: { getStatus: _organizationLifecycleWriter(db).getStatus },
   };
   _registerIdentityRoutes(app, deps);
+}
+
+/**
+ * Mount the §11 D19 org activate/suspend/close route + register its one ABAC predicate.
+ *
+ * `organization.status` had no UPDATE anywhere in the codebase before this (#205 hard half) — M35's four
+ * `m2.organization.*` / `m2.session.created` subscriptions had no producer, matching the M35 spec's own
+ * worked example ("a `platform_admin` suspends the org via M2 admin route", §11 D19). See
+ * organization-lifecycle.ts for the transition graph + session-revocation write, and
+ * abac-predicates.ts for the platform-ops-only gate.
+ */
+export function mountOrganizationLifecycleRoutes(
+  app: FastifyInstance,
+  db: DbClient,
+  /** The `m2.*` outbox publisher (#205). Omitted → transition still lands, event is dropped. */
+  outbox?: OrganizationLifecycleOutboxPort,
+): void {
+  _registerM2AbacPredicates();
+  _registerOrganizationLifecycleRoutes(app, _organizationLifecycleWriter(db, outbox));
 }
 // M2-T10 — the `identity` data eraser (two_factor/passkey + pending invitations) + its ports.
 // TASK-003/ARCH-007: `createDrizzleIdentityEraserStore` is the production store the composition

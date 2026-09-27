@@ -57,6 +57,8 @@ import {
   MembershipViewSchema as M2MembershipViewSchema,
   OrgBindingResponseSchema as M2OrgBindingResponseSchema,
   OrgInvitationCreateRequestSchema as M2OrgInvitationCreateRequestSchema,
+  OrganizationTransitionRequestSchema as M2OrganizationTransitionRequestSchema,
+  OrganizationTransitionResponseSchema as M2OrganizationTransitionResponseSchema,
   SelectOrganizationRequestSchema as M2SelectOrganizationRequestSchema,
   StepUpInitiateRequestSchema as M2StepUpInitiateRequestSchema,
   StepUpInitiateResponseSchema as M2StepUpInitiateResponseSchema,
@@ -5309,6 +5311,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Bind the pre-org session to exactly one org (one-time, §7.2)",
     body: M2SelectOrganizationRequestSchema,
     response: M2OrgBindingResponseSchema,
+  },
+  "POST /api/v1/platform/organizations/:organizationId/status": {
+    summary: "Activate/suspend/close an organization (platform-ops, §11 D19)",
+    body: M2OrganizationTransitionRequestSchema,
+    response: M2OrganizationTransitionResponseSchema,
   },
   "POST /api/v1/orgs/:id/invitations": {
     summary: "Invite a user to an org (member.invite, §7.1)",

@@ -53,6 +53,7 @@ export {
 } from "./revocation-cascade";
 export {
   FhirStoreError,
+  NOOP_FHIR_OUTBOX,
   createInMemoryFhirGatewayStore,
   type CreateClientArgs,
   type FhirBearerContext,
@@ -63,7 +64,12 @@ export {
   type FhirInboundProposalView,
   type FhirSessionSummary,
   type FhirTenantConfigView,
+  type FhirWriteOutboxPort,
   type InMemoryFhirGatewaySeed,
 } from "./store";
-export { createDrizzleFhirGatewayStore, mintFhirJti } from "./store-drizzle";
+export {
+  createDrizzleFhirGatewayStore,
+  mintFhirJti,
+  type FhirGatewayStoreDeps,
+} from "./store-drizzle";
 export { parse, parseQuery } from "./m28-typebox";

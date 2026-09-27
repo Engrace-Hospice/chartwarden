@@ -16,6 +16,7 @@
 import type { AuditExecutor, NewAuditEvent } from "@wardenx/audit";
 import type { StepUpFactor } from "@wardenx/types";
 import type { FastifyRequest } from "fastify";
+import type { IdentityOutboxPort } from "./identity-ports";
 import type { SessionStepUpState } from "./policy/step-up-resolver";
 
 /** A step-up-qualifying MFA factor (SMS is excluded — D9 / §4.3.1). */
@@ -97,6 +98,8 @@ export interface StepUpRouteDeps {
   challenges: StepUpChallengeStore;
   /** Audit sink for the `m2.session.step_up.*` events (audit() executor). */
   audit: AuditExecutor;
+  /** The `m2.*` transactional-outbox publisher. Omitted → record-only, no-op. */
+  outbox?: IdentityOutboxPort;
   /** WebAuthn relying-party id echoed in the initiate response; default from env. */
   webauthnRpId?: string;
   /** Challenge-id generator (injectable for deterministic tests). */

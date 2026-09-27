@@ -129,6 +129,38 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m34.tenant.reactivated",
+    moduleOwner: "m34",
+    description:
+      "`suspended → active` (cause resolved) or `at_risk → active` (health predicates resolved); M36 confirms to platform-ops, M33 records the reactivation.",
+    payloadSchema: Type.Object({
+      tenantAccountId: id,
+      orgId: id,
+      reason: Type.String(),
+      actorMembershipId: id,
+      reactivatedAt: isoInstant,
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m33", "m36"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m34.tenant.at_risk",
+    moduleOwner: "m34",
+    description:
+      "`active → at_risk`: the §2.2 lifecycle-health predicates failed (no claim 60d / no clinical write 30d); M36 warns platform-ops. Drives the admin banner + warning header off the status read.",
+    payloadSchema: Type.Object({
+      tenantAccountId: id,
+      orgId: id,
+      reason: Type.String(),
+      actorMembershipId: id,
+      flaggedAt: isoInstant,
+    }),
+    declaredConsumers: [],
+    seamConsumers: ["m36"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m34.tenant.offboarding_initiated",
     moduleOwner: "m34",
     description:

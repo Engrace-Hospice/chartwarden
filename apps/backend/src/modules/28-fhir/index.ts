@@ -7,6 +7,7 @@
 // `fhir.write` stays OFF: the gateway is read-only US Core R4.
 export * from "./seams/index";
 export { createDrizzleFhirPublishedSeamStore } from "./seams/published-store-drizzle";
+export { M28_OUTBOX_EVENTS } from "./events-by-m28";
 export {
   type M28ContributedPermissionKey,
   type M28PermissionKey,
@@ -48,11 +49,14 @@ export {
   createInMemoryFhirGatewayStore,
   cascadeClientRevocation,
   FhirStoreError,
+  NOOP_FHIR_OUTBOX,
   mintFhirJti,
   type FhirDisclosureAuditPort,
   type FhirGatewayStore,
+  type FhirGatewayStoreDeps,
   type FhirRevocationCascadePort,
   type FhirRevocationCascadeResult,
+  type FhirWriteOutboxPort,
   type M28RouteServices,
   type FhirAssertionReplayGuard,
   type FhirJwksFetcher,

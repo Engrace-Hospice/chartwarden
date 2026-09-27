@@ -45,6 +45,8 @@ import {
   type FhirSessionSummary,
   FhirStoreError,
   type FhirTenantConfigView,
+  type FhirWriteOutboxPort,
+  NOOP_FHIR_OUTBOX,
   type StageInboundArgs,
 } from "./store";
 
@@ -69,7 +71,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  */
 const isUuid = (value: string): boolean => UUID_RE.test(value);
 
-export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
+export interface FhirGatewayStoreDeps {
+  readonly outbox?: FhirWriteOutboxPort;
+}
+
+export function createDrizzleFhirGatewayStore(
+  db: DbClient,
+  deps: FhirGatewayStoreDeps = {},
+): FhirGatewayStore {
+  const outbox = deps.outbox ?? NOOP_FHIR_OUTBOX;
   const CLIENT = schema.fhirClient;
   const CRED = schema.fhirClientCredential;
   const SESSION = schema.fhirClientSession;
@@ -231,10 +241,25 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
       return rows.map((r) => r.id);
     },
     async cancelJob(orgId, jobId) {
-      await tx
+      const [row] = await tx
         .update(JOB)
         .set({ status: "cancelled" })
-        .where(and(eq(JOB.id, jobId), eq(JOB.organizationId, orgId)));
+        .where(and(eq(JOB.id, jobId), eq(JOB.organizationId, orgId)))
+        .returning({ clientId: JOB.clientId });
+      if (row) {
+        await outbox.publish(tx, {
+          eventName: "m28.fhir.bulk_export.cancelled",
+          payload: {
+            jobId,
+            clientId: row.clientId,
+            cancelledByMembershipId: null,
+            cancelledAt: new Date().toISOString(),
+          },
+          organizationId: orgId,
+          aggregateKind: "fhir_bulk_export_job",
+          aggregateId: jobId,
+        });
+      }
     },
   });
 
@@ -316,6 +341,18 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
             status: "active",
           });
         }
+        await outbox.publish(tx, {
+          eventName: "m28.fhir.client.pending_approval",
+          payload: {
+            clientId: client.id,
+            proposedByMembershipId: args.proposedByMembershipId,
+            tier: args.tier,
+            allowedScopes: [...args.allowedScopes],
+          },
+          organizationId: orgId,
+          aggregateKind: "fhir_client",
+          aggregateId: client.id,
+        });
         return { client: clientDetailRow(client, 0), plaintextSecret };
       });
     },
@@ -346,6 +383,18 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
           approvedByComplianceMembershipId: complianceMembershipId,
           approvedAt: new Date(),
         });
+        await outbox.publish(tx, {
+          eventName: "m28.fhir.client.activated",
+          payload: {
+            clientId,
+            approvedByAdminMembershipId: row.approvedByAdminMembershipId,
+            approvedByComplianceMembershipId: complianceMembershipId,
+            approvedAt: new Date().toISOString(),
+          },
+          organizationId: orgId,
+          aggregateKind: "fhir_client",
+          aggregateId: clientId,
+        });
         const updated = await loadClientTx(tx, orgId, clientId);
         return clientDetailRow(updated, await activeSessionCount(tx, orgId, clientId));
       });
@@ -358,15 +407,29 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
           revokedAt: new Date(),
           revokedReason: rationale,
         });
+        await outbox.publish(tx, {
+          eventName: "m28.fhir.client.revoked",
+          payload: { clientId, revokedAt: new Date().toISOString(), rationale },
+          organizationId: orgId,
+          aggregateKind: "fhir_client",
+          aggregateId: clientId,
+        });
         const updated = await loadClientTx(tx, orgId, clientId);
         return { client: clientDetailRow(updated, 0), cascade };
       });
     },
 
-    async suspendClient(orgId, clientId, membershipId, _reason) {
+    async suspendClient(orgId, clientId, membershipId, reason) {
       return withOrgContext(db, ctx(orgId, membershipId), async (tx) => {
         const row = await loadClientTx(tx, orgId, clientId);
         const cascade = await enterStatus(tx, orgId, row, "suspended", {});
+        await outbox.publish(tx, {
+          eventName: "m28.fhir.client.suspended",
+          payload: { clientId, reason },
+          organizationId: orgId,
+          aggregateKind: "fhir_client",
+          aggregateId: clientId,
+        });
         const updated = await loadClientTx(tx, orgId, clientId);
         return { client: clientDetailRow(updated, 0), cascade };
       });
@@ -473,7 +536,20 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
             initiatedByMembershipId: args.initiatedByMembershipId,
           })
           .returning();
-        return jobView(row!);
+        const job = row!;
+        await outbox.publish(tx, {
+          eventName: "m28.fhir.bulk_export.accepted",
+          payload: {
+            jobId: job.id,
+            clientId: args.clientId,
+            resourceTypes: [...args.resourceTypes],
+            requestKind: args.requestKind,
+          },
+          organizationId: orgId,
+          aggregateKind: "fhir_bulk_export_job",
+          aggregateId: job.id,
+        });
+        return jobView(job);
       });
     },
 
@@ -507,6 +583,18 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
             .update(JOB)
             .set({ status: "cancelled" })
             .where(and(eq(JOB.id, jobId), eq(JOB.organizationId, orgId)));
+          await outbox.publish(tx, {
+            eventName: "m28.fhir.bulk_export.cancelled",
+            payload: {
+              jobId,
+              clientId: row.clientId,
+              cancelledByMembershipId: membershipId ?? null,
+              cancelledAt: new Date().toISOString(),
+            },
+            organizationId: orgId,
+            aggregateKind: "fhir_bulk_export_job",
+            aggregateId: jobId,
+          });
         }
         const [updated] = await tx
           .select()
@@ -568,6 +656,19 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
             acceptedAggregateId,
           })
           .where(and(eq(INBOUND.id, proposalId), eq(INBOUND.organizationId, orgId)));
+        await outbox.publish(tx, {
+          eventName: "m28.fhir.inbound.accepted",
+          payload: {
+            proposalId,
+            ownerModule: row.ownerModule,
+            acceptedAggregateId,
+            decidedByMembershipId: membershipId,
+            decidedAt: new Date().toISOString(),
+          },
+          organizationId: orgId,
+          aggregateKind: "fhir_inbound_resource",
+          aggregateId: proposalId,
+        });
         const [updated] = await tx
           .select()
           .from(INBOUND)
@@ -609,6 +710,19 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
             decisionRationale: rationale,
           })
           .where(and(eq(INBOUND.id, proposalId), eq(INBOUND.organizationId, orgId)));
+        await outbox.publish(tx, {
+          eventName: "m28.fhir.inbound.rejected",
+          payload: {
+            proposalId,
+            ownerModule: row.ownerModule,
+            decidedByMembershipId: membershipId,
+            decidedAt: new Date().toISOString(),
+            rationale,
+          },
+          organizationId: orgId,
+          aggregateKind: "fhir_inbound_resource",
+          aggregateId: proposalId,
+        });
         const [updated] = await tx
           .select()
           .from(INBOUND)
@@ -641,7 +755,22 @@ export function createDrizzleFhirGatewayStore(db: DbClient): FhirGatewayStore {
             proposalStatus: "pending",
           })
           .returning();
-        return proposalView(row!);
+        const proposal = row!;
+        await outbox.publish(tx, {
+          eventName: "m28.fhir.inbound.proposed",
+          payload: {
+            proposalId: proposal.id,
+            ownerModule,
+            resourceType: args.resourceType,
+            sourceClientId: args.sourceClientId,
+            proposedAt: proposal.proposedAt.toISOString(),
+            payloadSha256: proposal.payloadSha256,
+          },
+          organizationId: orgId,
+          aggregateKind: "fhir_inbound_resource",
+          aggregateId: proposal.id,
+        });
+        return proposalView(proposal);
       });
     },
 

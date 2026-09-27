@@ -43,6 +43,16 @@ export interface InboundTriggerPorts {
   ): Promise<readonly CoveringShiftCandidate[]>;
 }
 
+/** §4.8 M36 delivery-failure trigger's ONE extra read, kept off {@link InboundTriggerPorts} rather than
+ *  added to it — the M17/M18 triggers (and their tests) have no use for it, and widening the shared
+ *  interface would be a required-method break for every existing literal. */
+export interface DeliveryFailureTriggerPorts {
+  /** Is `triageCallId` still open (the `./inbound-trigger` coalesce grain's `OPEN_CALL_STATES` set)?
+   *  False for a nonexistent call, matching the "escalating nothing" refusal the decider already treats
+   *  identically to "closed". */
+  isCallOpen(organizationId: OrgId, triageCallId: TriageCallId): Promise<boolean>;
+}
+
 /**
  * Read the visit a trigger names back through M17's `VisitReader`, narrowed to the anchors a `triage_call`
  * needs.
