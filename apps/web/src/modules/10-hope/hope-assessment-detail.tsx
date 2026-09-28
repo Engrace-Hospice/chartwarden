@@ -389,9 +389,9 @@ export function HopeAssessmentDetail(): JSX.Element {
   const [inactivationOpen, setInactivationOpen] = useState(false);
   const [inactivating, setInactivating] = useState(false);
   // #91 (restored) — the §5.2 "Request summary" action: emits `m10.hope.summary_requested`; M22 renders.
-  const [summaryState, setSummaryState] = useState<"idle" | "requesting" | "requested" | "failed">(
-    "idle",
-  );
+  const [summaryState, setSummaryState] = useState<
+    "idle" | "requesting" | "requested" | "failed"
+  >("idle");
   const latestVersionRef = useRef<number | null>(null);
   const saveQueueRef = useRef<Promise<void>>(Promise.resolve());
   const [pendingItemFocus, setPendingItemFocus] = useState<string | null>(null);
@@ -585,16 +585,22 @@ export function HopeAssessmentDetail(): JSX.Element {
   }, [review]);
 
   const saveAnswer = useCallback(
-    async (item: WorkspaceItem, value: AnswerValue | null) => {
+    async (
+      item: WorkspaceItem | readonly WorkspaceItem[],
+      value: AnswerValue | null | ReadonlyMap<string, AnswerValue>,
+    ) => {
+      const items = Array.isArray(item) ? item : [item];
+      const primary = items[0];
       if (
         !id ||
         !workspace ||
         assessment?.status !== "draft" ||
-        PROTECTED_ITEMS.has(item.itemCode)
+        !primary ||
+        items.some((candidate) => PROTECTED_ITEMS.has(candidate.itemCode))
       )
         return;
       // Show A1400 conflicts at selection time; the server remains authoritative.
-      if (item.itemCode.startsWith("A1400")) {
+      if (items.some((candidate) => candidate.itemCode.startsWith("A1400"))) {
         setWorkspace((previous) =>
           previous
             ? {
@@ -602,8 +608,17 @@ export function HopeAssessmentDetail(): JSX.Element {
                 sections: previous.sections.map((section) => ({
                   ...section,
                   items: section.items.map((candidate) =>
-                    candidate.itemCode === item.itemCode
-                      ? { ...candidate, value }
+                    items.some(
+                      (changed) => changed.itemCode === candidate.itemCode,
+                    )
+                      ? {
+                          ...candidate,
+                          value:
+                            value instanceof Map
+                              ? (value.get(candidate.itemCode) ??
+                                candidate.value)
+                              : value,
+                        }
                       : candidate,
                   ),
                 })),
@@ -614,18 +629,28 @@ export function HopeAssessmentDetail(): JSX.Element {
       const run = async () => {
         setSaving("saving");
         setFieldErrors((prev) => {
-          const { [item.itemCode]: _old, ...rest } = prev;
-          return rest;
+          return Object.fromEntries(
+            Object.entries(prev).filter(
+              ([key]) => !items.some((candidate) => candidate.itemCode === key),
+            ),
+          );
         });
-        const change =
-          value === null || value === "" || value === "^"
-            ? { itemCode: item.itemCode, action: "clear" as const }
-            : { itemCode: item.itemCode, action: "set" as const, value };
+        const changes = items.map((candidate) => {
+          const nextValue =
+            value instanceof Map ? value.get(candidate.itemCode) : value;
+          return nextValue === null || nextValue === ""
+            ? { itemCode: candidate.itemCode, action: "clear" as const }
+            : {
+                itemCode: candidate.itemCode,
+                action: "set" as const,
+                value: nextValue,
+              };
+        });
         const res = await api.PATCH("/api/v1/hope/assessments/{id}/answers", {
           params: { path: { id } },
           body: {
             ifVersion: latestVersionRef.current ?? workspace.assessment.version,
-            changes: [change],
+            changes,
           },
         });
         if (res.error || !res.data) {
@@ -636,11 +661,12 @@ export function HopeAssessmentDetail(): JSX.Element {
           setSaving(conflict ? "conflict" : "failed");
           setFieldErrors((prev) => ({
             ...prev,
-            [item.itemCode]: conflict
+            [primary.itemCode]: conflict
               ? "This assessment changed elsewhere. Reload the latest version before continuing."
               : "This answer was not saved. Check the value and try again.",
           }));
-          if (item.itemCode.startsWith("A1400")) await refreshWorkspaceOnly();
+          if (items.some((candidate) => candidate.itemCode.startsWith("A1400")))
+            await refreshWorkspaceOnly();
           return;
         }
         latestVersionRef.current =
@@ -851,7 +877,7 @@ export function HopeAssessmentDetail(): JSX.Element {
       : `${config.id}. ${config.label}`;
   const secReview = review?.sections.find((s) => s.code === activeSection);
   const navViews: NavSectionView[] = visibleSections.map((section) =>
-    navView(section, review, workspace),
+    navView(section, review, workspace, completed),
   );
   const saveDraft = async (): Promise<void> => {
     await saveQueueRef.current;
@@ -946,7 +972,10 @@ export function HopeAssessmentDetail(): JSX.Element {
                     <Button
                       tone="secondary"
                       onClick={() => void requestSummary()}
-                      disabled={summaryState === "requesting" || summaryState === "requested"}
+                      disabled={
+                        summaryState === "requesting" ||
+                        summaryState === "requested"
+                      }
                     >
                       {summaryState === "requested"
                         ? "Summary requested"
@@ -954,7 +983,9 @@ export function HopeAssessmentDetail(): JSX.Element {
                           ? "Retry summary request"
                           : "Request summary"}
                     </Button>
-                    <Button onClick={() => void createCorrection()}>Create correction</Button>
+                    <Button onClick={() => void createCorrection()}>
+                      Create correction
+                    </Button>
                   </>
                 ) : (
                   <>
@@ -996,7 +1027,11 @@ export function HopeAssessmentDetail(): JSX.Element {
           </header>
 
           {completed ? (
-            <CompletedSummary assessment={assessment} review={review} />
+            <CompletedSummary
+              assessment={assessment}
+              review={review}
+              api={api}
+            />
           ) : null}
           {workspace.huv ? (
             <HuvTimingBanner workspace={workspace} review={review} />
@@ -1617,7 +1652,10 @@ function ReviewSfvDialog({
   );
 }
 
-type SaveFn = (item: WorkspaceItem, value: AnswerValue | null) => Promise<void>;
+type SaveFn = (
+  item: WorkspaceItem | readonly WorkspaceItem[],
+  value: AnswerValue | null | ReadonlyMap<string, AnswerValue>,
+) => Promise<void>;
 type Findings = Map<string, ReviewModel["validation"]["findings"]>;
 
 type PayerConsistencyFinding = {
@@ -1920,13 +1958,36 @@ function TileGroup(
         columns={3}
         options={props.items.map((item) => ({
           key: item.itemCode,
-          label: item.label,
+          label:
+            props.stem === "A1010"
+              ? item.label.replace(/^Race\s*:\s*/i, "")
+              : item.label,
           code: item.itemCode,
           checked: String(item.value ?? "") === "1",
         }))}
         onToggle={(code, checked) => {
-          const item = props.items.find((i) => i.itemCode === code);
-          if (item) void props.onSave(item, checked ? "1" : "0");
+          const values = new Map(
+            props.items
+              .filter((item) => item.applicability === "applicable")
+              .map((item) => [
+                item.itemCode,
+                item.itemCode === code
+                  ? checked
+                    ? "1"
+                    : "0"
+                  : String(item.value) === "1"
+                    ? "1"
+                    : "0",
+              ]),
+          );
+          void props.onSave(
+            [
+              ...props.items.filter(
+                (item) => item.applicability === "applicable",
+              ),
+            ],
+            values,
+          );
         }}
       />
       {sourced ? (
@@ -2457,22 +2518,95 @@ function AnswerControl(props: {
     );
   }
 
+  if (isSectionIOtherConditionYesNo(props.item)) {
+    return (
+      <div
+        role="group"
+        aria-label={`${props.item.label}: select Yes or No`}
+        aria-describedby={props.describedBy}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          gap: ".875rem",
+          minHeight: "2.25rem",
+        }}
+      >
+        {(
+          [
+            ["1", "Yes"],
+            ["0", "No"],
+          ] as const
+        ).map(([code, label]) => (
+          <label
+            key={code}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: ".4rem",
+              cursor: props.readonly ? "default" : "pointer",
+              fontSize: ".875rem",
+            }}
+          >
+            <input
+              id={code === "1" ? props.inputId : undefined}
+              type="checkbox"
+              checked={value === code}
+              disabled={props.readonly}
+              style={{
+                width: "1rem",
+                height: "1rem",
+                margin: 0,
+                accentColor: "var(--color-primary)",
+              }}
+              onChange={(event) => {
+                if (event.currentTarget.checked)
+                  void props.onSave(props.item, code);
+              }}
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+    );
+  }
+
   if (isTextItem(props.item)) {
     return (
-      <input
-        id={props.inputId}
-        type="text"
-        defaultValue={value === "Text" ? "" : value}
-        maxLength={props.item.maxLength ?? undefined}
-        placeholder={textPlaceholder(props.item)}
-        readOnly={props.readonly}
-        aria-describedby={props.describedBy}
-        style={inputStyle}
-        onBlur={(event) => {
-          if (event.currentTarget.value !== value)
-            void props.onSave(props.item, event.currentTarget.value || null);
-        }}
-      />
+      <div style={{ display: "grid", gap: ".75rem" }}>
+        <input
+          id={props.inputId}
+          type="text"
+          defaultValue={
+            displayOptions.some((option) => option.valueCode === value)
+              ? ""
+              : value
+          }
+          maxLength={props.item.maxLength ?? undefined}
+          placeholder={textPlaceholder(props.item)}
+          readOnly={props.readonly}
+          aria-describedby={props.describedBy}
+          style={inputStyle}
+          onBlur={(event) => {
+            if (event.currentTarget.value !== value)
+              void props.onSave(props.item, event.currentTarget.value || null);
+          }}
+        />
+        {displayOptions.length ? (
+          <OptionRows
+            name={`${props.item.itemCode}-special`}
+            legend="Or select a CMS special value"
+            options={displayOptions}
+            value={
+              displayOptions.some((option) => option.valueCode === value)
+                ? value
+                : ""
+            }
+            disabled={props.readonly}
+            describedBy={props.describedBy}
+            onChange={(code) => void props.onSave(props.item, code)}
+          />
+        ) : null}
+      </div>
     );
   }
   // Block questions show their choices as full-width option rows (mockup); grid fields use a select.
@@ -2530,6 +2664,12 @@ function AnswerControl(props: {
   );
 }
 
+function isSectionIOtherConditionYesNo(item: WorkspaceItem): boolean {
+  if (item.section !== "I" || item.itemCode === "I0010") return false;
+  const codes = item.options.map((option) => option.valueCode).sort();
+  return codes.length === 2 && codes[0] === "0" && codes[1] === "1";
+}
+
 function isTextItem(item: WorkspaceItem): boolean {
   return (
     /text/i.test(item.cmsItemTypeCode ?? "") ||
@@ -2540,10 +2680,17 @@ function isTextItem(item: WorkspaceItem): boolean {
 function answerOptionsForControl(
   item: WorkspaceItem,
 ): WorkspaceItem["options"] {
-  return item.options.filter(
-    (option) =>
-      option.valueCode !== "Text" && !/^YYYY(MM(DD)?)?$/.test(option.valueCode),
-  );
+  return item.options
+    .filter(
+      (option) =>
+        option.valueCode !== "Text" &&
+        !/^YYYY(MM(DD)?)?$/.test(option.valueCode) &&
+        !(option.valueCode === "^" && /skip\s*pattern/i.test(option.label)),
+    )
+    .map((option) => ({
+      ...option,
+      label: option.label.replace(/^[0-9A-Z^]+(?:\s*[-.:=)]\s*|\s+)/i, ""),
+    }));
 }
 
 function textPlaceholder(item: WorkspaceItem): string | undefined {
@@ -3144,19 +3291,56 @@ function InactivationDialog(props: {
 function CompletedSummary({
   assessment,
   review,
+  api,
 }: {
   assessment: AssessmentDetail;
   review: ReviewModel | null;
+  api: HopeApiCompat;
 }): JSX.Element {
+  const signerId = assessment.signedBy ?? review?.signedByMembershipId ?? null;
+  const [signerName, setSignerName] = useState<string | null>(null);
+
+  useEffect(() => {
+    setSignerName(null);
+    if (!signerId || !assessment.patientId) return;
+    let active = true;
+    void (async () => {
+      const patient = await api.GET("/api/v1/patients/{id}", {
+        params: { path: { id: assessment.patientId } },
+      });
+      const organizationId = (
+        patient.data as { organizationId?: string } | undefined
+      )?.organizationId;
+      if (!organizationId) return;
+      const members = await api.GET("/api/v1/orgs/{id}/members", {
+        params: { path: { id: organizationId }, query: { q: signerId } },
+      });
+      const member = (
+        members.data as
+          | {
+              members?: Array<{
+                membershipId: string;
+                displayName?: string | null;
+                email?: string | null;
+              }>;
+            }
+          | undefined
+      )?.members?.find((candidate) => candidate.membershipId === signerId);
+      if (active && member)
+        setSignerName(member.displayName ?? member.email ?? null);
+    })();
+    return () => {
+      active = false;
+    };
+  }, [api, assessment.patientId, signerId]);
+
   return (
     <div style={completedBox}>
       <span aria-hidden="true">✓</span>
       <span>
-        Completed {formatDate(assessment.signedAt)} · Signed by the MD{" "}
-        {/* {assessment.signedBy ??
-          review?.signedByMembershipId ??
-          "recorded signer"}{" "} */}
-        · Z0500B {formatDate(review?.z0500b ?? assessment.signedAt)}
+        Completed {formatDate(assessment.signedAt)} · Signed by{" "}
+        {signerName ?? "the MD"} · Z0500B{" "}
+        {formatDate(review?.z0500b ?? assessment.signedAt)}
       </span>
     </div>
   );
@@ -3182,12 +3366,22 @@ function navView(
   section: { id: SectionId; label: string },
   review: ReviewModel | null,
   workspace: Workspace,
+  assessmentCompleted = false,
 ): NavSectionView {
   const title =
     section.id === "Review" ? "Review" : `${section.id}. ${section.label}`;
   const accessibleName =
     section.id === "Review" ? "Review" : `${section.id} ${section.label}`;
   if (section.id === "Review") {
+    if (assessmentCompleted || review?.status === "signed") {
+      return {
+        id: section.id,
+        title,
+        accessibleName,
+        state: "complete",
+        statusLine: "Completed",
+      };
+    }
     const blockers = review?.readiness.blockers.length ?? 0;
     return {
       id: section.id,
@@ -4340,6 +4534,10 @@ const modalBackdrop: CSSProperties = {
   padding: "1rem",
 };
 const modal: CSSProperties = {
+  position: "fixed",
+  top: "50%",
+  left: "50%",
+  transform: "translate(-50%, -50%)",
   width: "min(440px, 100%)",
   margin: 0,
   borderRadius: 8,

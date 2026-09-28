@@ -140,6 +140,16 @@ function uniqueBlockers(readiness: Readiness | null, activeTerminal?: Problem): 
   return [...labels];
 }
 
+/** A successful signature response is authoritative even if the following workspace read is stale. */
+function signedVersionFromMutation(response: unknown): Version | null {
+  const data = (response as { data?: unknown } | null)?.data;
+  if (!data || typeof data !== "object") return null;
+  const version = data as Partial<Version>;
+  return version.status === "signed" && typeof version.id === "string"
+    ? (version as Version)
+    : null;
+}
+
 export function CarePlanView(): JSX.Element {
   const client = useApiClient();
   const navigate = useNavigate();
@@ -223,7 +233,7 @@ export function CarePlanView(): JSX.Element {
   }, [modal]);
 
   async function mutate(
-    action: () => Promise<{ error?: unknown }>,
+    action: () => Promise<{ data?: unknown; error?: unknown }>,
     success: string,
   ): Promise<void> {
     setBusy(true);
@@ -260,7 +270,7 @@ export function CarePlanView(): JSX.Element {
         return;
       }
 
-      const userMessage = errorMessage(
+      const userMessage = carePlanErrorMessage(
         res.error,
         "The Care Plan action could not be completed. Please try again.",
       );
@@ -270,8 +280,32 @@ export function CarePlanView(): JSX.Element {
       return;
     }
 
+    const signedVersion = signedVersionFromMutation(res);
     setModal(null);
     await reload(success);
+    if (signedVersion) {
+      setPlan((current) =>
+        current
+          ? {
+              ...current,
+              status: "active",
+              activeVersionId: signedVersion.id,
+              versions: current.versions.map((version) =>
+                version.id === signedVersion.id ? signedVersion : version,
+              ),
+            }
+          : current,
+      );
+      setReadiness({
+        planId: signedVersion.planId,
+        openVersionId: null,
+        canFinalize: false,
+        canSign: false,
+        blockers: [],
+        signatures: { required: [], collected: [], missing: [] },
+      });
+      setSelectedVersionId(signedVersion.id);
+    }
   }
 
   async function startVersion(kind: "interim_revision" | "idg_review"): Promise<void> {
@@ -1897,15 +1931,16 @@ function ProblemForm({
           error={fieldError(error, "description")}
         />
         <div style={fieldGrid2}>
-          <Select
-            label="Problem type"
-            value={kind}
-            onChange={setKind}
-            options={PROBLEM_KINDS}
-            hint="Terminal problems anchor the hospice plan of care."
-          />
+            <Select
+              label="Problem type"
+              value={kind}
+              onChange={setKind}
+              options={PROBLEM_KINDS}
+              hint="Terminal problems anchor the hospice plan of care."
+              error={fieldError(error, "kind")}
+            />
           {!state.problem ? (
-            <Select label="Source" value={source} onChange={setSource} options={PROBLEM_SOURCES} />
+            <Select label="Source" value={source} onChange={setSource} options={PROBLEM_SOURCES} error={fieldError(error, "source")} />
           ) : null}
         </div>
       </FormSection>
@@ -2432,6 +2467,30 @@ function FormSection({
   );
 }
 
+/** Turn structured backend validation into actionable copy while retaining its exact reason. */
+function carePlanErrorMessage(error: unknown, fallback: string): string {
+  const payload = error as {
+    message?: string;
+    error?: { message?: string; details?: Array<{ field?: string; message?: string }> };
+    details?: Array<{ field?: string; message?: string }>;
+  };
+  const details = payload.error?.details ?? payload.details ?? [];
+  if (!details.length) return errorMessage(error, fallback);
+  const labels: Record<string, string> = {
+    source: "Source",
+    kind: "Problem type",
+    description: "Problem description",
+  };
+  return `Please review the highlighted field${details.length > 1 ? "s" : ""}. ${details
+    .map((detail) => {
+      const field = detail.field ?? "form";
+      const reason = detail.message ?? "The value is not accepted.";
+      const guidance = field === "source" ? "Choose one of the available source options." : reason;
+      return `${labels[field] ?? field}: ${guidance}${guidance === reason ? "" : ` (${reason})`}`;
+    })
+    .join(" ")}`;
+}
+
 /** Fastify schema errors name the rejected body property; keep that feedback by its input. */
 function fieldError(message: string | null, property: string): string | null {
   if (!message) return null;
@@ -2525,12 +2584,14 @@ function Select({
   onChange,
   options,
   hint,
+  error,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   options: readonly (string | { value: string; label: string })[];
   hint?: string;
+  error?: string | null;
 }): JSX.Element {
   return (
     <label style={field}>
@@ -2550,6 +2611,7 @@ function Select({
           );
         })}
       </select>
+      {error ? <span style={fieldErrorText}>{error}</span> : null}
       {hint ? <span style={fieldHint}>{hint}</span> : null}
     </label>
   );

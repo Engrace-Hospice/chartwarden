@@ -18,11 +18,10 @@ import {
 // Reads GET /api/v1/orders/:id via the typed client; the server enforces every scope
 // incl. ABAC (ADR-0030 — no frontend authz; out-of-scope orders 404, never 403). Leaves only (@wardenx/ui).
 import { useCallback, useEffect, useState } from "react";
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
 import { useParams } from "react-router-dom";
 import { OrderEditor } from "./order-editor";
 import type { EditableOrder } from "./order-editor";
-import type { CSSProperties } from "react";
 import {
   COSIGN_TONE,
   ORDER_TONE,
@@ -54,6 +53,15 @@ interface OrderDetailView {
   createdAt: string;
   kindVersion: string;
   data: unknown;
+  verbalOrder: {
+    status: string;
+    receivedAt: string;
+    effectiveAt: string;
+    deadlineAt: string;
+    signedAt: string | null;
+    readBackVerified: boolean;
+    attestation: string;
+  } | null;
   requirements: Array<{
     code: string;
     label: string;
@@ -145,6 +153,7 @@ export function OrderDetail(): JSX.Element {
   };
 
   const isLab = row?.kind === "lab";
+  const verbalPending = row?.status === "verbal_pending";
 
   return (
     <DetailPageLayout
@@ -250,6 +259,12 @@ export function OrderDetail(): JSX.Element {
                           {item.deadlineAt ? (
                             <small style={muted}>Due {ts(item.deadlineAt)}</small>
                           ) : null}
+                          {item.code === "verbal_signature" && item.status === "pending" ? (
+                            <small style={muted}>
+                              An eligible physician must authenticate this verbal order before the
+                              deadline. Use “Authenticate verbal order” below.
+                            </small>
+                          ) : null}
                         </div>
                       </li>
                     ))}
@@ -277,7 +292,14 @@ export function OrderDetail(): JSX.Element {
             row.allowedActions.request_signature ||
             row.allowedActions.sign ? (
               <div style={actionGroup}>
-                <h3 style={subheading}>Prepare and sign</h3>
+                <h3 style={subheading}>
+                  {verbalPending ? "Authenticate verbal order" : "Prepare and sign"}
+                </h3>
+                {verbalPending ? (
+                  <p style={hint}>
+                    This completes the physician authentication for the recorded verbal order.
+                  </p>
+                ) : null}
                 {row.allowedActions.request_signature || row.allowedActions.sign ? (
                   <label style={field}>
                     Signer discipline
@@ -320,7 +342,7 @@ export function OrderDetail(): JSX.Element {
                       }
                       disabled={busy}
                     >
-                      Sign order
+                      {verbalPending ? "Authenticate verbal order" : "Sign order"}
                     </Button>
                   ) : null}
                 </div>
@@ -329,13 +351,11 @@ export function OrderDetail(): JSX.Element {
             {row.allowedActions.record_verbal ? (
               <div style={actionGroup}>
                 <div style={{ marginBottom: 16 }}>
-                  <h3 style={{ ...subheading, marginBottom: 4 }}>
-                    Verbal order
-                  </h3>
+                  <h3 style={{ ...subheading, marginBottom: 4 }}>Verbal order</h3>
 
                   <p style={{ ...muted, margin: 0 }}>
-                    Document the physician communication and verify the order
-                    before recording it as verbal.
+                    Document the physician communication and verify the order before recording it as
+                    verbal.
                   </p>
                 </div>
 
@@ -346,10 +366,11 @@ export function OrderDetail(): JSX.Element {
 
                     <strong style={verbalInfoValue}>
                       {
-                      // row.orderingPhysicianName ??
-                      row.orderingPhysicianMdmId ?
-                        `Physician ${row.orderingPhysicianMdmId.slice(0, 5)}...` :
-                        "Not assigned"}
+                        // row.orderingPhysicianName ??
+                        row.orderingPhysicianMdmId
+                          ? `Physician ${row.orderingPhysicianMdmId.slice(0, 5)}...`
+                          : "Not assigned"
+                      }
                     </strong>
                   </div>
 
@@ -386,9 +407,7 @@ export function OrderDetail(): JSX.Element {
                     <input
                       type="datetime-local"
                       value={verbalEffectiveAt}
-                      onChange={(event) =>
-                        setVerbalEffectiveAt(event.target.value)
-                      }
+                      onChange={(event) => setVerbalEffectiveAt(event.target.value)}
                       disabled={busy}
                       style={control}
                       required
@@ -411,9 +430,7 @@ export function OrderDetail(): JSX.Element {
                   <input
                     type="checkbox"
                     checked={readBackVerified}
-                    onChange={(event) =>
-                      setReadBackVerified(event.target.checked)
-                    }
+                    onChange={(event) => setReadBackVerified(event.target.checked)}
                     disabled={busy}
                   />
 
@@ -421,8 +438,8 @@ export function OrderDetail(): JSX.Element {
                     <strong>Read back and verified</strong>
 
                     <span style={readBackDescription}>
-                      I read the order back to the physician and verified that
-                      it accurately reflects the physician's instructions.
+                      I read the order back to the physician and verified that it accurately
+                      reflects the physician's instructions.
                     </span>
                   </span>
                 </label>
@@ -650,6 +667,41 @@ export function OrderDetail(): JSX.Element {
               </>
             ) : null}
           </dl>
+          <section
+            style={{ ...card, marginTop: "1rem" }}
+            aria-labelledby="clinical-details-heading"
+          >
+            <h2 id="clinical-details-heading" style={heading}>
+              Clinical details
+            </h2>
+            <OrderDataDetails data={row.data} />
+          </section>
+          {row.verbalOrder ? (
+            <section
+              style={{ ...card, marginTop: "1rem" }}
+              aria-labelledby="verbal-details-heading"
+            >
+              <h2 id="verbal-details-heading" style={heading}>
+                Verbal-order details
+              </h2>
+              <dl style={detailList}>
+                <dt style={dt}>Status</dt>
+                <dd style={dd}>{stateLabel(row.verbalOrder.status)}</dd>
+                <dt style={dt}>Received</dt>
+                <dd style={dd}>{ts(row.verbalOrder.receivedAt)}</dd>
+                <dt style={dt}>Effective</dt>
+                <dd style={dd}>{ts(row.verbalOrder.effectiveAt)}</dd>
+                <dt style={dt}>Signature deadline</dt>
+                <dd style={dd}>{ts(row.verbalOrder.deadlineAt)}</dd>
+                <dt style={dt}>Signed</dt>
+                <dd style={dd}>{ts(row.verbalOrder.signedAt)}</dd>
+                <dt style={dt}>Read back verified</dt>
+                <dd style={dd}>{row.verbalOrder.readBackVerified ? "Yes" : "No"}</dd>
+              </dl>
+              <h3 style={{ ...subheading, marginTop: "1rem" }}>Physician communication</h3>
+              <p style={attestation}>{row.verbalOrder.attestation}</p>
+            </section>
+          ) : null}
           <OrderEditor
             open={correctOpen}
             onClose={() => setCorrectOpen(false)}
@@ -674,6 +726,49 @@ export function OrderDetail(): JSX.Element {
       )}
     </DetailPageLayout>
   );
+}
+
+function OrderDataDetails({ data }: { readonly data: unknown }): JSX.Element {
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    return <p style={hint}>No structured clinical details are available for this order.</p>;
+  }
+  const entries = Object.entries(data as Record<string, unknown>);
+  if (entries.length === 0)
+    return <p style={hint}>No structured clinical details are available.</p>;
+  return (
+    <dl style={detailList}>
+      {entries.map(([key, value]) => (
+        <div key={key} style={detailRow}>
+          <dt style={dt}>{humanizeKey(key)}</dt>
+          <dd style={{ ...dd, overflowWrap: "anywhere" }}>{detailValue(value)}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+function humanizeKey(key: string): string {
+  return key.replace(/([a-z])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
+}
+
+function detailValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (Array.isArray(value))
+    return (
+      value
+        .map((entry) => detailValue(entry))
+        .filter((entry) => entry !== "—")
+        .join(", ") || "—"
+    );
+  if (typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    if (typeof object.display === "string") return object.display;
+    if (typeof object.code === "string") return object.code;
+    return JSON.stringify(value);
+  }
+  return String(value);
 }
 
 function statusText(row: OrderDetailView): string {
@@ -709,6 +804,22 @@ const meta = {
 } as const;
 const dt = { fontWeight: 600, color: "var(--color-on-surface)" } as const;
 const dd = { margin: 0 } as const;
+const detailList = {
+  display: "grid",
+  gridTemplateColumns: "minmax(10rem, 14rem) minmax(0, 1fr)",
+  gap: "0.5rem 1rem",
+  margin: 0,
+  fontSize: "0.875rem",
+} as const;
+const detailRow = { display: "contents" } as const;
+const attestation = {
+  whiteSpace: "pre-wrap" as const,
+  margin: 0,
+  padding: "0.75rem",
+  background: "var(--color-surface-container)",
+  borderRadius: ".5rem",
+  lineHeight: 1.5,
+};
 
 const card = {
   padding: "1.25rem",

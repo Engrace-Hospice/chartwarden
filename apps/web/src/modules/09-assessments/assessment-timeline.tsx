@@ -76,7 +76,7 @@ export function AssessmentTimeline(): JSX.Element {
     if (!patientId) return;
     void loadScaleCatalog(client).then(setCatalog);
     void loadPatientAdmissions(client, patientId).then((rows) =>
-      setAdmissionId(rows.find((a) => a.dischargedAt == null)?.id ?? null),
+      setAdmissionId(rows.find((a) => a.state === "active")?.id ?? null),
     );
   }, [client, patientId]);
 
@@ -167,6 +167,7 @@ export function AssessmentTimeline(): JSX.Element {
         />
       </>
     ) : null;
+  const admissionRequired = patientId && admissionId === null;
 
   if (loading) {
     return (
@@ -200,7 +201,14 @@ export function AssessmentTimeline(): JSX.Element {
               title="No assessments"
               description="No clinical scales have been recorded for this patient."
             />
-            <div style={{ paddingTop: "1rem" }}>{recordControls}</div>
+            <div style={{ paddingTop: "1rem" }}>
+              {recordControls}
+              {admissionRequired ? (
+                <p style={recordingBlockedText}>
+                  Assessments can be recorded after the patient’s admission is active.
+                </p>
+              ) : null}
+            </div>
           </div>
         </div>
       </PatientWorkspaceLayout>
@@ -517,6 +525,11 @@ const meta: CSSProperties = {
   fontSize: "0.78rem",
   color: t.onSurfaceVariant,
   margin: "0.25rem 0 0",
+};
+const recordingBlockedText: CSSProperties = {
+  fontSize: "0.8rem",
+  color: t.onSurfaceVariant,
+  margin: "0.75rem 0 0",
 };
 const tag: CSSProperties = {
   color: t.muted,

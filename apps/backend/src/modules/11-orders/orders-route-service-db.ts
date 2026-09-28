@@ -149,6 +149,12 @@ type OrderRow = {
   completedAt: Date | null;
   createdAt: Date;
   verbalDeadlineAt: Date | null;
+  verbalStatus: string | null;
+  verbalReceivedAt: Date | null;
+  verbalEffectiveAt: Date | null;
+  verbalSignedAt: Date | null;
+  verbalReadBackVerified: boolean | null;
+  verbalAttestation: string | null;
   signedBy: string | null;
 };
 
@@ -187,6 +193,23 @@ const toOrderDetailView = (
   ...toOrderView(r),
   kindVersion: r.kindVersion,
   data: r.data,
+  verbalOrder:
+    r.verbalStatus &&
+    r.verbalReceivedAt &&
+    r.verbalEffectiveAt &&
+    r.verbalDeadlineAt &&
+    r.verbalReadBackVerified !== null &&
+    r.verbalAttestation
+      ? {
+          status: r.verbalStatus,
+          receivedAt: iso(r.verbalReceivedAt) as string,
+          effectiveAt: iso(r.verbalEffectiveAt) as string,
+          deadlineAt: iso(r.verbalDeadlineAt) as string,
+          signedAt: iso(r.verbalSignedAt),
+          readBackVerified: r.verbalReadBackVerified,
+          attestation: r.verbalAttestation,
+        }
+      : null,
   ...buildOrderWorkflowProjection(
     { ...toOrderView(r), kindVersion: r.kindVersion, data: r.data },
     actor,
@@ -270,17 +293,19 @@ export function createDbOrderBackend(
         completedAt: OR.completedAt,
         createdAt: OR.createdAt,
         verbalDeadlineAt: VO.deadlineAt,
+        verbalStatus: VO.status,
+        verbalReceivedAt: VO.receivedAt,
+        verbalEffectiveAt: VO.effectiveAt,
+        verbalSignedAt: VO.signedAt,
+        verbalReadBackVerified: VO.readBackVerified,
+        verbalAttestation: VO.verbalAttestation,
         signedBy: OS.signerMembershipId,
       })
       .from(OR)
       .leftJoin(VO, and(eq(VO.targetKind, "order"), eq(VO.targetId, OR.id)))
       .leftJoin(
         OS,
-        and(
-          eq(OS.targetKind, "order"),
-          eq(OS.targetId, OR.id),
-          eq(OS.signatureKind, "signature"),
-        ),
+        and(eq(OS.targetKind, "order"), eq(OS.targetId, OR.id), eq(OS.signatureKind, "signature")),
       )
       .where(where)
       .orderBy(desc(OR.createdAt), desc(OR.id));
@@ -290,10 +315,7 @@ export function createDbOrderBackend(
     extra: SQL | undefined,
   ): Promise<{ orders: OrderView[] }> =>
     withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-      const rows = (await selectOrders(
-        tx as DbClient,
-        extra,
-      )) as unknown as OrderRow[];
+      const rows = (await selectOrders(tx as DbClient, extra)) as unknown as OrderRow[];
       return { orders: rows.map(toOrderView) };
     });
 
@@ -303,9 +325,7 @@ export function createDbOrderBackend(
     id: string,
     actor: OrderDetailActor,
   ): Promise<OrderDetailView> {
-    const rows = (await selectOrders(tx, eq(OR.id, id)).limit(
-      1,
-    )) as unknown as OrderRow[];
+    const rows = (await selectOrders(tx, eq(OR.id, id)).limit(1)) as unknown as OrderRow[];
     const row = firstOrThrow(rows, `order ${id} not found`);
     const policy = await cosignPolicyOf(tx);
     const needed = row.cosignRequired
@@ -330,15 +350,8 @@ export function createDbOrderBackend(
   };
 
   /** Re-read one standing order WITHIN the caller's tx (a nested `withOrgContext` would not see the write). */
-  async function readStanding(
-    tx: DbClient,
-    id: string,
-  ): Promise<StandingOrderView> {
-    const [r] = await tx
-      .select(standingCols)
-      .from(SO)
-      .where(eq(SO.id, id))
-      .limit(1);
+  async function readStanding(tx: DbClient, id: string): Promise<StandingOrderView> {
+    const [r] = await tx.select(standingCols).from(SO).where(eq(SO.id, id)).limit(1);
     if (!r) throw new NotFoundError(`standing order ${id} not found`);
     return toStandingView(r);
   }
@@ -543,9 +556,7 @@ export function createDbOrderBackend(
           signatureKind: "signature",
           signerMembershipId: userId,
           signerDiscipline,
-          onBehalfOfMembershipId: onBehalf
-            ? (onBehalfArgs?.onBehalfOf ?? null)
-            : null,
+          onBehalfOfMembershipId: onBehalf ? (onBehalfArgs?.onBehalfOf ?? null) : null,
           onBehalfReason: onBehalf ? (onBehalfArgs?.reason ?? null) : null,
           signedAt: at,
         })
@@ -587,7 +598,14 @@ export function createDbOrderBackend(
         reason: onBehalfArgs.reason,
       });
     }
-    await emitDownstreamSignedEvent(tx, organizationId, id, r.kind as OrderKind, r.admissionId, r.data);
+    await emitDownstreamSignedEvent(
+      tx,
+      organizationId,
+      id,
+      r.kind as OrderKind,
+      r.admissionId,
+      r.data,
+    );
     if (fromVerbal) {
       const [v] = (await tx
         .select({ id: VO.id, deadlineAt: VO.deadlineAt })
@@ -595,18 +613,12 @@ export function createDbOrderBackend(
         .where(and(eq(VO.targetKind, "order"), eq(VO.targetId, id)))
         .limit(1)) as { id: string; deadlineAt: Date }[];
       if (v) {
-        await tx
-          .update(VO)
-          .set({ status: "signed_in_time", signedAt: at })
-          .where(eq(VO.id, v.id));
+        await tx.update(VO).set({ status: "signed_in_time", signedAt: at }).where(eq(VO.id, v.id));
         await emit(tx, organizationId, "m11.order.verbal_signed_in_time", id, {
           orderId: id,
           verbalOrderId: v.id,
           signedAt: at.toISOString(),
-          hoursBeforeDeadline: Math.max(
-            0,
-            (v.deadlineAt.getTime() - at.getTime()) / 3_600_000,
-          ),
+          hoursBeforeDeadline: Math.max(0, (v.deadlineAt.getTime() - at.getTime()) / 3_600_000),
         });
       }
     }
@@ -618,15 +630,10 @@ export function createDbOrderBackend(
     async listOrders(organizationId, filter) {
       const conds: SQL[] = [];
       if (filter.patientId) conds.push(eq(OR.patientId, filter.patientId));
-      if (filter.admissionId)
-        conds.push(eq(OR.admissionId, filter.admissionId));
+      if (filter.admissionId) conds.push(eq(OR.admissionId, filter.admissionId));
       if (filter.kind) conds.push(eq(OR.kind, filter.kind as OrderKind));
-      if (filter.status)
-        conds.push(eq(OR.status, filter.status as OrderStatus));
-      return listWhere(
-        organizationId,
-        conds.length ? and(...conds) : undefined,
-      );
+      if (filter.status) conds.push(eq(OR.status, filter.status as OrderStatus));
+      return listWhere(organizationId, conds.length ? and(...conds) : undefined);
     },
     async getOrder(organizationId, id, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
@@ -654,21 +661,10 @@ export function createDbOrderBackend(
     },
 
     // ── Order writes (§2.2 lifecycle; the DB triggers do the state transitions) ──────────────────────
-    async createDraft(
-      organizationId,
-      userId,
-      args,
-      actor = EMPTY_ORDER_DETAIL_ACTOR,
-    ) {
+    async createDraft(organizationId, userId, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
-        const id = await insertDraft(
-          t,
-          organizationId,
-          userId,
-          args,
-          args.replacesOrderId ?? null,
-        );
+        const id = await insertDraft(t, organizationId, userId, args, args.replacesOrderId ?? null);
         return readOrder(t, id, actor);
       });
     },
@@ -679,42 +675,109 @@ export function createDbOrderBackend(
         const id = await insertDraft(t, organizationId, userId, args.order, null);
         const r = await loadOrderRow(t, id);
         const findings = validateOrderData(r.kind as OrderKind, r.kindVersion, r.data);
-        if (findings.length) throw new ValidationError("Order is not ready for signature", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
+        if (findings.length)
+          throw new ValidationError(
+            "Order is not ready for signature",
+            findings.map((finding) => ({
+              field: `data.${finding.field}`,
+              code: "INVALID",
+              message: finding.message,
+            })),
+          );
         const requirement = resolveCosignRequirement({
           kind: r.kind as OrderKind,
           drafterDiscipline: r.drafterDiscipline,
           signerDiscipline: args.order.drafterDiscipline,
           policy: await cosignPolicyOf(t),
         });
-        transitionOrder(r.status, { type: "requestSignature", requiredFieldsComplete: true, cosignRequired: requirement != null, cosignerRoleNeeded: requirement?.cosignerRoleNeeded });
-        await t.update(OR).set({ status: "pending_signature", cosignRequired: requirement != null, cosignStatus: requirement != null ? "pending" : "attached", version: r.version + 1, updatedAt: new Date() }).where(eq(OR.id, id));
-        await emit(t, organizationId, "m11.order.signature_requested", id, { orderId: id, kind: r.kind, orderingPhysicianMdmId: r.orderingPhysicianMdmId });
-        if (requirement) await emit(t, organizationId, "m11.order.cosign_requested", id, { orderId: id, kind: r.kind, cosignerRoleNeeded: requirement.cosignerRoleNeeded });
-        if (!args.verbal.readBackVerified) throw Object.assign(new Error("Verbal order must be read back and verified"), { code: "VERBAL_READ_BACK_REQUIRED", statusCode: 422 });
-        transitionOrder("pending_signature", { type: "recordVerbal", kind: r.kind as OrderKind, attestationRecorded: args.verbal.verbalAttestation.length >= 100, recorderEligible: true });
+        transitionOrder(r.status, {
+          type: "requestSignature",
+          requiredFieldsComplete: true,
+          cosignRequired: requirement != null,
+          cosignerRoleNeeded: requirement?.cosignerRoleNeeded,
+        });
+        await t
+          .update(OR)
+          .set({
+            status: "pending_signature",
+            cosignRequired: requirement != null,
+            cosignStatus: requirement != null ? "pending" : "attached",
+            version: r.version + 1,
+            updatedAt: new Date(),
+          })
+          .where(eq(OR.id, id));
+        await emit(t, organizationId, "m11.order.signature_requested", id, {
+          orderId: id,
+          kind: r.kind,
+          orderingPhysicianMdmId: r.orderingPhysicianMdmId,
+        });
+        if (requirement)
+          await emit(t, organizationId, "m11.order.cosign_requested", id, {
+            orderId: id,
+            kind: r.kind,
+            cosignerRoleNeeded: requirement.cosignerRoleNeeded,
+          });
+        if (!args.verbal.readBackVerified)
+          throw Object.assign(new Error("Verbal order must be read back and verified"), {
+            code: "VERBAL_READ_BACK_REQUIRED",
+            statusCode: 422,
+          });
+        transitionOrder("pending_signature", {
+          type: "recordVerbal",
+          kind: r.kind as OrderKind,
+          attestationRecorded: args.verbal.verbalAttestation.length >= 100,
+          recorderEligible: true,
+        });
         const policy = await verbalPolicyOf(t);
-        const deadlineIso = computeVerbalDeadline(args.verbal.receivedAt, { windowHours: policy.windowHours, businessHoursOnly: policy.businessHoursOnly, policyVersion: policy.policyVersion });
-        const v = firstOrThrow(await t.insert(VO).values({ organizationId, targetKind: "order", targetId: id, recordingMembershipId: userId, orderingPhysicianMdmId: args.verbal.orderingPhysicianMdmId, verbalAttestation: args.verbal.verbalAttestation, readBackVerified: true, effectiveAt: new Date(args.verbal.effectiveAt), receivedAt: new Date(args.verbal.receivedAt), deadlineAt: new Date(deadlineIso), deadlinePolicyVersion: policy.policyVersion, status: "pending" }).returning({ id: VO.id }), "verbal_order insert returned no row");
-        await t.update(OR).set({ orderingPhysicianMdmId: args.verbal.orderingPhysicianMdmId, updatedAt: new Date() }).where(eq(OR.id, id));
-        await emit(t, organizationId, "m11.order.verbal_received", id, { orderId: id, verbalOrderId: v.id, deadlineAt: deadlineIso, orderingPhysicianMdmId: args.verbal.orderingPhysicianMdmId, recordingMembershipId: userId });
+        const deadlineIso = computeVerbalDeadline(args.verbal.receivedAt, {
+          windowHours: policy.windowHours,
+          businessHoursOnly: policy.businessHoursOnly,
+          policyVersion: policy.policyVersion,
+        });
+        const v = firstOrThrow(
+          await t
+            .insert(VO)
+            .values({
+              organizationId,
+              targetKind: "order",
+              targetId: id,
+              recordingMembershipId: userId,
+              orderingPhysicianMdmId: args.verbal.orderingPhysicianMdmId,
+              verbalAttestation: args.verbal.verbalAttestation,
+              readBackVerified: true,
+              effectiveAt: new Date(args.verbal.effectiveAt),
+              receivedAt: new Date(args.verbal.receivedAt),
+              deadlineAt: new Date(deadlineIso),
+              deadlinePolicyVersion: policy.policyVersion,
+              status: "pending",
+            })
+            .returning({ id: VO.id }),
+          "verbal_order insert returned no row",
+        );
+        await t
+          .update(OR)
+          .set({
+            orderingPhysicianMdmId: args.verbal.orderingPhysicianMdmId,
+            updatedAt: new Date(),
+          })
+          .where(eq(OR.id, id));
+        await emit(t, organizationId, "m11.order.verbal_received", id, {
+          orderId: id,
+          verbalOrderId: v.id,
+          deadlineAt: deadlineIso,
+          orderingPhysicianMdmId: args.verbal.orderingPhysicianMdmId,
+          recordingMembershipId: userId,
+        });
         return readOrder(t, id, actor);
       });
     },
 
-    async editDraft(
-      organizationId,
-      id,
-      data,
-      priority,
-      actor = EMPTY_ORDER_DETAIL_ACTOR,
-    ) {
+    async editDraft(organizationId, id, data, priority, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
         if (r.status !== "draft")
-          throw new NotFoundError(
-            `order ${id} is not a draft and cannot be edited`,
-          );
+          throw new NotFoundError(`order ${id} is not a draft and cannot be edited`);
         await t
           .update(OR)
           .set({
@@ -728,20 +791,11 @@ export function createDbOrderBackend(
       });
     },
 
-    async requestSignature(
-      organizationId,
-      id,
-      args,
-      actor = EMPTY_ORDER_DETAIL_ACTOR,
-    ) {
+    async requestSignature(organizationId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
-        const findings = validateOrderData(
-          r.kind as OrderKind,
-          r.kindVersion,
-          r.data,
-        );
+        const findings = validateOrderData(r.kind as OrderKind, r.kindVersion, r.data);
         if (findings.length)
           throw new ValidationError(
             "Order is not ready for signature",
@@ -790,13 +844,7 @@ export function createDbOrderBackend(
       });
     },
 
-    async signOrder(
-      organizationId,
-      userId,
-      id,
-      args,
-      actor = EMPTY_ORDER_DETAIL_ACTOR,
-    ) {
+    async signOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         signInternal(
           tx as unknown as DbClient,
@@ -809,13 +857,7 @@ export function createDbOrderBackend(
         ),
       );
     },
-    async signOnBehalf(
-      organizationId,
-      userId,
-      id,
-      args,
-      actor = EMPTY_ORDER_DETAIL_ACTOR,
-    ) {
+    async signOnBehalf(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
         signInternal(
           tx as unknown as DbClient,
@@ -833,24 +875,15 @@ export function createDbOrderBackend(
       );
     },
 
-    async recordVerbal(
-      organizationId,
-      userId,
-      id,
-      args,
-      actor = EMPTY_ORDER_DETAIL_ACTOR,
-    ) {
+    async recordVerbal(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
         if (!args.readBackVerified) {
-          throw Object.assign(
-            new Error("Verbal order must be read back and verified"),
-            {
-              code: "VERBAL_READ_BACK_REQUIRED",
-              statusCode: 422,
-            },
-          );
+          throw Object.assign(new Error("Verbal order must be read back and verified"), {
+            code: "VERBAL_READ_BACK_REQUIRED",
+            statusCode: 422,
+          });
         }
         // Validates VERBAL_NOT_ALLOWED_FOR_KIND / VERBAL_ATTESTATION_REQUIRED / ILLEGAL_ORDER_TRANSITION.
         transitionOrder(r.status, {
@@ -912,13 +945,7 @@ export function createDbOrderBackend(
       });
     },
 
-    async cosignOrder(
-      organizationId,
-      userId,
-      id,
-      args,
-      actor = EMPTY_ORDER_DETAIL_ACTOR,
-    ) {
+    async cosignOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
@@ -971,13 +998,7 @@ export function createDbOrderBackend(
       });
     },
 
-    async discontinueOrder(
-      organizationId,
-      userId,
-      id,
-      args,
-      actor = EMPTY_ORDER_DETAIL_ACTOR,
-    ) {
+    async discontinueOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
@@ -1022,21 +1043,11 @@ export function createDbOrderBackend(
       });
     },
 
-    async correctOrder(
-      organizationId,
-      userId,
-      id,
-      args,
-      actor = EMPTY_ORDER_DETAIL_ACTOR,
-    ) {
+    async correctOrder(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         await loadOrderRow(t, id); // 404 if the original is cross-tenant/absent
-        const findings = validateOrderData(
-          args.kind,
-          ORDER_KIND_VERSION[args.kind],
-          args.data,
-        );
+        const findings = validateOrderData(args.kind, ORDER_KIND_VERSION[args.kind], args.data);
         if (findings.length)
           throw new ValidationError(
             "Corrected order clinical details are invalid",
@@ -1059,13 +1070,7 @@ export function createDbOrderBackend(
       });
     },
 
-    async completeOrder(
-      organizationId,
-      userId,
-      id,
-      _reason,
-      actor = EMPTY_ORDER_DETAIL_ACTOR,
-    ) {
+    async completeOrder(organizationId, userId, id, _reason, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
@@ -1137,9 +1142,7 @@ export function createDbOrderBackend(
           signerDiscipline: args.signerDiscipline,
         }); // §2.4 D5 guards
         const at = new Date();
-        const effectiveFrom = args.effectiveFrom
-          ? new Date(args.effectiveFrom)
-          : at;
+        const effectiveFrom = args.effectiveFrom ? new Date(args.effectiveFrom) : at;
         const row = firstOrThrow(
           await t
             .insert(SO)
@@ -1152,24 +1155,12 @@ export function createDbOrderBackend(
               templateData: args.data ?? {},
               cadence: args.cadence,
               effectiveFrom,
-              effectiveUntil: args.effectiveUntil
-                ? new Date(args.effectiveUntil)
-                : null,
+              effectiveUntil: args.effectiveUntil ? new Date(args.effectiveUntil) : null,
               maxSpawns: args.maxSpawns ?? null,
               spawnCount: 0,
               // Scheduled templates must have a cursor from creation; PRN remains null by definition.
-              nextSpawnAt: computeNextSpawnAt(
-                args.cadence,
-                {},
-                effectiveFrom.toISOString(),
-              )
-                ? new Date(
-                    computeNextSpawnAt(
-                      args.cadence,
-                      {},
-                      effectiveFrom.toISOString(),
-                    )!,
-                  )
+              nextSpawnAt: computeNextSpawnAt(args.cadence, {}, effectiveFrom.toISOString())
+                ? new Date(computeNextSpawnAt(args.cadence, {}, effectiveFrom.toISOString())!)
                 : null,
               orderingPhysicianMdmId: args.orderingPhysicianMdmId,
               signedByMembershipId: userId,
@@ -1208,8 +1199,7 @@ export function createDbOrderBackend(
           .from(SO)
           .where(eq(SO.id, id))
           .limit(1)) as (typeof SO.$inferSelect)[];
-        if (!existing)
-          throw new NotFoundError(`standing order ${id} not found`);
+        if (!existing) throw new NotFoundError(`standing order ${id} not found`);
         if (
           patch.data !== undefined ||
           patch.effectiveUntil !== undefined ||
@@ -1222,9 +1212,7 @@ export function createDbOrderBackend(
               ...(patch.effectiveUntil !== undefined
                 ? { effectiveUntil: new Date(patch.effectiveUntil) }
                 : {}),
-              ...(patch.maxSpawns != null
-                ? { maxSpawns: patch.maxSpawns }
-                : {}),
+              ...(patch.maxSpawns != null ? { maxSpawns: patch.maxSpawns } : {}),
               updatedAt: new Date(),
             })
             .where(eq(SO.id, id));
@@ -1235,10 +1223,7 @@ export function createDbOrderBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         await readStanding(t, id); // 404 if absent/cross-tenant
-        await t
-          .update(SO)
-          .set({ status: "paused", updatedAt: new Date() })
-          .where(eq(SO.id, id));
+        await t.update(SO).set({ status: "paused", updatedAt: new Date() }).where(eq(SO.id, id));
         return readStanding(t, id);
       });
     },
@@ -1246,18 +1231,11 @@ export function createDbOrderBackend(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         await readStanding(t, id); // 404 if absent/cross-tenant
-        await t
-          .update(SO)
-          .set({ status: "active", updatedAt: new Date() })
-          .where(eq(SO.id, id));
+        await t.update(SO).set({ status: "active", updatedAt: new Date() }).where(eq(SO.id, id));
         return readStanding(t, id);
       });
     },
-    async discontinueStandingOrder(
-      organizationId,
-      id,
-      alsoDiscontinueInstances,
-    ) {
+    async discontinueStandingOrder(organizationId, id, alsoDiscontinueInstances) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         await readStanding(t, id); // 404 if absent/cross-tenant
@@ -1378,8 +1356,7 @@ export function createDbOrderBackend(
               standingOrderId: id,
               orderRecordId: spawned.id,
               spawnedBy: "clinician_request",
-              spawnedByMembershipId:
-                trigger === "clinician_request" ? userId : null,
+              spawnedByMembershipId: trigger === "clinician_request" ? userId : null,
               scheduledFor: scheduledFor ? new Date(scheduledFor) : null,
             })
             .returning({ id: SOI.id }),
@@ -1389,24 +1366,16 @@ export function createDbOrderBackend(
           .update(SO)
           .set({
             spawnCount: tmpl.spawnCount + 1,
-            nextSpawnAt: plan.nextSpawnAt
-              ? new Date(plan.nextSpawnAt)
-              : tmpl.nextSpawnAt,
+            nextSpawnAt: plan.nextSpawnAt ? new Date(plan.nextSpawnAt) : tmpl.nextSpawnAt,
             updatedAt: at,
           })
           .where(eq(SO.id, id));
-        await emit(
-          t,
-          organizationId,
-          "m11.order.standing_spawned",
-          spawned.id,
-          {
-            standingOrderId: id,
-            instanceId: inst.id,
-            orderId: spawned.id,
-            spawnedBy: trigger,
-          },
-        );
+        await emit(t, organizationId, "m11.order.standing_spawned", spawned.id, {
+          standingOrderId: id,
+          instanceId: inst.id,
+          orderId: spawned.id,
+          spawnedBy: trigger,
+        });
         // D5's signature is inherited, not re-recorded on each instance.  The template id is therefore
         // deliberately the signature-anchor identifier in this projection event; no synthetic
         // `order_signature` row is created for a spawned order.
@@ -1418,25 +1387,19 @@ export function createDbOrderBackend(
           signedAt: (tmpl.signedAt ?? at).toISOString(),
           viaVerbal: false,
         });
-        await emit(
-          t,
-          organizationId,
-          "m11.order.document_requested",
-          spawned.id,
-          {
-            orderId: spawned.id,
-            formTemplate: "order_record",
-            renderPayload: {
-              patientId: tmpl.patientId,
-              admissionId: tmpl.admissionId,
-              kind: tmpl.kind,
-              signedAt: (tmpl.signedAt ?? at).toISOString(),
-              signerMembershipId: tmpl.signedByMembershipId,
-              viaVerbal: false,
-              standingOrderId: id,
-            },
+        await emit(t, organizationId, "m11.order.document_requested", spawned.id, {
+          orderId: spawned.id,
+          formTemplate: "order_record",
+          renderPayload: {
+            patientId: tmpl.patientId,
+            admissionId: tmpl.admissionId,
+            kind: tmpl.kind,
+            signedAt: (tmpl.signedAt ?? at).toISOString(),
+            signerMembershipId: tmpl.signedByMembershipId,
+            viaVerbal: false,
+            standingOrderId: id,
           },
-        );
+        });
         return { orderId: spawned.id };
       });
     },
@@ -1484,8 +1447,7 @@ export function createDbOrderBackend(
         return {
           windowHours: Number(r.windowHours),
           businessHoursOnly: r.businessHoursOnly,
-          lpnCosignRequiredKinds:
-            (r.lpnCosignRequiredKinds as OrderKind[]) ?? [],
+          lpnCosignRequiredKinds: (r.lpnCosignRequiredKinds as OrderKind[]) ?? [],
           npCosignRequiredKinds: (r.npCosignRequiredKinds as OrderKind[]) ?? [],
           platformFloorWindowHours: Number(r.platformFloorWindowHours),
           policyVersion: r.policyVersion,
@@ -1502,8 +1464,7 @@ export function createDbOrderBackend(
           .values({
             organizationId,
             windowHours: args.windowHours,
-            businessHoursOnly:
-              args.businessHoursOnly ?? current.businessHoursOnly,
+            businessHoursOnly: args.businessHoursOnly ?? current.businessHoursOnly,
             lpnCosignRequiredKinds: (args.lpnCosignRequiredKinds ??
               current.lpnCosignRequiredKinds) as OrderKind[],
             npCosignRequiredKinds: (args.npCosignRequiredKinds ??
@@ -1515,8 +1476,7 @@ export function createDbOrderBackend(
             target: VP.organizationId,
             set: {
               windowHours: args.windowHours,
-              businessHoursOnly:
-                args.businessHoursOnly ?? current.businessHoursOnly,
+              businessHoursOnly: args.businessHoursOnly ?? current.businessHoursOnly,
               lpnCosignRequiredKinds: (args.lpnCosignRequiredKinds ??
                 current.lpnCosignRequiredKinds) as OrderKind[],
               npCosignRequiredKinds: (args.npCosignRequiredKinds ??
@@ -1527,11 +1487,7 @@ export function createDbOrderBackend(
         return readPolicy(t);
       });
     },
-    async regenerateVerbalTimer(
-      organizationId,
-      id,
-      actor = EMPTY_ORDER_DETAIL_ACTOR,
-    ) {
+    async regenerateVerbalTimer(organizationId, id, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const r = await loadOrderRow(t, id);
@@ -1550,8 +1506,7 @@ export function createDbOrderBackend(
           orderingPhysicianMdmId: string;
           recordingMembershipId: string;
         }[];
-        if (!v)
-          throw new NotFoundError(`order ${id} has no verbal-order receipt`);
+        if (!v) throw new NotFoundError(`order ${id} has no verbal-order receipt`);
         const policy = await verbalPolicyOf(t);
         const deadlineIso = computeVerbalDeadline(new Date().toISOString(), {
           windowHours: policy.windowHours,

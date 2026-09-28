@@ -50,6 +50,7 @@ export function ReferralInbox(): JSX.Element {
   const [priority, setPriority] = useState("");
   const [resolution, setResolution] = useState("");
   const [source, setSource] = useState("");
+  const [includeConverted, setIncludeConverted] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(15);
 
@@ -62,8 +63,9 @@ export function ReferralInbox(): JSX.Element {
     if (priority) q.priority = priority;
     if (resolution) q.patientResolutionStatus = resolution;
     if (source) q.source = source;
+    if (includeConverted) q.includeConverted = true;
     return q;
-  }, [filter, priority, resolution, search, source]);
+  }, [filter, includeConverted, priority, resolution, search, source]);
 
   const load = useCallback(
     async (cursor?: string) => {
@@ -100,7 +102,7 @@ export function ReferralInbox(): JSX.Element {
   const pageCount = Math.max(1, Math.ceil(items.length / pageSize));
   const activePage = Math.min(page, pageCount);
   const paged = items.slice((activePage - 1) * pageSize, activePage * pageSize);
-  const filtered = filter || search || priority || resolution || source;
+  const filtered = filter || search || priority || resolution || source || includeConverted;
 
   function clearFilters(): void {
     setFilter("");
@@ -108,6 +110,7 @@ export function ReferralInbox(): JSX.Element {
     setPriority("");
     setResolution("");
     setSource("");
+    setIncludeConverted(false);
     setPage(1);
   }
 
@@ -224,6 +227,14 @@ export function ReferralInbox(): JSX.Element {
                 <option value="physician_office">Physician office</option>
                 <option value="hospital_discharge_planner">Hospital discharge planner</option>
               </select>
+              <label style={checkboxLabel}>
+                <input
+                  type="checkbox"
+                  checked={includeConverted}
+                  onChange={(ev) => setIncludeConverted(ev.target.checked)}
+                />
+                Show converted referrals
+              </label>
               {filtered ? (
                 <Button size="sm" tone="tertiary" onClick={clearFilters}>
                   Clear
@@ -413,6 +424,13 @@ const tools: CSSProperties = {
   flexWrap: "wrap",
   gap: "0.5rem",
   alignItems: "center",
+};
+const checkboxLabel: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "0.4rem",
+  fontSize: "0.875rem",
+  whiteSpace: "nowrap",
 };
 const tab = (active: boolean): CSSProperties => ({
   border: "1px solid var(--color-outline-variant)",

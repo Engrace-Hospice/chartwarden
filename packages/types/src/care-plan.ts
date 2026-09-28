@@ -311,6 +311,7 @@ export interface CarePlanReader {
     patientId: PatientId,
     encounterType: string,
     discipline: InterventionDiscipline,
+    admissionId?: string,
   ): Promise<RelevantCarePlanElements | null>;
 
   /** Whether the patient's active care plan is past a CoP 418.56 gate (5-day initial / 15-day review).

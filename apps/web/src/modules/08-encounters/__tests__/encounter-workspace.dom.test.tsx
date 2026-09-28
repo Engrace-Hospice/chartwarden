@@ -89,6 +89,46 @@ function renderPatientEncounters(client: {
 }
 
 describe("Encounter workspace web workflow", () => {
+  it("explains when an active Care Plan's linkable items are privacy-restricted", async () => {
+    const get = vi.fn(async (path: string) => {
+      if (path === "/api/v1/encounters/{encounterId}") return { data: encounter };
+      if (path === "/api/v1/encounters/{encounterId}/cosignature")
+        return { data: { status: null } };
+      if (path === "/api/v1/patients/{id}")
+        return {
+          data: {
+            firstName: "Ava",
+            lastName: "Stone",
+            dob: "1950-01-01",
+            mrn: "MRN1",
+            status: "active",
+          },
+        };
+      if (path === "/api/v1/internal/care-plan/relevant-elements")
+        return {
+          data: {
+            problems: [],
+            goals: [],
+            interventions: [],
+            redacted: true,
+          },
+        };
+      if (
+        path === "/api/v1/patients/{patientId}/assessments" ||
+        path === "/api/v1/patients/{patientId}/hope/assessments"
+      )
+        return { data: { assessments: [] } };
+      return { data: null };
+    });
+    const patch = vi.fn(async () => ({ data: { status: "ok" }, response: new Response() }));
+    const post = vi.fn(async () => ({ data: { status: "ok" }, response: new Response() }));
+    renderEncounter({ GET: get, PATCH: patch, POST: post });
+
+    expect(await screen.findByText("Care Plan items restricted")).toBeTruthy();
+    expect(screen.getByText(/privacy or consent settings/i)).toBeTruthy();
+    expect(screen.queryByText("No active Care Plan items")).toBeNull();
+  });
+
   it("persists documentation, vitals, care-plan links, and finalize through M8 APIs", async () => {
     const get = vi.fn(async (path: string) => {
       if (path === "/api/v1/encounters/{encounterId}") return { data: encounter };

@@ -102,6 +102,13 @@ const PAYER_ITEMS = [
   "A1400X",
   "A1400Y",
 ];
+const CHECKLIST_GROUP_ITEMS = new Set([
+  ...ETHNICITY_POSITIVE,
+  ...ETHNICITY_EXCLUSIVE,
+  ...RACE_POSITIVE,
+  ...RACE_EXCLUSIVE,
+  ...PAYER_ITEMS,
+]);
 const CLINICAL_DATES = [
   "J0900B",
   "J0910B",
@@ -254,7 +261,9 @@ const requirednessRule: HopeValidationRule = {
     return activeAssessmentItems(ctx)
       .filter(
         (itemCode) =>
-          !WORKFLOW_COMPLETION_ITEMS.has(itemCode) && !OPTIONAL_ASSESSMENT_ITEMS.has(itemCode),
+          !WORKFLOW_COMPLETION_ITEMS.has(itemCode) &&
+          !OPTIONAL_ASSESSMENT_ITEMS.has(itemCode) &&
+          !CHECKLIST_GROUP_ITEMS.has(itemCode),
       )
       .flatMap((itemCode) => required(ctx, itemCode));
   },
@@ -264,6 +273,9 @@ const skipStateRule: HopeValidationRule = {
   id: "hope-v1.00.1-skip-state-consistency",
   evaluate(ctx) {
     const out: HopeRuleFinding[] = [];
+    if (ctx.mode === "final" && [...ETHNICITY_POSITIVE, ...ETHNICITY_EXCLUSIVE].every((code) => !checked(ctx, code))) {
+      out.push(finding({ ruleId: "-3080", severity: "error", findingKind: "missing_required", itemCode: "A1005", section: "A", message: "At least one A1005 ethnicity selection is required." }));
+    }
     for (const itemCode of activeAssessmentItems(ctx)) {
       const applicability = applicabilityOf(ctx, itemCode);
       if (applicability === "not_applicable" && isAnswered(ctx.answers, itemCode)) {
@@ -360,6 +372,9 @@ const sectionARule: HopeValidationRule = {
         }),
       );
     }
+    if (ctx.mode === "final" && [...RACE_POSITIVE, ...RACE_EXCLUSIVE].every((code) => !checked(ctx, code))) {
+      out.push(finding({ ruleId: "-3090", severity: "error", findingKind: "missing_required", itemCode: "A1010", section: "A", message: "At least one A1010 race selection is required." }));
+    }
     if (
       RACE_EXCLUSIVE.some((code) => checked(ctx, code)) &&
       RACE_POSITIVE.some((code) => checked(ctx, code))
@@ -411,18 +426,6 @@ const sectionARule: HopeValidationRule = {
             "Medicaid FFS and Medicaid managed care payer selections are mutually exclusive.",
         }),
       );
-    }
-
-    const hasMedicare = checked(ctx, "A1400A") || checked(ctx, "A1400B");
-
-    const hasMedicaid = checked(ctx, "A1400C") || checked(ctx, "A1400D");
-
-    if (ctx.mode === "final" && hasMedicare) {
-      out.push(...required(ctx, "A0600B", "WX-HOPE-MEDICARE-NUMBER-REQUIRED"));
-    }
-
-    if (ctx.mode === "final" && hasMedicaid) {
-      out.push(...required(ctx, "A0700", "WX-HOPE-MEDICAID-NUMBER-REQUIRED"));
     }
 
     return out;

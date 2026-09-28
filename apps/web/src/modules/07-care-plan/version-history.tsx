@@ -179,7 +179,7 @@ function SignatureSummary({
       <h3 style={smallTitle}>Signatures</h3>
       <div style={chips}>
         {slots.map((slot) => {
-          const count = signatures.filter((s) => s.signerRole === slot.role).length;
+          const count = signatures.filter((s) => roleSatisfiesSlot(slot.role, s.signerRole)).length;
           return (
             <span key={slot.role} style={chip}>
               <Glyph name={count >= slot.count ? "check-circle" : "clock"} size={14} />
@@ -190,6 +190,10 @@ function SignatureSummary({
       </div>
     </section>
   );
+}
+
+function roleSatisfiesSlot(slotRole: string, signerRole: string): boolean {
+  return slotRole.split("|").includes(signerRole);
 }
 
 function Snapshot({ snapshot }: { snapshot: ClinicalSnapshot }): JSX.Element {

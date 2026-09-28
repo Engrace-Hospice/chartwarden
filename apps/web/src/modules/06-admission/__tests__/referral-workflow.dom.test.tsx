@@ -130,6 +130,26 @@ describe("Referral Phase 2 workflow screens", () => {
     expect(screen.getByText("Mercy General Hospital")).toBeTruthy();
     expect(screen.getAllByText("Urgent").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Not resolved").length).toBeGreaterThan(0);
+    expect(client.GET).toHaveBeenCalledWith(
+      "/api/v1/referrals",
+      expect.objectContaining({
+        params: expect.objectContaining({
+          query: expect.not.objectContaining({ includeConverted: true }),
+        }),
+      }),
+    );
+
+    fireEvent.click(screen.getByLabelText("Show converted referrals"));
+    await waitFor(() =>
+      expect(client.GET).toHaveBeenCalledWith(
+        "/api/v1/referrals",
+        expect.objectContaining({
+          params: expect.objectContaining({
+            query: expect.objectContaining({ includeConverted: true }),
+          }),
+        }),
+      ),
+    );
 
     fireEvent.change(screen.getByLabelText("Search referrals"), { target: { value: "Mercy" } });
     await waitFor(() =>
@@ -220,6 +240,29 @@ describe("Referral Phase 2 workflow screens", () => {
     ).toBe(true);
   });
 
+  it("allows referral information to be updated before qualification", async () => {
+    const client = clientFor();
+    renderWithShell(<ReferralDetail />, client, `/referrals/${referral.id}`);
+
+    await screen.findByRole("heading", { name: "Robert Johnson" });
+    fireEvent.change(screen.getByLabelText("Organization"), {
+      target: { value: "St. Mary's Hospital" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /save referral information/i }));
+
+    await waitFor(() =>
+      expect(client.PATCH).toHaveBeenCalledWith(
+        "/api/v1/referrals/{id}",
+        expect.objectContaining({
+          body: expect.objectContaining({
+            referrerOrganization: "St. Mary's Hospital",
+            ifVersion: referral.version,
+          }),
+        }),
+      ),
+    );
+  });
+
   it("uses the canonical referral conversion endpoint once a referral is qualified", async () => {
     const qualified = {
       ...referral,
@@ -244,6 +287,11 @@ describe("Referral Phase 2 workflow screens", () => {
         (screen.getByRole("button", { name: /start admission/i }) as HTMLButtonElement).disabled,
       ).toBe(false),
     );
+    expect(
+      (screen.getByRole("button", { name: /save referral information/i }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect((screen.getByLabelText("Organization") as HTMLInputElement).disabled).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: /start admission/i }));
 
     await waitFor(() =>
