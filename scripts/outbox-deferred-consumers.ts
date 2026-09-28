@@ -598,11 +598,9 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
     module: "m21",
     kind: "handlers-unbound",
     reason:
-      "M21 binds one live consumer (document back-ref) and carries three further handler files (m11-orders, m13-comfort-kit, order-context) that no binding reaches.",
+      "F-120 (#248) bound two of the three `consumers/m11-orders.ts` deciders (`outbox-consumers/m11-order-cascade.ts`) — the cancellation cascade and the DME monthly-rental close-out, both already emitted in production by M11's discharge cascade (F-102). `supply_fulfillment_requested` stays unbound: its own IO resolver (`consumers/order-context.ts`) says no platform seam answers 'which Location serves this patient' and `supply_request.location_id` is NOT NULL, so binding it today would either dead-letter every delivery or require inventing a Location-resolution heuristic nobody has decided on. `m11.order.signed` is redundant with the still-unbound specific event once that lands (the F-101 shape) and stays declared until then. M21 also carries the M13 comfort-kit handler file and the pharmacy-dispensed event that no binding reaches.",
     events: [
-      "m11.order.discontinued",
       "m11.order.signed",
-      "m11.order.supply_cancellation_requested",
       "m11.order.supply_fulfillment_requested",
       "m12.medication_order.dispensed_at_pharmacy",
       "m13.comfort_kit.controlled_substance_discrepancy",

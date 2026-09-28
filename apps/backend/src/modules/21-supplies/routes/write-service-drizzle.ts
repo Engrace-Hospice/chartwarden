@@ -111,6 +111,66 @@ const sha256 = (value: unknown): string =>
     .update(JSON.stringify(value ?? {}))
     .digest("hex");
 
+/**
+ * Apply an {@link EffectPatch} to `supply_request`, stamping `updated_at` from the tx clock.
+ *
+ * Module-level (not closed over `buildDrizzleM21WriteService`'s deps) so the §4.5.1 M11 cascade outbox
+ * consumers (`outbox-consumers/m11-order-cascade.ts`) can apply the SAME `transitionSupplyRequest` +
+ * `runEffects` write path a route does, rather than a second hand-rolled UPDATE that could drift from it —
+ * the F-100/F-103 "two write paths for one table" lesson this document has paid for repeatedly.
+ */
+export async function patchSupplyRequest(
+  tx: Tx,
+  id: string,
+  status: string,
+  patch: EffectPatch,
+  at: Date,
+): Promise<void> {
+  const REQUEST = schema.supplyRequest;
+  await tx
+    .update(REQUEST)
+    .set({
+      status: status as typeof REQUEST.$inferInsert.status,
+      updatedAt: at,
+      ...(patch.orderedAt !== undefined ? { orderedAt: patch.orderedAt } : {}),
+      ...(patch.shippedAt !== undefined ? { shippedAt: patch.shippedAt } : {}),
+      ...(patch.deliveredAt !== undefined ? { deliveredAt: patch.deliveredAt } : {}),
+      ...(patch.receivedConfirmedAt !== undefined
+        ? { receivedConfirmedAt: patch.receivedConfirmedAt }
+        : {}),
+      ...(patch.completedAt !== undefined ? { completedAt: patch.completedAt } : {}),
+      ...(patch.cancelledAt !== undefined ? { cancelledAt: patch.cancelledAt } : {}),
+      ...(patch.cancellationPendingAt !== undefined
+        ? { cancellationPendingAt: patch.cancellationPendingAt }
+        : {}),
+      ...(patch.cancellationReason !== undefined
+        ? { cancellationReason: patch.cancellationReason }
+        : {}),
+      ...(patch.routingRuleResolvedJsonb !== undefined
+        ? { routingRuleResolvedJsonb: patch.routingRuleResolvedJsonb }
+        : {}),
+      ...(patch.assignedVendorId !== undefined ? { assignedVendorId: patch.assignedVendorId } : {}),
+      ...(patch.vendorOrderReference !== undefined
+        ? { vendorOrderReference: patch.vendorOrderReference }
+        : {}),
+      ...(patch.trackingNumber !== undefined ? { trackingNumber: patch.trackingNumber } : {}),
+      ...(patch.carrier !== undefined ? { carrier: patch.carrier } : {}),
+      ...(patch.deliveredByMembershipId !== undefined
+        ? { deliveredByMembershipId: patch.deliveredByMembershipId }
+        : {}),
+      ...(patch.deliveryMethod !== undefined
+        ? { deliveryMethod: patch.deliveryMethod as typeof REQUEST.$inferInsert.deliveryMethod }
+        : {}),
+      ...(patch.deliveryEvidenceDocumentId !== undefined
+        ? { deliveryEvidenceDocumentId: patch.deliveryEvidenceDocumentId }
+        : {}),
+      ...(patch.receivedConfirmedActor !== undefined
+        ? { receivedConfirmedActor: patch.receivedConfirmedActor }
+        : {}),
+    })
+    .where(eq(REQUEST.id, id));
+}
+
 /** RxNorm → the D3 floor key that line satisfies, or null for a tenant ADDITION. */
 const FLOOR_KEY_BY_RXNORM = new Map(
   COMFORT_KIT_PLATFORM_FLOOR.map((m) => [m.rxNorm, m.key] as const),
@@ -236,58 +296,8 @@ export function buildDrizzleM21WriteService(
   }
 
   /** Apply an {@link EffectPatch} to `supply_request`, stamping `updated_at` from the tx clock. */
-  async function patchRequest(
-    tx: Tx,
-    id: string,
-    status: string,
-    patch: EffectPatch,
-    at: Date,
-  ): Promise<void> {
-    await tx
-      .update(REQUEST)
-      .set({
-        status: status as typeof REQUEST.$inferInsert.status,
-        updatedAt: at,
-        ...(patch.orderedAt !== undefined ? { orderedAt: patch.orderedAt } : {}),
-        ...(patch.shippedAt !== undefined ? { shippedAt: patch.shippedAt } : {}),
-        ...(patch.deliveredAt !== undefined ? { deliveredAt: patch.deliveredAt } : {}),
-        ...(patch.receivedConfirmedAt !== undefined
-          ? { receivedConfirmedAt: patch.receivedConfirmedAt }
-          : {}),
-        ...(patch.completedAt !== undefined ? { completedAt: patch.completedAt } : {}),
-        ...(patch.cancelledAt !== undefined ? { cancelledAt: patch.cancelledAt } : {}),
-        ...(patch.cancellationPendingAt !== undefined
-          ? { cancellationPendingAt: patch.cancellationPendingAt }
-          : {}),
-        ...(patch.cancellationReason !== undefined
-          ? { cancellationReason: patch.cancellationReason }
-          : {}),
-        ...(patch.routingRuleResolvedJsonb !== undefined
-          ? { routingRuleResolvedJsonb: patch.routingRuleResolvedJsonb }
-          : {}),
-        ...(patch.assignedVendorId !== undefined
-          ? { assignedVendorId: patch.assignedVendorId }
-          : {}),
-        ...(patch.vendorOrderReference !== undefined
-          ? { vendorOrderReference: patch.vendorOrderReference }
-          : {}),
-        ...(patch.trackingNumber !== undefined ? { trackingNumber: patch.trackingNumber } : {}),
-        ...(patch.carrier !== undefined ? { carrier: patch.carrier } : {}),
-        ...(patch.deliveredByMembershipId !== undefined
-          ? { deliveredByMembershipId: patch.deliveredByMembershipId }
-          : {}),
-        ...(patch.deliveryMethod !== undefined
-          ? { deliveryMethod: patch.deliveryMethod as typeof REQUEST.$inferInsert.deliveryMethod }
-          : {}),
-        ...(patch.deliveryEvidenceDocumentId !== undefined
-          ? { deliveryEvidenceDocumentId: patch.deliveryEvidenceDocumentId }
-          : {}),
-        ...(patch.receivedConfirmedActor !== undefined
-          ? { receivedConfirmedActor: patch.receivedConfirmedActor }
-          : {}),
-      })
-      .where(eq(REQUEST.id, id));
-  }
+  const patchRequest = (tx: Tx, id: string, status: string, patch: EffectPatch, at: Date) =>
+    patchSupplyRequest(tx, id, status, patch, at);
 
   /**
    * D4 — resolve the routing ladder for a request. Reads every candidate rule (RLS gives the tenant's own

@@ -22,10 +22,20 @@
 //
 // Every mutation emits its `m11.order.*` event on the caller's transactional outbox (the bound publisher
 // Value.Checks each payload against the boot catalog — events-by-m11.ts — and rolls back on mismatch), so
-// the payloads here are the STRICT catalog shapes, not the loose in-memory-slice shapes. The downstream
-// kind-specific signed fan-out (`hl7_orm_requested` / `supply_fulfillment_requested` / …) is the M29/M21/M6
-// forward-seam consumers' concern and is NOT emitted here — mirroring the in-memory reference, which emits
-// only `m11.order.signed`. The returned object IS BOTH the OrderRouteService AND the §4.7 AbacResolver.
+// the payloads here are the STRICT catalog shapes, not the loose in-memory-slice shapes.
+//
+// The downstream kind-specific signed fan-out IS now emitted here (F-120, #248) — it never was, despite
+// `packages/orders/src/catalog.ts`'s `downstreamSignedEvents` computing it as a `transitionOrder` effect
+// on every sign since the pure machine shipped, and despite the catalog's own per-event descriptions
+// asserting "M11 emits the typed event today" for two of the five. `signInternal` called `transitionOrder`
+// only for its guard/throw and discarded `.effects` entirely — a signed lab order never requested an
+// outbound HL7 ORM, a signed dme/supply/comfort_kit order never asked M21 to fulfill it, and a signed
+// level-of-care-change/recertification order never told M6. `emitDownstreamSignedEvent` below builds the
+// real catalogued payload per kind from `order_record.data` (already validated at draft time against the
+// exact TypeBox `packages/orders/src/kinds.ts` uses); `hl7_orm_requested`'s full `OrmRequestedPayload`
+// needs patient demographics + a resolved M40 provider identity M11 does not hold, so lab stays unbound —
+// M29's outbound ORM worker is still Wave H (see events-by-m11.ts). The returned object IS BOTH the
+// OrderRouteService AND the §4.7 AbacResolver.
 import { type DbClient, schema } from "@wardenx/db";
 import {
   DEFAULT_COSIGN_POLICY,
@@ -450,6 +460,53 @@ export function createDbOrderBackend(
     return row.id;
   }
 
+  /**
+   * F-120 (#248) — the §4.4 kind-specific signed fan-out `packages/orders/src/catalog.ts` computes as a
+   * `downstreamSignedEvents` effect on every sign, built here from `order_record.data` (already validated
+   * at draft time against the exact per-kind TypeBox `packages/orders/src/kinds.ts` uses, so every field
+   * this reads is guaranteed present). Only the three kinds whose full catalogued payload is derivable
+   * from data M11 already holds are wired: `lab` stays unbound (`OrmRequestedPayload` needs patient
+   * demographics + a resolved M40 provider identity M11 does not have — M29's Wave H outbound worker).
+   */
+  async function emitDownstreamSignedEvent(
+    tx: DbClient,
+    organizationId: string,
+    orderId: string,
+    kind: OrderKind,
+    admissionId: string,
+    data: unknown,
+  ): Promise<void> {
+    const d = (data ?? {}) as Record<string, unknown>;
+    if (kind === "level_of_care_change") {
+      await emit(tx, organizationId, "m11.order.level_of_care_change_signed", orderId, {
+        orderId,
+        fromLevel: d.fromLevel,
+        toLevel: d.toLevel,
+        effectiveAt: d.effectiveAt,
+        admissionId,
+      });
+    } else if (kind === "recertification") {
+      await emit(tx, organizationId, "m11.order.recertification_signed", orderId, {
+        orderId,
+        admissionId,
+        periodEndDate: d.periodEndDate,
+        certifyingPhysicianMdmId: d.certifyingPhysicianMdmId,
+      });
+    } else if (kind === "dme" || kind === "supply" || kind === "comfort_kit") {
+      // `preferredDeliveryWindow` on the wire is a descriptive STRING (events-by-m11.ts), not the
+      // `comfort_kit` data shape's `{startAt,endAt}` object (packages/orders/src/kinds.ts) — no format for
+      // that conversion is specified anywhere, so this reports `null` rather than inventing one.
+      await emit(tx, organizationId, "m11.order.supply_fulfillment_requested", orderId, {
+        orderId,
+        kind,
+        supplyDetail: data ?? {},
+        preferredDeliveryWindow: null,
+        deploymentSite:
+          kind === "comfort_kit" && typeof d.deploymentSite === "string" ? d.deploymentSite : null,
+      });
+    }
+  }
+
   /** Shared sign path (§2.2 sign from pending_signature or verbal_pending). Inserts the primary signature
    * (the DB apply-trigger flips the order to `active`); the pure machine is the cosign/onBehalf guard. */
   async function signInternal(
@@ -530,6 +587,7 @@ export function createDbOrderBackend(
         reason: onBehalfArgs.reason,
       });
     }
+    await emitDownstreamSignedEvent(tx, organizationId, id, r.kind as OrderKind, r.admissionId, r.data);
     if (fromVerbal) {
       const [v] = (await tx
         .select({ id: VO.id, deadlineAt: VO.deadlineAt })

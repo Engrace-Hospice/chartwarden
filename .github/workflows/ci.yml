@@ -224,6 +224,7 @@ jobs:
           - { name: "M10 HOPE spec registry", scripts: "test:m10:spec:live" }
           - { name: "M10 HOPE answer engine", scripts: "test:m10:answer-engine:live" }
           - { name: "M11 Orders", scripts: "test:m11:read:live test:m11:write:live" }
+          - { name: "M11 downstream signed fan-out", scripts: "test:m11:downstream-signed:live" }
           - { name: "M12 DoseSpot", scripts: "test:m12:read:live test:m12:write:live" }
           - {
               name: "M13 eMAR",
@@ -448,6 +449,9 @@ jobs:
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
           - { name: "M6 CoP documents", scripts: "test:m6:cop-documents:live" }
           - { name: "M6 discharge cascade", scripts: "test:m6:discharge-cascade:live" }
+          # F-120 — M21's other two bound M11 cascade deciders (§7.7 cancellation, the DME rental
+          # close-out), both already live-emitted by the M6/M11 discharge cascade above.
+          - { name: "M21 order cascade", scripts: "test:m21:order-cascade:live" }
           - { name: "M15 plan bootstrap", scripts: "test:m15:plan-bootstrap:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
           - { name: "M16 bereavement intake", scripts: "test:m16:bereavement-intake:live" }

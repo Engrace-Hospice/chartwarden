@@ -31,6 +31,13 @@ if (!FormatRegistry.Has("date-time")) {
     (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)),
   );
 }
+// `recertification.periodEndDate` (packages/orders/src/kinds.ts) is `format: "date"` and this file never
+// registered it — every other format M11's own kinds use was covered, so nothing surfaced it until F-120's
+// live test signed one outside the full app's boot order (where M9/M17/M19/M20/… always register "date"
+// first). The same idempotent guard the other nine modules already carry.
+if (!FormatRegistry.Has("date")) {
+  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
+}
 
 const lit = <T extends string>(xs: readonly T[]) =>
   Type.Union(xs.map((x) => Type.Literal(x)));

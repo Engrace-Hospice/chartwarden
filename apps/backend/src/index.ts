@@ -417,6 +417,8 @@ import {
   buildDrizzleSuppliesAbacResolver,
   buildDrizzleSuppliesSeamStore,
   buildM21DocumentBackrefConsumer,
+  buildM21OrderDiscontinuedConsumer,
+  buildM21SupplyCancellationConsumer,
   decideDispatcherEligible,
   denyStubSuppliesAbacResolver,
   mountM21Routes,
@@ -5238,6 +5240,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           }),
           buildM13DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM21DocumentBackrefConsumer({ db: dbHandle.db }),
+          // F-120 (#248) — the OTHER two of the three M11 cascade deciders `consumers/m11-orders.ts` has
+          // carried since M21-T04 ("the live outbox binding … land with the §4.6 workers alongside the
+          // M21-T05 service layer" — the service layer landed, nothing ever bound them). Both events are
+          // ALREADY emitted in production by the M11 discharge cascade (F-102) — every death/discharge on
+          // an admission with an open supply_request has been cancelling the M11 order while leaving the
+          // DME rental or comfort-kit request standing. The THIRD decider (`decideSupplyFulfillmentIntake`)
+          // stays unbound: its own resolver says no platform seam answers "which Location serves this
+          // patient", and `supply_request.location_id` is NOT NULL — see the file header.
+          buildM21SupplyCancellationConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
+          buildM21OrderDiscontinuedConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
           // F-108 — M27's. Unlike the five clinical ones it stamps THREE columns off one event, resolved
           // from `aggregateType`: M27 fans the ECR file, the Print Image and the supporting-doc bundle out
           // under ONE request event name, so the aggregate type is the only discriminator on the wire —

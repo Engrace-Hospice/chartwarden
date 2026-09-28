@@ -89,3 +89,8 @@ export {
   M21_DOCUMENT_BACKREF_CONSUMER,
   buildM21DocumentBackrefConsumer,
 } from "./outbox-consumers/m22-document-rendered";
+export {
+  type M21OrderCascadeDeps,
+  buildM21OrderDiscontinuedConsumer,
+  buildM21SupplyCancellationConsumer,
+} from "./outbox-consumers/m11-order-cascade";

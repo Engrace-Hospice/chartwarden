@@ -418,6 +418,60 @@ schema directly. Remains a follow-up: the M6/M8/M18 range/field-shape gaps above
 `resolveClinicalParticipants` (physician/POS linking, genuinely unbuilt), and `hippsRateTable`/
 `chcHourlyRateCents` (real CMS per-diem rate-file loading, no table exists).
 
+**Five M11 catalogued signed events were computed and thrown away, and two of the two module boundaries
+waiting on them are now bound (F-120, #248).** `packages/orders/src/catalog.ts`'s `downstreamSignedEvents`
+has computed `hl7_orm_requested` / `supply_fulfillment_requested` / `level_of_care_change_signed` /
+`recertification_signed` as a `transitionOrder` effect on every SIGN since the pure order machine
+shipped — `orders-route-service-db.ts`'s `signInternal` called `transitionOrder` only for its guard/throw
+and never read `.effects`, discarding all five. Two of the five catalog entries even asserted "M11 emits
+the typed event today" for `supply_fulfillment_requested` and `hl7_orm_requested` — false, checked against
+the actual write path rather than the comment, the F-119 shape again. A signed lab order never requested an
+outbound HL7 ORM; a signed dme/supply/comfort_kit order never asked M21 to fulfill it; a signed
+level-of-care-change/recertification order never told M6. **Fixed for the three kinds whose full
+catalogued payload is derivable from data M11 already holds**: `emitDownstreamSignedEvent` builds each from
+`order_record.data`, already validated at draft/request-signature time against the exact per-kind TypeBox
+`packages/orders/src/kinds.ts` uses. `hl7_orm_requested` stays unbound — `OrmRequestedPayload` needs
+patient demographics and a resolved M40 provider identity M11 does not hold, and M29's outbound ORM worker
+is a from-scratch build (the pure wire builder, dispatch planner, ACK-correlation core, D9 retry/DLQ policy
+and the operator list/retry routes all shipped at M29-T06/T08; the ingest sink that would call them is
+still Wave H, per the module's own header). Writing the fix surfaced a second, independent defect:
+`recertification`'s `periodEndDate` is `format: "date"` and `orders-typebox.ts` registered "uuid" and
+"date-time" but never "date" — nine OTHER modules (M8/M9/M17/M19/M20/M23/M24/M27/M30/M35) register it
+redundantly, so in the real app one of them always wins the race before a recertification is ever signed,
+and the gap was invisible until a live test's narrower import graph hit it directly. Fixed with the same
+idempotent `FormatRegistry.Has` guard the other nine already carry.
+**M21's other two of the three `consumers/m11-orders.ts` deciders are now bound too** — the §7.7
+cancellation cascade and the §2.2 DME monthly-rental close-out, both complete and unit-tested since
+M21-T04, whose own file header said "the live outbox binding + the transactional insert land with the
+§4.6 workers alongside the M21-T05 service layer": the service layer landed (`insertRequest`, D4 routing,
+per-kind validation) and nothing was ever bound. Both consumed events were **already being emitted in
+production** by the M11 discharge cascade (F-102) — every death/discharge on an admission with an open
+`supply_request` has been cancelling the M11 order while leaving the DME rental or comfort-kit request
+standing, the reciprocal of F-102's own finding one module downstream. `outbox-consumers/
+m11-order-cascade.ts` runs the SAME `transitionSupplyRequest` + `runEffects` write path a route uses
+(`patchSupplyRequest`, pulled out of `write-service-drizzle.ts`'s closure to module scope and exported, so
+there is exactly one place that maps an `EffectPatch` onto the table — the F-100/F-103 "two write paths for
+one table" lesson), with **no actor at all**: `routes/actor.ts`'s own doc comment says "the §4.5.1 inbound
+cascades reach M21 through the outbox consumers, not through a route, and they attribute their rows to the
+source event rather than to a human," and `writeActorOf` refuses a session with no membership — fabricating
+one would misattribute a system cascade to a person who did nothing, on a DEA chain-of-custody-adjacent
+table. **The THIRD decider, `decideSupplyFulfillmentIntake` (the §7.1 request that OPENS a `supply_request`
+in the first place), stays unbound and is reported, not fixed**: its own IO resolver
+(`consumers/order-context.ts`) already says why — "NO PLATFORM SEAM ANSWERS `resolveServingLocation`, and
+that is a real gap rather than an oversight" — `supply_request.location_id` is NOT NULL and no fact (M2
+Locations, M5 patient, M6 admission) says which Location serves a given patient. Binding it today would
+mean either dead-lettering every delivery or inventing a Location-resolution heuristic the module's own
+author explicitly declined to guess at, the `providerEntityFor` lesson one file over ("a guessed provider
+entity is a mis-stated cost report") applied to Location instead. Proven live end to end over real
+Postgres: `m11-downstream-signed-fanout.live.test.ts` (the real M11 write service signs each kind as
+`wardenx_app`, asserts the exact catalogued payload, and confirms a signed lab order still emits neither
+unbound event) and `m21-order-cascade.live.test.ts` (the real M6/M11 discharge cascade → the real
+catalog-validating publisher → the real dispatcher → M21's two real consumers, under RLS: the pre-`ordered`
+immediate cancel, the post-`ordered` two-phase `cancellation_pending`, `cancel_no_op` on an
+already-terminal row, silent `no_match` when no request was ever opened, the monthly-rental completion via
+a direct `discontinueOrder` call, and a one-shot kind correctly left alone). **Running total on #248: 509 →
+419** declared-but-unbound pairs (this pass resolved the two `m21` entries; #248 remains open for the rest).
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit
