@@ -203,7 +203,10 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       paidAt: isoInstant,
       amountPaidCents: cents,
     }),
-    declaredConsumers: ["m29"],
+    // F-141 (#248) — m29 dropped: no support anywhere in M29's spec; the real M29↔M35 relationship
+    // runs the opposite direction and is a seam, not a push — M29 publishes
+    // `ExternalInterfaceMetricsProvider.feedHealthForOrg` for M35's own Phase-2 quota metering.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -385,7 +388,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       amountCents: cents,
       stripeRefundId: id,
     }),
-    declaredConsumers: ["m29"],
+    // F-141 (#248) — m29 dropped: same reasoning as `invoice.paid` above.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },

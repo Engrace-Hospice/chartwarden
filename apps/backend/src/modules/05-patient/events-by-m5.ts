@@ -113,7 +113,10 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // in M6's own death-discharge transaction) is the ONLY path a `bereavement_plan` row can come into
     // existence; this event is a downstream reaction to that SAME transaction two hops later and carries
     // no fact M16's intake decider (`consumers/m6-eligibility.ts`) reads.
-    declaredConsumers: ["m23"],
+    // F-141 (#248) — m29 ADDED: M29's own spec is decisive and explicit — "`m5.patient.deceased`
+    // consumed via outbox to freeze inbound ADT processing for the decedent and to refuse any
+    // post-death A01/A04 events with a typed OperationOutcome" — genuinely undeclared until now.
+    declaredConsumers: ["m23", "m29"],
     seamConsumers: ["m36"],
     isOutboxOnly: false,
   },
@@ -138,9 +141,12 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m5.patient.archived",
     moduleOwner: "m5",
-    description: "A chart was archived; M29 expires related HL7 inbound proposals.",
+    description: "A chart was archived.",
     payloadSchema: Type.Object({ ...corePatient }),
-    declaredConsumers: ["m29"],
+    // F-141 (#248) — m29 dropped: this event's own description claimed "M29 expires related HL7 inbound
+    // proposals" — no support anywhere in M29's spec (zero mentions of patient archival; M29's own
+    // proposal-lifecycle documentation names exactly one expiry path, the 72h SLA timer). Record-only.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

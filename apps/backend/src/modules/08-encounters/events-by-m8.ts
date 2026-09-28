@@ -117,7 +117,13 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this event with a
     // real handler (`trigger-revalidate` → `handleUpstreamChange`); its `.cosigned` sibling below is NOT
     // in that map (M24 revalidates on sign, not on the separate cosign event).
-    declaredConsumers: ["m9", "m10", "m14", "m17", "m22", "m24", "m31", "m36"],
+    // F-141 (#248) — m18 ADDED: M18's own D6 (locked), job catalog (`m18.encounter-signed.consumer`, "on
+    // m8.encounter.signed outbox"), and its §10 task-26 checklist all name a real, decisive consumer that
+    // closes an open `evv_missing_resolution` row (`closed_documented_at_encounter`) when the encounter
+    // signs with `evv_missing_reason` populated — genuinely undeclared until now. NOTE: the payload here
+    // does not yet carry `evvMissingReason` (the encounter route/schema has the field; this locked outbox
+    // payload does not) — a producer-side gap for a future pass, reported rather than fixed here.
+    declaredConsumers: ["m9", "m10", "m14", "m17", "m18", "m22", "m24", "m31", "m36"],
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },

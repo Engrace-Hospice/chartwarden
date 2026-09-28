@@ -66,8 +66,11 @@ describe("M11 outbox event contract (§4.4)", () => {
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
     // F-117 (#248) — m22 removed: redundant with `m11.order.document_requested`, emitted in the
     // same `signOrder`/`signOnBehalf` transaction.
-    expect(signed?.declaredConsumers).toEqual(expect.arrayContaining(["m21", "m29", "m30"]));
+    // F-141 (#248) — m29 removed: redundant with the specific `m11.order.hl7_orm_requested` event,
+    // which carries the rich PID/ORC/OBR/NTE payload M29's own spec actually names.
+    expect(signed?.declaredConsumers).toEqual(expect.arrayContaining(["m14", "m21", "m30"]));
     expect(signed?.declaredConsumers).not.toContain("m22");
+    expect(signed?.declaredConsumers).not.toContain("m29");
     // M33's reporting intake is a pull over `report_mv.*` — recorded, but not an outbox subscription
     // (#103).
     expect(signed?.seamConsumers).toContain("m33");

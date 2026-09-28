@@ -442,22 +442,14 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
     module: "m18",
     kind: "handlers-unbound",
     reason:
-      "M18 binds one live consumer (register-published-visit). The remainder are forward declarations.",
-    events: [
-      "m17.visit.cancelled",
-      "m17.visit.completed",
-      "m17.visit.late_check_out_suspected",
-      "m17.visit.rescheduled",
-      "m17.visit.started",
-      "m39.consent.delegated_access.granted",
-      "m39.consent.delegated_access.revoked",
-    ],
+      "F-141 (#248) checked every pair against M18's own locked D14 (its exhaustive consumed-events list: exactly `m17.visit.published`/`.cancelled`) and D16 (its dependsOn list, which never includes M39). 5 of 7 were dropped: `m17.visit.completed`/`.rescheduled`/`.started` and both `m39.consent.delegated_access.*` events have no support in D14/D16 — M18's own late-checkout mechanism is its OWN `late-check-sweep` cron (a listed M18 BullMQ worker), not a consumer of any of these. `m17.visit.late_check_out_suspected` is the sharpest case: M17's spec glosses it as 'consumed by M18', directly contradicted by M18's own D14/D6/job-catalog, which describe the identical mechanism as M18's own cron — the F-101 rule (trust the consumer) resolves the disagreement, and the event is now record-only. `m17.visit.cancelled` is kept — D14 names it explicitly. The reverse check found a real, decisive, undeclared subscription: `m8.encounter.signed`, named by M18's own D6, job catalog (`m18.encounter-signed.consumer`), and 'Done means' walkthrough as the auto-close path for a documented-at-encounter missing-checkout resolution — added.",
+    events: ["m17.visit.cancelled", "m8.encounter.signed"],
   },
   {
     module: "m21",
     kind: "handlers-unbound",
     reason:
-      "F-120 (#248) bound two of the three `consumers/m11-orders.ts` deciders (`outbox-consumers/m11-order-cascade.ts`) — the cancellation cascade and the DME monthly-rental close-out, both already emitted in production by M11's discharge cascade (F-102). `supply_fulfillment_requested` stays unbound: its own IO resolver (`consumers/order-context.ts`) says no platform seam answers 'which Location serves this patient' and `supply_request.location_id` is NOT NULL, so binding it today would either dead-letter every delivery or require inventing a Location-resolution heuristic nobody has decided on. `m11.order.signed` is redundant with the still-unbound specific event once that lands (the F-101 shape) and stays declared until then. M21 also carries the M13 comfort-kit handler file and the pharmacy-dispensed event that no binding reaches.",
+      "F-141 (#248) checked every pair against M21's own authoritative `M21_SUBSCRIBED_EVENT_NAMES` (`packages/types/src/supplies.ts`) and spec text — all 7 confirmed genuine, real, still-unbound subscriptions, 0 dropped, 0 added. `m11.order.signed` and the four `m13.comfort_kit.*` events are directly on M21's own subscription list, each with a complete named decider (`consumers/m11-orders.ts`/`m13-comfort-kit.ts`). `m11.order.supply_fulfillment_requested` is genuinely blocked, not misdeclared — its own IO resolver (`consumers/order-context.ts`) states no platform seam answers 'which Location serves this patient', confirmed still true. `m12.medication_order.dispensed_at_pharmacy` is not yet on M21's subscription list (no decider built) but is fully decisive in M21's own spec (line 66): the DoseSpot-dispensed comfort-kit-fulfillment path, filtered by `pharmacy_dispatch_mode='dosespot_to_partner_pharmacy'` — the F-131 'kept, not dropped' shape.",
     events: [
       "m11.order.signed",
       "m11.order.supply_fulfillment_requested",
@@ -471,22 +463,15 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   {
     module: "m29",
     kind: "no-consumer-surface",
-    reason: "M29 has no consumer directory and binds nothing.",
-    events: [
-      "m11.order.hl7_orm_requested",
-      "m11.order.signed",
-      "m20.safety.osha_reportable_incident_filed",
-      "m20.safety.workers_comp_claim_initiated",
-      "m35.invoice.paid",
-      "m35.refund.executed",
-      "m5.patient.archived",
-    ],
+    reason:
+      "F-141 (#248) checked every pair against M29's own locked spec (D1 four-pillar scope: HL7 inbound/outbound, NPPES, Xero/Gusto) and its M5 dependency prose. 6 of 7 dropped: `m11.order.signed` is redundant with the specific `hl7_orm_requested` event (M29's spec never mentions `.signed`, only the specific event with the PID/ORC/OBR/NTE payload); `m20.safety.osha_reportable_incident_filed`/`workers_comp_claim_initiated` and `m35.invoice.paid`/`refund.executed` have no support anywhere in D1's scope (the M35 relationship actually runs the opposite direction, a seam pull via `ExternalInterfaceMetricsProvider`); `m5.patient.archived` claimed 'M29 expires related HL7 inbound proposals' with zero corroboration in M29's spec, which names exactly one proposal-expiry path (the 72h SLA timer). `m11.order.hl7_orm_requested` is kept — decisive on both sides (M29's own spec: 'M29 consumes the m11.order.hl7_orm_requested outbox event as a typed listener... M29 wires the live consumer at lock'). The reverse check found a real, decisive, undeclared subscription: `m5.patient.deceased`, named explicitly in M29's M5-dependency prose ('consumed via outbox to freeze inbound ADT processing for the decedent') — added. `m5.patient.merged` was checked and correctly NOT added — M29's own text describes it as a seam pull ('resolved at every lookup'), never a push.",
+    events: ["m11.order.hl7_orm_requested", "m5.patient.deceased"],
   },
   {
     module: "m1",
     kind: "no-consumer-surface",
     reason:
-      "M1 owns the dispatcher itself and has no consumer directory; these declarations name the foundation module as a subscriber to downstream events.",
+      "F-141 (#248) checked all six pairs individually rather than trusting the blanket 'no consumer directory' framing. All six confirmed genuine, 0 dropped, 0 added: M23/M24/M33 each independently and consistently describe the same real, built mechanism — the `system_status` table + `SystemStatusReader.upsert` (already live behind the admin route) — that only lacks its automatic-consumer wiring; all three producing modules use the identical decisive phrasing ('M1 records/clears the degraded system_status'). `m12.dosespot_degraded`/`.recovered` was checked as the obvious sibling candidate and correctly excluded — M12's own spec routes DoseSpot degradation through a per-tenant feature flag, not the platform-global `system_status` table, a principled scoping difference (`system_status` is NON_ORG_SCOPED; DoseSpot connectivity is per-tenant).",
     events: [
       "m23.mac_portal.recovered",
       "m23.mac_portal.unavailable",

@@ -171,7 +171,9 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       // the actual live-bound M22 render request. Declaring m22 here too was the same handshake
       // named twice.
       // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-      "m29",
+      // F-141 (#248) — m29 removed: M29's own spec names only the specific
+      // `m11.order.hl7_orm_requested` event (its rich PID/ORC/OBR/NTE payload), never the broader
+      // `.signed` — redundant with the sibling event once it lands, the F-101 shape.
       "m30",
     ],
     seamConsumers: ["m33"],

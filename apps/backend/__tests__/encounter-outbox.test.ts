@@ -64,8 +64,10 @@ describe("M8 outbox event contract (§4.4)", () => {
     // F-115 (#248) — m28/m30 removed from declaredConsumers: m28 never subscribes to anything
     // (request-time-only FHIR reads, F-035); m30 reads this fact via `SignedEncountersReader` on its
     // nightly recompute cadence, so it moved to seamConsumers instead.
+    // F-141 (#248) — m18 added: M18's own locked D6 + job catalog name a real, decisive consumer that
+    // closes an open `evv_missing_resolution` row on encounter sign.
     expect(signed?.declaredConsumers).toEqual(
-      expect.arrayContaining(["m9", "m10", "m14", "m22", "m31", "m36"]),
+      expect.arrayContaining(["m9", "m10", "m14", "m18", "m22", "m31", "m36"]),
     );
     // m33 (MetricsProvider pull) and m30 (measure-recompute seam) receive this synchronously, not from
     // the outbox.

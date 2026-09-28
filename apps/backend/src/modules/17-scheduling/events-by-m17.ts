@@ -140,7 +140,10 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     description:
       "published → en_route (EVV check-in or self-attest start); M18 brackets the visit.",
     payloadSchema: Type.Object({ visitId: id, startedAt: isoInstant, evvBracketState: id }),
-    declaredConsumers: ["m18"],
+    // F-141 (#248) — m18 dropped: M18's own D14 (locked) names its exhaustive consumed-events list as
+    // exactly `m17.visit.published`/`.cancelled` — this event is not among them, and M18 brackets the
+    // visit through its own check-in/check-out route path, not by reacting to `.started`.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -158,7 +161,9 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     // F-043/#103 — M20 retires the mid-visit prompts a short visit outran (`m20.retire-cadence`).
     // F-115 (#248) — m30 moved to seamConsumers: reads visit on-time counts via
     // `VisitMetricsProvider.getOnTimeVisitCounts` (visit_on_time_rate) on its nightly cadence.
-    declaredConsumers: ["m18", "m20"],
+    // F-141 (#248) — m18 dropped: not in M18's D14 exhaustive consumed-events list (only `.published`/
+    // `.cancelled`); M18's own consumer table (task 26) names only those two upstream M17 subscriptions.
+    declaredConsumers: ["m20"],
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
@@ -189,7 +194,8 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       newStartedAt: isoInstant,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m8", "m18", "m31", "m36"],
+    // F-141 (#248) — m18 dropped: not in M18's D14 exhaustive consumed-events list.
+    declaredConsumers: ["m8", "m31", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -213,7 +219,7 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     eventName: "m17.visit.late_check_out_suspected",
     moduleOwner: "m17",
     description:
-      "The late-check sweep found an `in_visit` visit past scheduled_ended_at + grace with no checkout/encounter — M18 opens an evv_missing_resolution row (M18 §7 / D6).",
+      "The late-check sweep found an `in_visit` visit past scheduled_ended_at + grace with no checkout/encounter. F-141 (#248): this M17-spec gloss ('M18 opens an evv_missing_resolution row') conflicts with M18's OWN locked D14, which names its exhaustive consumed-events list as exactly `m17.visit.published`/`.cancelled` — this event is not among them. M18's own §7/D6 late-checkout detection is M18's OWN `late-check-sweep` cron (a listed M18 BullMQ worker), not a consumer of this event; M18's D6 auto-close path reacts to `m8.encounter.signed` instead. Record-only per the producing/consuming disagreement resolved in the consumer's favor (F-101).",
     payloadSchema: Type.Object({
       visitId: id,
       patientId: id,
@@ -221,7 +227,7 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       expectedCheckOutBy: isoInstant,
       suspectedAt: isoInstant,
     }),
-    declaredConsumers: ["m18"],
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   // ── recurring + time-off (§2.2.3 / §2.2.6 / §4.11) ──────────────────────────────────────────────────────

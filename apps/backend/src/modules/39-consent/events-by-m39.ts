@@ -229,7 +229,10 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-140 (#248) — m19 removed: M19's own spec gates portal-caregiver access via a live
     // `ConsentEvaluator.isActive({consentKind: 'family_caregiver_access'})` SEAM PULL inside the
     // `portal_session_consent_active` ABAC predicate, evaluated per-request — never an outbox push.
-    declaredConsumers: ["m31", "m17", "m18"],
+    // F-141 (#248) — m18 removed: M18's own D16 manifest-patch text lists M39 among the modules it never
+    // dependsOn ("M18 reads from M1/2/3/4/5/17/36/38/40 ... M6/M7/M8/M14/M15/M22/M23/M24/M30/M31/M33 are
+    // *not* direct dependsOn"), and M18's exhaustive D14 consumed-events list never names an M39 event.
+    declaredConsumers: ["m31", "m17"],
     isOutboxOnly: true,
   },
   {
@@ -244,7 +247,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       revokedAt: Type.String(),
     }),
     // F-140 (#248) — m19 removed: same seam-pull reasoning as `.granted` above.
-    declaredConsumers: ["m31", "m17", "m18"],
+    // F-141 (#248) — m18 removed: same D14/D16 reasoning as `.granted` above.
+    declaredConsumers: ["m31", "m17"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

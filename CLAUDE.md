@@ -1208,6 +1208,62 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   `check:boot:platform` run against a freshly migrated, RLS-enforced disposable Postgres. Leaving #248
   open — 297 pairs across 30 modules remain.
 
+  **A second round of four groups checked in parallel (m18, m21, m29, m1), continuing the F-140
+  pattern — research-only forks, coordinator applies and verifies centrally (F-141, #248).** **m18
+  (EVV) — 1 kept, 5 dropped, plus 1 reverse addition.** M18's own locked D14 is exhaustive about what
+  it consumes ("M18 consumes `m17.visit.published` ... and `m17.visit.cancelled`") — only
+  `m17.visit.cancelled` survives; `.completed`/`.rescheduled`/`.started` and both
+  `m39.consent.delegated_access.*` events have no support in D14 or D16's dependsOn list (which never
+  names M39). `m17.visit.late_check_out_suspected` was the sharpest case: M17's own spec glosses it as
+  "consumed by M18," directly contradicted by M18's own D14/D6/job-catalog, which describe the
+  identical late-checkout-detection mechanism as M18's OWN `late-check-sweep` cron (a listed M18
+  BullMQ worker) — the F-101 rule (trust the consumer over the producer's guess) resolves the
+  disagreement, and the event is now record-only. The reverse check found a real, decisive, previously
+  undeclared subscription: `m8.encounter.signed`, named by M18's own D6, its job catalog
+  (`m18.encounter-signed.consumer`, "on m8.encounter.signed outbox"), and its "Done means" walkthrough
+  as the auto-close path for a `closed_documented_at_encounter` missing-checkout resolution — added.
+  Writing that addition surfaced an independent, unfixed payload gap, reported rather than fixed: the
+  locked `m8.encounter.signed` payload does not carry `evvMissingReason` (the field exists on the
+  encounter route/schema, just not on this outbox contract), so M18's real consumer cannot yet read the
+  fact it needs from this event. **m21 (Supplies/DME/Comfort Kits) — 7 kept, 0 dropped, 0 added.**
+  Checked against M21's own authoritative `M21_SUBSCRIBED_EVENT_NAMES` mirror and spec text — every
+  pair confirmed genuine: `m11.order.signed` and the four `m13.comfort_kit.*` events are directly on
+  the subscription list with complete named deciders; `m11.order.supply_fulfillment_requested` is
+  genuinely blocked (no platform seam answers "which Location serves this patient," the same finding
+  F-102 recorded); `m12.medication_order.dispensed_at_pharmacy` is fully decisive in M21's own spec
+  text though not yet on the subscription list — the F-131 "kept, not dropped" shape. **m29 (External
+  Interfaces) — 1 kept, 6 dropped, plus 1 reverse addition.** M29's own locked "four-pillar scope" (D1:
+  HL7 inbound/outbound, NPPES, Xero/Gusto) has no room for five of the six drops: `m20.safety.
+  osha_reportable_incident_filed`/`workers_comp_claim_initiated` (M20's own text hedges the filing as
+  "manual or M29's," an aspiration never decided in M29's scope), `m35.invoice.paid`/`refund.executed`
+  (the real M29↔M35 relationship runs the OPPOSITE direction — a seam pull via
+  `ExternalInterfaceMetricsProvider`, not a push), and `m5.patient.archived` (its own description
+  claimed "M29 expires related HL7 inbound proposals" with zero corroboration anywhere in M29's spec,
+  which names exactly one proposal-expiry mechanism — the 72h SLA timer). `m11.order.signed` is the
+  sixth drop, redundant with the specific, decisive `m11.order.hl7_orm_requested` sibling — which is
+  the one KEPT pair, named explicitly in M29's own spec ("M29 consumes the `m11.order.hl7_orm_requested`
+  outbox event as a typed listener ... M29 wires the live consumer at lock"). The reverse check found a
+  real, decisive, previously undeclared subscription: `m5.patient.deceased`, named explicitly in M29's
+  own M5-dependency prose ("consumed via outbox to freeze inbound ADT processing for the decedent and
+  to refuse any post-death A01/A04 events") — added. `m5.patient.merged` was checked and correctly NOT
+  added: M29's own text describes that relationship as a seam pull ("resolved at every lookup"), never
+  a push. **m1 (Foundation) — 6 kept, 0 dropped, 0 added.** All six are circuit-breaker/health-monitor
+  signals from three independent producing modules (M23/M24/M33), and all three use the identical
+  decisive phrasing — "M1 records/clears the degraded `system_status`" — naming a real, already-built
+  mechanism (`system_status` table + `SystemStatusReader.upsert`, already live behind the admin route)
+  that only lacks its automatic-consumer wiring. `m12.dosespot_degraded`/`.recovered` was checked as
+  the obvious sibling candidate and correctly excluded: M12's own spec routes DoseSpot degradation
+  through a per-tenant feature flag, not the platform-global `system_status` table (`system_status` is
+  `NON_ORG_SCOPED`; DoseSpot connectivity is per-tenant, D5) — a principled scoping difference, not an
+  oversight. **Net: 297 → 287** (16 dropped, 2 added; module count unchanged at 30, since all four
+  groups still carry at least one entry). Verified centrally, once, after all four groups' edits
+  landed together: `bun run build` clean, `bun run typecheck` clean (0 errors), full non-live suite 654
+  files / 9589 tests green (two pinned-array assertions updated — `encounter-outbox.test.ts` to add
+  `m18`, `orders-outbox-consumers.test.ts` to drop `m29`), `arch:fitness` 38/38 (`arch:outbox-bindings`
+  0 disagreements both directions — no mirror-constant drift found this round), and a clean
+  `check:boot:platform` run against a freshly migrated, RLS-enforced disposable Postgres. Leaving #248
+  open — 287 pairs across 30 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

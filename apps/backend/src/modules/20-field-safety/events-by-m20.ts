@@ -340,7 +340,10 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       stateCode: Str,
       reportingWindowHours: Count,
     }),
-    declaredConsumers: ["m29", "m30"],
+    // F-141 (#248) — m29 dropped: M29's own locked "four-pillar scope" (D1: HL7 inbound/outbound,
+    // NPPES, Xero/Gusto) never mentions OSHA or workers-comp anywhere; this event's own description
+    // already hedges the filing as "manual or M29's" — an aspiration, not a decided M29 mechanism.
+    declaredConsumers: ["m30"],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
@@ -355,7 +358,9 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       initiatedByMembershipId: Id,
       initiatedAt: Iso,
     }),
-    declaredConsumers: ["m29"],
+    // F-141 (#248) — m29 dropped: same reasoning as `osha_reportable_incident_filed` above — no
+    // support anywhere in M29's locked scope.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
