@@ -265,7 +265,8 @@ jobs:
               name: "M23 Billing-Medicare",
               scripts:
                 "test:m23:remittance-feedback:live test:m23:billed-days-seam:live
-                test:m23:claim-submit-worker:live test:m23:claim-match-seam:live",
+                test:m23:claim-submit-worker:live test:m23:claim-match-seam:live
+                test:m23:claim-assembly-seams:live",
             }
           - {
               name: "M24 Billing-Medicaid",

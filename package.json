@@ -243,6 +243,7 @@
     "test:m23:billed-days-seam:live": "vitest run apps/backend/__tests__/m23-billed-days-seam.live.test.ts",
     "test:m23:claim-submit-worker:live": "vitest run apps/backend/__tests__/m23-claim-submit-worker.live.test.ts",
     "test:m23:claim-match-seam:live": "vitest run apps/backend/__tests__/m23-m25-claim-match-seam.live.test.ts",
+    "test:m23:claim-assembly-seams:live": "vitest run apps/backend/__tests__/m23-claim-assembly-seams.live.test.ts",
     "test:m24:claim-line-assembly:live": "vitest run apps/backend/__tests__/m24-claim-line-assembly.live.test.ts",
     "test:m25:835-ingestion:live": "vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts",
     "test:m25:interim-payments-seam:live": "vitest run apps/backend/__tests__/m25-interim-payments-seam.live.test.ts",

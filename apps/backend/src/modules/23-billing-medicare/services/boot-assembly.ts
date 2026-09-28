@@ -1,22 +1,66 @@
 // apps/backend/src/modules/23-billing-medicare/services/boot-assembly.ts — the boot-time CLAIM-ASSEMBLY
 // service the composition root binds into `mountM23Routes` (route #1 `POST /claims/assemble`).
 //
-// The real {@link buildClaimAssemblyService} depends on the full §4.4 CONSUMED reader-seam bundle
-// (M5 patient-payer / M6 admission+election+cert+F2F+LOC / M8 billable+signed encounters / M18 EVV /
-// M38 terminology / M40 MDM / the platform reference-data ports). Those cross-module seams are NOT members
-// of the M1 SeamRegistry yet (M23's seam names are not in `SeamContracts`), so they cannot be resolved at
-// boot. Per RULE 4 (fail-closed-unbound) we therefore bind a service whose reader seams are DENY-STUBS that
-// throw a typed `SEAM_UNBOUND` (503) only when an assemble request actually runs — boot stays green, and the
-// route never silently fabricates a claim from absent clinical facts. The pure rule registry (no I/O) is the
-// real frozen platform-default registry so the service is otherwise fully constructed.
+// STATUS (#250, corrected from this file's earlier "6 seam areas, all pending a M1 SeamRegistry addition"
+// framing — that framing was itself stale: five of the six ARE in `SeamContracts` and have been since
+// their own modules' -T05/-T08 tasks landed; the real blocker per seam is checked below, one at a time).
 //
-// When the M23 reader seams land in the M1 SeamRegistry (a foundation change, outside this slice), the
-// composition root swaps this for `buildClaimAssemblyService(db, <live seams>)` — the route contract is
-// unchanged. The same outbox publisher the write service uses is threaded in so a future live bundle commits
-// the §4.10 `m23.claim.draft_created` emit in the assemble transaction (D2).
+// FOUR of the eleven `ClaimAssemblySeams` reader methods are now bound to REAL data
+// (`claim-assembly-seam-adapters.ts`): `patientPayer` (M5), `mdm.resolveProviderEntity` (M40 CCN + MAC
+// jurisdiction), and two of `referenceData`'s four methods (`wageIndexForCcn`, `activeSequestrationPolicy`).
+// Each is individually live-tested against real rows under RLS (`m23-claim-assembly-seams.live.test.ts`).
+//
+// EVERY OTHER READER STAYS A DENY-STUB, and per-seam, not as one blanket "not ready yet" — each reason
+// below was checked against the owning module's actual published seam shape, not assumed from this file's
+// prior header:
+//   * admission / electionPeriods / certifications / faceToFace / levelOfCare (M6) — M6's published
+//     SeamRegistry readers are either ID-keyed (`listPeriodsForAdmission(admissionId)`,
+//     `getCurrentLevelOfCare(admissionId)`) or single-DATE-keyed (`findActivePeriodForPatient(patientId,
+//     on)`); none answers "every period/CTI/F2F/LOC-period for this PATIENT overlapping this RANGE",
+//     which is what claim assembly needs. This is a real new read-surface addition to M6's OWN seam layer
+//     (the `electionPeriodContextForOrg`/`admissionSchedulingContextForOrg` precedent — a new
+//     org-explicit function following that established shape), not an M23-side adapter.
+//   * billableEncounters (M8) — the published `BillableEncounterReader.billability(encounterIds)` needs
+//     the encounter ids ALREADY IN HAND; there is no "list billable encounters for this patient/provider
+//     in this range" seam to resolve them from. Same M6-shaped gap, owned by M8.
+//   * signedEncounters (M8) — `SignedEncountersReader.signedEncountersForPatientSince` returns
+//     `SignedEncounterDigest`, which carries NO `cosignRequired`/`cosigned`/`durationMinutes` — the exact
+//     three facts the SIA (§8.7) calculator needs from `SignedEncounterSnapshot`. Not a range gap, a
+//     field-shape gap: the published digest was built for M14's IDG aggregator and M22's render payload,
+//     neither of which needs per-visit duration or cosign state.
+//   * evvCompliance (M18) — the published `EvvComplianceReader` answers one visit's bracket state or a
+//     windowed AGGREGATE rate, not "bracket snapshots for this LIST of encounter ids" — and depends on
+//     `billableEncounters` resolving the id list first regardless.
+//   * terminology (M38) — the published `TerminologyProvider` (the M25 CARC/RARC precedent this file
+//     used to cite as proof this is "a small adapter") is a per-CODE `lookup(system, code)`. M23's
+//     `TerminologyResolution` wants a BULK pre-resolved `valueSetMembership`/`icd10Billable` map, with
+//     no codes given at fetch time — bridging needs either a bulk M38 method or enumerating every
+//     value-set/ICD code the §11.A rule registry actually references, a real design task, not a wrapper.
+//   * mdm.resolveClinicalParticipants (M40) — physician/POS linking is genuinely unbuilt (confirmed:
+//     M27's own attempt at this cast silently degrades to null via try/catch today).
+//   * referenceData.hippsRateTable / .chcHourlyRateCents — `packages/billing/src/hipps/calculator.ts`'s
+//     own `HippsRateTable` doc carries an explicit `TODO(CMS-fixture)`: no CMS per-diem rate file has
+//     ever been loaded anywhere in this repository, and no table exists to load one into. Genuine new
+//     infrastructure, confirmed by absence of any backing table (unlike `wageIndexForCcn`'s table, which
+//     exists and is simply unloaded).
+//
+// NET EFFECT ON REACHABILITY, stated precisely rather than implied: `assemble()`'s call order is
+// patientPayer → admission → electionPeriods → certifications/faceToFace/levelOfCare → mdm.
+// resolveProviderEntity → referenceData.wageIndexForCcn → ... — so binding `patientPayer` for real moves
+// the live SEAM_UNBOUND boundary from the FIRST read to the SECOND (`admission.resolveForRange`, still
+// M6-blocked). `POST /claims/assemble` remains unreachable end-to-end for every real caller today. This
+// is real, individually-verified progress on exactly one seam step, not an unblock — do not read the
+// other three bound methods (resolveProviderEntity, wageIndexForCcn, activeSequestrationPolicy) as
+// having moved the live boundary further: they sit LATER in the call order, behind the still-unbound M6
+// reads, and are unreachable by a real request until M6's range-query gap above is closed.
+//
+// Per RULE 4 (fail-closed-unbound), every method that stays a stub still throws the typed `SEAM_UNBOUND`
+// (503) only when an assemble request actually reaches it — boot stays green, and the route never
+// silently fabricates a claim from absent clinical facts.
 import { createDefaultBillingRegistry, type repositories } from "@wardenx/billing";
 import { WardenXError } from "@wardenx/types";
 
+import type { ProviderCcnPort } from "../routes/write-service";
 import { buildM23CapProjectionAdapter } from "./cap-projection-adapter";
 import {
   type AssemblyOutboxPort,
@@ -24,36 +68,53 @@ import {
   type ClaimAssemblyService,
   buildClaimAssemblyService,
 } from "./claim-assembly";
+import {
+  buildM23MdmProviderEntityAdapter,
+  buildM23PatientPayerAdapter,
+  buildM23ReferenceDataAdapter,
+} from "./claim-assembly-seam-adapters";
 
 type BillingDb = repositories.BillingDb;
 
-/** Throw the typed fail-closed error every unbound assembly reader raises at call time (RULE 4). */
+/** Throw the typed fail-closed error every still-unbound assembly reader raises at call time (RULE 4). */
 function unbound(seam: string): never {
   throw new WardenXError(
     "SEAM_UNBOUND",
-    `M23 claim-assembly seam '${seam}' is not bound at boot — claim assembly is unavailable until the M5/M6/M8/M18/M38/M40 reader seams register in the M1 SeamRegistry`,
+    `M23 claim-assembly seam '${seam}' is not bound at boot — see boot-assembly.ts's header for the exact, per-seam reason (a real new read-surface addition needed in the owning module, or genuinely absent CMS reference data)`,
     503,
   );
 }
 
 /**
- * Build the boot-time claim-assembly service over the RLS-enforced primary `db`. Every cross-module reader
- * seam is a fail-closed deny-stub (throws `SEAM_UNBOUND` at call time); the rule registry is the real frozen
- * platform-default registry. The optional `outbox` threads the catalog-validating tx publisher through for a
- * future live bundle (the deny-stub readers throw before the emit is reached today).
+ * Build the boot-time claim-assembly service over the RLS-enforced primary `db`. Four reader methods are
+ * bound to real data (this file's header); every other cross-module reader seam is a fail-closed deny-stub
+ * (throws `SEAM_UNBOUND` at call time). The rule registry is the real frozen platform-default registry. The
+ * optional `outbox` threads the catalog-validating tx publisher through for when the remaining seams bind
+ * (the still-unbound M6 readers throw before the emit is reached today).
  */
 export function buildM23BootAssemblyService(
   db: BillingDb,
-  ports: { readonly outbox?: AssemblyOutboxPort } = {},
+  ports: { readonly outbox?: AssemblyOutboxPort; readonly providerCcn?: ProviderCcnPort } = {},
 ): ClaimAssemblyService {
   const outbox: AssemblyOutboxPort = ports.outbox ?? {
     async publish() {
       unbound("AssemblyOutboxPort");
     },
   };
+  // Same deny-stub default the M23 write-service's own `providerCcn` port carries — `provider_entity`
+  // is M1-owned (arch:tables refuses this module reading its schema directly), so the composition root
+  // binds the SAME port instance already wired for the write-service's control-number derivation.
+  const providerCcn: ProviderCcnPort = ports.providerCcn ?? {
+    async ccnForProviderEntity() {
+      return unbound("ProviderCcnPort");
+    },
+  };
+
+  const mdmAdapter = buildM23MdmProviderEntityAdapter(db, providerCcn);
 
   const seams: ClaimAssemblySeams = {
-    patientPayer: { medicarePrimaryForRange: () => unbound("PatientPayerReader") },
+    // REAL (#250) — see this file's header for the exact per-seam accounting.
+    patientPayer: buildM23PatientPayerAdapter(),
     admission: { resolveForRange: () => unbound("AdmissionContextReader") },
     electionPeriods: { coveringRange: () => unbound("ElectionPeriodReader") },
     certifications: { forPatient: () => unbound("CertificationReader") },
@@ -63,21 +124,23 @@ export function buildM23BootAssemblyService(
     signedEncounters: { inWindow: () => unbound("SignedEncountersReader") },
     evvCompliance: { bracketsForEncounters: () => unbound("EvvComplianceReader") },
     mdm: {
-      resolveProviderEntity: () => unbound("MdmEntityProvider"),
+      // REAL (#250) — CCN + MAC jurisdiction; cbsaCode is an honest `null` (unread field, see the adapter's
+      // own doc comment).
+      resolveProviderEntity: mdmAdapter.resolveProviderEntity,
       resolveClinicalParticipants: () => unbound("MdmEntityProvider"),
     },
     terminology: { resolveForClaim: () => unbound("TerminologyProvider") },
     // M26 §11.A cap projection — LIVE: resolves M26's `CapProjectionProvider` via getSeam at call time and
     // degrades to status:"unavailable" when M26 is db-unbound (D8). Unlike the other boot seams it does NOT
-    // throw — the cap rules warn-skip while degraded, never block. The full assembly's remaining reader seams
-    // (patientPayer/admission/…) stay unbound until M23's own live-seam binds land.
+    // throw — the cap rules warn-skip while degraded, never block.
     capProjection: buildM23CapProjectionAdapter(),
-    referenceData: {
-      hippsRateTable: () => unbound("BillingReferenceDataReader"),
-      chcHourlyRateCents: () => unbound("BillingReferenceDataReader"),
-      wageIndexForCcn: () => unbound("BillingReferenceDataReader"),
-      activeSequestrationPolicy: () => unbound("BillingReferenceDataReader"),
-    },
+    // REAL for wageIndexForCcn / activeSequestrationPolicy (#250); hippsRateTable / chcHourlyRateCents stay
+    // unbound — see this file's header for why the four are not one bundle.
+    referenceData: buildM23ReferenceDataAdapter(
+      db,
+      () => unbound("BillingReferenceDataReader"),
+      () => unbound("BillingReferenceDataReader"),
+    ),
     ruleRegistry: createDefaultBillingRegistry(),
     outbox,
   };

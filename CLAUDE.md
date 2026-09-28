@@ -371,6 +371,53 @@ terminus re-page (loop iteration counted correctly, no spurious history row — 
 refuse one), the two-concurrent-ticks race (escalates exactly once, version 2 never 3), and a two-org fan
 out under each org's own tenant scope.
 
+**#250's own scoping investigation was itself checked rather than trusted, and it was wrong about M25
+and half-wrong about M23 (F-119).** A first-pass agent read `boot-assembly.ts`'s header and #250's issue
+text and reported: M25's create route needs no fix (true — `internal.routes.ts`'s guard was already
+retired from `systemPrincipal` to `actorKind` at commit `46414c60`, #75/#76, well before #250 — confirmed
+by reading the route and the composition-root wiring directly, not by re-deriving the finding); and M23's
+six seam areas are "5 of 6 wiring, 1 partial" with `macJurisdiction`/`cbsaCode` "a genuine missing fact —
+no column, no derivation anywhere." **That second claim was false, checked against the schema rather
+than assumed**: `mac_submitter_credential.mac_jurisdiction` is exactly that fact, admin-set per provider
+entity during MAC portal onboarding, with a real repository already reading it
+(`MacSubmitterCredentialRepository.findByProviderEntity`) — the investigation looked at `provider_entity`
+alone and stopped. Bound for real, alongside `patientPayer` (M5, the M25 CARC/RARC precedent's mirror —
+`activeCoverageOfKind` checked at BOTH the claim window's endpoints against the same coverage row, since
+the seam answers one date and D15 needs the whole range) and two of `referenceData`'s four methods:
+`wageIndexForCcn` and `activeSequestrationPolicy` both have real, already-migrated backing tables
+(`wage_index_factor`, `sequestration_policy`) the investigation's "genuine new infrastructure" framing
+had bundled together with `hippsRateTable`/`chcHourlyRateCents`, which really are unbuilt — no table
+exists for either, confirmed by the `TODO(CMS-fixture)` already sitting in `packages/billing/src/hipps/
+calculator.ts`'s own doc comment. Checked live rather than assumed empty a second time:
+`wage_index_factor` is NOT actually empty — migration `0080_billing_m23_seed.sql` pre-seeds 5
+REPRESENTATIVE placeholder rows for FY2026, explicitly marked "not authoritative," which the first draft
+of this pass's own live test found the hard way (asserting `null` for CCN `999999` and getting back a
+real placeholder row instead). **The other five of M23's eleven `ClaimAssemblySeams` methods turned out
+to need more than "5 of 6 is wiring" implied, in the OPPOSITE direction from the M40 correction above**:
+M6's published SeamRegistry readers (`ElectionPeriodReader`, etc.) are id- or single-date-keyed, never
+"every period for this patient overlapping this range"; M8's `BillableEncounterReader` needs encounter
+ids already in hand and its `SignedEncountersReader` digest carries no `cosignRequired`/`cosigned`/
+`durationMinutes` — the exact three facts the SIA calculator needs; M18's `EvvComplianceReader` answers
+one visit or a windowed rate, never a list of bracket snapshots; and M38's `TerminologyProvider` — the
+seam this pass's own first draft cited as proof the M25 CARC/RARC adapter shape would transplant cleanly
+— is a per-code lookup, while M23 wants a bulk pre-resolved value-set/ICD map with no codes given at
+fetch time. Each is a real read-surface or contract gap in the OWNING module, not an M23-side wrapper,
+and each is now named precisely in `boot-assembly.ts`'s header rather than folded back into one "6 seam
+areas" estimate. **Net, stated without overclaiming**: 4 of 11 reader methods are bound to real data,
+each individually live-tested against real rows under RLS
+(`m23-claim-assembly-seams.live.test.ts`) — cross-tenant isolation proven on a genuinely RLS-enforced
+`wardenx_app` connection (`_live-app-role.ts`), not the bare-superuser connection this repo's live-test
+convention exists to catch. `POST /claims/assemble` remains unreachable end-to-end for every real caller
+today: `assemble()`'s call order reaches `mdm.resolveProviderEntity` and the two bound `referenceData`
+methods only AFTER `admission.resolveForRange` (M6), which is still unbound, so the live boundary moved
+from the first read to the second — real, verified progress on exactly one seam step, stated as such
+rather than as an unblock. `provider_entity` is M1-owned, so `resolveProviderEntity`'s CCN resolves
+through the SAME `ProviderCcnPort` the write-service's control-number derivation already binds at the
+composition root, not a second cross-module edge — `arch:tables` caught the first draft reading the
+schema directly. Remains a follow-up: the M6/M8/M18 range/field-shape gaps above, M40's
+`resolveClinicalParticipants` (physician/POS linking, genuinely unbuilt), and `hippsRateTable`/
+`chcHourlyRateCents` (real CMS per-diem rate-file loading, no table exists).
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

@@ -7,23 +7,26 @@
  * write-service code, not assumed):
  *
  *   - M23: worse than "stops at DRAFT" — `POST /billing/claims/assemble` itself is unconditionally
- *     unreachable. `boot-assembly.ts`'s own header says so plainly: the full §4.4 reader-seam bundle
- *     (M5 patient-payer / M6 admission+election+cert+F2F+LOC / M8 billable+signed encounters / M18 EVV /
- *     M38 terminology / M40 MDM) is bound to fail-closed deny-stubs at boot because "those cross-module
- *     seams are NOT members of the M1 SeamRegistry yet... a foundation change, outside this slice" —
- *     this is a documented, permanent-for-this-phase architectural gap (the same class as M20's unbound
- *     DEK or M27's `hasElevatedApproval`), not a bug to route around. `PatientPayerReader` throws
- *     `SEAM_UNBOUND` on the very first read `assemble` makes. M23 is skipped entirely below — even the
- *     validate/eligibility queueName↔event-string mismatch this comment originally flagged
- *     (`M23_SUBMISSION_REQUEST_EVENTS` never contains `"validation-run"`/`"eligibility.refresh"`) is moot
- *     once assemble itself can't run.
+ *     unreachable, though LESS unconditionally than this comment used to say (#250 bound four of the
+ *     eleven reader seams for real: `patientPayer`, `mdm.resolveProviderEntity`, and two of
+ *     `referenceData`'s four methods — see `boot-assembly.ts`'s header for the exact per-seam
+ *     accounting). `assemble()`'s SECOND read, `admission.resolveForRange` (M6), still throws
+ *     `SEAM_UNBOUND` for every real call — M6's published seam readers are id/single-date-keyed and
+ *     none answers "every period for this patient overlapping this range", which needs a real new
+ *     read-surface addition to M6's own seam layer, not an M23-side adapter. M23 stays skipped entirely
+ *     below — even the validate/eligibility queueName↔event-string mismatch this comment originally
+ *     flagged (`M23_SUBMISSION_REQUEST_EVENTS` never contains `"validation-run"`/`"eligibility.refresh"`)
+ *     is moot once assemble itself can't run.
  *   - M25: `POST /api/v1/internal/remittance/advices` — the ONLY route that creates a remittance/835
- *     row — is gated on `request.context?.attributes?.systemPrincipal === true`
- *     (`internal.routes.ts`), and nothing anywhere in this codebase ever sets that field (confirmed by
- *     grep — the only three hits are the guard itself and two doc-comments; contrast M23/M15's
- *     `requireSystemPrincipal()`, which checks the DIFFERENT, actually-settable `actorKind` field).
- *     `denials.routes.ts`/`appeals.routes.ts` have no create routes at all — both are spawned by the
- *     (unreachable) ingest worker. M25 is skipped entirely; there is no API-reachable seed for it.
+ *     row — was gated on `request.context?.attributes?.systemPrincipal === true`, a field nothing wrote;
+ *     that was fixed on `main` at commit `46414c60` (#75/#76, F-030) well before #250 — the guard now
+ *     checks the real, stamped `actorKind === "system"` field and `INTERNAL_SERVICE_TOKEN` verification
+ *     is production-wired (`apps/backend/src/index.ts` ~line 3267). The route IS reachable and correctly
+ *     gated. M25 stays skipped here for the reason #250 confirmed is the true one: no X12-835 sidecar
+ *     (`M25_X12_WORKER_URL`) is configured in any environment and the clearinghouse-pull transport that
+ *     would stage an 835 for this route to receive is unbuilt — `denials.routes.ts`/`appeals.routes.ts`
+ *     have no create routes at all, both spawned by that same unreachable ingest worker. There is no
+ *     API-reachable seed for M25 today, but not because of an authz bug.
  *   - M24: two prerequisites `assembleClaim` needs that nothing seeds by default:
  *       (a) `patient_payer` — the M5 row `activeMedicaidCoverage` reads. `GET /patients/:id/payers`
  *           is the only route touching this table; there is NO create route anywhere in M5 (confirmed
@@ -281,7 +284,7 @@ async function main(): Promise<void> {
 
   // ── M23 — Billing Medicare: SKIPPED, assemble itself is unreachable (see file header) ──────────────
   log.dup(
-    "Medicare (M23): skipped — the full §4.4 reader-seam bundle is a documented, permanent-for-this-phase deny-stub",
+    "Medicare (M23): skipped — 4 of 11 reader seams are now real (#250), assemble still SEAM_UNBOUNDs at admission.resolveForRange (M6)",
   );
 
   // ── M24 — Billing Medicaid (full lifecycle: assemble → validate → submit) ──────────────────────────
@@ -346,7 +349,7 @@ async function main(): Promise<void> {
 
   // ── M25 — Remittance/Denials: SKIPPED, no API-reachable creation route (see file header) ───────────
   log.dup(
-    "Remittance/Denials (M25): skipped — no reachable creation route (systemPrincipal is a dead field)",
+    "Remittance/Denials (M25): skipped — the create route is correctly gated and reachable; no X12-835 sidecar/clearinghouse-pull transport stages an 835 to receive",
   );
 
   // ── M26 — Cap Management (publish constant → open period → recompute) ──────────────────────────────

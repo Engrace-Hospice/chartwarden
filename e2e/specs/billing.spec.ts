@@ -2,19 +2,21 @@
 //
 // #106 (F-046) — the Medicare Claim Workbench (`/billing/claims`) stays scoped to reachability +
 // empty-state: `seed-scenario-billing.ts`'s own header documents WHY, and it is a real production
-// gap rather than a seeding one — `POST /billing/claims/assemble` is unconditionally unreachable
-// because M23's §4.4 reader-seam bundle (M5 patient-payer, M6 admission/election/cert/F2F/LOC, M8
-// billable+signed encounters, M18 EVV, M38 terminology, M40 MDM) is bound to fail-closed deny-stubs
-// at boot — filed separately (#250) rather than fixed here, since un-stubbing a six-module seam
-// bundle is its own project, not a test-coverage fix.
+// gap rather than a seeding one — `POST /billing/claims/assemble` is unconditionally unreachable.
+// #250 bound 4 of the 11 reader seams for real (`patientPayer`, `mdm.resolveProviderEntity`, two of
+// `referenceData`'s four methods); assemble still SEAM_UNBOUNDs at its second read,
+// `admission.resolveForRange` (M6) — M6's published seam readers don't offer the patient+range query
+// claim assembly needs, a real new read-surface addition to M6's own seam layer, filed as a
+// follow-up rather than built here.
 //
 // The MEDICAID Claim Workbench (`/medicaid/billing/claims`) is different: `seed-scenario-billing.ts`
 // assembles, validates, and submits one real Oregon-adapter claim for the flagship patient
 // (Whitfield) via `db:seed:all`, so this suite proves the real claim → validation → submission
 // lifecycle end to end — not just an empty round trip. 835/remittance POSTING (M25) is the one leg
-// that stays unreachable for BOTH payers, for a genuine platform reason documented in the same seed
-// header (the only create route is gated on `systemPrincipal`, which nothing in the codebase writes)
-// — also filed separately (#250) rather than built here.
+// that stays unreachable for BOTH payers — NOT an authz bug (the `systemPrincipal` guard was fixed on
+// `main` at commit `46414c60`, #75/#76, well before #250; confirmed by #250's own investigation) but a
+// missing X12-835 sidecar/clearinghouse-pull transport to stage an 835 for the correctly-gated create
+// route to receive — filed as the same follow-up.
 import { expect, test } from "@playwright/test";
 import { ADMIN_ACCOUNT } from "../fixtures/credentials";
 import { expectNoAxeViolations, signInAs } from "../fixtures/helpers";

@@ -3181,11 +3181,45 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // the boot-time claim-assembly service. Each mutation opens its own withOrgContext (RLS scopes every
           // statement to app.org_id), runs the pure @wardenx/billing lifecycle reducer, and emits its §4.10
           // m23.* event through the catalog-validating tx publisher (callerModule `m23`) in the same unit of
-          // work (D2 outbox-only). The assembly service's cross-module reader seams (M5/M6/M8/M18/M38/M40) are
-          // fail-closed deny-stubs at boot (RULE 4) until they register in the M1 SeamRegistry — POST
-          // /claims/assemble returns 503 SEAM_UNBOUND, never a fabricated claim. The §4.8 BullMQ submit/
-          // eligibility producer + the M40 CCN / M1 secret-cipher / M4 override-audit ports stay on their
-          // fail-closed defaults until those binds land (the submit routes enqueue once the producer binds).
+          // work (D2 outbox-only). The assembly service now binds 4 of its 11 cross-module reader seams for
+          // real (#250: patientPayer/M5, mdm.resolveProviderEntity/M1+M23, 2 of referenceData's 4 methods) —
+          // see `boot-assembly.ts`'s header for the exact per-seam accounting of what still deny-stubs and
+          // why. POST /claims/assemble still returns 503 SEAM_UNBOUND for every real caller today (now at
+          // `admission.resolveForRange`, M6, rather than at the first read), never a fabricated claim. The
+          // §4.8 BullMQ submit/eligibility producer + the M1 secret-cipher / M4 override-audit ports stay on
+          // their fail-closed defaults until those binds land (the submit routes enqueue once the producer
+          // binds).
+          //
+          // `provider_entity` is M1-owned (arch:tables), so BOTH the write-service's control-number
+          // derivation and the assembly-service's `mdm.resolveProviderEntity` bind the SAME `ProviderCcnPort`
+          // instance here, rather than each module reading the schema directly.
+          const m23ProviderCcn = {
+            async ccnForProviderEntity(
+              tx: unknown,
+              organizationId: string,
+              providerEntityId: string,
+            ) {
+              const [provider] = await (tx as DbClient)
+                .select({ ccn: schema.providerEntities.ccn })
+                .from(schema.providerEntities)
+                .where(
+                  and(
+                    eq(schema.providerEntities.id, providerEntityId),
+                    eq(
+                      schema.providerEntities.organizationId,
+                      organizationId,
+                    ),
+                  ),
+                )
+                .limit(1);
+              if (!provider)
+                throw new DegradedError(
+                  "provider-entity",
+                  "provider CCN unavailable",
+                );
+              return provider.ccn;
+            },
+          };
           mountM23Routes(app, {
             readService: buildDrizzleM23ReadService(dbHandle.db),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
@@ -3193,36 +3227,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               jobs: buildM23OutboxBackedSubmissionGate(
                 m23SubmissionQueues !== null,
               ),
-              providerCcn: {
-                async ccnForProviderEntity(
-                  tx,
-                  organizationId,
-                  providerEntityId,
-                ) {
-                  const [provider] = await (tx as DbClient)
-                    .select({ ccn: schema.providerEntities.ccn })
-                    .from(schema.providerEntities)
-                    .where(
-                      and(
-                        eq(schema.providerEntities.id, providerEntityId),
-                        eq(
-                          schema.providerEntities.organizationId,
-                          organizationId,
-                        ),
-                      ),
-                    )
-                    .limit(1);
-                  if (!provider)
-                    throw new DegradedError(
-                      "provider-entity",
-                      "provider CCN unavailable",
-                    );
-                  return provider.ccn;
-                },
-              },
+              providerCcn: m23ProviderCcn,
             }),
             assemblyService: buildM23BootAssemblyService(dbHandle.db, {
               outbox: m23OutboxPublisher,
+              providerCcn: m23ProviderCcn,
             }),
           });
           // M25 (Remittance & Denials) — mount the §4.1 route plugins over the Drizzle READ + WRITE
