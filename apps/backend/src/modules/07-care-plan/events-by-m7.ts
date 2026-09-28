@@ -42,7 +42,11 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: versionKind,
       sequence: Type.Integer({ minimum: 1 }),
     }),
-    declaredConsumers: ["m14"],
+    // F-129 (#248) — m14 dropped: `packages/idg/src/packet/builder.ts`'s `CarePlanSummaryInput` (the
+    // packet's `carePlanSummary` block) is documented as "the M7 `CarePlanReader` active-plan summary,
+    // already projected to the packet cover shape" — a build-time SEAM PULL, not a push cache. M14 never
+    // duplicates this data (D1), so it has no use for a per-draft push.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -168,6 +172,13 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
   // never subscribes to an outbox event to stay current, so these were never going to bind regardless of
   // whether the Condition seam lands. The description text below still names M28 as the eventual FHIR
   // consumer of this DATA; only the outbox subscription claim was wrong.
+  // F-129 (#248) — m14 dropped from every problem/goal/intervention `declaredConsumers` below, the same
+  // reasoning as `care_plan.version_drafted` above: the packet's `carePlanSummary` block
+  // (`activeProblemCount`/`activeGoalCount`/`activeInterventionCount`/…) is a build-time pull through M7's
+  // own `CarePlanReader` seam (`CarePlanSummaryInput` in `packages/idg/src/packet/builder.ts`), never a
+  // push cache keyed on individual problem/goal/intervention deltas. The description text below still
+  // names M14/M28 as eventual DATA consumers; only the outbox-subscription claim was wrong (M28's is
+  // already corrected above, F-115).
   // ── problems ────────────────────────────────────────────────────────────────────────────────────
   {
     eventName: "m7.problem.added",
@@ -179,7 +190,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       problemId: Type.String({ minLength: 1 }),
       status: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14"],
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -191,7 +202,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       problemId: Type.String({ minLength: 1 }),
       status: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14"],
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -203,7 +214,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       problemId: Type.String({ minLength: 1 }),
       status: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14"],
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   // ── goals ───────────────────────────────────────────────────────────────────────────────────────
@@ -218,7 +229,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       source: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14"],
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -232,7 +243,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       source: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14"],
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -245,7 +256,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       source: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14"],
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -258,7 +269,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       source: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14"],
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   // ── interventions ───────────────────────────────────────────────────────────────────────────────
@@ -273,7 +284,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       discipline: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m11", "m14"],
+    declaredConsumers: ["m11"],
     isOutboxOnly: true,
   },
   {
@@ -286,7 +297,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       discipline: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m11", "m14"],
+    declaredConsumers: ["m11"],
     isOutboxOnly: true,
   },
   {
@@ -299,7 +310,7 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       discipline: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m11", "m14"],
+    declaredConsumers: ["m11"],
     isOutboxOnly: true,
   },
 ];

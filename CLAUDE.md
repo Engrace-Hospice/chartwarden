@@ -707,6 +707,55 @@ fix makes the file's own claim true rather than finding a defect it happened to 
 live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live suite, all 38
 `arch:fitness` gates, `db:migrate` + `db:provision-roles` + `check:boot:platform`.
 
+  **The m14 group (51 pairs) was checked per-event against M14's OWN spec rather than trusted from six
+  producing modules' `declaredConsumers`, and it disagreed at scale (F-129, #248).** Continuing #248's
+  triage past the m22/m21/m14-D8 passes, the next-largest group was M14's remaining "M6 inclusion cache +
+  M9/M10/M11/M12 'since last IDG' cache + M22 back-ref" bucket. F-101's own rule — the CONSUMING module's
+  own spec table decides who consumes it, not the producing module's guess — applied at 8x the scale of
+  its first use: M14's §4.5 table (mirrored exactly by `consumers/index.ts`'s `M14_OUTBOX_SUBSCRIPTIONS`,
+  14 events) and `packages/idg/src/packet/builder.ts`'s typed build-input structs are the authoritative
+  statement of what M14 actually reads, and 22 of the 51 declared pairs named neither. **All 22 were
+  redundant with a documented build-time SEAM PULL, not merely unsupported by prose**: M7's 9 problem/
+  goal/intervention/care-plan-version events and M39's 2 DPOA events are covered by `CarePlanSummaryInput`/
+  `PacketCoverInput` reading M7's `CarePlanReader` and M5/M6/M7/M39 fresh per packet ("already projected to
+  the packet cover shape" — never a push cache); M10's `timepoint_scheduled`/`timepoint_signed` are the
+  same shape for `HopeContextInput`/`HopeTimepointProvider`; M6's `cti.drafted`/`.late_flagged`/`.voided`
+  and `f2f.scheduled`/`.window_missed`/`.window_overridden` are the same shape for `PacketCoverInput`'s
+  `nextRecertDueAt`/`f2fWindowState` (M6 owns CTI/F2F enforcement outright — M14 only ever reads it,
+  per its own §1.1 dependency line); `m6.discharge.created` is redundant with `m6.admission.discharged`,
+  M14's own real D9 inclusion-cache subscription on the SAME discharge transaction, carrying every fact
+  D9's effect needs (`admissionId`/`dischargeDate`) while `discharge.created`'s richer fields serve M22/
+  M23/M26 instead. Dropped `m14` from each event's `declaredConsumers` at the source
+  (`events-by-m6.ts`/`events-by-m7.ts`/`events-by-m10.ts`/`events-by-m39.ts`), never here. **The reverse
+  defect turned up in the same pass**: `m11.order.discontinued` is named by M14's own §4.5 table and
+  `M14_OUTBOX_SUBSCRIPTIONS` for the projection cache, and M11's catalog had simply never declared `m14` —
+  a real, spec-endorsed subscription that `assertBindableAgainstCatalog` would have refused the moment
+  anyone tried to bind it live. Added at the source (`events-by-m11.ts`); the matching stale
+  `outbox-subscription-exceptions.ts` entry (which had correctly diagnosed this as "NOT one of the D8
+  auto-close sources… stays here with the rest of the unbuilt Valkey cache") is now redundant with the
+  corrected catalog declaration and is deleted, per the gate's own message ("now both subscribed and
+  declared — the exception has outlived its reason"). **The remaining 29 pairs split into two honest
+  groups, not one**: the real, still-unbuilt "since last IDG"/inclusion-cache shape M14's own spec names
+  (8 events — the two M6 inclusion-cache events, M9's `recorded`/`significant_change`, M10's
+  `j2051_trigger_fired`/`sfv_created`, M11's `order.discontinued`, M12's `medication_order.discontinued`);
+  and 22 events checked and found neither clearly redundant nor named anywhere in M14's spec (M6 admission
+  on_hold/resumed + compliance-window open/overdue, M9's `assessment.amended`, M12's
+  `medication_history_pulled`, all 12 of M13's eMAR events, all 3 of M15's discipline-care-plan events,
+  M39's `consent.expiring_soon`) — kept declared rather than dropped absent stronger evidence, the F-101
+  caution applied in the direction that avoids a false drop. Of those 22, `m13.scheduled_dose.missed` has
+  the strongest surviving case to bind next: M14's own §1 packet description names "missed doses" as a
+  `flaggedEvents` category and the payload (`missedDoseId`, `dueAt`, controlled/comfort-kit flags) maps
+  directly onto `PacketFlaggedEventDigest`'s `missed_dose` kind, unlike the other 11 M13 events, the 3 M15
+  events or M39's `expiring_soon`, none of which correlate to any documented packet field.
+  **Net: 509 → 419 (prior passes) → 398** (22 dropped, 1 added, net −21). Verified: `bun run build` clean,
+  `bun run typecheck` (the same 3 pre-existing, unrelated `m2-*.live.test.ts` TS2698 errors, confirmed via
+  `git stash` predating this change), `arch:fitness` 38/38 (`arch:outbox-bindings` 0 disagreements), full
+  non-live suite 654 files / 9589 tests green, the four touched live suites
+  (`m11-downstream-signed-fanout`, `m21-order-cascade`, `m6-cop-document-renders`, `m6-discharge-cascade`)
+  passing individually against a fresh disposable Postgres, and a clean `check:boot:platform` run
+  (the real `assertBindableAgainstCatalog` boot-time proof) against the same freshly migrated, RLS-enforced
+  database. Leaving #248 open — 398 pairs across 32 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

@@ -45,7 +45,11 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
       windowClosesAt: isoInstant,
       lateDeadlineAt: isoInstant,
     }),
-    declaredConsumers: ["m14"],
+    // F-129 (#248) — m14 dropped: "M14 surfaces open windows" describes the OUTCOME, not the mechanism —
+    // `packages/idg/src/packet/builder.ts`'s `HopeContextInput` (the packet's `hopeContext` block) is a
+    // build-time pull through `HopeTimepointProvider` ("for upcoming RFAs/SFV chain" per M14's own §1.1
+    // dependency line), not a push cache keyed on individual schedule events.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -65,7 +69,9 @@ export const M10_OUTBOX_EVENTS: ModuleEventContribution = [
     // the live M10 `QualityHopeConsumer` rollup seam (`j2051FollowUpRollup`/`sfvTimelinessRollup`/
     // `submissionPostureRollup`) on its nightly cadence, not by reacting to individual HOPE events — same
     // for every `m10.hope.*` entry below that names it.
-    declaredConsumers: ["m14"],
+    // F-129 (#248) — m14 dropped too: the description names M33/M30 as readers, not M14, and (like
+    // `timepoint_scheduled` above) `hopeContext` is a build-time `HopeTimepointProvider` pull.
+    declaredConsumers: [],
     seamConsumers: ["m30", "m33"],
     // ALSO live: server → patient room `hope:assessment:signed` (§4.5).
     isOutboxOnly: false,

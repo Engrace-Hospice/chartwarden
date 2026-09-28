@@ -181,7 +181,10 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       agentKind: Type.String(),
       agentName: Type.String(),
     }),
-    declaredConsumers: ["m7", "m11", "m14"],
+    // F-129 (#248) — m14 dropped: the packet's `patientCover.activeDpoa` is documented in
+    // `packages/idg/src/packet/builder.ts`'s `PacketCoverInput` as read fresh "from M5 `PatientReader` +
+    // M6 recert/F2F reader + M7/M39 (raw, pre-redaction)" at build time — a seam pull, not a push cache.
+    declaredConsumers: ["m7", "m11"],
     isOutboxOnly: true,
   },
   {
@@ -195,7 +198,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       dpoaAgentId: Type.String(),
       agentKind: Type.String(),
     }),
-    declaredConsumers: ["m7", "m11", "m14"],
+    // F-129 (#248) — m14 dropped: same reasoning as `dpoa.agent_appointed` above (build-time seam pull).
+    declaredConsumers: ["m7", "m11"],
     isOutboxOnly: true,
   },
   {

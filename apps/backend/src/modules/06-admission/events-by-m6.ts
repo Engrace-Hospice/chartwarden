@@ -418,7 +418,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
 
       signatureDueAt: Type.Optional(Type.String({ minLength: 1 })),
     }),
-    declaredConsumers: ["m14"],
+    // F-129 (#248) — m14 dropped: `patientCover.nextRecertDueAt`/`f2fWindowState` (the packet's only
+    // CTI/F2F-derived cover fields) are documented in `PacketCoverInput` (`packages/idg/src/packet/
+    // builder.ts`) as read "from M5 `PatientReader` + M6 recert/F2F reader" at build time — a seam pull,
+    // matching M14's own §1.1 dependency line ("6 (Admission… — recert/F2F windows shown on the packet
+    // cover)"). No CTI lifecycle event is named anywhere in M14's own spec.
+    declaredConsumers: [],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
@@ -447,7 +452,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       ctiId: Type.String({ minLength: 1 }),
       writtenCertDeadlineAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14"],
+    // F-129 (#248) — m14 dropped: same reasoning as `cti.drafted` above (build-time seam pull).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -458,7 +464,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       ctiId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14"],
+    // F-129 (#248) — m14 dropped: same reasoning as `cti.drafted` above (build-time seam pull).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -550,7 +557,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       electionPeriodId: Type.String({ minLength: 1 }),
       scheduledDate: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14"],
+    // F-129 (#248) — m14 dropped: same reasoning as `m6.cti.drafted` above — `f2fWindowState` is a
+    // build-time `PacketCoverInput` seam pull, not a push cache.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -598,7 +607,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       f2fId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m30"],
+    // F-129 (#248) — m14 dropped: same reasoning as `m6.cti.drafted` above (build-time seam pull).
+    declaredConsumers: ["m30"],
     isOutboxOnly: true,
   },
   {
@@ -609,7 +619,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       electionPeriodId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m30"],
+    // F-129 (#248) — m14 dropped: same reasoning as `m6.cti.drafted` above (build-time seam pull).
+    declaredConsumers: ["m30"],
     isOutboxOnly: true,
   },
   {
@@ -726,7 +737,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       source: applierSource,
     }),
-    declaredConsumers: ["m14", "m22", "m23", "m26"],
+    // F-129 (#248) — m14 dropped: redundant with `m6.admission.discharged`, M14's own §4.5-table
+    // inclusion-cache subscription (D9) — same discharge transaction, same `admissionId`/`dischargeDate`
+    // facts M14 actually needs. `discharge.created`'s richer `dischargeEventId`/`requiresMedicalDirectorCosign`
+    // fields serve M22/M23/M26, which `admission.discharged`'s payload does not carry.
+    declaredConsumers: ["m22", "m23", "m26"],
     isOutboxOnly: true,
   },
   {

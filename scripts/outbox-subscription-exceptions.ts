@@ -243,13 +243,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
   },
   {
     module: "m14",
-    kind: "no-handler",
-    reason:
-      "F-104 bound the D8 auto-close (`consumers/bindings.ts`) and the three order/medication-order sources it covers left this entry with it. `m11.order.discontinued` is NOT one of them: it is a projection-cache subscription, not an auto-close source — the §4.5 mapping does not list it, and a discontinued order is not an absorbing state that discharges a follow-up commitment. It stays here with the rest of the unbuilt Valkey cache.",
-    events: ["m11.order.discontinued"],
-  },
-  {
-    module: "m14",
     kind: "would-defer-a-bound-event",
     reason:
       "`m22.document.rendered` is delivered TODAY — all five declared consumers (m11, m12, m13, m21, m33) bind their back-refs live. M14's §4.4 PDF back-ref has no consumer, so declaring `m14` would stop the event dispatching for those five as well.",

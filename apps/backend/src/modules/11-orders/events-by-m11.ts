@@ -241,7 +241,10 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared — this fact
     // is not part of any current M30 seam (order discontinuation isn't verbal-timeliness data).
-    declaredConsumers: ["m21", "m22", "m30"],
+    // F-129 (#248) — m14 added: M14's own `consumers/index.ts` and §4.5 spec table have named this event
+    // (the "since last IDG" projection-cache update) since M14-T06; this catalog simply never declared it,
+    // which would have made a future live binding fail `assertBindableAgainstCatalog` outright.
+    declaredConsumers: ["m14", "m21", "m22", "m30"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
