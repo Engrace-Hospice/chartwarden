@@ -72,9 +72,12 @@ describe("M8 outbox event contract (§4.4)", () => {
     expect(signed?.seamConsumers).toEqual(["m30", "m33"]);
   });
 
-  it("`m8.encounter.cosigned` reaches the billing readers (§7.2 billable flip)", () => {
+  it("`m8.encounter.cosigned` reaches the M23 billing reader (§7.2 billable flip)", () => {
     const cosigned = M8_OUTBOX_EVENTS.find((e) => e.eventName === "m8.encounter.cosigned");
-    expect(cosigned?.declaredConsumers).toEqual(expect.arrayContaining(["m23", "m24"]));
+    expect(cosigned?.declaredConsumers).toEqual(expect.arrayContaining(["m23"]));
+    // F-140 (#248) — m24 dropped: `M24_SUBSCRIPTION_MAP`'s exhaustive trigger-revalidate list names
+    // only `m8.encounter.signed`, not `.cosigned`.
+    expect(cosigned?.declaredConsumers).not.toContain("m24");
   });
 
   it("`m8.encounter.orphan_recorded` routes to M17 reconciliation (D2)", () => {

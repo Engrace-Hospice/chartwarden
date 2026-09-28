@@ -153,7 +153,10 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       attemptIndex: Type.Integer(),
       reason: Str,
     }),
-    declaredConsumers: ["m24"],
+    // F-140 (#248) — self-declared `m24` removed: `consumers/handlers.ts` has no handler for this event,
+    // and the real retry is BullMQ job-level exponential backoff on the ORIGINAL submit job, never a
+    // second outbox round-trip.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -338,7 +341,9 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       patientPayerId: Id,
       asOfServiceDate: Iso,
     }),
-    declaredConsumers: ["m24"],
+    // F-140 (#248) — self-declared `m24` removed: never emitted anywhere in the codebase —
+    // `refreshEligibility` runs fully synchronously and publishes `.checked` directly.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

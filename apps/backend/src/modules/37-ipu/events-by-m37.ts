@@ -223,7 +223,13 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m37",
     description: "An IV-continuous safety overlay was created for a signed order (M13 consumes).",
     payloadSchema: Type.Object({ ...admissionCore, orderId: id, isSedationClass: Type.Boolean() }),
-    declaredConsumers: ["m13"],
+    // F-140 (#248) — m13 moved to seamConsumers: both this module's own text and M13's own spec are
+    // decisive this is a SEAM PULL — M37 publishes the overlay via `IpuIvSafetyOverlayProvider
+    // .getOverlayForOrder(orderId)`, and M13's pre-administration gate consults it fresh; M13's own
+    // live `M13_OUTBOX_SUBSCRIPTIONS` list never names this event (or any M37 event) at all. The
+    // "M13 consumes" wording above describes the seam relationship, not an outbox subscription.
+    declaredConsumers: [],
+    seamConsumers: ["m13"],
     isOutboxOnly: true,
   },
   {

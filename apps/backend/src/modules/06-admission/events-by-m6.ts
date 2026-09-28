@@ -219,11 +219,18 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [
       "m5",
       "m7",
-      "m8",
+      // F-140 (#248) — `m8` REMOVED: M8's own spec (line 387) states outright that outbox publication is
+      // the only cross-module communication M8 performs "at the boundary" — every upstream fact,
+      // including anything from M6, is an in-process SEAM call, never an outbox subscription. M8's only
+      // M6 seam is `FaceToFaceWriter`, unrelated to activation.
       // #48 — M10 materializes the three admission-anchored HOPE timepoint windows here. It was absent
       // from this list for the same reason nothing ever inserted a `hope_timepoint_schedule` row: the
       // handshake the planners were written for had no consumer end.
       "m10",
+      // F-140 (#248) — `m13` ADDED: on M13's own live `M13_OUTBOX_SUBSCRIPTIONS` list, with a real
+      // decider (`m13.reconciliation-admission`) that opens the admission's medication-reconciliation
+      // worksheet.
+      "m13",
       // F-137 (#248) — `m11` REMOVED: no support anywhere — M11's own spec's authoritative "Outbox
       // events consumed" list (line 2859) names `m6.admission.discharged`/`.loc.changed`, M9's
       // significant-change, M10's J2051 trigger, the M14/M22 back-refs and the M21 forward seam, and
@@ -320,6 +327,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // patient was discharged stayed in flight forever.
       "m11",
       "m12",
+      // F-140 (#248) — `m13` ADDED: M13's own live `M13_OUTBOX_SUBSCRIPTIONS` list names this event with
+      // a real decider (`m13.admission-discharged-cascade`) that enqueues the D14 cancel-future-schedule
+      // cascade.
+      "m13",
       "m14",
       "m7",
       "m16",
@@ -481,7 +492,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
        *  artifacts is patient-scoped by definition — there is no defensible null. */
       patientId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m23"],
+    // F-140 (#248) — m13 ADDED: M13's own live `M13_OUTBOX_SUBSCRIPTIONS` list names this event with a
+    // real decider (`m13.reconciliation-recertification-signed`) that opens the recertification
+    // medication-reconciliation worksheet.
+    declaredConsumers: ["m13", "m22", "m23"],
     isOutboxOnly: true,
   },
   {
@@ -792,7 +806,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-131 (#248) — m26 REMOVED: an ordinary discharge (this event) is a benefit-period boundary M26
     // reads via the `ElectionPeriodReader` PULL, not a push subscription; M26's own §4.4 subscription-map
     // names only `m6.revocation.created`/`m6.transfer.created` from M6.
-    declaredConsumers: ["m22", "m23"],
+    // F-140 (#248) — m13 ADDED: M13's own live `M13_OUTBOX_SUBSCRIPTIONS` list names this event with a
+    // real decider (`m13.reconciliation-discharge-executed`) that opens the discharge worksheet and
+    // emits `m13.comfort_kit.return_required`.
+    declaredConsumers: ["m13", "m22", "m23"],
     isOutboxOnly: true,
   },
   {

@@ -30,7 +30,10 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({ ...corePatient, changed: Type.Array(Type.String()) }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035; M28's Patient projection reads
     // this live at request time via `PatientReader`).
-    declaredConsumers: [],
+    // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this event with a
+    // real handler (`trigger-revalidate` → `handleUpstreamChange`), re-validating a claim on any
+    // upstream demographic change.
+    declaredConsumers: ["m24"],
     isOutboxOnly: true,
   },
   {
@@ -67,7 +70,10 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-136 (#248) — m23 REMOVED: M23's own spec describes `patient_payer` ranking + `coverage_kind` as
     // CONSULTED (a seam pull) fresh at every claim assembly, never a push subscription — the next
     // assembly picks up a payer change on its own, so there is nothing for a push event to invalidate.
-    declaredConsumers: ["m24"],
+    // F-140 (#248) — m24 REMOVED: the identical shape one module over — redundant with
+    // `PatientPayerReader.coverageKindOn()`, a seam consumed at claim assembly (M24's own spec, the same
+    // D5/D10 substrate M23 reuses); not in `M24_SUBSCRIPTION_MAP`.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

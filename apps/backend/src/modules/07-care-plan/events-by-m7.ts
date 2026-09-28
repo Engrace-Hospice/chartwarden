@@ -63,7 +63,11 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: versionKind,
       snapshotRef: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m8", "m14", "m17", "m22"],
+    // F-140 (#248) — m8 removed: M8's own spec (line 387) states outright that outbox publication is
+    // the only cross-module communication M8 performs "at the boundary" — the encounter-authoring gate
+    // reads M7's `CarePlanReader` seam fresh at sign time (`getCarePlanReader()`, a boot-validated M1
+    // registry seam, "NOT a schema import"), never a cached push.
+    declaredConsumers: ["m14", "m17", "m22"],
     // F-115 (#248) — m28/m30 removed: m28 never subscribes to anything (its FHIR reads resolve seams
     // fresh per-request, F-035); m30 reads the care-plan review cycle via
     // `CarePlanCycleCountsView.fifteenDayCycleCountsForOrg` (care_plan_15_day_adherence) on its nightly
@@ -132,7 +136,9 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       dueAt: Type.String({ minLength: 1 }),
       overdueAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m8"],
+    // F-140 (#248) — m8 removed: same seam-pull reasoning as `version_signed` above — the 5-/15-day
+    // overdue sign-gate is `CarePlanReader`'s own check, read fresh at encounter sign time.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: false,
   },
@@ -146,7 +152,8 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: Type.String({ minLength: 1 }),
       admissionActivatedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m8"],
+    // F-140 (#248) — m8 removed: same seam-pull reasoning as `version_signed` above.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },

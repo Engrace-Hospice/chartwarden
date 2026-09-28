@@ -457,20 +457,19 @@ export const M19_EVENT_IDEMPOTENCY_KEYS = {
  * `m17.visit.assigned` is M17's canonical roster-change signal (M17 §4.11 emits no separate
  * `m17.roster.changed`), and is what the debounced Direct-model shift-sync reconciles on.
  */
+// F-140 (#248) checked every entry above the "not routed" split against M19's own spec text rather than
+// trusting the F-094 comparison at face value. `m17.visit.unassigned`/`.time_off.approved`/
+// `.reassignment_needed` and both `m20.safety.*` events are each a SEAM PULL M19's own spec describes at
+// the point of use (the shift-sync worker re-pulls the roster off `.assigned` alone; the "go on shift"
+// gate reads PTO/credential state fresh via an M17 reader; M20 pulls M19's `OnCallProvider` seam for its
+// after-hours recipient set) — never a push subscription, and no consumer file exists or is planned for
+// any of the five. Both `m39.consent.delegated_access.*` events are the same shape: portal-caregiver
+// access is gated by a live `ConsentEvaluator.isActive` seam pull, per request, not a cached push. All
+// seven removed at the source (`events-by-m17.ts`/`events-by-m20.ts`/`events-by-m39.ts`) and here.
 export const M19_SUBSCRIBED_EVENT_NAMES = [
   "m17.visit.no_show_detected",
   "m17.visit.assigned",
   "m18.evv.late_check_out_detected",
-  // F-094/#205 — catalogued AND declaring `m19`, and absent from this list until the two were first
-  // compared. The relay routes each of them here; §4.8's triage-intake, roster and safety-escalation
-  // consumers are what will answer them.
-  "m17.visit.unassigned",
-  "m17.time_off.approved",
-  "m17.reassignment_needed",
-  "m20.safety.sos_alert_raised",
-  "m20.safety.check_in_escalated",
-  "m39.consent.delegated_access.granted",
-  "m39.consent.delegated_access.revoked",
   // Subscribed and NOT routed here — each registered in `scripts/outbox-subscription-exceptions.ts`.
   "m36.notification.delivery_failed",
   "m8.encounter.signed",

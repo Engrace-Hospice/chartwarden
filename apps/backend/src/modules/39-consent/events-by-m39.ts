@@ -226,7 +226,10 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       effectiveFrom: Type.String(),
       effectiveUntil: Type.Optional(Type.String()),
     }),
-    declaredConsumers: ["m31", "m17", "m18", "m19"],
+    // F-140 (#248) — m19 removed: M19's own spec gates portal-caregiver access via a live
+    // `ConsentEvaluator.isActive({consentKind: 'family_caregiver_access'})` SEAM PULL inside the
+    // `portal_session_consent_active` ABAC predicate, evaluated per-request — never an outbox push.
+    declaredConsumers: ["m31", "m17", "m18"],
     isOutboxOnly: true,
   },
   {
@@ -240,7 +243,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       delegateCaregiverId: Type.String(),
       revokedAt: Type.String(),
     }),
-    declaredConsumers: ["m31", "m17", "m18", "m19"],
+    // F-140 (#248) — m19 removed: same seam-pull reasoning as `.granted` above.
+    declaredConsumers: ["m31", "m17", "m18"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

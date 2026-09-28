@@ -205,18 +205,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
   },
   {
     module: "m13",
-    kind: "no-handler",
-    reason:
-      "M13's `consumers/` holds one decider — the M22 document back-ref — and nothing else. These four M6 lifecycle events are §4.5 eMAR-context inputs with no decider written; declaring them would defer events a dozen other modules are already waiting on and produce no handler.",
-    events: [
-      "m6.admission.activated",
-      "m6.discharge.created",
-      "m6.admission.discharged",
-      "m6.cti.signed",
-    ],
-  },
-  {
-    module: "m13",
     kind: "no-such-event",
     reason:
       "M9 catalogues nine events and none is a PRN-reassessment overdue topic (the nearest are `m9.assessment.significant_change` and the two `m9.scale.license_*` reminders). This is not a staging gap — M9's catalog is landed and registered at boot — so the name was never right. Kept because the SUBSCRIPTION is meaningful: M13's §4.5 PRN follow-up is specified against an M9 overdue signal. Ends when M9 catalogues one.",
@@ -268,20 +256,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     reason:
       "M24's own staged submission topic, consumed by `consumers/submission-requests.ts`. The upstream map is the inbound half; see the M23 entry.",
     events: ["m24.medicaid_claim.submit_requested"],
-  },
-  {
-    module: "m24",
-    kind: "handler-unbound",
-    reason:
-      "`M24_SUBSCRIPTION_MAP` routes each topic to a named effect and `consumers/handlers.ts` implements them, so the deciders exist and nothing binds them. All three events are already deferred by other unbound consumers.",
-    events: ["m23.claim.acknowledged", "m5.patient.updated", "m8.encounter.signed"],
-  },
-  {
-    module: "m24",
-    kind: "would-defer-a-bound-event",
-    reason:
-      "Both M25 remittance topics are delivered today — every module they declare binds them. M24's revalidate-on-remittance effect is mapped and unbound, so declaring `m24` would convert two working deliveries into rows re-claimed every thirty minutes, for the other consumers too.",
-    events: ["m25.remittance.claim_paid", "m25.remittance.claim_denied"],
   },
   {
     module: "m24",

@@ -1153,6 +1153,61 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   a freshly migrated, RLS-enforced disposable Postgres. Leaving #248 open — 311 pairs across 31 modules
   remain.
 
+  **Four groups checked in parallel by four independent research subagents (m19, m13, m24, m8 — all
+  tied at 8 pairs), with the coordinator applying, cross-verifying and committing every finding centrally
+  to avoid four agents racing to edit the same shared registry files (F-140, #248).** Each agent
+  investigated one module against its own authoritative spec/subscription surface, exactly per this
+  series' established method; every non-trivial claim (self-consumption verdicts, reverse-direction
+  additions, seam-vs-push distinctions) was independently re-verified against the actual code before
+  being applied. **m19 (On-Call Triage) — 1 kept, 7 dropped.** `m17.visit.assigned` is decisive and
+  specific in M19's own locked spec (a named job, `m19.shift-sync.debounced`, and consumer file,
+  `m17-roster-changed.consumer.ts`) despite M17's own stale "Phase 2" gloss on the event. The other 7 are
+  each a seam pull M19's own spec describes at the point of use — PTO/reassignment eligibility via an M17
+  reader, portal-caregiver consent via `ConsentEvaluator.isActive`, and (the reverse-direction trap
+  avoided) M20's own LOCKED D14 decision that its after-hours recipient set PULLS M19's `OnCallProvider`
+  seam "without M19 needing to know about safety alerts" — never a push to M19. **m8 (Encounters) — 0
+  kept, all 8 dropped.** M8's own spec is unusually decisive: "Outbox publication is the only
+  cross-module communication M8 performs AT THE BOUNDARY" — every upstream fact (the M18 EVV bracket, M6
+  admission state, M7's care-plan overdue gate) is an in-process SEAM call, confirmed at the code level in
+  `seams/index.ts`'s own comments ("M8 also CONSUMES M7's §7.8 CarePlanReader... a boot-validated seam,
+  NOT a schema import"). The group is fully resolved and deleted from the registry outright (31 → 30
+  modules), the F-132 precedent. **m13 (eMAR) — 7 kept, 1 dropped, plus 4 reverse additions.** M13's own
+  live `M13_OUTBOX_SUBSCRIPTIONS` list (11 entries, each a real decider under `decideReconciliationTrigger`)
+  settled most of it directly; `m21.comfort_kit.replenished`/`.return_reconciliation` are kept despite not
+  yet being on that list, on M21's own decisive catalog text ("M13 tops the existing deployment up" /
+  "M13 closes its drawdowns", the payload even carrying `m13DeploymentId`) — the F-131 caution.
+  `m37.iv_safety_overlay.required` is dropped: both M37's and M13's own text agree this is a SEAM PULL
+  (`IpuIvSafetyOverlayProvider.getOverlayForOrder`), and M13's subscription list names no M37 event at
+  all — moved to `seamConsumers`. The reverse check found 4 real gaps already on M13's own subscription
+  list with a named decider each — `m6.admission.activated`, `m6.discharge.created`,
+  `m6.admission.discharged`, `m6.cti.signed` — all four also correctly pre-diagnosed by a stale
+  `outbox-subscription-exceptions.ts` entry, now deleted since the catalog agrees. **m24
+  (Billing-Medicaid) — 1 kept, 7 dropped, plus 5 reverse additions.** M24's own authoritative
+  `M24_SUBSCRIPTION_MAP` (8 topics, each a real handler in `consumers/handlers.ts`) settled it: kept
+  `m5.patient.address_changed`; dropped the three `m18.evv.aggregator_*` events (M24's own D9 decision
+  explicitly REJECTS "M24 owns its own EVV gate without consuming M18's seam" as a boundary violation —
+  the real mechanism is `EvvComplianceReader.bracketStateForVisit`, a seam pull), both self-declared
+  `m24.medicaid_claim.submission_failed`/`.medicaid_eligibility.refresh_requested` (no handler exists for
+  the first; the second is never emitted anywhere), `m5.patient.payer_changed` (redundant with a seam,
+  the identical F-136 shape one module over), and `m8.encounter.cosigned` (absent from the subscription
+  map, which names only `.signed`). The reverse check found 5 real gaps on the subscription map with a
+  named handler each — `m23.claim.acknowledged` (`resolve-medicare-primary`, the COB precondition for
+  billing Medicaid secondary once Medicare pays primary), `m5.patient.updated`, `m8.encounter.signed`
+  (both `trigger-revalidate`), and `m25.remittance.claim_paid`/`.claim_denied` (`mark-claim-paid`/
+  `mark-claim-denied`). The M25 pair's own stale exception entry assumed declaring `m24` would interrupt
+  M23's live delivery to those two events — the same mistaken belief F-139/m31 already corrected
+  (`buildOutboxRoutingPlan` delivers to every bound consumer regardless of what else is declared); deleted
+  along with the entry for the other three. **Net on #248: 311 → 297** (23 dropped, 9 added, one group
+  fully resolved — 31 → 30 modules). Verified centrally, once, after all four groups' edits landed
+  together: `bun run build` clean, `bun run typecheck` clean (0 errors), full non-live suite 654 files /
+  9589 tests green (four pinned-array assertions updated — `admission-outbox-jobs.test.ts`,
+  `care-plan-outbox-jobs.test.ts`, `encounter-outbox.test.ts`, `outbox-seam-consumers.test.ts`, all to
+  drop `m8` and/or `m24` from their respective fan-out lists), `arch:fitness` 38/38
+  (`arch:outbox-bindings` 0 disagreements both directions — this pass's own `M19_SUBSCRIBED_EVENT_NAMES`
+  mirror needed the same correction the m31 pass made to `M31_SUBSCRIBED_EVENT_NAMES`), and a clean
+  `check:boot:platform` run against a freshly migrated, RLS-enforced disposable Postgres. Leaving #248
+  open — 297 pairs across 30 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

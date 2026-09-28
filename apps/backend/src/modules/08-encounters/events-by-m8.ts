@@ -114,7 +114,10 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-115 (#248) — m28/m30 removed: m28 never subscribes to anything (F-035, request-time-only reads);
     // m30 reads signed-encounter data via `SignedEncountersReader` (HVLDL / HCI-10 / the late-entry
     // tally) on its nightly cadence, not by reacting to this event.
-    declaredConsumers: ["m9", "m10", "m14", "m17", "m22", "m31", "m36"],
+    // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this event with a
+    // real handler (`trigger-revalidate` → `handleUpstreamChange`); its `.cosigned` sibling below is NOT
+    // in that map (M24 revalidates on sign, not on the separate cosign event).
+    declaredConsumers: ["m9", "m10", "m14", "m17", "m22", "m24", "m31", "m36"],
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
@@ -128,7 +131,10 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       cosignedByMembershipId: Type.String({ minLength: 1 }),
       cosignedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m23", "m24"],
+    // F-140 (#248) — m24 removed: `M24_SUBSCRIPTION_MAP`'s exhaustive trigger-revalidate list names only
+    // `m8.encounter.signed`, not `.cosigned` — M23 KEPT the same event (a different module with a
+    // different subscription-map entry; not a transferable precedent).
+    declaredConsumers: ["m23"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

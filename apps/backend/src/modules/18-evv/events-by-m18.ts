@@ -48,7 +48,11 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     // F-043/#103 — M20 re-anchors the mid-visit cadence to the ARRIVAL (§7.1); it was subscribed in
     // `M20_SUBSCRIBED_EVENT_NAMES` and declared nowhere.
-    declaredConsumers: ["m8", "m17", "m20"],
+    // F-140 (#248) — m8 removed: M8's own spec (its architecture note, line 387) states outright that
+    // outbox publication is the only cross-module communication M8 performs "at the boundary" — every
+    // upstream fact M8 reads, including the EVV bracket, is an in-process SEAM call
+    // (`EvvBracketResolver`), never an outbox subscription. No M18 consumer file exists anywhere in M8.
+    declaredConsumers: ["m17", "m20"],
     isOutboxOnly: true,
   },
   {
@@ -70,7 +74,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     // F-043/#103 — M20 opens the post-visit window from the check-out (§7.1), materializing it when the
     // visit predates the cadence materializer.
-    declaredConsumers: ["m8", "m17", "m20"],
+    // F-140 (#248) — m8 removed: same seam-pull reasoning as `check_in_recorded` above.
+    declaredConsumers: ["m17", "m20"],
     isOutboxOnly: true,
   },
   {
@@ -99,7 +104,9 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       correctedByMembershipId: id,
       correctionReason: Type.String(),
     }),
-    declaredConsumers: ["m8", "m17"],
+    // F-140 (#248) — m8 removed: same seam-pull reasoning as `check_in_recorded` above — M8's
+    // `EvvBracketResolver` re-reads the bracket, it is never pushed to.
+    declaredConsumers: ["m17"],
     isOutboxOnly: true,
   },
   {
@@ -183,7 +190,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       status: id,
       resolutionReason: Type.String(),
     }),
-    declaredConsumers: ["m8", "m17", "m23"],
+    // F-140 (#248) — m8 removed: same seam-pull reasoning as `check_in_recorded` above.
+    declaredConsumers: ["m17", "m23"],
     isOutboxOnly: true,
   },
   // ── device lifecycle (§4.10) ────────────────────────────────────────────────────────────────────────────
@@ -259,7 +267,10 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       aggregatorVendor: id,
       aggregatorTransactionId: nullableId,
     }),
-    declaredConsumers: ["m24"],
+    // F-140 (#248) — m24 removed: M24's own authoritative `M24_SUBSCRIPTION_MAP` names no M18
+    // aggregator-state event at all — only `m18.evv.compliance_changed` (a vapor name, already filed
+    // `no-such-event`) — and this event's own description is only "operational visibility".
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -274,7 +285,11 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       aggregatorTransactionId: nullableId,
       acceptedAt: isoInstant,
     }),
-    declaredConsumers: ["m22", "m24"],
+    // F-140 (#248) — m24 removed: M24's own D9 decision explicitly rejects "M24 owns its own EVV gate
+    // without consuming M18's seam" as a boundary violation — the real mechanism is
+    // `EvvComplianceReader.bracketStateForVisit`, a SEAM PULL at claim assembly, never a push. Not in
+    // `M24_SUBSCRIPTION_MAP`.
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   {
@@ -320,7 +335,9 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       cancelledByMembershipId: id,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m24"],
+    // F-140 (#248) — m24 removed: same reasoning as `aggregator_submitted` above — operational
+    // visibility only, and not in `M24_SUBSCRIPTION_MAP`.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

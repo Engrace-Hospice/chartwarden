@@ -106,7 +106,11 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       afterHours: Bool,
       tier: Str,
     }),
-    declaredConsumers: ["m19"],
+    // F-140 (#248) — m19 removed: M20's own locked D14 decision states the after-hours parallel-
+    // recipient set is composed by M20 PULLING M19's `OnCallProvider.currentOnCallForProviderEntity`
+    // seam at M36's `RecipientResolver`, explicitly "without M19 needing to know about safety alerts" —
+    // the relationship is real but runs the opposite direction via a seam, never an M19 push subscription.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
@@ -126,7 +130,9 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       deviceAttested: Bool,
       coordinatesCaptured: Bool,
     }),
-    declaredConsumers: ["m19"],
+    // F-140 (#248) — m19 removed: same reasoning as `check_in_escalated` above — M20's own D14 decision
+    // pulls M19's on-call seam rather than being pushed to by M19.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },

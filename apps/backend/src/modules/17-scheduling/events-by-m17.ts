@@ -127,7 +127,10 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       formerAssignedMembershipId: id,
       patientId: id,
     }),
-    declaredConsumers: ["m5", "m19"],
+    // F-140 (#248) — m19 removed: M19's own spec names `.assigned` as the ONLY roster-change signal it
+    // needs ("M17 emits no separate `m17.roster.changed`") — the shift-sync worker re-pulls the full
+    // roster on that event, so a separate unassignment push is redundant with what `.assigned` covers.
+    declaredConsumers: ["m5"],
     isOutboxOnly: true,
   },
   // ── in-visit lifecycle (§2.2.1 / §4.11) ─────────────────────────────────────────────────────────────────
@@ -262,7 +265,9 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       approvedBy: id,
       affectedPublishedVisitCount: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m19", "m36"],
+    // F-140 (#248) — m19 removed: M19's own spec checks PTO eligibility via a SEAM PULL at the "go on
+    // shift" gate ("not on PTO via M17 reader"), never a push subscription to this event.
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {
@@ -314,7 +319,9 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
         Type.Literal("volunteer_gate_expired"),
       ]),
     }),
-    declaredConsumers: ["m19", "m36"],
+    // F-140 (#248) — m19 removed: no support anywhere — M19's own spec never mentions "reassignment",
+    // and M17's own description above ("M19 triage") has no cross-reference or consumer file behind it.
+    declaredConsumers: ["m36"],
     isOutboxOnly: true,
   },
   {

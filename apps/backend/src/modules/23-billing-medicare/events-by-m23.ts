@@ -158,7 +158,10 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     // (`.line_finalized`) events only — an acknowledgment carries no cap-relevant fact.
     // F-135 (#248) — m25 REMOVED: M25's own §4.4 subscribe list names `m23.claim.rejected` as the sole
     // pre-835 seed trigger, never a plain acceptance ack — an ACK_ACCEPTED carries no denial code.
-    declaredConsumers: ["m22"],
+    // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this exact event
+    // (`resolve-medicare-primary`) — the COB precondition for billing Medicaid secondary once Medicare
+    // paid primary — with a real handler (`handleMedicarePrimaryAck`) in `consumers/handlers.ts`.
+    declaredConsumers: ["m22", "m24"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },

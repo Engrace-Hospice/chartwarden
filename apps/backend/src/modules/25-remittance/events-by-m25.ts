@@ -95,7 +95,13 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       paidAmount: money,
       postedAt: isoInstant,
     }),
-    declaredConsumers: ["m23"],
+    // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this event
+    // (`mark-claim-paid`) with a real handler (`handleClaimPaid`) — the same remittance-posted signal
+    // both the Medicare (M23) and Medicaid (M24) claim lifecycles advance on. Reverses a stale exception
+    // (`would-defer-a-bound-event`) that assumed adding a second declared consumer would interrupt M23's
+    // live delivery — `buildOutboxRoutingPlan` delivers to every BOUND consumer regardless of what else
+    // is declared (verified directly against `outbox-dispatcher.ts`, the F-139/m31 precedent).
+    declaredConsumers: ["m23", "m24"],
     isOutboxOnly: true,
   },
   {
@@ -125,7 +131,9 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       carcCodes: Type.Array(str),
       postedAt: isoInstant,
     }),
-    declaredConsumers: ["m23"],
+    // F-140 (#248) — m24 ADDED: same reasoning as `.claim_paid` above (`mark-claim-denied` /
+    // `handleClaimDenied`).
+    declaredConsumers: ["m23", "m24"],
     isOutboxOnly: true,
   },
   {
