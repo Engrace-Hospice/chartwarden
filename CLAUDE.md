@@ -967,6 +967,34 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   clean `check:boot:platform` run against a freshly migrated, RLS-enforced disposable Postgres. Leaving
   #248 open — 333 pairs across 31 modules remain.
 
+  **The m25 group (11 pairs) went 9 of 11 misdeclared — the opposite ratio from m16, and the reason was
+  the group's own claim taken at face value instead of checked (F-135, #248).** The group's original
+  reason read "M25 binds one live consumer; the rest sit on its `consumers/` subscription-map surface,
+  forward-declared and inert" — true of the mechanism, false about WHICH events sit on that surface.
+  M25's own §4.4 spec text (the `boot.ts` subscribe-list pseudocode) and its real, frozen
+  `consumers/subscription-map.ts` both name exactly THREE inbound topics: `m23.claim.rejected` (the
+  277CA-derived pre-835 denial-worklist seed, D2/D3), `m18.evv.aggregator_rejected` (the EVV-aggregator
+  denial seed, M18 §4.10), and `m22.document.rendered` (the appeal-packet/resolution-letter back-ref,
+  already bound). **2 of 11 kept**: `m23.claim.rejected` and `m18.evv.aggregator_rejected` — both have
+  written, unit-tested handlers (`handleClaimRejected`, `handleEvvAggregatorRejected`) sitting on that
+  same subscription map, genuinely deferred pending the live relay bind, the same posture as M26/M27.
+  **9 of 11 dropped, none of them present in M25's own subscribe list under any spelling**:
+  `m23.claim.acknowledged`/`.acknowledgment_partial`/`.submitted` and all five
+  `m24.medicaid_claim.{submitted,acknowledged,acknowledgment_partial,rejected,denied}` events carry no
+  CARC/denial fact for M25 to act on — only a REJECTION (277CA or its EVV-aggregator sibling) seeds a
+  worklist row before an 835 lands, and M25's own D9 states it pulls the Medicaid 835 itself over M24's
+  per-state channel rather than subscribing to any M24 claim-lifecycle event at all. Two of the nine are
+  a sharper defect than "unsupported": `m23.claim.denied` and `m24.medicaid_claim.denied` are each M25's
+  OWN OUTPUT read backwards — both events' own descriptions say the DENIED transition only fires after
+  "M25 posted a denial 835", so M25 is the PRODUCER of the fact behind each event, not a consumer of it.
+  All 9 dropped at the source in each producing module's `events-by-mNN.ts` (M23 ×4, M24 ×5) — every one
+  already carried a `seamConsumers` entry (`m33`/`m36`), so none were orphaned by the drop. Net:
+  **333 → 324** (9 dropped, 0 added). Verified: `bun run build` clean, `bun run typecheck` (same 3
+  pre-existing unrelated `m2-*.live.test.ts` errors), `arch:fitness` 38/38 (`arch:outbox-bindings` 0
+  disagreements), full non-live suite 654 files / 9589 tests green with no pinned-array assertions to
+  update this pass, and a clean `check:boot:platform` run against a freshly migrated, RLS-enforced
+  disposable Postgres. Leaving #248 open — 324 pairs across 31 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

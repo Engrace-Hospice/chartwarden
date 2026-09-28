@@ -135,7 +135,10 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       mcoId: Type.Union([Str, Type.Null()]),
       submittedAt: Iso,
     }),
-    declaredConsumers: ["m22", "m25"],
+    // F-135 (#248) — m25 REMOVED: M25's own §4.4 spec text and real `consumers/subscription-map.ts` name
+    // exactly three inbound topics, none M24-scoped — M25 pulls the Medicaid 835 itself over M24's
+    // per-state channel (D9) rather than subscribing to any M24 claim-lifecycle event.
+    declaredConsumers: ["m22"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -182,7 +185,9 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-131 (#248) — m26 REMOVED: M26's own spec is explicit — "Medicaid payments are excluded from the
     // Medicare aggregate cap (ADR-0017 D4)" and "M26's scope is strictly Medicare per 42 CFR §418.308";
     // its subscription-map has no M24 topic of any kind.
-    declaredConsumers: ["m22", "m25"],
+    // F-135 (#248) — m25 REMOVED: M25 has no M24 subscription of any kind (see `.submitted` above) —
+    // it pulls the Medicaid 835 itself; a plain acceptance ack carries no denial code either way.
+    declaredConsumers: ["m22"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -199,7 +204,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectedLineNumbers: Type.Array(Type.Integer()),
       errorCodes: StrArr,
     }),
-    declaredConsumers: ["m25"],
+    // F-135 (#248) — m25 REMOVED: no M24 subscription of any kind (see `.submitted` above).
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -214,7 +220,11 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectionStage: Str,
       rejectionCodes: StrArr,
     }),
-    declaredConsumers: ["m22", "m25"],
+    // F-135 (#248) — m25 REMOVED: M25's §4.4 subscribe list names only `m23.claim.rejected` as the
+    // pre-835 denial-worklist seed — the Medicare 277CA path, not this Medicaid sibling. M25's own text
+    // is explicit that it is "payer-source-agnostic past the [payerProgram] discriminator" once the 835
+    // itself arrives, but nothing subscribes to the per-state ack-rejection event itself.
+    declaredConsumers: ["m22"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -263,7 +273,9 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       remittanceAdviceId: Id,
       denialCodes: StrArr,
     }),
-    declaredConsumers: ["m25"],
+    // F-135 (#248) — m25 REMOVED: this event is M25's OWN OUTPUT reused — "driven by M25" per the
+    // description above — so M25 is the producer here, not a consumer of its own downstream effect.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },

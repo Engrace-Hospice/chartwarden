@@ -353,20 +353,8 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
     module: "m25",
     kind: "handlers-unbound",
     reason:
-      "M25 binds one live consumer (`m25.parse-and-post`). The rest sit on its `consumers/` subscription-map surface, forward-declared and inert on the same footing as M26/M27.",
-    events: [
-      "m18.evv.aggregator_rejected",
-      "m23.claim.acknowledged",
-      "m23.claim.acknowledgment_partial",
-      "m23.claim.denied",
-      "m23.claim.rejected",
-      "m23.claim.submitted",
-      "m24.medicaid_claim.acknowledged",
-      "m24.medicaid_claim.acknowledgment_partial",
-      "m24.medicaid_claim.denied",
-      "m24.medicaid_claim.rejected",
-      "m24.medicaid_claim.submitted",
-    ],
+      "F-135 (#248) checked this group per-event against M25's own §4.4 spec text (the `boot.ts` subscribe list, which names exactly three inbound topics) and its real `consumers/subscription-map.ts` (the same three, frozen), rather than trusting M23/M24's `declaredConsumers` guesses. **2 of 11 pairs are genuine, real, still-unbound subscriptions**, matching both: `m23.claim.rejected` (the 277CA-derived pre-835 denial-worklist seed, D2/D3 — `handleClaimRejected` is written and unit-tested) and `m18.evv.aggregator_rejected` (the EVV-aggregator-rejection seed, M18 §4.10 — `handleEvvAggregatorRejected` is written and unit-tested); both sit on the frozen subscription-map with no live relay binding yet, the same posture as M26/M27. **9 of 11 were genuinely misdeclared and dropped at the source**, none of them present in M25's own subscribe list under any spelling: `m23.claim.acknowledged`/`.acknowledgment_partial`/`.submitted` and the four `m24.medicaid_claim.*` acknowledgment/submission siblings carry no CARC/denial fact for M25 to act on — only a 277CA REJECTION (or its EVV-aggregator sibling) seeds a worklist row before an 835 lands, and M25 pulls the Medicaid 835 itself over M24's per-state channel (D9) rather than subscribing to any M24 claim-lifecycle event at all; `m23.claim.denied` and `m24.medicaid_claim.denied` are each M25's OWN OUTPUT read backwards — both events' own descriptions say the DENIED transition is \"driven by M25\" (M25 posts the denial 835 that causes it), so M25 is the producer of the fact behind each, not a consumer of it. All 9 dropped at the source in each producing module's `events-by-mNN.ts` (M23 ×4, M24 ×5).",
+    events: ["m18.evv.aggregator_rejected", "m23.claim.rejected"],
   },
   {
     module: "m31",

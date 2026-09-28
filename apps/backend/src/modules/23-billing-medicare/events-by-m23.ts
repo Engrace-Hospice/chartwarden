@@ -110,7 +110,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       macJurisdiction: str,
       submittedAt: isoInstant,
     }),
-    declaredConsumers: ["m22", "m25"],
+    // F-135 (#248) — m25 REMOVED: M25's own §4.4 spec text (the `boot.ts` subscribe list) and its real
+    // `consumers/subscription-map.ts` name exactly three inbound topics — `m23.claim.rejected`,
+    // `m18.evv.aggregator_rejected`, `m22.document.rendered` — and this is not one of them. A submission
+    // ack carries no CARC/denial fact for M25 to seed a worklist row from.
+    declaredConsumers: ["m22"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -149,7 +153,9 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     // names no `m23.claim.acknowledged` topic; the cap ledger's claim-side inputs are the paid amount
     // (`m25.remittance.advice_posted`), reversal (`.replaced`/`.voided`) and inpatient-day
     // (`.line_finalized`) events only — an acknowledgment carries no cap-relevant fact.
-    declaredConsumers: ["m22", "m25"],
+    // F-135 (#248) — m25 REMOVED: M25's own §4.4 subscribe list names `m23.claim.rejected` as the sole
+    // pre-835 seed trigger, never a plain acceptance ack — an ACK_ACCEPTED carries no denial code.
+    declaredConsumers: ["m22"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -165,7 +171,9 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectedLineNumbers: Type.Array(int),
       rejectionCodes: Type.Array(str),
     }),
-    declaredConsumers: ["m25"],
+    // F-135 (#248) — m25 REMOVED: M25's real subscription-map has no key for a PARTIAL ack — only the
+    // full `m23.claim.rejected` topic seeds a denial worklist row before an 835 lands.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -216,7 +224,10 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       remittanceAdviceId: id,
       denialCodes: Type.Array(str),
     }),
-    declaredConsumers: ["m25"],
+    // F-135 (#248) — m25 REMOVED: this event is M25's OWN OUTPUT reused — `ACK_ACCEPTED → DENIED` fires
+    // only after M25 posts a denial 835 (per the description above), so M25 is the producer here, not a
+    // consumer of its own downstream effect.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
