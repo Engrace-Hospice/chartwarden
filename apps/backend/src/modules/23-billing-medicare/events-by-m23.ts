@@ -117,7 +117,10 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     // `consumers/subscription-map.ts` name exactly three inbound topics — `m23.claim.rejected`,
     // `m18.evv.aggregator_rejected`, `m22.document.rendered` — and this is not one of them. A submission
     // ack carries no CARC/denial fact for M25 to seed a worklist row from.
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: M23's own spec (§4.10 outbox table) is decisive that M22 renders off
+    // exactly one trigger set — "NOE submitted / NOTR submitted / claim acknowledged" — via the
+    // dedicated `m23.billing.document_render_requested` event, never off plain submission.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -161,7 +164,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this exact event
     // (`resolve-medicare-primary`) — the COB precondition for billing Medicaid secondary once Medicare
     // paid primary — with a real handler (`handleMedicarePrimaryAck`) in `consumers/handlers.ts`.
-    declaredConsumers: ["m22", "m24"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `document-render.ts`'s
+    // `buildClaimAcknowledgmentLetterRequest` fires off the same ACK_ACCEPTED transition via the
+    // dedicated `m23.billing.document_render_requested` event (M23's own §4.10 table names that event,
+    // not this one, as the M22 trigger).
+    declaredConsumers: ["m24"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -194,7 +201,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       rejectionStage: str,
       rejectionCodes: Type.Array(str),
     }),
-    declaredConsumers: ["m22", "m25"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `document-render.ts`'s
+    // `buildDenialAppealCoverLetterRequest` fires off this exact transition (its payload
+    // `{claimId, claimControlNumber, rejectionStage, rejectionCodes}` matches only this event's fields)
+    // via the dedicated `m23.billing.document_render_requested` event, per M23's own §4.10 table.
+    declaredConsumers: ["m25"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -344,7 +355,10 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The noe.submit worker uploaded the NOE to the MAC portal; READY → SUBMITTED.",
     payloadSchema: Type.Object({ noeId: id, submissionId: id, submittedAt: isoInstant }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `document-render.ts`'s
+    // `buildNoeConfirmationReceiptRequest` fires off this exact transition via the dedicated
+    // `m23.billing.document_render_requested` event, per M23's own §4.10 table.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -417,7 +431,10 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The notr.submit worker uploaded the NOTR to the MAC portal; READY → SUBMITTED.",
     payloadSchema: Type.Object({ notrId: id, submissionId: id, submittedAt: isoInstant }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `document-render.ts`'s
+    // `buildNotrConfirmationReceiptRequest` fires off this exact transition via the dedicated
+    // `m23.billing.document_render_requested` event, per M23's own §4.10 table.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

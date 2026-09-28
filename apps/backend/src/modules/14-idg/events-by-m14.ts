@@ -277,7 +277,10 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     // F-115 (#248) — m28 removed (never subscribes, F-035); m30 moved to seamConsumers: reads IDG
     // cadence via `IdgScheduleProvider.getCadenceCountsForOrg` (idg_cadence_adherence) on its nightly
     // cadence, not by reacting to this event.
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `idg-route-service-db.ts` co-emits
+    // `m14.minutes.signed` in the SAME transition ("Adjournment-time mirror of `meeting.adjourned` —
+    // asks M22 to render the minutes PDF"), already M22's real, §4.11-table-listed render trigger.
+    declaredConsumers: [],
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },

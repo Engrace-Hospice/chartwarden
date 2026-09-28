@@ -264,7 +264,10 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       voidedBy: Type.String({ minLength: 1 }),
       voidedReason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: `ENCOUNTER_GRAPH` legalizes `void` only from `draft` — a voided
+    // encounter can never have had a PDF rendered (M22 renders only off `.signed`), so there is nothing
+    // to suppress. Not in M22's own §4.11 table either.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

@@ -221,7 +221,10 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       tier: str,
       submittedAt: isoInstant,
     }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — the write service co-emits
+    // `m25.appeal_packet.render_requested` in the SAME transition, already M22's real, LIVE-BOUND
+    // render trigger (`M22_DOCUMENT_REQUEST_EVENTS`).
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

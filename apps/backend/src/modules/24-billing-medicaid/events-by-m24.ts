@@ -138,7 +138,10 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-135 (#248) — m25 REMOVED: M25's own §4.4 spec text and real `consumers/subscription-map.ts` name
     // exactly three inbound topics, none M24-scoped — M25 pulls the Medicaid 835 itself over M24's
     // per-state channel (D9) rather than subscribing to any M24 claim-lifecycle event.
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: M24's own transition table gives SUBMITTED no document-relevant
+    // effect ("medicaid_submission row inserted; X12 file... generated") — the render only fires at
+    // ACK_ACCEPTED, via `medicaid_billing.document_render_requested`.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -190,7 +193,11 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
     // its subscription-map has no M24 topic of any kind.
     // F-135 (#248) — m25 REMOVED: M25 has no M24 subscription of any kind (see `.submitted` above) —
     // it pulls the Medicaid 835 itself; a plain acceptance ack carries no denial code either way.
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — M24's own transition table gives ACK_ACCEPTED
+    // exactly one document-relevant effect, "Document render request to M22", which routes through the
+    // dedicated (currently unemitted) `m24.medicaid_billing.document_render_requested` event, not this
+    // one.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -227,7 +234,9 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
     // pre-835 denial-worklist seed — the Medicare 277CA path, not this Medicaid sibling. M25's own text
     // is explicit that it is "payer-source-agnostic past the [payerProgram] discriminator" once the 835
     // itself arrives, but nothing subscribes to the per-state ack-rejection event itself.
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: M24's own transition table gives ACK_REJECTED's effect as "M36 alert
+    // critical; biller assigned" — no document render named.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },

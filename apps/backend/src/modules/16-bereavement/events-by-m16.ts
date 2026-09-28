@@ -53,7 +53,11 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     // consumer file (`m16-bereavement-plan-opened.ts`) that flips portal accounts of bereaved contacts
     // to bereaved scope — a plan-level fact distinct from `m16.bereavement.contact_active`'s per-contact
     // confirmation, both separately named in M31's own consumed-events table.
-    declaredConsumers: ["m22", "m31"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `seedRosterAndSchedule`
+    // (`write-service-drizzle.ts`, "D14 — the M22 welcome-packet render handshake rides the
+    // plan-opened transition") co-emits `m16.bereavement.outreach_artifact_requested` in the SAME
+    // effects call, already M22's real, §4.11-table-listed render trigger.
+    declaredConsumers: ["m31"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -89,7 +93,11 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     // wired) — a dormant capability is not a seam relationship yet ("bound is not computing", F-042).
     // F-139 (#248) — m31 ADDED: M31's own §4.10 table names this event with a real consumer file
     // (`m16-bereavement-plan-closed.ts`) that revokes bereaved grants.
-    declaredConsumers: ["m22", "m30", "m31"],
+    // F-144 (#248) — m22 REMOVED: M22's own §4.11 table names only two M16 events
+    // (`outreach_artifact_requested`, `bereavement.anniversary_due`) — not this one — and
+    // `closeAt13Months` (`lifecycle/plan.ts`) emits only the closure event, no redundant render-request
+    // sibling; this description's "M22 renders the closeout summary" is unbuilt on both sides.
+    declaredConsumers: ["m30", "m31"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -100,7 +108,9 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       "EVERY enrollee opted out (D6) — distinct from `closed_completed` because the survey record must show the family refused, not that the program ran its course.",
     payloadSchema: Type.Object({ planId: Id, closedAt: Iso }),
     // F-115 (#248) — same as `plan_closed_completed` above: `planClosureCounts` exists, unused.
-    declaredConsumers: ["m22", "m30"],
+    // F-144 (#248) — m22 REMOVED: same as `plan_closed_completed` above — not in M22's own §4.11 table,
+    // and `closeOnAllContactsOptedOut` emits only this event, no render-request sibling.
+    declaredConsumers: ["m30"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -116,7 +126,9 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       cosignedByUserId: IdN,
     }),
     // F-115 (#248) — same as `plan_closed_completed` above: `planClosureCounts` exists, unused.
-    declaredConsumers: ["m22", "m30"],
+    // F-144 (#248) — m22 REMOVED: same as `plan_closed_completed` above — not in M22's own §4.11 table,
+    // and `closeEarly` emits only this event, no render-request sibling.
+    declaredConsumers: ["m30"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },

@@ -1388,6 +1388,63 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   against a freshly migrated, RLS-enforced disposable Postgres. Leaving #248 open — 279 pairs across 25
   modules remain.
 
+  **Round 5 stopped checking whole groups and instead finished the F-101 sweep a PRIOR round had
+  explicitly left undone inside the single largest one (F-144, #248).** By Round 4 every group in the
+  registry carried an F-number — except that m22's own reason text (59 pairs, the largest group) said so
+  itself: "events named by NO part of the M22 spec's §4.11 table with no redundant sibling found, kept
+  declared rather than dropped absent stronger evidence — the F-101 sweep this needs has not been run on
+  them," naming 38 specific events across eleven producing modules. Six forks split that subset by
+  producer cluster (M11/M8; M14/M7/M15; M16/M37; M17/M21/M39/M5; M23; M24/M25/M30), each checking M22's
+  own §4.11 consumer table plus the producing module's own spec/code — the same F-101 rule at the scale
+  F-140's four-fork batch first applied to whole groups, now applied inside one. **28 of 38 were genuinely
+  misdeclared, all variants of shapes this series has already named**: redundant-sibling co-emission
+  (`m11.order.supply_fulfillment_requested` alongside `.document_requested`; `m14.meeting.adjourned`
+  alongside `.minutes.signed`; `m16.bereavement.plan_opened` alongside `.outreach_artifact_requested`;
+  `m25.appeal.submitted` alongside the already-live-bound `.appeal_packet.render_requested`; five of six
+  M23 billing events and three of four M24 events each redundant with their module's ONE real
+  `*.billing.document_render_requested` handshake, confirmed against `consumers/document-render.ts`'s
+  four builder functions and their exact payload shapes); the seam-vs-push trap restated as
+  "on request" (`m30.incident.submitted`/`.qapi.project_chartered`/`.pip_closed` — M30's own spec names
+  five dedicated `*.render_requested` events for this purpose, none ever catalogued or emitted, a
+  producer-side gap reported not fixed); a structural impossibility (`m8.encounter.voided` — the
+  `ENCOUNTER_GRAPH` legalizes `void` only from `draft`, so a voided encounter can never have had a PDF to
+  suppress); the identical F-115/M28 seam-pull shape one module over (`m5.patient.privacy_flag_changed`);
+  a live-resolver seam (`m5.patient.unmerged`, M5's own locked D8: merge "re-points all FK references
+  through the `patient_resolver`" with no destructive UPDATE, so there is nothing for a push to correct);
+  and a Lock-status table naming only a sibling event, not these (`m15.discipline_assessment.amended`/
+  `.plan.discharged`, both excluded from M15's own exhaustive "M22 discipline-plan PDF rendering
+  subscribes to `m15.plan.version_signed`" claim). **One drop needed its own verification pass to avoid
+  reintroducing a defect a PRIOR round had already found and fixed**: the M11 fork flagged
+  `m11.order.level_of_care_change_signed`'s own "M22 renders the LOC-change form" spec claim as a
+  candidate for keeping (and for adding `m22` to the downstream `m6.loc.changed` it feeds) — checked
+  directly against M22's real `PLATFORM_TEMPLATE_TABLE` and confirmed to name no such template anywhere,
+  matching a standing F-101 comment already sitting on `m6.loc.changed`'s own catalog entry for the
+  identical reason. Trusting the spec text here would have undone a correct prior finding; both stay
+  dropped. **`m37.ipu_admission.death_recorded`** was the sharpest catch: M22's own spec never mentions a
+  magic-link or external-collaborator surface anywhere (and elsewhere explicitly disclaims a related one
+  — "M2 funeral magic-link is NOT how external reviewers authenticate"), and M37's OWN spec is internally
+  inconsistent about which event even triggers the session — its "Consumed by" summary and §4.10 table
+  both name `death_recorded`, but its detailed body-release workflow narrative says the session is
+  created off the LATER `m37.body_release.funeral_home_identified` transition instead, after the funeral
+  home is actually known. No consumer file exists on the M22 side under either reading, and the real
+  owner of the underlying `magicLink` plugin is M2 (`packages/auth/src/identity/auth.ts`) — dropped, with
+  the misattribution reported for its own future pass rather than guessed at. **10 of 38 confirmed
+  genuine**, needing no catalog change: `m14.minutes.amended`/`m7.care_plan.version_signed` (each
+  decisively named in the PRODUCING module's own outbox table — the F-131 "kept, not dropped" asymmetry
+  a second time this round); `m17.caregiver_reminder_due`, `m21.supply_request.delivered`, and all three
+  `m39.consent.{expired,recipient_added,recipient_removed}` events (same asymmetry — none appear in
+  M22's own table either, all decisively named on the producing side); and the three
+  `*.billing.document_render_requested`-shaped events that anchor the M23/M24/M25 redundant-sibling
+  drops above, each independently confirmed genuinely unbuilt on the PRODUCER side too (no emit site
+  anywhere for any of the three) — a real gap in M22's own document-request-list maintenance, distinct
+  from and additional to the catalog-declaration question this sweep answers. **Net: 279 → 251** (28
+  dropped, 0 added; module count unchanged at 25 — m22 still carries 31 events, none of this round's
+  groups emptied). Verified: `bun run build` clean, `bun run typecheck` clean (0 errors), full non-live
+  suite 654 files / 9589 tests green with **no pinned-array assertions to update this pass** — the first
+  round in the series with zero test fallout — `arch:fitness` 38/38 (`arch:outbox-bindings` 0
+  disagreements both directions), and a clean `check:boot:platform` run against a freshly migrated,
+  RLS-enforced disposable Postgres. Leaving #248 open — 251 pairs across 25 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

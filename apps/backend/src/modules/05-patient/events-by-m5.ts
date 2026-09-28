@@ -110,7 +110,10 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({ ...corePatient, flags: Type.Array(Type.String()) }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035; SUD redaction is applied fresh
     // per read at D3 egress, not via a cached flag this event would invalidate).
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 removed: the identical shape one module over — M22's own spec (dependsOn text)
+    // states the privacy-flag snapshot is "consulted via M3's `sud_consent_present` predicate" fresh per
+    // read, not via a cached value this event would invalidate.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -152,7 +155,10 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     description: "A merge was reversed within the 30-day window.",
     payloadSchema: Type.Object({ ...corePatient, sourcePatientId: Type.String() }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 removed: M5's own locked D8 states merge "re-points all FK references through
+    // the `patient_resolver` (no destructive UPDATE on satellite tables)" — identity resolution is
+    // fresh-per-fetch via a live resolver, not a cached/pushed pointer this event would need to correct.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

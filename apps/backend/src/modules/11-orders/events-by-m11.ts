@@ -249,7 +249,10 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-129 (#248) — m14 added: M14's own `consumers/index.ts` and §4.5 spec table have named this event
     // (the "since last IDG" projection-cache update) since M14-T06; this catalog simply never declared it,
     // which would have made a future live binding fail `assertBindableAgainstCatalog` outright.
-    declaredConsumers: ["m14", "m21", "m22", "m30"],
+    // F-144 (#248) — m22 REMOVED: not in M22's own §4.11 consumer table, and no code path co-emits a
+    // `document_requested` sibling for a discontinuation (`discontinueOrder`/the discharge cascade emit
+    // only this event) — unsupported by any M22-side evidence.
+    declaredConsumers: ["m14", "m21", "m30"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -279,14 +282,16 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m11.order.corrected",
     moduleOwner: "m11",
     description:
-      "`correctOrder` (via the supersede trigger, §164.526) created a replacement `order_record` and discontinued the original; M22 re-renders, M28 re-projects (F-115/#248: at request time, not via this event).",
+      "`correctOrder` (via the supersede trigger, §164.526) created a replacement `order_record` and discontinued the original.",
     payloadSchema: Type.Object({
       newOrderId: id,
       replacedOrderId: id,
       kind: orderKind,
       drafterMembershipId: id,
     }),
-    declaredConsumers: ["m22"],
+    // F-144 (#248) — m22 REMOVED: not in M22's own §4.11 consumer table; `correctOrder`
+    // (`orders-route-service-db.ts`) emits only this event, no `document_requested` sibling.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -295,7 +300,7 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m11.order.level_of_care_change_signed",
     moduleOwner: "m11",
     description:
-      "A signed `level_of_care_change` order (§418.108); M6 ends the prior LCP and starts the new one (M11 never writes `level_of_care_period`), M22/M23/M30 follow.",
+      "A signed `level_of_care_change` order (§418.108); M6 ends the prior LCP and starts the new one (M11 never writes `level_of_care_period`), M30 follows.",
     payloadSchema: Type.Object({
       orderId: id,
       fromLevel: id,
@@ -307,7 +312,13 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     // (this event's own description says M6 ends/starts the LCP), not a direct subscription — the fact
     // M23 actually needs arrives as the already-bound `m6.loc.changed`, redundant with this upstream
     // order-signed trigger. M23's own §4.4/dependsOn text names only the M6 outbox catalog as consumed.
-    declaredConsumers: ["m6", "m22", "m30"],
+    // F-144 (#248) — m22 REMOVED, checked against the same standard as the m23 removal above: M11's own
+    // "Done means" walkthrough claims "M22 renders the LOC-change form" off M6's downstream
+    // `m6.loc.changed` — but that event's own catalog entry (events-by-m6.ts) already carries a standing
+    // F-101 finding that no such M22 template exists (`PLATFORM_TEMPLATE_TABLE` has no LOC-change entry)
+    // and `m6.loc.changed` correctly still defers only on m23. This upstream order-signed event has no
+    // stronger claim than the downstream one already refuted.
+    declaredConsumers: ["m6", "m30"],
     isOutboxOnly: true,
   },
   {
@@ -324,7 +335,10 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-136 (#248) — m23 REMOVED: M6's own resulting `m6.cti.signed` / `m6.election.period_started`
     // (both already bound live) carry the fact M23 needs; this upstream order-signed event is redundant
     // with them, the same shape as `.level_of_care_change_signed` above.
-    declaredConsumers: ["m6", "m22"],
+    // F-144 (#248) — m22 REMOVED, redundant with the same downstream event: `m6.cti.signed` already
+    // declares `m22` (bound to the `cti` template per M22's own §4.11 table) — this upstream
+    // order-signed event carries nothing the downstream signal does not.
+    declaredConsumers: ["m6"],
     isOutboxOnly: true,
   },
   {
@@ -339,7 +353,10 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       preferredDeliveryWindow: Type.Optional(Type.Union([id, Type.Null()])),
       deploymentSite: Type.Optional(Type.Union([id, Type.Null()])),
     }),
-    declaredConsumers: ["m21", "m22"],
+    // F-144 (#248) — m22 REMOVED: redundant sibling — `signInternal` co-emits
+    // `m11.order.document_requested` unconditionally for every signed order (all kinds, including
+    // dme/supply/comfort_kit), already M22's real live-bound `order_record` render trigger.
+    declaredConsumers: ["m21"],
     isOutboxOnly: true,
   },
   {

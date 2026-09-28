@@ -87,7 +87,11 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     // path a `bereavement_plan` row can come into existence (M16's own `consumers/index.ts`); this
     // description's "M16 seeds the bereavement plan from it" claim was never true, and M16's own
     // §4.5 outbox-subscriptions table never names this event.
-    declaredConsumers: ["m22", "m30"],
+    // F-144 (#248) — m22 REMOVED: M15's own Lock-status section makes the exhaustive, specific claim
+    // "M22 discipline-plan PDF rendering subscribes to `m15.plan.version_signed` when M22 locks" — naming
+    // only that sibling event, not this one. Discharge seals an existing already-rendered snapshot
+    // version rather than producing a new artifact.
+    declaredConsumers: ["m30"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -221,7 +225,7 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m15.discipline_assessment.amended",
     moduleOwner: "m15",
     description:
-      "An append-only assessment amendment was signed (correction of record, M9 D9) — M22 re-renders, M30 re-measures.",
+      "An append-only assessment amendment was signed (correction of record, M9 D9) — M30 re-measures.",
     payloadSchema: Type.Object({
       planId: Id,
       assessmentId: Id,
@@ -229,7 +233,10 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       amendedFields: Type.Array(Str),
       attestation: Str,
     }),
-    declaredConsumers: ["m22", "m30"],
+    // F-144 (#248) — m22 REMOVED: same Lock-status claim as `plan.discharged` above — M22 subscribes
+    // only to `m15.plan.version_signed` for its discipline-plan PDF, not per-assessment amendments; no
+    // "Done means" walkthrough anywhere describes M22 rendering an assessment amendment.
+    declaredConsumers: ["m30"],
     isOutboxOnly: true,
   },
 ];

@@ -102,9 +102,20 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m37.ipu_admission.death_recorded",
     moduleOwner: "m37",
-    description: "A death was recorded in the IPU (opens body release; M22 magic-link).",
+    description: "A death was recorded in the IPU (opens body release).",
     payloadSchema: Type.Object({ ...admissionCore, deathEventId: id }),
-    declaredConsumers: ["m22", "m30", "m16"],
+    // F-144 (#248) — m22 REMOVED: M22's own spec never mentions a magic-link/external-collaborator
+    // surface anywhere, and elsewhere explicitly disclaims a related mechanism ("M2 funeral magic-link
+    // is NOT how external reviewers authenticate — external reviewer access is M31 portal + M39
+    // grant"). M37's own spec is internally inconsistent about which event triggers the magic-link
+    // session — its "Consumed by" summary and §4.10 table both name `death_recorded`, but its detailed
+    // workflow narrative (§ post-mortem body release) says the session is actually created off the
+    // LATER `m37.body_release.funeral_home_identified` transition, which needs the funeral home
+    // resolved first. No consumer file exists on the M22 side for either event under this
+    // interpretation. The real owner of Better Auth's `magicLink` plugin is M2
+    // (`packages/auth/src/identity/auth.ts`), not M22 — reported as a likely misattribution worth its
+    // own pass, not corrected here absent a decisive single answer.
+    declaredConsumers: ["m30", "m16"],
     isOutboxOnly: true,
   },
   {
