@@ -300,7 +300,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Type.String({ minLength: 1 }),
       heldAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m17", "m30"],
+    // F-145 (#248) — m14 REMOVED: not in M14's own exhaustive build-description (the "Done means"
+    // walkthrough names the eleven seam reads + the four Valkey-projected outbox topics M14 actually
+    // consumes, and M6's own "Consumed by 14" text names only `m6.referral.withdrawn` for M14) —
+    // no packet field or readiness check references hold status anywhere.
+    declaredConsumers: ["m17", "m30"],
     isOutboxOnly: true,
   },
   {
@@ -311,7 +315,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       admissionId: Type.String({ minLength: 1 }),
       resumedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m14", "m17", "m30"],
+    // F-145 (#248) — m14 REMOVED: same as `.on_hold` above.
+    declaredConsumers: ["m17", "m30"],
     isOutboxOnly: true,
   },
   {
@@ -892,7 +897,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       severity: windowSeverity,
       source: applierSource,
     }),
-    declaredConsumers: ["m14", "m30"],
+    // F-145 (#248) — m14 REMOVED: same as `m6.admission.on_hold` above — no support in M14's own
+    // exhaustive build-description; M6's own text (line 599) assigns the real overdue-window consumer to
+    // M36's escalation chain, not M14.
+    declaredConsumers: ["m30"],
     isOutboxOnly: true,
   },
   {
@@ -917,7 +925,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       complianceWindowId: Type.String({ minLength: 1 }),
       severity: Type.Literal("alert"),
     }),
-    declaredConsumers: ["m14", "m30"],
+    // F-145 (#248) — m14 REMOVED: M6's own spec (line 599) is decisive and names the OPPOSITE
+    // consumer for this exact fact: "`compliance_window.overdue` (for any window) → M36 escalating
+    // alert chain (clinician → supervisor → DON)" — not mere silence, an affirmative counter-claim.
+    declaredConsumers: ["m30"],
     isOutboxOnly: true,
   },
   {

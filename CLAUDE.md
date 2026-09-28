@@ -1445,6 +1445,47 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   disagreements both directions), and a clean `check:boot:platform` run against a freshly migrated,
   RLS-enforced disposable Postgres. Leaving #248 open — 251 pairs across 25 modules remain.
 
+  **Round 6 applied the exact same finish-the-sweep move to the SECOND-largest group, and it reversed
+  the group's own prior "strongest candidate" call (F-145, #248).** m14's own reason text (30 pairs)
+  carried the identical shape m22's did before Round 5: "22 pairs checked and found NEITHER clearly
+  redundant NOR named anywhere in M14's own spec... kept declared rather than dropped absent stronger
+  evidence." Five forks split those 22 by producer cluster and checked each against the PRODUCING
+  module's own spec — the same reverse check that resolved m22. **17 of 22 were genuinely misdeclared,
+  nearly all one shape at unusual scale: the seam-vs-push trap already named for M7/M9/M10 in F-129, now
+  found to cover M6 and all twelve of M13's remaining eMAR events.** M13's own D16 publishes
+  `MedicationAdministrationProvider`/`ReconciliationProvider` with M14 named as a read-path consumer for
+  BOTH, and M13's own PRIMARY "Consumed by 14" line is exhaustive and decisive — "IDG packets show
+  administrations since last IDG via M13's `getAdministrationsSince` seam and missed-dose count since
+  last IDG via the SAME seam's aggregation projection" — directly contradicting M13's own looser §4.10
+  per-event table, which lists M14 as a consumer on all twelve individual events. The F-101 rule applied
+  to a module's own two self-contradicting statements, trusting the decisive one over the loose table
+  row. **This reverses the group's own prior framing**: `m13.scheduled_dose.missed` had been called "the
+  strongest candidate to eventually bind" on a payload-shape resemblance to `PacketFlaggedEventDigest`'s
+  `missed_dose` kind — a weaker signal than M13's own decisive seam-publication text, now correctly
+  moved to `seamConsumers` alongside its eleven siblings (all twelve moved, not dropped bare — the seam
+  relationship is real, the outbox-push framing was the error). Four M6 events
+  (`admission.on_hold`/`.resumed`, `compliance.window.opened`/`.overdue`) had no support in M14's own
+  exhaustive build-description at all, and `compliance.window.overdue` was directly contradicted — M6's
+  own text assigns the real consumer to M36's escalation chain, an affirmative counter-claim, not mere
+  silence. `m9.assessment.amended` is a redundant sibling, emitted in the same transaction as the
+  correcting row's `m9.assessment.recorded` — M14's own real, live-bound subscription; the corrected
+  value arrives via `.recorded` regardless. **5 of 22 confirmed genuine**, no catalog change needed:
+  `m12.medication_history_pulled` and `m39.consent.expiring_soon` (each named twice over in its
+  producing module's own outbox table — the F-131 "kept, not dropped" asymmetry a third time this
+  series), and all three M15 events (`idg_decision.applied`, `plan.bootstrapped`, `plan.version_signed`)
+  — M15's own real outbox table names M14 decisively for all three. `m15.idg_decision.applied` was
+  checked specifically for the wrong-direction trap (an echo of M14's own outbound `idg.decision_recorded`
+  under a confusing near-identical name) and confirmed genuinely distinct — M15's own inbound
+  acknowledgment that it applied an M14 decision, the identical shape M7's own `care_plan
+  .idg_decision_applied` audit event already establishes for the M7/M14 pair one module over. **Net:
+  251 → 234** (17 dropped — 12 moved to `seamConsumers` rather than dropped bare, 4 dropped clean, 1
+  redundant sibling — 0 added; module count unchanged at 25). Verified: `bun run build` clean, `bun run
+  typecheck` clean (0 errors), full non-live suite 654 files / 9589 tests green with no pinned-array
+  assertions to update — the second consecutive round with zero test fallout — `arch:fitness` 38/38
+  (`arch:outbox-bindings` 0 disagreements both directions), and a clean `check:boot:platform` run against
+  a freshly migrated, RLS-enforced disposable Postgres. Leaving #248 open — 234 pairs across 25 modules
+  remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

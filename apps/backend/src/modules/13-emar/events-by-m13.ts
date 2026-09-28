@@ -67,8 +67,12 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     // F-139 (#248) — m31 removed: M31's own §4.10 "M31 consumes" table names no M13 event — the
     // lay-language administration history is a seam PULL (`MedicationAdministrationProvider.
     // getPortalAdministrationSummary`, §4.4 "Depends on" item 13), never a push subscription.
-    declaredConsumers: ["m14", "m30"],
-    seamConsumers: ["m33"],
+    // F-145 (#248) — m14 moved to seamConsumers: M13's own D16 publishes `MedicationAdministrationProvider`
+    // with M14 as a named read-path consumer, and M14's own exhaustive "Done means" build walkthrough
+    // (the eleven seam reads + four Valkey-projected outbox topics) never names any M13 event —
+    // confirmed the seam-vs-push trap, the identical F-129 shape already found for M7/M9/M10.
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m14", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -109,7 +113,9 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       medicationOrderId: id,
       refusalAt: isoInstant,
     }),
-    declaredConsumers: ["m14", "m30"],
+    // F-145 (#248) — m14 moved to seamConsumers: same shape as `administration.recorded` above.
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m14"],
     isOutboxOnly: true,
   },
   {
@@ -156,8 +162,9 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       requiresRnReview: Type.Boolean(),
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m14"],
-    seamConsumers: ["m36"],
+    // F-145 (#248) — m14 moved to seamConsumers: same shape as `administration.recorded` above.
+    declaredConsumers: [],
+    seamConsumers: ["m14", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -166,8 +173,9 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     description:
       "`acknowledge-caregiver` — the RN case manager confirmed a caregiver-attested row.",
     payloadSchema: Type.Object({ administrationRecordId: id, acknowledgedBy: id }),
-    declaredConsumers: ["m14"],
-    seamConsumers: ["m33"],
+    // F-145 (#248) — m14 moved to seamConsumers: same shape as `administration.recorded` above.
+    declaredConsumers: [],
+    seamConsumers: ["m14", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -180,8 +188,9 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       disputedBy: id,
       disputeReason: Type.String(),
     }),
-    declaredConsumers: ["m14", "m30"],
-    seamConsumers: ["m36"],
+    // F-145 (#248) — m14 moved to seamConsumers: same shape as `administration.recorded` above.
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m14", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -203,8 +212,9 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     // F-143 (#248) — m9 REMOVED: no support anywhere in M9's own spec — M13/PRN is never named in
     // M9's "Depends on"/"Consumed by" relationship inventory or its §2.4 outbox table, and
     // `09-assessments/` has no `consumers/` directory at all.
-    declaredConsumers: ["m14"],
-    seamConsumers: ["m30"],
+    // F-145 (#248) — m14 moved to seamConsumers: same shape as `administration.recorded` above.
+    declaredConsumers: [],
+    seamConsumers: ["m14", "m30"],
     isOutboxOnly: true,
   },
   // ── scheduled-dose pipeline (§2.3 / §2.5 / §4.4) ────────────────────────────────────────────────────────
@@ -237,8 +247,12 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     }),
     // F-115 (#248) — m30 moved to seamConsumers: reads `getMissedDoseCountsForOrg` (missed_dose_rate) on
     // its nightly cadence, not by reacting to this event.
-    declaredConsumers: ["m14"],
-    seamConsumers: ["m30", "m33", "m36"],
+    // F-145 (#248) — m14 moved to seamConsumers: reversing this group's own prior "strongest candidate
+    // to keep" framing — M13's own D16 seam-publication text is decisive that M14 reads
+    // `MedicationAdministrationProvider`'s "missed-dose count since last IDG" via the SAME aggregation
+    // seam, not a per-event push; M14's own exhaustive build-description names no M13 event either.
+    declaredConsumers: [],
+    seamConsumers: ["m14", "m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -266,8 +280,9 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       recordedBy: id,
       missedKind: Type.Literal("intentionally_held"),
     }),
-    declaredConsumers: ["m14"],
-    seamConsumers: ["m33"],
+    // F-145 (#248) — m14 moved to seamConsumers: same shape as `scheduled_dose.missed` above.
+    declaredConsumers: [],
+    seamConsumers: ["m14", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -289,8 +304,11 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       administrationRecordId: id,
       revertReason: Type.String(),
     }),
-    declaredConsumers: ["m14"],
-    seamConsumers: ["m36"],
+    // F-145 (#248) — m14 moved to seamConsumers: no retraction/supersede handling exists anywhere in
+    // M14's builder for flagged events (nothing populates the field to retract in the first place) —
+    // moot until `missed_dose` itself is built, and would use the same seam-pull mechanism then too.
+    declaredConsumers: [],
+    seamConsumers: ["m14", "m36"],
     isOutboxOnly: true,
   },
   // ── reconciliation workflow (§2.8 / §4.4) ───────────────────────────────────────────────────────────────
@@ -306,8 +324,10 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
       triggerKind: id,
       dueAt: isoInstant,
     }),
-    declaredConsumers: ["m14"],
-    seamConsumers: ["m33", "m36"],
+    // F-145 (#248) — m14 moved to seamConsumers: M13's own D16 names `ReconciliationProvider`'s
+    // read-path consumers as M14/M30 — M14's own spec never mentions "reconciliation" anywhere.
+    declaredConsumers: [],
+    seamConsumers: ["m14", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -378,8 +398,10 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     }),
     // F-117 (#248) — m22 removed: redundant with `document_requested`, emitted alongside this
     // event in the same transaction (emar-route-service-db.ts).
-    declaredConsumers: ["m14", "m30"],
-    seamConsumers: ["m33"],
+    // F-145 (#248) — m14 moved to seamConsumers: same `ReconciliationProvider` D16 shape as
+    // `reconciliation.opened` above.
+    declaredConsumers: ["m30"],
+    seamConsumers: ["m14", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -407,8 +429,9 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     // F-094/#205 — `m21` was absent while `consumers/m13-comfort-kit.ts` has decided on this topic
     // since M21-T04 and `M21_SUBSCRIBED_EVENT_NAMES` has named it since M21-T01. The relay routed a kit
     // deployment past the only module that stocks one.
-    declaredConsumers: ["m14", "m21"],
-    seamConsumers: ["m33"],
+    // F-145 (#248) — m14 moved to seamConsumers: same shape as `administration.recorded` above.
+    declaredConsumers: ["m21"],
+    seamConsumers: ["m14", "m33"],
     isOutboxOnly: true,
   },
   {

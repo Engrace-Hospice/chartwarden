@@ -70,7 +70,12 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Type.String({ minLength: 1 }),
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m14"],
+    // F-145 (#248) — m14 REMOVED: redundant sibling — `.amended` is emitted in the SAME transaction as
+    // `insertScale`'s correcting row, which itself emits `m9.assessment.recorded` — M14's real,
+    // live-bound subscription (`m14.m9-assessment-recorded`). The corrected value arrives via
+    // `.recorded` regardless; `.amended` only marks the prior row superseded, a fact with no
+    // corresponding packet field.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
