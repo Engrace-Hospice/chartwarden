@@ -343,6 +343,7 @@ import {
   buildDrizzleM16ReadService,
   buildDrizzleM16WriteService,
   buildM16BereavementIntakeConsumer,
+  buildM16ConsentRevokedConsumer,
   buildM16IdgDecisionConsumer,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
@@ -5076,6 +5077,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             outbox: m16OutboxPublisher,
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
+          }),
+          // F-151 — the §2.6 / D6 M39 consent-revocation cascade. M39 is the source of truth for
+          // consent; M16 never gate-keeps, it cascades a revoked bereavement-outreach consent into a
+          // contact opt-out.
+          buildM16ConsentRevokedConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
           }),
           buildM8VisitPublishedConsumer({
             db: dbHandle.db,

@@ -118,6 +118,7 @@
     "test:m15:plan-bootstrap:live": "vitest run apps/backend/__tests__/m15-plan-bootstrap.live.test.ts",
     "test:m14:autoclose:live": "vitest run apps/backend/__tests__/m14-action-item-autoclose.live.test.ts",
     "test:m16:bereavement-intake:live": "vitest run apps/backend/__tests__/m16-bereavement-intake.live.test.ts",
+    "test:m16:consent-revoked:live": "vitest run apps/backend/__tests__/m16-consent-revoked.live.test.ts",
     "test:m23:noe-draft:live": "vitest run apps/backend/__tests__/m23-noe-draft.live.test.ts",
     "test:m23:notr-draft:live": "vitest run apps/backend/__tests__/m23-notr-draft.live.test.ts",
     "test:m33:schedule-cron:live": "vitest run apps/backend/__tests__/gap-050-m33-schedule-cron.live.test.ts",

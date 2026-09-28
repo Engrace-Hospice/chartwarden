@@ -34,6 +34,11 @@ export {
   M16_BEREAVEMENT_ELIGIBLE_CONSUMER,
   buildM16BereavementIntakeConsumer,
 } from "./outbox-consumers/m6-bereavement-eligible";
+export {
+  type ConsentRevocationDeps,
+  M16_CONSENT_REVOKED_CONSUMER,
+  buildM16ConsentRevokedConsumer,
+} from "./outbox-consumers/m39-consent-revoked";
 
 // §4.7 — the twenty-nine permission keys M16 contributes to M3's catalog.
 export {

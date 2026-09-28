@@ -1656,6 +1656,54 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   needs new platform infrastructure (a system-actor membership convention) and the rest need their own
   scoped builds the same way this pass scoped M30's.
 
+**#248's second genuinely-bound relationship — M16's §2.6 / D6 M39 consent-revocation cascade — and the
+build surfaced a real, previously-invisible decider/machine mismatch along the way (F-151, #248).**
+`decideConsentRevocationCascade` (`lifecycle/cascades.ts`) has been a complete, pure, unit-tested decider
+since M16-T03, and `bereavement_opt_out.source_kind`'s own schema comment already named the mechanism
+this pass built: "when M39 emits `m39.consent.revoked` for a `bereavement_outreach_consent` record, M16
+CASCADES (§2.6) — it does not gate-keep. M39 is the truth." Nothing had ever bound it — the pair sat in
+the m16 `handlers-unbound` group F-134 had already scoped as "backed by a real pure decider." Scoping it
+against M24's `handlers-unbound` group first (a parallel candidate with real, named pure handlers in
+`consumers/handlers.ts`) found that group genuinely blocked on two DIFFERENT infrastructure gaps — no
+claim-lifecycle write path exists to back `handleClaimPaid`/`handleClaimDenied`/`handleMedicarePrimaryAck`
+at all, and `medicaid_claim.updatedByMembershipId`/`createdByMembershipId` are NOT NULL with no
+system-actor escape hatch the way `order_discontinuation.actor_membership_id` has (F-102) — so M24 stays
+deferred, its reason updated to name both blockers precisely rather than repeating the old blanket
+"forward-declared, pending the relay" note. **M16's build, by contrast, had full precedent already sitting
+in the codebase.** `bereavement_opt_out.recorded_by_user_id` and `bereavement_plan_closure.closed_by_user_id`
+are both nullable with a documented system-write precedent in their own schema comments ("NULL when the
+portal self-service path recorded it" / "NULL for the 13-month auto-close cron"), and `optOutContact`'s
+existing HTTP-route implementation (`routes/write-service-drizzle.ts`, route 14) already accepts a
+null-membership `M16MutatingActor` for the identical reason. The new consumer
+(`outbox-consumers/m39-consent-revoked.ts`) mirrors that route's write exactly — the same
+`transitionBereavedContact` machine call, the same effect-runner + `bereavement_opt_out` insert shape, the
+same future-outreach cancellation — with `recordedByUserId: null` / `sourceKind: "m39_revocation_cascade"`
+in place of a staff membership, the F-102 `CONSUMER_USER_ID` convention (`""` for `app.user_id`) F-150's
+M30 consumer already established one module over. **Building it surfaced a narrow, latent bug nobody had
+exercised**: `decideConsentRevocationCascade` returns `cascade_opt_out` for a contact whose status is
+EITHER `active` OR `proposed`, but `BEREAVED_CONTACT_GRAPH` (`lifecycle/contact.ts`) accepts the `optOut`
+event only from `active` — `proposed` accepts only `confirmContact`. The decider's own unit test
+(`bereavement-lifecycle.test.ts`) exercises `active`/`opted_out`/`null`, never `proposed`, so this was
+invisible until a real delivery against an unconfirmed contact was driven end to end. Not fixed here,
+deliberately — whether an unconfirmed contact's consent revocation should be a no-op (matching
+`opted_out`/`deceased`) or drive some other transition is a product decision this pass does not guess at,
+the identical restraint F-150 applied to `m12.medication.error_reported`'s missing system-actor
+convention. The consumer instead lets the machine's own typed `ILLEGAL_TRANSITION` throw and dead-letter
+for a human, mirroring the "refuse rather than guess" posture `outbox-consumers/m6-bereavement-eligible.ts`
+already takes on its own unresolvable death-fact cases — documented at the top of the new file rather than
+silently swallowed, and proven as its own live-test case rather than left untested. Net: **195 → 194**
+pairs (1 bound). Verified: `bun run build`/`typecheck` clean, full non-live suite 654 files / 9589 tests
+green with no pinned-array assertions to update, `arch:fitness` 38/38 (`arch:outbox-bindings` confirms 58
+live bindings now cover 78 catalogued events, up from 57/77 — `arch:live-suites` required the new script
+wired into the CI `lifecycle-live` M16 job before it would pass), a clean `check:boot:platform` run against
+a freshly migrated, RLS-enforced disposable Postgres, and a new live suite
+(`m16-consent-revoked.live.test.ts`, `test:m16:consent-revoked:live`) proving the binding for real: an
+active contact cascades to `opted_out` with the correct `bereavement_opt_out` row and a cancelled future
+outreach touchpoint, a redelivery against an already-opted-out contact is a true no-op (no second opt-out
+row, `version` unchanged), a consent id no contact in the org tracks is a no-op, a `proposed` contact
+throws the documented `ILLEGAL_TRANSITION`, and cross-tenant isolation holds. Leaving #248 open — 194
+pairs across 25 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit
