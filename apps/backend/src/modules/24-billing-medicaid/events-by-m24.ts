@@ -405,7 +405,11 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       mcoId: Type.Union([Str, Type.Null()]),
       version: Type.Integer(),
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same reasoning as `m23.mac_credential.updated` — M34's own eleven
+    // canonical onboarding steps have no Medicaid-trading-partner step at all (only `mac_configured`,
+    // Medicare-specific), and no other M34 mechanism reacts to this credential upsert reactively; M34's
+    // own spec never names M24.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

@@ -189,7 +189,11 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       psapJurisdictionId: IdOrNull,
       wardenxOpsPaged: Bool,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: M34's own spec never names M20 anywhere ("Depends on"/"Consumed by"
+    // enumerate 1,2,3,4,22,36 and 1,2,3,4,22,23,24,29,33,35 respectively — M20 is absent from both), and
+    // M34 states plainly it "consumes no clinical predicates... M34's surface is platform-administrative
+    // not patient-clinical." An unsupported guess, dropped, not a redundant-with-seam case.
+    declaredConsumers: [],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
@@ -237,7 +241,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       checkInId: IdOrNull,
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same reasoning as `m20.safety.sos_terminus_reached` above.
+    declaredConsumers: [],
     seamConsumers: ["m4"],
     isOutboxOnly: true,
   },
@@ -406,7 +411,8 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Str,
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same reasoning as `m20.safety.sos_terminus_reached` above.
+    declaredConsumers: [],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

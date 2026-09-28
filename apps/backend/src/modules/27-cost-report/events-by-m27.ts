@@ -32,7 +32,13 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       fiscalYearStartDate: isoInstant,
       deadlineDate: isoInstant,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: M27's own §1.1 "Consumed by" text is explicit that M34's ONLY
+    // consumption of M27 is a seam PULL — `CostReportFilingStatusReader.getOpenReportsForProvider`/
+    // `.getMostRecentSubmissionFor`, consulted on-demand at the tenant offboarding gate and the tenant
+    // dashboard's compliance-posture summary — never a reactive outbox subscription to the cost-report
+    // lifecycle. Same "push declared, real consumption is pull" shape F-130 found for M27's own m26/m6
+    // consumption one pass earlier, here on the OTHER side of the relationship.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -140,7 +146,9 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
     // one line above is what emits the real, already-live-bound render request, carrying the real
     // artifacts rather than a snapshot placeholder. Declaring m22 directly on `submitted` was the
     // same handshake named twice, one hop earlier than where it's actually produced.
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same `CostReportFilingStatusReader` seam-pull reasoning as
+    // `m27.cost_report.created` above.
+    declaredConsumers: [],
     seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
@@ -155,7 +163,9 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
       mcrefAcknowledgmentNumber: id,
       acceptedAt: isoInstant,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same `CostReportFilingStatusReader` seam-pull reasoning as
+    // `m27.cost_report.created` above.
+    declaredConsumers: [],
     seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
@@ -192,7 +202,9 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-117 (#248) — m22 removed: `reopen()` resets the report to `draft` (write-service-drizzle.ts)
     // and neither enqueues a render job nor emits any request event — there is no artifact for M22
     // to produce at reopen; the next real render happens on the following `submitted`.
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same `CostReportFilingStatusReader` seam-pull reasoning as
+    // `m27.cost_report.created` above.
+    declaredConsumers: [],
     seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
@@ -202,7 +214,9 @@ export const M27_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The report was closed on ProviderEntity offboarding; submission history is retained.",
     payloadSchema: Type.Object({ costReportId: id, providerEntityId: id }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same `CostReportFilingStatusReader` seam-pull reasoning as
+    // `m27.cost_report.created` above.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

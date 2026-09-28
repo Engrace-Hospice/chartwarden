@@ -849,6 +849,44 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   freshly migrated, RLS-enforced disposable Postgres. Leaving #248 open — 362 pairs across 32 modules
   remain.
 
+  **The m34 group (21 pairs) went 21 of 21 misdeclared — every single one — the M28/F-115 shape a
+  second time (F-132, #248).** M34's own spec is unusually exhaustive about the boundary: its "Depends
+  on"/"Consumed by" header enumerates exactly `1,2,3,4,22,36` and `1,2,3,4,22,23,24,29,33,35`, its §3.1
+  file tree lists exactly ONE consumer file (`consumers/m22-document-backref.ts`), and — the single most
+  decisive line — its own D15 text COUNTS its M35 consumption: "the four seams M34 publishes plus **the
+  ONE** M34 consumes from M35 (deny-stub today)," naming that one thing as
+  `TenantSubscriptionEntitlementReader`. A quantified "ONE" is a much stronger contradiction than mere
+  silence, and it directly refutes the 9 `m35.*` events (8 `subscription.*` + `tenant.billing_blocked`)
+  that M35's OWN spec repeatedly (and specifically) describes as "M34 (when locked) consumes the event to
+  gate feature access" — the producing side's aspirational guess, overridden by the consuming side's own
+  more authoritative accounting, per F-101. **All 5 `m27.cost_report.*` events are the familiar
+  push-declared/pull-actual shape**: M27's own §1.1 text names M34's real mechanism as a SEAM PULL —
+  `CostReportFilingStatusReader.getOpenReportsForProvider`/`.getMostRecentSubmissionFor`, consulted
+  on-demand at the tenant-offboarding gate and the compliance-posture dashboard summary, explicitly listed
+  among M27's forward-seam-deny-stubs (never an outbox subscription). **Both M30 events are the identical
+  shape**: M30's own §4.6 seam registry names `SecurityRiskAssessmentReader`'s only consumer as `['m34']`
+  and `ComplianceStatusProvider`'s consumers as `['m28','m33','m34']`, consulted "at fiscal-year rollover"
+  — a pull, not the `cop.status_changed`/`sra.cycle_closed` push these two events declared. **The
+  `m23.mac_credential.updated`/`m24.medicaid_trading_partner.updated` pair looked like the strongest
+  candidate for a genuine kept gap** — both producing modules describe it identically as "M34 (wizard
+  completion signal)," and `mac_configured` IS one of M34's eleven canonical onboarding steps — but M34's
+  own onboarding-step text settles it the other way: `ccn_registered → mac_configured`'s actual precondition
+  is a seam pull (M29's `ExternalFeedReader`, with "Phase 1 uses platform-ops attestation," no automated
+  credential check at all yet) evaluated on-demand by `precondition_dsl` at advance-attempt time, and the
+  `tenant.onboarding_advance` worker's only documented trigger is M34's OWN self-emitted
+  `m34.onboarding.task_completed` event — never a cross-module credential-upsert event. Dropped. **All 3
+  `m20.safety.*` events had no support of any kind** — M20's own spec never names M34 anywhere, and M34's
+  own text states plainly it "consumes no clinical predicates... M34's surface is platform-administrative
+  not patient-clinical," the sharpest disclaimer in the corpus against exactly this cluster. All 21 dropped
+  at the source in each producing module's `events-by-mNN.ts` (M20 ×3, M23 ×1, M24 ×1, M27 ×5, M30 ×2, M35
+  ×9); the m34 group itself is now DELETED from `outbox-deferred-consumers.ts` rather than left empty,
+  since a zero-event group is a group whose deferral has fully "outlived its reason." **Net: 362 → 341**
+  (21 dropped, 0 added; 32 → 31 consumer modules). Verified: `bun run build` clean, `bun run typecheck`
+  (same 3 pre-existing unrelated `m2-*.live.test.ts` errors), `arch:fitness` 38/38 (`arch:outbox-bindings`
+  0 disagreements), full non-live suite 654 files / 9589 tests green with no pinned-array assertions to
+  update this pass, and a clean `check:boot:platform` run against a freshly migrated, RLS-enforced
+  disposable Postgres. Leaving #248 open — 341 pairs across 31 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

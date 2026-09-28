@@ -34,7 +34,13 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       planSlug: id,
       startedAt: isoInstant,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: M34's own spec quantifies its M35 consumption precisely — "The four
+    // seams M34 publishes plus the ONE M34 consumes from M35 (deny-stub today)" — naming
+    // `TenantSubscriptionEntitlementReader` as that one thing. A quantified "ONE" directly contradicts
+    // nine separate outbox subscriptions; M35's own repeated "M34 (when locked) consumes" phrasing across
+    // its spec is the aspirational producing-side guess the F-101 rule exists to override with the
+    // consuming module's own (more specific, more authoritative) accounting.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -43,7 +49,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m35",
     description: "A subscription transitioned from trialing to active.",
     payloadSchema: Type.Object({ subscriptionId: id, organizationId: id, activatedAt: isoInstant }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same reasoning as `m35.subscription.created` above.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -59,7 +66,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       transitionedAt: isoInstant,
       reasonCode: id,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same reasoning as `m35.subscription.created` above.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -75,7 +83,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       prorationBehavior: id,
       effectiveAt: isoInstant,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same reasoning as `m35.subscription.created` above.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -90,7 +99,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       reasonCode: id,
       atPeriodEnd: flag,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same reasoning as `m35.subscription.created` above.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -104,7 +114,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       pausedAt: isoInstant,
       pausedUntil: nullableInstant,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same reasoning as `m35.subscription.created` above.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -113,7 +124,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m35",
     description: "A subscription resumed from paused.",
     payloadSchema: Type.Object({ subscriptionId: id, organizationId: id, resumedAt: isoInstant }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same reasoning as `m35.subscription.created` above.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -128,7 +140,8 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       reasonCode: id,
       lastSuccessfulPaymentAt: nullableInstant,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same reasoning as `m35.subscription.created` above.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -456,7 +469,9 @@ export const M35_OUTBOX_EVENTS: ModuleEventContribution = [
       blockedAt: isoInstant,
       dunningStage: id,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same reasoning as `m35.subscription.created` above — M34's own spec
+    // counts its whole M35 consumption as "the ONE" (the entitlement-reader seam), which this isn't.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },

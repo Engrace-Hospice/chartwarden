@@ -485,7 +485,13 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A per-PE mac_submitter_credential was upserted (secrets never emitted); the version is bumped.",
     payloadSchema: Type.Object({ providerEntityId: id, macJurisdiction: str, version: int }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: M23's own description calls this "M34 (wizard completion signal)", but
+    // M34's own onboarding spec names the actual `ccn_registered → mac_configured` mechanism as a seam
+    // pull (M29's `ExternalFeedReader`, "Phase 1 uses platform-ops attestation") evaluated on-demand at
+    // advance-attempt time by `precondition_dsl`, never a reactive listener on this event; the advance
+    // worker's only trigger is M34's OWN `m34.onboarding.task_completed` event. M34's own spec never
+    // names M23 in its "Depends on"/"Consumed by" header at all.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

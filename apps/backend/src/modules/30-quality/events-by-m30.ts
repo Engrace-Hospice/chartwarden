@@ -235,7 +235,11 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       closedAt: isoInstant,
       openFindingsAtClose: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: the description's "M34 refreshes the tenant compliance gate" is real
+    // but the mechanism is the SEAM M30 publishes — `SecurityRiskAssessmentReader`, M30's own §4.6
+    // registry entry names its only consumer as `['m34']` and its own text says M34 consults it "at
+    // fiscal-year rollover" — never a reactive outbox subscription to cycle closure.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -287,7 +291,10 @@ export const M30_OUTBOX_EVENTS: ModuleEventContribution = [
       toStatus: id,
       lastReviewedAt: nullableId,
     }),
-    declaredConsumers: ["m34"],
+    // F-132 (#248) — m34 REMOVED: same `ComplianceStatusProvider` seam-pull reasoning as
+    // `m30.sra.cycle_closed` above (M30's own §4.6 registry names its consumers as `['m28','m33','m34']`
+    // via the seam, never via this outbox event).
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
