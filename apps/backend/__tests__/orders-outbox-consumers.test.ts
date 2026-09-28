@@ -70,7 +70,10 @@ describe("M11 outbox event contract (§4.4)", () => {
     // which carries the rich PID/ORC/OBR/NTE payload M29's own spec actually names.
     // F-149 (#248) — m30 moved to seamConsumers: M30's own spec states it never subscribes to an
     // upstream module's outbox, only calls seams.
-    expect(signed?.declaredConsumers).toEqual(expect.arrayContaining(["m14", "m21"]));
+    // F-153 (#248) — m21 removed: redundant with the co-emitted, more specific
+    // `m11.order.supply_fulfillment_requested` sibling (same `emitDownstreamSignedEvent` transaction).
+    expect(signed?.declaredConsumers).toEqual(expect.arrayContaining(["m14"]));
+    expect(signed?.declaredConsumers).not.toContain("m21");
     expect(signed?.declaredConsumers).not.toContain("m22");
     expect(signed?.declaredConsumers).not.toContain("m29");
     expect(signed?.declaredConsumers).not.toContain("m30");

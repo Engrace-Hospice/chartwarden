@@ -94,3 +94,9 @@ export {
   buildM21OrderDiscontinuedConsumer,
   buildM21SupplyCancellationConsumer,
 } from "./outbox-consumers/m11-order-cascade";
+// F-153 (#248) — M13's §2.5 deployment-ack link + §2.6 return-required chain-of-custody open.
+export {
+  type M21ComfortKitCascadeDeps,
+  buildM21ComfortKitDeploymentAckConsumer,
+  buildM21ComfortKitReturnRequiredConsumer,
+} from "./outbox-consumers/m13-comfort-kit-cascade";

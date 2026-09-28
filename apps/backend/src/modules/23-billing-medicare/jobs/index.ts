@@ -41,6 +41,7 @@ export {
   type X12ClientPort,
   buildM23WorkerDeps,
   buildM23SubmissionQueuePort,
+  buildM23RevalidateEnqueuePort,
   registerM23CronWorkers,
   registerM23Workers,
   registerM23LaunchWorkers,

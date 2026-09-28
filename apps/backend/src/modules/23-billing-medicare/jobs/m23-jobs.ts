@@ -360,6 +360,52 @@ export function buildM23SubmissionQueuePort(connection: ConnectionOptions): {
   };
 }
 
+/**
+ * F-153 (#248) — the `revalidate.consumer` PRODUCER: a BullMQ sink for the six live
+ * `outbox-consumers/m23-revalidate-triggers.ts` bindings. `runRevalidateConsumer` (this file, above) has been
+ * a registered, running worker since the launch-worker set landed; nothing has ever added a job to this
+ * queue. The jobId is the ORIGINATING OUTBOX EVENT id — a redelivery of the same upstream event is a
+ * BullMQ-level no-op before the resolver ever runs a second time (the per-target `validation-run` fan-out
+ * inside `runRevalidateConsumer` carries its own, separate `(org, claim, event)` idempotency key regardless).
+ */
+export function buildM23RevalidateEnqueuePort(connection: ConnectionOptions | undefined): {
+  readonly port: {
+    enqueue(job: RevalidateConsumerJob): Promise<{ readonly jobId: string }>;
+  };
+  readonly queues: readonly Queue[];
+} {
+  if (!connection) {
+    return {
+      port: {
+        async enqueue() {
+          unboundWorkerPort(
+            "revalidateEnqueue",
+            "no Valkey connection configured — cannot enqueue 'revalidate.consumer' (set the queue connection at boot)",
+          );
+        },
+      },
+      queues: [],
+    };
+  }
+  const queue = new Queue(M23_QUEUES.revalidateConsumer, { connection });
+  return {
+    port: {
+      async enqueue(job) {
+        const jobId = `m23:${M23_QUEUES.revalidateConsumer}:${job.eventId}`;
+        await queue.add(M23_QUEUES.revalidateConsumer, job, {
+          jobId,
+          attempts: M23_QUEUE_PARAMS.revalidateConsumer.attempts,
+          backoff: M23_QUEUE_PARAMS.revalidateConsumer.backoff,
+          removeOnComplete: { count: 500 },
+          removeOnFail: false,
+        });
+        return { jobId };
+      },
+    },
+    queues: [queue],
+  };
+}
+
 // ── the dep bag the composition root injects ──────────────────────────────────────────────────────────────
 
 /**

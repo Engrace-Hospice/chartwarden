@@ -348,6 +348,7 @@ import {
   buildDrizzleM16WriteService,
   buildM16BereavementIntakeConsumer,
   buildM16ConsentRevokedConsumer,
+  buildM16DischargeDeathSecondaryConsumer,
   buildM16IdgDecisionConsumer,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
@@ -377,6 +378,8 @@ import {
 } from "./modules/17-scheduling/index";
 import {
   M18_OUTBOX_EVENTS,
+  buildM18EncounterSignedConsumer,
+  buildM18VisitCancelledConsumer,
   buildM18VisitPublishedConsumer,
   complianceStatesForVisitsForOrg,
   createDrizzleEvvSeamStore,
@@ -429,6 +432,8 @@ import {
   buildDrizzleM21WriteService,
   buildDrizzleSuppliesAbacResolver,
   buildDrizzleSuppliesSeamStore,
+  buildM21ComfortKitDeploymentAckConsumer,
+  buildM21ComfortKitReturnRequiredConsumer,
   buildM21DocumentBackrefConsumer,
   buildM21OrderDiscontinuedConsumer,
   buildM21SupplyCancellationConsumer,
@@ -475,9 +480,12 @@ import {
   buildM23NotrDraftConsumer,
   buildM23OutboxBackedSubmissionGate,
   buildM23RemittanceConsumer,
+  buildM23RevalidateEnqueuePort,
+  buildM23RevalidateTriggerConsumers,
   buildM23SubmissionQueuePort,
   buildM23SubmissionRequestConsumer,
   buildM23WorkerDeps,
+  buildDrizzleRevalidationTargetResolver,
   createDrizzleBillingEraseStore,
   createM23LaunchGateway,
   m23LaunchGatewayConfigFromEnv,
@@ -2251,6 +2259,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     queueConnection && m23LaunchGateway
       ? buildM23SubmissionQueuePort(queueConnection)
       : null;
+  // F-153 (#248) — the `revalidate.consumer` producer, unlike submission, needs no MAC/X12 launch
+  // gateway — only the Valkey connection the worker itself already requires to run. Built unconditionally
+  // (queueConnection may still be undefined; the port fails closed per-call in that case, RULE 4).
+  const m23RevalidateEnqueue = buildM23RevalidateEnqueuePort(queueConnection);
   // M24 (WX-PR-011) — the Oregon launch-gateway, gated the same way as M23's (unset in dev/test/CI so
   // nothing calls out by accident). The adapter registry always constructs (WA/ID/CA/NV deny-stubs register
   // regardless); only Oregon's wire I/O gets a real gateway when one resolves.
@@ -3737,6 +3749,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       );
     });
   }
+  app.addHook("onClose", async () => {
+    await Promise.all(m23RevalidateEnqueue.queues.map((queue) => queue.close()));
+  });
   if (m24SubmissionQueues) {
     app.addHook("onClose", async () => {
       await Promise.all(
@@ -4429,6 +4444,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         jurisdictions: {
           listJurisdictions: async () => [{ macJurisdiction: "ngs_j6" }],
         },
+        // F-153 (#248) — the real target resolver for the `revalidate.consumer` worker (was fail-closed
+        // unbound; every job would have thrown the moment it ran).
+        revalidationTargets: buildDrizzleRevalidationTargetResolver(),
       });
       m23Workers = registerM23LaunchWorkers(m23WorkerDeps);
       attachDlqAlertsToAll(m23Workers, "m23");
@@ -5104,6 +5122,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
           }),
+          // F-153 (#248) — the §4.5 death-discharge SECONDARY verifier (a redundant safety net, not a
+          // second creation path): re-runs the same §4.3.1 intake decider off `m6.admission.discharged`
+          // (filtered to reason='death') for the case `m6.bereavement.eligible` fails to fire or land.
+          buildM16DischargeDeathSecondaryConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+            resolveAdmission: async (organizationId, admissionId) =>
+              admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
+          }),
           buildM8VisitPublishedConsumer({
             db: dbHandle.db,
             outbox: m8OutboxPublisher,
@@ -5150,6 +5177,18 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             ) as AdmissionStatusReader,
           }),
           buildM18VisitPublishedConsumer({ db: dbHandle.db }),
+          // F-153 (#248) — D14's other named consumed event: cancel pending aggregator submissions +
+          // void open missing-resolution rows for the cancelled visit.
+          buildM18VisitCancelledConsumer({
+            db: dbHandle.db,
+            outbox: m18OutboxPublisher,
+          }),
+          // F-153 (#248) — D6/§2.2.4: the encounter's own documented EVV-missing reason auto-resolves
+          // (or, if no sweep/detector ever opened one, creates already-closed) the missing-resolution row.
+          buildM18EncounterSignedConsumer({
+            db: dbHandle.db,
+            outbox: m18OutboxPublisher,
+          }),
           // F-150 (#248) — M30's §4.10 upstream-event handlers had been pure, unit-tested and
           // completely unbound since the package shipped (RULE 3(d) — "the live inbound dispatcher is a
           // later platform phase" never landed). These two are the ones fully ready to bind today: both
@@ -5367,6 +5406,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // patient", and `supply_request.location_id` is NOT NULL — see the file header.
           buildM21SupplyCancellationConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
           buildM21OrderDiscontinuedConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
+          // F-153 (#248) — M13's §2.5 deployment-ack link (resolved by patient+admission, since the
+          // whole point of the ack is that the link does not exist yet) and §2.6 return-required
+          // chain-of-custody open (no outbox effect of its own — the return row's own state is the fact).
+          buildM21ComfortKitDeploymentAckConsumer({ db: dbHandle.db }),
+          buildM21ComfortKitReturnRequiredConsumer({ db: dbHandle.db }),
           // F-108 — M27's. Unlike the five clinical ones it stamps THREE columns off one event, resolved
           // from `aggregateType`: M27 fans the ECR file, the Print Image and the supporting-doc bundle out
           // under ONE request event name, so the aggregate type is the only discriminator on the wire —
@@ -5526,6 +5570,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 "M23 remittance transition skipped",
               ),
           }),
+          // F-153 (#248) — the §4.8 `revalidate.consumer` PRODUCER side: six M6/M8 facts that can
+          // re-open a VALIDATING/READY claim's validation, each enqueuing the raw event onto the
+          // already-registered `runRevalidateConsumer` worker (only runs when `m23LaunchGateway` is
+          // configured, same as every other M23 launch worker).
+          ...buildM23RevalidateTriggerConsumers({ enqueue: m23RevalidateEnqueue.port }),
         ],
         // GAP-099 — the PLATFORM (`organization_id IS NULL`) binding list. Until now this list did not
         // exist and `pollPlatform()` could only claim a row and defer it, so M29's NPPES sync published

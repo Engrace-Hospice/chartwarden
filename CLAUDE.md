@@ -1779,6 +1779,93 @@ run against a freshly migrated, RLS-enforced disposable Postgres, and all four n
 `test:m17:evv-sos-consumers:live` 4/4) run individually against the same disposable database. Leaving
 #248 open — 184 pairs across 25 modules remain.
 
+**Five modules' `handlers-unbound` groups (M25, M18, M21, M16, M23) were dispatched to five parallel forks
+a second time, each independently re-verified against the actual code before being trusted or applied, and
+11 of the round's 24 candidate events are now real, live-bound relationships — with two of the five forks'
+own claims corrected by that verification before anything was built (F-153, #248).** Per the user's
+explicit "dispatch 5 subagents at a time... but make sure to verify their work" instruction, each fork took
+one module and reported BUILT (with isolated new files) or BLOCKED (with precise reasons) rather than
+forcing an incorrect bind; the coordinator then independently re-read every claimed decider, schema
+constraint, and catalog declaration against the real source before applying anything centrally.
+**M25 — 0 built, correctly.** The fork reported BLOCKED on `m23.claim.rejected`/`m18.evv.aggregator_rejected`
+and both claims were verified true against the schema, not merely trusted: `denial_case` carries no unique
+index on either idempotency key shape `handlers.ts`'s own header promises ("the store enforces the
+dedupe"), and `DenialSeedStore.seedDenial`'s declared input has no `taxonomyStatus` field while the column
+is NOT NULL with no default and the only real writer derives it via M38 CARC-category resolution — binding
+either now would mean a race-prone insert or a fabricated column value. The group's reason text is rewritten
+to state both schema gaps precisely rather than repeating "same posture as M26/M27," which undersold it —
+M26/M27 wait on a store bind, this waits on new schema. **M18 — 2 of 2 built, group fully resolved and
+deleted.** `m17.visit.cancelled` (cancels non-terminal aggregator submissions + voids open missing-resolution
+rows, D7/§2.2.4) and `m8.encounter.signed` (auto-closes or creates-already-closed a missing-EVV resolution
+off the encounter's own documented reason, D6) are both live in `outbox-consumers/`. Verification confirmed
+both catalog declarations were already in place from F-141/F-146 (no catalog edit needed), that
+`detected_by_source`'s schema comment already names `'encounter_signed_consumer'` as a real enumerated
+value, and that `evv_missing_resolution_open_uidx` is a PARTIAL unique index (`WHERE status='open'`) so the
+create-already-closed insert path never collides with it. **M21 — 2 of 7 built, 1 corrected from unbound to
+misdeclared, 4 remain genuinely blocked or unattempted.** `m13.comfort_kit.deployed` (§2.5 deployment-ack,
+resolved by patient+admission since the ack's whole point is that the deploymentId link doesn't exist yet)
+and `.return_required` (§2.6 chain-of-custody open) are live in `outbox-consumers/m13-comfort-kit-cascade.ts`
+— both catalog declarations were already present (confirmed by direct read of `events-by-m13.ts`).
+`m11.order.signed` is **removed from the catalog outright, not bound**: the fork found it redundant with
+the co-emitted, more specific `m11.order.supply_fulfillment_requested` sibling (same
+`emitDownstreamSignedEvent` transaction) — verified true by reading `orders-route-service-db.ts` directly
+(line 566 emits `.signed`, line 601 in the same function calls `emitDownstreamSignedEvent`, which emits
+`.supply_fulfillment_requested` at line 512) — the F-117/F-101 co-emission shape a module over. Both M21's
+own `M21_SUBSCRIBED_EVENT_NAMES` mirror and `events-by-m11.ts`'s `declaredConsumers` were corrected to
+match. **M16 — 1 of 5 built.** `m6.admission.discharged` (filtered to `reason='death'`, the §4.5 "secondary
+verifier" against M6 failing to emit `m6.bereavement.eligible`) re-runs the identical §4.3.1 intake decider
+a second time off a different source event. **Verification caught the fork's own claim wrong here**: its
+report said the catalog "does not yet declare `m16`" and its live test built a synthetic in-memory catalog
+patch to work around the gap — direct inspection of `events-by-m6.ts` found `m16` already sitting in
+`m6.admission.discharged`'s `declaredConsumers` (a kept pair from F-134, never dropped), so no catalog edit
+was needed at all and the test's synthetic patch was deleted in favor of the real `M6_OUTBOX_EVENTS` before
+being trusted — the exact mistake the user's "verify to avoid mistakes" instruction exists to catch, on the
+build side rather than the blocked side this time. **M23 — 6 of 8 built, the round's largest single bind.**
+`m6.cti.signed`, `m6.f2f.attested`, `m6.loc.changed`, `m6.election.period_ended`, `m8.encounter.cosigned`,
+and `m5.patient.deceased` (its `revalidate` effect only — `freeze_new_claims` stays unbuilt, no column or
+table anywhere backs it, confirmed only a `vi.fn()` mock exists) now each enqueue onto the ALREADY-RUNNING
+`revalidate.consumer` BullMQ worker (`runRevalidateConsumer`, registered since the launch-worker set landed,
+that nothing had ever added a job to) via `outbox-consumers/m23-revalidate-triggers.ts`, and the worker's own
+`RevalidationTargetResolverPort` — fail-closed-unbound at boot — is now real
+(`buildDrizzleRevalidationTargetResolver`, a new `ClaimRepository.listRevalidationTargets` matching every
+VALIDATING/READY claim by the event's `patientId`/`admissionId` exact match or `encounterId` jsonb
+containment on `claim_line.backing_encounter_ids`), independently verified field-by-field against each
+event's real catalogued payload rather than assumed from the fork's report. Every one of the six payload
+shapes was confirmed by direct read: `m6.cti.signed`/`.f2f.attested`/`m5.patient.deceased` carry `patientId`,
+`m6.loc.changed`/`.election.period_ended` carry `admissionId`, `m8.encounter.cosigned` carries only
+`encounterId`. `m18.evv.late_check_resolved` and `m25.taxonomy.unmapped_code_observed` stay genuinely
+blocked — the first needs a reverse of F-123's `encounterVisitIdsForOrg` M23 has no port for, the second
+needs a whole new validation-rule-suggestion mechanism. **A gate-breaking defect surfaced applying M23's
+build, found only because the coordinator ran `arch:fitness` rather than trusting the fork's "clean"
+report**: the fork's exported `buildM23RevalidateTriggerConsumer(eventName, deps)` took the event name as a
+runtime parameter, which crashes `check-outbox-bindings.ts`'s discovery probe — it calls every
+`build*Consumer(s)`-named export with an absorbing Proxy stub, and the stub's `Symbol.toPrimitive` returning
+itself (not a primitive) threw the instant the function tried to interpolate `` `m23.revalidate-trigger.
+${eventName}` ``. No other binding factory in the codebase takes a runtime discriminator as a positional
+argument — each hardcodes its `consumerName`/`eventTypes` as compile-time constants instead — so this was a
+novel shape the gate had never had to handle. Fixed by renaming the per-event factory to
+`buildM23RevalidateTriggerConsumerFor` (outside the gate's `^build[A-Za-z0-9]*Consumers?$` discovery regex)
+while the plural `buildM23RevalidateTriggerConsumers` — which the gate DOES evaluate, safely, since it loops
+over the real string-literal event array internally rather than taking one from the caller — stays the
+composition root's actual entry point. **Net: 184 → 172** (11 bound, 1 dropped as misdeclared, 0 added; 25 →
+24 modules, M18's group fully resolved). Verified centrally, once, after all five forks' edits landed
+together: `bun run build`/`typecheck` clean (0 errors), full non-live suite 654 files / 9592 tests green (one
+pinned-array assertion updated — `orders-outbox-consumers.test.ts`'s `m11.order.signed` fan-out, to drop
+`m21`), `arch:fitness` 38/38 (`arch:outbox-bindings` 0 disagreements both directions — one gate-breaking
+crash fixed along the way, two rule-6 subscription-list corrections needed:
+`M21_SUBSCRIBED_EVENT_NAMES` to drop `m11.order.signed`, M23's own dead `M23_OUTBOX_SUBSCRIPTIONS` map to
+add `m6.election.period_ended`), a clean `check:boot:platform` run against a freshly migrated,
+RLS-enforced disposable Postgres (dropped and rebuilt from all 270 migrations to rule out stale local
+state), and all four new live suites run individually against the same disposable Postgres + a disposable
+Valkey (`test:m18:visit-cancelled-encounter-signed:live` 6/6, `test:m21:comfort-kit-cascade:live` 7/7,
+`test:m16:discharge-death-secondary:live` 5/5, `test:m23:revalidate-triggers:live` 6/6), alongside seven
+pre-existing sibling live suites re-run unchanged to confirm no regression (`m18:read`/`write`,
+`m21:order-cascade`, `m16:bereavement-intake`/`consent-revoked`, `m23:noe-draft`/`notr-draft`,
+`m23:claim-assembly-seams`) — one pre-existing, unrelated failure found and confirmed via `git stash` to
+predate this round entirely (`gap-037-m23-remittance-feedback.live.test.ts`, 2/8 cases, an `m25.remittance
+.claim_paid` pending-row-count assertion untouched by anything this round built). Leaving #248 open — 172
+pairs across 24 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

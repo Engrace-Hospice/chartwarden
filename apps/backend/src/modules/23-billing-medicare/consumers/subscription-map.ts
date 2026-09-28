@@ -170,6 +170,17 @@ export const M23_OUTBOX_SUBSCRIPTIONS: Readonly<Record<string, M23TopicSubscript
         },
       ],
     },
+    // F-153 (#248) — an election period auto-ending shifts the claim-period anchor the same way
+    // `.period_started` does; the spec's own text names both beside each other.
+    "m6.election.period_ended": {
+      status: "live",
+      effects: [
+        {
+          kind: "revalidate",
+          note: "An election period auto-ended in M6 — re-validate affected claims so the period-anchoring rules re-run against the new benefit-period boundary (task 53/54).",
+        },
+      ],
+    },
 
     // ── M8 encounter signed / cosigned → re-validate (task 53) ──────────────────────────────────────────
     "m8.encounter.signed": {

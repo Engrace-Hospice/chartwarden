@@ -172,6 +172,56 @@ export class ClaimRepository {
   }
 
   /**
+   * F-153 (#248) — the §4.8 `revalidate.consumer` target resolver's read. Every claim in `VALIDATING` or
+   * `READY` (a claim not yet submitted, where a re-run can still change the outcome) matching ANY of the
+   * supplied facts: `patientId` / `admissionId` exact match on `claim`'s own logical-FK columns, or
+   * `encounterId` via a jsonb containment scan of `claim_line.backing_encounter_ids` (the only fact shape
+   * that needs the child table — an encounter-signed/cosigned event carries no patient or admission id).
+   * All three are OR'd: a fact resolver is intentionally permissive about WHICH claims it flags for
+   * re-validation, since a false positive here costs one no-op rule re-run and a false negative costs a
+   * claim submitted against a stale fact. Returns `[]` (not an error) when `fact` carries none of the three
+   * — a resolver call with no matchable id is a caller bug the empty result surfaces rather than masks.
+   */
+  async listRevalidationTargets(
+    organizationId: string,
+    fact: { readonly patientId?: string; readonly admissionId?: string; readonly encounterId?: string },
+  ): Promise<readonly { readonly claimId: string }[]> {
+    const activeStates = [claimStateCodec.toDb("validating"), claimStateCodec.toDb("ready")];
+    const factClauses = [
+      fact.patientId ? eq(C.patientId, fact.patientId) : undefined,
+      fact.admissionId ? eq(C.admissionId, fact.admissionId) : undefined,
+    ].filter((c): c is NonNullable<typeof c> => c !== undefined);
+
+    const ids = new Set<string>();
+
+    if (factClauses.length > 0) {
+      const rows = await this.db
+        .select({ id: C.id })
+        .from(C)
+        .where(and(eq(C.organizationId, organizationId), inArray(C.state, activeStates), or(...factClauses)));
+      for (const r of rows) ids.add(r.id);
+    }
+
+    if (fact.encounterId) {
+      const L = schema.claimLine;
+      const rows = await this.db
+        .select({ id: C.id })
+        .from(C)
+        .innerJoin(L, eq(L.claimId, C.id))
+        .where(
+          and(
+            eq(C.organizationId, organizationId),
+            inArray(C.state, activeStates),
+            sql`${L.backingEncounterIds} @> ${JSON.stringify([fact.encounterId])}::jsonb`,
+          ),
+        );
+      for (const r of rows) ids.add(r.id);
+    }
+
+    return [...ids].map((claimId) => ({ claimId }));
+  }
+
+  /**
    * One keyset page of an org's claims (optionally narrowed by provider/patient/state), `(created_at DESC,
    * id DESC)`. Over-fetches `size + 1` rows so {@link buildCursorPage} can reveal `hasMore` + mint the next
    * cursor. RLS scopes the statement to `app.org_id` at the service layer.

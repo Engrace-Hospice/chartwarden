@@ -165,7 +165,11 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       // on this event, and this list did not name m14, so `assertBindableAgainstCatalog` would
       // have refused the binding for three of the six D8 sources while accepting the other three.
       "m14",
-      "m21",
+      // F-153 (#248) — m21 removed: emitted from the SAME transaction as the more specific
+      // `m11.order.supply_fulfillment_requested` (`emitDownstreamSignedEvent`, this file) for every
+      // supply/dme/comfort_kit-kind order — the fact M21 actually needs, one hop downstream, and the
+      // pair genuinely M21 cares about (still deferred there, blocked on the Location-resolution gap
+      // `consumers/order-context.ts` documents). The F-117/F-101 co-emission shape a module over.
       // F-117 (#248) — m22 removed: `signOrder`/`signOnBehalf` also emits
       // `m11.order.document_requested` in the SAME transaction (orders-route-service-db.ts) —
       // the actual live-bound M22 render request. Declaring m22 here too was the same handshake

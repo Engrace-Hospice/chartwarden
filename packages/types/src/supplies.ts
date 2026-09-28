@@ -294,8 +294,9 @@ export const M21_SUBSCRIBED_EVENT_NAMES = [
   // or a CII discrepancy. Both events now declare `m21`.
   "m13.comfort_kit.deployed",
   "m13.comfort_kit.controlled_substance_discrepancy",
-  // Catalogued AND declaring `m21`, and absent from this list until the two were first compared.
-  "m11.order.signed",
+  // F-153 (#248) — `m11.order.signed` REMOVED: misdeclared, not unbound — redundant with the co-emitted,
+  // more specific `m11.order.supply_fulfillment_requested` sibling (same transaction), dropped from the
+  // catalog's own `declaredConsumers` at the source.
   "m12.medication_order.dispensed_at_pharmacy",
   "m22.document.rendered",
 ] as const;

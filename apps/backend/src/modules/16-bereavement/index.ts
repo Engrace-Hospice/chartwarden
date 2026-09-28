@@ -39,6 +39,11 @@ export {
   M16_CONSENT_REVOKED_CONSUMER,
   buildM16ConsentRevokedConsumer,
 } from "./outbox-consumers/m39-consent-revoked";
+export {
+  type DischargeDeathSecondaryDeps,
+  M16_DISCHARGE_DEATH_SECONDARY_CONSUMER,
+  buildM16DischargeDeathSecondaryConsumer,
+} from "./outbox-consumers/m6-admission-discharged-death";
 
 // §4.7 — the twenty-nine permission keys M16 contributes to M3's catalog.
 export {

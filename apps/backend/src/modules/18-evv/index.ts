@@ -86,6 +86,16 @@ export {
   M18_VISIT_PUBLISHED_CONSUMER,
   buildM18VisitPublishedConsumer,
 } from "./outbox-consumers/m17-visit-published";
+// F-153 (#248) — the D14 `m17.visit.cancelled` bracket close (cancel pending aggregator submissions +
+// void open missing-resolution rows) and the D6/§2.2.4 `m8.encounter.signed` auto-resolution.
+export {
+  M18_VISIT_CANCELLED_CONSUMER,
+  buildM18VisitCancelledConsumer,
+} from "./outbox-consumers/m17-visit-cancelled";
+export {
+  M18_ENCOUNTER_SIGNED_CONSUMER,
+  buildM18EncounterSignedConsumer,
+} from "./outbox-consumers/m8-encounter-signed";
 // M18-T07 — the §4.9 M36 typed alert payloads M18 OWNS (late-checkout / geofence-breach / GPS-spoof / device
 // pending+suspended / aggregator rejected+timeout). Registered onto M36's Foundation alert-payload registry at
 // boot; composition + recipient resolution is M36's (ADR-0024). M18-F16: out-of-band channels carry no PHI.

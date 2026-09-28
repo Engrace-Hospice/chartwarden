@@ -108,6 +108,7 @@ export {
   type M23WorkerDeps,
   buildM23WorkerDeps,
   buildM23SubmissionQueuePort,
+  buildM23RevalidateEnqueuePort,
   registerM23CronWorkers,
   registerM23Workers,
   registerM23LaunchWorkers,
@@ -152,6 +153,18 @@ export {
   buildM23RemittanceConsumer,
   M23_REMITTANCE_CONSUMER,
 } from "./outbox-consumers/m25-remittance";
+
+// F-153 (#248) — the §4.8 `revalidate.consumer` producer side: six live bindings for the M6/M8 facts that
+// can re-open a VALIDATING/READY claim's validation.
+export {
+  type M23RevalidateTriggerConsumerDeps,
+  type M23RevalidateTriggerEventName,
+  M23_REVALIDATE_TRIGGER_EVENTS,
+  buildM23RevalidateTriggerConsumerFor,
+  buildM23RevalidateTriggerConsumers,
+  type RevalidateEnqueuePort,
+} from "./outbox-consumers/m23-revalidate-triggers";
+export { buildDrizzleRevalidationTargetResolver } from "./outbox-consumers/m23-revalidation-target-resolver";
 
 // §4.4 — the M23→M27 cost-report published seam (PatientDaysProvider): the billed-and-accepted patient-day
 // census the cost-report Worksheet-D reconciliation reads. The composition root registers it into the M1
