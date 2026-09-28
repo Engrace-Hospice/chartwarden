@@ -662,6 +662,51 @@ honest `licenseUnexpiredOnServiceDates: false`, `placeOfService` comes back `nul
 cross-tenant cases both resolve every physician to `null` rather than leaking or fabricating one, and the
 existing F-121 admission/election-period assertions were extended to the two new fields.
 
+**M25's remaining #251 item genuinely is "real new infrastructure" — checked thoroughly rather than taken
+on faith, and the checking itself found two things worth fixing (F-128, #251).** `#251` names it "X12-835
+sidecar + clearinghouse-pull transport"; the module spec's own §10 implementation note (2026-08-05) already
+says the same — the Python `x12-worker` sidecar is a SEPARATE service (ADR-0029: "not a TypeScript package
+… a service declared in M1/services, out of the codePath model") that has never been deployed anywhere in
+this repo or environment, and the 835-PULL half ("§10 Task #7's 835-pull worker was written as a literal
+clearinghouse-polling worker, which this environment cannot build or test against real payer/SFTP
+infrastructure") needs real per-provider-entity MAC-portal or clearinghouse credentials and a protocol
+decision (SFTP? an API? many MACs, including Engrace's own NGS J6, are manual-portal-download only, not
+programmatically pollable at all) — a data-source decision, the `referenceData.hippsRateTable` shape, not
+application code. Nothing was built here for either reason, deliberately: a stub sidecar returning
+fabricated parsed-835 data, or a guessed SFTP/API integration shape nothing in this codebase specifies,
+would both be worse than the honest absence — financial remittance and denial data posted from invented
+input is a materially different risk than the honest `null`s this session's other findings default to.
+**What the checking DID find: the TypeScript side of the pipeline — everything on THIS side of "the raw
+835 is already staged in MinIO" — is real, and one of its cross-module bridges had never been proven, plus
+the whole file proving the rest of it had been running on a superuser connection.** `receiveAdvice` (route
+32, real and mounted only when an ingest service is supplied), `postAdvice` (the live-dispatcher-bound
+`m25.edi.835_received` consumer), and the sidecar HTTP transport (`m25X12WorkerConfigFromEnv` — a real
+`fetch`-backed client, fail-closed only for want of `M25_X12_WORKER_URL`, exactly the deferred-not-broken
+shape) are all genuinely built. The module spec's own 2026-08-05 correction note says the D3 auto-match /
+PR-ledger patient-id bridge to M23 "remains unbound, same posture as M27's HCI/cap seams" — stale, checked
+against the code rather than the note: `cost-report-seams.ts`'s `registerM23PublishedSeams` has registered
+the real `ClaimSubmissionReader` seam at every boot with a db since WX-PR-012 landed, and
+`buildM23BackedClaimMatchCandidateProvider` (`ingest/claim-match-adapter.ts`) already resolves through it.
+**Nothing had ever proven that bridge reaches a real M23 claim, though** — `m25-835-ingestion.live.test.ts`
+fed every match-dependent test a hand-rolled `fakeClaims()` double, which proves the M25-side `autoMatch`
+ALGORITHM but not that `getSeam("ClaimSubmissionReader")` resolves to anything real. Two new cases seed an
+actual M23 `claim` row (`repositories.ClaimRepository`, org-scoped) and drive `postAdvice` over the REAL
+`buildM23BackedClaimMatchCandidateProvider()`: a same-org 835 line auto-matches by CLP01 to the real claim
+id and resolves the real patient id for the PR-ledger, and a same-control-number claim seeded in a
+DIFFERENT org is correctly invisible (`findMatchCandidates` scopes on `organization_id` AND
+`provider_entity_id` together) rather than a cross-tenant false match. **Independently, the whole file was
+a GAP-086 instance**: `handle.db` was built directly off the bare superuser `DB_URL` throughout — the exact
+shape `_live-app-role.ts`'s own header describes ("a cross-tenant assertion made on a superuser connection
+proves nothing at all") — so none of the file's seven pre-existing tests had ever proven the write path
+(the envelope/line/service-line/adjustment/remark/denial_case/patient_responsibility_ledger inserts) is
+RLS-clean; only one dedicated test at the very end role-switched, and only for a bare `SELECT`. Now
+connects as the real NOBYPASSRLS `wardenx_app` role throughout. **The outcome is a genuine, not merely
+hoped-for, clean bill of health**: all nine cases (seven pre-existing + two new) pass unchanged under real
+RLS — this module's migrations already grant and policy the six tables the pipeline writes correctly; the
+fix makes the file's own claim true rather than finding a defect it happened to have been hiding. Proven
+live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live suite, all 38
+`arch:fitness` gates, `db:migrate` + `db:provision-roles` + `check:boot:platform`.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

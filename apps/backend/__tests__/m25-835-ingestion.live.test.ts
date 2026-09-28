@@ -8,13 +8,28 @@
  * environment) — the local ISA/ST envelope-header extraction (@wardenx/x12-835-client
  * `parseX12EnvelopeHeader`) is real and exercised directly by the "malformed" case.
  *
+ * F-128 (#251) — the whole file used to drive `receiveAdvice`/`postAdvice` over the bare superuser
+ * `DB_URL` (GAP-086: a superuser BYPASSES RLS unconditionally), so nothing here had ever proven the write
+ * path itself is RLS-clean; only one dedicated test at the bottom role-switched, and only for a bare
+ * SELECT. Now connects as the real NOBYPASSRLS `wardenx_app` role throughout (`_live-app-role.ts`) — every
+ * assertion in this file is now a genuine RLS proof, not merely a superuser-connection convenience. It
+ * also adds real coverage for the M23→M25 auto-match bridge (`buildM23BackedClaimMatchCandidateProvider`
+ * over M23's registered `ClaimSubmissionReader` seam, WX-PR-012): every existing test here fed the
+ * auto-matcher a hand-rolled `fakeClaims()` double, which proves the M25-side matching ALGORITHM but never
+ * that the bridge actually reaches a real M23 `claim` row — the M25 module spec's own 2026-08-05
+ * correction note still says this bridge "remains unbound", which is stale (checked against
+ * `cost-report-seams.ts` rather than assumed): `registerM23PublishedSeams` has registered
+ * `ClaimSubmissionReader` at every boot with a db since WX-PR-012 landed.
+ *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
  *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m25-835-ingestion.live.test.ts
  * (SUPERUSER to a THROWAWAY db; for a local PG without pgvector set WARDENX_TEST_NO_PGVECTOR=1.)
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { repositories } from "@wardenx/billing";
 import { type DbClient, createDbClient } from "@wardenx/db";
+import { withOrgContext } from "@wardenx/tenancy";
 import type {
   ParsedRemittanceAdvice,
   X12WorkerResult,
@@ -23,7 +38,10 @@ import type {
 import { degraded835 } from "@wardenx/x12-835-client";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { registerSeam } from "../src/bootstrap/index";
+import { buildM23ClaimSubmissionReader } from "../src/modules/23-billing-medicare/cost-report-seams";
 import type { MatchCandidate } from "../src/modules/25-remittance/domain/match";
+import { buildM23BackedClaimMatchCandidateProvider } from "../src/modules/25-remittance/index";
 import type {
   ClaimMatchCandidateProvider,
   M25IngestActor,
@@ -31,6 +49,7 @@ import type {
   TerminologyLookupPort,
 } from "../src/modules/25-remittance/ingest/service";
 import { buildDrizzleM25IngestService } from "../src/modules/25-remittance/ingest/service-drizzle";
+import { appRoleConnectionString } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const MIGRATIONS_DIR = join(__dirname, "..", "..", "..", "packages", "db", "migrations");
@@ -164,8 +183,54 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
       "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')",
       [ORG_A, ORG_B],
     );
-    handle = createDbClient({ connectionString: DB_URL! });
+    // `_live-app-role.ts` (GAP-086): every test in this file used to drive `receiveAdvice`/`postAdvice`
+    // over the bare superuser `DB_URL` connection — a superuser BYPASSES RLS unconditionally, so nothing
+    // here had ever proven the write path (envelope/line/service-line/adjustment/remark/denial_case/
+    // patient_responsibility_ledger inserts) works under the RLS this module's migrations actually ship.
+    // Only the one dedicated cross-tenant test at the bottom role-switched, and only for a bare SELECT.
+    const appConnectionString = await appRoleConnectionString(admin, DB_URL!);
+    handle = createDbClient({ connectionString: appConnectionString });
+    // F-128 (#251) — M23's real, registered `ClaimSubmissionReader` seam (the exact
+    // `registerM23PublishedSeams(db)` call production boot makes), so
+    // `buildM23BackedClaimMatchCandidateProvider()` resolves against it for real rather than degrading
+    // to "no candidates".
+    registerSeam("ClaimSubmissionReader", buildM23ClaimSubmissionReader(handle.db));
   }, 120_000);
+
+  /** Seed a real, minimal M23 `claim` row (every non-`claim_control_number` cross-module id is a logical
+   *  FK — no real constraint — so an arbitrary uuid is honest test data, not a shortcut). */
+  async function seedClaim(input: {
+    readonly organizationId: string;
+    readonly providerEntityId: string;
+    readonly patientId: string;
+    readonly claimControlNumber: string;
+    readonly payerClaimControlNumber?: string;
+  }): Promise<string> {
+    const claim = await withOrgContext(
+      handle.db,
+      { organizationId: input.organizationId, userId: "" },
+      (tx) =>
+        new repositories.ClaimRepository(tx).create({
+          organizationId: input.organizationId,
+          providerEntityId: input.providerEntityId,
+          patientId: input.patientId,
+          admissionId: crypto.randomUUID(),
+          electionPeriodIdFrom: crypto.randomUUID(),
+          electionPeriodIdTo: crypto.randomUUID(),
+          patientPayerId: crypto.randomUUID(),
+          tob: "812",
+          serviceFrom: "2026-03-01",
+          serviceTo: "2026-03-31",
+          claimControlNumber: input.claimControlNumber,
+          payerClaimControlNumber: input.payerClaimControlNumber ?? null,
+          macJurisdiction: "ngs_j6",
+          sequestrationAppliedPct: "2.00",
+          sequestrationPolicyId: crypto.randomUUID(),
+          createdByMembershipId: crypto.randomUUID(),
+        }),
+    );
+    return claim.id;
+  }
 
   afterAll(async () => {
     if (handle) await handle.close();
@@ -617,6 +682,152 @@ describe.skipIf(!DB_URL)("WX-PR-012 M25 835 receive/post pipeline — LIVE Postg
     });
     const replayed = await replayService.postAdvice(actor, received.adviceId);
     expect(replayed.outcome).toBe("posted");
+  });
+
+  describe("the real M23 ClaimSubmissionReader bridge (F-128, #251)", () => {
+    it("auto-matches a line to a REAL M23 claim by CLP01 and resolves the REAL patient id for the PR-ledger", async () => {
+      const patientId = crypto.randomUUID();
+      const claimId = await seedClaim({
+        organizationId: ORG_A,
+        providerEntityId: PE_A,
+        patientId,
+        claimControlNumber: "REAL-CCN-901",
+      });
+
+      const isa = "000000601";
+      const st = "0601";
+      const objectKey = "minio/real-bridge.835";
+      const parsed: ParsedRemittanceAdvice = {
+        payerProgram: "medicare",
+        interchangeControlNumber: isa,
+        transactionSetControlNumber: st,
+        paymentMethod: "check",
+        totalPaymentAmount: 450,
+        productionDate: "2026-03-06",
+        claims: [
+          {
+            // CLP01 — matches the REAL claim's claim_control_number, not a fakeClaims() double.
+            patientControlNumber: "REAL-CCN-901",
+            statusCode: 1,
+            totalCharge: 500,
+            totalPayment: 450,
+            patientResponsibility: 50,
+            adjustments: [{ groupCode: "PR" as const, reasonCode: "1", amount: 50 }],
+            remarks: [],
+            serviceLines: [],
+          },
+        ],
+      };
+      const terminology = fakeTerminology({
+        "1": { category: "informational", plainLanguage: "patient responsibility" },
+      });
+      // The real bridge, not `fakeClaims()` — resolves through the `ClaimSubmissionReader` seam
+      // registered in `beforeAll`, exactly as `index.ts`'s composition root wires it.
+      const claims = buildM23BackedClaimMatchCandidateProvider();
+      const service = buildDrizzleM25IngestService(handle.db, {
+        client: fakeClient(new Map([[objectKey, parsed]])),
+        terminology,
+        claims,
+      });
+
+      const received = await service.receiveAdvice(
+        { organizationId: ORG_A },
+        {
+          providerEntityId: PE_A,
+          payerId: PAYER,
+          payerKind: "medicare",
+          minioObjectKey: objectKey,
+          fileSha256: "b".repeat(64),
+          rawEdi: buildRawEdi(isa, st),
+        },
+      );
+      expect(received.outcome).toBe("queued");
+      if (received.outcome !== "queued") throw new Error("unreachable");
+
+      const posted = await service.postAdvice({ organizationId: ORG_A }, received.adviceId);
+      expect(posted.outcome).toBe("posted");
+
+      const lineRow = await admin.query(
+        "SELECT match_state, claim_id FROM remittance_line WHERE remittance_advice_id=$1",
+        [received.adviceId],
+      );
+      expect(lineRow.rows[0].match_state).toBe("posted");
+      // The REAL M23 claim id — proves `candidatesForLine` reached the real `claim` table, not a double.
+      expect(lineRow.rows[0].claim_id).toBe(claimId);
+
+      const prLedger = await admin.query(
+        "SELECT patient_id FROM patient_responsibility_ledger pl JOIN remittance_line rl ON pl.remittance_line_id = rl.id WHERE rl.remittance_advice_id=$1",
+        [received.adviceId],
+      );
+      // The REAL patient id — proves `patientIdForClaim` reached the real claim row too.
+      expect(prLedger.rows[0].patient_id).toBe(patientId);
+    });
+
+    it("never matches another org's claim, even on an identical claim_control_number (org+providerEntity scoped)", async () => {
+      // A real claim in ORG_B with the SAME control number ORG_A's 835 line will carry.
+      await seedClaim({
+        organizationId: ORG_B,
+        providerEntityId: PE_B,
+        patientId: crypto.randomUUID(),
+        claimControlNumber: "SHARED-CCN-902",
+      });
+
+      const isa = "000000602";
+      const st = "0602";
+      const objectKey = "minio/cross-tenant-bridge.835";
+      const parsed: ParsedRemittanceAdvice = {
+        payerProgram: "medicare",
+        interchangeControlNumber: isa,
+        transactionSetControlNumber: st,
+        paymentMethod: "check",
+        totalPaymentAmount: 100,
+        productionDate: "2026-03-06",
+        claims: [
+          {
+            patientControlNumber: "SHARED-CCN-902",
+            statusCode: 1,
+            totalCharge: 100,
+            totalPayment: 100,
+            patientResponsibility: 0,
+            adjustments: [],
+            remarks: [],
+            serviceLines: [],
+          },
+        ],
+      };
+      const claims = buildM23BackedClaimMatchCandidateProvider();
+      const service = buildDrizzleM25IngestService(handle.db, {
+        client: fakeClient(new Map([[objectKey, parsed]])),
+        claims,
+      });
+
+      // Received under ORG_A (a different tenant than the seeded claim) + PE_A (a different provider
+      // entity than PE_B) — `findMatchCandidates` scopes on BOTH organization_id and provider_entity_id.
+      const received = await service.receiveAdvice(
+        { organizationId: ORG_A },
+        {
+          providerEntityId: PE_A,
+          payerId: PAYER,
+          payerKind: "medicare",
+          minioObjectKey: objectKey,
+          fileSha256: "c".repeat(64),
+          rawEdi: buildRawEdi(isa, st),
+        },
+      );
+      expect(received.outcome).toBe("queued");
+      if (received.outcome !== "queued") throw new Error("unreachable");
+
+      const posted = await service.postAdvice({ organizationId: ORG_A }, received.adviceId);
+      // No candidate found (the org-B claim is invisible), so the line routes to manual match rather
+      // than fabricating a cross-tenant match — `partial_posted` because the one line is unmatched.
+      expect(posted.outcome).toBe("partial_posted");
+      const lineRow = await admin.query(
+        "SELECT match_state, claim_id FROM remittance_line WHERE remittance_advice_id=$1",
+        [received.adviceId],
+      );
+      expect(lineRow.rows[0].claim_id).toBeNull();
+      expect(lineRow.rows[0].match_state).toBe("unmatched");
+    });
   });
 
   it("cross-tenant: two orgs' distinct provider entities may reuse the SAME ISA/ST control numbers, and RLS hides each org's advice from the other", async () => {
