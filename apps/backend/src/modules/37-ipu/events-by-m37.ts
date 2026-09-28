@@ -107,14 +107,17 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-144 (#248) — m22 REMOVED: M22's own spec never mentions a magic-link/external-collaborator
     // surface anywhere, and elsewhere explicitly disclaims a related mechanism ("M2 funeral magic-link
     // is NOT how external reviewers authenticate — external reviewer access is M31 portal + M39
-    // grant"). M37's own spec is internally inconsistent about which event triggers the magic-link
-    // session — its "Consumed by" summary and §4.10 table both name `death_recorded`, but its detailed
-    // workflow narrative (§ post-mortem body release) says the session is actually created off the
-    // LATER `m37.body_release.funeral_home_identified` transition, which needs the funeral home
-    // resolved first. No consumer file exists on the M22 side for either event under this
-    // interpretation. The real owner of Better Auth's `magicLink` plugin is M2
-    // (`packages/auth/src/identity/auth.ts`), not M22 — reported as a likely misattribution worth its
-    // own pass, not corrected here absent a decisive single answer.
+    // grant").
+    // F-147 (#248) — the "internally inconsistent" framing F-144 left open is resolved, not merely
+    // corrected: this event's own "Consumed by"/§4.10 table row ("M22 (funeral-home magic-link session
+    // creation)") is the ONE imprecise citation against 15+ other places in M37's own spec — the D12
+    // rationale, the §2.11 prose, the detailed workflow walkthrough (steps 4-7), the test plan, the
+    // acceptance checklist — that unanimously tie the magic-link session to the LATER
+    // `m37.body_release.funeral_home_identified` transition, never to `death_recorded` itself (which
+    // only opens the body-release record). This event genuinely has no magic-link consumer of its own;
+    // the "M2 vs M22" question F-144 flagged is also resolved — the spec is unambiguous the consumer is
+    // M22's own external-collaborator surface (architecture §7.8), never M2 directly. See
+    // `m37.body_release.funeral_home_identified` below for what remains genuinely unbuilt.
     declaredConsumers: ["m30", "m16"],
     isOutboxOnly: true,
   },
@@ -345,6 +348,17 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // `m37.body_release.document_requested` in the SAME transition (ipu-body-release.ts), the
     // actual live-bound M22 render request that issues the magic-link session this description
     // describes.
+    // F-147 (#248) — checked precisely rather than left as a loose end: the DOCUMENT RENDER and the
+    // MAGIC-LINK SESSION are two distinct architecture §7.8 facts M37's own spec describes separately
+    // (§2.11: "M22 issues the funeral-home magic-link session" off THIS event; "M22 renders the
+    // body-release-form payload" off the sibling `document_requested`) — F-117 only established that
+    // the render half is covered. The session half is genuinely unbuilt on every side: no M22 route,
+    // consumer, or `external-collaborator` surface exists anywhere in `22-documents/` (the Better Auth
+    // `magicLink` plugin itself lives entirely in M2's `packages/auth/src/identity/auth.ts`, whose own
+    // comment already anticipates an "auditor / external-collaborator / funeral-home magic-link class"
+    // but has no M22-side caller). Still record-only — there is no consumer to declare this to, only a
+    // real, reportable feature gap (the M22 external-collaborator/magic-link surface, architecture
+    // §7.8) one layer deeper than a catalog declaration can fix.
     declaredConsumers: [],
     isOutboxOnly: true,
   },

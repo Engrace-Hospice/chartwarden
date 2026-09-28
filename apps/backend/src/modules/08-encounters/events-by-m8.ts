@@ -86,6 +86,13 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       lateEntryTier,
       layer2Involved: Type.Boolean(),
       evvBracketState,
+      /** F-146 (#248) — the fact M18's real `closed_documented_at_encounter` resolution decider
+       *  (`transitionMissingResolution`, `domain/missing-resolution.ts`) reads as
+       *  `event.encounterEvvMissingReason`; present only when `evvBracketState ===
+       *  'evv_missing_documented'` (`encounter_evv_missing_reason_len`, the same ≥20-char CHECK this
+       *  field mirrors). Was missing from this LOCKED payload since the event existed — M18's consumer
+       *  could not have closed a documented-missing resolution off this event without it. */
+      evvMissingReason: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
       requiresCosign: Type.Boolean(),
       hopeRelevant: Type.Optional(
         Type.Object({
@@ -120,9 +127,12 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-141 (#248) — m18 ADDED: M18's own D6 (locked), job catalog (`m18.encounter-signed.consumer`, "on
     // m8.encounter.signed outbox"), and its §10 task-26 checklist all name a real, decisive consumer that
     // closes an open `evv_missing_resolution` row (`closed_documented_at_encounter`) when the encounter
-    // signs with `evv_missing_reason` populated — genuinely undeclared until now. NOTE: the payload here
-    // does not yet carry `evvMissingReason` (the encounter route/schema has the field; this locked outbox
-    // payload does not) — a producer-side gap for a future pass, reported rather than fixed here.
+    // signs with `evv_missing_reason` populated — genuinely undeclared until now.
+    // F-146 (#248) — the payload gap F-141 flagged for a future pass is now fixed: `evvMissingReason` is
+    // on the wire (both `sign()` emit sites). M18's own consumer binding stays unbuilt regardless — this
+    // group is `handlers-unbound` for a reason, and wiring the live binding is composition-root work
+    // outside this catalog/payload triage's scope — but a binding built against this payload can now
+    // actually resolve the fact it needs, rather than being wired against a field that doesn't exist.
     // F-143 (#248) — m9 REMOVED: M9's own spec (line 61) states the relationship runs the OPPOSITE
     // direction — "M8 calls M9's `recordAssessment` API with `source_encounter_id`" and "encounter-sign
     // workflow consults M9's 'required scale' rules" — M8 calling INTO M9 synchronously, never M9

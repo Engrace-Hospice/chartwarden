@@ -1486,6 +1486,66 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   a freshly migrated, RLS-enforced disposable Postgres. Leaving #248 open — 234 pairs across 25 modules
   remain.
 
+  **Round 7 stopped checking whole groups and instead ran down the loose ends already sitting inside
+  two groups' own reason text — the "kept absent stronger evidence"/"flagged for a future pass" shape
+  survives a group being otherwise fully swept (F-146/F-147, #248).** A registry-wide search for that
+  exact phrasing found the pair-level flags Rounds 5/6 fix (F-101 sweeps never run) had already all been
+  closed; what remained were two SMALLER loose ends inside groups the series had already resolved.
+  **F-146 — M18's real `m8.encounter.signed` consumer was wired against a payload missing the one fact
+  it needs.** F-141 added `m8.encounter.signed` to the m18 group as a genuine, decisive, undeclared
+  subscription (M18's own D6/job-catalog/checklist all name it as the auto-close trigger for a
+  `closed_documented_at_encounter` missing-checkout resolution) but flagged in the same breath that the
+  LOCKED payload does not carry `evvMissingReason` — the exact fact `transitionMissingResolution`'s
+  `document_at_encounter` event reads as `event.encounterEvvMissingReason`. Checked against the schema
+  rather than left flagged: `encounter.evv_missing_reason` is a real, already-written column
+  (`documentEvvMissing`, `encounters-route-service-db.ts`), present on the `loadEnc` row already read at
+  both `sign()` emit sites, gated by the same ≥20-char CHECK constraint M18's own resolution machine
+  enforces. Added to the payload schema (`Type.Optional(Type.Union([Type.String(), Type.Null()]))`,
+  matching the column's own nullability — null except when `evvBracketState ===
+  'evv_missing_documented'`) and both emit sites. M18's actual consumer BINDING stays unbuilt — that is
+  composition-root wiring work outside a catalog/payload pass, unchanged from F-141 — but a future binding
+  can now resolve the fact it needs instead of being wired against a field that does not exist, the F-104
+  `linked_artifact_id` shape (bind alone would have looked green and matched nothing) avoided before it
+  could happen a second time. **F-147 — two IPU loose ends, opposite outcomes.** M37's own group reason
+  (F-143) flagged that its dropped `m6.admission.activated` pair pointed at a real spec-vs-catalog naming
+  mismatch — M37's spec wants `m6.level_of_care.requires_ipu_bed`/`.activated`, M6 publishes neither — and
+  guessed the real trigger was "very likely" M6's actual `m6.loc.changed`, left unaddressed. Checked
+  against M6's own production code rather than left a guess: `m6.loc.changed` is NOT it — M6's
+  `pending → assigning` transition (the moment a GIP/IRC LOC change needs an IPU bed) emits NO outbox event
+  at all (`state-machines/level-of-care.ts`: "No outbox event while assigning — nothing downstream should
+  treat an unconfirmed IPU request as a real period of care yet"), `m6.loc.changed` fires only later at
+  CONFIRMATION (which M37 already learns about through its own `assign-bed` route, not a subscription,
+  the F-143 `m6`-group seam-pull finding a second time), and M6's one published LOC seam
+  (`LevelOfCareReader`) deliberately excludes `assigning`-status periods from both its methods. The D2
+  bidirectional handshake M37's spec describes was simply never built on the M6 side — no event, no seam,
+  nothing a catalog declaration could bind M37 to — so this is real, unbuilt M6-side infrastructure
+  (a new outbox event or a seam exposing `assigning`-state periods), reported rather than fixed, since
+  inventing a new production event/seam sits outside a catalog-declaration pass. Separately, F-144 had
+  flagged M37's own spec as "internally inconsistent" about which event triggers the M22 funeral-home
+  magic-link session — its summary table names `m37.ipu_admission.death_recorded`, its detailed workflow
+  names the later `m37.body_release.funeral_home_identified` — and reported a "likely misattribution"
+  between M2 and M22 as the consumer, left for its own pass rather than guessed at. Run down rather than
+  left open: the summary-table row is the ONE imprecise citation against 15+ other places in M37's own
+  spec (the D12 rationale, the §2.11 prose, the workflow walkthrough steps 4-7, the test plan, the
+  acceptance checklist) that unanimously tie the session to `funeral_home_identified`, never to
+  `death_recorded`, and unanimously name M22 — never M2 — as the consumer (architecture §7.8's
+  external-collaborator pattern is M22's own surface; M2 owns only the underlying Better Auth `magicLink`
+  plugin mechanism, confirmed by reading `packages/auth/src/identity/auth.ts` directly, which anticipates
+  an "auditor / external-collaborator / funeral-home magic-link class" but has no M22-side caller
+  anywhere). Both code comments corrected to state this decisively; no catalog change on either event,
+  since the actual magic-link SESSION creation — distinct from the document RENDER F-117 already
+  established is covered by the co-emitted `document_requested` sibling — remains genuinely unbuilt on
+  every side (no M22 route, consumer, or external-collaborator surface exists in `22-documents/` at all),
+  a real, reportable feature gap one layer deeper than a declaration fix. **Net: 234 → 234** (0 dropped, 0
+  added — every fix this round was a payload widening and two prose corrections, not a declaration
+  change). Verified: `bun run build` clean, `bun run typecheck` clean (0 errors), full non-live suite 654
+  files / 9589 tests green with no pinned-array assertions to update, `arch:fitness` 38/38
+  (`arch:outbox-bindings` 0 disagreements, pair count unchanged as expected), a clean `check:boot:platform`
+  run against a freshly migrated, RLS-enforced disposable Postgres, and the `m8-encounters-write.live.test.ts`
+  (50/50), `m8-encounters-read-service.live.test.ts` (4/4), and `m18-evv-write.live.test.ts` (16/16) live
+  suites run individually to confirm the widened `m8.encounter.signed` payload round-trips through the real
+  catalog-validating publisher with no regression. Leaving #248 open — 234 pairs across 25 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit
