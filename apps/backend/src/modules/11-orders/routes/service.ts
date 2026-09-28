@@ -279,6 +279,10 @@ export interface RecordVerbalArgs {
 
   readonly orderingPhysicianMdmId: string;
 }
+export interface CreateVerbalOrderArgs {
+  readonly order: CreateOrderArgs;
+  readonly verbal: RecordVerbalArgs;
+}
 export interface CosignArgs {
   readonly cosignerRole:
     | "rn_case_manager"
@@ -348,6 +352,12 @@ export interface OrderRouteService extends OrderAbacResolver {
     organizationId: string,
     userId: string,
     args: CreateOrderArgs,
+    actor?: OrderDetailActor,
+  ): Promise<OrderDetailView>;
+  createVerbalOrder(
+    organizationId: string,
+    userId: string,
+    args: CreateVerbalOrderArgs,
     actor?: OrderDetailActor,
   ): Promise<OrderDetailView>;
   editDraft(
@@ -766,6 +776,27 @@ export function createInMemoryOrderBackend(
         },
         `${id}:draft_created`,
       );
+      return detailView(rec, actor);
+    },
+
+    async createVerbalOrder(organizationId, userId, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      if (!disciplineCanOrder(args.order.drafterDiscipline, args.order.kind))
+        throw new NotFoundError(`discipline '${args.order.drafterDiscipline}' may not author a '${args.order.kind}' order`);
+      await bindCrossModuleRefs(organizationId, args.order);
+      const findings = validateOrderData(args.order.kind, `${args.order.kind}.v1`, args.order.data);
+      if (findings.length) throw new ValidationError("Order is not ready for signature", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
+      if (!args.verbal.readBackVerified) throw Object.assign(new Error("Verbal order must be read back and verified"), { code: "VERBAL_READ_BACK_REQUIRED", statusCode: 422 });
+      const id = nextId();
+      const requirement = resolveCosignRequirement({ kind: args.order.kind, drafterDiscipline: args.order.drafterDiscipline, signerDiscipline: args.order.drafterDiscipline, policy: cosignPolicy() });
+      transitionOrder("draft", { type: "requestSignature", requiredFieldsComplete: true, cosignRequired: requirement != null, cosignerRoleNeeded: requirement?.cosignerRoleNeeded });
+      transitionOrder("pending_signature", { type: "recordVerbal", kind: args.order.kind, attestationRecorded: args.verbal.verbalAttestation.length >= 100, recorderEligible: true });
+      const deadlineAt = computeVerbalDeadline(args.verbal.receivedAt, { windowHours: policy.windowHours, businessHoursOnly: policy.businessHoursOnly, timeZone: tz, policyVersion: policy.policyVersion });
+      const rec: OrderRecord = { id, organizationId, patientId: args.order.patientId, admissionId: args.order.admissionId, kind: args.order.kind, kindVersion: `${args.order.kind}.v1`, data: args.order.data, status: "verbal_pending", priority: args.order.priority ?? "routine", version: 2, drafterMembershipId: userId, drafterDiscipline: args.order.drafterDiscipline, orderingPhysicianMdmId: args.verbal.orderingPhysicianMdmId, cosignRequired: requirement != null, cosignStatus: requirement != null ? "pending" : "attached", cosignerRoleNeeded: requirement?.cosignerRoleNeeded ?? null, transmissionStatus: args.order.kind === "lab" ? "pending" : "not_applicable", resultsStatus: args.order.kind === "lab" ? "awaiting_results" : "not_applicable", verbalDeadlineAt: deadlineAt, discontinuationReason: null, replacesOrderId: null, triggeringAssessmentId: args.order.triggeringAssessmentId ?? null, triggeringHopeAssessmentId: args.order.triggeringHopeAssessmentId ?? null, signedAt: null, signedBy: null, completedAt: null, createdAt: now() };
+      orders.set(id, rec);
+      emit("m11.order.draft_created", { orderId: id, patientId: rec.patientId, admissionId: rec.admissionId, kind: rec.kind, drafterMembershipId: userId }, `${id}:draft_created`);
+      emit("m11.order.signature_requested", { orderId: id, cosignRequired: rec.cosignRequired }, `${id}:signature_requested`);
+      if (requirement) emit("m11.order.cosign_requested", { orderId: id, cosignerRoleNeeded: requirement.cosignerRoleNeeded }, `${id}:cosign_requested`);
+      emit("m11.order.verbal_received", { orderId: id, deadlineAt }, `${id}:verbal_received`);
       return detailView(rec, actor);
     },
 

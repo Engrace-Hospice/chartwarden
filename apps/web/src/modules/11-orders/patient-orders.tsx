@@ -4,6 +4,7 @@ import {
   Glyph,
   type GlyphName,
   LoadingSpinner,
+  Modal,
   Panel,
   PatientWorkspaceLayout,
   StatusPill,
@@ -264,6 +265,8 @@ export function PatientOrders(): JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [createOpen, setCreateOpen] = useState(false);
+  const [createChoiceOpen, setCreateChoiceOpen] = useState(false);
+  const [createVerbal, setCreateVerbal] = useState(false);
   const [verbalOpen, setVerbalOpen] = useState(false);
 
   const [kind, setKind] = useState<Kind | "all">("all");
@@ -472,7 +475,7 @@ export function PatientOrders(): JSX.Element {
                 <button
                   type="button"
                   className="wx-btn-primary"
-                  onClick={() => setCreateOpen(true)}
+                  onClick={() => setCreateChoiceOpen(true)}
                   disabled={!patientId}
                 >
                   <Glyph name="plus" size={16} /> New Order
@@ -850,7 +853,7 @@ export function PatientOrders(): JSX.Element {
               <AttentionCard items={attention} details={details} />
               <OrderActions
                 pending={kpis.pending}
-                onCreate={() => setCreateOpen(true)}
+                onCreate={() => setCreateChoiceOpen(true)}
               />
             </div>
           </section>
@@ -860,11 +863,19 @@ export function PatientOrders(): JSX.Element {
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         patientId={patientId ?? ""}
+        verbal={createVerbal}
         onSaved={() => {
           setCreateOpen(false);
           setRetryKey((k) => k + 1);
         }}
       />
+      <Modal open={createChoiceOpen} onClose={() => setCreateChoiceOpen(false)} ariaLabel="Create order" width="30rem">
+        <div style={{ padding: "1.25rem", display: "grid", gap: "1rem" }}>
+          <div><h2 style={{ margin: 0 }}>What would you like to create?</h2></div>
+          <button type="button" className="wx-btn-secondary" onClick={() => { setCreateChoiceOpen(false); setCreateVerbal(false); setCreateOpen(true); }}><strong>Standard Order</strong><br />Create a standard clinical order.</button>
+          <button type="button" className="wx-btn-secondary" onClick={() => { setCreateChoiceOpen(false); setCreateVerbal(true); setCreateOpen(true); }}><strong>Verbal Order</strong><br />Record an order received verbally from a practitioner.</button>
+        </div>
+      </Modal>
     </PatientWorkspaceLayout>
   );
 }

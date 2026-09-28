@@ -4341,6 +4341,7 @@ const modalBackdrop: CSSProperties = {
 };
 const modal: CSSProperties = {
   width: "min(440px, 100%)",
+  margin: 0,
   borderRadius: 8,
   background: t.surface,
   padding: "1.25rem",

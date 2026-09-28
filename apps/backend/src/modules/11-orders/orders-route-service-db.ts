@@ -673,6 +673,34 @@ export function createDbOrderBackend(
       });
     },
 
+    async createVerbalOrder(organizationId, userId, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const id = await insertDraft(t, organizationId, userId, args.order, null);
+        const r = await loadOrderRow(t, id);
+        const findings = validateOrderData(r.kind as OrderKind, r.kindVersion, r.data);
+        if (findings.length) throw new ValidationError("Order is not ready for signature", findings.map((finding) => ({ field: `data.${finding.field}`, code: "INVALID", message: finding.message })));
+        const requirement = resolveCosignRequirement({
+          kind: r.kind as OrderKind,
+          drafterDiscipline: r.drafterDiscipline,
+          signerDiscipline: args.order.drafterDiscipline,
+          policy: await cosignPolicyOf(t),
+        });
+        transitionOrder(r.status, { type: "requestSignature", requiredFieldsComplete: true, cosignRequired: requirement != null, cosignerRoleNeeded: requirement?.cosignerRoleNeeded });
+        await t.update(OR).set({ status: "pending_signature", cosignRequired: requirement != null, cosignStatus: requirement != null ? "pending" : "attached", version: r.version + 1, updatedAt: new Date() }).where(eq(OR.id, id));
+        await emit(t, organizationId, "m11.order.signature_requested", id, { orderId: id, kind: r.kind, orderingPhysicianMdmId: r.orderingPhysicianMdmId });
+        if (requirement) await emit(t, organizationId, "m11.order.cosign_requested", id, { orderId: id, kind: r.kind, cosignerRoleNeeded: requirement.cosignerRoleNeeded });
+        if (!args.verbal.readBackVerified) throw Object.assign(new Error("Verbal order must be read back and verified"), { code: "VERBAL_READ_BACK_REQUIRED", statusCode: 422 });
+        transitionOrder("pending_signature", { type: "recordVerbal", kind: r.kind as OrderKind, attestationRecorded: args.verbal.verbalAttestation.length >= 100, recorderEligible: true });
+        const policy = await verbalPolicyOf(t);
+        const deadlineIso = computeVerbalDeadline(args.verbal.receivedAt, { windowHours: policy.windowHours, businessHoursOnly: policy.businessHoursOnly, policyVersion: policy.policyVersion });
+        const v = firstOrThrow(await t.insert(VO).values({ organizationId, targetKind: "order", targetId: id, recordingMembershipId: userId, orderingPhysicianMdmId: args.verbal.orderingPhysicianMdmId, verbalAttestation: args.verbal.verbalAttestation, readBackVerified: true, effectiveAt: new Date(args.verbal.effectiveAt), receivedAt: new Date(args.verbal.receivedAt), deadlineAt: new Date(deadlineIso), deadlinePolicyVersion: policy.policyVersion, status: "pending" }).returning({ id: VO.id }), "verbal_order insert returned no row");
+        await t.update(OR).set({ orderingPhysicianMdmId: args.verbal.orderingPhysicianMdmId, updatedAt: new Date() }).where(eq(OR.id, id));
+        await emit(t, organizationId, "m11.order.verbal_received", id, { orderId: id, verbalOrderId: v.id, deadlineAt: deadlineIso, orderingPhysicianMdmId: args.verbal.orderingPhysicianMdmId, recordingMembershipId: userId });
+        return readOrder(t, id, actor);
+      });
+    },
+
     async editDraft(
       organizationId,
       id,

@@ -33,6 +33,7 @@ export function OrderEditor({
   patientId,
   replacesOrderId,
   draft,
+  verbal = false,
   onSaved,
 }: {
   open: boolean;
@@ -40,6 +41,7 @@ export function OrderEditor({
   patientId: string;
   replacesOrderId?: string;
   draft?: EditableOrder;
+  verbal?: boolean;
   onSaved: (id: string) => void;
 }): JSX.Element {
   const client = useApiClient();
@@ -52,6 +54,9 @@ export function OrderEditor({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [receivedAt, setReceivedAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [attestation, setAttestation] = useState("");
+  const [readBackVerified, setReadBackVerified] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -94,10 +99,10 @@ export function OrderEditor({
           path: string,
           init: unknown,
         ) => Promise<{ data?: unknown; error?: unknown }>;
-        const path = replacesOrderId ? "/api/v1/orders/{id}/correct" : "/api/v1/orders";
+        const path = verbal ? "/api/v1/verbal-orders" : replacesOrderId ? "/api/v1/orders/{id}/correct" : "/api/v1/orders";
         result = await post(path, {
-          params: replacesOrderId ? { path: { id: replacesOrderId } } : undefined,
-          body: {
+          params: !verbal && replacesOrderId ? { path: { id: replacesOrderId } } : undefined,
+          body: verbal ? { order: {
             patientId,
             admissionId,
             kind,
@@ -105,6 +110,8 @@ export function OrderEditor({
             data,
             priority,
             orderingPhysicianMdmId: physicianId,
+          }, verbal: { recorderDiscipline: discipline, orderingPhysicianMdmId: physicianId, receivedAt: new Date(receivedAt).toISOString(), effectiveAt: new Date(receivedAt).toISOString(), readBackVerified, verbalAttestation: attestation } } : {
+            patientId, admissionId, kind, drafterDiscipline: discipline, data, priority, orderingPhysicianMdmId: physicianId,
           },
         });
       }
@@ -123,7 +130,7 @@ export function OrderEditor({
     }
   };
 
-  const title = draft ? "Edit draft" : replacesOrderId ? "Create corrected order" : "New order";
+  const title = draft ? "Edit draft" : replacesOrderId ? "Create corrected order" : verbal ? "New verbal order" : "New order";
 
   return (
     <Modal open={open} onClose={busy ? undefined : onClose} ariaLabel={title} width="42rem">
@@ -215,16 +222,25 @@ export function OrderEditor({
 
         <CanonicalOrderFields kind={kind} value={data} onChange={setData} errors={fieldErrors} />
 
+        {verbal ? <div style={section}>
+          <h3 style={sectionTitle}>Verbal order details</h3>
+          <div style={grid}>
+            <label style={field}>Received at<input type="datetime-local" value={receivedAt} onChange={(e) => setReceivedAt(e.target.value)} required style={control} /></label>
+            <label style={{ ...field, gridColumn: "1 / -1" }}>Verbal attestation<textarea value={attestation} onChange={(e) => setAttestation(e.target.value)} minLength={100} maxLength={2000} required style={control} /></label>
+            <label style={field}><span><input type="checkbox" checked={readBackVerified} onChange={(e) => setReadBackVerified(e.target.checked)} required /> Read-back verified</span></label>
+          </div>
+        </div> : null}
+
         <div style={footer}>
           <span style={saveHint}>
-            {draft ? "Saving updates this Draft only." : "This will be saved as a Draft."}
+            {draft ? "Saving updates this Draft only." : verbal ? "This records a verbal order pending signature." : "This will be saved as a Draft."}
           </span>
           <div style={{ display: "flex", gap: ".75rem" }}>
             <Button type="button" tone="secondary" onClick={onClose} disabled={busy}>
               Cancel
             </Button>
             <Button type="submit" disabled={busy}>
-              {busy ? "Saving…" : "Save draft"}
+              {busy ? "Saving…" : verbal ? "Record verbal order" : "Save draft"}
             </Button>
           </div>
         </div>

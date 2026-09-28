@@ -157,6 +157,11 @@ export const RecordVerbalRequest = Type.Object({
   }),
 });
 
+export const CreateVerbalOrderRequest = Type.Object({
+  order: CreateOrderRequest,
+  verbal: RecordVerbalRequest,
+});
+
 export const CosignRequest = Type.Object({
   cosignerRole: COSIGNER_ROLE,
   attestationText: Type.String({ minLength: 50, maxLength: 1000 }),

@@ -66,11 +66,9 @@
 - An RN should have the possibility to manage a patient HOPE and Care Plan, create an encounter - Ok
 - Erreur 404 sur le rôle nurse (RN) - Ok
 
-- Add a calendar so that the nurse can see all the encouters, HUV1, HOPE, CTI, F2F, MSW visits,...
-So when there is something regarding a patient, everybody can see it
-- Review and Fix the error when signing a care plan
+
 - Completed Admission in the HOPE admission after signing, the message should show the name of the user who signed
-- She is also the one assigning the care team in the Care Team & Assignments tab
+- RN is also the one assigning the care team in the Care Team & Assignments tab
 - Remove the verbal order Tab and add a button in the Order tab called Verbal order
 Create a verbal order: physician communication, created by, created at, check box "read back and verified", effective date, and the order, then send it for sigature
 ORG_WIDE_SCOPE_ROLES
@@ -87,4 +85,7 @@ ORG_WIDE_SCOPE_ROLES
 - Give the possibility to modify all Referral Informations even if it's already created
 - RN permission in admission & care plan modules
 - Show the notice of right in the "Election & Certification" tab as view.
+- Review and Fix the error when signing a care plan
 - Apart from passkeys, the user can sign using a code
+- Add a calendar so that the nurse can see all the encouters, HUV1, HOPE, CTI, F2F, MSW visits,...
+So when there is something regarding a patient, everybody can see it
