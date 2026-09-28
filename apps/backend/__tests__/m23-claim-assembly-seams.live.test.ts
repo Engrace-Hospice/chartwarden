@@ -1,16 +1,23 @@
 /**
- * M23 claim-assembly seam bindings — LIVE Postgres proof (#250, #251, F-119, F-121).
+ * M23 claim-assembly seam bindings — LIVE Postgres proof (#250, #251, F-119, F-121, F-122).
  *
- * `boot-assembly.ts` binds NINE of `ClaimAssemblySeams`'s eleven reader methods to real data:
- * `patientPayer` (M5), `mdm.resolveProviderEntity` (M40 CCN + MAC jurisdiction), two of
- * `referenceData`'s four methods (`wageIndexForCcn`, `activeSequestrationPolicy`), and — F-121 (#251) —
- * all FIVE M6 range-shaped seams (`admission`, `electionPeriods`, `certifications`, `faceToFace`,
- * `levelOfCare`), over the new `claimAssemblyRangeContextForOrg` M6 seam function. This proves each
- * against real rows under real RLS (`WARDENX_DEV_BYPASSRLS=0` discipline: this test connects as the
- * migrated `wardenx_app` role via `handle.db`, never the admin/superuser client used only to seed), and
- * proves the end-to-end `POST /claims/assemble` reachability boundary precisely: it now fails at
- * `referenceData.hippsRateTable` (still unbound — no CMS per-diem rate file has ever been loaded) — PAST
- * the entire M6 block, not "unblocked" end to end.
+ * `boot-assembly.ts` binds EIGHT of the eleven named `ClaimAssemblySeams` reader ports to real data:
+ * `patientPayer` (M5), all FIVE M6 range-shaped seams (F-121, #251: `admission`, `electionPeriods`,
+ * `certifications`, `faceToFace`, `levelOfCare`, over `claimAssemblyRangeContextForOrg`), and — F-122
+ * (#251) — `billableEncounters`/`signedEncounters` (M8, over `billableEncountersInRangeForOrg`/
+ * `signedEncounterSnapshotsInRangeForOrg`); `mdm.resolveProviderEntity` and two of `referenceData`'s four
+ * methods are also real (#250). This proves each against real rows under real RLS
+ * (`WARDENX_DEV_BYPASSRLS=0` discipline: this test connects as the migrated `wardenx_app` role via
+ * `handle.db`, never the admin/superuser client used only to seed). F-122 also fixes a genuine,
+ * previously-undocumented production defect: `EncounterReaderStore.encounterFacts` — and therefore
+ * `BillableEncounterReader.billability` for EVERY caller, not only M23 — had been live-registered since
+ * M8-T08 while still answering `[]` for any id, because the Drizzle store never overrode the in-memory
+ * fallback's empty default (the F-093/F-100/F-103 shape again).
+ *
+ * The end-to-end `POST /claims/assemble` reachability boundary is unmoved by F-122 (stated, not implied):
+ * it still fails at `referenceData.hippsRateTable` (no CMS per-diem rate file has ever been loaded), which
+ * sits BEFORE `billableEncounters`/`signedEncounters` in call order — binding them is real,
+ * individually-verified progress on two more seam steps, not a further unblock of the live wall.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
  *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m23-claim-assembly-seams.live.test.ts
@@ -18,18 +25,26 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
+import { runWithRequestContext } from "@wardenx/tenancy";
 import { appRoleConnectionString } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { registerSeam } from "../src/bootstrap/index";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { claimAssemblyRangeContextForOrg } from "../src/modules/06-admission/index";
+import {
+  billableEncountersInRangeForOrg,
+  createDrizzleEncounterReaderStore,
+  signedEncounterSnapshotsInRangeForOrg,
+} from "../src/modules/08-encounters/index";
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import { buildM23BootAssemblyService } from "../src/modules/23-billing-medicare/services/boot-assembly";
 import {
   buildM23AdmissionRangeAdapters,
+  buildM23BillableEncountersAdapter,
   buildM23MdmProviderEntityAdapter,
   buildM23PatientPayerAdapter,
   buildM23ReferenceDataAdapter,
+  buildM23SignedEncountersAdapter,
 } from "../src/modules/23-billing-medicare/services/claim-assembly-seam-adapters";
 import type { ProviderCcnPort } from "../src/modules/23-billing-medicare/routes/write-service";
 import { and, eq } from "drizzle-orm";
@@ -178,6 +193,65 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
        VALUES ($1, $2, $3, $4, $5, 'mbi-1', $6)`,
       [patientId, orgId, U, rank, coverageKind, effectiveFrom],
     );
+  }
+
+  /** A real membership for `encounter.authored_by_membership_id` (F-122, #251) — one user+membership
+   *  per call, since these encounter tests do not otherwise need a stable identity. */
+  async function seedMembership(orgId: string): Promise<string> {
+    const userId = crypto.randomUUID();
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [userId, `${userId}@x.test`]);
+    const row = await admin.query(
+      `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+      [userId, orgId],
+    );
+    return row.rows[0].id as string;
+  }
+
+  /** A minimal `encounter` row (F-122, #251) — `admission_id` is a logical, unenforced reference, so any
+   *  uuid is valid here; the two new M8 range reads never join through it. */
+  async function seedEncounter(input: {
+    orgId: string;
+    providerEntityId: string;
+    patientId: string;
+    membershipId: string;
+    discipline: string;
+    status: string;
+    serviceDate: string;
+    startedAt?: string | null;
+    endedAt?: string | null;
+  }): Promise<string> {
+    const signedAt = ["signed", "cosign_pending", "cosigned"].includes(input.status) ? new Date() : null;
+    // `encounter_vocab_pinned_when_finalized` requires a non-null vocab_version_id for every non-draft
+    // status — an app-validated uuid, not a real FK (`vocab-version.ts`'s own schema comment).
+    const vocabVersionId = input.status === "draft" ? null : crypto.randomUUID();
+    // `encounter_voided_consistency` requires all three together for status='voided'.
+    const voided = input.status === "voided";
+    const row = await admin.query(
+      `INSERT INTO encounter
+         (organization_id, provider_entity_id, patient_id, admission_id, encounter_type, discipline,
+          authored_by_membership_id, service_date, started_at, ended_at, status, signed_at,
+          vocab_version_id, voided_at, voided_by, voided_reason)
+       VALUES ($1,$2,$3,$4,'routine_visit',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       RETURNING id`,
+      [
+        input.orgId,
+        input.providerEntityId,
+        input.patientId,
+        crypto.randomUUID(),
+        input.discipline,
+        input.membershipId,
+        input.serviceDate,
+        input.startedAt ?? null,
+        input.endedAt ?? null,
+        input.status,
+        signedAt,
+        vocabVersionId,
+        voided ? new Date() : null,
+        voided ? input.membershipId : null,
+        voided ? "voided for the F-122 billability test fixture, forty-plus characters" : null,
+      ],
+    );
+    return row.rows[0].id as string;
   }
 
   beforeAll(async () => {
@@ -514,6 +588,169 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         to: "2026-02-28",
       });
       expect(ctx).toBeNull();
+    });
+  });
+
+  describe("M8 range seams: billableEncounters/signedEncounters (F-122, #251)", () => {
+    it("billableEncountersInRangeForOrg: billable / awaiting_cosignature / not_billable, honestly derived", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381260");
+      const membershipId = await seedMembership(ORG_A);
+      const range = { from: "2026-05-01", to: "2026-05-31" };
+
+      const rnSigned = await seedEncounter({
+        orgId: ORG_A,
+        providerEntityId: pe,
+        patientId,
+        membershipId,
+        discipline: "rn",
+        status: "signed",
+        serviceDate: "2026-05-05",
+      });
+      const lpnAwaitingCosign = await seedEncounter({
+        orgId: ORG_A,
+        providerEntityId: pe,
+        patientId,
+        membershipId,
+        discipline: "lpn",
+        status: "cosign_pending",
+        serviceDate: "2026-05-06",
+      });
+      const voided = await seedEncounter({
+        orgId: ORG_A,
+        providerEntityId: pe,
+        patientId,
+        membershipId,
+        discipline: "rn",
+        status: "voided",
+        serviceDate: "2026-05-07",
+      });
+      // Never signed — excluded from the result entirely, not reported as "not_billable" (F-122's own
+      // scoping: a draft has no clinical content a claim line could point at).
+      await seedEncounter({
+        orgId: ORG_A,
+        providerEntityId: pe,
+        patientId,
+        membershipId,
+        discipline: "rn",
+        status: "draft",
+        serviceDate: "2026-05-08",
+      });
+
+      const rows = await billableEncountersInRangeForOrg(handle.db, ORG_A, pe, patientId, range);
+      const byId = new Map(rows.map((r) => [r.encounterId, r]));
+      expect(byId.get(rnSigned)).toMatchObject({ billable: true });
+      expect(byId.get(lpnAwaitingCosign)).toMatchObject({
+        billable: false,
+        reason: "awaiting_cosignature",
+      });
+      expect(byId.get(voided)).toMatchObject({ billable: false, reason: "voided" });
+      expect(rows).toHaveLength(3); // the draft row is absent
+
+      // Wrapped in the ClaimAssemblySeams shape the way `boot-assembly.ts` actually consumes it.
+      const seam = buildM23BillableEncountersAdapter({
+        inRange: (orgId, providerEntityId, pid, r) =>
+          billableEncountersInRangeForOrg(handle.db, orgId, providerEntityId, pid, r),
+      });
+      const snapshots = await seam.forRange(ORG_A, pe, patientId, range);
+      const snapById = new Map(snapshots.map((s) => [s.encounterId, s]));
+      expect(snapById.get(rnSigned)?.billability).toBe("billable");
+      expect(snapById.get(lpnAwaitingCosign)?.billability).toBe("awaiting_cosignature");
+      expect(snapById.get(voided)?.billability).toBe("not_billable"); // M8's 4 reasons collapse to 3
+    });
+
+    it("never resolves another org's encounters (cross-tenant RLS isolation)", async () => {
+      const patientIdB = await seedPatient(ORG_B);
+      const peB = await seedProviderEntity(ORG_B, "381261");
+      const membershipIdB = await seedMembership(ORG_B);
+      await seedEncounter({
+        orgId: ORG_B,
+        providerEntityId: peB,
+        patientId: patientIdB,
+        membershipId: membershipIdB,
+        discipline: "rn",
+        status: "signed",
+        serviceDate: "2026-05-05",
+      });
+      const rows = await billableEncountersInRangeForOrg(handle.db, ORG_A, peB, patientIdB, {
+        from: "2026-05-01",
+        to: "2026-05-31",
+      });
+      expect(rows).toEqual([]);
+    });
+
+    it("signedEncounterSnapshotsInRangeForOrg: real duration minutes, discipline-derived cosignRequired", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381262");
+      const membershipId = await seedMembership(ORG_A);
+      const range = { from: "2026-06-01", to: "2026-06-30" };
+
+      const rnWithBracket = await seedEncounter({
+        orgId: ORG_A,
+        providerEntityId: pe,
+        patientId,
+        membershipId,
+        discipline: "rn",
+        status: "signed",
+        serviceDate: "2026-06-10",
+        startedAt: "2026-06-10T14:00:00.000Z",
+        endedAt: "2026-06-10T15:30:00.000Z", // 90 minutes
+      });
+      const lpnCosignedNoBracket = await seedEncounter({
+        orgId: ORG_A,
+        providerEntityId: pe,
+        patientId,
+        membershipId,
+        discipline: "lpn",
+        status: "cosigned",
+        serviceDate: "2026-06-11",
+      });
+
+      const rows = await signedEncounterSnapshotsInRangeForOrg(handle.db, ORG_A, patientId, range);
+      const byId = new Map(rows.map((r) => [r.encounterId, r]));
+      expect(byId.get(rnWithBracket)).toMatchObject({
+        discipline: "rn",
+        signed: true,
+        cosignRequired: false, // rn is not in COSIGN_REQUIRED_DISCIPLINES
+        cosigned: false,
+        durationMinutes: 90,
+      });
+      expect(byId.get(lpnCosignedNoBracket)).toMatchObject({
+        discipline: "lpn",
+        signed: true,
+        cosignRequired: true, // lpn IS in COSIGN_REQUIRED_DISCIPLINES
+        cosigned: true,
+        durationMinutes: 0, // no bracket — a documentation gap, never fabricated
+      });
+
+      // Wrapped in the ClaimAssemblySeams shape.
+      const seam = buildM23SignedEncountersAdapter({
+        inRange: (orgId, pid, r) => signedEncounterSnapshotsInRangeForOrg(handle.db, orgId, pid, r),
+      });
+      expect(await seam.inWindow(ORG_A, patientId, range)).toEqual(rows);
+    });
+
+    it("encounterFacts (F-122): the general BillableEncounterReader.billability seam is no longer a no-op", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381263");
+      const membershipId = await seedMembership(ORG_A);
+      const volunteerEncounter = await seedEncounter({
+        orgId: ORG_A,
+        providerEntityId: pe,
+        patientId,
+        membershipId,
+        discipline: "volunteer",
+        status: "signed",
+        serviceDate: "2026-07-01",
+      });
+      const store = createDrizzleEncounterReaderStore(handle.db);
+      const facts = await runWithRequestContext({ organizationId: ORG_A, userId: membershipId }, () =>
+        store.encounterFacts([volunteerEncounter]),
+      );
+      // Before F-122 this was always `[]` regardless of the id — the store never overrode the in-memory
+      // fallback's empty default.
+      expect(facts).toHaveLength(1);
+      expect(facts[0]).toMatchObject({ encounterId: volunteerEncounter, discipline: "volunteer" });
     });
   });
 

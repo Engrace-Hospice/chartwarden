@@ -6,24 +6,23 @@
 // since their own modules' -T05/-T08 tasks landed; the real blocker per seam is checked below, one at a
 // time).
 //
-// NINE of the eleven `ClaimAssemblySeams` reader methods are now bound to REAL data
-// (`claim-assembly-seam-adapters.ts`): `patientPayer` (M5), `mdm.resolveProviderEntity` (M40 CCN + MAC
-// jurisdiction), two of `referenceData`'s four methods (`wageIndexForCcn`, `activeSequestrationPolicy`),
-// and — F-121 (#251) — all FIVE M6 range-shaped seams (`admission`, `electionPeriods`, `certifications`,
-// `faceToFace`, `levelOfCare`), over the new `claimAssemblyRangeContextForOrg` M6 seam function. Each is
-// individually live-tested against real rows under RLS (`m23-claim-assembly-seams.live.test.ts`).
+// EIGHT of the eleven named `ClaimAssemblySeams` reader PORTS (the #250 issue's own count: patientPayer/
+// admission/electionPeriods/certifications/faceToFace/levelOfCare/billableEncounters/signedEncounters/
+// evvCompliance/mdm/terminology — `referenceData` is platform reference data, not one of the eleven) are
+// now bound to REAL data (`claim-assembly-seam-adapters.ts`): `patientPayer` (M5), all FIVE M6
+// range-shaped seams (F-121, #251: `admission`, `electionPeriods`, `certifications`, `faceToFace`,
+// `levelOfCare`, over `claimAssemblyRangeContextForOrg`), and — F-122 (#251) —
+// `billableEncounters`/`signedEncounters` (M8, over `billableEncountersInRangeForOrg`/
+// `signedEncounterSnapshotsInRangeForOrg`). `mdm` is PARTIALLY bound (`resolveProviderEntity` yes,
+// `resolveClinicalParticipants` no — see below), so it counts toward neither the bound nor the fully-stub
+// tally cleanly. Two of `referenceData`'s four methods are also real (`wageIndexForCcn`,
+// `activeSequestrationPolicy`, #250). Each is individually live-tested against real rows under RLS
+// (`m23-claim-assembly-seams.live.test.ts`). Binding all eight is NOT "the route works end to end" — see
+// NET EFFECT ON REACHABILITY below.
 //
 // EVERY OTHER READER STAYS A DENY-STUB, and per-seam, not as one blanket "not ready yet" — each reason
 // below was checked against the owning module's actual published seam shape, not assumed from this file's
 // prior header:
-//   * billableEncounters (M8) — the published `BillableEncounterReader.billability(encounterIds)` needs
-//     the encounter ids ALREADY IN HAND; there is no "list billable encounters for this patient/provider
-//     in this range" seam to resolve them from. Same M6-shaped gap, owned by M8.
-//   * signedEncounters (M8) — `SignedEncountersReader.signedEncountersForPatientSince` returns
-//     `SignedEncounterDigest`, which carries NO `cosignRequired`/`cosigned`/`durationMinutes` — the exact
-//     three facts the SIA (§8.7) calculator needs from `SignedEncounterSnapshot`. Not a range gap, a
-//     field-shape gap: the published digest was built for M14's IDG aggregator and M22's render payload,
-//     neither of which needs per-visit duration or cosign state.
 //   * evvCompliance (M18) — the published `EvvComplianceReader` answers one visit's bracket state or a
 //     windowed AGGREGATE rate, not "bracket snapshots for this LIST of encounter ids" — and depends on
 //     `billableEncounters` resolving the id list first regardless.
@@ -46,15 +45,16 @@
 // referenceData.activeSequestrationPolicy → billableEncounters → evvCompliance → mdm.
 // resolveClinicalParticipants → terminology → ... — binding `patientPayer` (#250) moved the boundary from
 // the FIRST read to the SECOND; binding all five M6 seams (#251, F-121) moves it PAST the M6 block
-// entirely, to the FIRST of the remaining stubs the call order actually reaches:
-// `referenceData.hippsRateTable` (`WAGE_INDEX_UNAVAILABLE`/422 fires first when no wage-index factor is
-// loaded for the CCN, so `hippsRateTable`'s `SEAM_UNBOUND`/503 is the live wall only once a factor
-// resolves — both #250 and this pass's own live test exercise wage-index rows the migration 0080 seed
-// covers). `POST /claims/assemble` remains unreachable end-to-end for every real caller today: even past
-// `hippsRateTable`/`activeSequestrationPolicy`, `billableEncounters` (M8) is next and still unbound. This
-// is real, individually-verified progress through the M6 block, not an unblock of the whole route — do
-// not read `mdm.resolveProviderEntity` as reachable independent of this: it sits BEFORE the M6-adjacent
-// reference-data reads in call order but was already reachable once `patientPayer`/`admission` cleared.
+// entirely, to the FIRST of the remaining stubs the call order actually reaches: `referenceData.
+// hippsRateTable` (`WAGE_INDEX_UNAVAILABLE`/422 fires first when no wage-index factor is loaded for the
+// CCN, so `hippsRateTable`'s `SEAM_UNBOUND`/503 is the live wall only once a factor resolves — both #250
+// and this pass's own live test exercise wage-index rows the migration 0080 seed covers). Binding
+// `billableEncounters`/`signedEncounters` (F-122, #251) does NOT move that wall at all — both sit LATER
+// in the call order than `hippsRateTable`/`activeSequestrationPolicy`, so they stay unreachable by a real
+// request until the CMS rate-table gap closes. This is real, individually-verified progress on two more
+// seam steps, not a further unblock of the live boundary — stated precisely rather than implied, the exact
+// discipline the #250/#251 issues themselves established. `POST /claims/assemble` remains unreachable
+// end-to-end for every real caller today.
 //
 // Per RULE 4 (fail-closed-unbound), every method that stays a stub still throws the typed `SEAM_UNBOUND`
 // (503) only when an assemble request actually reaches it — boot stays green, and the route never
@@ -72,10 +72,14 @@ import {
 } from "./claim-assembly";
 import {
   type M6ClaimRangeReader,
+  type M8BillableEncountersReader,
+  type M8SignedEncountersReader,
   buildM23AdmissionRangeAdapters,
+  buildM23BillableEncountersAdapter,
   buildM23MdmProviderEntityAdapter,
   buildM23PatientPayerAdapter,
   buildM23ReferenceDataAdapter,
+  buildM23SignedEncountersAdapter,
 } from "./claim-assembly-seam-adapters";
 
 type BillingDb = repositories.BillingDb;
@@ -105,6 +109,10 @@ export function buildM23BootAssemblyService(
      *  (e.g. in a unit test that only exercises the earlier `patientPayer` gate), the five M6 seams stay
      *  the fail-closed `unbound()` deny-stubs below. */
     readonly m6ClaimRange?: M6ClaimRangeReader;
+    /** F-122 (#251) — M8's two new range-shaped seam functions, injected by the composition root. Absent,
+     *  `billableEncounters`/`signedEncounters` stay their fail-closed `unbound()` deny-stubs below. */
+    readonly m8BillableEncounters?: M8BillableEncountersReader;
+    readonly m8SignedEncounters?: M8SignedEncountersReader;
   } = {},
 ): ClaimAssemblyService {
   const outbox: AssemblyOutboxPort = ports.outbox ?? {
@@ -136,8 +144,13 @@ export function buildM23BootAssemblyService(
     certifications: m6Range?.certifications ?? { forPatient: () => unbound("CertificationReader") },
     faceToFace: m6Range?.faceToFace ?? { forPatient: () => unbound("FaceToFaceReader") },
     levelOfCare: m6Range?.levelOfCare ?? { periodsInRange: () => unbound("LevelOfCareReader") },
-    billableEncounters: { forRange: () => unbound("BillableEncounterReader") },
-    signedEncounters: { inWindow: () => unbound("SignedEncountersReader") },
+    // REAL (#251, F-122) — over M8's two new range-shaped seam functions, when injected.
+    billableEncounters: ports.m8BillableEncounters
+      ? buildM23BillableEncountersAdapter(ports.m8BillableEncounters)
+      : { forRange: () => unbound("BillableEncounterReader") },
+    signedEncounters: ports.m8SignedEncounters
+      ? buildM23SignedEncountersAdapter(ports.m8SignedEncounters)
+      : { inWindow: () => unbound("SignedEncountersReader") },
     evvCompliance: { bracketsForEncounters: () => unbound("EvvComplianceReader") },
     mdm: {
       // REAL (#250) — CCN + MAC jurisdiction; cbsaCode is an honest `null` (unread field, see the adapter's

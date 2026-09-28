@@ -516,6 +516,43 @@ two field/range gaps, M18's per-encounter-list gap, M38's bulk terminology gap, 
 linking, the CMS rate-table load, and M25's X12-835 sidecar — remain open, each its own scoped item per the
 issue's own "don't bundle these" instruction.
 
+**M8's `billableEncounters`/`signedEncounters` bound for real, and tracing the ACTUAL caller found the
+"field-shape gap" framing was half wrong (F-122, #251).** #251 recorded `signedEncounters` as needing
+`cosignRequired`/`cosigned`/`durationMinutes` because `SignedEncounterSnapshot` declares them — checked
+against `claim-assembly.ts`'s own `calculateSia` call, not assumed, only `durationMinutes` is actually
+read; `cosignRequired`/`cosigned` are dead fields for this one caller, the `cbsaCode: null` shape from
+#250's MDM adapter a second time. Both are still derived HONESTLY rather than omitted, because a future
+consumer may read them, and the derivation reuses the platform's own authoritative source
+(`COSIGN_REQUIRED_DISCIPLINES`, the same list `deriveBillability` keys on) rather than a join to the
+`cosignature_request` workflow-tracking row. `durationMinutes` reuses the exact bracket-to-minutes rule
+`skilledNursingDayTotalsForOrg` already established one function up in the same file: a row with no
+`started_at`/`ended_at` bracket contributes `0`, never a fabricated value. Two new org-explicit M8 seam
+functions (`billableEncountersInRangeForOrg`, `signedEncounterSnapshotsInRangeForOrg`,
+`08-encounters/seams/drizzle-store.ts`) are the range read-surface `billableEncounters.forRange` needed —
+the `admissionSchedulingContextForOrg` shape a third time, since M23's boot-time seam adapters have no
+ambient request context. **Writing the range read surfaced a genuine, previously undocumented production
+defect one layer down, the F-093/F-100/F-103 shape a fourth time**: `EncounterReaderStore.encounterFacts`
+had been LIVE-REGISTERED since M8-T08 (`registerEncounterSeams` binds `BillableEncounterReader` at boot)
+while `createDrizzleEncounterReaderStore` never overrode it — it fell through to the in-memory fallback's
+empty default, seeded with nothing in production. So `BillableEncounterReader.billability(ids)` — the
+seam CLAUDE.md itself, and #250/#251, had been citing as "real" — answered `[]` for ANY id, in every
+deployment, for EVERY caller, not only M23's still-unbound `forRange`. Fixed alongside the new range read
+by porting `encounterFacts` to the same real Drizzle query, reusing the existing pure `deriveBillability`
+rule (`seams/readers.ts`) rather than re-deriving it a second time — the rule needs only DISCIPLINE +
+`status` (no join to `cosignature_request` at all, since `deriveBillability` never reads the workflow row).
+`billableEncountersInRangeForOrg` scopes to encounters that reached at least primary sign
+(`signed`/`cosign_pending`/`cosigned`/`voided`) — a decision made at the NEW read's WHERE clause, not a
+change to `deriveBillability` itself, since a pure `draft`/`finalized` note was never authored and has no
+content a claim line could point at. **Net effect on `POST /claims/assemble` reachability: none, stated
+precisely** — `billableEncounters`/`signedEncounters` sit LATER in the call order than
+`referenceData.hippsRateTable` (still unbound on the CMS rate-table gap), so the live wall does not move;
+this is real, individually-verified progress on two more seam steps, plus an independent production bug
+fix, not a further unblock. Proven by `m23-claim-assembly-seams.live.test.ts`: real `billable`/
+`awaiting_cosignature`/`not_billable` verdicts (a draft encounter absent from the result, not reported as
+"not_billable"), cross-tenant RLS isolation, real duration-minutes math against a 90-minute bracket and a
+0-minute no-bracket row, discipline-derived `cosignRequired` (`lpn` true, `rn` false), and
+`encounterFacts` returning a real row for the first time under `runWithRequestContext`.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

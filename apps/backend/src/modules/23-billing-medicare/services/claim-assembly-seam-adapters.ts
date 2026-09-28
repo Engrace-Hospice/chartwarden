@@ -15,6 +15,7 @@ import { getSeam } from "../../../bootstrap/index";
 import type { ProviderCcnPort } from "../routes/write-service";
 import type {
   AdmissionContextReader,
+  BillableEncounterReader,
   BillingReferenceDataReader,
   CertificationReader,
   DateRange,
@@ -25,6 +26,7 @@ import type {
   MedicarePrimaryResolution,
   PatientPayerReader,
   ProviderEntityDirectoryEntry,
+  SignedEncountersReader,
 } from "./claim-assembly";
 
 type BillingDb = repositories.BillingDb;
@@ -335,6 +337,90 @@ export function buildM23ReferenceDataAdapter(
           effectiveTo: row.effectiveTo,
         };
       });
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// 6 & 7. billableEncounters / signedEncounters (M8) — real, over M8's two new range-shaped seam functions
+//    (F-122, #251).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The exact shape of M8's `billableEncountersInRangeForOrg` (`08-encounters/seams/drizzle-store.ts`),
+ *  duplicated locally per the {@link M5CoverageSeam} no-package-import posture. */
+export interface M8BillableEncountersReader {
+  inRange(
+    orgId: string,
+    providerEntityId: string,
+    patientId: string,
+    range: DateRange,
+  ): Promise<
+    ReadonlyArray<{
+      readonly encounterId: string;
+      readonly billable: boolean;
+      readonly reason?: string;
+      readonly serviceDate: string;
+    }>
+  >;
+}
+
+/** The exact shape of M8's `signedEncounterSnapshotsInRangeForOrg`, duplicated locally for the same
+ *  reason — its fields already match `SignedEncounterSnapshot` one-for-one, so no projection is needed
+ *  beyond the port boundary itself. */
+export interface M8SignedEncountersReader {
+  inRange(
+    orgId: string,
+    patientId: string,
+    range: DateRange,
+  ): Promise<
+    ReadonlyArray<{
+      readonly encounterId: string;
+      readonly serviceDate: string;
+      readonly discipline: string;
+      readonly signed: true;
+      readonly cosignRequired: boolean;
+      readonly cosigned: boolean;
+      readonly durationMinutes: number;
+    }>
+  >;
+}
+
+/**
+ * F-122 (#251) — `billableEncounters.forRange`. M8's `EncounterBillability` carries FOUR reasons
+ * (`voided`/`volunteer_non_billable`/`late_entry_unattested`/`awaiting_cosignature`); M23's
+ * `BillabilityState` collapses to three, keeping `awaiting_cosignature` as its own state (D10: those
+ * visits are surfaced but excluded from lines, not treated the same as a voided/volunteer one) and folding
+ * the other three reasons into `not_billable` — the collapse belongs here, at the M23 boundary, not in
+ * M8's own vocabulary.
+ */
+export function buildM23BillableEncountersAdapter(reader: M8BillableEncountersReader): BillableEncounterReader {
+  return {
+    async forRange(orgId, providerEntityId, patientId, range) {
+      const rows = await reader.inRange(orgId, providerEntityId, patientId, range);
+      return rows.map((r) => ({
+        encounterId: r.encounterId,
+        serviceDate: r.serviceDate,
+        billability: r.billable
+          ? ("billable" as const)
+          : r.reason === "awaiting_cosignature"
+            ? ("awaiting_cosignature" as const)
+            : ("not_billable" as const),
+      }));
+    },
+  };
+}
+
+/**
+ * F-122 (#251) — `signedEncounters.inWindow`. The M8 read already projects to exactly
+ * `SignedEncounterSnapshot`'s shape, so this is a straight pass-through port — no field mapping, unlike
+ * the billability collapse above.
+ */
+export function buildM23SignedEncountersAdapter(
+  reader: M8SignedEncountersReader,
+): Pick<SignedEncountersReader, "inWindow"> {
+  return {
+    async inWindow(orgId, patientId, window) {
+      return reader.inRange(orgId, patientId, window);
     },
   };
 }

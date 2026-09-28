@@ -1,22 +1,38 @@
 // apps/backend/src/modules/08-encounters/seams/drizzle-store.ts — the Drizzle-backed EncounterReaderStore
-// (#107). M8's §4.7 reader seams previously ran on the in-memory slice store (seeded empty in prod), so
-// SignedEncountersReader.signedEncountersForPatientSince returned nothing — which zeroed M30's HVLDL numerator
-// (the EVV-verified qualifying-discipline visit count) and any other signed-encounter consumer.
+// (#107, F-122/#251). M8's §4.7 reader seams previously ran on the in-memory slice store (seeded empty in
+// prod), so SignedEncountersReader.signedEncountersForPatientSince returned nothing — which zeroed M30's
+// HVLDL numerator (the EVV-verified qualifying-discipline visit count) and any other signed-encounter
+// consumer.
 //
 // This implements the signed-encounter digest read over the real `encounter` table. Like the other live
 // getSeam'd Drizzle stores (M36 messaging, M40 mdm), the read SELF-SCOPES on `organizationId` via
 // withOrgContext — its own pooled connection carries no ambient RLS context (the consumer's withOrgContext is
-// on a different connection). The remaining EncounterReaderStore methods (encounterFacts / renderPayload /
-// mileageForClinician / insertDraftEncounter) are NOT yet ported to Drizzle — they keep the in-memory slice's
-// safe defaults (empty / null / mint) so this change does not regress their consumers; each awaits its own
-// Drizzle impl. Only signedEncountersForPatientSince is live here.
+// on a different connection). `encounterFacts` is now live too (F-122, #251) — it had been left on the
+// in-memory fallback's empty default since this file was written, which zeroed `BillableEncounterReader.
+// billability` for EVERY caller (not only M23), the F-093/F-100/F-103 shape again. The remaining
+// EncounterReaderStore methods (renderPayload / mileageForClinician / insertDraftEncounter) are still NOT
+// ported to Drizzle — they keep the in-memory slice's safe defaults (null / mint) so this change does not
+// regress their consumers; each awaits its own Drizzle impl. Below the store factory, two standalone
+// ORG-EXPLICIT functions (`billableEncountersInRangeForOrg`, `signedEncounterSnapshotsInRangeForOrg`) are
+// the M8 read-surface additions #251 named for M23's still-unbound `billableEncounters`/`signedEncounters`
+// seams — the `admissionSchedulingContextForOrg` (M6) shape, for the same reason: M23's boot-time seam
+// adapters have no ambient request context to read.
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContext } from "@wardenx/tenancy";
-import type { EvvBracketState, SignedEncounterDigest } from "@wardenx/types";
-import { and, asc, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
+import type { EncounterBillability, EvvBracketState, SignedEncounterDigest } from "@wardenx/types";
+import { and, asc, between, eq, gte, inArray, lt, sql } from "drizzle-orm";
+import { COSIGN_REQUIRED_DISCIPLINES } from "../lifecycle/index";
+import { deriveBillability } from "./readers";
 import { type EncounterReaderStore, createInMemoryEncounterReaderStore } from "./store";
 
 const E = schema.encounters;
+
+/** Encounter statuses that reached at least primary sign — the billing-relevant lifecycle
+ *  `billableEncountersInRangeForOrg` scopes to (F-122, #251). A pure `draft`/`finalized` row was never
+ *  signed and has no clinical content a claim line could point at; `deriveBillability` itself does not
+ *  gate on status='draft', so this filter — not a change to that function — is what keeps an
+ *  unauthored note out of `forRange`'s result. */
+const EVER_SIGNED_STATUSES = ["signed", "cosign_pending", "cosigned", "voided"] as const;
 
 /** The `encounter_discipline` values that are SKILLED NURSING for the CMS HCI indicators (2, 8, 9). */
 const SKILLED_NURSING_DISCIPLINES = ["rn", "lpn"] as const;
@@ -41,6 +57,54 @@ export function createDrizzleEncounterReaderStore(db: DbClient): EncounterReader
   const fallback = createInMemoryEncounterReaderStore().store;
   return {
     ...fallback,
+    /**
+     * F-122 (#251) — `BillableEncounterReader.billability` has been LIVE-REGISTERED since M8-T08
+     * (`registerEncounterSeams` in `apps/backend/src/index.ts`) while this one method stayed on the
+     * in-memory fallback's empty default: `createInMemoryEncounterReaderStore()` seeds no facts in
+     * production, so `encounterFacts(ids)` — and therefore `billability(ids)` for EVERY caller, not only
+     * M23 — has answered `[]` for any id, ever, in every deployment. The F-093/F-100/F-103 "declared live,
+     * reads a no-op default" shape a fourth time. Runs on the CALLER's ambient request context
+     * (`withOrgContext`'s `organizationId` is threaded per-row rather than assumed, since a batch of ids
+     * is never asserted to share one org — RLS is still the wall; the explicit predicate is belt-and-
+     * braces). Column-only: no join to `cosignature_request` is needed because `deriveBillability`'s own
+     * rule keys the cosign gate on DISCIPLINE + `status`, not on the workflow-tracking row.
+     *
+     * Id-keyed, so this opens `withOrgContextFromRequest` — the M6 `listPeriodsForAdmission` convention —
+     * rather than an org-explicit envelope: `billability(ids)` carries no org argument to be explicit
+     * WITH, and every caller of this seam today runs inside an authenticated request.
+     */
+    async encounterFacts(encounterIds) {
+      if (encounterIds.length === 0) return [];
+      return withOrgContextFromRequest(db, async (tx) => {
+        const rows = await tx
+          .select({
+            encounterId: E.id,
+            patientId: E.patientId,
+            encounterType: E.encounterType,
+            discipline: E.discipline,
+            status: E.status,
+            lateEntryTier: E.lateEntryTier,
+            significantLateOverrideBy: E.significantLateOverrideBy,
+            administrativeOverrideBy: E.administrativeOverrideBy,
+          })
+          .from(E)
+          .where(inArray(E.id, encounterIds as string[]));
+        return rows.map((r) => ({
+          encounterId: r.encounterId,
+          patientId: r.patientId,
+          encounterType: r.encounterType,
+          discipline: r.discipline,
+          status: r.status,
+          lateEntryTier: r.lateEntryTier,
+          cosignatureResolved: r.status === "cosigned",
+          lateEntryAttested: lateEntryAttestedOf(
+            r.lateEntryTier,
+            r.significantLateOverrideBy,
+            r.administrativeOverrideBy,
+          ),
+        }));
+      });
+    },
     /**
      * The ORG-LEVEL late-entry tally M30's `late_encounter_entry_rate` reads. Denominator = encounters
      * SIGNED inside the window; numerator = those whose `late_entry_tier` is anything but `normal`.
@@ -175,4 +239,149 @@ export function createDrizzleEncounterReaderStore(db: DbClient): EncounterReader
       );
     },
   };
+}
+
+/** The `lateEntryAttested` derivation both new range reads below share with `encounterFacts` above —
+ *  the two override-by columns the `encounter_significant_late_consistency`/`_administrative_override_
+ *  consistency` CHECK constraints already tie to the matching tier, read rather than re-decided. */
+function lateEntryAttestedOf(
+  lateEntryTier: string,
+  significantLateOverrideBy: string | null,
+  administrativeOverrideBy: string | null,
+): boolean {
+  if (lateEntryTier === "significant_late_entry") return significantLateOverrideBy !== null;
+  if (lateEntryTier === "administrative_override") return administrativeOverrideBy !== null;
+  return true;
+}
+
+/**
+ * F-121-shaped gap the same way M6's was — the CLAIM-ASSEMBLY range read #251 named as needing "a new
+ * org-explicit M8 read-surface, not an M23-side adapter": M23's `BillableEncounterReader.forRange` needs
+ * the CANDIDATE encounter ids for (provider entity, patient, range) before it can ask `billability(ids)`
+ * for them at all — `billability` takes ids already in hand. Org-explicit for the same reason as M6's
+ * `admissionSchedulingContextForOrg`: M23's boot-time seam adapters have no ambient request context to
+ * read. Reuses the SAME `deriveBillability` pure rule `billability()` calls (`./readers.ts`), fed by a
+ * fresh org-explicit read, so the verdict cannot drift between the two callers of the one rule.
+ */
+export async function billableEncountersInRangeForOrg(
+  db: DbClient,
+  organizationId: string,
+  providerEntityId: string,
+  patientId: string,
+  range: { readonly from: string; readonly to: string },
+): Promise<ReadonlyArray<EncounterBillability & { readonly serviceDate: string }>> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: ENCOUNTER_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const rows = await tx
+        .select({
+          encounterId: E.id,
+          patientId: E.patientId,
+          encounterType: E.encounterType,
+          discipline: E.discipline,
+          status: E.status,
+          lateEntryTier: E.lateEntryTier,
+          significantLateOverrideBy: E.significantLateOverrideBy,
+          administrativeOverrideBy: E.administrativeOverrideBy,
+          serviceDate: E.serviceDate,
+        })
+        .from(E)
+        .where(
+          and(
+            eq(E.organizationId, organizationId),
+            eq(E.providerEntityId, providerEntityId),
+            eq(E.patientId, patientId),
+            inArray(E.status, EVER_SIGNED_STATUSES),
+            between(E.serviceDate, range.from, range.to),
+          ),
+        );
+      return rows.map((r) => {
+        const verdict = deriveBillability({
+          encounterId: r.encounterId,
+          patientId: r.patientId,
+          encounterType: r.encounterType,
+          discipline: r.discipline,
+          status: r.status,
+          lateEntryTier: r.lateEntryTier,
+          cosignatureResolved: r.status === "cosigned",
+          lateEntryAttested: lateEntryAttestedOf(
+            r.lateEntryTier,
+            r.significantLateOverrideBy,
+            r.administrativeOverrideBy,
+          ),
+        });
+        return { ...verdict, serviceDate: r.serviceDate };
+      });
+    },
+  );
+}
+
+/**
+ * The `signedEncountersForPatientSince` sibling (F-121-shaped gap #251 named for `signedEncounters`): a TO
+ * bound (M23's SIA window is `[deceasedDate-6, deceasedDate]`, not an open-ended tail) plus the fields
+ * `SignedEncounterSnapshot` needs that the digest never carried — `durationMinutes` (the
+ * `skilledNursingDayTotalsForOrg` bracket-to-minutes rule above), and `cosignRequired`/`cosigned`, which —
+ * checked against `claim-assembly.ts`'s actual read, not assumed — are NOT read by the SIA calculator
+ * today (only `encounterId`/`serviceDate`/`discipline`/`durationMinutes`/`signed` are); they are still
+ * derived honestly here rather than omitted, because the published `SignedEncounterSnapshot` contract
+ * requires them and a future consumer may read them. `cosignRequired` keys on DISCIPLINE
+ * (`COSIGN_REQUIRED_DISCIPLINES`), the same authoritative source `deriveBillability` uses, not a join to
+ * the `cosignature_request` workflow-tracking row. Org-explicit, the same M6 boot-time-closure reason.
+ */
+export async function signedEncounterSnapshotsInRangeForOrg(
+  db: DbClient,
+  organizationId: string,
+  patientId: string,
+  range: { readonly from: string; readonly to: string },
+): Promise<
+  ReadonlyArray<{
+    readonly encounterId: string;
+    readonly serviceDate: string;
+    readonly discipline: string;
+    readonly signed: true;
+    readonly cosignRequired: boolean;
+    readonly cosigned: boolean;
+    readonly durationMinutes: number;
+  }>
+> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: ENCOUNTER_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const rows = await tx
+        .select({
+          encounterId: E.id,
+          serviceDate: E.serviceDate,
+          discipline: E.discipline,
+          status: E.status,
+          startedAt: E.startedAt,
+          endedAt: E.endedAt,
+        })
+        .from(E)
+        .where(
+          and(
+            eq(E.organizationId, organizationId),
+            eq(E.patientId, patientId),
+            inArray(E.status, SIGNED_ENCOUNTER_STATUSES),
+            between(E.serviceDate, range.from, range.to),
+          ),
+        )
+        .orderBy(asc(E.serviceDate));
+      return rows.map((r) => ({
+        encounterId: r.encounterId,
+        serviceDate: r.serviceDate,
+        discipline: r.discipline,
+        signed: true as const,
+        cosignRequired: COSIGN_REQUIRED_DISCIPLINES.includes(r.discipline),
+        cosigned: r.status === "cosigned",
+        // Same "a row with no bracket contributes 0" rule as `skilledNursingDayTotalsForOrg` — a
+        // documentation gap is never fabricated into a duration.
+        durationMinutes:
+          r.startedAt && r.endedAt
+            ? Math.max(0, Math.floor((r.endedAt.getTime() - r.startedAt.getTime()) / 60000))
+            : 0,
+      }));
+    },
+  );
 }

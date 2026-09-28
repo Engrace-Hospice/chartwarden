@@ -218,6 +218,7 @@ import {
 } from "./modules/07-care-plan/index";
 import {
   M8_OUTBOX_EVENTS,
+  billableEncountersInRangeForOrg,
   buildM8VisitClosedConsumer,
   buildM8VisitPublishedConsumer,
   buildM8WorkerDeps,
@@ -231,6 +232,7 @@ import {
   registerEncounterSeams,
   registerM8CronWorkers,
   scheduleM8Jobs,
+  signedEncounterSnapshotsInRangeForOrg,
 } from "./modules/08-encounters/index";
 import {
   M9_OUTBOX_EVENTS,
@@ -3240,6 +3242,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               m6ClaimRange: {
                 forRange: (orgId, patientId, range) =>
                   claimAssemblyRangeContextForOrg(dbHandle.db, orgId, patientId, range),
+              },
+              // F-122 (#251) — M8's two new range-shaped seam functions, same org-explicit binding.
+              m8BillableEncounters: {
+                inRange: (orgId, providerEntityId, patientId, range) =>
+                  billableEncountersInRangeForOrg(dbHandle.db, orgId, providerEntityId, patientId, range),
+              },
+              m8SignedEncounters: {
+                inRange: (orgId, patientId, range) =>
+                  signedEncounterSnapshotsInRangeForOrg(dbHandle.db, orgId, patientId, range),
               },
             }),
           });
