@@ -1101,6 +1101,58 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   (`arch:outbox-bindings` 0 disagreements), and a clean `check:boot:platform` run against a freshly
   migrated, RLS-enforced disposable Postgres. Leaving #248 open — 310 pairs across 31 modules remain.
 
+  **The m31 group (11 pairs) went 6 kept / 5 dropped on the forward check, and — uniquely among every
+  group checked so far — the SAME per-event check surfaced 6 real declarations missing from the catalog
+  entirely, because M31's own hand-maintained `M31_SUBSCRIBED_EVENT_NAMES` mirror
+  (`packages/types/src/portal.ts`) had already flagged them as "subscribed and not routed here"
+  (F-139, #248).** Checked against M31's own authoritative §4.10 "M31 consumes" table (13 named source
+  events, each with a real consumer-file name) and, for the drops, against the same spec's §4.4
+  "Depends on" text naming a seam PULL instead. **6 of 11 original pairs kept**: `m16.bereavement
+  .contact_active` (M16's OWN outbox table names M31 explicitly — the F-131 "kept, not dropped"
+  caution), `m17.visit.cancelled`/`.rescheduled` (telehealth-scoped, named consumer files that force-end
+  or re-mint the vendor room), `m39.consent.delegated_access.granted`/`.revoked` (the real, decided D10
+  mechanism for `family_caregiver_access` grant creation/cascade-revoke), and `m8.encounter.signed`
+  (telehealth-attached, flips `telehealth_visit.lifecycle_state='reconciled'`). **5 of 11 dropped**: all
+  three M12 events and `m13.administration.recorded` are each redundant with a documented seam pull M31's
+  own §4.4 text names by method (`MedicationOrderProvider.getPortalMedicationSummary`,
+  `MedicationAdministrationProvider.getPortalAdministrationSummary`) — M31's §4.10 table names no M12 or
+  M13 event at all; `m17.caregiver_reminder_due` is disclaimed outright by M31's own text ("M22's domain
+  … exposed in M31's preference UI"). All dropped at the source in each producing module's
+  `events-by-mNN.ts`. **Checking the full §4.10 table surfaced the reverse defect too (F-102/F-106/F-129
+  shape, at unusual scale): 6 events M31's own table names with a real consumer file had NO m31
+  declaration anywhere in the catalog** — `m17.visit.published` (room-mint enqueue), `m6.admission
+  .discharged` (both `reason` branches — bereaved transition / 30-day grace timer), `m22.document
+  .rendered` (patient-facing kinds), `m16.bereavement.plan_opened`/`.plan_closed_completed` (plan-level
+  bereaved-scope flip / grant revocation, distinct from the per-contact `contact_active` fact kept
+  above), and `m39.consent.revoked` (the BROAD any-consent-type cascade — genuinely wider than
+  `delegated_access.revoked`'s family-caregiver-only scope, so not redundant with it). All six now
+  declared at the source. `buildOutboxRoutingPlan`'s own header line — "available bindings are live even
+  when another declared module is not yet wired" — is what makes this safe: adding m31 to
+  `m17.visit.published`/`m22.document.rendered` does not interrupt their existing live delivery to
+  m8/m18/m20 or to M22's five other consumers, it only keeps those rows `pending` instead of `dispatched`
+  until M31 also binds, confirmed by reading `outbox-dispatcher.ts`'s claim loop directly (bound
+  consumers' handlers run BEFORE the `deferred` check, not gated by it). **Two of M31's own
+  `M31_SUBSCRIBED_EVENT_NAMES` entries were checked and deliberately NOT added, on the producing module's
+  more decisive say-so — the opposite of F-101's usual direction, and worth naming as its own pattern**:
+  `m39.consent.created` — M39's own outbox table states its consumers as "(none — drafts are internal)",
+  a first-party disclaimer stronger than M31's aspirational spec text, since a draft "carries no
+  regulatory force" and gating a portal grant on one would be premature; and `m4.legal_hold.applied`/
+  `.released` — M4's own module spec (§M04-F03) commits this fact to a registered `HoldApplier` SEAM per
+  data-owning module (the same pattern as `DataEraser`), never an outbox subscription, and
+  `events-by-m4.ts`'s own header says declaring a consumer here "would be a namespace lie." Both stay
+  exactly as `outbox-subscription-exceptions.ts` already filed them; M31 registering a `HoldApplier` is
+  real, unbuilt work, but it is not an outbox-catalog fix. `M31_SUBSCRIBED_EVENT_NAMES` itself was
+  corrected to match — the 5 dropped names removed outright, the 6 added names moved from "not routed
+  here" into the declaring bucket. Net on #248: **310 → 311** (5 dropped, 6 added — count unchanged
+  because the reverse-direction discoveries offset the forward-direction drops almost exactly). Verified:
+  `bun run build` clean, `bun run typecheck` clean (0 errors), full non-live suite 654 files / 9589 tests
+  green (two pinned-array assertions updated — `clinical-consumer-contracts.test.ts`'s M17
+  visit-publication test now asserts `m31` deferred alongside m8/m18/m20's still-live delivery, and
+  `document-backref-consumers.test.ts`'s declared-consumers pin), `arch:fitness` 38/38
+  (`arch:outbox-bindings` 0 disagreements both directions), and a clean `check:boot:platform` run against
+  a freshly migrated, RLS-enforced disposable Postgres. Leaving #248 open — 311 pairs across 31 modules
+  remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

@@ -94,7 +94,12 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     // F-043/#103 — `m20` was absent while M20's own `M20_SUBSCRIBED_EVENT_NAMES` has named this topic
     // since M20-T01. This is the trigger for `m20.materialize-cadence`, the ONLY producer of
     // `safety_check_in_schedule` rows: without the declaration the relay routes the row to nobody.
-    declaredConsumers: ["m8", "m18", "m20"],
+    // F-139 (#248) — `m31` ADDED: M31's own §4.10 "M31 consumes" table names this event (telehealth
+    // flag) with a real consumer file (`m17-visit-published-telehealth.ts`) that enqueues the room-mint
+    // job — the reverse of every other F-139 drop in this pass, a real relationship the catalog never
+    // declared at all. The stale "Phase 2" note in this event's OWN description above refers to M28's
+    // SMART user-launch (M31's spec §9 D20), not this room-mint flow, which M31's spec treats as current.
+    declaredConsumers: ["m8", "m18", "m20", "m31"],
     isOutboxOnly: true,
   },
   {
@@ -336,7 +341,11 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
       channel: Type.Union([Type.Literal("sms"), Type.Literal("email")]),
       scheduledStartedAt: isoInstant,
     }),
-    declaredConsumers: ["m22", "m31", "m36"],
+    // F-139 (#248) — m31 removed: M31's own spec (§4.4 "Depends on" item 17) says the opposite of a
+    // consumption relationship outright — "visit-reminder opt-in is M22's domain … but exposed in M31's
+    // preference UI" — a UI surface reading M22's data, not an M31 outbox subscriber. M31's own
+    // authoritative §4.10 "M31 consumes" table never names this event either.
+    declaredConsumers: ["m22", "m36"],
     isOutboxOnly: true,
   },
 ];

@@ -333,6 +333,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // event carries no fact M23 needs beyond what discharge.created already delivers.
       "m37",
       "m36",
+      // F-139 (#248) — `m31` ADDED: M31's own §4.10 "M31 consumes" table names this event TWICE, filtered
+      // by `reason` — `reason='death'` triggers the M16-coordinated bereaved-portal transition
+      // (`m6-admission-discharged-death.ts`), `reason!='death'` enqueues the 30-day post-discharge grace
+      // timer (`m6-admission-discharged-non-death.ts`) — a real relationship the catalog never declared.
+      "m31",
     ],
     // F-130 (#248) — m27 REMOVED: same reasoning as `m6.admission.activated` above — M27's S-3 census is
     // a seam pull, refreshed on demand, never a push subscription to admission lifecycle events.

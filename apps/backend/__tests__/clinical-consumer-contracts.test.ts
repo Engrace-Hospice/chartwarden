@@ -47,12 +47,18 @@ describe("clinical outbox consumer contract reconciliation", () => {
   // publication to M8 and M18 and to nobody in M20. This assertion is what keeps the three in step: the
   // list is pinned EXACTLY, so adding a fourth consumer without a binding fails here rather than deferring
   // every publication silently.
-  it("fully binds the three M17 visit-publication command consumers", () => {
+  // F-139 (#248) — `m31` is a FOURTH real, still-unbound declaration (M31's own §4.10 table names this
+  // event with a real consumer file, `m17-visit-published-telehealth.ts`, for the room-mint enqueue).
+  // `buildOutboxRoutingPlan` delivers live to every BOUND consumer regardless of what else is declared
+  // ("Available bindings are live even when another declared module is not yet wired") — m31 having no
+  // binding marks the row `deferred` (kept pending for the relay to retry) without blocking m8/m18/m20's
+  // already-working delivery, which is exactly what the two assertions below prove.
+  it("fully binds the three M17 visit-publication command consumers, with m31 still deferred", () => {
     const entry = M17_OUTBOX_EVENTS.find(
       (candidate) => candidate.eventName === "m17.visit.published",
     );
     if (!entry) throw new Error("missing m17.visit.published catalog entry");
-    expect(entry.declaredConsumers).toEqual(["m8", "m18", "m20"]);
+    expect(entry.declaredConsumers).toEqual(["m8", "m18", "m20", "m31"]);
     const plan = buildOutboxRoutingPlan(new Map([[entry.eventName, entry]]), [
       binding("m8", M8_VISIT_PUBLISHED_CONSUMER),
       binding("m18", M18_VISIT_PUBLISHED_CONSUMER),
@@ -62,7 +68,7 @@ describe("clinical outbox consumer contract reconciliation", () => {
       }),
     ]);
     expect(plan.live.get(entry.eventName)).toHaveLength(3);
-    expect(plan.deferred.has(entry.eventName)).toBe(false);
+    expect(plan.deferred.has(entry.eventName)).toBe(true);
   });
 
   it("declares M17 as the care-plan proposal consumer", () => {

@@ -196,7 +196,10 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       "The post-ack transition activated the medication order; the broad eMAR/IDG/FHIR/portal fan-out.",
     payloadSchema: Type.Object({ orderId: id, fullDto: Type.Unknown() }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m13", "m14", "m31"],
+    // F-139 (#248) — m31 removed: M31's own spec (§4.10 "M31 consumes") is silent on every M12 event —
+    // the active-medication list is a seam PULL (`MedicationOrderProvider.getPortalMedicationSummary`,
+    // §4.4 "Depends on" item 12), never a push subscription this "portal fan-out" phrasing implies.
+    declaredConsumers: ["m13", "m14"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -268,7 +271,10 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       addedOrderIds: Type.Array(Type.String()),
       removedOrderIds: Type.Array(Type.String()),
     }),
-    declaredConsumers: ["m22", "m31"],
+    // F-139 (#248) — m31 removed: same seam-pull redundancy as `medication_order.active` above — M31's
+    // own §4.10 "M31 consumes" table names no M12 event; the portal refresh is `getPortalMedicationSummary`
+    // read fresh, not a push.
+    declaredConsumers: ["m22"],
     // ALSO live: server → patient room med-list refresh (§4.4 chart-banner cache).
     isOutboxOnly: false,
   },
@@ -361,7 +367,9 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       rowsCreated: Type.Integer({ minimum: 0 }),
       sourceJobId: id,
     }),
-    declaredConsumers: ["m14", "m31"],
+    // F-139 (#248) — m31 removed: same seam-pull redundancy — the portal medication list is read via
+    // `getPortalMedicationSummary`, never invalidated by this event.
+    declaredConsumers: ["m14"],
     isOutboxOnly: true,
   },
   {

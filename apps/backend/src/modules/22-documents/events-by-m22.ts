@@ -62,7 +62,10 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-108 — m27 joins on the commit that binds `m27.document-backref`, exactly as the header above
     // requires. Its three `ecr_submission` back-ref columns are the ECR file, the Print Image and the
     // supporting-doc bundle; the pure decider for them shipped with M27-T09 and had no caller at all.
-    declaredConsumers: ["m6", "m11", "m12", "m13", "m21", "m27", "m33"],
+    // F-139 (#248) — m31 ADDED: M31's own §4.10 "M31 consumes" table names this event (patient-facing
+    // kinds) with a real consumer file (`m22-document-rendered-patient-facing.ts`) that creates a
+    // `portal_document_share` row for active grants — a real relationship the catalog never declared.
+    declaredConsumers: ["m6", "m11", "m12", "m13", "m21", "m27", "m31", "m33"],
     isOutboxOnly: true,
   },
 ];

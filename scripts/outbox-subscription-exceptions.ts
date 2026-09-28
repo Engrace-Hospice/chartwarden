@@ -143,27 +143,8 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     module: "m31",
     kind: "record-only-target",
     reason:
-      "M39 catalogues `consent.created` record-only and M4 does the same for both legal-hold topics — published for the record, delivered to nobody. M31 would use them to gate portal access and to freeze a portal eraser, but adding the first consumer to a record-only event is the owning module's decision, and M31 has no consumer surface to put behind it.",
+      "F-139 (#248) re-checked this against M39's/M4's OWN spec text, not just the catalog shape. M39's own §4.10-equivalent outbox table states `consent.created`'s consumers as '(none — drafts are internal)' — a decisive first-party disclaimer, unlike M31's spec text which names it aspirationally; stays record-only, M31 not added. M4's own module spec (§M04-F03) is equally decisive the other way for the legal-hold pair: propagation is a registered `HoldApplier` SEAM per data-owning module (`applyHold`/`releaseHold`, the same pattern as `DataEraser`), never an outbox subscription — `events-by-m4.ts`'s own header says declaring a consumer here 'would be a namespace lie'. M31 registering a `HoldApplier` is real, unbuilt work, but it is not an outbox-catalog fix and does not belong in `outbox-deferred-consumers.ts` either.",
     events: ["m39.consent.created", "m4.legal_hold.applied", "m4.legal_hold.released"],
-  },
-  {
-    module: "m31",
-    kind: "no-handler",
-    reason:
-      "M31 has NO `consumers/` directory at all (`outbox-deferred-consumers.ts` files it `no-consumer-surface`), so its §4.10 list is an intent rather than a running subscription. Each of these events is already deferred by another unbound consumer, so declaring `m31` would cost nothing at runtime today — and would still be a declaration with no handler behind it, which is what this register exists to stop being silent about. Ends when M31 grows a consumer surface.",
-    events: [
-      "m6.admission.discharged",
-      "m16.bereavement.plan_closed_completed",
-      "m16.bereavement.plan_opened",
-      "m39.consent.revoked",
-    ],
-  },
-  {
-    module: "m31",
-    kind: "would-defer-a-bound-event",
-    reason:
-      "Both are delivered TODAY — `m17.visit.published` to m8, m18 and m20 (all bound as of #204) and `m22.document.rendered` to all five of its consumers. M31 has no consumer surface, so declaring it would convert two working deliveries into rows re-claimed every thirty minutes, for every other consumer as well. These two declarations must land in the same change as M31's bindings.",
-    events: ["m17.visit.published", "m22.document.rendered"],
   },
   {
     module: "m35",

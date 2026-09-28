@@ -64,7 +64,10 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     // that read this domain (`missedDoseCountsForOrg`/`prnReassessmentObligationsForOrg`) scan
     // `scheduled_dose`/PRN-specific rows, not the general administration-recorded stream — no current
     // seam covers this event.
-    declaredConsumers: ["m14", "m30", "m31"],
+    // F-139 (#248) — m31 removed: M31's own §4.10 "M31 consumes" table names no M13 event — the
+    // lay-language administration history is a seam PULL (`MedicationAdministrationProvider.
+    // getPortalAdministrationSummary`, §4.4 "Depends on" item 13), never a push subscription.
+    declaredConsumers: ["m14", "m30"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

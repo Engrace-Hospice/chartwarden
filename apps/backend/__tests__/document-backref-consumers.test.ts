@@ -69,7 +69,16 @@ describe("m22.document.rendered — the event that did not exist", () => {
     // F-100 — m6 joined on the commit that bound its stamper. Six `document_id` columns, one consumer.
     // F-108 — m27 on the commit that bound `m27.document-backref`: the ECR file, the Print Image and the
     // supporting-doc bundle, three columns off one event discriminated by `aggregateType`.
-    expect(entry?.declaredConsumers).toEqual(["m6", "m11", "m12", "m13", "m21", "m27", "m33"]);
+    // F-139 (#248) — m31 ADDED without a binding in this commit, unlike every entry above: M31's own
+    // §4.10 table names this event (patient-facing kinds) with a real consumer file
+    // (`m22-document-rendered-patient-facing.ts`), a genuine declared-but-unbound gap the catalog never
+    // recorded at all (`outbox-deferred-consumers.ts`, `m31` group). `buildOutboxRoutingPlan` still
+    // delivers live to every bound consumer regardless of what else is declared — m31 having no binding
+    // marks the row `deferred` (kept pending for the relay's 30-minute retry) without blocking the six
+    // bound consumers — proven generally by `clinical-consumer-contracts.test.ts`'s
+    // "fully binds the three M17 visit-publication command consumers, with m31 still deferred" and by
+    // `outbox-dispatcher.live.test.ts`'s partial-fan-out coverage.
+    expect(entry?.declaredConsumers).toEqual(["m6", "m11", "m12", "m13", "m21", "m27", "m31", "m33"]);
   });
 
   it("announces the render with the routing the requesting module keys on", async () => {

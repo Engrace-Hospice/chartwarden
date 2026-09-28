@@ -75,7 +75,12 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       cascadeKind: Type.String(),
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m5", "m22", "m16", "m2"],
+    // F-139 (#248) — m31 ADDED: M31's own §4.10 "M31 consumes" table names this event ("any consent type
+    // backing an active grant") with a real consumer file (`m39-consent-revoked.ts`) that cascades
+    // grant revocation and closes active sessions — a genuinely broader fact than
+    // `m39.consent.delegated_access.revoked` (which covers only the `family_caregiver_access`
+    // projection row), so this is not redundant with that kept declaration.
+    declaredConsumers: ["m5", "m22", "m16", "m2", "m31"],
     isOutboxOnly: true,
   },
   {

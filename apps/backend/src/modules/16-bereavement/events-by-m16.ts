@@ -49,7 +49,11 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       archivesAt: Iso,
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m22"],
+    // F-139 (#248) — m31 ADDED: M31's own §4.10 "M31 consumes" table names this event with a real
+    // consumer file (`m16-bereavement-plan-opened.ts`) that flips portal accounts of bereaved contacts
+    // to bereaved scope — a plan-level fact distinct from `m16.bereavement.contact_active`'s per-contact
+    // confirmation, both separately named in M31's own consumed-events table.
+    declaredConsumers: ["m22", "m31"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -83,7 +87,9 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     // `BereavementComplianceProvider.planClosureCounts` method exists for this domain but no currently-
     // registered M30 measure calls it (only `copOutreachCounts`, for `bereavement_coverage_rate`, is
     // wired) — a dormant capability is not a seam relationship yet ("bound is not computing", F-042).
-    declaredConsumers: ["m22", "m30"],
+    // F-139 (#248) — m31 ADDED: M31's own §4.10 table names this event with a real consumer file
+    // (`m16-bereavement-plan-closed.ts`) that revokes bereaved grants.
+    declaredConsumers: ["m22", "m30", "m31"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
