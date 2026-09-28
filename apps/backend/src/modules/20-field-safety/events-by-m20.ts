@@ -66,7 +66,11 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       coordinatesIncluded: Bool,
       isPartOfSosBracket: Bool,
     }),
-    declaredConsumers: ["m17"],
+    // F-133 (#248) — M17's day-view "last check-in" fact reads the SafetyDashboardProvider seam
+    // PULL (M20 spec §1 "Consumed by 17"), not this push event; the spec's own §4.10 table carries
+    // no "(M17 consumer ...)" annotation here (unlike `visit_cancellation_requested` and
+    // `incident_report_requested`, which do), and this event's own description says "no fan-out."
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

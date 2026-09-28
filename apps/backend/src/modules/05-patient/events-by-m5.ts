@@ -49,9 +49,14 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m5.patient.address_changed",
     moduleOwner: "m5",
     description:
-      "An address was appended (D5); triggers re-geocode (M17) + Medicaid state recheck (M24).",
+      "An address was appended (D5); triggers re-geocode (M5's own geocode job) + Medicaid state recheck (M24).",
     payloadSchema: Type.Object({ ...corePatient, addressId: Type.String() }),
-    declaredConsumers: ["m17", "m24"],
+    // F-133 (#248) — the re-geocode is M5's OWN internal `m5.geocode_address` job
+    // (jobs/index.ts), not M17: M17's own spec (§7.10) says outright "M17 NEVER geocodes;
+    // geocoding requests are M5's geocode job which runs on `patient.address_changed`
+    // outbox" — M17 only ever reads the result afterward via the `PatientAddressReader`
+    // seam PULL (`coordsForAddress`), never this push event.
+    declaredConsumers: ["m24"],
     isOutboxOnly: true,
   },
   {

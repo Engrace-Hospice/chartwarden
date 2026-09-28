@@ -887,6 +887,48 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   update this pass, and a clean `check:boot:platform` run against a freshly migrated, RLS-enforced
   disposable Postgres. Leaving #248 open — 341 pairs across 31 modules remain.
 
+  **The m17 group (14 pairs) went the opposite way from m34 — 12 of 14 were genuine, real, still-unbuilt
+  subscriptions, and only 2 were misdeclared (F-133, #248).** `consumers/index.ts`'s own header already
+  named the gap this pass confirmed at scale: M17's `M17_OUTBOX_SUBSCRIPTIONS` carries only 5 events
+  (`m8.encounter.signed`, the 3 `m6.admission.*` lifecycle events, `m7.care_plan.version_signed`) despite
+  the spec (D3/D14) naming EVV as the AUTHORITATIVE driver of the `published → en_route → in_visit →
+  completed` visit lifecycle — the EVV-authoritative bracketing this module's own "done means" example
+  walks through has never been wired. All 5 `m18.evv.*` events are explicit, decisive real subscriptions:
+  M18's own catalog comments say outright "drive M17's visit-state transitions (D14)"
+  (`check_in_recorded`/`check_out_recorded`), "the geofence-confirmation stream M17 Scheduling reads"
+  (`at_patient_address`), "M8/M17 re-read the bracket" (`event_corrected`), and "flows to M17/M8/M23"
+  (`late_check_resolved`). `m15.volunteer.assignment_inactivated` is M15's own catalog comment ("so M17
+  must drop the volunteer from the schedule") feeding the `m17.reassignment_needed` day-view cascade M17's
+  own D3 names — no reassignment-scan mechanism exists in M17 at all yet, for PTO, credential, or
+  volunteer-gate reasons alike (the PTO half is "in-service" per a route comment; the other two have no
+  cron or consumer anywhere). `m20.safety.high_risk_area_entered` and `.visit_cancellation_requested` are
+  both explicit in M20's own "Consumed by 17" prose and §4.10 outbox table ("M17 also consumes... to
+  surface a visit-row warning badge during scheduling"; "(M17 consumer cancels the visit)"). Both
+  `m39.consent.delegated_access.granted`/`.revoked` are explicit in M39's own §4.10/§4.7 tables ("M17
+  (portal-upcoming scope check)") — M17's `PortalVisitReader`/`ConsentEvaluator` caregiver-scope gate.
+  `m8.encounter.orphan_recorded` is explicit in M17's own D2 decision row and §12 checklist ("consumer
+  present in M17 (deny-stub until M8 publisher exists)"). **One, `m19.triage_call.visit_needed`, is kept
+  on asymmetric evidence rather than dropped on M17's silence** — M17's own spec (locked first) never
+  mentions the inbound direction, but M19's spec extensively and repeatedly documents it (§1, §2.2,
+  acceptance criteria at §7.1/§7.9 with p95 performance targets) as the trigger for M17's D5
+  proposal-worker path — the same "kept, not dropped" caution F-131 applied to `m25.remittance
+  .claim_recouped`: a specific, cross-referenced, done-means-tested producing-side decision outweighs the
+  consuming spec's mere silence. **2 of 14 were genuinely misdeclared and dropped at the source**:
+  `m20.safety.check_in_recorded` — M20's own description says "info severity, no fan-out," and M20's own
+  "Consumed by 17" text describes M17's day-view "last check-in" fact as a `SafetyDashboardProvider
+  .clinicianStatusForLocation` seam PULL, never this push event (unlike the two kept M20 events, this
+  row's §4.10 table entry also carries no "(M17 consumer...)" annotation); `m5.patient.address_changed` —
+  M17's own spec (§7.10) states outright "M17 NEVER geocodes; geocoding requests are M5's geocode job
+  which runs on `patient.address_changed` outbox" — M17 only ever reads the geocoded result afterward via
+  the `PatientAddressReader` seam pull, and M5's own `jobs/index.ts` confirms the real (if still unbound)
+  consumer is M5's own `m5.geocode_address` job, not M17. **Net: 341 → 339** (2 dropped, 0 added — the
+  smallest net change of any group checked so far, and the first pass in this series where the group's
+  original blanket reason turned out mostly right rather than mostly wrong). Verified: `bun run build`
+  clean, `bun run typecheck` (same 3 pre-existing unrelated `m2-*.live.test.ts` errors), `arch:fitness`
+  38/38 (`arch:outbox-bindings` 0 disagreements), full non-live suite 654 files / 9589 tests green with no
+  pinned-array assertions to update this pass, and a clean `check:boot:platform` run against a freshly
+  migrated, RLS-enforced disposable Postgres. Leaving #248 open — 339 pairs across 31 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

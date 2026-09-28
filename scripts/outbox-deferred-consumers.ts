@@ -319,7 +319,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
     module: "m17",
     kind: "handlers-unbound",
     reason:
-      "M17 has a `consumers/` surface that yields no live binding: handler code exists and no dispatcher binding reaches it.",
+      "F-133 (#248) checked this group per-event against M17's own §4.3/§4.4 spec text (the D3/D14 EVV-authoritative state machine, the `m17.reassignment_needed` cascade, the portal-scope consent gate, the D2 orphan-encounter reconciliation) rather than trusting the six producing modules' `declaredConsumers` guesses — the F-101 rule. 12 of the 14 pairs are genuine, real, still-unbuilt subscriptions, not misdeclarations: `consumers/index.ts`'s own header names this exact gap (\"the EVV `m18.evv.check_in/out_recorded` advance bindings land with M18\"), and `M17_OUTBOX_SUBSCRIPTIONS` currently carries none of them — the visit lifecycle's EVV-authoritative `published → en_route → in_visit → completed` transitions (D3/D14) are entirely unwired despite the spec calling EVV the authoritative driver. All 5 `m18.evv.*` events are explicit in M18's own catalog comments (\"drive M17's visit-state transitions (D14)\", \"the geofence-confirmation stream M17 Scheduling reads\", \"M8/M17 re-read the bracket\", \"flows to M17/M8/M23\"). `m15.volunteer.assignment_inactivated` is M15's own catalog comment (\"so M17 must drop the volunteer from the schedule\") feeding the day-view `m17.reassignment_needed` cascade (M17 spec D3) — no reassignment-scan cron exists in M17 at all yet, for PTO, credential, or volunteer-gate reasons alike. `m19.triage_call.visit_needed` is extensively documented on the M19 side (spec §1, §2.2, acceptance criteria at §7.1/§7.9, performance targets) as the trigger for M17's D5 proposal-worker path, even though M17's own spec (written first) never mentions the inbound direction — kept per the F-101 caution (a specific, cross-referenced, done-means-tested producing-side decision outweighs the consuming spec's silence, the same shape as F-131's `m25.remittance.claim_recouped`). `m20.safety.high_risk_area_entered` and `.visit_cancellation_requested` are both explicit in M20's own \"Consumed by 17\" text and §4.10 outbox table (\"M17 also consumes... to surface a visit-row warning badge\"; \"(M17 consumer cancels the visit)\"). Both `m39.consent.delegated_access.granted`/`.revoked` are explicit in M39's own §4.10/§4.7 tables (\"M17 (portal-upcoming scope check)\") — M17's `PortalVisitReader`/`ConsentEvaluator` caregiver-scope gate. `m8.encounter.orphan_recorded` is explicit in M17's own D2 decision row and §12 checklist (\"`m8.encounter.orphan_recorded` consumer present in M17 (deny-stub until M8 publisher exists)\"). **2 of the 14 were genuinely misdeclared and are dropped at the source, not here**: `m20.safety.check_in_recorded` — M20's own description says \"info severity, no fan-out\", and M20's own \"Consumed by 17\" text describes M17's day-view \"last check-in\" fact as a `SafetyDashboardProvider.clinicianStatusForLocation` seam PULL, never this push event (M20's §4.10 table also carries no \"(M17 consumer...)\" annotation on this row, unlike the two kept M20 events above); `m5.patient.address_changed` — M17's own spec (§7.10) states outright \"M17 NEVER geocodes; geocoding requests are M5's geocode job which runs on `patient.address_changed` outbox\" — M17 only ever reads the geocoded result afterward via the `PatientAddressReader` seam pull, never this push event; M5's own `jobs/index.ts` confirms the real consumer is M5's own `m5.geocode_address` job, not M17.",
     events: [
       "m15.volunteer.assignment_inactivated",
       "m18.evv.at_patient_address",
@@ -328,12 +328,10 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "m18.evv.event_corrected",
       "m18.evv.late_check_resolved",
       "m19.triage_call.visit_needed",
-      "m20.safety.check_in_recorded",
       "m20.safety.high_risk_area_entered",
       "m20.safety.visit_cancellation_requested",
       "m39.consent.delegated_access.granted",
       "m39.consent.delegated_access.revoked",
-      "m5.patient.address_changed",
       "m8.encounter.orphan_recorded",
     ],
   },
