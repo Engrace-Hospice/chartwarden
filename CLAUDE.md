@@ -1546,6 +1546,61 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   suites run individually to confirm the widened `m8.encounter.signed` payload round-trips through the real
   catalog-validating publisher with no regression. Leaving #248 open — 234 pairs across 25 modules remain.
 
+  **Round 8 finally ran the F-101 per-event sweep on m30's own reason text — the largest remaining group,
+  which F-115 had only ever checked from ONE side (F-148/F-149, #248).** F-115 (#248) had already checked
+  61 of m30's declared events against M30's OWN nightly-recompute seam reads and moved 27 out that way, but
+  never checked the OTHER direction — whether each PRODUCING module's own spec decisively named M30, the
+  same F-101 rule this series applies everywhere else. **F-148 finished the smaller half first**: a
+  follow-up pass on the six remaining M16 (Bereavement) events found five genuinely confirmed
+  (`plan_closed_completed`/`.declined`/`.early`/`plan_skipped_per_patient_opt_out`/`risk_score_computed`,
+  each backed by a real `BereavementComplianceProvider` seam method that exists but is DORMANT — unused by
+  any of M30's eleven currently-registered measures, "bound is not computing" a further time) and one
+  genuinely misdeclared: `contact_referred_external` had **no supporting comment at all**, the one event in
+  the group nobody had actually checked. M30's own `M30_OUTBOX_SUBSCRIPTIONS` — its own header calls itself
+  "the SINGLE SOURCE OF TRUTH" for M30's inbound topics — has exactly six keys and none is `m16.*`; M30's
+  own §1.1 relationship-inventory text scopes its ENTIRE M16 relationship to the CoP-coverage measure ("M30
+  emits no bereavement data and writes nothing to M16"); `IncidentKind` has no member a referral maps to;
+  and M16's own worked "Done means" walkthrough for this exact transition narrates M36's alert and M22's
+  letter render in full and names no M30 action at all — the event's terse table-cell citation ("M30
+  incident potential") unsupported everywhere that would have to carry it if real. Dropped, no
+  `seamConsumers` replacement. **F-149 then split the remaining 60 events across six parallel
+  producer-clustered forks** (M11's 8 order events; M13's 12 eMAR events; M6's 9 admission/compliance/F2F
+  events; M15's 4 + M16's residual 6; M20's 3 + M21's 5; and nine smaller producers spanning M14/M23/M25/
+  M26/M37/M39/M12/M8/M9), each checked against M30's own §1.1 relationship inventory
+  (`docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md`) and its own blanket architectural principle
+  ("Outbox publication is the only cross-module communication M30 performs at the boundary … M30 *calls*
+  … reader seams as in-process function calls," never a subscription) plus each PRODUCING module's own
+  spec. **11 moved to `seamConsumers` rather than dropped bare** — all 8 M11 order events (M11's own §D14
+  names a real `OrderProvider` seam whose completion/transmission/results methods M30 has not built yet),
+  M21's 5 comfort-kit/controlled-substance/par events (a real, already-registered `SupplyFulfillmentProvider`/
+  `ComfortKitDispatchProvider` seam M30 hasn't called yet), M14's 2 IDG review-clock events (confirmed
+  ACTIVE — `m30-jobs.ts` calls `getSeam("IdgScheduleProvider")` today, feeding a currently-registered
+  measure), and `m39.consent.signed` (M30's `ConsentEvaluator.evaluate` is likewise live, per-actor, at
+  read time — a signing push has nothing to invalidate). **18 dropped clean, unsupported on both sides** —
+  all 12 remaining M13 eMAR events (zero `m13.*` keys anywhere in `M30_OUTBOX_SUBSCRIPTIONS`, and the
+  "reconciliation-completed-in-time" measure M13's own spec claims feeds M30 does not exist anywhere in
+  M30's registered measure set), all 3 M20 field-safety events (M30's own spec is a flat denial — "Field
+  safety. Module 20. No M30 consumption path"), `m37.ipu_admission.discharged` (redundant sibling — the
+  death case is carved out to the already-declared `death_recorded`), and `m8.hearthnote.layer2_enhanced`
+  (M30's own D16 ten-event recompute-trigger list excludes it; only the different, already-declared
+  `m8.encounter.signed` is on that list). **2 corrected from an initial MOVE-TO-SEAM recommendation to
+  DROP on independent re-verification, the exact discipline this series exists to enforce**: the M25/M26
+  forks first read `m25.denial.opened` and both `m26.cap.*` events as real forward seams, citing M25's/
+  M26's own aspirational spec text ("M30's denial-rate HQRP measure … reads M25's `DenialMetricsProvider`,"
+  "forward-seam … will add M26 to M30.dependsOn") — but M30's own §1.1 inventory FLATLY denies both:
+  "Remittance posting. Module 25. No M30 consumption path" and "Cap management. Module 26. No direct M30
+  consumption … cap status … feeds M27 cost reports, not quality measures" — unconditional statements, not
+  the genuinely conditional "may consume … when the seam lands" phrasing M30's spec uses for M19/M21's
+  real forward seams. The consuming module's own decisive text wins over the producing module's
+  aspirational one (F-101), so both were corrected to DROP before being applied. **Net: 234 → 197** (37
+  dropped/moved — 1 from F-148, 36 from F-149; 0 added; module count unchanged at 25, m30's own two groups
+  shrink from 65 to 28 combined). Verified: `bun run build` clean, `bun run typecheck` clean (0 errors),
+  full non-live suite 654 files / 9589 tests green (one pinned-array assertion updated —
+  `orders-outbox-consumers.test.ts`'s `m11.order.signed` fan-out, to drop `m30` from `declaredConsumers`
+  and add it to `seamConsumers`), `arch:fitness` 38/38 (`arch:outbox-bindings` 0 disagreements), and a
+  clean `check:boot:platform` run against a freshly migrated, RLS-enforced disposable Postgres. Leaving
+  #248 open — 197 pairs across 25 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

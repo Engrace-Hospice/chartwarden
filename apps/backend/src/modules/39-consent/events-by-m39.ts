@@ -40,8 +40,16 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       captureMethod: Type.String(),
       expiresAt: Type.Optional(Type.String()),
     }),
-    declaredConsumers: ["m22", "m5", "m16", "m30"],
-    seamConsumers: ["m33"],
+    // F-149 (#248) — m30 MOVED to seamConsumers: M30's own spec (docs/modules/
+    // WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md's §8.1 Part-2-redisclosure text) and its own blanket
+    // §1.1 principle ("Outbox publication is the only cross-module communication M30 performs at the
+    // boundary") both frame the real relationship as `ConsentEvaluator.evaluate`/`.evaluateBulk`,
+    // consulted fresh per-actor on every access — confirmed ACTIVE, not aspirational:
+    // `apps/backend/src/modules/30-quality/abac-predicates.ts:407` calls
+    // `getSeam("ConsentEvaluator")` for the `part2Redisclosure` predicate. A live per-request seam pull
+    // has nothing to invalidate from a "consent was signed" push.
+    declaredConsumers: ["m22", "m5", "m16"],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {

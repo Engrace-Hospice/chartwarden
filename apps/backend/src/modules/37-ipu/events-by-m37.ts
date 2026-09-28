@@ -96,7 +96,13 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-130 (#248) — m27 REMOVED: same reasoning as `m37.ipu_admission.transferred` above.
     // F-131 (#248) — m26 REMOVED: same reasoning as `m37.ipu_admission.transferred` above.
     // F-136 (#248) — m23 REMOVED: same reasoning as `m37.ipu_admission.transferred` above.
-    declaredConsumers: ["m30"],
+    // F-149 (#248) — m30 REMOVED: redundant sibling — M37's own outbox table conditions M30's
+    // inclusion on "mortality if death is the discharge reason — but use `death_recorded` for death",
+    // and the death case already has its own dedicated, correctly-declared sibling
+    // (`m37.ipu_admission.death_recorded`, `declaredConsumers: ["m30","m16"]` below). `.discharged`
+    // fires for every OTHER discharge reason with no independent M30 rationale once the death case is
+    // carved out — the redundant-sibling shape this series has found repeatedly (F-108/F-117/F-134).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

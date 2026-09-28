@@ -40,7 +40,14 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m26",
     description: "A projection snapshot was persisted (nightly batch or remittance recompute).",
     payloadSchema: ProjectionUpdatedPayload,
-    declaredConsumers: ["m30"],
+    // F-149 (#248) — m30 removed, along with `cap.year_closed` below. M26's own spec cites a forward
+    // `CapMetricsProvider`/`InpatientCapProvider` seam to M30, but M30's own §1.1 relationship inventory
+    // is a flat, explicit denial: "Cap management. Module 26. No direct M30 consumption — cap status is
+    // M26's domain and feeds M27 cost reports, not quality measures."
+    // (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:134) — checked across the whole spec
+    // doc, this is the only substantive "cap" mention outside M30's own unrelated Corrective Action Plan
+    // (incident-investigation) vocabulary. The consuming module's own decisive statement wins (F-101).
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -80,7 +87,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     description: "A cap period reached settled (final settlement); the cap year is closed.",
     payloadSchema: YearClosedPayload,
     // F-130 (#248) — m27 REMOVED: same reasoning as `m26.cap.accrual_recorded` above.
-    declaredConsumers: ["m30"],
+    // F-149 (#248) — m30 removed: see `cap.projection_updated` above.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

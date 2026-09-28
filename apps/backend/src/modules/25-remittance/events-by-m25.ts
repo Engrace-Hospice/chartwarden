@@ -166,7 +166,14 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       source: str,
       dollarValue: money,
     }),
-    declaredConsumers: ["m30"],
+    // F-149 (#248) — m30 removed. M25's own spec (line 92) names a "denial-rate HQRP measure" reading
+    // M25's `DenialMetricsProvider`/`RemittanceReader` seams — but M30's own §1.1 relationship inventory
+    // is a flat, explicit denial: "Remittance posting. Module 25. No M30 consumption path."
+    // (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:133) — no conditional/forward-seam
+    // language, unlike its genuinely-aspirational entries for M19/M21. The consuming module's own
+    // decisive statement wins over the producing module's aspirational one (the F-101 rule), and M30's
+    // code confirms it: zero denial-related references anywhere in `apps/backend/src/modules/30-quality`.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },

@@ -372,8 +372,18 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       perMedicationReconciliation: Type.Array(returnedContent),
       reconciledAt: Iso,
     }),
-    declaredConsumers: ["m13", "m30"],
-    seamConsumers: ["m33"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, along with all four of its M21 siblings below: M21's
+    // own spec (docs/modules/WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md:9,72) names the
+    // real mechanism decisively — "30 (HQRP & Quality — … controlled-substance-discrepancy rate,
+    // kit-return-on-time rate, par-stock-stockout rate; all read M21 via `SupplyFulfillmentProvider` and
+    // `ComfortKitDispatchProvider`)" and "M21 publishes … seams; M30 consumes and computes" — never an
+    // outbox push, matching M30's own blanket §1.1 principle that it never subscribes to an upstream
+    // module's outbox (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:353). Both seams are
+    // already registered at boot (`apps/backend/src/modules/21-supplies/seams/index.ts`); M30's side of
+    // the call is what remains unbuilt — this event's own "M30 files the survey record" claim describes
+    // a mechanism M30's spec never corroborates anywhere.
+    declaredConsumers: ["m13"],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -391,8 +401,10 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       containsControlledSubstance: Bool,
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers: maps to M21's own named "kit-return-on-time rate" —
+    // see `comfort_kit.return_reconciliation` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -415,8 +427,10 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       }),
       detectedAt: Iso,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers: maps to M21's own named
+    // "controlled-substance-discrepancy rate" — see `comfort_kit.return_reconciliation` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
 
@@ -427,8 +441,10 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "§2.7 — the nightly per-Location par monitor found stock at or below the reorder point. The CRON emits; a mid-day dispatch decrement does not, so a busy Location raises one alert a night rather than one per kit.",
     payloadSchema: parThreshold,
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers: maps to M21's own named "par-stock-stockout rate" —
+    // see `comfort_kit.return_reconciliation` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -437,8 +453,10 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "§2.7 — stock fell to or below `min_safety_stock`, the band under `below_threshold`. Distinct event rather than a severity field: a depleted hub cannot fill the next dispatch at all, and M36 routes it to a different recipient set.",
     payloadSchema: parThreshold,
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers: same "par-stock-stockout rate" measure, the severity
+    // band under `below_threshold` — see `comfort_kit.return_reconciliation` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
 ];

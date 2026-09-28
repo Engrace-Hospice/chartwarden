@@ -234,9 +234,30 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m16.bereavement.contact_referred_external",
     moduleOwner: "m16",
     description:
-      "§7.7 — complicated grief / suicidal ideation routed to an M40 external mental-health resource. M36 raises the `clinical_urgent` alert; M30 treats it as incident-potential.",
+      "§7.7 — complicated grief / suicidal ideation routed to an M40 external mental-health resource. M36 raises the `clinical_urgent` alert.",
     payloadSchema: Type.Object({ planId: Id, contactId: Id, externalResourceId: Id }),
-    declaredConsumers: ["m30"],
+    // F-148 (#248) — m30 DROPPED: this event's own §4.10-table gloss ("M30 incident potential") is
+    // the only place M30 is named for it, and it is unsupported everywhere that would have to carry
+    // it if it were real. M30's OWN §1.1 relationship-inventory text scopes its ENTIRE M16 relationship
+    // to "consumes `BereavementComplianceProvider` for the CoP 418.64(d) … measure; M30 emits no
+    // bereavement data and writes nothing to M16" (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md
+    // §1.1) — no mention of an incident-drafting relationship. M30's own §4.10 upstream catalog
+    // (`packages/quality/src/consumers/subscription-map.ts`'s `M30_OUTBOX_SUBSCRIPTIONS`, its own header
+    // calls itself "the SINGLE SOURCE OF TRUTH" for M30's inbound topics) has exactly six keys and none
+    // of them is `m16.*` — contrast `m12.medication.error_reported`, which DOES carry a real
+    // `{ kind: "incident_draft", incidentKind: "medication_error" }` entry, the shape this event would
+    // need. M30's own `IncidentKind` enum (`packages/quality/src/contracts.ts`) has no member a
+    // complicated-grief/suicidal-ideation referral maps to (`fall` / `medication_error` / `complaint` /
+    // `allegation_of_abuse` / `exposure_event` / `other_safety_event`). And M16's OWN "Done means"
+    // worked example for this exact transition (§ walkthrough, "Sarah administers the PG-13-adapted
+    // screen…") narrates M36's alert and M22's referral-letter render in full and names no M30 action at
+    // all — the producing module's own most concrete evidence omits the relationship its terse table
+    // cell asserts, the F-108/F-136 shape. Not the F-131 "kept, not dropped" asymmetry: that caution
+    // applies when the consuming spec is merely SILENT; M30's spec here affirmatively narrows the
+    // relationship rather than saying nothing. No seamConsumers replacement — no `BereavementComplianceProvider`
+    // method (`copOutreachCounts`/`riskScreeningCompletenessCounts`/`planClosureCounts`) reads a referral
+    // fact, so there is no seam relationship to record either.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },

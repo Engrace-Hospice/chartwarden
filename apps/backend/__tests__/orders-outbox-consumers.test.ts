@@ -68,12 +68,16 @@ describe("M11 outbox event contract (§4.4)", () => {
     // same `signOrder`/`signOnBehalf` transaction.
     // F-141 (#248) — m29 removed: redundant with the specific `m11.order.hl7_orm_requested` event,
     // which carries the rich PID/ORC/OBR/NTE payload M29's own spec actually names.
-    expect(signed?.declaredConsumers).toEqual(expect.arrayContaining(["m14", "m21", "m30"]));
+    // F-149 (#248) — m30 moved to seamConsumers: M30's own spec states it never subscribes to an
+    // upstream module's outbox, only calls seams.
+    expect(signed?.declaredConsumers).toEqual(expect.arrayContaining(["m14", "m21"]));
     expect(signed?.declaredConsumers).not.toContain("m22");
     expect(signed?.declaredConsumers).not.toContain("m29");
+    expect(signed?.declaredConsumers).not.toContain("m30");
     // M33's reporting intake is a pull over `report_mv.*` — recorded, but not an outbox subscription
     // (#103).
     expect(signed?.seamConsumers).toContain("m33");
+    expect(signed?.seamConsumers).toContain("m30");
   });
 
   it("`m11.order.recertification_signed` reaches M6 for the CTI handshake (W-RC-01)", () => {

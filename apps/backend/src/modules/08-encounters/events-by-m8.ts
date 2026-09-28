@@ -315,7 +315,14 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     // direction — M8 calls `NarrativeEnhancementProvider.enhance(...)` synchronously ("this is the v1
     // reason M32 exists") and M32 already returns the diff/token-count/model-id/template-version
     // directly to M8 in that call; this event's payload is exactly what M32 already produced.
-    declaredConsumers: ["m30"],
+    // F-149 (#248) — m30 dropped: unsupported. M30's own §1.1 entry for Module 8 names only
+    // `EncounterStatisticsProvider`/`SignedEncountersReader` for the HCI visits-near-death/HVLDL/
+    // late-entry-rate measures — no "AI involvement" tracking anywhere in M30's own text despite its
+    // 19 lettered decisions covering every compliance surface it owns, and this event is NOT among the
+    // D16 recompute-trigger list's ten named events (only the different, already-declared
+    // `m8.encounter.signed` is). The event's own single terse table-cell citation ("M30 AI involvement
+    // compliance register") is contradicted by M30's own more authoritative, structured D16 list.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

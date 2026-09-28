@@ -174,9 +174,20 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       // F-141 (#248) — m29 removed: M29's own spec names only the specific
       // `m11.order.hl7_orm_requested` event (its rich PID/ORC/OBR/NTE payload), never the broader
       // `.signed` — redundant with the sibling event once it lands, the F-101 shape.
-      "m30",
     ],
-    seamConsumers: ["m33"],
+    // F-149 (#248) — m30 MOVED here from declaredConsumers, along with all seven of its M11 siblings
+    // below: M30's own §1.1 relationship inventory states flatly "Outbox publication is the only
+    // cross-module communication M30 performs at the boundary. M30 *calls* … M11 … reader seams as
+    // in-process function calls" (docs/modules/WARDENX_MODULE_30_HQRP_QUALITY_SPEC_v0_5.md:353) — M30
+    // never subscribes to an upstream module's outbox. The order-completion/discontinuation-timeliness/
+    // lab-transmission/results-lifecycle measures M11's own spec cites (§D14, line 2844) as the M30
+    // destination are real but genuinely unbound one layer deeper than the catalog declaration: the
+    // published `OrderProvider` seam (`packages/types/src/orders.ts`) has no `getOrderCompletionRate`
+    // and no transmission/results method at all — only `getOrdersSince`/`getDiscontinuationReason`/
+    // `getVerbalOrderTimeliness` — and `OPERATIONAL_BOUND_MEASURE_CODES`
+    // (`apps/backend/src/modules/30-quality/jobs/m30-jobs.ts`) currently registers none of these order
+    // measures. "Bound is not computing" (F-042) one further step back: not even bound.
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -190,8 +201,9 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       onBehalfOfMembershipId: id,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m4", "m33"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, same basis as `.signed` above.
+    declaredConsumers: [],
+    seamConsumers: ["m4", "m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -244,16 +256,17 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       actorMembershipId: Type.Union([id, Type.Null()]),
       effectiveAt: isoInstant,
     }),
-    // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared — this fact
-    // is not part of any current M30 seam (order discontinuation isn't verbal-timeliness data).
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
     // F-129 (#248) — m14 added: M14's own `consumers/index.ts` and §4.5 spec table have named this event
     // (the "since last IDG" projection-cache update) since M14-T06; this catalog simply never declared it,
     // which would have made a future live binding fail `assertBindableAgainstCatalog` outright.
     // F-144 (#248) — m22 REMOVED: not in M22's own §4.11 consumer table, and no code path co-emits a
     // `document_requested` sibling for a discontinuation (`discontinueOrder`/the discharge cascade emit
     // only this event) — unsupported by any M22-side evidence.
-    declaredConsumers: ["m14", "m21", "m30"],
-    seamConsumers: ["m33", "m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers (the `.signed` finding above — M30 never subscribes to
+    // an M11 outbox event; this fact would arrive, if ever bound, via the unbuilt order-completion seam).
+    declaredConsumers: ["m14", "m21"],
+    seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -271,11 +284,10 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       // on this event, and this list did not name m14, so `assertBindableAgainstCatalog` would
       // have refused the binding for three of the six D8 sources while accepting the other three.
       "m14",
-      // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared —
-      // "completed" isn't verbal-order-timeliness data, so no current seam covers it either.
-      "m30",
+      // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
     ],
-    seamConsumers: ["m33"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, same basis as `.signed` above.
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -318,7 +330,9 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-101 finding that no such M22 template exists (`PLATFORM_TEMPLATE_TABLE` has no LOC-change entry)
     // and `m6.loc.changed` correctly still defers only on m23. This upstream order-signed event has no
     // stronger claim than the downstream one already refuted.
-    declaredConsumers: ["m6", "m30"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, same basis as `.signed` above.
+    declaredConsumers: ["m6"],
+    seamConsumers: ["m30"],
     isOutboxOnly: true,
   },
   {
@@ -395,8 +409,9 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       failureReason: Type.Optional(id),
       sourceM29EventId: id,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, same basis as `.signed` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -412,8 +427,9 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       lastAttemptAt: isoInstant,
       orderingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, same basis as `.signed` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m36"],
     isOutboxOnly: true,
   },
   {
@@ -461,8 +477,9 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       hoursOverdue: Type.Number(),
       orderingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m36"],
+    // F-149 (#248) — m30 MOVED to seamConsumers, same basis as `.signed` above.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m36"],
     isOutboxOnly: true,
   },
   // ── IDG intake (§4.4 / W-IDG-01 — M14 forward seam) ───────────────────────────────────────────────────
