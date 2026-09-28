@@ -153,7 +153,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
     module: "m22",
     kind: "handlers-unbound",
     reason:
-      "M22 renders on REQUEST. Its live binding consumes `M22_DOCUMENT_REQUEST_EVENTS`, and a module that wants a document emits a render request which M22 answers with `m22.document.rendered`. NOTE (F-099): a reason written for the whole group was WRONG for six of its members (the REQUEST spelling itself, unconsumed); those are bound. M6's six CoP documents were then bound directly (F-100) per the M22 spec's own §4.11 table, which routes those SOURCE events to the renderer with no `document_requested` needed. F-117 (#248) re-checked the ORIGINAL claim that 'for M11/M12/M13/M21/M23/M33 the request half IS wired, so the source declaration is redundant' PER EVENT rather than per module — it was right for exactly 4 of the ~20 events across those six modules (the ones actually co-emitted with a `document_requested` sibling in the SAME transition: `m11.order.signed`/`.standing_spawned`, `m12.medication_order.signed`, `m13.reconciliation.completed` — all now dropped from `declaredConsumers`, no `seamConsumers` replacement, since the artifact is delivered via the other event) and WRONG for the rest, which are separate order/claim/billing lifecycle events on the SAME modules with no such sibling and stay genuinely declared. Two more were dropped as never needing a render at all, not merely redundant: `m37.body_release.completed` (the PRIOR transition's own guard already requires the document to exist — `releaseBody` refuses without a signed `body_release_authorization`) and `m27.cost_report.reopened` (resets to `draft`; no job, no request, nothing to render until the next `submitted`). `m27.cost_report.submitted` was dropped on the F-108 precedent — it enqueues the `ecr-generation` job rather than emitting a request itself, and that job's own `m27.artifact.render_requested` is the real, already-bound handshake. `m37.body_release.funeral_home_identified` was dropped the ordinary way: `identifyFuneralHome` co-emits `m37.body_release.document_requested` in the same transition. What remains (61 events) divides three ways, none of it a blanket call: events the M22 spec's §4.11 table explicitly names for a dedicated per-source consumer that was never built (`m11.order.results_received`, `m12.medication_order.{list_changed,draft_created_from_extraction}`, `m13.administration_record.document_requested` — catalogued-not-emitted, F-099's producer gap — `m14.{packet.render_requested,minutes.signed}`, `m15.plan.version_signed`, `m18.evv.aggregator_accepted` — whose OWN sibling `m18.evv.verification_pdf_requested` is catalogued and ALSO never emitted, so this is the only real signal — `m5.patient.{merged,draft_created_from_extraction}`, `m8.encounter.{signed,addendum_signed}`, `m39.consent.revoked`); one confirmed stale cross-reference, not yet fixed here (`m9.assessment.summary_requested` is real, catalogued, request-shaped, and declares m22 — `M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS`' comment calls the equivalent need `m9.assessment.document_requested` and says it is 'declared by no catalog under any spelling', which is now false; a live candidate for the next binding pass, the F-100 `m37.body_release.document_requested` shape); and events named by NO part of the M22 spec's §4.11 table with no redundant sibling found, kept declared rather than dropped absent stronger evidence — the F-101 sweep this needs has not been run on them (`m11.order.{corrected,discontinued,level_of_care_change_signed,recertification_signed,supply_fulfillment_requested}` — the latter two of which M11 does not even emit yet, a producer gap under this one; `draft_created` is the one exception with its own documented intent, 'M22 preps the order form'; `m14.{meeting.adjourned,minutes.amended}`; `m15.{discipline_assessment.amended,plan.discharged}`; `m16.bereavement.plan_{closed_completed,closed_declined,closed_early,opened}`; `m17.caregiver_reminder_due`; `m21.supply_request.delivered`; `m23.{billing.document_render_requested,claim.acknowledged,claim.rejected,claim.submitted,noe.submitted,notr.submitted}` — the first of which is already request-shaped and a strong candidate; `m24.medicaid_{billing.document_render_requested,claim.acknowledged,claim.rejected,claim.submitted}`; `m25.{appeal.submitted,denial_resolution_letter.render_requested}` — the second likewise request-shaped; `m30.{incident.submitted,qapi.pip_closed,qapi.project_chartered}`; `m37.ipu_admission.death_recorded`; `m39.consent.{expired,recipient_added,recipient_removed}`; `m5.patient.{privacy_flag_changed,unmerged}`; `m7.care_plan.version_signed`; `m8.encounter.voided`). `m6.discharge.cosigned` and `m6.transfer.created` are untouched by this pass — both genuinely deferred per F-099's original reasoning (version-append and transfer-variant gaps respectively).",
+      "M22 renders on REQUEST. Its live binding consumes `M22_DOCUMENT_REQUEST_EVENTS`, and a module that wants a document emits a render request which M22 answers with `m22.document.rendered`. NOTE (F-099): a reason written for the whole group was WRONG for six of its members (the REQUEST spelling itself, unconsumed); those are bound. M6's six CoP documents were then bound directly (F-100) per the M22 spec's own §4.11 table, which routes those SOURCE events to the renderer with no `document_requested` needed. F-117 (#248) re-checked the ORIGINAL claim that 'for M11/M12/M13/M21/M23/M33 the request half IS wired, so the source declaration is redundant' PER EVENT rather than per module — it was right for exactly 4 of the ~20 events across those six modules (the ones actually co-emitted with a `document_requested` sibling in the SAME transition: `m11.order.signed`/`.standing_spawned`, `m12.medication_order.signed`, `m13.reconciliation.completed` — all now dropped from `declaredConsumers`, no `seamConsumers` replacement, since the artifact is delivered via the other event) and WRONG for the rest, which are separate order/claim/billing lifecycle events on the SAME modules with no such sibling and stay genuinely declared. Two more were dropped as never needing a render at all, not merely redundant: `m37.body_release.completed` (the PRIOR transition's own guard already requires the document to exist — `releaseBody` refuses without a signed `body_release_authorization`) and `m27.cost_report.reopened` (resets to `draft`; no job, no request, nothing to render until the next `submitted`). `m27.cost_report.submitted` was dropped on the F-108 precedent — it enqueues the `ecr-generation` job rather than emitting a request itself, and that job's own `m27.artifact.render_requested` is the real, already-bound handshake. `m37.body_release.funeral_home_identified` was dropped the ordinary way: `identifyFuneralHome` co-emits `m37.body_release.document_requested` in the same transition. What remains (61 events) divides three ways, none of it a blanket call: events the M22 spec's §4.11 table explicitly names for a dedicated per-source consumer that was never built (`m11.order.results_received`, `m12.medication_order.{list_changed,draft_created_from_extraction}`, `m13.administration_record.document_requested` — catalogued-not-emitted, F-099's producer gap — `m14.{packet.render_requested,minutes.signed}`, `m15.plan.version_signed`, `m18.evv.aggregator_accepted` — whose OWN sibling `m18.evv.verification_pdf_requested` is catalogued and ALSO never emitted, so this is the only real signal — `m5.patient.{merged,draft_created_from_extraction}`, `m8.encounter.{signed,addendum_signed}`, `m39.consent.revoked`); one confirmed stale cross-reference, not yet fixed here (`m9.assessment.summary_requested` is real, catalogued, request-shaped, and declares m22 — `M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS`' comment calls the equivalent need `m9.assessment.document_requested` and says it is 'declared by no catalog under any spelling', which is now false; a live candidate for the next binding pass, the F-100 `m37.body_release.document_requested` shape); and events named by NO part of the M22 spec's §4.11 table with no redundant sibling found, kept declared rather than dropped absent stronger evidence — the F-101 sweep this needs has not been run on them (`m11.order.{corrected,discontinued,level_of_care_change_signed,recertification_signed,supply_fulfillment_requested}` — the latter two of which M11 does not even emit yet, a producer gap under this one; `draft_created` is the one exception with its own documented intent, 'M22 preps the order form'; `m14.{meeting.adjourned,minutes.amended}`; `m15.{discipline_assessment.amended,plan.discharged}`; `m16.bereavement.plan_{closed_completed,closed_declined,closed_early,opened}`; `m17.caregiver_reminder_due`; `m21.supply_request.delivered`; `m23.{billing.document_render_requested,claim.acknowledged,claim.rejected,claim.submitted,noe.submitted,notr.submitted}` — the first of which is already request-shaped and a strong candidate; `m24.medicaid_{billing.document_render_requested,claim.acknowledged,claim.rejected,claim.submitted}`; `m25.{appeal.submitted,denial_resolution_letter.render_requested}` — the second likewise request-shaped; `m30.{incident.submitted,qapi.pip_closed,qapi.project_chartered}`; `m37.ipu_admission.death_recorded`; `m39.consent.{expired,recipient_added,recipient_removed}`; `m5.patient.{privacy_flag_changed,unmerged}`; `m7.care_plan.version_signed`; `m8.encounter.voided`). `m6.discharge.cosigned` and `m6.transfer.created` are untouched by this pass — both genuinely deferred per F-099's original reasoning (version-append and transfer-variant gaps respectively). F-142 (#248) added a genuinely misdeclared arrival from the (now-deleted) m32 group: `m19.triage.summary_requested` had been wrongly declared to m32 (a documentation error in `events-by-m19.ts`'s own inline comment), corrected at the source once M19's own locked spec — cited three separate ways — and `packages/types/src/oncall.ts`'s own payload doc comment both settled the real consumer as M22, for a caregiver/attending PDF render request. Genuinely unbuilt on both sides (no producer emits it yet either).",
     events: [
       "m11.order.corrected",
       "m11.order.discontinued",
@@ -181,6 +181,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "m17.caregiver_reminder_due",
       "m18.evv.aggregator_accepted",
       "m18.evv.verification_pdf_requested",
+      "m19.triage.summary_requested",
       "m21.supply_request.delivered",
       "m23.billing.document_render_requested",
       "m23.claim.acknowledged",
@@ -223,7 +224,8 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "F-129 (#248) checked every remaining event against M14's own authoritative statement of what it consumes — its §4.5 spec table (mirrored exactly by `consumers/index.ts`'s `M14_OUTBOX_SUBSCRIPTIONS`) and `packages/idg/src/packet/builder.ts`'s typed build-input structs — rather than trusting the producing modules' `declaredConsumers` at face value (the F-101/F-108 precedent, at larger scale). Two results. " +
       "FIRST, 22 pairs were dropped as genuinely misdeclared: M7's 9 problem/goal/intervention/care-plan-version events and M39's 2 DPOA events are redundant with a documented build-time SEAM PULL (`CarePlanSummaryInput`/`PacketCoverInput` in the builder read M7's `CarePlanReader` and M5/M6/M7/M39 fresh per packet, never a push cache); M10's `timepoint_scheduled`/`timepoint_signed` are the same shape for `HopeContextInput`/`HopeTimepointProvider`; M6's `cti.drafted`/`.late_flagged`/`.voided` and `f2f.scheduled`/`.window_missed`/`.window_overridden` are the same shape for `PacketCoverInput`'s `nextRecertDueAt`/`f2fWindowState` (M6 owns CTI/F2F enforcement outright — M14 only ever reads it); `m6.discharge.created` is redundant with `m6.admission.discharged`, M14's own real D9 inclusion-cache subscription on the SAME discharge transaction, carrying every fact D9's effect needs. Fixed at the source in each producing module's `events-by-mNN.ts`, not here. " +
       "SECOND, one real, spec-matching gap the catalog had simply never declared: `m11.order.discontinued` is named by M14's own §4.5 table and `M14_OUTBOX_SUBSCRIPTIONS` for the 'since last IDG' projection cache, and M11's catalog omitted `m14` from `declaredConsumers` entirely — a real subscription a live binding would have had refused by `assertBindableAgainstCatalog`. Added at the source. " +
-      "What remains here, unresolved, is two honest groups: the REAL 'since last IDG'/inclusion-cache/M22-back-ref shape M14's own spec names and has not built (8 events: the two M6 inclusion-cache events, M9's `recorded`/`significant_change`, M10's `j2051_trigger_fired`/`sfv_created`, M11's `order.discontinued`, M12's `medication_order.discontinued` — the M22 back-ref additionally has no producer, since `m14.packet.document_requested` is catalogued by nobody); and 22 pairs checked and found NEITHER clearly redundant NOR named anywhere in M14's own spec (M6 admission on_hold/resumed + compliance-window open/overdue, M9's `assessment.amended`, M12's `medication_history_pulled`, all 12 of M13's eMAR events, all 3 of M15's discipline-care-plan events, M39's `consent.expiring_soon`) — kept declared rather than dropped absent stronger evidence, per the F-101 precedent. Of those 22, `m13.scheduled_dose.missed` has the strongest textual support to eventually bind: M14's own §1 packet description names 'missed doses' as a `flaggedEvents` category and the M13 payload (`missedDoseId`, `dueAt`, controlled/comfort-kit flags) maps directly onto `PacketFlaggedEventDigest`'s `missed_dose` kind — the other 11 M13 events, all 3 M15 events and M39's `expiring_soon` have no such correlation and may be next pass's misdeclarations.",
+      "What remains here, unresolved, is two honest groups: the REAL 'since last IDG'/inclusion-cache/M22-back-ref shape M14's own spec names and has not built (8 events: the two M6 inclusion-cache events, M9's `recorded`/`significant_change`, M10's `j2051_trigger_fired`/`sfv_created`, M11's `order.discontinued`, M12's `medication_order.discontinued` — the M22 back-ref additionally has no producer, since `m14.packet.document_requested` is catalogued by nobody); and 22 pairs checked and found NEITHER clearly redundant NOR named anywhere in M14's own spec (M6 admission on_hold/resumed + compliance-window open/overdue, M9's `assessment.amended`, M12's `medication_history_pulled`, all 12 of M13's eMAR events, all 3 of M15's discipline-care-plan events, M39's `consent.expiring_soon`) — kept declared rather than dropped absent stronger evidence, per the F-101 precedent. Of those 22, `m13.scheduled_dose.missed` has the strongest textual support to eventually bind: M14's own §1 packet description names 'missed doses' as a `flaggedEvents` category and the M13 payload (`missedDoseId`, `dueAt`, controlled/comfort-kit flags) maps directly onto `PacketFlaggedEventDigest`'s `missed_dose` kind — the other 11 M13 events, all 3 M15 events and M39's `expiring_soon` have no such correlation and may be next pass's misdeclarations. " +
+      "F-142 (#248) added a ninth 'since last IDG'-shaped gap, found triaging the (now-deleted) m7 group: `m19.triage_call.care_plan_change_indicated` was declared for m7, but M19's own D8-cascade text (§11) names the real consumer as M14's IDG packet builder — corrected at the source (M19's `declaredConsumers` m7→m14).",
     events: [
       "m10.hope.j2051_trigger_fired",
       "m10.hope.sfv_created",
@@ -245,6 +247,7 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "m15.idg_decision.applied",
       "m15.plan.bootstrapped",
       "m15.plan.version_signed",
+      "m19.triage_call.care_plan_change_indicated",
       "m39.consent.expiring_soon",
       "m6.admission.activated",
       "m6.admission.discharged",
@@ -495,51 +498,47 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "m37.ipu_admission.bed_assigned",
     ],
   },
-  {
-    module: "m7",
-    kind: "handlers-unbound",
-    reason:
-      "M7 binds one live consumer (apply-IDG-decision). The remainder are forward declarations.",
-    events: [
-      "m19.triage_call.care_plan_change_indicated",
-      "m39.consent.dpoa.agent_appointed",
-      "m39.consent.dpoa.agent_removed",
-      "m9.assessment.recorded",
-      "m9.assessment.significant_change",
-    ],
-  },
+  // F-142 (#248) — the `m7` group is GONE, not merely emptied. All 5 pairs were checked against M7's own
+  // authoritative surface: `m39.consent.dpoa.agent_appointed`/`.agent_removed` and both `m9.assessment.*`
+  // events are redundant with documented build-time SEAM PULLS (M7's own D7 — a single ABAC seam to M39
+  // for DPOA attribution; M7's own spec — the registered `LatestAssessmentProvider` seam for M9 scores),
+  // dropped at the source with no m7 replacement. `m19.triage_call.care_plan_change_indicated` was a
+  // genuine misdeclaration, not merely unsupported: M19's own D8-cascade text (§11) names the real
+  // consumer as M14's IDG packet builder, not M7 — corrected at the source (declaredConsumers m7→m14) and
+  // the pair now lives in the m14 group below.
   {
     module: "m35",
     kind: "no-consumer-surface",
-    reason: "M35 has no consumer directory and binds nothing.",
+    reason:
+      "F-142 (#248) found the group's original 5 events and its blanket reason were BOTH wrong — a seam-vs-push trap. M35's own D21 (locked, exhaustive: '8 inbound subscriptions') never names any M32 or M34 event, and D24 states both relationships are SEAMS, not pushes: M32 calls `UsageMeteringIngest.ingest` directly INTO M35's own published seam (task T-21), and M35 consumes M34's `OnboardingStatusProvider` as a forward-seam deny-stub, never an outbox push either way. All 5 original events (`m32.capability.invoked`, `m32.tenant_opt_in.{recorded,revoked}`, `m34.tenant.{provisioned,offboarding_initiated}`) dropped at the source — the F-101 shape at group-reason granularity, since the group's OWN framing had smuggled in the wrong five. The reverse check found the real gap: D21's exhaustive 8-event list — `m2.organization.{activated,suspended,closed}`, `m2.session.created`, `m5.patient.{created,status_changed,deceased,merged}` — was already correctly tracked in `scripts/outbox-subscription-exceptions.ts`'s rule-6 'no-handler' buckets (catalog agreement was the only thing missing), except `m5.patient.{created,status_changed}`, which M35's own D21 marks `record-only-target` (M5 has refused the billing-input coupling; stays untouched). The other 6 are now correctly declared at the source (M2's four events, M5's `deceased`/`merged`) and the matching stale `outbox-subscription-exceptions.ts` 'no-handler' entries deleted, per the gate's own message ('now both subscribed and declared — the exception has outlived its reason'). `M35_SUBSCRIBED_EVENT_NAMES` (`packages/types/src/subscription-billing.ts`) corrected to match — the 5 wrong names removed, the list now exactly D21's 8. M35 still has no `consumers/` directory, so all 6 remain genuinely deferred here.",
     events: [
-      "m32.capability.invoked",
-      "m32.tenant_opt_in.recorded",
-      "m32.tenant_opt_in.revoked",
-      "m34.tenant.offboarding_initiated",
-      "m34.tenant.provisioned",
+      "m2.organization.activated",
+      "m2.organization.closed",
+      "m2.organization.suspended",
+      "m2.session.created",
+      "m5.patient.deceased",
+      "m5.patient.merged",
     ],
   },
   {
     module: "m2",
     kind: "no-consumer-surface",
-    reason: "M2 has no consumer directory and binds nothing.",
-    events: [
-      "m18.evv.device_approved",
-      "m18.evv.device_suspended",
-      "m39.consent.revoked",
-    ],
+    reason:
+      "F-142 (#248) checked both pairs against M2's own authoritative surface. `m18.evv.device_approved`/`.device_suspended` were dropped: M18's own spec (§2.2.3) states the two rows are independent — `evv_device.m2_device_attestation_id` is a logical FK M18 reads FROM M2 (a seam/FK pull), never a push M2 needs; M2's own spec never mentions `evv_device` or this approval lifecycle at all. `m39.consent.revoked` is kept — decisive and repeatedly cross-referenced in M39's own locked spec (D7: 'typed per-consent-type handlers emit outbox events that consumers subscribe to... M2 portal-session terminate...'; the per-type cascade table names M2 explicitly for both `portal_access` and `family_caregiver_access`; a 'Done means' walkthrough names the exact mechanism — 'M2 consumer subscribes; iterates active sessions... terminates each session immediately'). M2's own spec is silent on this (M39 authored the cascade; M2's spec predates it), the F-131 'kept, not dropped' asymmetry.",
+    events: ["m39.consent.revoked"],
   },
-  {
-    module: "m32",
-    kind: "no-consumer-surface",
-    reason: "M32 has no consumer directory and binds nothing.",
-    events: [
-      "m16.bereavement.risk_score_computed",
-      "m19.triage.summary_requested",
-      "m8.hearthnote.layer2_enhanced",
-    ],
-  },
+  // F-142 (#248) — the `m32` group is GONE, not merely emptied. `m16.bereavement.risk_score_computed`
+  // and `m8.hearthnote.layer2_enhanced` were both dropped on the identical shape: M32's own spec states
+  // the relationship runs the OPPOSITE direction — M16/M8 each call INTO M32's registered seam
+  // (`BereavementRiskNarrativeProvider.augment`/`NarrativeEnhancementProvider.enhance`) SYNCHRONOUSLY,
+  // and M32 already returns everything these events' payloads carry during that call; consuming its own
+  // announcement afterward would be redundant. `m19.triage.summary_requested` was a genuine
+  // misdeclaration, not merely unsupported: `events-by-m19.ts`'s own inline comment ("reserved for an
+  // M32 AI call-summary request") directly contradicted M19's own LOCKED spec, cited three separate ways
+  // (the "Consumed by" table, the §4.10 outbox table, and the Lock-status section, all naming M22 for a
+  // caregiver/attending PDF render) plus `packages/types/src/oncall.ts`'s own payload doc comment ("→ M22
+  // renders the caregiver/attending summary document"). Corrected at the source (declaredConsumers
+  // m32→m22) and the pair now lives in the m22 group above.
   {
     module: "m37",
     kind: "no-consumer-surface",

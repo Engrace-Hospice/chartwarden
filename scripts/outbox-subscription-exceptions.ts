@@ -148,29 +148,10 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
   },
   {
     module: "m35",
-    kind: "no-handler",
-    reason:
-      "M2 now catalogues and publishes all four (events-by-m2.ts, organization-lifecycle.ts, §11 D19 — #205 hard-half). Investigated and closed: M34's `tenant_account` lifecycle is a deliberately separate, platform-ops/compliance/destruction-driven state machine (provisioning/onboarding/BAA/DSAR/shred) with no equivalent of `session.created` at all, and the M35 spec's own D19 decision table explicitly rejects 'another module owns suspension authority' as splitting responsibility M2 should hold — redirecting was never the right fix. M35 has no `consumers/` directory (same reason as the `m5.patient.deceased`/`.merged` entry below), so these stay `no-handler` until it grows one.",
-    events: [
-      "m2.organization.activated",
-      "m2.organization.closed",
-      "m2.organization.suspended",
-      "m2.session.created",
-    ],
-  },
-  {
-    module: "m35",
     kind: "record-only-target",
     reason:
       "M5 catalogues both record-only. M35 counts billable patients off them, which would make M5's patient lifecycle a billing input — a coupling M5 has not agreed to and cannot be given by its subscriber.",
     events: ["m5.patient.created", "m5.patient.status_changed"],
-  },
-  {
-    module: "m35",
-    kind: "no-handler",
-    reason:
-      "M35 has no `consumers/` directory. Both events are already deferred by other unbound consumers, so declaring `m35` would cost nothing today and would still be a declaration with nothing behind it. Ends when M35 grows a consumer surface.",
-    events: ["m5.patient.deceased", "m5.patient.merged"],
   },
   // ── F-095 (#208): the thirteen modules rule 6 could not see until discovery stopped being a naming
   // convention in one directory. Same register, same rules; the three kinds below were added for facts

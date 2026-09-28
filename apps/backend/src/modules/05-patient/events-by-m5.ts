@@ -116,7 +116,11 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-141 (#248) — m29 ADDED: M29's own spec is decisive and explicit — "`m5.patient.deceased`
     // consumed via outbox to freeze inbound ADT processing for the decedent and to refuse any
     // post-death A01/A04 events with a typed OperationOutcome" — genuinely undeclared until now.
-    declaredConsumers: ["m23", "m29"],
+    // F-142 (#248) — m35 ADDED: M35's own D21 (locked, exhaustive) names this event among its 8
+    // inbound subscriptions ("skipping `m5.patient.merged` — leaves pseudonym aggregates wrong
+    // post-merge" is D21's own rejected-alternative text for the sibling below, and `deceased` is a
+    // peer in the same D21 list).
+    declaredConsumers: ["m23", "m29", "m35"],
     seamConsumers: ["m36"],
     isOutboxOnly: false,
   },
@@ -126,7 +130,10 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "Two charts merged; document re-attach (M22) + FHIR Patient.link projection (M28, F-115/#248: at request time, not via this event).",
     payloadSchema: Type.Object({ ...corePatient, sourcePatientId: Type.String() }),
-    declaredConsumers: ["m22"],
+    // F-142 (#248) — m35 added: M35's own D21 (locked) names this event explicitly, with its own
+    // rejected-alternative text spelling out why: "skipping `m5.patient.merged` — leaves pseudonym
+    // aggregates wrong post-merge."
+    declaredConsumers: ["m22", "m35"],
     isOutboxOnly: true,
   },
   {

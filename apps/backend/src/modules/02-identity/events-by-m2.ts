@@ -276,7 +276,9 @@ export const M2_OUTBOX_EVENTS: ModuleEventContribution = [
       actorMembershipId: nonEmptyString,
       occurredAt: isoInstant,
     }),
-    declaredConsumers: [],
+    // F-142 (#248) — m35 added: M35's own D21 (locked) names this event among its 8 exhaustive inbound
+    // subscriptions, and this event's own description already states the mechanism.
+    declaredConsumers: ["m35"],
     isOutboxOnly: true,
   },
   {
@@ -290,7 +292,8 @@ export const M2_OUTBOX_EVENTS: ModuleEventContribution = [
       actorMembershipId: nonEmptyString,
       occurredAt: isoInstant,
     }),
-    declaredConsumers: [],
+    // F-142 (#248) — m35 added: same D21 reasoning as `organization.activated` above.
+    declaredConsumers: ["m35"],
     isOutboxOnly: true,
   },
   {
@@ -304,7 +307,8 @@ export const M2_OUTBOX_EVENTS: ModuleEventContribution = [
       actorMembershipId: nonEmptyString,
       occurredAt: isoInstant,
     }),
-    declaredConsumers: [],
+    // F-142 (#248) — m35 added: same D21 reasoning as `organization.activated` above.
+    declaredConsumers: ["m35"],
     isOutboxOnly: true,
   },
   {
@@ -317,7 +321,8 @@ export const M2_OUTBOX_EVENTS: ModuleEventContribution = [
       userId: nonEmptyString,
       organizationId: orgId,
     }),
-    declaredConsumers: [],
+    // F-142 (#248) — m35 added: same D21 reasoning as `organization.activated` above.
+    declaredConsumers: ["m35"],
     isOutboxOnly: true,
   },
 ];

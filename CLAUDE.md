@@ -1264,6 +1264,65 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   `check:boot:platform` run against a freshly migrated, RLS-enforced disposable Postgres. Leaving #248
   open — 287 pairs across 30 modules remain.
 
+  **A third round of four groups (m7, m35, m2, m32), and the cross-checking caught two genuine
+  misdeclarations hiding IN the reverse-direction check itself, not just in the forward pairs
+  (F-142, #248).** **m7 (Care Plan) — 0 kept, 5 dropped, all 5 resolved rather than orphaned.** Two of
+  the five (`m39.consent.dpoa.agent_appointed`/`.agent_removed`) and two more
+  (`m9.assessment.recorded`/`.significant_change`) are documented build-time SEAM PULLS per M7's own
+  locked D7 (a single ABAC seam to M39 for DPOA attribution) and its own "Clinical assessments" text
+  (the registered `LatestAssessmentProvider` seam for M9 scores) — dropped with no m7 replacement. The
+  fifth, `m19.triage_call.care_plan_change_indicated`, was a genuine **misdeclaration**, not merely
+  unsupported: M19's own §11 D8-cascade text is decisive — "M19 emits
+  `m19.triage_call.care_plan_change_indicated` consumed by **M14's IDG packet builder**" — the real
+  consumer was always M14, never M7. Corrected at the source (`events-by-m19.ts`, m7→m14) and the pair
+  now lives in the m14 group rather than vanishing — the m7 group is fully resolved and deleted
+  (the m8/m34/m32 precedent), not left empty. **m32 (AI Platform) — 0 kept, 3 dropped, all 3
+  resolved.** `m16.bereavement.risk_score_computed` and `m8.hearthnote.layer2_enhanced` are the
+  identical shape from the opposite direction: M32's own spec states each relationship runs the
+  OPPOSITE way — M16 and M8 each call INTO M32's registered seam
+  (`BereavementRiskNarrativeProvider.augment`/`NarrativeEnhancementProvider.enhance`) SYNCHRONOUSLY,
+  and M32 already returns everything the corresponding event's payload carries during that call, so
+  consuming its own announcement afterward would be redundant — dropped. The third,
+  `m19.triage.summary_requested`, was the round's sharpest catch: `events-by-m19.ts`'s own inline
+  comment claimed it was "reserved for an M32 AI call-summary request" — flatly contradicted, three
+  separate ways, by this SAME module's own locked spec (the "Consumed by" table: "M19 emits
+  `m19.triage.summary_requested` and **M22 renders the PDF**; M19 has no PDF code"; the §4.10 outbox
+  table: "(M22 consumer)"; the Lock-status section: "M22 caregiver-summary consumer subscribes... at
+  M22 lock") and by `packages/types/src/oncall.ts`'s own payload doc comment ("→ **M22** renders the
+  caregiver/attending summary document"). A code comment asserting a relationship its own module's
+  locked spec names differently, three times, is a documentation bug, not a design decision — corrected
+  at the source (m32→m22) and the pair now lives in the m22 group, genuinely unbuilt on both sides.
+  **m2 (Identity) — 1 kept, 2 dropped.** `m18.evv.device_approved`/`.device_suspended` were dropped: M18's
+  own spec (§2.2.3) states the two rows — `evv_device` and M2's `device_attestation` — are
+  INDEPENDENT, with M18 reading M2's row via a logical FK (a seam/FK pull), never the reverse.
+  `m39.consent.revoked` is kept, decisively — M39's own locked D7 names "M2 portal-session terminate"
+  explicitly, its per-type cascade table names M2 for both consent types, and a "Done means" walkthrough
+  spells out the exact mechanism ("M2 consumer subscribes; iterates active sessions... terminates each
+  session immediately") — the F-131 "kept, not dropped" asymmetry, since M2's own spec is silent only
+  because M39 authored the cascade after M2's spec was written. **m35 (Subscription Billing) — the
+  group's own reason was itself a seam-vs-push trap.** All 5 originally-declared events
+  (`m32.capability.invoked`, `m32.tenant_opt_in.{recorded,revoked}`,
+  `m34.tenant.{provisioned,offboarding_initiated}`) were dropped: M35's own D21 (locked) is exhaustive —
+  "8 inbound subscriptions" — and names none of them; D24 states both relationships are SEAMS, not
+  pushes (M32 calls `UsageMeteringIngest.ingest` directly INTO M35's own published seam; M35 consumes
+  M34's `OnboardingStatusProvider` as a forward-seam deny-stub). The reverse check found the real gap —
+  D21's exhaustive 8-event list (`m2.organization.{activated,suspended,closed}`, `m2.session.created`,
+  `m5.patient.{created,status_changed,deceased,merged}`) had already been diagnosed, event-by-event, by
+  `scripts/outbox-subscription-exceptions.ts`'s own rule-6 "no-handler" buckets — catalog agreement was
+  the only thing missing. Six were corrected at the source (M2's four events, M5's `deceased`/`merged`)
+  and the matching stale exception entries deleted; the other two
+  (`m5.patient.{created,status_changed}`) stay untouched — M35's own D21 marks them
+  `record-only-target`, a first-party M5 refusal ("would make M5's patient lifecycle a billing input, a
+  coupling M5 has not agreed to") that this pass respects rather than overrides.
+  `M35_SUBSCRIBED_EVENT_NAMES` (`packages/types/src/subscription-billing.ts`) rewritten to match — the
+  5 wrong names removed, the list now exactly D21's 8. **Net: 287 → 280** (10 dropped, 8 added — 2
+  reassigned across modules, not new gaps; module count 30 → 28, m7 and m32 fully resolved). Verified:
+  `bun run build` clean, `bun run typecheck` clean (0 errors), full non-live suite 654 files / 9589
+  tests green with no pinned-array assertions to update this pass, `arch:fitness` 38/38
+  (`arch:outbox-bindings` 0 disagreements both directions), and a clean `check:boot:platform` run
+  against a freshly migrated, RLS-enforced disposable Postgres. Leaving #248 open — 280 pairs across 28
+  modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

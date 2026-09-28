@@ -219,7 +219,11 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       membershipId: id,
       approvedByMembershipId: id,
     }),
-    declaredConsumers: ["m2"],
+    // F-142 (#248) — m2 dropped: M18's own spec (§2.2.3) states the two rows are INDEPENDENT —
+    // `evv_device.m2_device_attestation_id` is a logical FK M18 reads FROM M2 (a seam/FK pull at
+    // check-in time), never a push M2 needs back. M2's own spec has zero mentions of `evv_device` or
+    // this approval lifecycle.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -232,7 +236,8 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       membershipId: id,
       reason: Type.String(),
     }),
-    declaredConsumers: ["m2"],
+    // F-142 (#248) — m2 dropped: same reasoning as `device_approved` above.
+    declaredConsumers: [],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

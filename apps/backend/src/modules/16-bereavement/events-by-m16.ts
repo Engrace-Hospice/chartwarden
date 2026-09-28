@@ -310,7 +310,12 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     // `apps/backend/src/modules/30-quality/jobs/m30-jobs.ts`'s registered set calls it yet — a screening-
     // completeness measure is not among the eleven currently bound. The description's "M30's screening
     // measure" describes a capability that exists on the seam, not one wired to a running recompute.
-    declaredConsumers: ["m30", "m32"],
+    // F-142 (#248) — m32 dropped: M32's own spec is decisive the relationship runs the OPPOSITE
+    // direction — "`BereavementRiskNarrativeProvider.augment(...)` consumed when M16's tenant opt-in
+    // flag is on... produces the LLM-augmented risk narrative recorded on `bereavement_risk_score`
+    // ALONGSIDE the deterministic score" — M16 calls INTO M32 synchronously, before this event fires;
+    // M32 already knows everything this event's payload carries.
+    declaredConsumers: ["m30"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

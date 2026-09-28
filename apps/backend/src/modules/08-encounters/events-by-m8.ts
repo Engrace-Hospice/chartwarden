@@ -292,7 +292,11 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       hardBlockedCount: Type.Integer({ minimum: 0 }),
       softWarnCount: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m30", "m32"],
+    // F-142 (#248) — m32 dropped: M32's own spec is decisive the relationship runs the OPPOSITE
+    // direction — M8 calls `NarrativeEnhancementProvider.enhance(...)` synchronously ("this is the v1
+    // reason M32 exists") and M32 already returns the diff/token-count/model-id/template-version
+    // directly to M8 in that call; this event's payload is exactly what M32 already produced.
+    declaredConsumers: ["m30"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

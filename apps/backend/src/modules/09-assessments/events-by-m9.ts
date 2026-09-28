@@ -50,7 +50,10 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared — unlike its
     // M6/M7/M8 siblings this fact has no current M30 seam (no assessment reader exists in
     // apps/backend/src/modules/30-quality/), so this remains a genuine gap, not a seam-pull.
-    declaredConsumers: ["m7", "m14", "m30"],
+    // F-142 (#248) — m7 dropped: M7's own spec (§"Clinical assessments") is decisive — M7 reads M9's
+    // latest scores via the registered `LatestAssessmentProvider` seam at packet-assembly time, never a
+    // push cache to invalidate.
+    declaredConsumers: ["m14", "m30"],
     seamConsumers: ["m33"],
     // ALSO live: server → patient room live chart refresh (§4.4).
     isOutboxOnly: false,
@@ -87,7 +90,10 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       thresholdValue: Type.Union([Type.Number(), Type.Null()]),
       severity,
     }),
-    declaredConsumers: ["m7", "m11", "m14"],
+    // F-142 (#248) — m7 dropped: same `LatestAssessmentProvider` seam-pull reasoning as
+    // `assessment.recorded` above — nothing in M7's spec distinguishes significant-change handling
+    // from the general latest-score read.
+    declaredConsumers: ["m11", "m14"],
     seamConsumers: ["m36"],
     // ALSO live: server → patient room + care-team channel live alert banner (§4.4).
     isOutboxOnly: false,

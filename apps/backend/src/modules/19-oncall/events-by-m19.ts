@@ -21,10 +21,11 @@
 // nothing published it. `consumers/bindings.ts` (F-043/#103) now does — the D10 `no_coverage` outcome
 // publishes it INSTEAD of a call, since `triage_call.on_call_shift_id` is NOT NULL and a thrown DLQ entry
 // would park a patient-welfare check where no clinician would see it. `m19.triage.summary_requested`
-// still has no producer at all: reserved for a future M32 AI call-summary request, its schema is the same
-// conservative call-scoped base every other `m19.triage_call.*` event carries — a future implementer may
-// need to widen it, but a closed, too-narrow schema here is strictly safer than an unregistered event
-// name.
+// still has no producer at all: reserved for the M22 caregiver/attending PDF-summary render request this
+// module's own spec names (F-142/#248 corrected the declared consumer from m32 to m22 — a prior
+// documentation error), its schema is the same conservative call-scoped base every other
+// `m19.triage_call.*` event carries — a future implementer may need to widen it, but a closed,
+// too-narrow schema here is strictly safer than an unregistered event name.
 import { Type } from "@sinclair/typebox";
 import type { ModuleEventContribution } from "@wardenx/types";
 
@@ -163,7 +164,10 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
       patientId: nullableId,
       changeKind: id,
     }),
-    declaredConsumers: ["m7"],
+    // F-142 (#248) — m7 corrected to m14: this module's own §11 D8-cascade table (line 117) is
+    // decisive — "M19 emits `m19.triage_call.care_plan_change_indicated` consumed by M14's IDG packet
+    // builder so the next IDG agenda includes it" — the real consumer was always M14, not M7.
+    declaredConsumers: ["m14"],
     isOutboxOnly: true,
   },
   {
@@ -236,9 +240,16 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m19.triage.summary_requested",
     moduleOwner: "m19",
     description:
-      "Reserved in the M19_EVENT_NAMES taxonomy for an M32 AI call-summary request; no producer exists yet. Schema kept to the conservative call-scoped base shared by every other `m19.triage_call.*` event.",
+      "A triage call generated a patient-facing summary (caregiver/attending instructions); M22 renders the PDF, M19 has no PDF code. No producer exists yet. Schema kept to the conservative call-scoped base shared by every other `m19.triage_call.*` event.",
     payloadSchema: Type.Object(callEventBase),
-    declaredConsumers: ["m32"],
+    // F-142 (#248) — corrected m32 to m22: this file's own prior comment ("reserved for an M32 AI
+    // call-summary request") was a documentation error, contradicted three separate ways by this
+    // module's own locked spec — the §"Consumed by" table (module 22: "M19 emits
+    // `m19.triage.summary_requested` and M22 renders the PDF; M19 has no PDF code"), the §4.10 outbox
+    // events table ("(M22 consumer)"), and the Lock-status section ("M22 caregiver-summary consumer
+    // subscribes to `m19.triage.summary_requested` at M22 lock") — and by `packages/types/src/
+    // oncall.ts`'s own payload doc comment ("→ M22 renders the caregiver/attending summary document").
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
 ];

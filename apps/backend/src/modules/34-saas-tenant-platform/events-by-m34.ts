@@ -60,7 +60,11 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       legalBusinessName: Type.String(),
       billingContactEmail: Type.String(),
     }),
-    declaredConsumers: ["m35"],
+    // F-142 (#248) — m35 dropped: M35's own D19/D24 (locked) route tenant-lifecycle integration
+    // through M2's organization outbox events, not M34's — M35's own D21 exhaustive subscription list
+    // names `m2.organization.*`/`m2.session.created`/`m5.patient.*` only, and D24 states M35 does not
+    // depend on M34 at all (M34 depends on M35, not the reverse; ratified by ADR-0025).
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -172,7 +176,8 @@ export const M34_OUTBOX_EVENTS: ModuleEventContribution = [
       initiatedByMembershipId: id,
       initiatedAt: isoInstant,
     }),
-    declaredConsumers: ["m35"],
+    // F-142 (#248) — m35 dropped: same D19/D21/D24 reasoning as `tenant.provisioned` above.
+    declaredConsumers: [],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },

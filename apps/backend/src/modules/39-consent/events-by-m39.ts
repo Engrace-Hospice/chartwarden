@@ -194,7 +194,9 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-129 (#248) — m14 dropped: the packet's `patientCover.activeDpoa` is documented in
     // `packages/idg/src/packet/builder.ts`'s `PacketCoverInput` as read fresh "from M5 `PatientReader` +
     // M6 recert/F2F reader + M7/M39 (raw, pre-redaction)" at build time — a seam pull, not a push cache.
-    declaredConsumers: ["m7", "m11"],
+    // F-142 (#248) — m7 dropped: M7's own D7 (locked) is decisive — "single ABAC seam to Module 39...
+    // DPOA attribution captured at write time via `acting_consent_id`" — the same seam-pull shape.
+    declaredConsumers: ["m11"],
     isOutboxOnly: true,
   },
   {
@@ -209,7 +211,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       agentKind: Type.String(),
     }),
     // F-129 (#248) — m14 dropped: same reasoning as `dpoa.agent_appointed` above (build-time seam pull).
-    declaredConsumers: ["m7", "m11"],
+    // F-142 (#248) — m7 dropped: same D7 seam-pull reasoning as `dpoa.agent_appointed` above.
+    declaredConsumers: ["m11"],
     isOutboxOnly: true,
   },
   {
