@@ -109,6 +109,7 @@ export function ReferralDetail(): JSX.Element {
   const resolved =
     r.patientResolutionStatus === "matched" || r.patientResolutionStatus === "created";
   const terminal = ["declined", "duplicate", "withdrawn", "converted"].includes(r.status);
+  const canEditReferral = ["received", "under_review", "pending_information"].includes(r.status);
   const canReview = r.status === "received" || r.status === "pending_information";
   const canPending = r.status === "under_review";
   const canQualify = r.status === "under_review" && r.qualificationBlockers.length === 0;
@@ -216,6 +217,7 @@ export function ReferralDetail(): JSX.Element {
                   Priority
                   <select
                     value={r.priority}
+                    disabled={!canEditReferral || busy === "priority"}
                     onChange={(ev) =>
                       void run("priority", async () => {
                         await referralCommand(client, r.id, "priority", {
@@ -420,6 +422,7 @@ export function ReferralDetail(): JSX.Element {
                 Organization
                 <input
                   value={edit.referrerOrganization}
+                  disabled={!canEditReferral}
                   onChange={(ev) => setEdit({ ...edit, referrerOrganization: ev.target.value })}
                 />
               </label>
@@ -427,6 +430,7 @@ export function ReferralDetail(): JSX.Element {
                 Referrer
                 <input
                   value={edit.referrerName}
+                  disabled={!canEditReferral}
                   onChange={(ev) => setEdit({ ...edit, referrerName: ev.target.value })}
                 />
               </label>
@@ -434,6 +438,7 @@ export function ReferralDetail(): JSX.Element {
                 Phone
                 <input
                   value={edit.referrerPhone}
+                  disabled={!canEditReferral}
                   onChange={(ev) => setEdit({ ...edit, referrerPhone: ev.target.value })}
                 />
               </label>
@@ -453,13 +458,14 @@ export function ReferralDetail(): JSX.Element {
               <textarea
                 value={edit.referringDxText}
                 rows={4}
+                disabled={!canEditReferral}
                 onChange={(ev) => setEdit({ ...edit, referringDxText: ev.target.value })}
               />
             </label>
             <Button
               size="sm"
               tone="secondary"
-              disabled={terminal || busy === "save-info"}
+              disabled={!canEditReferral || busy === "save-info"}
               onClick={() =>
                 void run("save-info", async () => {
                   await patchReferral(client, r.id, {

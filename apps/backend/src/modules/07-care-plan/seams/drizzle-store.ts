@@ -101,21 +101,27 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
   async function loadActivePlan(
     tx: DbClient,
     patientId: string,
+    admissionId?: string,
   ): Promise<typeof CP.$inferSelect | null> {
     const [row] = await tx
       .select()
       .from(CP)
-      .where(and(eq(CP.patientId, patientId), ne(CP.status, "discharged")))
-      .orderBy(asc(CP.createdAt))
+      .where(
+        and(
+          eq(CP.patientId, patientId),
+          ne(CP.status, "discharged"),
+          ...(admissionId ? [eq(CP.admissionId, admissionId)] : []),
+        ),
+      )
       .limit(1);
     return row ?? null;
   }
 
   return {
-    async activeCarePlanElements(patientId): Promise<CarePlanElementsRecord | null> {
+    async activeCarePlanElements(patientId, admissionId): Promise<CarePlanElementsRecord | null> {
       return withOrgContextFromRequest(db, async (tx) => {
         const t = tx as unknown as DbClient;
-        const plan = await loadActivePlan(t, patientId);
+        const plan = await loadActivePlan(t, patientId, admissionId);
         if (!plan) return null;
         // Full element sets, every status — the reader owns the active/discipline filters (§7.8), so
         // the store must not pre-narrow (mirrors the in-memory record shape).

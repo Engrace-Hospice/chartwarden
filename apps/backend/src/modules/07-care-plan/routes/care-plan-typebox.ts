@@ -166,6 +166,7 @@ export const VersionListQuerySchema = Type.Object({
 });
 export const RelevantElementsQuerySchema = Type.Object({
   patientId: Type.String({ format: "uuid" }),
+  admissionId: Type.Optional(Type.String({ format: "uuid" })),
   encounterType: Type.Optional(Type.String({ maxLength: 64 })),
   discipline: Type.Optional(Type.String({ maxLength: 64 })),
 });

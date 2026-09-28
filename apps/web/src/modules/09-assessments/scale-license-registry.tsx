@@ -3,6 +3,7 @@ import {
   EmptyState,
   Glyph,
   LoadingSpinner,
+  Modal,
   OffsetPagination,
   PageHeader,
   StatusPill,
@@ -13,8 +14,8 @@ import {
 // Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
 // One row per (org × scale): status chip (active / pending_renewal / expired), vendor, effective/expiry dates,
 // seats. Expired licensed scales are auto-disabled for new writes (D3) — historical reads are preserved. The
-// record/renew write action (§5.2) fills in as its write path hardens. Reads GET /api/v1/admin/scales/licenses
-// via the typed client; the server enforces org-admin scope (ADR-0030 — no authz on the frontend). Leaves only.
+// The Record license action uses POST /api/v1/admin/scales/licenses; the server enforces org-admin scope
+// (ADR-0030 — no authz on the frontend). Leaves only.
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
 import { LICENSE_TONE, stateLabel } from "./assessment-status";
@@ -30,6 +31,22 @@ interface LicenseRow {
 }
 
 const PAGE_SIZES = [10, 25, 50] as const;
+const LICENSED_SCALES = ["pps", "fast", "gds", "braden", "morse"] as const;
+
+type LicenseDraft = {
+  scaleType: (typeof LICENSED_SCALES)[number];
+  vendor: string;
+  effectiveDate: string;
+  expiresAt: string;
+};
+
+const today = (): string => new Date().toISOString().slice(0, 10);
+const newDraft = (): LicenseDraft => ({
+  scaleType: "fast",
+  vendor: "",
+  effectiveDate: today(),
+  expiresAt: "",
+});
 
 export function ScaleLicenseRegistry(): JSX.Element {
   const client = useApiClient();
@@ -42,6 +59,9 @@ export function ScaleLicenseRegistry(): JSX.Element {
   >("all");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const [recording, setRecording] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState<LicenseDraft>(newDraft);
 
   useEffect(() => {
     let active = true;
@@ -74,186 +94,309 @@ export function ScaleLicenseRegistry(): JSX.Element {
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const activePage = Math.min(page, pageCount);
   const paged = filtered.slice((activePage - 1) * pageSize, activePage * pageSize);
+  const invalidDates = draft.expiresAt !== "" && draft.expiresAt < draft.effectiveDate;
+
+  async function saveLicense(): Promise<void> {
+    if (!draft.vendor.trim() || !draft.expiresAt || invalidDates) return;
+    setSaving(true);
+    setError(null);
+    const { data, error: err } = await client.POST("/api/v1/admin/scales/licenses", {
+      body: {
+        scaleType: draft.scaleType,
+        vendor: draft.vendor.trim(),
+        effectiveDate: draft.effectiveDate,
+        expiresAt: draft.expiresAt,
+      },
+    });
+    setSaving(false);
+    if (err || !data) {
+      setError(
+        "Could not record the license. Confirm the vendor, dates, and your administrator access.",
+      );
+      return;
+    }
+    setItems((current) => [...current, data as LicenseRow]);
+    setRecording(false);
+    setDraft(newDraft());
+  }
 
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader title="Scale Licenses" breadcrumb="Admin / Assessments">
-          <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
-            Review licensed clinical scales, vendor coverage, seat limits, and renewal state.
-          </div>
-        </PageHeader>
-      }
-      filters={
-        <div style={filterShellStyle}>
-          {error ? (
-            <div role="alert" style={errorBannerStyle}>
-              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
-                <Glyph name="alert" size={16} />
-                <span>{error}</span>
+    <>
+      <WorkQueueLayout
+        header={
+          <PageHeader title="Scale Licenses" breadcrumb="Admin / Assessments">
+            <div style={{ color: "var(--color-on-surface-variant)", fontSize: "0.875rem" }}>
+              Review licensed clinical scales, vendor coverage, seat limits, and renewal state.
+            </div>
+            <div style={{ marginTop: "0.75rem" }}>
+              <Button
+                onClick={() => {
+                  setError(null);
+                  setDraft(newDraft());
+                  setRecording(true);
+                }}
+              >
+                Record license
+              </Button>
+            </div>
+          </PageHeader>
+        }
+        filters={
+          <div style={filterShellStyle}>
+            {error ? (
+              <div role="alert" style={errorBannerStyle}>
+                <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                  <Glyph name="alert" size={16} />
+                  <span>{error}</span>
+                </div>
+                <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
+                  x
+                </button>
               </div>
-              <button type="button" onClick={() => setError(null)} style={dismissButtonStyle}>
-                x
-              </button>
-            </div>
-          ) : null}
+            ) : null}
 
-          <div style={toolbarStyle}>
-            <div style={tabShellStyle}>
-              <button type="button" style={tabButtonStyle(true)}>
-                Licenses ({filtered.length})
-              </button>
-            </div>
+            <div style={toolbarStyle}>
+              <div style={tabShellStyle}>
+                <button type="button" style={tabButtonStyle(true)}>
+                  Licenses ({filtered.length})
+                </button>
+              </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}>
-              <div style={{ position: "relative", minWidth: "15rem" }}>
-                <input
-                  type="search"
-                  aria-label="Search licenses"
-                  placeholder="Search scale or vendor..."
-                  value={query}
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem", flexWrap: "wrap" }}
+              >
+                <div style={{ position: "relative", minWidth: "15rem" }}>
+                  <input
+                    type="search"
+                    aria-label="Search licenses"
+                    placeholder="Search scale or vendor..."
+                    value={query}
+                    onChange={(e) => {
+                      setQuery(e.target.value);
+                      setPage(1);
+                    }}
+                    style={{
+                      width: "100%",
+                      paddingLeft: "2rem",
+                      height: "2.25rem",
+                      fontSize: "0.85rem",
+                    }}
+                  />
+                  <div style={searchIconStyle}>
+                    <Glyph name="search" size={14} />
+                  </div>
+                </div>
+                <select
+                  aria-label="Filter by license status"
+                  value={statusFilter}
                   onChange={(e) => {
-                    setQuery(e.target.value);
+                    setStatusFilter(e.target.value as typeof statusFilter);
                     setPage(1);
                   }}
-                  style={{
-                    width: "100%",
-                    paddingLeft: "2rem",
-                    height: "2.25rem",
-                    fontSize: "0.85rem",
-                  }}
-                />
-                <div style={searchIconStyle}>
-                  <Glyph name="search" size={14} />
-                </div>
+                  style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+                >
+                  <option value="all">Status: All</option>
+                  <option value="active">Active</option>
+                  <option value="pending_renewal">Pending renewal</option>
+                  <option value="expired">Expired</option>
+                </select>
+                {hasActiveFilters ? (
+                  <Button
+                    size="sm"
+                    tone="tertiary"
+                    onClick={() => {
+                      setQuery("");
+                      setStatusFilter("all");
+                      setPage(1);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                ) : null}
               </div>
-              <select
-                aria-label="Filter by license status"
-                value={statusFilter}
-                onChange={(e) => {
-                  setStatusFilter(e.target.value as typeof statusFilter);
+            </div>
+          </div>
+        }
+        table={
+          loading ? (
+            <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
+              <LoadingSpinner />
+            </div>
+          ) : items.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title="No licenses"
+                description="No scale licenses are recorded for this organization."
+              />
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: "2rem 1.5rem" }}>
+              <EmptyState
+                title="No matching licenses"
+                description="Try adjusting the scale, vendor, or status filters."
+                action={
+                  <Button
+                    tone="secondary"
+                    size="sm"
+                    onClick={() => {
+                      setQuery("");
+                      setStatusFilter("all");
+                      setPage(1);
+                    }}
+                  >
+                    Clear filters
+                  </Button>
+                }
+              />
+            </div>
+          ) : (
+            <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem 1.5rem" }}>
+              <table style={tableStyle}>
+                <thead>
+                  <tr style={tableHeaderRowStyle}>
+                    <th style={{ ...thStyle, width: "24%" }}>Scale</th>
+                    <th style={{ ...thStyle, width: "24%" }}>Vendor</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Effective</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Expires</th>
+                    <th style={{ ...thStyle, width: "10%" }}>Seats</th>
+                    <th style={{ ...thStyle, width: "14%" }}>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {paged.map((license) => (
+                    <tr
+                      key={license.id}
+                      style={{ ...tableRowStyle, opacity: license.status === "expired" ? 0.66 : 1 }}
+                    >
+                      <td style={tdStyle}>
+                        <div style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>
+                          {formatScale(license.scaleType)}
+                        </div>
+                        <div className="wx-data-md" style={mutedCodeStyle}>
+                          {license.scaleType}
+                        </div>
+                      </td>
+                      <td style={tdStyle}>{license.vendor}</td>
+                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                        {formatDate(license.effectiveDate)}
+                      </td>
+                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                        {formatDate(license.expiresAt)}
+                      </td>
+                      <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
+                        {license.seats ?? "—"}
+                      </td>
+                      <td style={tdStyle}>
+                        <StatusPill
+                          label={stateLabel(license.status)}
+                          tone={LICENSE_TONE[license.status] ?? "neutral"}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <OffsetPagination
+                page={activePage}
+                pageSize={pageSize}
+                totalItems={filtered.length}
+                onPageChange={setPage}
+                onPageSizeChange={(next) => {
+                  setPageSize(next);
                   setPage(1);
                 }}
-                style={{ height: "2.25rem", fontSize: "0.85rem", cursor: "pointer" }}
+                pageSizeOptions={PAGE_SIZES}
+                noun="licenses"
+              />
+            </div>
+          )
+        }
+        fullPageScroll
+      />
+
+      {recording ? (
+        <Modal
+          open
+          onClose={saving ? undefined : () => setRecording(false)}
+          ariaLabel="Record scale license"
+          width="34rem"
+        >
+          <div style={modalBodyStyle}>
+            <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Record scale license</h2>
+            <p style={modalHintStyle}>
+              Record the agency’s vendor licence before clinicians capture this proprietary
+              instrument.
+            </p>
+            <label style={fieldStyle}>
+              Scale
+              <select
+                value={draft.scaleType}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    scaleType: event.target.value as LicenseDraft["scaleType"],
+                  }))
+                }
               >
-                <option value="all">Status: All</option>
-                <option value="active">Active</option>
-                <option value="pending_renewal">Pending renewal</option>
-                <option value="expired">Expired</option>
+                {LICENSED_SCALES.map((scaleType) => (
+                  <option key={scaleType} value={scaleType}>
+                    {formatScale(scaleType)}
+                  </option>
+                ))}
               </select>
-              {hasActiveFilters ? (
-                <Button
-                  size="sm"
-                  tone="tertiary"
-                  onClick={() => {
-                    setQuery("");
-                    setStatusFilter("all");
-                    setPage(1);
-                  }}
-                >
-                  Clear
-                </Button>
-              ) : null}
+            </label>
+            <label style={fieldStyle}>
+              Vendor / licence holder
+              <input
+                value={draft.vendor}
+                onChange={(event) =>
+                  setDraft((current) => ({ ...current, vendor: event.target.value }))
+                }
+                maxLength={200}
+              />
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+              <label style={fieldStyle}>
+                Effective date
+                <input
+                  type="date"
+                  value={draft.effectiveDate}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, effectiveDate: event.target.value }))
+                  }
+                />
+              </label>
+              <label style={fieldStyle}>
+                Expiry date
+                <input
+                  type="date"
+                  value={draft.expiresAt}
+                  onChange={(event) =>
+                    setDraft((current) => ({ ...current, expiresAt: event.target.value }))
+                  }
+                />
+              </label>
+            </div>
+            {invalidDates ? (
+              <p role="alert" style={errorTextStyle}>
+                The expiry date must be on or after the effective date.
+              </p>
+            ) : null}
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "0.5rem" }}>
+              <Button tone="tertiary" disabled={saving} onClick={() => setRecording(false)}>
+                Cancel
+              </Button>
+              <Button
+                disabled={saving || !draft.vendor.trim() || !draft.expiresAt || invalidDates}
+                onClick={() => void saveLicense()}
+              >
+                {saving ? "Recording…" : "Record license"}
+              </Button>
             </div>
           </div>
-        </div>
-      }
-      table={
-        loading ? (
-          <div style={{ padding: "3rem 1.5rem", textAlign: "center" }}>
-            <LoadingSpinner />
-          </div>
-        ) : items.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title="No licenses"
-              description="No scale licenses are recorded for this organization."
-            />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{ padding: "2rem 1.5rem" }}>
-            <EmptyState
-              title="No matching licenses"
-              description="Try adjusting the scale, vendor, or status filters."
-              action={
-                <Button
-                  tone="secondary"
-                  size="sm"
-                  onClick={() => {
-                    setQuery("");
-                    setStatusFilter("all");
-                    setPage(1);
-                  }}
-                >
-                  Clear filters
-                </Button>
-              }
-            />
-          </div>
-        ) : (
-          <div style={{ width: "100%", overflowX: "auto", padding: "0 1.5rem 1.5rem 1.5rem" }}>
-            <table style={tableStyle}>
-              <thead>
-                <tr style={tableHeaderRowStyle}>
-                  <th style={{ ...thStyle, width: "24%" }}>Scale</th>
-                  <th style={{ ...thStyle, width: "24%" }}>Vendor</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Effective</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Expires</th>
-                  <th style={{ ...thStyle, width: "10%" }}>Seats</th>
-                  <th style={{ ...thStyle, width: "14%" }}>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paged.map((license) => (
-                  <tr
-                    key={license.id}
-                    style={{ ...tableRowStyle, opacity: license.status === "expired" ? 0.66 : 1 }}
-                  >
-                    <td style={tdStyle}>
-                      <div style={{ fontWeight: 600, color: "var(--color-on-surface)" }}>
-                        {formatScale(license.scaleType)}
-                      </div>
-                      <div className="wx-data-md" style={mutedCodeStyle}>
-                        {license.scaleType}
-                      </div>
-                    </td>
-                    <td style={tdStyle}>{license.vendor}</td>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                      {formatDate(license.effectiveDate)}
-                    </td>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                      {formatDate(license.expiresAt)}
-                    </td>
-                    <td style={{ ...tdStyle, fontVariantNumeric: "tabular-nums" }}>
-                      {license.seats ?? "—"}
-                    </td>
-                    <td style={tdStyle}>
-                      <StatusPill
-                        label={stateLabel(license.status)}
-                        tone={LICENSE_TONE[license.status] ?? "neutral"}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            <OffsetPagination
-              page={activePage}
-              pageSize={pageSize}
-              totalItems={filtered.length}
-              onPageChange={setPage}
-              onPageSizeChange={(next) => {
-                setPageSize(next);
-                setPage(1);
-              }}
-              pageSizeOptions={PAGE_SIZES}
-              noun="licenses"
-            />
-          </div>
-        )
-      }
-      fullPageScroll
-    />
+        </Modal>
+      ) : null}
+    </>
   );
 }
 
@@ -266,6 +409,27 @@ function formatDate(value: string): string {
   if (Number.isNaN(d.getTime())) return value.slice(0, 10) || "—";
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
+
+const modalBodyStyle = {
+  padding: "1.5rem",
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.875rem",
+};
+const modalHintStyle = {
+  margin: 0,
+  fontSize: "0.8rem",
+  color: "var(--color-on-surface-variant)",
+};
+const fieldStyle = {
+  display: "flex",
+  flexDirection: "column" as const,
+  gap: "0.35rem",
+  fontSize: "0.85rem",
+  fontWeight: 600,
+  color: "var(--color-on-surface)",
+};
+const errorTextStyle = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" };
 
 const filterShellStyle = {
   display: "flex",

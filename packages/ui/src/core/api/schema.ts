@@ -18785,6 +18785,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/verbal-orders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create an order and record its verbal receipt atomically */
+        post: operations["postApiV1Verbalorders"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/visit-proposals": {
         parameters: {
             query?: never;
@@ -32165,6 +32182,7 @@ export interface operations {
         parameters: {
             query: {
                 patientId: string;
+                admissionId?: string;
                 encounterType?: string;
                 discipline?: string;
             };
@@ -45792,6 +45810,7 @@ export interface operations {
         parameters: {
             query: {
                 patientId: string;
+                admissionId?: string;
                 encounterType?: string;
                 discipline?: string;
             };
@@ -52423,6 +52442,15 @@ export interface operations {
                     } & {
                         kindVersion: string;
                         data: unknown;
+                        verbalOrder: {
+                            status: string;
+                            receivedAt: string;
+                            effectiveAt: string;
+                            deadlineAt: string;
+                            signedAt: string | null;
+                            readBackVerified: boolean;
+                            attestation: string;
+                        } | null;
                         requirements: {
                             code: "clinical_details" | "rn_cosignature" | "physician_signature" | "verbal_signature";
                             label: string;
@@ -72898,6 +72926,89 @@ export interface operations {
                 content: {
                     "application/json": {
                         deactivated: boolean;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1Verbalorders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    order: {
+                        /** Format: uuid */
+                        patientId: string;
+                        /** Format: uuid */
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        drafterDiscipline: string;
+                        data: unknown;
+                        priority?: "routine" | "stat" | "asap";
+                        indicationText?: string;
+                        /** Format: uuid */
+                        orderingPhysicianMdmId: string;
+                        /** Format: uuid */
+                        sourceEncounterId?: string;
+                        /** Format: uuid */
+                        triggeringAssessmentId?: string;
+                        /** Format: uuid */
+                        triggeringHopeAssessmentId?: string;
+                        /** Format: uuid */
+                        replacesOrderId?: string;
+                    };
+                    verbal: {
+                        recorderDiscipline: string;
+                        verbalAttestation: string;
+                        readBackVerified: boolean;
+                        /** Format: date-time */
+                        effectiveAt: string;
+                        /** Format: date-time */
+                        receivedAt: string;
+                        /** Format: uuid */
+                        orderingPhysicianMdmId: string;
+                    };
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        id: string;
+                        patientId: string;
+                        admissionId: string;
+                        kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                        status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                        priority: "routine" | "stat" | "asap";
+                        version: number;
+                        drafterMembershipId: string;
+                        drafterDiscipline: string;
+                        orderingPhysicianMdmId: string;
+                        cosignRequired: boolean;
+                        cosignStatus: "pending" | "attached" | null;
+                        transmissionStatus: string;
+                        resultsStatus: string;
+                        verbalDeadlineAt: string | null;
+                        discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                        replacesOrderId: string | null;
+                        triggeringAssessmentId: string | null;
+                        triggeringHopeAssessmentId: string | null;
+                        signedAt: string | null;
+                        signedBy: string | null;
+                        completedAt: string | null;
+                        createdAt: string;
                     };
                 };
             };

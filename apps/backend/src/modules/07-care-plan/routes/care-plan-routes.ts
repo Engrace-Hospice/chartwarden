@@ -519,6 +519,7 @@ export function registerCarePlanRoutes(app: FastifyInstance, deps: CarePlanRoute
         q.patientId,
         q.encounterType ?? "routine",
         (q.discipline ?? "rn") as InterventionDiscipline,
+        q.admissionId,
       );
     },
   );

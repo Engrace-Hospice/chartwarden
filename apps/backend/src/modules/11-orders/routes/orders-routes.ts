@@ -22,6 +22,7 @@ import {
   CorrectOrderRequest,
   CosignRequest,
   CreateOrderRequest,
+  CreateVerbalOrderRequest,
   CreateStandingOrderRequest,
   DiscontinueRequest,
   DiscontinueStandingOrderRequest,
@@ -99,8 +100,9 @@ const ADMIN_REGEN = P("orders.admin.regenerate_verbal_timer");
 // §4.7 — the three ABAC predicates M11 owns. The author target lifts `kind` from the body; the sign / cosign
 // targets default to the `:id` route param (the resolver loads the order's kind / cosign axis).
 const kindTarget = (request: { readonly body?: unknown }): AbacTarget => {
-  const body = request.body as { kind?: unknown } | undefined;
-  return typeof body?.kind === "string" ? { kind: body.kind } : {};
+  const body = request.body as { kind?: unknown; order?: { kind?: unknown } } | undefined;
+  const kind = body?.kind ?? body?.order?.kind;
+  return typeof kind === "string" ? { kind } : {};
 };
 const ABAC_DRAFT = requireAbac("orders.draft", "discipline_can_order", {
   getTarget: kindTarget,
@@ -229,6 +231,16 @@ export function registerOrderRoutes(
       },
       await detailActorOf(request),
     );
+    return reply.code(201).send(res);
+  });
+
+  app.post("/api/v1/verbal-orders", { preHandler: [DRAFT, ABAC_DRAFT, VERBAL] }, async (request, reply) => {
+    const { organizationId, userId } = actorOf(request);
+    const body = parse(CreateVerbalOrderRequest, request.body);
+    const res = await service.createVerbalOrder(organizationId, userId, {
+      order: body.order,
+      verbal: body.verbal,
+    }, await detailActorOf(request));
     return reply.code(201).send(res);
   });
 

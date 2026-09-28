@@ -1289,6 +1289,7 @@ import {
   CorrectOrderRequest as M11CorrectOrderRequest,
   CosignRequest as M11CosignRequest,
   CreateOrderRequest as M11CreateOrderRequest,
+  CreateVerbalOrderRequest as M11CreateVerbalOrderRequest,
   CreateStandingOrderRequest as M11CreateStandingOrderRequest,
   DiscontinueRequest as M11DiscontinueRequest,
   DiscontinueStandingOrderRequest as M11DiscontinueStandingOrderRequest,
@@ -4248,6 +4249,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M11OrderViewResponseSchema,
     // The route sends `reply.code(201)`; the contract declared only a 200, so the generated client had
     // no typed slot for what this actually returns (#91 / F-031's finding, one module over).
+    status: 201,
+  },
+  "POST /api/v1/verbal-orders": {
+    summary: "Create an order and record its verbal receipt atomically",
+    body: M11CreateVerbalOrderRequest,
+    response: M11OrderViewResponseSchema,
     status: 201,
   },
   "GET /api/v1/orders/:id": {

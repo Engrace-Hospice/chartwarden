@@ -316,11 +316,6 @@ export function OptionRows({
                 aria-label={o.label}
                 onChange={() => onChange(o.valueCode)}
               />
-              {/^[0-9A-Z^]{1,2}$/.test(o.valueCode) ? (
-                <span className="wx-option-code" aria-hidden>
-                  {o.valueCode}
-                </span>
-              ) : null}
               <span>{o.label}</span>
             </label>
           );

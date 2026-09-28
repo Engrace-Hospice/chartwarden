@@ -489,14 +489,15 @@ function ChartActions({
     document.addEventListener("pointerdown", onDown);
     return () => document.removeEventListener("pointerdown", onDown);
   }, [open]);
-  const items: { label: string; to: string }[] = [
+  const hopeAvailable = admission?.state === "active";
+  const items: { label: string; to: string; disabled?: boolean; hint?: string }[] = [
     ...(admission
       ? [
           {
             label: "View admission",
             to: `/admissions/${admission.id}`,
           },
-          { label: "HOPE", to: `/admissions/${admission.id}/hope` },
+          { label: "HOPE", to: `/admissions/${admission.id}/hope`, disabled: !hopeAvailable, hint: "Activate this patient's admission before accessing HOPE." },
         ]
       : []),
     {
@@ -514,7 +515,7 @@ function ChartActions({
       label: "Election & certification",
       to: `/patients/${patientId}/election-certification`,
     },
-    { label: "HOPE assessments", to: `/patients/${patientId}/hope` },
+    { label: "HOPE assessments", to: `/patients/${patientId}/hope`, disabled: !hopeAvailable, hint: "Activate this patient's admission before accessing HOPE." },
     {
       label: "Discipline plans",
       to: `/patients/${patientId}/discipline-plans`,
@@ -539,14 +540,12 @@ function ChartActions({
             role="menu"
             style={{ minWidth: "15rem" }}
           >
-            {items.map((it) => (
-              <Link
-                key={it.to}
-                to={it.to}
-                role="menuitem"
-                className="wx-actor-menu-item"
-                onClick={() => setOpen(false)}
-              >
+            {items.map((it) => it.disabled ? (
+              <span key={it.to} role="menuitem" aria-disabled="true" className="wx-actor-menu-item" title={it.hint} style={{ opacity: 0.5, cursor: "not-allowed" }}>
+                {it.label} — {it.hint}
+              </span>
+            ) : (
+              <Link key={it.to} to={it.to} role="menuitem" className="wx-actor-menu-item" onClick={() => setOpen(false)}>
                 {it.label}
               </Link>
             ))}

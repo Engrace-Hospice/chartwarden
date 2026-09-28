@@ -291,9 +291,11 @@ export function AdmissionDetail(): JSX.Element {
       client.GET("/api/v1/admissions/{id}/readiness", {
         params: { path: { id } },
       }),
-      client.GET("/api/v1/admissions/{admissionId}/hope", {
-        params: { path: { admissionId: id } },
-      }),
+      detail.state === "active"
+        ? client.GET("/api/v1/admissions/{admissionId}/hope", {
+            params: { path: { admissionId: id } },
+          })
+        : Promise.resolve({ data: null }),
       detail.patientId
         ? client.GET("/api/v1/patients/{patientId}/election-certification", {
             params: { path: { patientId: detail.patientId } },
@@ -1075,6 +1077,7 @@ export function AdmissionDetail(): JSX.Element {
             <HopeEntry
               summary={hope}
               admissionId={admission.id}
+              active={admission.state === "active"}
               onOpen={() => navigate(`/admissions/${admission.id}/hope`)}
             />
           </Section>
@@ -1266,6 +1269,7 @@ export function AdmissionDetail(): JSX.Element {
           <HopeEntry
             summary={hope}
             admissionId={admission.id}
+            active={admission.state === "active"}
             onOpen={() => navigate(`/admissions/${admission.id}/hope`)}
           />
         </Section>
@@ -1880,12 +1884,25 @@ export function AdmissionDetail(): JSX.Element {
 function HopeEntry({
   summary,
   admissionId,
+  active,
   onOpen,
 }: {
   summary: HopeSummary | null;
   admissionId: string;
+  active: boolean;
   onOpen: () => void;
 }): JSX.Element {
+  if (!active) {
+    return (
+      <div style={hopeEntryStyle}>
+        <div>
+          <h3 style={miniTitleStyle}>HOPE workflow</h3>
+          <p style={emptyTextStyle}>Activate this admission before accessing or creating HOPE assessments.</p>
+        </div>
+        {/* <button type="button" disabled style={ghostBtn}>Open HOPE</button> */}
+      </div>
+    );
+  }
   if (!summary) {
     return (
       <div style={hopeEntryStyle}>

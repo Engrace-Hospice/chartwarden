@@ -251,7 +251,12 @@ function err(message: string) {
 }
 
 function clientFor(
-  input: { workspace?: unknown; review?: unknown; patchError?: string } = {},
+  input: {
+    workspace?: unknown;
+    review?: unknown;
+    assessment?: unknown;
+    patchError?: string;
+  } = {},
 ): ApiClient {
   return {
     GET: vi.fn(async (path: string) => {
@@ -260,7 +265,7 @@ function clientFor(
       if (path.includes("/patients/{patientId}/hope/assessments"))
         return ok({ assessments: [assessment] });
       if (path.includes("/patients/{id}")) return ok(patient);
-      return ok(assessment);
+      return ok(input.assessment ?? assessment);
     }),
     PATCH: vi.fn(async () =>
       input.patchError
@@ -437,6 +442,21 @@ describe("Admission HOPE workspace", () => {
         "/api/v1/hope/assessments/{id}/sign",
         expect.objectContaining({ body: { ifVersion: 4 } }),
       ),
+    );
+  });
+
+  it("marks Review complete for a completed HOPE assessment", async () => {
+    const client = clientFor({
+      assessment: {
+        ...assessment,
+        status: "signed",
+        signedAt: "2026-09-08T14:00:00.000Z",
+      },
+    });
+    renderWorkspace(client);
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Review — Completed" })).toBeTruthy(),
     );
   });
 });

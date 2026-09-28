@@ -78,6 +78,7 @@ export const ReferralListQuerySchema = Type.Object({
   patientResolutionStatus: Type.Optional(Type.String({ maxLength: 32 })),
   priority: Type.Optional(Type.String({ maxLength: 32 })),
   assigned: Type.Optional(Type.Union([Type.Literal("mine"), Type.Literal("unassigned")])),
+  includeConverted: Type.Optional(Type.Boolean()),
   q: Type.Optional(Type.String({ maxLength: 200 })),
   cursor: Type.Optional(Type.String({ maxLength: 64 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 200 })),

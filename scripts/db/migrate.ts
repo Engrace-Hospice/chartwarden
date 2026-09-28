@@ -58,6 +58,22 @@ const APP_ROLE = "wardenx_app";
 /** Runtime bookkeeping table (created by this script, not a migration; unowned by any module). */
 const TRACK_TABLE = "_wardenx_migration";
 
+/**
+ * A recovery merge inserted 0240/0241 ahead of four migrations that some deployed databases had
+ * already recorded as 0236–0239. The SQL files are byte-for-byte unchanged; only their filenames
+ * changed. Keep the compatibility bridge here rather than recreating schema objects or requiring
+ * every existing environment to hand-edit its migration ledger.
+ *
+ * New databases only ever see the names on the left. For an existing ledger, the runner adopts the
+ * left-hand name only after proving its checksum is identical to the old, applied filename.
+ */
+const HISTORICAL_FILENAME_RENAMES: ReadonlyMap<string, string> = new Map([
+  ["0242_passkey_name_optional.sql", "0236_passkey_name_optional.sql"],
+  ["0243_alert_receipts.sql", "0237_alert_receipts.sql"],
+  ["0244_cti_f2f_alert_deadlines.sql", "0238_cti_f2f_alert_deadlines.sql"],
+  ["0245_verbal_order_readback_effective_at.sql", "0239_verbal_order_readback_effective_at.sql"],
+]);
+
 export interface ApplyMigrationsOptions {
   /** Defaults to the repo's real `packages/db/migrations` — override only for tests. */
   readonly migrationsDir?: string;
@@ -108,6 +124,37 @@ export async function applyMigrations(
   const files = readdirSync(migrationsDir)
     .filter((f) => f.endsWith(".sql"))
     .sort();
+
+  // Migrate only the verified historical filename aliases above. This is deliberately not a
+  // generic "same checksum means same migration" heuristic: two independent migrations can have
+  // identical SQL, while a filename is the migration ledger's identity. A changed old file is left
+  // alone so the normal pending/drift path remains fail-closed rather than silently adopting it.
+  for (const [currentFilename, legacyFilename] of HISTORICAL_FILENAME_RENAMES) {
+    const legacyChecksum = applied.get(legacyFilename);
+    if (legacyChecksum === undefined || !files.includes(currentFilename)) continue;
+    const currentChecksum = createHash("sha256")
+      .update(readFileSync(join(migrationsDir, currentFilename), "utf8"))
+      .digest("hex");
+    if (legacyChecksum !== currentChecksum) continue;
+
+    // A few locally recovered ledgers already contain both aliases. The current filename is the
+    // canonical entry, so remove only the byte-identical obsolete duplicate.
+    if (applied.has(currentFilename)) {
+      await db.query(`DELETE FROM ${TRACK_TABLE} WHERE filename = $1`, [legacyFilename]);
+      applied.delete(legacyFilename);
+      console.log(`  ↻ retired historical migration alias ${legacyFilename}`);
+      continue;
+    }
+
+    await db.query(`UPDATE ${TRACK_TABLE} SET filename = $1, checksum = $2 WHERE filename = $3`, [
+      currentFilename,
+      currentChecksum,
+      legacyFilename,
+    ]);
+    applied.delete(legacyFilename);
+    applied.set(currentFilename, currentChecksum);
+    console.log(`  ↻ adopted historical migration name ${legacyFilename} → ${currentFilename}`);
+  }
 
   if (opts.baseline) {
     const untracked = files.filter((f) => !applied.has(f));

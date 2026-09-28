@@ -24,6 +24,14 @@ if (!FormatRegistry.Has("uuid")) {
 }
 
 const ADDRESS_KINDS = ["home", "facility", "mailing", "temporary", "prior"] as const;
+const PAYER_COVERAGE_KINDS = [
+  "medicare_ffs",
+  "medicare_advantage",
+  "medicaid",
+  "commercial",
+  "hospice_carve_out",
+  "self_pay",
+] as const;
 
 const AddressSchema = Type.Object({
   line1: Type.String({ minLength: 1, maxLength: 200 }),
@@ -212,9 +220,9 @@ export const AddPatientPayerBodySchema = Type.Object({
     minimum: 1,
   }),
 
-  coverageKind: Type.String({
-    minLength: 1,
-  }),
+  // Keep this at the API boundary: passing arbitrary text through to the PostgreSQL enum
+  // turns a clinician input error into a database 500.
+  coverageKind: Type.Union(PAYER_COVERAGE_KINDS.map((kind) => Type.Literal(kind))),
 
   subscriberId: Type.String({
     minLength: 1,

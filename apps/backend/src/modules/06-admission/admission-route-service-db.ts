@@ -1540,6 +1540,7 @@ export function createDbAdmissionRouteService(
         const filters: SQL[] = [];
         const status = query.status ?? query.state;
         if (status) filters.push(eq(REF.status, status as never));
+        else if (!query.includeConverted) filters.push(ne(REF.status, "converted"));
         if (query.source) filters.push(eq(REF.sourceChannel, query.source as never));
         if (query.patientResolutionStatus)
           filters.push(eq(REF.patientResolutionStatus, query.patientResolutionStatus as never));
@@ -2129,6 +2130,11 @@ export function createDbAdmissionRouteService(
     async updateReferral(organizationId, id, input, ifVersion): Promise<MutationResult> {
       // Metadata edit — no state change; still optimistic-locked (§7.1 concurrency).
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const cur = await loadRef(tx, id);
+        assertVersion(id, cur.version, ifVersion);
+        if (!["received", "under_review", "pending_information"].includes(cur.status)) {
+          throw new InvalidReferralStateError(id, cur.status, "update referral information");
+        }
         const [r] = await tx
           .update(REF)
           .set({
@@ -2581,6 +2587,9 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
+        if (!["received", "under_review", "pending_information"].includes(cur.status)) {
+          throw new InvalidReferralStateError(id, cur.status, "update referral priority");
+        }
         const r = firstOrThrow(
           await tx
             .update(REF)
@@ -2701,6 +2710,9 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const cur = await loadRef(tx, id);
         assertVersion(id, cur.version, ifVersion);
+        if (!["received", "under_review", "pending_information"].includes(cur.status)) {
+          throw new InvalidReferralStateError(id, cur.status, "update referral priority");
+        }
         const r = firstOrThrow(
           await tx
             .update(REF)

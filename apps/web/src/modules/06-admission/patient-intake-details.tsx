@@ -567,7 +567,7 @@ export function PatientIntakeDetails({ patientId, onSaved }: Props): JSX.Element
                 <label style={field}>
                   <span style={label}>Coverage kind</span>
 
-                  <input
+                  <select
                     value={coverage.coverageKind}
                     onChange={(event) =>
                       setCoverage((current) => ({
@@ -575,9 +575,16 @@ export function PatientIntakeDetails({ patientId, onSaved }: Props): JSX.Element
                         coverageKind: event.target.value,
                       }))
                     }
-                    placeholder="Coverage kind"
                     style={input}
-                  />
+                  >
+                    <option value="">Select coverage kind</option>
+                    <option value="medicare_ffs">Medicare fee-for-service</option>
+                    <option value="medicare_advantage">Medicare Advantage</option>
+                    <option value="medicaid">Medicaid</option>
+                    <option value="commercial">Commercial</option>
+                    <option value="hospice_carve_out">Hospice carve-out</option>
+                    <option value="self_pay">Self-pay</option>
+                  </select>
                 </label>
 
                 <label style={field}>
