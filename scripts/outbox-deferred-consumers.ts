@@ -399,11 +399,10 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
     module: "m5",
     kind: "handlers-unbound",
     reason:
-      "M5 binds two live consumers (proposal applier, death cascade). The remainder are forward declarations.",
+      "F-138 (#248) checked every pair against M5's own spec text and, where M5 was silent, against the PRODUCING module's spec for a specific, decided, cross-referenced claim. 9 of 10 are genuine, real, still-unbound subscriptions. All six `m39.consent.*` events (`expired`, `recipient_removed`, `renewed`, `revoked`, `signed`, `supersedes`) are named individually, by event, in M39's own §4.5-style outbox table (each row lists 'M5' or 'M5 (snapshot)' among the consumers) and repeated in M39's D-M5-interaction prose ('M5 subscribes … and recomputes the snapshot per M5 D10') — the `patient.privacy_flag_snapshot` recompute is a real mechanism with no consumer file built yet. `m17.visit.assigned`/`.unassigned` are named by M17's own catalog description ('the §4.5 D11 caseload-contribution payload M5's patientCaseloadProvider reads') and M5's own §4.1 `CaseloadProvider` seam source comment, which describes the exact mechanism in code-level detail: 'Module 17 publishes shift.visit_assigned to a per-clinician Valkey set TTLed to the shift window' — a decided, still-unbuilt cache, not a guess. `m6.admission.activated` is named by M5's own §3.3 tenancy-columns note (M05-F04/ARCH-011): `patient.provider_entity_id`/`location_id` are 'populated (and denormalized onto every patient-scoped child table) when the admission activates' — confirmed no write path anywhere in the repository sets either column, so the consumer is genuinely unbuilt rather than misdeclared. 1 of 10 was genuinely misdeclared and dropped at the source: `m24.medicaid_eligibility.checked` runs the relationship in the OPPOSITE direction — M5's own spec states its `patient.address_changed` triggers M24 to re-check eligibility (M24 reads M5, a seam pull at claim-assembly time per M24's own text), and no part of M5's spec names M24 or 'medicaid_eligibility' as something M5 consumes.",
     events: [
       "m17.visit.assigned",
       "m17.visit.unassigned",
-      "m24.medicaid_eligibility.checked",
       "m39.consent.expired",
       "m39.consent.recipient_removed",
       "m39.consent.renewed",

@@ -355,7 +355,14 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       checkedAt: Iso,
       staleAt: Iso,
     }),
-    declaredConsumers: ["m5"],
+    // F-138 (#248) — `m5` dropped: the relationship runs the OPPOSITE direction. M5's own spec (D5,
+    // §2 "Addresses with history") states M5's `patient.address_changed` triggers M24 to "re-check
+    // state-Medicaid eligibility" — M24 is the reader of M5's address, not the other way round. M24's
+    // own spec names M5's `PatientPayerReader`/`state_at()` as a PULL at claim-assembly and
+    // eligibility-check time (§ "Eligibility (state 270/271 or portal)"), and M5's own spec text never
+    // names M24 or "medicaid_eligibility" as something it consumes — the reversed-direction shape
+    // F-131/F-102 warn against, confirmed here rather than assumed.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
