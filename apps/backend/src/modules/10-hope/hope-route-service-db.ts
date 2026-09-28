@@ -2092,6 +2092,9 @@ export function createDbHopeBackend(
           id,
           {
             submissionId: id,
+            // F-150 (#248) — only `submission_accepted`'s catalog schema requires this; harmless extra
+            // field on the `submission_rejected` branch (its schema doesn't declare it).
+            providerEntityId: updated?.providerEntityId,
             acceptedCount: accepted,
             rejectedCount: rejected,
             reportHash,

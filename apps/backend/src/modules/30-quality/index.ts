@@ -133,3 +133,13 @@ export {
   buildM30CostReportConsumer,
   buildM30LiveForwardSeams,
 } from "./consumed-seam-adapters";
+
+// §4.10 upstream — F-150 (#248): the two `OutboxConsumerBinding`s for M30's real, previously-unbound
+// §4.10 upstream-event handlers that are fully ready to bind (`m10.hope.submission_accepted`,
+// `m23.claim.adjudicated`; both call only the real `enqueueRecompute` port). See the file headers for
+// why `m6.discharge.death` / `m12.medication.error_reported` / `m18.evv.visit_verified` are not bound.
+export { buildM30UpstreamConsumerPorts } from "./outbox-consumers/upstream-consumer-ports";
+export {
+  buildM30ClaimAdjudicatedConsumer,
+  buildM30HopeSubmissionAcceptedConsumer,
+} from "./outbox-consumers/upstream-events";

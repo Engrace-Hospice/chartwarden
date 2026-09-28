@@ -617,6 +617,8 @@ import {
   M30_PLATFORM_JOB_ID,
   buildDrizzleM30ReadService,
   buildDrizzleM30WriteService,
+  buildM30ClaimAdjudicatedConsumer,
+  buildM30HopeSubmissionAcceptedConsumer,
   buildM30RecomputeEnqueue,
   buildM30WorkerDeps,
   createDrizzleQualityEraseStore,
@@ -5108,6 +5110,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             ) as AdmissionStatusReader,
           }),
           buildM18VisitPublishedConsumer({ db: dbHandle.db }),
+          // F-150 (#248) — M30's §4.10 upstream-event handlers had been pure, unit-tested and
+          // completely unbound since the package shipped (RULE 3(d) — "the live inbound dispatcher is a
+          // later platform phase" never landed). These two are the ones fully ready to bind today: both
+          // consume only the real `enqueueRecompute` port (`outbox-consumers/upstream-consumer-ports.ts`).
+          buildM30HopeSubmissionAcceptedConsumer({ db: dbHandle.db }),
+          buildM30ClaimAdjudicatedConsumer({ db: dbHandle.db }),
           // M20 §4.8 / §7.1 (F-043, #103) — the field-safety visit consumers. Six deciders and a badge
           // cache had been complete, exported and unit-tested since M20-T04 with NO factory yielding a
           // binding, so the relay deferred every m20 event and — one layer down — NOTHING in the whole

@@ -1601,6 +1601,61 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   clean `check:boot:platform` run against a freshly migrated, RLS-enforced disposable Postgres. Leaving
   #248 open — 197 pairs across 25 modules remain.
 
+  **#248 shifted from catalog triage to building the first real binding — and the scoping investigation
+  found genuinely different reasons three of the four candidate targets weren't buildable yet
+  (F-150, #248).** Every declared-but-unbound pair in the registry had by now been individually verified
+  at least once (25/25 groups carry an F-number from a real per-event check); the remaining 195 pairs are
+  confirmed genuine, currently-unbuilt relationships, not catalog mistakes — so the next request was to
+  start building them. M30's own `handlers-unbound` group (4 events) was the obvious first target:
+  `packages/quality/src/consumers/handlers.ts` had shipped pure, port-injected and fully unit-tested since
+  the package landed, with **no implementation of `M30ConsumerPorts` anywhere in this repository** —
+  RULE 3(d)'s "the live inbound dispatcher is a later platform phase" had simply never come due. Checking
+  each of the four before building found three different blockers, not one: `m10.hope.submission_accepted`
+  needed only a payload widening (`providerEntityId` — the fact `enqueueRecompute` needs, absent from the
+  catalog schema though `hope_submission.provider_entity_id` is NOT NULL and already on the row the emit
+  site returns); `m23.claim.adjudicated` needed nothing at all, its real production emitter
+  (`claim-state-service.ts`) already carries a complete payload; `m12.medication.error_reported` is
+  genuinely blocked — its handler's `createIncidentDraft` needs a resolvable "M30 service membership" for
+  `incident_report.reported_by_membership_id` (NOT NULL), and no system-actor-membership convention exists
+  ANYWHERE in this codebase to attribute an auto-created draft to (the F-102 `actorMembershipId: NULL for
+  system-actor cascades` carve-out does not apply here — this column has no such nullable escape); and
+  `m18.evv.visit_verified`, checked while scoping this pass, turned out not to be an M30-side gap at all —
+  M18's own `domain/event-lifecycle.ts` `recordEvent` pure decider declares the outbox effect, but the
+  REAL production check-in/check-out write path (`evv-route-service-db.ts`) never calls that decider and
+  emits its four other EVV events inline instead; `visit_verified` has never been published by any
+  production code path, so binding an M30 consumer for it would wire a line to a house that was never
+  built. **Bound the two that were genuinely ready.** `buildM30UpstreamConsumerPorts`
+  (`apps/backend/src/modules/30-quality/outbox-consumers/upstream-consumer-ports.ts`) implements
+  `enqueueRecompute` for real — per-measure-code FY-boundary period resolution
+  (`resolvePeriodRule`/`resolvePeriodWindow`, mirroring `m30-jobs.ts`'s own private `resolveFyBoundary`,
+  not exported) feeding the real `MeasureRecomputeQueueRepository.enqueue`, RLS-scoped via
+  `withOrgContext` — while the other three `M30ConsumerPorts` methods stay LAZY fail-closed
+  `unboundWorkerPort` thunks (the exact mechanism `m30-jobs.ts`'s own worker deps already use for the
+  identical posture), never invoked by the two consumers this pass actually binds. **Deliberately did NOT
+  half-bind `m6.discharge.death`**: its handler calls `createMortalityReviewDraft` (real, buildable) AND
+  `addCahpsSampleCandidate` (blocked on the M1 envelope-DEK caregiver-contact encrypt PLUS a
+  caregiver-contact fact the death event's payload does not carry — the identical gap `m30-jobs.ts`'s own
+  `cahpsMonthlySample.samples.insertSampled` port already reports) in ONE invocation — binding it now
+  would make the mortality-review insert throw and roll back on every single delivery because of the
+  CAHPS half, which is worse than leaving it unbound entirely. `buildM30HopeSubmissionAcceptedConsumer`/
+  `buildM30ClaimAdjudicatedConsumer` (`outbox-consumers/upstream-events.ts`) wire the two ready handlers
+  into real `OutboxConsumerBinding`s, registered in the composition root's consumer array for the first
+  time. **This is the first genuinely-bound relationship this registry has produced, not a catalog
+  correction** — the two pairs are removed from `outbox-deferred-consumers.ts` outright (a live binding
+  now reaches them), and the group's reason text is rewritten to state the two remaining events' two
+  DIFFERENT blockers precisely rather than repeating the old blanket note. Net: **197 → 195** pairs (2
+  bound). Verified: `bun run build`/`typecheck` clean, full non-live suite 654 files / 9589 tests green,
+  `arch:fitness` 38/38 (`arch:outbox-bindings` confirms 57 live bindings now cover 77 catalogued events,
+  up from 55/75), a clean `check:boot:platform` run against a freshly migrated, RLS-enforced disposable
+  Postgres, and a new live suite (`m30-upstream-consumers.live.test.ts`, `test:m30:upstream-consumers:live`,
+  wired into the CI `lifecycle-live` M30 job) proving both bindings for real: the correct `hope_derived`
+  (the two HOPE-derived TFP measure codes) and `hci` (all eleven indicator + composite codes) measure sets enqueue with the
+  right provider/org/triggering-event fields, a redelivery debounces onto the same pending row rather than
+  duplicating it (the `uq_measure_recompute_pending` partial-unique), and cross-tenant isolation holds.
+  Leaving #248 open — 195 pairs across 25 modules remain, one of which (`m12.medication.error_reported`)
+  needs new platform infrastructure (a system-actor membership convention) and the rest need their own
+  scoped builds the same way this pass scoped M30's.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit
