@@ -298,7 +298,11 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       effectiveAt: isoInstant,
       admissionId: id,
     }),
-    declaredConsumers: ["m6", "m22", "m23", "m30"],
+    // F-136 (#248) — m23 REMOVED: "M23 follows" describes the downstream effect of M6's OWN re-emission
+    // (this event's own description says M6 ends/starts the LCP), not a direct subscription — the fact
+    // M23 actually needs arrives as the already-bound `m6.loc.changed`, redundant with this upstream
+    // order-signed trigger. M23's own §4.4/dependsOn text names only the M6 outbox catalog as consumed.
+    declaredConsumers: ["m6", "m22", "m30"],
     isOutboxOnly: true,
   },
   {
@@ -312,7 +316,10 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       periodEndDate: id,
       certifyingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m6", "m22", "m23"],
+    // F-136 (#248) — m23 REMOVED: M6's own resulting `m6.cti.signed` / `m6.election.period_started`
+    // (both already bound live) carry the fact M23 needs; this upstream order-signed event is redundant
+    // with them, the same shape as `.level_of_care_change_signed` above.
+    declaredConsumers: ["m6", "m22"],
     isOutboxOnly: true,
   },
   {

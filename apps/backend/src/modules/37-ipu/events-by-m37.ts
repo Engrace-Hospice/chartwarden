@@ -41,7 +41,13 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m37",
     description: "A bed was assigned; M6 confirms the LCP, M23 writes the place-of-service Q-code.",
     payloadSchema: Type.Object({ ...admissionCore, bedId: id, levelOfCarePeriodId: id }),
-    declaredConsumers: ["m6", "m23"],
+    // F-136 (#248) — m23 REMOVED: the description's "M23 writes the place-of-service Q-code" claim is
+    // false — F-127 already found `placeOfService` genuinely unbound: no table anywhere records which
+    // physical site (home/ALF/SNF/hospital/IPU) a patient is currently receiving care in, so
+    // `place_of_service_consistency` fails honestly for every claim. M23's own spec never names M37 as
+    // a consumed event either (the only M37↔M23 relationship runs the other way — M37 reads M23's
+    // `ClaimReader.gipDaysForPatientInPeriod`).
+    declaredConsumers: ["m6"],
     isOutboxOnly: true,
   },
   {
@@ -72,7 +78,9 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-131 (#248) — m26 REMOVED: M26's own "Depends on" / "Consumed by" text never names M37 either —
     // its D13 inpatient-day (20% rule) source is M23 claim lines by revenue code (0655/0656), the same
     // physical-site-independent path F-130 found for M27, and its subscription-map has no M37 topic.
-    declaredConsumers: ["m23"],
+    // F-136 (#248) — m23 REMOVED: same reasoning — M23's own spec never names M37 as a consumed event;
+    // the only M37↔M23 relationship runs the other way (M37 reads M23's `ClaimReader`).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -82,7 +90,8 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({ ...admissionCore, reason: id }),
     // F-130 (#248) — m27 REMOVED: same reasoning as `m37.ipu_admission.transferred` above.
     // F-131 (#248) — m26 REMOVED: same reasoning as `m37.ipu_admission.transferred` above.
-    declaredConsumers: ["m23", "m30"],
+    // F-136 (#248) — m23 REMOVED: same reasoning as `m37.ipu_admission.transferred` above.
+    declaredConsumers: ["m30"],
     isOutboxOnly: true,
   },
   {
@@ -362,7 +371,9 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // M37 reads M27's output, not the reverse).
     // F-131 (#248) — m26 REMOVED: the description's "M26 cap" claim is equally unsupported — M26's D13
     // inpatient-day source is M23 claim lines by revenue code, and M26's own text never names M37.
-    declaredConsumers: ["m23"],
+    // F-136 (#248) — m23 REMOVED: the description's "M23 per-diem" claim is equally unsupported — M23's
+    // own spec never names M37 as a consumed event; the only M37↔M23 relationship runs the other way.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

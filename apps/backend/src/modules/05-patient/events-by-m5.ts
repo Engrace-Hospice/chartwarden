@@ -64,7 +64,10 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m5",
     description: "A coverage was added/updated/closed.",
     payloadSchema: Type.Object({ ...corePatient }),
-    declaredConsumers: ["m23", "m24"],
+    // F-136 (#248) — m23 REMOVED: M23's own spec describes `patient_payer` ranking + `coverage_kind` as
+    // CONSULTED (a seam pull) fresh at every claim assembly, never a push subscription — the next
+    // assembly picks up a payer change on its own, so there is nothing for a push event to invalidate.
+    declaredConsumers: ["m24"],
     isOutboxOnly: true,
   },
   {

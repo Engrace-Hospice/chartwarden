@@ -995,6 +995,56 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   update this pass, and a clean `check:boot:platform` run against a freshly migrated, RLS-enforced
   disposable Postgres. Leaving #248 open — 324 pairs across 31 modules remain.
 
+  **The m23 group (20 pairs) went 12 of 20 misdeclared across seven producing modules, checked against
+  M23's own §4.4 subscription surface rather than trusted (F-136, #248).** M23's own spec text (the full
+  M6 outbox catalog, quoted by NAME in the dependsOn prose) and its real, frozen
+  `consumers/subscription-map.ts` (seven live topics + two M25/M26 deny-stubs) are the authoritative
+  statement of what M23 actually subscribes to. **8 of 20 kept** — genuine, real, still-unbound
+  subscriptions: the six already on the map (`m6.cti.signed`, `m6.f2f.attested`, `m6.loc.changed`,
+  `m8.encounter.cosigned`, `m5.patient.deceased`, `m18.evv.late_check_resolved`), plus two the map has
+  not caught up to — `m6.election.period_ended` (the spec's own text names it beside the already-mapped
+  `period_started` as "claim-period anchoring") and `m25.taxonomy.unmapped_code_observed`, kept on M25's
+  own D13 text naming a specific, decided mechanism despite M23's spec being silent on it — the F-131
+  "kept, not dropped" caution a third time. **12 of 20 dropped, spanning M5/M6/M11/M23(self)/M25/M37**:
+  `m11.order.level_of_care_change_signed`/`.recertification_signed` are each redundant with M6's own
+  resulting `loc.changed`/`cti.signed` (already bound) — the order-signed event is one hop upstream of
+  the fact M23 actually reads, the F-120 co-emission shape applied a module over; `m23.claim.draft_created`
+  is M23 consuming its OWN event, directly contradicted by the spec's own state-transition table ("M33,
+  M22 — no render yet"); `m25.denial.resolved_favorable_via_appeal` is redundant with the already-bound
+  `m25.remittance.claim_paid` — M23's own claim state machine says the PAID transition is driven by the
+  835 RE-POST, not the appeal decision, which carries no payment fact of its own; all four `m37.*` events
+  (`census.snapshot_taken`, `ipu_admission.bed_assigned`/`.discharged`/`.transferred`) have no support in
+  M23's spec at all — the only M37↔M23 relationship runs the OPPOSITE direction (M37 reads M23's
+  `ClaimReader`) — and `bed_assigned`'s specific claim that "M23 writes the place-of-service Q-code" is
+  directly contradicted by F-127's already-established finding that `placeOfService` is genuinely unbound
+  platform-wide, no site-type table exists anywhere; `m5.patient.payer_changed` is a seam-pull
+  redundancy — M23's own spec states patient-payer status is CONSULTED fresh at every claim assembly,
+  never pushed, so there is nothing for a push event to invalidate; `m6.admission.activated` and
+  `m6.admission.discharged` were each part of that event's broad clinical fan-out with no billing-specific
+  rationale (the F-134 shape already found for m16 on these SAME two events) and each is redundant with a
+  narrower, already-bound sibling (`m6.discharge.created` carries the discharge_event id
+  `admission.discharged` does not); `m6.nor.acknowledged` (Notice of Rights) is never mentioned anywhere
+  in M23's spec — M22 remains its one real consumer. All 12 dropped at the source (M5 ×1, M6 ×3, M11 ×2,
+  M23 ×1 self, M25 ×1, M37 ×4); every touched entry already carried other real consumers or a
+  `seamConsumers` fallback except `m37.ipu_admission.transferred`, which had ONLY `["m23"]` and is now
+  legitimately record-only, matching several sibling M37 events already in that state. **Also fixed in
+  this pass, at the user's request**: the three pre-existing, unrelated `m2-*.live.test.ts` TS2698
+  errors (`Spread types may only be created from object types`) that every prior pass in this series had
+  carried forward as "same 3 pre-existing errors" — both files typed their outbox-publisher adapter's
+  closure params as `(tx: never, input: never)` to force an assignment through an `as never` cast, then
+  tried to spread the `never`-typed `input`, which TypeScript correctly refuses. Fixed by typing the
+  adapter against the real port interface (`OrganizationLifecycleOutboxPort` /
+  `Parameters<typeof createOrgScopedIdentityOutbox>[1]`) instead of casting past it — `bun run typecheck`
+  is now fully clean, zero errors, for the first time in this series. Net on #248: **324 → 312**
+  (12 dropped, 0 added). Verified: `bun run build`
+  clean, `bun run typecheck` clean (0 errors — the 3 pre-existing fixed), full non-live suite 654 files /
+  9589 tests green (two pinned-array assertions updated — `admission-outbox-jobs.test.ts`'s activation
+  fan-out and `outbox-seam-consumers.test.ts`'s seam-split case, both to drop `m23`), `arch:fitness`
+  38/38 (`arch:outbox-bindings` 0 disagreements), the two newly-typechecked `m2-*.live.test.ts` files run
+  individually against a live disposable Postgres (9/9 passing, unchanged behavior), and a clean
+  `check:boot:platform` run against a freshly migrated, RLS-enforced disposable Postgres. Leaving #248
+  open — 312 pairs across 31 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

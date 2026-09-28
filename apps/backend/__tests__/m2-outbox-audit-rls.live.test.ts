@@ -137,9 +137,10 @@ describe.skipIf(!DB_URL)("M2 audit()/outbox RLS — LIVE Postgres, real wardenx_
 
   it("createOrgScopedIdentityOutbox's wrapped publish() lands a real outbox_event row under RLS, and org B cannot see it", async () => {
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M2_OUTBOX_EVENTS]));
-    const rawPublisher = { publish: (tx: never, input: never) =>
-      publisher.publish(tx, { ...input, callerModule: "m2" }) };
-    const outbox = createOrgScopedIdentityOutbox(handle.db, rawPublisher as never);
+    const rawPublisher: Parameters<typeof createOrgScopedIdentityOutbox>[1] = {
+      publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }),
+    };
+    const outbox = createOrgScopedIdentityOutbox(handle.db, rawPublisher);
     const invitationId = "66666666-6666-4666-8666-6666f2050006";
 
     await runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>
@@ -174,9 +175,10 @@ describe.skipIf(!DB_URL)("M2 audit()/outbox RLS — LIVE Postgres, real wardenx_
 
   it("a schema-invalid payload is refused by the catalog and rolls back, even inside the fixed wrapper", async () => {
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M2_OUTBOX_EVENTS]));
-    const rawPublisher = { publish: (tx: never, input: never) =>
-      publisher.publish(tx, { ...input, callerModule: "m2" }) };
-    const outbox = createOrgScopedIdentityOutbox(handle.db, rawPublisher as never);
+    const rawPublisher: Parameters<typeof createOrgScopedIdentityOutbox>[1] = {
+      publish: (tx, input) => publisher.publish(tx, { ...input, callerModule: "m2" }),
+    };
+    const outbox = createOrgScopedIdentityOutbox(handle.db, rawPublisher);
 
     await expect(
       runWithRequestContext({ organizationId: ORG_A, userId: USER }, () =>

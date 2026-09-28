@@ -49,7 +49,7 @@ describe("M6 outbox event contract (§4.4)", () => {
   it("the broad activation fan-out reaches the chain modules", () => {
     const activated = M6_OUTBOX_EVENTS.find((e) => e.eventName === "m6.admission.activated");
     expect(activated?.declaredConsumers).toEqual(
-      expect.arrayContaining(["m5", "m7", "m8", "m10", "m23"]),
+      expect.arrayContaining(["m5", "m7", "m8", "m10"]),
     );
     // m36 used to be asserted here. It is not an outbox consumer and never was — its alert intake is
     // the synchronous `AlertEmitter` seam — and declaring it kept this event deferred forever (#103).
@@ -63,6 +63,10 @@ describe("M6 outbox event contract (§4.4)", () => {
     // (which starts at death, not admission) needs; M16's own §4.5 outbox-subscriptions table never
     // named this event.
     expect(activated?.declaredConsumers).not.toContain("m16");
+    // F-136 (#248) — m23 dropped: an admission ACTIVATION anchors no claim by itself — M23's own §4.4
+    // subscription surface names the full M6 outbox catalog BY EVENT (election/cti/f2f/loc/revocation/
+    // transfer/discharge), and admission.activated is not among them.
+    expect(activated?.declaredConsumers).not.toContain("m23");
   });
 
   it("applier-reused events carry the optional provenance `source` marker", () => {

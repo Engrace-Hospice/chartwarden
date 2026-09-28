@@ -241,7 +241,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // f2f.attested, nor.acknowledged, revocation.created, discharge.created) plus the two still
       // deferred below, and this is not among them. Unlike the three that went record-only, this entry
       // still defers — on the other eleven unbound consumers, which is the true reason.
-      "m23",
+      // F-136 (#248) — `m23` REMOVED: an ACTIVATION anchors no claim by itself — M23's own §4.4/
+      // dependsOn text subscribes to the full M6 outbox catalog by NAME (election.signed/
+      // period_started/period_ended, cti.signed, f2f.attested, loc.changed, revocation.created,
+      // transfer.created, discharge.created, discharge.death) and admission.activated is not among
+      // them; it was part of this event's broad fan-out with no billing-specific rationale, the same
+      // shape F-134 already found for m16 on this identical event.
       "m37",
     ],
     // F-130 (#248) — m27 REMOVED: M27's own §1.1 relationship inventory + manifest-patch dependsOn list
@@ -316,7 +321,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // F-101 — `m22` was here. The discharge SUMMARY is rendered from `m6.discharge.created`, which
       // carries the `discharge_event` id M22 back-refs; this event carries the ADMISSION id and no
       // renderable artifact. Still defers, on the other seven.
-      "m23",
+      // F-136 (#248) — `m23` REMOVED: the same redundancy one module over — M23's real NOTR-draft
+      // trigger is `m6.discharge.created` (already bound in `consumers/subscription-map.ts`), which
+      // carries the `discharge_event` id the NOTR draft back-refs; this broader admission-lifecycle
+      // event carries no fact M23 needs beyond what discharge.created already delivers.
       "m37",
       "m36",
     ],
@@ -824,7 +832,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
        *  artifacts is patient-scoped by definition — there is no defensible null. */
       patientId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m22", "m23"],
+    // F-136 (#248) — m23 REMOVED: the Notice of Rights is never mentioned anywhere in M23's own spec —
+    // no dependsOn text, no §4.4 subscription, no NOE/NOTR/claim mechanism references it. M22 remains
+    // the real consumer (the rendered CoP document, per F-100).
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   // ── compliance windows ──────────────────────────────────────────────────────────────────────────

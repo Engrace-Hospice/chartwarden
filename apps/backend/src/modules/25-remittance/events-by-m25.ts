@@ -168,7 +168,11 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "An appeal decided favorably; the underlying denial resolved and M23 may re-post the original line.",
     payloadSchema: Type.Object({ denialCaseId: id, appealCaseId: id, claimId: id, tier: str }),
-    declaredConsumers: ["m23"],
+    // F-136 (#248) — m23 REMOVED: M23's own claim state machine (§2.2) is explicit that the PAID
+    // transition on a favorable appeal is driven by "M25 appeal succeeds + 835 RE-POSTED with payment" —
+    // the re-post is `m25.remittance.claim_paid` (already bound), which carries the actual amount. This
+    // event carries no payment fact of its own, so it is redundant with the transition M23 already reads.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

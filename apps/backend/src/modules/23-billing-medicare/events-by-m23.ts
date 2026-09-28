@@ -46,7 +46,10 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       serviceFrom: isoInstant,
       serviceTo: isoInstant,
     }),
-    declaredConsumers: ["m23"],
+    // F-136 (#248) — m23 (self) REMOVED: the spec's own state-transition table (§2.2, "created (DRAFT)")
+    // names the real consumers as M33 (reporting) and M22 ("no render yet — wait for SUBMITTED") — never
+    // M23 itself. No handler anywhere reads its own draft-created event.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
