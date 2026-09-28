@@ -33,7 +33,7 @@ import type {
   LevelOfCare,
   LevelOfCarePeriodSummary,
 } from "@wardenx/types";
-import { and, asc, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
 import type { AdmissionReaderStore, ElectionPeriodRecord } from "./store";
 
 const ADM = schema.admissions;
@@ -42,6 +42,7 @@ const EP = schema.electionPeriods;
 const CTI = schema.certificationsOfTerminalIllness;
 const F2F = schema.faceToFaceEncounters;
 const LOC = schema.levelOfCarePeriods;
+const DE = schema.dischargeEvents;
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -201,6 +202,257 @@ export function electionPeriodContextForOrg(
         effectiveAt: localDateN(row.effectiveAt),
         scheduledEndAt: localDateN(row.scheduledEndAt),
       };
+    },
+  );
+}
+
+/**
+ * F-121 (#251) — M23's claim-assembly §4.4 range-shaped M6 reads, org-explicit for the same reason as
+ * {@link admissionSchedulingContextForOrg} / {@link electionPeriodContextForOrg}: `buildM23BootAssemblyService`
+ * is built ONCE at boot over the bare pooled `db` (no per-request handle reaches it), so every read below
+ * opens its own `withOrgContext` rather than assuming an ambient request scope. This is the ONE new
+ * read-surface M23's five still-unbound M6 seams (`admission`/`electionPeriods`/`certifications`/
+ * `faceToFace`/`levelOfCare`) all needed — none of M6's published §4.7 readers answers "every
+ * period/CTI/F2F/LOC-period for this PATIENT overlapping this DATE RANGE", only single-id or single-date
+ * lookups (`boot-assembly.ts`'s header has the full per-seam accounting).
+ */
+export interface ClaimRangeAdmission {
+  readonly admissionId: string;
+  /** `admission_at` coalesced to `activated_at` — the CURRENT election's admission date the HIPPS day
+   *  counter anchors on (`packages/billing/src/hipps/calculator.ts`'s own doc: it does not (yet) count
+   *  cumulative days across sequential elections, so this admission's own start is the right anchor). */
+  readonly hospiceAdmissionDate: string;
+  /** `discharge_event.effective_at` — NOT `admission.discharged_at`, which the F-107 finding established
+   *  is the FILING timestamp, not the CMS-relevant effective date. */
+  readonly dischargeDate: string | null;
+  readonly dischargeReason: string | null;
+  /** `discharge_event.death_at`, read as a plain UTC calendar date (F-105: M6 models no time of death —
+   *  every value in that column is midnight UTC of a typed `LocalDate`, never a real instant). */
+  readonly deceasedDate: string | null;
+}
+
+export interface ClaimRangeElectionPeriod {
+  readonly electionPeriodId: string;
+  readonly sequence: number;
+  readonly effectiveFrom: string;
+  /** `actual_end_at` — null while the period is still open (matches `ElectionPeriodSnapshot`'s own
+   *  "`effectiveTo === null` ⇒ open period" contract; NOT `scheduled_end_at`, which is a forecast). */
+  readonly effectiveTo: string | null;
+  readonly revoked: boolean;
+  readonly revocationDate: string | null;
+}
+
+export interface ClaimRangeCertification {
+  readonly electionPeriodSequence: number;
+  readonly ctiSigned: boolean;
+  readonly ctiSignedDate: string | null;
+  /** Derived from the CTI row itself (`attending_md_id` set), not `admission.attending_physician_id` —
+   *  the CTI is the place a period-1 attending cosign requirement is actually tracked (§2.3.3). */
+  readonly attendingCosignRequired: boolean;
+  readonly attendingCosigned: boolean;
+}
+
+export interface ClaimRangeFaceToFace {
+  readonly electionPeriodSequence: number;
+  readonly attested: boolean;
+  readonly encounterDate: string | null;
+}
+
+export interface ClaimRangeLevelOfCarePeriod {
+  readonly levelOfCarePeriodId: string;
+  readonly levelOfCare: LevelOfCare;
+  readonly from: string;
+  /** `ended_at`, clamped to the caller's `range.to` while the period is still open — the period's real
+   *  end is unknown, but every day the HIPPS bucketer asks about is already `<= range.to` by construction. */
+  readonly to: string;
+  /** ALWAYS `null` — a real, stated gap, not a placeholder: no table anywhere in this platform (M6's
+   *  `level_of_care_period` included) tracks continuous-home-care documented hours per day. The §4.5
+   *  `level_of_care_coherence` rule already treats `null` as "not satisfied" (CMS-correct: silence is not
+   *  compliance evidence), so this is honest rather than blocking. */
+  readonly chcDocumentedHours: number | null;
+  /** ALWAYS `null` for the same reason as {@link ClaimRangeLevelOfCarePeriod.chcDocumentedHours} — no GIP
+   *  admission-criteria documentation flag exists anywhere in the schema yet. */
+  readonly gipAdmissionCriteriaDocumented: boolean | null;
+}
+
+export interface ClaimAssemblyRangeContext {
+  readonly admission: ClaimRangeAdmission;
+  readonly electionPeriods: readonly ClaimRangeElectionPeriod[];
+  readonly certifications: readonly ClaimRangeCertification[];
+  readonly faceToFace: readonly ClaimRangeFaceToFace[];
+  readonly levelOfCarePeriods: readonly ClaimRangeLevelOfCarePeriod[];
+}
+
+/**
+ * Resolve the ONE admission for `patientId` whose episode overlaps `range`, plus every election period /
+ * CTI / F2F / LOC period on it that overlaps the same range. `null` when no admission matches — the
+ * caller (`claim-assembly.ts`) turns that into `PATIENT_NOT_ELECTED` (409).
+ *
+ * KNOWN LIMIT (stated, not silent): if more than one admission for this patient overlaps `range` — a data
+ * anomaly, since the platform enforces at most one OPEN admission per patient at a time — the most
+ * recently started one wins. A correctly-run tenant never exercises this branch.
+ */
+export async function claimAssemblyRangeContextForOrg(
+  db: DbClient,
+  organizationId: string,
+  patientId: string,
+  range: { readonly from: string; readonly to: string },
+): Promise<ClaimAssemblyRangeContext | null> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const admRows = await tx
+        .select({
+          id: ADM.id,
+          admissionAt: ADM.admissionAt,
+          activatedAt: ADM.activatedAt,
+          dischargedAt: ADM.dischargedAt,
+        })
+        .from(ADM)
+        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.patientId, patientId)))
+        .orderBy(desc(ADM.admissionAt), desc(ADM.activatedAt));
+
+      const candidate = admRows
+        .map((r) => ({
+          id: r.id,
+          start: r.admissionAt ?? r.activatedAt,
+          end: r.dischargedAt,
+        }))
+        .filter((r): r is { id: string; start: Date; end: Date | null } => r.start !== null)
+        .find((r) => {
+          const start = localDate(r.start);
+          const end = r.end ? localDate(r.end) : null;
+          return start <= range.to && (end === null || end >= range.from);
+        });
+      if (!candidate) return null;
+      const admissionId = candidate.id;
+
+      const [dischargeRow] = await tx
+        .select({
+          effectiveAt: DE.effectiveAt,
+          dischargeType: DE.dischargeType,
+          deathAt: DE.deathAt,
+        })
+        .from(DE)
+        .where(eq(DE.admissionId, admissionId))
+        .limit(1);
+
+      const admission: ClaimRangeAdmission = {
+        admissionId,
+        hospiceAdmissionDate: localDate(candidate.start),
+        dischargeDate: dischargeRow ? localDate(dischargeRow.effectiveAt) : null,
+        dischargeReason: dischargeRow ? String(dischargeRow.dischargeType) : null,
+        deceasedDate: dischargeRow ? localDateN(dischargeRow.deathAt) : null,
+      };
+
+      const periodRows = await tx
+        .select({
+          id: EP.id,
+          sequenceNumber: EP.sequenceNumber,
+          effectiveAt: EP.effectiveAt,
+          scheduledEndAt: EP.scheduledEndAt,
+          actualEndAt: EP.actualEndAt,
+          completedByCause: EP.completedByCause,
+        })
+        .from(EP)
+        .where(and(eq(EP.admissionId, admissionId), isNotNull(EP.effectiveAt)))
+        .orderBy(asc(EP.sequenceNumber));
+
+      const overlapping = periodRows.filter((p) => {
+        const end = p.actualEndAt ?? p.scheduledEndAt;
+        return p.effectiveAt! <= range.to && (end === null || end >= range.from);
+      });
+
+      const electionPeriods: ClaimRangeElectionPeriod[] = overlapping.map((p) => ({
+        electionPeriodId: p.id,
+        sequence: Number(p.sequenceNumber),
+        effectiveFrom: localDate(p.effectiveAt!),
+        effectiveTo: localDateN(p.actualEndAt),
+        revoked: p.completedByCause === "revocation",
+        revocationDate: p.completedByCause === "revocation" ? localDateN(p.actualEndAt) : null,
+      }));
+
+      const overlappingIds = overlapping.map((p) => p.id);
+      const bySequence = new Map(overlapping.map((p) => [p.id, Number(p.sequenceNumber)]));
+
+      const certifications: ClaimRangeCertification[] = [];
+      const faceToFace: ClaimRangeFaceToFace[] = [];
+      if (overlappingIds.length > 0) {
+        const ctiRows = await tx
+          .select({
+            electionPeriodId: CTI.electionPeriodId,
+            status: CTI.status,
+            hospiceMdSignedAt: CTI.hospiceMdSignedAt,
+            attendingMdId: CTI.attendingMdId,
+            attendingMdSignedAt: CTI.attendingMdSignedAt,
+            createdAt: CTI.createdAt,
+          })
+          .from(CTI)
+          .where(inArray(CTI.electionPeriodId, overlappingIds))
+          .orderBy(asc(CTI.createdAt));
+        for (const periodId of overlappingIds) {
+          const rows = ctiRows.filter((r) => r.electionPeriodId === periodId);
+          const pick = rows.find((r) => r.status !== "voided" && r.status !== "superseded") ?? rows.at(-1);
+          if (!pick) continue;
+          certifications.push({
+            electionPeriodSequence: bySequence.get(periodId)!,
+            ctiSigned: pick.status === "signed",
+            ctiSignedDate: localDateN(pick.hospiceMdSignedAt),
+            attendingCosignRequired: pick.attendingMdId !== null,
+            attendingCosigned: pick.attendingMdSignedAt !== null,
+          });
+        }
+
+        const f2fRows = await tx
+          .select({
+            electionPeriodId: F2F.electionPeriodId,
+            status: F2F.status,
+            encounterDate: F2F.encounterDate,
+            createdAt: F2F.createdAt,
+          })
+          .from(F2F)
+          .where(inArray(F2F.electionPeriodId, overlappingIds))
+          .orderBy(asc(F2F.createdAt));
+        for (const periodId of overlappingIds) {
+          const rows = f2fRows.filter((r) => r.electionPeriodId === periodId);
+          const pick = rows.find((r) => r.status === "attested") ?? rows[0];
+          if (!pick) continue;
+          faceToFace.push({
+            electionPeriodSequence: bySequence.get(periodId)!,
+            attested: pick.status === "attested",
+            encounterDate: localDateN(pick.encounterDate),
+          });
+        }
+      }
+
+      const locRows = await tx
+        .select({
+          id: LOC.id,
+          levelOfCare: LOC.levelOfCare,
+          effectiveAt: LOC.effectiveAt,
+          endedAt: LOC.endedAt,
+        })
+        .from(LOC)
+        .where(and(eq(LOC.admissionId, admissionId), ne(LOC.status, "assigning")))
+        .orderBy(asc(LOC.effectiveAt));
+
+      const levelOfCarePeriods: ClaimRangeLevelOfCarePeriod[] = locRows
+        .filter((p) => {
+          const from = localDate(p.effectiveAt);
+          const to = localDateN(p.endedAt);
+          return from <= range.to && (to === null || to >= range.from);
+        })
+        .map((p) => ({
+          levelOfCarePeriodId: p.id,
+          levelOfCare: p.levelOfCare,
+          from: localDate(p.effectiveAt),
+          to: localDateN(p.endedAt) ?? range.to,
+          chcDocumentedHours: null,
+          gipAdmissionCriteriaDocumented: null,
+        }));
+
+      return { admission, electionPeriods, certifications, faceToFace, levelOfCarePeriods };
     },
   );
 }

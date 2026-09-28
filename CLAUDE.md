@@ -472,6 +472,50 @@ already-terminal row, silent `no_match` when no request was ever opened, the mon
 a direct `discontinueOrder` call, and a one-shot kind correctly left alone). **Running total on #248: 509 →
 419** declared-but-unbound pairs (this pass resolved the two `m21` entries; #248 remains open for the rest).
 
+**M23's `POST /claims/assemble` boundary moved PAST the entire M6 block, and the gap was a missing
+read-surface in the OWNING module, exactly as #251 scoped it (F-121).** #250 bound `patientPayer` (M5)
+and left the wall at `admission.resolveForRange`; #251 named the five M6 `ClaimAssemblySeams` readers
+(`admission`, `electionPeriods`, `certifications`, `faceToFace`, `levelOfCare`) as needing "a new
+org-explicit M6 seam function… not an M23-side adapter" — M6's published §4.7 readers are id-keyed
+(`listPeriodsForAdmission`) or single-date-keyed (`findActivePeriodForPatient`), and none answers "every
+period/CTI/F2F/LOC-period for this PATIENT overlapping this RANGE". That function is now
+`claimAssemblyRangeContextForOrg` (`06-admission/seams/drizzle-store.ts`), the
+`admissionSchedulingContextForOrg`/`electionPeriodContextForOrg` org-explicit precedent extended to a
+range query: it resolves the one admission whose episode overlaps the range, then every election period /
+CTI / F2F / LOC period on it that overlaps the same window, in ONE `withOrgContext` transaction. **Three
+projection decisions were checked against how `claim-assembly.ts` actually reads each field, not
+assumed**: `electionPeriodSnapshot.effectiveTo` reads `actual_end_at` (null while open), never
+`scheduled_end_at` (a forecast) — `_util.ts`'s own `effectivePeriodEnd` treats null as "open," so a
+forecast value there would have closed every still-running period early; an open LOC period's `to` is
+CLAMPED to the caller's `range.to` (the true end is unknown, but every day the HIPPS bucketer asks about
+inside the claim window is already `<= range.to` by construction) while its `from` is left unclamped (real
+start, `isWithinInclusive` only needs it `<=` a service date already inside the range); and
+`attendingCosignRequired`/`attendingCosigned` derive from the CTI row's OWN `attending_md_id`/
+`attending_md_signed_at`, not `admission.attending_physician_id` — the CTI is where §2.3.3's period-1
+cosign requirement is actually tracked, and the write service's real `signCtiHospiceMd` path writes CTI
+status straight to `signed` regardless of whether an attending was named, so `ctiSigned` (an overall-CTI
+fact) and `attendingCosigned` (a specific one) are genuinely independent, not a derived pair. **Two fields
+stay honestly `null`, not fabricated**: `chcDocumentedHours`/`gipAdmissionCriteriaDocumented` have no
+producer anywhere in the schema — checked, not assumed, against both `level_of_care_period` and every M8
+table — and the §4.5 `level_of_care_coherence` rule already treats `null` as "not satisfied" (CMS-correct:
+silence is not compliance evidence), so returning it is honest rather than a new blocker.
+`claim-assembly-seam-adapters.ts`'s `buildM23AdmissionRangeAdapters` wraps the one M6 read into the five
+separate `ClaimAssemblySeams` shapes `assemble()` calls in sequence — each re-resolves the same range
+independently rather than inventing cross-call memoization, since the seams are built once at BOOT with no
+per-request handle to cache against and `POST /claims/assemble` is not a hot path. **Net reachability,
+stated precisely**: `mdm.resolveProviderEntity` and `referenceData.{wageIndexForCcn,
+activeSequestrationPolicy}` were already bound (#250) but sat BEHIND the M6 block in call order and were
+therefore unreachable by a real request until now; binding M6 moves the live wall to
+`referenceData.hippsRateTable` — still unbound (no CMS per-diem rate file has ever been loaded) — not to
+an unblocked route. Proven by `m23-claim-assembly-seams.live.test.ts`: the real M6 admission→election→CTI→
+activation chain through the production write service, a real LOC-period change, cross-tenant RLS
+isolation (an admission in one org resolves to `null` from another org's read), the honest
+`attendingCosignRequired: true, attendingCosigned: false` case, and the end-to-end `assemble()` boundary
+now failing at `BillingReferenceDataReader` rather than `AdmissionContextReader`. #251's other items — M8's
+two field/range gaps, M18's per-encounter-list gap, M38's bulk terminology gap, M40's clinical-participant
+linking, the CMS rate-table load, and M25's X12-835 sidecar — remain open, each its own scoped item per the
+issue's own "don't bundle these" instruction.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

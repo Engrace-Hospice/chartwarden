@@ -1,14 +1,16 @@
 /**
- * M23 claim-assembly seam bindings — LIVE Postgres proof (#250, F-11x).
+ * M23 claim-assembly seam bindings — LIVE Postgres proof (#250, #251, F-119, F-121).
  *
- * `boot-assembly.ts` binds FOUR of `ClaimAssemblySeams`'s eleven reader methods to real data:
- * `patientPayer` (M5), `mdm.resolveProviderEntity` (M40 CCN + MAC jurisdiction), and two of
- * `referenceData`'s four methods (`wageIndexForCcn`, `activeSequestrationPolicy`). This proves each
+ * `boot-assembly.ts` binds NINE of `ClaimAssemblySeams`'s eleven reader methods to real data:
+ * `patientPayer` (M5), `mdm.resolveProviderEntity` (M40 CCN + MAC jurisdiction), two of
+ * `referenceData`'s four methods (`wageIndexForCcn`, `activeSequestrationPolicy`), and — F-121 (#251) —
+ * all FIVE M6 range-shaped seams (`admission`, `electionPeriods`, `certifications`, `faceToFace`,
+ * `levelOfCare`), over the new `claimAssemblyRangeContextForOrg` M6 seam function. This proves each
  * against real rows under real RLS (`WARDENX_DEV_BYPASSRLS=0` discipline: this test connects as the
  * migrated `wardenx_app` role via `handle.db`, never the admin/superuser client used only to seed), and
  * proves the end-to-end `POST /claims/assemble` reachability boundary precisely: it now fails at
- * `admission.resolveForRange` (M6, still unbound) — one seam step later than before this pass, not
- * "unblocked".
+ * `referenceData.hippsRateTable` (still unbound — no CMS per-diem rate file has ever been loaded) — PAST
+ * the entire M6 block, not "unblocked" end to end.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
  *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m23-claim-assembly-seams.live.test.ts
@@ -17,10 +19,14 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
 import { appRoleConnectionString } from "./_live-app-role";
+import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 import { registerSeam } from "../src/bootstrap/index";
+import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
+import { claimAssemblyRangeContextForOrg } from "../src/modules/06-admission/index";
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import { buildM23BootAssemblyService } from "../src/modules/23-billing-medicare/services/boot-assembly";
 import {
+  buildM23AdmissionRangeAdapters,
   buildM23MdmProviderEntityAdapter,
   buildM23PatientPayerAdapter,
   buildM23ReferenceDataAdapter,
@@ -57,6 +63,34 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const U = "00000000-0000-0000-0000-0000000000ff";
+// M6 admission actors (F-121, #251) — real `"user"` rows, since the M4 audit trigger dereferences
+// `app.user_id` as an FK on every M6 write (the `m6-cop-document-renders.live.test.ts` precedent).
+const M6_USER = "33333333-3333-3333-3333-333333333333";
+const M6_MD = "66666666-6666-6666-6666-666666666666";
+const M6_ATTENDING = "77777777-7777-7777-7777-777777777777";
+/**
+ * A 28-day range starting tomorrow (real wall-clock `now()`, not `admissionAt`) — `activateAdmission`
+ * writes the election period's `effective_at` from `activatedAt = now()`, which no test input controls,
+ * so a range hardcoded around a fixed calendar date would drift out of coverage as real time passes. Also
+ * returns the CMS hospice fiscal year (Oct–Sep) that range's `from` falls in — the same
+ * `hospiceFiscalYearStarting` rule `claim-assembly.ts` applies — for seeding a matching wage-index row.
+ */
+function futureClaimRange(): { range: { from: string; to: string }; fiscalYearStarting: number } {
+  const from = new Date();
+  from.setUTCDate(from.getUTCDate() + 1);
+  const to = new Date(from);
+  to.setUTCDate(to.getUTCDate() + 27);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const fiscalYearStarting = from.getUTCMonth() + 1 >= 10 ? from.getUTCFullYear() : from.getUTCFullYear() - 1;
+  return { range: { from: iso(from), to: iso(to) }, fiscalYearStarting };
+}
+
+const CTI_CLINICAL = {
+  terminalDiagnosisIcd10: "C34.90",
+  prognosisStatement: "Life expectancy of 6 months or less if the terminal illness runs its normal course.",
+  narrative: "Metastatic non-small-cell lung cancer with progressive functional decline.",
+  clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
+} as const;
 
 describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#250)", () => {
   let admin: Client;
@@ -160,6 +194,10 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     await applyMigrations();
     await seedOrg(ORG_A, "org-a");
     await seedOrg(ORG_B, "org-b");
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'f121a@x.test'),($2,'f121md@x.test'),($3,'f121at@x.test')`,
+      [M6_USER, M6_MD, M6_ATTENDING],
+    );
 
     // `_live-app-role.ts` (GAP-086): grants wardenx_app LOGIN + a password and PROVES the returned url
     // actually connects as the NOBYPASSRLS app role, not a superuser — a bare-superuser handle would
@@ -170,7 +208,75 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     // M5's seam registry entry, so `getSeam("PatientCoverageReader")` resolves for real (the
     // adapter under test calls through the registry exactly as boot-assembly.ts does).
     registerSeam("PatientCoverageReader", buildPatientCoverageReader(handle.db));
+    // The two M5 seams M6 intake consults (referral qualify/accept + activation readiness) — the
+    // `_m6-admit.ts` precedent, over the same app-role handle.
+    registerM5IntakeSeams(handle.db);
   }, 120_000);
+
+  const admissionSvc = () =>
+    createDbAdmissionRouteService(handle.db, undefined, undefined, {
+      async belongsToOrg(organizationId: string, providerEntityId: string) {
+        const { rows } = await admin.query(
+          "SELECT 1 FROM provider_entity WHERE id=$1 AND organization_id=$2",
+          [providerEntityId, organizationId],
+        );
+        return rows.length > 0;
+      },
+    });
+
+  /**
+   * The real §418.24 chain through the production M6 write service — referral → qualify → accept →
+   * election draft+sign → CTI draft+sign → activate — landing an ACTIVE admission with period 1's
+   * `effective_at` set to `admissionAt`. `orgId` must be {@link ORG_A} or {@link ORG_B} (both have the
+   * M6 actor users seeded); `providerEntityId` sites the election statement (F-100's `#44` precedent).
+   */
+  async function activeAdmissionForRange(
+    orgId: string,
+    patientId: string,
+    providerEntityId: string,
+    admissionAt: string,
+  ): Promise<{ admissionId: string; periodId: string }> {
+    const svc = admissionSvc();
+    const { admissionId } = await admitViaQualifiedReferral(svc, admin, {
+      organizationId: orgId,
+      actorUserId: M6_USER,
+      patientId,
+      hospicePhysicianId: M6_MD,
+      admissionAt,
+    });
+    const periods = await svc.listElectionPeriods(orgId, admissionId);
+    const periodId = periods?.[0]?.id as string;
+    const nor = await svc.acknowledgeNor(
+      orgId,
+      admissionId,
+      { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
+      M6_USER,
+    );
+    const es = await svc.draftElectionStatement(orgId, admissionId, periodId, {
+      electedProviderEntityId: providerEntityId,
+      electedAttendingPhysicianId: M6_ATTENDING,
+      waiverAcknowledged: true,
+    });
+    await svc.signElection(orgId, es.id, es.version, M6_USER, {
+      signingPatientName: "Pat Patient",
+      signingRole: "patient",
+    });
+    const cti = await svc.draftCti(
+      orgId,
+      {
+        electionPeriodId: periodId,
+        hospiceMedicalDirectorId: M6_MD,
+        attendingPhysicianId: M6_ATTENDING,
+        ...CTI_CLINICAL,
+        isRecert: false,
+      },
+      M6_USER,
+    );
+    await svc.signCtiHospiceMd(orgId, cti.id, cti.version, M6_USER);
+    const active = await svc.activateAdmission(orgId, admissionId, nor.version);
+    expect(active.state).toBe("active");
+    return { admissionId, periodId };
+  }
 
   afterAll(async () => {
     if (handle) await handle.close();
@@ -304,13 +410,153 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     });
   });
 
+  describe("M6 range seams: admission/electionPeriods/certifications/faceToFace/levelOfCare (F-121, #251)", () => {
+    it("resolves the real admission + period + CTI + LOC period for a range the admission covers", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381250");
+      const { admissionId, periodId } = await activeAdmissionForRange(
+        ORG_A,
+        patientId,
+        pe,
+        "2026-01-01T00:00:00.000Z",
+      );
+      await admissionSvc().changeLoc(
+        ORG_A,
+        admissionId,
+        "routine_home_care",
+        null,
+        "2026-01-01T00:00:00.000Z",
+        "initial LOC",
+      );
+      // `draftCti`'s real write path hardcodes `attending_md_id: null` regardless of any attending
+      // named at draft (a separate, out-of-scope gap: this admission chain has no live way to capture
+      // one) — set it directly to prove the READER reports "cosign required, not yet captured" honestly
+      // when the fact DOES exist on the row, rather than asserting a false the write path can't produce.
+      await admin.query(
+        "UPDATE certification_of_terminal_illness SET attending_md_id=$1 WHERE election_period_id=$2",
+        [M6_ATTENDING, periodId],
+      );
+
+      // NOTE: `activateAdmission` writes the election period's `effective_at` from `activatedAt = now()`
+      // (real wall-clock time), NOT from the `admissionAt` this test requested — so the claim range has to
+      // straddle "now", and `effectiveFrom` below is asserted as a real calendar date, not the requested
+      // "2026-01-01" (that value stays `admission.hospiceAdmissionDate`'s own, unaffected column read).
+      const { range } = futureClaimRange();
+      const ctx = await claimAssemblyRangeContextForOrg(handle.db, ORG_A, patientId, range);
+      expect(ctx?.admission).toEqual({
+        admissionId,
+        hospiceAdmissionDate: "2026-01-01",
+        dischargeDate: null,
+        dischargeReason: null,
+        deceasedDate: null,
+      });
+      expect(ctx?.electionPeriods).toEqual([
+        {
+          electionPeriodId: periodId,
+          sequence: 1,
+          effectiveFrom: expect.stringMatching(/^\d{4}-\d{2}-\d{2}$/),
+          effectiveTo: null,
+          revoked: false,
+          revocationDate: null,
+        },
+      ]);
+      expect(ctx?.certifications).toHaveLength(1);
+      expect(ctx?.certifications[0]).toMatchObject({
+        electionPeriodSequence: 1,
+        ctiSigned: true,
+        // `draftCti` named an attending physician, so the co-sign is required — but `signCtiHospiceMd`
+        // (the only signature this admission's real chain calls) never sets `attending_md_signed_at`, so
+        // the honest read is "required, not (yet) captured" — a real fact, not a fabricated true.
+        attendingCosignRequired: true,
+        attendingCosigned: false,
+      });
+      expect(ctx?.certifications[0]?.ctiSignedDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      // Period 1 never requires an F2F (only periods ≥ 3 do) and none was drafted — the honest empty list,
+      // not a fabricated "not attested" row.
+      expect(ctx?.faceToFace).toEqual([]);
+      expect(ctx?.levelOfCarePeriods).toHaveLength(1);
+      expect(ctx?.levelOfCarePeriods[0]).toEqual({
+        levelOfCarePeriodId: expect.any(String),
+        levelOfCare: "routine_home_care",
+        from: "2026-01-01",
+        to: range.to, // still open — clamped to the claim range's own end, not fabricated
+        chcDocumentedHours: null,
+        gipAdmissionCriteriaDocumented: null,
+      });
+
+      // Wrapped in the ClaimAssemblySeams shape the way `boot-assembly.ts` actually consumes it.
+      const seams = buildM23AdmissionRangeAdapters({
+        forRange: (orgId, pid, r) => claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r),
+      });
+      expect(await seams.admission.resolveForRange(ORG_A, patientId, range)).toEqual(ctx?.admission);
+      expect(await seams.levelOfCare.periodsInRange(ORG_A, patientId, range)).toEqual(
+        ctx?.levelOfCarePeriods,
+      );
+    });
+
+    it("returns null when no admission covers the range (before the admission started)", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381251");
+      await activeAdmissionForRange(ORG_A, patientId, pe, "2026-01-01T00:00:00.000Z");
+      const ctx = await claimAssemblyRangeContextForOrg(handle.db, ORG_A, patientId, {
+        from: "2025-01-01",
+        to: "2025-01-31",
+      });
+      expect(ctx).toBeNull();
+    });
+
+    it("never resolves another org's admission (cross-tenant RLS isolation)", async () => {
+      const patientIdB = await seedPatient(ORG_B);
+      const peB = await seedProviderEntity(ORG_B, "381252");
+      await activeAdmissionForRange(ORG_B, patientIdB, peB, "2026-01-01T00:00:00.000Z");
+      const ctx = await claimAssemblyRangeContextForOrg(handle.db, ORG_A, patientIdB, {
+        from: "2026-02-01",
+        to: "2026-02-28",
+      });
+      expect(ctx).toBeNull();
+    });
+  });
+
   describe("end-to-end boundary: POST /claims/assemble's real SEAM_UNBOUND wall today", () => {
-    it("progresses past patientPayer and fails at admission.resolveForRange (M6, still unbound) — not at patientPayer", async () => {
+    it("progresses PAST the entire M6 block and fails at referenceData.hippsRateTable (F-121, #251)", async () => {
       const patientId = await seedPatient(ORG_A);
       await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
       const pe = await seedProviderEntity(ORG_A, "381240");
+      await seedMacCredential(ORG_A, pe, "ngs_j6");
+      // The claim range has to straddle "now" — see `futureClaimRange`'s own doc — so the matching
+      // wage-index fiscal year is derived the same way, not hardcoded.
+      const { range, fiscalYearStarting } = futureClaimRange();
+      await seedWageIndex("381240", fiscalYearStarting, "0.9500", "12060");
+      await activeAdmissionForRange(ORG_A, patientId, pe, "2026-01-01T00:00:00.000Z");
 
-      const service = buildM23BootAssemblyService(handle.db);
+      const service = buildM23BootAssemblyService(handle.db, {
+        providerCcn: testProviderCcnPort,
+        m6ClaimRange: {
+          forRange: (orgId, pid, r) => claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r),
+        },
+      });
+      await expect(
+        service.assemble(
+          { organizationId: ORG_A, userId: M6_USER, membershipId: M6_USER, actorKind: "user" },
+          {
+            providerEntityId: pe,
+            patientId,
+            serviceFrom: range.from,
+            serviceTo: range.to,
+            tob: "811",
+          },
+        ),
+      ).rejects.toMatchObject({
+        code: "SEAM_UNBOUND",
+        message: expect.stringContaining("BillingReferenceDataReader"),
+      });
+    });
+
+    it("still fails at admission.resolveForRange (M6) when the M6 seam port is not injected (unit-test default)", async () => {
+      const patientId = await seedPatient(ORG_A);
+      await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
+      const pe = await seedProviderEntity(ORG_A, "381249");
+      const service = buildM23BootAssemblyService(handle.db); // no m6ClaimRange port
       await expect(
         service.assemble(
           { organizationId: ORG_A, userId: U, membershipId: U, actorKind: "user" },

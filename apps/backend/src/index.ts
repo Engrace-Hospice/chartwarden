@@ -184,6 +184,7 @@ import {
   buildM6DocumentBackrefConsumer,
   buildM6ProposalAcceptedConsumer,
   buildM6WorkerDeps,
+  claimAssemblyRangeContextForOrg,
   createDrizzleAdmissionEraseStore,
   createDrizzleAdmissionReaderStore,
   electionPeriodContextForOrg,
@@ -3234,6 +3235,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             assemblyService: buildM23BootAssemblyService(dbHandle.db, {
               outbox: m23OutboxPublisher,
               providerCcn: m23ProviderCcn,
+              // F-121 (#251) — M6's range-shaped seam function, bound directly (M6 needs no per-request
+              // handle; it opens its own withOrgContext, the admissionSchedulingContextForOrg pattern).
+              m6ClaimRange: {
+                forRange: (orgId, patientId, range) =>
+                  claimAssemblyRangeContextForOrg(dbHandle.db, orgId, patientId, range),
+              },
             }),
           });
           // M25 (Remittance & Denials) — mount the §4.1 route plugins over the Drizzle READ + WRITE

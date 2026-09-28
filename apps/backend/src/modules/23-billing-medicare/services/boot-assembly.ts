@@ -1,25 +1,21 @@
 // apps/backend/src/modules/23-billing-medicare/services/boot-assembly.ts — the boot-time CLAIM-ASSEMBLY
 // service the composition root binds into `mountM23Routes` (route #1 `POST /claims/assemble`).
 //
-// STATUS (#250, corrected from this file's earlier "6 seam areas, all pending a M1 SeamRegistry addition"
-// framing — that framing was itself stale: five of the six ARE in `SeamContracts` and have been since
-// their own modules' -T05/-T08 tasks landed; the real blocker per seam is checked below, one at a time).
+// STATUS (#250/#251, corrected from this file's earlier "6 seam areas, all pending a M1 SeamRegistry
+// addition" framing — that framing was itself stale: five of the six ARE in `SeamContracts` and have been
+// since their own modules' -T05/-T08 tasks landed; the real blocker per seam is checked below, one at a
+// time).
 //
-// FOUR of the eleven `ClaimAssemblySeams` reader methods are now bound to REAL data
+// NINE of the eleven `ClaimAssemblySeams` reader methods are now bound to REAL data
 // (`claim-assembly-seam-adapters.ts`): `patientPayer` (M5), `mdm.resolveProviderEntity` (M40 CCN + MAC
-// jurisdiction), and two of `referenceData`'s four methods (`wageIndexForCcn`, `activeSequestrationPolicy`).
-// Each is individually live-tested against real rows under RLS (`m23-claim-assembly-seams.live.test.ts`).
+// jurisdiction), two of `referenceData`'s four methods (`wageIndexForCcn`, `activeSequestrationPolicy`),
+// and — F-121 (#251) — all FIVE M6 range-shaped seams (`admission`, `electionPeriods`, `certifications`,
+// `faceToFace`, `levelOfCare`), over the new `claimAssemblyRangeContextForOrg` M6 seam function. Each is
+// individually live-tested against real rows under RLS (`m23-claim-assembly-seams.live.test.ts`).
 //
 // EVERY OTHER READER STAYS A DENY-STUB, and per-seam, not as one blanket "not ready yet" — each reason
 // below was checked against the owning module's actual published seam shape, not assumed from this file's
 // prior header:
-//   * admission / electionPeriods / certifications / faceToFace / levelOfCare (M6) — M6's published
-//     SeamRegistry readers are either ID-keyed (`listPeriodsForAdmission(admissionId)`,
-//     `getCurrentLevelOfCare(admissionId)`) or single-DATE-keyed (`findActivePeriodForPatient(patientId,
-//     on)`); none answers "every period/CTI/F2F/LOC-period for this PATIENT overlapping this RANGE",
-//     which is what claim assembly needs. This is a real new read-surface addition to M6's OWN seam layer
-//     (the `electionPeriodContextForOrg`/`admissionSchedulingContextForOrg` precedent — a new
-//     org-explicit function following that established shape), not an M23-side adapter.
 //   * billableEncounters (M8) — the published `BillableEncounterReader.billability(encounterIds)` needs
 //     the encounter ids ALREADY IN HAND; there is no "list billable encounters for this patient/provider
 //     in this range" seam to resolve them from. Same M6-shaped gap, owned by M8.
@@ -46,13 +42,19 @@
 //
 // NET EFFECT ON REACHABILITY, stated precisely rather than implied: `assemble()`'s call order is
 // patientPayer → admission → electionPeriods → certifications/faceToFace/levelOfCare → mdm.
-// resolveProviderEntity → referenceData.wageIndexForCcn → ... — so binding `patientPayer` for real moves
-// the live SEAM_UNBOUND boundary from the FIRST read to the SECOND (`admission.resolveForRange`, still
-// M6-blocked). `POST /claims/assemble` remains unreachable end-to-end for every real caller today. This
-// is real, individually-verified progress on exactly one seam step, not an unblock — do not read the
-// other three bound methods (resolveProviderEntity, wageIndexForCcn, activeSequestrationPolicy) as
-// having moved the live boundary further: they sit LATER in the call order, behind the still-unbound M6
-// reads, and are unreachable by a real request until M6's range-query gap above is closed.
+// resolveProviderEntity → referenceData.wageIndexForCcn → referenceData.hippsRateTable →
+// referenceData.activeSequestrationPolicy → billableEncounters → evvCompliance → mdm.
+// resolveClinicalParticipants → terminology → ... — binding `patientPayer` (#250) moved the boundary from
+// the FIRST read to the SECOND; binding all five M6 seams (#251, F-121) moves it PAST the M6 block
+// entirely, to the FIRST of the remaining stubs the call order actually reaches:
+// `referenceData.hippsRateTable` (`WAGE_INDEX_UNAVAILABLE`/422 fires first when no wage-index factor is
+// loaded for the CCN, so `hippsRateTable`'s `SEAM_UNBOUND`/503 is the live wall only once a factor
+// resolves — both #250 and this pass's own live test exercise wage-index rows the migration 0080 seed
+// covers). `POST /claims/assemble` remains unreachable end-to-end for every real caller today: even past
+// `hippsRateTable`/`activeSequestrationPolicy`, `billableEncounters` (M8) is next and still unbound. This
+// is real, individually-verified progress through the M6 block, not an unblock of the whole route — do
+// not read `mdm.resolveProviderEntity` as reachable independent of this: it sits BEFORE the M6-adjacent
+// reference-data reads in call order but was already reachable once `patientPayer`/`admission` cleared.
 //
 // Per RULE 4 (fail-closed-unbound), every method that stays a stub still throws the typed `SEAM_UNBOUND`
 // (503) only when an assemble request actually reaches it — boot stays green, and the route never
@@ -69,6 +71,8 @@ import {
   buildClaimAssemblyService,
 } from "./claim-assembly";
 import {
+  type M6ClaimRangeReader,
+  buildM23AdmissionRangeAdapters,
   buildM23MdmProviderEntityAdapter,
   buildM23PatientPayerAdapter,
   buildM23ReferenceDataAdapter,
@@ -94,7 +98,14 @@ function unbound(seam: string): never {
  */
 export function buildM23BootAssemblyService(
   db: BillingDb,
-  ports: { readonly outbox?: AssemblyOutboxPort; readonly providerCcn?: ProviderCcnPort } = {},
+  ports: {
+    readonly outbox?: AssemblyOutboxPort;
+    readonly providerCcn?: ProviderCcnPort;
+    /** F-121 (#251) — M6's `claimAssemblyRangeContextForOrg`, injected by the composition root. Absent
+     *  (e.g. in a unit test that only exercises the earlier `patientPayer` gate), the five M6 seams stay
+     *  the fail-closed `unbound()` deny-stubs below. */
+    readonly m6ClaimRange?: M6ClaimRangeReader;
+  } = {},
 ): ClaimAssemblyService {
   const outbox: AssemblyOutboxPort = ports.outbox ?? {
     async publish() {
@@ -111,15 +122,20 @@ export function buildM23BootAssemblyService(
   };
 
   const mdmAdapter = buildM23MdmProviderEntityAdapter(db, providerCcn);
+  // REAL (#251) — the five M6 range-shaped seams, when the composition root injects the reader; absent,
+  // each stays its own fail-closed `unbound()` stub (RULE 4).
+  const m6Range = ports.m6ClaimRange ? buildM23AdmissionRangeAdapters(ports.m6ClaimRange) : null;
 
   const seams: ClaimAssemblySeams = {
     // REAL (#250) — see this file's header for the exact per-seam accounting.
     patientPayer: buildM23PatientPayerAdapter(),
-    admission: { resolveForRange: () => unbound("AdmissionContextReader") },
-    electionPeriods: { coveringRange: () => unbound("ElectionPeriodReader") },
-    certifications: { forPatient: () => unbound("CertificationReader") },
-    faceToFace: { forPatient: () => unbound("FaceToFaceReader") },
-    levelOfCare: { periodsInRange: () => unbound("LevelOfCareReader") },
+    admission: m6Range?.admission ?? { resolveForRange: () => unbound("AdmissionContextReader") },
+    electionPeriods: m6Range?.electionPeriods ?? {
+      coveringRange: () => unbound("ElectionPeriodReader"),
+    },
+    certifications: m6Range?.certifications ?? { forPatient: () => unbound("CertificationReader") },
+    faceToFace: m6Range?.faceToFace ?? { forPatient: () => unbound("FaceToFaceReader") },
+    levelOfCare: m6Range?.levelOfCare ?? { periodsInRange: () => unbound("LevelOfCareReader") },
     billableEncounters: { forRange: () => unbound("BillableEncounterReader") },
     signedEncounters: { inWindow: () => unbound("SignedEncountersReader") },
     evvCompliance: { bracketsForEncounters: () => unbound("EvvComplianceReader") },

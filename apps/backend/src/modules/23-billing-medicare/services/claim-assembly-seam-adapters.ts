@@ -1,17 +1,26 @@
-// apps/backend/src/modules/23-billing-medicare/services/claim-assembly-seam-adapters.ts — the FOUR
-// `ClaimAssemblySeams` bindings that are genuinely real "wire an existing reader" work (#250), checked one
-// at a time rather than assumed from `boot-assembly.ts`'s header. Every other declared-unbound seam in that
-// file was investigated and found to need real new read-surface work in its OWNING module (a range-shaped
-// or bulk-shaped query the module's published seam does not offer today) — see `boot-assembly.ts`'s header
-// for the per-seam accounting. These four have no such gap: the fact either already lives on an M1-registry
-// seam whose shape matches exactly, or on a table this module (or a sibling M23 table) already owns and
-// already has a repository for.
+// apps/backend/src/modules/23-billing-medicare/services/claim-assembly-seam-adapters.ts — the
+// `ClaimAssemblySeams` bindings that are genuinely real "wire an existing (or newly-added) reader" work
+// (#250, #251), checked one at a time rather than assumed from `boot-assembly.ts`'s header. Every other
+// declared-unbound seam in that file was investigated and found to need real new read-surface work in its
+// OWNING module (a range-shaped or bulk-shaped query the module's published seam does not offer today) —
+// see `boot-assembly.ts`'s header for the per-seam accounting. FOUR of these (#250) have no such gap: the
+// fact either already lives on an M1-registry seam whose shape matches exactly, or on a table this module
+// (or a sibling M23 table) already owns and already has a repository for. The FIVE M6 seams below (F-121,
+// #251) needed exactly that owning-module read-surface addition — `claimAssemblyRangeContextForOrg`
+// (`06-admission/seams/drizzle-store.ts`) — and this file is the adapter over it, not the read itself.
 import { repositories } from "@wardenx/billing";
+import type { LevelOfCare } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
 import { getSeam } from "../../../bootstrap/index";
 import type { ProviderCcnPort } from "../routes/write-service";
 import type {
+  AdmissionContextReader,
   BillingReferenceDataReader,
+  CertificationReader,
+  DateRange,
+  ElectionPeriodReader,
+  FaceToFaceReader,
+  LevelOfCareReader,
   MdmEntityProvider,
   MedicarePrimaryResolution,
   PatientPayerReader,
@@ -148,7 +157,119 @@ export function buildM23MdmProviderEntityAdapter(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-// 3 & 4. referenceData.{wageIndexForCcn,activeSequestrationPolicy} — real, over M23's own tables.
+// 3. admission / electionPeriods / certifications / faceToFace / levelOfCare (M6) — real, over M6's new
+//    range-shaped seam function (F-121, #251).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The exact shape of M6's `claimAssemblyRangeContextForOrg` (`06-admission/seams/drizzle-store.ts`),
+ * duplicated locally rather than imported — the SAME no-package-import posture as {@link M5CoverageSeam}
+ * above: this file speaks M23's own `ClaimAssemblySeams` vocabulary, and the composition root is the only
+ * place that is allowed to know both modules' shapes at once (`index.ts` binds this port directly to the
+ * M6 function).
+ */
+export interface M6ClaimRangeReader {
+  forRange(
+    orgId: string,
+    patientId: string,
+    range: DateRange,
+  ): Promise<{
+    readonly admission: {
+      readonly admissionId: string;
+      readonly hospiceAdmissionDate: string;
+      readonly dischargeDate: string | null;
+      readonly dischargeReason: string | null;
+      readonly deceasedDate: string | null;
+    };
+    readonly electionPeriods: readonly {
+      readonly electionPeriodId: string;
+      readonly sequence: number;
+      readonly effectiveFrom: string;
+      readonly effectiveTo: string | null;
+      readonly revoked: boolean;
+      readonly revocationDate: string | null;
+    }[];
+    readonly certifications: readonly {
+      readonly electionPeriodSequence: number;
+      readonly ctiSigned: boolean;
+      readonly ctiSignedDate: string | null;
+      readonly attendingCosignRequired: boolean;
+      readonly attendingCosigned: boolean;
+    }[];
+    readonly faceToFace: readonly {
+      readonly electionPeriodSequence: number;
+      readonly attested: boolean;
+      readonly encounterDate: string | null;
+    }[];
+    readonly levelOfCarePeriods: readonly {
+      readonly levelOfCarePeriodId: string;
+      readonly levelOfCare: string;
+      readonly from: string;
+      readonly to: string;
+      readonly chcDocumentedHours: number | null;
+      readonly gipAdmissionCriteriaDocumented: boolean | null;
+    }[];
+  } | null>;
+}
+
+/**
+ * F-121 (#251) — the five `ClaimAssemblySeams` M6 readers that were deferred as "a real new read-surface
+ * addition to M6's OWN seam layer, not an M23-side adapter" (`boot-assembly.ts`'s header). That read-surface
+ * is `claimAssemblyRangeContextForOrg`; this wraps its ONE bundled result into the five separate reader
+ * shapes `assemble()` calls in sequence (`admission → electionPeriods → certifications/faceToFace/
+ * levelOfCare`). Each of the five re-resolves the SAME range context independently — `ClaimAssemblySeams`
+ * is built once at BOOT with no request-scoped cache to hang memoization off, and `POST /claims/assemble`
+ * is not a hot path — so this trades a handful of redundant reads for not inventing cross-call state.
+ *
+ * `resolveAdmission` re-runs the range resolution and narrows to the `admission` slice; a null result
+ * (no admission overlaps the range) is what `assemble()` turns into `PATIENT_NOT_ELECTED` (409).
+ */
+export function buildM23AdmissionRangeAdapters(reader: M6ClaimRangeReader): {
+  readonly admission: AdmissionContextReader;
+  readonly electionPeriods: ElectionPeriodReader;
+  readonly certifications: CertificationReader;
+  readonly faceToFace: FaceToFaceReader;
+  readonly levelOfCare: LevelOfCareReader;
+} {
+  return {
+    admission: {
+      async resolveForRange(orgId, patientId, range) {
+        const ctx = await reader.forRange(orgId, patientId, range);
+        return ctx?.admission ?? null;
+      },
+    },
+    electionPeriods: {
+      async coveringRange(orgId, patientId, range) {
+        const ctx = await reader.forRange(orgId, patientId, range);
+        return ctx?.electionPeriods ?? [];
+      },
+    },
+    certifications: {
+      async forPatient(orgId, patientId, range) {
+        const ctx = await reader.forRange(orgId, patientId, range);
+        return ctx?.certifications ?? [];
+      },
+    },
+    faceToFace: {
+      async forPatient(orgId, patientId, range) {
+        const ctx = await reader.forRange(orgId, patientId, range);
+        return ctx?.faceToFace ?? [];
+      },
+    },
+    levelOfCare: {
+      async periodsInRange(orgId, patientId, range) {
+        const ctx = await reader.forRange(orgId, patientId, range);
+        return (ctx?.levelOfCarePeriods ?? []).map((p) => ({
+          ...p,
+          levelOfCare: p.levelOfCare as LevelOfCare,
+        }));
+      },
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// 4 & 5. referenceData.{wageIndexForCcn,activeSequestrationPolicy} — real, over M23's own tables.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
