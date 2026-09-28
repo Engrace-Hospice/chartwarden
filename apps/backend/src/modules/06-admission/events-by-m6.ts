@@ -236,9 +236,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // renders nothing: M22's §4.11 consumer table names six M6 events (election.signed, cti.signed,
       // f2f.attested, nor.acknowledged, revocation.created, discharge.created) plus the two still
       // deferred below, and this is not among them. Unlike the three that went record-only, this entry
-      // still defers — on the other twelve unbound consumers, which is the true reason.
+      // still defers — on the other eleven unbound consumers, which is the true reason.
       "m23",
-      "m26",
       "m37",
     ],
     // F-130 (#248) — m27 REMOVED: M27's own §1.1 relationship inventory + manifest-patch dependsOn list
@@ -254,6 +253,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // them); it reads this fact via `AdmissionOnsetReader.listAdmissionsStartedInPeriod` on its own nightly
     // recompute cadence (the `opioid_on_admission_rate` denominator) instead — the m33/m36 shape, not an
     // outbox subscription that will ever bind.
+    // F-131 (#248) — m26 REMOVED: M26's own §4.4 consumer surface (`consumers/subscription-map.ts`) names
+    // exactly two M6 topics — `m6.revocation.created` (freeze) and `m6.transfer.created` (proportional
+    // weight init) — and M26's "Depends on" text reads M6 through `ElectionPeriodReader`, a build-time
+    // benefit-period-anchored PULL, not a push subscription to admission activation.
     seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },
@@ -308,9 +311,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       "m17",
       // F-101 — `m22` was here. The discharge SUMMARY is rendered from `m6.discharge.created`, which
       // carries the `discharge_event` id M22 back-refs; this event carries the ADMISSION id and no
-      // renderable artifact. Still defers, on the other eight.
+      // renderable artifact. Still defers, on the other seven.
       "m23",
-      "m26",
       "m37",
       "m36",
     ],
@@ -320,6 +322,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // never subscribes to anything (request-time-only reads), and m30 reads this fact via
     // `DischargeReader.liveDischargeTimingCounts` (HCI indicators 3/4) on its nightly cadence rather than
     // reacting to this event.
+    // F-131 (#248) — m26 REMOVED: same reasoning as `m6.admission.activated` above — M26's only M6
+    // subscriptions are `revocation.created`/`transfer.created`; an ordinary discharge is a benefit-period
+    // boundary M26 reads via the `ElectionPeriodReader` PULL, not a push subscription.
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
@@ -388,11 +393,14 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     // F-101 — `m22` was first in this list. A recertification period starting is a billing and cap
     // fact, not a document: the recert artifact is the CTI, rendered from `m6.cti.signed`. Still
-    // defers, on m23/m26.
+    // defers, on m23.
     // F-130 (#248) — m27 REMOVED: same seam-pull reasoning as `m6.admission.activated` (F-130 above) —
     // M27's service-side census reads M6's `LevelOfCarePeriodReader` fresh on demand, never a push
     // subscription to election-period lifecycle events.
-    declaredConsumers: ["m23", "m26"],
+    // F-131 (#248) — m26 REMOVED: M26's own §4.4 subscription-map names no `m6.election.*` topic at all —
+    // its cap math reads election-period boundaries through the `ElectionPeriodReader` PULL (§1.1 "Depends
+    // on"), never a push subscription to a period opening/ending.
+    declaredConsumers: ["m23"],
     isOutboxOnly: true,
   },
   {
@@ -407,7 +415,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       admissionId: Type.String({ minLength: 1 }),
     }),
     // F-130 (#248) — m27 REMOVED: same seam-pull reasoning as `m6.election.period_started` above.
-    declaredConsumers: ["m23", "m26"],
+    // F-131 (#248) — m26 REMOVED: same reasoning as `m6.election.period_started` above.
+    declaredConsumers: ["m23"],
     isOutboxOnly: true,
   },
   // ── certification (CTI) ─────────────────────────────────────────────────────────────────────────
@@ -686,11 +695,15 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       admissionId: Type.String({ minLength: 1 }),
     }),
     // F-101 — `m22` was first in this list. A level-of-care change is a revenue and quality fact with
-    // no M22 template behind it. Still defers, on m23/m26.
+    // no M22 template behind it. Still defers, on m23.
     // F-130 (#248) — m27 REMOVED: this IS the exact table (`level_of_care_period`) M27's own
     // `LevelOfCarePeriodReader` seam pull reads for Worksheet S-3 — "the service-side patient-day census
     // … independent of M23's billed days" per M27's §1.1 dependency line — never an outbox subscription.
-    declaredConsumers: ["m23", "m26"],
+    // F-131 (#248) — m26 REMOVED: M26's cap math is per-beneficiary and benefit-period-anchored
+    // (`ElectionPeriodReader`), not level-of-care-anchored; its own D13 names the INPATIENT (20% rule) day
+    // source as M23 claim lines by revenue code (0655/0656), never M6 LOC periods, and its
+    // subscription-map.ts names no `m6.loc.changed` topic.
+    declaredConsumers: ["m23"],
     // F-115 (#248) — m30 moved here from declaredConsumers: it reads LOC data via
     // `LevelOfCarePeriodReader.chcOrGipCoverageCounts`/`.levelOfCareDaySpans` (HCI indicators 1/8/9) on
     // its own nightly cadence, not by reacting to this event — no consumer binds it or ever will.
@@ -752,8 +765,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-129 (#248) — m14 dropped: redundant with `m6.admission.discharged`, M14's own §4.5-table
     // inclusion-cache subscription (D9) — same discharge transaction, same `admissionId`/`dischargeDate`
     // facts M14 actually needs. `discharge.created`'s richer `dischargeEventId`/`requiresMedicalDirectorCosign`
-    // fields serve M22/M23/M26, which `admission.discharged`'s payload does not carry.
-    declaredConsumers: ["m22", "m23", "m26"],
+    // fields serve M22/M23, which `admission.discharged`'s payload does not carry.
+    // F-131 (#248) — m26 REMOVED: an ordinary discharge (this event) is a benefit-period boundary M26
+    // reads via the `ElectionPeriodReader` PULL, not a push subscription; M26's own §4.4 subscription-map
+    // names only `m6.revocation.created`/`m6.transfer.created` from M6.
+    declaredConsumers: ["m22", "m23"],
     isOutboxOnly: true,
   },
   {

@@ -797,6 +797,58 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   tests green, and a clean `check:boot:platform` run against a freshly migrated, RLS-enforced disposable
   Postgres. Leaving #248 open — 377 pairs across 32 modules remain.
 
+  **The m26 group (22 pairs) checked the same way, against M26's own §4.4 consumer surface rather than
+  the six producing modules' guesses, and it went 15/22 misdeclared — the opposite ratio from m27
+  (F-131, #248).** `consumers/subscription-map.ts`'s `M26_SUBSCRIPTION_MAP` (the F-094/F-101 precedent:
+  a consuming module's own constant is the authority) plus the module spec's exhaustive §3.1 file tree —
+  which names exactly seven consumer files and no others — settled every event. **15 of 22 dropped.** All
+  6 `m6.*` events (`admission.activated`/`.discharged`, `discharge.created`, `election.period_started`/
+  `.period_ended`, `loc.changed`) are redundant with the documented `ElectionPeriodReader` PULL M26's own
+  "Depends on" text names for benefit-period-anchored cap math — and `loc.changed` doubly so, since M26's
+  own D13 names the INPATIENT (20%-rule) day source as M23 claim lines by revenue code (0655/0656), never
+  M6 level-of-care periods, the identical "physical-site-independent" finding F-130 made for M27 one
+  module over. `m23.claim.paid` is redundant with `m25.remittance.advice_posted`: M26's own text states
+  "M25 is the authoritative paid-amount source — every cent traces to an 835-derived remittance line", so
+  the claim-paid milestone itself carries no fact the subscription-map keys on (already correctly
+  declared on `advice_posted` alone). `m23.claim.acknowledged` has no support anywhere in M26's consumer
+  surface — an acknowledgment carries no paid amount, reversal, or inpatient-day fact. All 4
+  `m24.medicaid_claim.*` events have no support of any kind: M26's own spec states outright "Medicaid
+  payments are excluded from the Medicare aggregate cap (ADR-0017 D4)" and "M26's scope is strictly
+  Medicare per 42 CFR §418.308" — a stronger, first-party exclusion than the m27 pass's M24 finding, which
+  only lacked support rather than being expressly ruled out. All 3 `m37.*` events (`census.snapshot_taken`,
+  `ipu_admission.discharged`/`.transferred`) have no support either — M37 is named nowhere in M26's
+  "Depends on"/"Consumed by" text, the same unsupported-guess shape as m27's M37 cluster. All 15 dropped
+  at the source in each producing module's `events-by-mNN.ts`. **7 of 22 kept, and they split two ways.**
+  5 are the real, confirmed §4.4 subscriptions `M26_SUBSCRIPTION_MAP` names by action —
+  `m23.claim.line_finalized` (`record-inpatient-day-line`), `.replaced`/`.voided`
+  (`record-reversal-line`), `m25.remittance.advice_posted` (`record-accrual-line`),
+  `m6.revocation.created`/`.transfer.created` (freeze / proportional-weight-init) — genuinely deferred
+  behind the Drizzle `CapConsumerStore` bind (itself deferred behind the M5 MBI + M6 first-election
+  readers), not misdeclared. The 7th, `m25.remittance.claim_recouped`, is the opposite finding from every
+  drop above: M25's own locked §4.5 state-transition table names M26 outright — "`remittance_line`
+  reversed (CLP02 = 22) | Emit `m25.remittance.claim_recouped` (M23 consumer + **M26 cap-reversal
+  subscriber**)" — but `M26_SUBSCRIPTION_MAP` never built the consumer. Kept declared as the honest gap
+  this is, rather than dropped on the strength of M26's silence alone — the F-101 caution applied in the
+  keep-not-drop direction a second time in this same pass (5 dropped absent support, 1 kept despite
+  absent support because the PRODUCING side's evidence here is a locked-spec transition-table entry, not
+  a description gloss). **Checking it surfaced a genuine, pre-existing, unrelated defect, reported rather
+  than fixed**: `handleClaimReversed` (`consumers/handlers.ts` — the already-built `record-reversal-line`
+  handler backing the two confirmed `m23.claim.replaced`/`.voided` subscriptions) reads
+  `p.patientId`/`p.claimId`/`p.priorPaidAmountCents` off the delivered payload, and NEITHER catalogued
+  payload carries any of those fields (`{originalClaimId, replacementClaimId|voidClaimId, reason}` — no
+  patient, no amount). Every real delivery would silently resolve `recorded: false` forever — invisible
+  because no test exercises this action with a catalog-shaped payload, and the whole `CapConsumerStore`
+  is unbound regardless so it has never run in anger. Wiring `claim_recouped` through the same handler
+  would inherit the identical defect, since its payload carries no `patientId` either. Fixing it needs
+  either richer M23/M24/M25 payloads or a by-claim accrual-line lookup `CapConsumerStore` does not
+  expose — new design, not a catalog fix, left unbuilt. **Net: 377 → 362** (15 dropped, 0 added).
+  Verified: `bun run build` clean, `bun run typecheck` (same 3 pre-existing unrelated
+  `m2-*.live.test.ts` errors), `arch:fitness` 38/38 (`arch:outbox-bindings` 0 disagreements), full
+  non-live suite 654 files / 9589 tests green (one catalog-array assertion in
+  `admission-outbox-jobs.test.ts` updated to match), and a clean `check:boot:platform` run against a
+  freshly migrated, RLS-enforced disposable Postgres. Leaving #248 open — 362 pairs across 32 modules
+  remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

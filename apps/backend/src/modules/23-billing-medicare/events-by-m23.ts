@@ -145,7 +145,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "The 277CA accepted the claim; ACK_PENDING → ACK_ACCEPTED with the payer claim control number.",
     payloadSchema: Type.Object({ claimId: id, acknowledgmentId: id, payerClaimControlNumber: str }),
-    declaredConsumers: ["m22", "m25", "m26"],
+    // F-131 (#248) — m26 REMOVED: M26's own §4.4 subscription-map (the authoritative consumer surface)
+    // names no `m23.claim.acknowledged` topic; the cap ledger's claim-side inputs are the paid amount
+    // (`m25.remittance.advice_posted`), reversal (`.replaced`/`.voided`) and inpatient-day
+    // (`.line_finalized`) events only — an acknowledgment carries no cap-relevant fact.
+    declaredConsumers: ["m22", "m25"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -195,7 +199,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     // `ClaimSettlementProvider` as forward-seam-deny-stub PULLS ("the billed and accepted census … M23's
     // seams are forward-seam-deny-stubs at M27 lock and wire to live at M23 lock") — never an outbox
     // subscription to individual claim-lifecycle events.
-    declaredConsumers: ["m26"],
+    // F-131 (#248) — m26 REMOVED: M26's own dependency text is explicit that "M25 is the authoritative
+    // paid-amount source — every cent in a cap accrual line traces to an 835-derived remittance line", and
+    // its subscription-map keys `record-accrual-line` on `m25.remittance.advice_posted` alone, never on
+    // this claim-side milestone.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

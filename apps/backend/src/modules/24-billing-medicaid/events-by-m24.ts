@@ -179,7 +179,10 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       acknowledgmentId: Id,
       payerClaimControlNumber: Type.Union([Str, Type.Null()]),
     }),
-    declaredConsumers: ["m22", "m25", "m26"],
+    // F-131 (#248) — m26 REMOVED: M26's own spec is explicit — "Medicaid payments are excluded from the
+    // Medicare aggregate cap (ADR-0017 D4)" and "M26's scope is strictly Medicare per 42 CFR §418.308";
+    // its subscription-map has no M24 topic of any kind.
+    declaredConsumers: ["m22", "m25"],
     seamConsumers: ["m33", "m36"],
     isOutboxOnly: true,
   },
@@ -244,7 +247,9 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
     // billed-day-by-program census — "Medicare / Medicaid / other" — arrives entirely through M23's
     // `PatientDaysProvider` PULL, not a direct M24 subscription), and M27's manifest-patch dependsOn list
     // ([1,2,3,4,6,8,12,13,22,23,26,36,38,40]) omits 24.
-    declaredConsumers: ["m26"],
+    // F-131 (#248) — m26 REMOVED: M26's cap accrual is Medicare-only by ADR-0017 D4 / 42 CFR §418.308;
+    // Medicaid claims carry no cap fact.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -273,7 +278,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Str,
     }),
     // F-130 (#248) — m27 REMOVED: same reasoning as `m24.medicaid_claim.paid` above.
-    declaredConsumers: ["m26"],
+    // F-131 (#248) — m26 REMOVED: same reasoning as `m24.medicaid_claim.paid` above.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -288,7 +294,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Str,
     }),
     // F-130 (#248) — m27 REMOVED: same reasoning as `m24.medicaid_claim.paid` above.
-    declaredConsumers: ["m26"],
+    // F-131 (#248) — m26 REMOVED: same reasoning as `m24.medicaid_claim.paid` above.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

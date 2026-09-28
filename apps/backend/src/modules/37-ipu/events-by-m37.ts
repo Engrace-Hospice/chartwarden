@@ -69,7 +69,10 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // ([1,2,3,4,6,8,12,13,22,23,26,36,38,40]) never names M37 as a consumed input at all — M27's service-
     // side census reads M6's `LevelOfCarePeriodReader` (which already covers GIP/IPU level of care
     // regardless of physical site) via seam pull, not an M37 admission-lifecycle subscription.
-    declaredConsumers: ["m23", "m26"],
+    // F-131 (#248) — m26 REMOVED: M26's own "Depends on" / "Consumed by" text never names M37 either —
+    // its D13 inpatient-day (20% rule) source is M23 claim lines by revenue code (0655/0656), the same
+    // physical-site-independent path F-130 found for M27, and its subscription-map has no M37 topic.
+    declaredConsumers: ["m23"],
     isOutboxOnly: true,
   },
   {
@@ -78,7 +81,8 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     description: "An admission was discharged.",
     payloadSchema: Type.Object({ ...admissionCore, reason: id }),
     // F-130 (#248) — m27 REMOVED: same reasoning as `m37.ipu_admission.transferred` above.
-    declaredConsumers: ["m23", "m26", "m30"],
+    // F-131 (#248) — m26 REMOVED: same reasoning as `m37.ipu_admission.transferred` above.
+    declaredConsumers: ["m23", "m30"],
     isOutboxOnly: true,
   },
   {
@@ -356,7 +360,9 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // `LevelOfCarePeriodReader` seam pull only, with no mention of M37 anywhere (M37's own
     // `CostReportProvider.getInpatientCapPositionAtFiscalDate` consumption is the OPPOSITE direction —
     // M37 reads M27's output, not the reverse).
-    declaredConsumers: ["m23", "m26"],
+    // F-131 (#248) — m26 REMOVED: the description's "M26 cap" claim is equally unsupported — M26's D13
+    // inpatient-day source is M23 claim lines by revenue code, and M26's own text never names M37.
+    declaredConsumers: ["m23"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

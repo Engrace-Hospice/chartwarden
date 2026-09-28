@@ -126,11 +126,14 @@ describe.skipIf(!DB_URL)("GAP-037 M25→M23 remittance feedback — LIVE Postgre
 
   /**
    * Pending rows for ONE event type — NOT `dispatcher.pendingDepth()`, which counts the whole
-   * tenant. M23's OWN emissions stay pending here by design: `m23.claim.paid` declares `["m26","m27",
-   * "m33"]`, `.denied` declares `["m25","m33","m36"]` and `.adjudicated` declares `["m30","m33"]`, and
-   * not one of those modules binds a consumer anywhere in the codebase. That is a real, separate
-   * finding (the same shape as M36's zero bindings against 270 declaring events) — this suite scopes
-   * its drain assertion to the half GAP-037 owns rather than pretending the rest is closed.
+   * tenant. Two of M23's OWN emissions stay pending here by design: `.denied` declares `["m25"]`
+   * (seamConsumers `["m33","m36"]`) and `.adjudicated` declares `["m30"]` (seamConsumers `["m33"]`),
+   * and neither declared module binds a consumer anywhere in the codebase — a real, separate finding
+   * (the same shape as M36's zero bindings against 270 declaring events). `m23.claim.paid` no longer
+   * belongs on this list (F-130/F-131 dropped its only two declared consumers, m27 and m26, as
+   * misdeclared — it now declares `[]` with seamConsumers `["m33"]`, so it record-onlys instead of
+   * deferring). This suite scopes its drain assertion to the half GAP-037 owns rather than pretending
+   * the rest is closed.
    */
   const pendingRows = async (eventType: string) =>
     Number(
