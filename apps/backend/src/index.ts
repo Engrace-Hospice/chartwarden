@@ -138,6 +138,7 @@ import type { QualityHopeConsumer } from "@wardenx/quality";
 import type { DsarDocumentUploadRequest } from "@wardenx/saas-tenant-platform";
 import {
   M2_OUTBOX_EVENTS,
+  buildM2ConsentRevokedConsumer,
   createDrizzleIdentityEraserStore,
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
@@ -367,6 +368,8 @@ import {
   buildM17EncounterSignedConsumer,
   buildM17EvvAtPatientAddressConsumer,
   buildM17EvvCheckInConsumer,
+  buildM17EvvCheckOutConsumer,
+  buildM17EvvEventCorrectedConsumer,
   buildM17SosVisitCancellationConsumer,
   buildM17WorkerDeps,
   createDrizzleCredentialStore,
@@ -772,6 +775,7 @@ import {
   M37_OUTBOX_EVENTS,
   M37_PLATFORM_JOB_ID,
   buildDrizzleIpuRouteService,
+  buildM37AdmissionDischargedConsumer,
   buildM37WorkerDeps,
   getIpuAdmissionStatusReader,
   getIpuOrderReader,
@@ -5124,6 +5128,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
           }),
+          // F-158 (#248) — M2's half of the same M39 cascade: terminates the patient's own
+          // `patient_portal` sessions when their `portal_access` consent is revoked. Deliberately
+          // scoped to that one consent type only — see the consumer file's header for why
+          // `family_caregiver_access` needs a new M31 read seam this pass does not build.
+          buildM2ConsentRevokedConsumer({ db: dbHandle.db }),
           // F-153 (#248) — the §4.5 death-discharge SECONDARY verifier (a redundant safety net, not a
           // second creation path): re-runs the same §4.3.1 intake decider off `m6.admission.discharged`
           // (filtered to reason='death') for the case `m6.bereavement.eligible` fails to fire or land.
@@ -5162,6 +5171,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             outbox: m17OutboxPublisher,
           }),
           buildM17EvvAtPatientAddressConsumer({ db: dbHandle.db }),
+          // F-158 (#248) — the §3.3 EVV checkout/correction provenance pointers. `check_out_recorded`
+          // stamps `evv_check_out_event_id` only (deliberately no lifecycle transition — completion is
+          // `m8.encounter.signed`-only, per M17's own spec and `visit-machine.ts`'s `isSystemActor` guard);
+          // `event_corrected` repoints whichever pointer column named the superseded event.
+          buildM17EvvCheckOutConsumer({ db: dbHandle.db }),
+          buildM17EvvEventCorrectedConsumer({ db: dbHandle.db }),
           // F-152 — the §7.5 SOS-resolution visit cancellation. M20's own catalog entry says M20 never
           // writes an M17 row; this event IS the request and M17's D3 handler decides.
           buildM17SosVisitCancellationConsumer({
@@ -5197,6 +5212,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // consume only the real `enqueueRecompute` port (`outbox-consumers/upstream-consumer-ports.ts`).
           buildM30HopeSubmissionAcceptedConsumer({ db: dbHandle.db }),
           buildM30ClaimAdjudicatedConsumer({ db: dbHandle.db }),
+          // F-158 (#248) — M37's §4.5 "If patient has open `ipu_admission` → cascade-discharge", M37's
+          // first outbox consumer. Death discharges are a deliberate no-op here (see the file header) —
+          // that path is the separate, still catalog-unbindable `m6-discharge-death.ts` consumer.
+          buildM37AdmissionDischargedConsumer({ db: dbHandle.db, outbox: m37OutboxPublisher }),
           // M20 §4.8 / §7.1 (F-043, #103) — the field-safety visit consumers. Six deciders and a badge
           // cache had been complete, exported and unit-tested since M20-T04 with NO factory yielding a
           // binding, so the relay deferred every m20 event and — one layer down — NOTHING in the whole

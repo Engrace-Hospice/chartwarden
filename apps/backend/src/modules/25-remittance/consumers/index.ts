@@ -4,8 +4,10 @@
 // until it lands the composition root calls this with NO registrar — it then merely returns the
 // forward-declared subscriptions (nothing boots), the identical posture every other module is in.
 import {
+  DENY_DENIAL_TERMINOLOGY,
   type DenialOpenedEmission,
   type DenialSeedStore,
+  type DenialTerminologyLookupPort,
   handleClaimRejected,
   handleDocumentRendered,
   handleEvvAggregatorRejected,
@@ -14,9 +16,13 @@ import { M25_UPSTREAM_SUBSCRIPTIONS } from "./subscription-map";
 
 export { M25_SUBSCRIPTION_MAP, M25_UPSTREAM_SUBSCRIPTIONS } from "./subscription-map";
 
-/** The live ports the consumers run over (the Drizzle-backed denial-seed store + a back-ref store). */
+/** The live ports the consumers run over (the Drizzle-backed denial-seed store + a back-ref store). F-153/
+ *  F-156 (#248) — `terminology` is optional here ONLY because this whole file is inert scaffolding this
+ *  module's own header says is never invoked by the boot dispatcher; a caller that omits it gets the honest
+ *  `DENY_DENIAL_TERMINOLOGY` degrade (every code resolves to `unmapped`), never a silent fabrication. */
 export interface M25ConsumerPorts {
   readonly seedStore: DenialSeedStore;
+  readonly terminology?: DenialTerminologyLookupPort;
 }
 
 /** The report a dispatched upstream event yields: the seeded denial emission (to fan out), if any. */
@@ -33,23 +39,31 @@ export async function dispatchM25UpstreamEvent(
   const p = event.payload;
   switch (event.topic) {
     case "m23.claim.rejected": {
-      const emission = await handleClaimRejected(ports.seedStore, {
-        organizationId: String(p.organizationId ?? ""),
-        providerEntityId: String(p.providerEntityId ?? ""),
-        claimId: String(p.claimId ?? ""),
-        rejectionCodes: Array.isArray(p.rejectionCodes) ? (p.rejectionCodes as string[]) : [],
-        occurredAt: String(p.occurredAt ?? new Date(0).toISOString()),
-      });
+      const emission = await handleClaimRejected(
+        ports.seedStore,
+        {
+          organizationId: String(p.organizationId ?? ""),
+          providerEntityId: String(p.providerEntityId ?? ""),
+          claimId: String(p.claimId ?? ""),
+          rejectionCodes: Array.isArray(p.rejectionCodes) ? (p.rejectionCodes as string[]) : [],
+          occurredAt: String(p.occurredAt ?? new Date(0).toISOString()),
+        },
+        ports.terminology ?? DENY_DENIAL_TERMINOLOGY,
+      );
       return { handled: true, denialOpened: emission };
     }
     case "m18.evv.aggregator_rejected": {
-      const emission = await handleEvvAggregatorRejected(ports.seedStore, {
-        organizationId: String(p.organizationId ?? ""),
-        providerEntityId: String(p.providerEntityId ?? ""),
-        aggregatorSubmissionId: String(p.aggregatorSubmissionId ?? ""),
-        carcCode: typeof p.carcCode === "string" ? p.carcCode : undefined,
-        rarcCode: typeof p.rarcCode === "string" ? p.rarcCode : undefined,
-      });
+      const emission = await handleEvvAggregatorRejected(
+        ports.seedStore,
+        {
+          organizationId: String(p.organizationId ?? ""),
+          providerEntityId: String(p.providerEntityId ?? ""),
+          aggregatorSubmissionId: String(p.aggregatorSubmissionId ?? ""),
+          carcCode: typeof p.carcCode === "string" ? p.carcCode : undefined,
+          rarcCode: typeof p.rarcCode === "string" ? p.rarcCode : undefined,
+        },
+        ports.terminology ?? DENY_DENIAL_TERMINOLOGY,
+      );
       return { handled: true, denialOpened: emission };
     }
     case "m22.document.rendered": {

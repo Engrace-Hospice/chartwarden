@@ -249,7 +249,10 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-141 (#248) — m18 removed: M18's own D16 manifest-patch text lists M39 among the modules it never
     // dependsOn ("M18 reads from M1/2/3/4/5/17/36/38/40 ... M6/M7/M8/M14/M15/M22/M23/M24/M30/M31/M33 are
     // *not* direct dependsOn"), and M18's exhaustive D14 consumed-events list never names an M39 event.
-    declaredConsumers: ["m31", "m17"],
+    // F-158 (#248) — m17 removed: M17's own spec is decisive (twice) that portal-caregiver visit access
+    // is a live seam PULL via M31's `ConsentEvaluator`-backed ABAC predicate, never a push to M17; M17's
+    // manifest `dependsOn` excludes 39 entirely, and no M17 table stores anything delegated-access-shaped.
+    declaredConsumers: ["m31"],
     isOutboxOnly: true,
   },
   {
@@ -265,7 +268,9 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     // F-140 (#248) — m19 removed: same seam-pull reasoning as `.granted` above.
     // F-141 (#248) — m18 removed: same D14/D16 reasoning as `.granted` above.
-    declaredConsumers: ["m31", "m17"],
+    // F-158 (#248) — m17 removed: same seam-pull reasoning as `.granted` above (no M17-side grant state
+    // exists to invalidate either — the gate is a live M31 ABAC predicate, not an M17 cache).
+    declaredConsumers: ["m31"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

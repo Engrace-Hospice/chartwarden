@@ -8,6 +8,14 @@
 // cross-module seams (SessionContextResolver + AuditorSessionMinter, §4.7) into the M1 registry.
 export { type IdentitySeamDeps, registerIdentitySeams } from "./seams";
 export { M2_OUTBOX_EVENTS } from "./events-by-m2";
+// F-142 (#248) — M2's first outbox consumer: the §2.6/D7 M39 `m39.consent.revoked` → portal-session
+// termination cascade (`portal_access` only; see the file's own header for why `family_caregiver_access`
+// stays unbound). Exported for composition-root wiring + the live test.
+export {
+  type ConsentRevokedSessionTerminationDeps,
+  M2_CONSENT_REVOKED_CONSUMER,
+  buildM2ConsentRevokedConsumer,
+} from "./outbox-consumers/m39-consent-revoked";
 // GAP-043 — the §3.7 per-membership NAMED APPROVAL AUTHORITY surface: the `ElevatedApprovalReader` seam
 // M27's §4.7 approver predicate reads, and the grant/revoke service its admin routes drive.
 export {

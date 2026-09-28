@@ -254,6 +254,8 @@ jobs:
             }
           # F-152 (#248) — the D14 EVV-authoritative visit advances + the §7.5 SOS-resolution cancellation.
           - { name: "M17 EVV/SOS outbox consumers", scripts: "test:m17:evv-sos-consumers:live" }
+          # F-158 (#248) — the §3.3 EVV checkout/correction provenance-pointer consumers.
+          - { name: "M17 EVV checkout/corrected consumers", scripts: "test:m17:evv-checkout-corrected:live" }
           - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live" }
           # F-153 (#248) — the D14 `m17.visit.cancelled` bracket close + the D6/§2.2.4
           # `m8.encounter.signed` missing-EVV auto-resolution.
@@ -410,6 +412,11 @@ jobs:
           - { name: "M37 IPU", scripts: "test:m37:write:live" }
           - { name: "M37 privacy gates", scripts: "test:m37:privacy-gates:live" }
           - { name: "M37 RN coverage", scripts: "test:m37:coverage:live" }
+          # F-158 (#248) — M37's first outbox consumer, the §4.5 admission-discharged cascade.
+          - {
+              name: "M37 admission-discharged cascade",
+              scripts: "test:m37:admission-discharged-cascade:live",
+            }
           # AC-01: the §7.4 break-glass co-signature as a real TWO-PERSON control. `cosign` matched on
           # the event id alone, so the invoker could approve their own emergency PHI grant and a
           # co-signature could resurrect a REVOKED one. Both guards are conjuncts in the UPDATE (a
@@ -430,6 +437,9 @@ jobs:
           # function; this drives `listForUser` (which had no live coverage) through the production
           # repository as wardenx_app, so the hand-written raw-query row mapping is proven too.
           - { name: "M2 pre-org membership picker", scripts: "test:m2:pre-org-picker:live" }
+          # F-158 (#248) — M2's first outbox consumer: the M39 consent-revocation session-termination
+          # cascade, `portal_access` scope.
+          - { name: "M2 consent-revoked session termination", scripts: "test:m2:consent-revoked:live" }
           # GAP-079: M4's §2.5 read-audit EMISSION over the M26 Cap + M39 Consent read surfaces —
           # proves the events land in the partitioned audit_event table carrying the patient id the
           # §164.528 accounting query joins on, as the NOBYPASSRLS app role.
@@ -448,6 +458,12 @@ jobs:
           - {
               name: "M25 Remittance",
               scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live",
+            }
+          # F-158 (#248) — the `handlers-unbound` denial-worklist seed: m23.claim.rejected +
+          # m18.evv.aggregator_rejected.
+          - {
+              name: "M25 denial-worklist seed consumers",
+              scripts: "test:m25:denial-seed-consumers:live",
             }
           - { name: "M26 Cap Management", scripts: "test:m26:cost-report-cap-seam:live" }
           - {

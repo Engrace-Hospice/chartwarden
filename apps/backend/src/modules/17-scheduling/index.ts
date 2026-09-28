@@ -91,6 +91,17 @@ export {
   buildM17SosVisitCancellationConsumer,
   type SosVisitCancellationDeps,
 } from "./outbox-consumers/m20-safety-visit-cancellation";
+// F-158 (#248) — the §3.3 EVV checkout/correction provenance-pointer consumers, bound live.
+export {
+  M17_EVV_CHECK_OUT_CONSUMER,
+  buildM17EvvCheckOutConsumer,
+  type EvvCheckOutDeps,
+} from "./outbox-consumers/m18-evv-check-out";
+export {
+  M17_EVV_EVENT_CORRECTED_CONSUMER,
+  buildM17EvvEventCorrectedConsumer,
+  type EvvEventCorrectedDeps,
+} from "./outbox-consumers/m18-evv-event-corrected";
 // M17-T07 — the four §4.7 pre-schedule ABAC predicate resolvers M17 owns + registers into M3.
 export {
   type SchedulingAbacDeps,

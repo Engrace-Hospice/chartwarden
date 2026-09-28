@@ -59,7 +59,7 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m18.evv.check_out_recorded",
     moduleOwner: "m18",
     description:
-      "An `evv_event` kind=check_out was recorded (paired with its check-in by the worker) — closes the EVV bracket (M8 D9) and drives M17's `in_visit → completed` transition (D14).",
+      "An `evv_event` kind=check_out was recorded (paired with its check-in by the worker) — closes the EVV bracket (M8 D9). F-158 (#248) corrected this description: it previously claimed the event 'drives M17's `in_visit → completed` transition' — false against the reconciled machine (`visit-machine.ts`'s `complete` case is guarded to the `m8.encounter.signed` consumer alone, per M17's own §2.2/§2.5/§7.1 spec text). M17's real, live consumer stamps `visit.evv_check_out_event_id` as a provenance pointer only, no lifecycle transition.",
     payloadSchema: Type.Object({
       eventId: id,
       visitId: id,

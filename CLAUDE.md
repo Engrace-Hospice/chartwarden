@@ -1997,6 +1997,75 @@ actually reachable), and both new live suites run individually (`m13:admission-d
 `platformConsumers` array change (`m1:platform-outbox` 11/11, `m1:outbox-dispatcher` 8/8). Leaving #248
 open — 167 pairs across 24 modules remain.
 
+**This round surfaced a genuine coordination hazard in the dispatch mechanism itself, not just in the
+target code (F-158, #248).** A dynamic-loop wakeup cycle plus an intervening context compaction meant the
+coordinator lost direct memory of having already dispatched three general-purpose agents (for M25's
+`handlers-unbound` group and — separately, still unidentified by author at discovery time — M2's and
+M37's `no-consumer-surface` events) alongside the M1/M2/M29/M35/M37 investigation forks this pass's own
+visible history shows being freshly dispatched for the same targets. The result: several hundred lines of
+real, carefully-reasoned, already-complete code sat uncommitted in the working tree with no record of who
+built it, at the same time a fresh fork was independently re-investigating two of the same five events
+and reporting them BLOCKED. Applying either side blind would have been wrong — discarding working code
+because a fresh investigation didn't know it existed, or trusting unattributed code because it compiled.
+**Resolved by verifying, not by trusting either signal alone**: a dedicated audit fork re-derived the
+correctness of every uncommitted file against the actual schema/spec (not against either party's claims),
+`SendMessage` to the still-running M25 agent got a first-party status report and confirmed which files
+were and weren't its own, and the M2/M37 forks' BLOCKED verdicts were reconciled — not contradicted — by
+reading the actual uncommitted code: it solved the exact problems those forks found by **scoping down**
+(M2's consumer only handles the one `portal_access` consent type where the over-termination risk the fork
+flagged doesn't apply, honestly deferring `family_caregiver_access`) or by **sidestepping** (M37's
+consumer calls the pure `transitionAdmission` machine directly rather than the HTTP route's
+physical-disposition schema, so the reason-vocabulary mismatch the fork found in the route layer never
+applies to a path that never goes through it). One real defect surfaced independent of any of this: the
+M25 agent's own new live suite — written honestly, self-flagged as never run live because its environment
+had no disposable Postgres, only the shared dev-stack container its own reset-schema step would have
+destroyed — had two test-fixture bugs once finally run against a real throwaway database: four `seedClaim`
+calls reused the same patient/service-date range and collided on the real
+`claim_active_by_range_uq` partial unique index (fixed by giving each call its own service period), and
+one assertion expected a single `m25.denial.opened` event where the fixture's own default CARC ("16",
+unmapped in the test's fake terminology) honestly also fires `m25.taxonomy.unmapped_code_observed` — both
+test-authoring bugs, not production defects; the production consumer was doing the documented right thing
+in both cases. **Net across the round: M17's `handlers-unbound` group built 2 more**
+(`m18.evv.check_out_recorded` — narrower than the catalog's own stale description, stamping the
+`visit.evv_check_out_event_id` pointer only, never driving the `complete` transition the `isSystemActor`
+guard reserves for `m8.encounter.signed`; `m18.evv.event_corrected` — real, unlike M8's F-140 seam-pull
+drop of the same event name, because M17 has no bracket-resolution seam of its own and caches EVV facts
+only by push) and dropped 2 as misdeclared (`m39.consent.delegated_access.granted`/`.revoked` — M17's own
+spec is decisive twice over that portal-caregiver access is a live M31 ABAC seam pull, never a push to
+M17, and its manifest excludes 39). **M2's `no-consumer-surface` group is now fully resolved and
+deleted**: `m39.consent.revoked` is bound for the `portal_access` scope. **M37's `no-consumer-surface`
+group built its first-ever outbox consumer**: `m6.admission.discharged` reuses the pure
+`transitionAdmission` machine, no-ops on death (reserved for the separate `m6-discharge-death.ts` path),
+and lets a non-`active` IPU state throw and dead-letter rather than guessing — `m19.triage_call
+.gip_admission_proposed` stays genuinely blocked (M37's own §4.5 table never actually names it, only
+narrative prose does, and no schema exists to write a proposal to regardless). **M25's `handlers-unbound`
+group is now fully resolved and deleted**: `m23.claim.rejected`/`m18.evv.aggregator_rejected` are both
+bound, with the two real schema gaps F-153 found actually fixed (migration 0249's unique index; a widened
+`seedDenial` port resolving `taxonomyStatus` via the existing `effectiveCategory` mechanism) plus a third,
+previously undocumented blocker — neither payload carries `providerEntityId` — resolved per event (a
+direct `@wardenx/billing` read for M23, since M25's `dependsOn` includes 23; M17's `VisitReader` seam
+wrapped in `runWithRequestContext` for M18, the same F-118 fix `19-oncall`/`20-field-safety` already apply
+for the identical dependency shape). **M29 and M35 stay fully blocked**, both freshly re-investigated and
+found to need real new platform infrastructure rather than a wiring fix: M29's entire HL7 pipeline has no
+T08 worker anywhere (the pure wire builder and dispatch planner exist, unit-tested, with zero production
+callers); M35's four candidates need a KMS/envelope-DEK provider that exists nowhere on this platform (the
+`PseudonymKeyProvider.activeKey()` gap this document's F-030 section already names for a different
+consumer), and the other two need either an undecided product question (trial-subscription creation) or a
+reused mechanism with wrong actor attribution and no real Stripe dispatch. Net: **167 → 159** (6 bound, 2
+dropped as misdeclared, 0 added; 24 → 22 modules, M2 and M25 fully resolved). Verified: `bun run
+build`/`typecheck` clean (0 errors), full non-live suite 654 files / 9593 tests green (two pinned-array
+assertions caught and fixed — `check-live-suite-coverage.test.ts`/`fitness-gates.test.ts`, for the missing
+M25 `package.json` script and CI row), `arch:fitness` 38/38 (`arch:outbox-bindings` confirms 159 pairs,
+down from 167, and 84 live bindings now covering 93 catalogued events), a clean `check:boot:platform` run
+against a freshly migrated, RLS-enforced disposable Postgres, all four new live suites run individually
+after the two test-fixture fixes (`m2:consent-revoked` 7/7, `m17:evv-checkout-corrected` 5/5,
+`m37:admission-discharged-cascade` 8/8, `m25:denial-seed-consumers` 9/9), and thirteen sibling live suites
+re-run for regression on the touched shared files (`m17:evv-sos-consumers` 4/4, `m17:write` 21/21,
+`m18:read` 4/4, `m18:write` 16/16, `m18:visit-cancelled-encounter-signed` 6/6, `m25:835-ingestion` 9/9,
+`m25:interim-payments-seam` 1/1, `m2:pre-org-picker` 4/4, `m2:organization-lifecycle` 5/5, `m37:write`
+12/12, `m37:privacy-gates` 16/16, `m37:coverage` 9/9, `m39:consent-lifecycle` 4/4). Leaving #248 open —
+159 pairs across 22 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

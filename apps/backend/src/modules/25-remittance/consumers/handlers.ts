@@ -5,7 +5,60 @@
 //   - m18.evv.aggregator_rejected  → seed a denial_case (source=evv_aggregator_rejection) with the M18 ref.
 //   - m22.document.rendered        → back-reference the rendered appeal-packet / resolution-letter doc id.
 // Idempotency (§2.6): the 277CA seed dedupes on (claimId, source, UTC date); the EVV seed on the
-// aggregator submission id; the doc backref on (aggregateType, aggregateId). The store enforces the dedupe.
+// aggregator submission id; the doc backref on (aggregateType, aggregateId). Migration 0249
+// (`denial_case_source_idempotency_key_uq`, F-153/F-156 #248) is what actually enforces it now — the store
+// just conditions its INSERT on that constraint.
+import { effectiveCategory, type DenialCategory, type TaxonomyStatus } from "../domain";
+
+/** CARC/RARC → category lookup — the same shape `ingest/service.ts`'s `TerminologyLookupPort` publishes
+ *  (a structural mirror rather than a re-export, so this file stays import-free of `../ingest/service` —
+ *  no runtime edge is needed for a type). */
+export interface DenialTerminologyLookupPort {
+  lookup(carcCode: string, rarcCode: string | null): Promise<{ category: string } | null>;
+}
+
+/** A consumer wired with no real M38 port honestly degrades every code to `unmapped` — never fabricates a
+ *  category, the same posture `ingest/service.ts`'s own `DENY_TERMINOLOGY` establishes for the 835 path. */
+export const DENY_DENIAL_TERMINOLOGY: DenialTerminologyLookupPort = {
+  async lookup() {
+    return null;
+  },
+};
+
+// Mirrors `ingest/service-drizzle.ts`'s private `DENIAL_CATEGORIES` set — the pre-filter that keeps a
+// non-catalog string M38 might someday return from being trusted as a real `DenialCategory`. Duplicated as
+// data (five literals), not as LOGIC: the actual resolution decision stays centralized in
+// `effectiveCategory`, reused below rather than reimplemented.
+const KNOWN_DENIAL_CATEGORIES = new Set<string>([
+  "denial",
+  "reduction",
+  "informational",
+  "recoupment",
+  "unmapped",
+]);
+
+/**
+ * Resolve {category, taxonomyStatus} for a CARC exactly the way the WX-PR-012 835 ingest pipeline already
+ * does (`ingest/service-drizzle.ts`'s `resolveCategory` + `effectiveCategory`) — reused here rather than
+ * reimplemented, because `category === "unmapped"` is NOT a safe proxy for `taxonomyStatus === "unmapped"`:
+ * M38's catalog can itself classify a KNOWN code under the literal category "unmapped" (a real, mapped
+ * answer of "we don't know the effect"), which is a different fact from the code being ABSENT from the
+ * catalog entirely. `effectiveCategory` is the one place that distinction is decided; this only resolves
+ * the raw catalog lookup into its input. `rarcCode` is deliberately unused in the lookup call — the ingest
+ * pipeline's own `resolveCategory` always looks up by CARC alone (`terminology.lookup(carcCode, null)`),
+ * so this mirrors that exact call shape rather than inventing a richer one.
+ */
+async function resolveDenialCategory(
+  terminology: DenialTerminologyLookupPort,
+  carcCode: string,
+): Promise<{ category: string; taxonomyStatus: TaxonomyStatus }> {
+  const looked = await terminology.lookup(carcCode, null);
+  const catalogCategory: DenialCategory | null =
+    looked && KNOWN_DENIAL_CATEGORIES.has(looked.category)
+      ? (looked.category as DenialCategory)
+      : null;
+  return effectiveCategory(catalogCategory);
+}
 
 /** The seam the Drizzle store implements (org-scoped writes under withOrgContext at the call site). */
 export interface DenialSeedStore {
@@ -18,6 +71,9 @@ export interface DenialSeedStore {
     carcCode: string;
     rarcCode: string | null;
     category: string;
+    // F-153/F-156 (#248) — was missing entirely; `denial_case.taxonomy_status` is NOT NULL with no default
+    // and the only prior writer (`ingest/service-drizzle.ts`) always derived it via `effectiveCategory`.
+    taxonomyStatus: TaxonomyStatus;
     source: "claim_rejection_277ca" | "evv_aggregator_rejection";
     dollarValue: string;
     idempotencyKey: string;
@@ -37,14 +93,21 @@ export interface DenialOpenedEmission {
   readonly providerEntityId: string;
   readonly claimId: string | null;
   readonly carcCode: string;
+  readonly rarcCode: string | null;
   readonly category: string;
+  readonly taxonomyStatus: TaxonomyStatus;
   readonly source: string;
   readonly dollarValue: string;
 }
 
 const utcDate = (iso: string): string => new Date(iso).toISOString().slice(0, 10);
 
-/** m23.claim.rejected → seed a 277CA-derived denial worklist row. Returns the emission iff newly created. */
+/**
+ * m23.claim.rejected → seed a 277CA-derived denial worklist row. Returns the emission iff newly created.
+ * `terminology` is REQUIRED (no default) — a caller with no real M38 port must pass
+ * {@link DENY_DENIAL_TERMINOLOGY} explicitly, so an un-wired composition root is a visible "everything
+ * resolves to unmapped" choice rather than a silent one.
+ */
 export async function handleClaimRejected(
   store: DenialSeedStore,
   event: {
@@ -54,8 +117,10 @@ export async function handleClaimRejected(
     rejectionCodes: string[];
     occurredAt: string;
   },
+  terminology: DenialTerminologyLookupPort,
 ): Promise<DenialOpenedEmission | null> {
   const carcCode = event.rejectionCodes[0] ?? "16"; // CARC 16 "claim/service lacks information" default
+  const { category, taxonomyStatus } = await resolveDenialCategory(terminology, carcCode);
   const result = await store.seedDenial({
     organizationId: event.organizationId,
     providerEntityId: event.providerEntityId,
@@ -63,7 +128,8 @@ export async function handleClaimRejected(
     sourceEvvAggregatorSubmissionId: null,
     carcCode,
     rarcCode: null,
-    category: "denial",
+    category,
+    taxonomyStatus,
     source: "claim_rejection_277ca",
     dollarValue: "0",
     idempotencyKey: `277ca:${event.claimId}:${utcDate(event.occurredAt)}`,
@@ -74,13 +140,16 @@ export async function handleClaimRejected(
     providerEntityId: event.providerEntityId,
     claimId: event.claimId,
     carcCode,
-    category: "denial",
+    rarcCode: null,
+    category,
+    taxonomyStatus,
     source: "claim_rejection_277ca",
     dollarValue: "0",
   };
 }
 
-/** m18.evv.aggregator_rejected → seed an EVV-back-linked denial worklist row. */
+/** m18.evv.aggregator_rejected → seed an EVV-back-linked denial worklist row. `terminology` is REQUIRED —
+ *  see {@link handleClaimRejected}'s doc comment. */
 export async function handleEvvAggregatorRejected(
   store: DenialSeedStore,
   event: {
@@ -90,16 +159,20 @@ export async function handleEvvAggregatorRejected(
     carcCode?: string;
     rarcCode?: string;
   },
+  terminology: DenialTerminologyLookupPort,
 ): Promise<DenialOpenedEmission | null> {
   const carcCode = event.carcCode ?? "16";
+  const rarcCode = event.rarcCode ?? "N365"; // RARC N365 "procedure code not payable" — the EVV-mismatch signal
+  const { category, taxonomyStatus } = await resolveDenialCategory(terminology, carcCode);
   const result = await store.seedDenial({
     organizationId: event.organizationId,
     providerEntityId: event.providerEntityId,
     claimId: null,
     sourceEvvAggregatorSubmissionId: event.aggregatorSubmissionId,
     carcCode,
-    rarcCode: event.rarcCode ?? "N365", // RARC N365 "procedure code not payable" — the EVV-mismatch signal
-    category: "denial",
+    rarcCode,
+    category,
+    taxonomyStatus,
     source: "evv_aggregator_rejection",
     dollarValue: "0",
     idempotencyKey: `evv:${event.aggregatorSubmissionId}`,
@@ -110,7 +183,9 @@ export async function handleEvvAggregatorRejected(
     providerEntityId: event.providerEntityId,
     claimId: null,
     carcCode,
-    category: "denial",
+    rarcCode,
+    category,
+    taxonomyStatus,
     source: "evv_aggregator_rejection",
     dollarValue: "0",
   };
