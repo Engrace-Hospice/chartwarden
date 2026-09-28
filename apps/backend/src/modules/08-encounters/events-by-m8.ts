@@ -309,7 +309,12 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       milesDriven: Type.String({ minLength: 1 }),
       source: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m27"],
+    // F-130 (#248) — m27 REMOVED: M27's own §1.1 relationship inventory + manifest-patch dependsOn list
+    // never names M8 mileage anywhere (only `EncounterStatisticsProvider`'s visit-count-by-discipline/FTE
+    // for Worksheet S-3 Part III), and no worksheet or allocation basis in `packages/cost-report` reads
+    // mileage — "payroll/AP" in the description above is Gusto-side, which M27 pulls via a separate
+    // `wage-data-pull` job, not this event.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

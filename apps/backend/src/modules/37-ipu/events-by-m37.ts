@@ -65,7 +65,11 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m37",
     description: "An admission transfer completed.",
     payloadSchema: Type.Object({ ...admissionCore, completedAt: iso }),
-    declaredConsumers: ["m23", "m26", "m27"],
+    // F-130 (#248) — m27 REMOVED: M27's own §1.1 relationship inventory + manifest-patch dependsOn list
+    // ([1,2,3,4,6,8,12,13,22,23,26,36,38,40]) never names M37 as a consumed input at all — M27's service-
+    // side census reads M6's `LevelOfCarePeriodReader` (which already covers GIP/IPU level of care
+    // regardless of physical site) via seam pull, not an M37 admission-lifecycle subscription.
+    declaredConsumers: ["m23", "m26"],
     isOutboxOnly: true,
   },
   {
@@ -73,7 +77,8 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m37",
     description: "An admission was discharged.",
     payloadSchema: Type.Object({ ...admissionCore, reason: id }),
-    declaredConsumers: ["m23", "m26", "m27", "m30"],
+    // F-130 (#248) — m27 REMOVED: same reasoning as `m37.ipu_admission.transferred` above.
+    declaredConsumers: ["m23", "m26", "m30"],
     isOutboxOnly: true,
   },
   {
@@ -346,7 +351,12 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
       unitId: nullableId,
       remoteFacilityId: nullableId,
     }),
-    declaredConsumers: ["m23", "m26", "m27"],
+    // F-130 (#248) — m27 REMOVED: the description's "M27 S-3" claim has no support in M27's own spec —
+    // its §1.1 dependency line documents Worksheet S-3's service-side census as an M6
+    // `LevelOfCarePeriodReader` seam pull only, with no mention of M37 anywhere (M37's own
+    // `CostReportProvider.getInpatientCapPositionAtFiscalDate` consumption is the OPPOSITE direction —
+    // M37 reads M27's output, not the reverse).
+    declaredConsumers: ["m23", "m26"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

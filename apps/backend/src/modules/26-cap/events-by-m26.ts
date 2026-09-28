@@ -27,7 +27,11 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A remittance-derived cap accrual line was recorded; the per-beneficiary roll-up updated.",
     payloadSchema: AccrualRecordedPayload,
-    declaredConsumers: ["m27"],
+    // F-130 (#248) — m27 REMOVED: M27's own §1.1 dependency line names `CapAccrualReader`/`CapPeriodReader`
+    // as forward-seam-deny-stub PULLS ("the aggregate-cap-per-beneficiary running accrual … the M26
+    // provider is forward-seam-deny-stub at M27 lock and wires to live at M26 lock") — never an outbox
+    // subscription to individual accrual events.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -54,7 +58,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m26",
     description: "A new cap period was opened (manual or the Oct 1 auto-open).",
     payloadSchema: YearOpenedPayload,
-    declaredConsumers: ["m27"],
+    // F-130 (#248) — m27 REMOVED: same reasoning as `m26.cap.accrual_recorded` above.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -64,7 +69,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A cap period transitioned active → in_settlement (Sep 30 + grace, or manual close).",
     payloadSchema: YearClosingPayload,
-    declaredConsumers: ["m27"],
+    // F-130 (#248) — m27 REMOVED: same reasoning as `m26.cap.accrual_recorded` above.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -73,7 +79,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m26",
     description: "A cap period reached settled (final settlement); the cap year is closed.",
     payloadSchema: YearClosedPayload,
-    declaredConsumers: ["m27", "m30"],
+    // F-130 (#248) — m27 REMOVED: same reasoning as `m26.cap.accrual_recorded` above.
+    declaredConsumers: ["m30"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -82,7 +89,12 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m26",
     description: "A settlement worksheet was proposed from the current accruals.",
     payloadSchema: SettlementProposedPayload,
-    declaredConsumers: ["m27"],
+    // F-130 (#248) — m27 REMOVED: same reasoning as `m26.cap.accrual_recorded` above. `seamConsumers`
+    // added: `cap_settlement` is one row per `cap_period` (proposed → finalized are two states of the
+    // SAME row), and its sibling `settlement_finalized` already declares m33 against it — the omission
+    // here looks like a pre-existing oversight this catalog entry had simply never noticed.
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -90,7 +102,8 @@ export const M26_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m26",
     description: "A settlement was finalized (step-up); the period closed to settled.",
     payloadSchema: SettlementFinalizedPayload,
-    declaredConsumers: ["m27"],
+    // F-130 (#248) — m27 REMOVED: same reasoning as `m26.cap.accrual_recorded` above.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

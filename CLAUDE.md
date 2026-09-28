@@ -756,6 +756,47 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   (the real `assertBindableAgainstCatalog` boot-time proof) against the same freshly migrated, RLS-enforced
   database. Leaving #248 open — 398 pairs across 32 modules remain.
 
+  **The m27 group (23 pairs) was already scoped by its own prior-pass reason as needing exactly this
+  per-event check, and it confirmed the reason was right about 21 of 23 and wrong about the last 2
+  (F-130, #248).** M27's own §1.1 relationship inventory + manifest-patch `dependsOn` list
+  (`[1,2,3,4,6,8,12,13,22,23,26,36,38,40]`) names every seam it actually reads BY METHOD — M6's
+  `LevelOfCarePeriodReader`/`AdmissionCensusReader`, M8's `EncounterStatisticsProvider`, M23's
+  `PatientDaysProvider`/`ClaimSettlementProvider` (forward-seam deny-stub), M26's
+  `CapAccrualReader`/`CapPeriodReader` (forward-seam deny-stub) — and 21/24/37 are conspicuously absent
+  from it. **21 of 23 pairs dropped**: all 5 M6 events (`admission.activated`/`.discharged`,
+  `election.period_started`/`.period_ended`, `loc.changed` — the last IS the exact table
+  `LevelOfCarePeriodReader` pulls), all 3 `m23.claim.*` events, all 6 `m26.cap.*` events — each
+  redundant with a seam PULL M27's own spec names by method, triggered on-demand by the `statistics-
+  refresh`/`Refresh Inputs` job, never a push subscription; all 3 `m24.medicaid_claim.*` events (M24
+  is never named anywhere in M27's spec — Medicaid's billed-day contribution reaches M27 entirely
+  through M23's `PatientDaysProvider`, which M27's own text says covers "by program (Medicare /
+  Medicaid / other)"); all 3 `m37.*` events (M37 is named only in the OPPOSITE direction — M37 consumes
+  M27's `CostReportProvider.getInpatientCapPositionAtFiscalDate`, and GIP/IPU level of care is already
+  covered via M6's LOC-period pull regardless of physical site); and `m8.mileage.captured` (M27's spec
+  never mentions mileage anywhere, and no worksheet or allocation-basis field in `packages/cost-report`
+  reads it — the event's own "payroll/AP" phrasing is Gusto-side, pulled by M27's separate
+  `wage-data-pull` job). Dropped at the source in each producing module's `events-by-mNN.ts`. **The
+  remaining 2 are the opposite finding — a genuine, real, still-open forward seam, not a
+  misdeclaration**: M21's own LOCKED spec (§1.1, D16 — "Does M21 own vendor invoice reconciliation?")
+  explicitly commits M21 to emitting `m21.supply_request.invoice_accrued`/`.invoice_reconciled` for an
+  M27-side accrual/GL-reconciliation consumer, citing "the M11 D6 / M13 D5 forward-seam precedent until
+  M27 locks" — a real, cross-referenced decision on the PRODUCING side that M27's own spec simply never
+  corroborates or builds a consumer for. Unlike M24/M37 (unsupported guesses with no decision behind
+  them), this asymmetry is backed by an explicit committed decision, so it's kept declared as the
+  honest open cross-module question it is rather than dropped on the strength of M27's silence alone —
+  the F-101 caution against dropping without evidence, applied in the direction that avoids a false
+  drop a second time in the same pass. **One incidental fix found while re-verifying the group stayed
+  fully covered after the drop**: `m26.cap.settlement_proposed` had ONLY `declaredConsumers: ["m27"]`
+  and no `seamConsumers` at all — dropping `m27` would have orphaned it entirely (0 consumers, caught
+  by `m26-unit.test.ts`'s catalog-hygiene assertion). `cap_settlement` is one row per `cap_period`
+  (proposed → finalized are two states of the SAME row), and its sibling `settlement_finalized` already
+  declares `seamConsumers: ["m33"]` against it — added the same to `settlement_proposed`, the missing
+  half of an existing pattern rather than a new one. **Net: 398 → 377** (21 dropped, 0 added). Verified:
+  `bun run build` clean, `bun run typecheck` (same 3 pre-existing unrelated `m2-*.live.test.ts` errors),
+  `arch:fitness` 38/38 (`arch:outbox-bindings` 0 disagreements), full non-live suite 654 files / 9589
+  tests green, and a clean `check:boot:platform` run against a freshly migrated, RLS-enforced disposable
+  Postgres. Leaving #248 open — 377 pairs across 32 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

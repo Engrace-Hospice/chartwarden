@@ -191,7 +191,11 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
       paidAmountCents: cents,
       paidAt: isoInstant,
     }),
-    declaredConsumers: ["m26", "m27"],
+    // F-130 (#248) — m27 REMOVED: M27's own §1.1 dependency line names M23's `PatientDaysProvider`/
+    // `ClaimSettlementProvider` as forward-seam-deny-stub PULLS ("the billed and accepted census … M23's
+    // seams are forward-seam-deny-stubs at M27 lock and wire to live at M23 lock") — never an outbox
+    // subscription to individual claim-lifecycle events.
+    declaredConsumers: ["m26"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -251,7 +255,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A TOB 817 replacement was accepted at 277CA; the original claim transitioned ACK_ACCEPTED → REPLACED.",
     payloadSchema: Type.Object({ originalClaimId: id, replacementClaimId: id, reason: str }),
-    declaredConsumers: ["m26", "m27"],
+    // F-130 (#248) — m27 REMOVED: same reasoning as `m23.claim.paid` above.
+    declaredConsumers: ["m26"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -261,7 +266,8 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "A TOB 818 void was accepted at 277CA; the original claim transitioned ACK_ACCEPTED → VOIDED.",
     payloadSchema: Type.Object({ originalClaimId: id, voidClaimId: id, reason: str }),
-    declaredConsumers: ["m26", "m27"],
+    // F-130 (#248) — m27 REMOVED: same reasoning as `m23.claim.paid` above.
+    declaredConsumers: ["m26"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

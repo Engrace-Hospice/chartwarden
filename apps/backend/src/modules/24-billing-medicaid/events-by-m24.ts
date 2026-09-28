@@ -240,7 +240,11 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       paidAmountCents: Type.Integer(),
       paidAt: Iso,
     }),
-    declaredConsumers: ["m26", "m27"],
+    // F-130 (#248) — m27 REMOVED: M27's own §1.1 relationship inventory never names M24 at all (the
+    // billed-day-by-program census — "Medicare / Medicaid / other" — arrives entirely through M23's
+    // `PatientDaysProvider` PULL, not a direct M24 subscription), and M27's manifest-patch dependsOn list
+    // ([1,2,3,4,6,8,12,13,22,23,26,36,38,40]) omits 24.
+    declaredConsumers: ["m26"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -268,7 +272,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       replacementClaimId: Id,
       reason: Str,
     }),
-    declaredConsumers: ["m26", "m27"],
+    // F-130 (#248) — m27 REMOVED: same reasoning as `m24.medicaid_claim.paid` above.
+    declaredConsumers: ["m26"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -282,7 +287,8 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       voidClaimId: Id,
       reason: Str,
     }),
-    declaredConsumers: ["m26", "m27"],
+    // F-130 (#248) — m27 REMOVED: same reasoning as `m24.medicaid_claim.paid` above.
+    declaredConsumers: ["m26"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

@@ -239,9 +239,13 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // still defers — on the other twelve unbound consumers, which is the true reason.
       "m23",
       "m26",
-      "m27",
       "m37",
     ],
+    // F-130 (#248) — m27 REMOVED: M27's own §1.1 relationship inventory + manifest-patch dependsOn list
+    // ([1,2,3,4,6,8,12,13,22,23,26,36,38,40]) names M6's `AdmissionCensusReader`/`LevelOfCarePeriodReader`
+    // as a build-time SEAM PULL ("the service-side patient-day census, independent of M23's billed days")
+    // for the S-3 statistics-refresh job — never an outbox subscription, and M27's spec never mentions
+    // reacting to admission-lifecycle events.
     // F-115 (#248) — m28 REMOVED: the FHIR gateway resolves every seam it reads (M5/M6/M7/M8/M11/M12/M13)
     // fresh at REQUEST time (§164.528 D3, F-035) and holds no cached/derived state an admission event
     // would ever need to invalidate — it never subscribes to anything. m30 REMOVED from declaredConsumers
@@ -307,10 +311,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // renderable artifact. Still defers, on the other eight.
       "m23",
       "m26",
-      "m27",
       "m37",
       "m36",
     ],
+    // F-130 (#248) — m27 REMOVED: same reasoning as `m6.admission.activated` above — M27's S-3 census is
+    // a seam pull, refreshed on demand, never a push subscription to admission lifecycle events.
     // F-115 (#248) — m28/m30 removed for the same reason as `m6.admission.activated` just above: m28
     // never subscribes to anything (request-time-only reads), and m30 reads this fact via
     // `DischargeReader.liveDischargeTimingCounts` (HCI indicators 3/4) on its nightly cadence rather than
@@ -383,8 +388,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     // F-101 — `m22` was first in this list. A recertification period starting is a billing and cap
     // fact, not a document: the recert artifact is the CTI, rendered from `m6.cti.signed`. Still
-    // defers, on m23/m26/m27.
-    declaredConsumers: ["m23", "m26", "m27"],
+    // defers, on m23/m26.
+    // F-130 (#248) — m27 REMOVED: same seam-pull reasoning as `m6.admission.activated` (F-130 above) —
+    // M27's service-side census reads M6's `LevelOfCarePeriodReader` fresh on demand, never a push
+    // subscription to election-period lifecycle events.
+    declaredConsumers: ["m23", "m26"],
     isOutboxOnly: true,
   },
   {
@@ -398,7 +406,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       endDate: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m23", "m26", "m27"],
+    // F-130 (#248) — m27 REMOVED: same seam-pull reasoning as `m6.election.period_started` above.
+    declaredConsumers: ["m23", "m26"],
     isOutboxOnly: true,
   },
   // ── certification (CTI) ─────────────────────────────────────────────────────────────────────────
@@ -677,8 +686,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       admissionId: Type.String({ minLength: 1 }),
     }),
     // F-101 — `m22` was first in this list. A level-of-care change is a revenue and quality fact with
-    // no M22 template behind it. Still defers, on m23/m26/m27.
-    declaredConsumers: ["m23", "m26", "m27"],
+    // no M22 template behind it. Still defers, on m23/m26.
+    // F-130 (#248) — m27 REMOVED: this IS the exact table (`level_of_care_period`) M27's own
+    // `LevelOfCarePeriodReader` seam pull reads for Worksheet S-3 — "the service-side patient-day census
+    // … independent of M23's billed days" per M27's §1.1 dependency line — never an outbox subscription.
+    declaredConsumers: ["m23", "m26"],
     // F-115 (#248) — m30 moved here from declaredConsumers: it reads LOC data via
     // `LevelOfCarePeriodReader.chcOrGipCoverageCounts`/`.levelOfCareDaySpans` (HCI indicators 1/8/9) on
     // its own nightly cadence, not by reacting to this event — no consumer binds it or ever will.
