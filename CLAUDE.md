@@ -614,6 +614,54 @@ concept table and so no code on it could ever pass `addTenantExtension`'s own ad
 separate, real limit on who can extend an hcpcs-keyed set, reported and not fixed here) is included for
 that org and NOT for a sibling org, and `icd10Billable` comes back empty.
 
+**`mdm.resolveClinicalParticipants` was recorded as one "genuinely unbuilt" verdict, and it was two
+independent facts with opposite answers (F-127, #251).** Physician IDENTITY is real, bound the M6/M8/M18/
+M38 way: `admission.hospice_physician_id` and a SIGNED `election_statement.attending_physician_id` are
+both M40 physician ids, and M6's F-121 range read (`claimAssemblyRangeContextForOrg`) now carries both —
+extended in place, no new port — resolved through M40's already-registered `MdmEntityProvider.
+resolvePhysician`. `NpiStatus` maps from M40's post-redirect `status` (`active`→`active`,
+`deactivated`→`inactive`, `provisional`→`not_found` — a canonical row with no confirmed NPPES match yet);
+`invalid` is never produced, since `external_physician.npi`'s own CHECK constraint guarantees any non-null
+value is already 10 digits. **`licenseUnexpiredOnServiceDates` is honestly `false`, always, not a
+fabricated pass**: M40's canonical physician record tracks which STATES a physician is licensed in
+(`license_states`), never a per-state EXPIRY DATE — no table anywhere in this platform holds one. Checked
+against `physician_credentials_active`'s own message before deciding this, not after: the rule used to say
+"is expired on a service date", which asserts a confirmed fact this seam cannot back up, so the message is
+now reworded (F-126) to "is not confirmed unexpired" — true whether the flag came from today's honest
+default or a future real expiry check. **`placeOfService` stays genuinely unbound**, checked against the
+whole schema rather than assumed: `patient_address.kind` distinguishes only `home`/`facility`/`mailing`/
+`temporary`/`prior`, with no facility-type taxonomy underneath `facility`, and M40's
+`CanonicalFacilityFields` carries `ccn`/`npi`/`sendingFacilityCodes` and no site-type field either — no
+table anywhere records which of home/ALF/SNF/hospital/IPU a patient is currently receiving care in. That is
+genuine new infrastructure, the `referenceData.hippsRateTable` shape, not a wiring gap, and is not guessed
+at: a `patient_address.kind === 'facility'` heuristic could mean any of five different Q-code sites, the
+"a guessed provider entity is a mis-stated cost report" mistake F-102 already named for a different module.
+`place_of_service_consistency` therefore fails, honestly, for every claim until a real producer exists —
+the rule's own `documentedPos === null` branch is the designed path for exactly this, the same shape F-121
+established for `chcDocumentedHours`/`gipAdmissionCriteriaDocumented`.
+**Binding the physician-identity half surfaced an independent, real Q-code defect (F-125, #251) that
+predates this pass and had never executed**: `claim-assembly.ts`'s `qCodeForPlaceOfService` and
+`@wardenx/billing`'s own `place_of_service_consistency` rule (`POS_BY_QCODE`) each carried an
+independently-authored CMS Q5001–Q5010 mapping, and three of nine places disagreed between them — `snf`,
+`ipu` and `hospital` each resolved to a DIFFERENT Q-code depending which side was asked — while an
+unrecognized place silently defaulted to Q5006 ("inpatient hospice facility") under a doc comment that
+called Q5006 "unspecified"; CMS's real catch-all is Q5009 ("place N.O.S."). The `m23_claim_line_q_code`
+schema enum's own comments had the identical Q5005–Q5008 confusion, which is very likely where the wrong
+mental model in `qCodeForPlaceOfService` came from. Never reachable in production before now — `assemble()`
+only reaches this derivation after `mdm.resolveClinicalParticipants`, which has thrown `SEAM_UNBOUND` since
+the route existed — so this was a live defect waiting for exactly the seam this pass binds. Fixed by making
+`POS_BY_QCODE` (now exported) the one authoritative table and deriving `qCodeForPlaceOfService` from it
+(inverted) rather than carrying a second copy, with the unknown-place default corrected to the honest
+Q5009; the schema enum's comments were corrected to match. **Net effect on `POST /claims/assemble`
+reachability: none, stated precisely** — the physician-identity bind sits later in call order than the
+still-unbound `referenceData.hippsRateTable`, so the live wall is unmoved; real, individually-verified
+progress on the fifth seam this pass (M6/M8/M18/M38/M40-physician-identity), not a further unblock. Proven
+by `m23-claim-assembly-seams.live.test.ts`: a real admission's hospice physician (seeded `active` in a real
+`external_physician` row) and attending (seeded `deactivated`) resolve to the correct `NpiStatus` and an
+honest `licenseUnexpiredOnServiceDates: false`, `placeOfService` comes back `null`, no-admission and
+cross-tenant cases both resolve every physician to `null` rather than leaking or fabricating one, and the
+existing F-121 admission/election-period assertions were extended to the two new fields.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

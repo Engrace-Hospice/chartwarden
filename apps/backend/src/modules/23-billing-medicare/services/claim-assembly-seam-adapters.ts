@@ -9,7 +9,7 @@
 // #251) needed exactly that owning-module read-surface addition — `claimAssemblyRangeContextForOrg`
 // (`06-admission/seams/drizzle-store.ts`) — and this file is the adapter over it, not the read itself.
 import { CMS_HOSPICE_MODIFIER_VALUE_SET, repositories } from "@wardenx/billing";
-import type { LevelOfCare } from "@wardenx/billing";
+import type { LevelOfCare, NpiStatus, PhysicianResolution } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
 import { getSeam } from "../../../bootstrap/index";
 import type { ProviderCcnPort } from "../routes/write-service";
@@ -184,6 +184,8 @@ export interface M6ClaimRangeReader {
       readonly dischargeDate: string | null;
       readonly dischargeReason: string | null;
       readonly deceasedDate: string | null;
+      /** F-127 (#251) — `admission.hospice_physician_id` (M40), for `mdm.resolveClinicalParticipants`. */
+      readonly hospicePhysicianId: string | null;
     };
     readonly electionPeriods: readonly {
       readonly electionPeriodId: string;
@@ -192,6 +194,9 @@ export interface M6ClaimRangeReader {
       readonly effectiveTo: string | null;
       readonly revoked: boolean;
       readonly revocationDate: string | null;
+      /** F-127 (#251) — a SIGNED statement's `attending_physician_id` (M40), for
+       *  `mdm.resolveClinicalParticipants`. */
+      readonly attendingPhysicianId: string | null;
     }[];
     readonly certifications: readonly {
       readonly electionPeriodSequence: number;
@@ -395,7 +400,9 @@ export interface M8SignedEncountersReader {
  * the other three reasons into `not_billable` — the collapse belongs here, at the M23 boundary, not in
  * M8's own vocabulary.
  */
-export function buildM23BillableEncountersAdapter(reader: M8BillableEncountersReader): BillableEncounterReader {
+export function buildM23BillableEncountersAdapter(
+  reader: M8BillableEncountersReader,
+): BillableEncounterReader {
   return {
     async forRange(orgId, providerEntityId, patientId, range) {
       const rows = await reader.inRange(orgId, providerEntityId, patientId, range);
@@ -447,7 +454,9 @@ export interface M18ComplianceStatesReader {
   forVisits(
     orgId: string,
     visitIds: readonly string[],
-  ): Promise<ReadonlyMap<string, "compliant" | "documented_missing" | "unresolved_missing" | "not_required">>;
+  ): Promise<
+    ReadonlyMap<string, "compliant" | "documented_missing" | "unresolved_missing" | "not_required">
+  >;
 }
 
 /**
@@ -469,13 +478,12 @@ export function buildM23EvvComplianceAdapter(
     async bracketsForEncounters(orgId, encounterIds) {
       if (encounterIds.length === 0) return [];
       const visitIdByEncounter = await m8VisitIds.forEncounters(orgId, encounterIds);
-      const visitIds = [...visitIdByEncounter.values()].filter(
-        (v): v is string => v !== null,
-      );
+      const visitIds = [...visitIdByEncounter.values()].filter((v): v is string => v !== null);
       const stateByVisit = await m18Compliance.forVisits(orgId, visitIds);
       return encounterIds.map((encounterId) => {
         const visitId = visitIdByEncounter.get(encounterId) ?? null;
-        const bracketState = visitId === null ? "not_required" : (stateByVisit.get(visitId) ?? "not_required");
+        const bracketState =
+          visitId === null ? "not_required" : (stateByVisit.get(visitId) ?? "not_required");
         return { encounterId, bracketState };
       });
     },
@@ -558,6 +566,105 @@ export function buildM23TerminologyAdapter(
         valueSetMembership: { [CMS_HOSPICE_MODIFIER_VALUE_SET]: members },
         icd10Billable: {},
       };
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// 10. mdm.resolveClinicalParticipants (M6 → M40 bridge) — PARTIALLY real (F-127, #251).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The minimal M40 `MdmEntityProvider.resolvePhysician` surface this adapter consumes, duplicated locally
+ * per the no-package-import posture. M40's `MdmEntityProvider` is already a registered M1-registry seam
+ * (`registerMdmSeams`), so — the {@link buildM23TerminologyAdapter} shape again — this needs no
+ * `boot-assembly.ts` port injection; it resolves through `getSeam`.
+ */
+export interface M40PhysicianReader {
+  resolvePhysician(
+    orgId: string,
+    id: string,
+  ): Promise<{
+    readonly canonical: { readonly identifierValue: string | null };
+    readonly status: "active" | "deactivated" | "provisional";
+  } | null>;
+}
+
+/**
+ * Resolve one physician id to `PhysicianResolution | null`, honestly. `null` when the admission/election
+ * names no physician (nothing to resolve), when M40 has no canonical row for the id at all (an orphaned
+ * reference — reported as "not identified" like the no-id case, since `PhysicianResolution | null` has no
+ * third state to distinguish them), or when the canonical row is a `provisional` with no NPI confirmed yet
+ * (`identifierValue: null` — `PhysicianResolution.npi` is required, and there is no NPI to report).
+ *
+ * `status` maps M40's three post-redirect states to NPPES vocabulary: `active`→`active`,
+ * `deactivated`→`inactive`, `provisional`→`not_found` (M40 has a canonical row, but it has never been
+ * matched against a confirmed NPPES enumeration, which is exactly what `not_found` means for this rule).
+ * `NpiStatus`'s fourth value, `invalid`, is never produced here — `external_physician.npi`'s own CHECK
+ * constraint (`npi ~ '^[0-9]{10}$'`) guarantees any non-null value M40 returns is already well-formed.
+ *
+ * `licenseUnexpiredOnServiceDates` is honestly `false`, ALWAYS, checked rather than assumed: M40's
+ * canonical physician record (`external_physician.license_states`) carries which STATES a physician holds
+ * a license in, never a per-state EXPIRY DATE — no table anywhere in this platform tracks one. `false` is
+ * not a fabricated failure, it is the F-121 `chcDocumentedHours` reasoning transplanted here — "silence is
+ * not compliance evidence" — and `physician-credentials.ts`'s own defect message was reworded (F-126,
+ * #251) from "is expired" to "is not confirmed unexpired" so the rule never asserts a fact this seam
+ * cannot back up.
+ */
+async function toPhysicianResolution(
+  m40: M40PhysicianReader,
+  orgId: string,
+  physicianId: string | null,
+): Promise<PhysicianResolution | null> {
+  if (physicianId === null) return null;
+  const resolved = await m40.resolvePhysician(orgId, physicianId);
+  if (resolved === null || resolved.canonical.identifierValue === null) return null;
+  const status: NpiStatus =
+    resolved.status === "active"
+      ? "active"
+      : resolved.status === "deactivated"
+        ? "inactive"
+        : "not_found";
+  return {
+    npi: resolved.canonical.identifierValue,
+    status,
+    licenseUnexpiredOnServiceDates: false,
+  };
+}
+
+/**
+ * F-127 (#251) — `mdm.resolveClinicalParticipants`, checked precisely rather than left as one "genuinely
+ * unbuilt" verdict. Physician IDENTITY is real: `admission.hospice_physician_id` /
+ * (a SIGNED) `election_statement.attending_physician_id` are both M40 physician ids the M6 range read now
+ * carries (extended alongside the F-121 shapes, over the SAME `m6ClaimRange` port — no new
+ * `boot-assembly.ts` port needed), resolved through M40's real `resolvePhysician`. `placeOfService` stays
+ * honestly `null` — checked against the whole schema, not assumed: no table anywhere (not `patient_address`,
+ * whose `kind` enum distinguishes only `home`/`facility`/`mailing`/`temporary`/`prior` with no facility-type
+ * taxonomy beneath `facility`; not M40's `CanonicalFacilityFields`, which carries `ccn`/`npi`/
+ * `sendingFacilityCodes` and no site-type field) records which of home/ALF/SNF/hospital/IPU a patient is
+ * currently receiving care in. That is genuine new infrastructure — a producer decision comparable to
+ * `referenceData.hippsRateTable`'s CMS-fixture gap, not a wiring task — and is NOT invented here; guessing
+ * a heuristic off `patient_address.kind` (`facility` could mean any of five different Q-code sites) would
+ * be exactly the "guessed provider entity is a mis-stated cost report" mistake F-102 already named for a
+ * different module. `place_of_service_consistency` (§4.5) therefore fails, honestly, for every claim until
+ * a real producer exists — the rule's own `documentedPos === null` branch is the designed path for exactly
+ * this, not a new blocker.
+ */
+export function buildM23ClinicalParticipantsAdapter(
+  m6ClaimRange: M6ClaimRangeReader,
+  resolveM40: () => M40PhysicianReader = () => getSeam("MdmEntityProvider") as M40PhysicianReader,
+): Pick<MdmEntityProvider, "resolveClinicalParticipants"> {
+  return {
+    async resolveClinicalParticipants(orgId, patientId, asOf) {
+      const ctx = await m6ClaimRange.forRange(orgId, patientId, { from: asOf, to: asOf });
+      const hospicePhysicianId = ctx?.admission.hospicePhysicianId ?? null;
+      const attendingPhysicianId = ctx?.electionPeriods[0]?.attendingPhysicianId ?? null;
+      const m40Physicians = resolveM40();
+      const [hospicePhysician, attending] = await Promise.all([
+        toPhysicianResolution(m40Physicians, orgId, hospicePhysicianId),
+        toPhysicianResolution(m40Physicians, orgId, attendingPhysicianId),
+      ]);
+      return { attending, hospicePhysician, placeOfService: null };
     },
   };
 }

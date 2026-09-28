@@ -10,8 +10,12 @@ const KEY = "physician_credentials_active";
 function credentialDefect(label: string, p: PhysicianResolution | null): string | null {
   if (p === null) return `${label} physician is not identified`;
   if (p.status !== "active") return `${label} NPI ${p.npi} is ${p.status} in NPPES`;
+  // Worded as "not confirmed unexpired" rather than "is expired" (F-126, #251): M40 tracks no per-state
+  // license EXPIRY date for an external physician today, only the states held, so `false` here can mean
+  // either a genuinely expired license or simply that expiry has never been confirmed — the message must
+  // be true under both, and "is expired" would assert the former unconditionally.
   if (!p.licenseUnexpiredOnServiceDates)
-    return `${label} state license is expired on a service date`;
+    return `${label} state license is not confirmed unexpired across the claim's service dates`;
   return null;
 }
 

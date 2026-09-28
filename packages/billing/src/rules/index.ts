@@ -33,7 +33,7 @@ import { CMS_HOSPICE_MODIFIER_VALUE_SET, modifierCodesValid } from "./modifier-c
 import { noeTimeliness5d } from "./noe-timeliness";
 import { patientEligibilityPartAActive } from "./patient-eligibility-part-a";
 import { physicianCredentialsActive } from "./physician-credentials";
-import { placeOfServiceConsistency } from "./place-of-service";
+import { POS_BY_QCODE, POS_LABEL_ALIASES, placeOfServiceConsistency } from "./place-of-service";
 import { siaCalculationCorrect } from "./sia-calculation";
 import { tobAndDatesConsistency } from "./tob-dates-consistency";
 
@@ -58,6 +58,8 @@ export {
   modifierCodesValid,
   evvBracketCoherence,
   CMS_HOSPICE_MODIFIER_VALUE_SET,
+  POS_BY_QCODE,
+  POS_LABEL_ALIASES,
 };
 
 /**

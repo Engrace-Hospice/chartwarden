@@ -14,23 +14,48 @@
 // `levelOfCare`, over `claimAssemblyRangeContextForOrg`), `billableEncounters`/`signedEncounters` (F-122,
 // #251: M8, over `billableEncountersInRangeForOrg`/`signedEncounterSnapshotsInRangeForOrg`), `evvCompliance`
 // (F-123, #251: bridging M8's `encounterVisitIdsForOrg` and M18's new bulk `complianceStatesForVisitsForOrg`),
-// and — F-124 (#251) — `terminology` (over M38's registered `TerminologyProvider.expand()`). `mdm` is
-// PARTIALLY bound (`resolveProviderEntity` yes, `resolveClinicalParticipants` no — see below), so it counts
-// toward neither the bound nor the fully-stub tally cleanly. Two of `referenceData`'s four methods are also
-// real (`wageIndexForCcn`, `activeSequestrationPolicy`, #250). Each is individually live-tested against real
-// rows under RLS (`m23-claim-assembly-seams.live.test.ts`). Binding all ten is NOT "the route works end to
-// end" — see NET EFFECT ON REACHABILITY below.
+// and `terminology` (F-124, #251: over M38's registered `TerminologyProvider.expand()`). `mdm` is
+// PARTIALLY bound — `resolveProviderEntity` (#250) and, as of F-127 (#251), the physician-IDENTITY half of
+// `resolveClinicalParticipants`; `placeOfService` stays unbound (see below) — so it counts toward neither
+// the bound nor the fully-stub tally cleanly. Two of `referenceData`'s four methods are also real
+// (`wageIndexForCcn`, `activeSequestrationPolicy`, #250). Each is individually live-tested against real rows
+// under RLS (`m23-claim-assembly-seams.live.test.ts`). Binding all this is NOT "the route works end to end"
+// — see NET EFFECT ON REACHABILITY below.
 //
 // EVERY OTHER READER STAYS A DENY-STUB, and per-seam, not as one blanket "not ready yet" — each reason
 // below was checked against the owning module's actual published seam shape, not assumed from this file's
 // prior header:
-//   * mdm.resolveClinicalParticipants (M40) — physician/POS linking is genuinely unbuilt (confirmed:
-//     M27's own attempt at this cast silently degrades to null via try/catch today).
 //   * referenceData.hippsRateTable / .chcHourlyRateCents — `packages/billing/src/hipps/calculator.ts`'s
 //     own `HippsRateTable` doc carries an explicit `TODO(CMS-fixture)`: no CMS per-diem rate file has
 //     ever been loaded anywhere in this repository, and no table exists to load one into. Genuine new
 //     infrastructure, confirmed by absence of any backing table (unlike `wageIndexForCcn`'s table, which
 //     exists and is simply unloaded).
+//
+// `mdm.resolveClinicalParticipants` (M40) was recorded as ONE "genuinely unbuilt" verdict (#250/#251);
+// checked precisely rather than left at that (F-127, #251), it splits into two independent facts with
+// opposite answers. Physician IDENTITY is real: `admission.hospice_physician_id` and a SIGNED
+// `election_statement.attending_physician_id` are both M40 physician ids the M6 range read now carries
+// (extended alongside the F-121 shapes — no new port), resolved through M40's already-registered
+// `MdmEntityProvider.resolvePhysician`. `licenseUnexpiredOnServiceDates` is honestly `false` always — M40
+// tracks which STATES a physician is licensed in, never a per-state EXPIRY DATE, so there is nothing to
+// confirm (`physician-credentials.ts`'s defect message was rewordered, F-126, so it never asserts a
+// confirmed expiry this seam cannot back up). `placeOfService` stays genuinely unbound: checked against the
+// whole schema, not assumed — `patient_address.kind` distinguishes only `home`/`facility`/`mailing`/
+// `temporary`/`prior`, with no facility-type taxonomy beneath `facility`, and M40's `CanonicalFacilityFields`
+// carries `ccn`/`npi`/`sendingFacilityCodes`, no site-type field either. No table anywhere records which of
+// home/ALF/SNF/hospital/IPU a patient is currently receiving care in. That is genuine new infrastructure —
+// a producer decision, the CMS-rate-table gap's own shape — not a wiring task, and is not guessed at: an
+// `patient_address.kind === 'facility'` heuristic could mean any of five different Q-code sites, exactly the
+// "a guessed provider entity is a mis-stated cost report" mistake F-102 already named for a different module.
+//
+// Binding the physician-identity half surfaced an independent, real Q-code defect (F-125, #251):
+// `qCodeForPlaceOfService` (below) and `@wardenx/billing`'s own `place_of_service_consistency` rule had
+// each carried an independently-authored CMS Q5001-Q5010 mapping, and three of nine places disagreed
+// between them (`snf`, `ipu`, `hospital` each resolved to a DIFFERENT Q-code depending which side asked),
+// while an unrecognized place silently defaulted to Q5006 ("inpatient hospice facility") under a doc
+// comment that called it "unspecified" — CMS's real catch-all is Q5009 ("place N.O.S."). Fixed by making
+// `@wardenx/billing`'s `POS_BY_QCODE` the one authoritative table and deriving this file's Q-code lookup
+// from it (inverted), so the two cannot disagree again; the unknown-place default is now the honest Q5009.
 //
 // `terminology` (M38) was investigated (#250/#251) as needing a BULK method M38 did not publish — false,
 // checked against `TerminologyProvider`'s actual interface rather than assumed from the per-code `lookup`
@@ -52,13 +77,13 @@
 // hippsRateTable` (`WAGE_INDEX_UNAVAILABLE`/422 fires first when no wage-index factor is loaded for the
 // CCN, so `hippsRateTable`'s `SEAM_UNBOUND`/503 is the live wall only once a factor resolves — both #250
 // and this pass's own live test exercise wage-index rows the migration 0080 seed covers). Binding
-// `billableEncounters`/`signedEncounters`/`evvCompliance`/`terminology` (F-122/F-123/F-124, #251) does NOT
-// move that wall at all — all four sit LATER in the call order than `hippsRateTable`/
-// `activeSequestrationPolicy`, so they stay unreachable by a real request until the CMS rate-table gap
-// closes. This is real, individually-verified progress on four more seam steps, not a further unblock of
-// the live boundary — stated precisely rather than implied, the exact discipline the #250/#251 issues
-// themselves established. `POST /claims/assemble` remains unreachable end-to-end for every real caller
-// today.
+// `billableEncounters`/`signedEncounters`/`evvCompliance`/`terminology`/the physician-identity half of
+// `mdm.resolveClinicalParticipants` (F-122/F-123/F-124/F-127, #251) does NOT move that wall at all — all
+// sit LATER in the call order than `hippsRateTable`/`activeSequestrationPolicy`, so they stay unreachable
+// by a real request until the CMS rate-table gap closes. This is real, individually-verified progress on
+// five more seam steps, not a further unblock of the live boundary — stated precisely rather than implied,
+// the exact discipline the #250/#251 issues themselves established. `POST /claims/assemble` remains
+// unreachable end-to-end for every real caller today.
 //
 // Per RULE 4 (fail-closed-unbound), every method that stays a stub still throws the typed `SEAM_UNBOUND`
 // (503) only when an assemble request actually reaches it — boot stays green, and the route never
@@ -82,6 +107,7 @@ import {
   type M18ComplianceStatesReader,
   buildM23AdmissionRangeAdapters,
   buildM23BillableEncountersAdapter,
+  buildM23ClinicalParticipantsAdapter,
   buildM23EvvComplianceAdapter,
   buildM23MdmProviderEntityAdapter,
   buildM23PatientPayerAdapter,
@@ -173,7 +199,12 @@ export function buildM23BootAssemblyService(
       // REAL (#250) — CCN + MAC jurisdiction; cbsaCode is an honest `null` (unread field, see the adapter's
       // own doc comment).
       resolveProviderEntity: mdmAdapter.resolveProviderEntity,
-      resolveClinicalParticipants: () => unbound("MdmEntityProvider"),
+      // PARTIALLY REAL (#251, F-127) — physician identity/NPPES-status over the SAME injected `m6ClaimRange`
+      // port (extended, no new port) + M40's registered `MdmEntityProvider`; `placeOfService` stays honestly
+      // `null` (see the adapter's own doc comment: no facility-type taxonomy exists anywhere in the schema).
+      resolveClinicalParticipants: ports.m6ClaimRange
+        ? buildM23ClinicalParticipantsAdapter(ports.m6ClaimRange).resolveClinicalParticipants
+        : () => unbound("MdmEntityProvider"),
     },
     // REAL (#251, F-124) — over the registered M38 `TerminologyProvider` seam's bulk `expand()`; needs no
     // injected port (M38 is already an M1-registry seam, the `patientPayer` shape, not the M6/M8/M18 one).

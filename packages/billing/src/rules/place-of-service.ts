@@ -13,9 +13,18 @@ const KEY = "place_of_service_consistency";
  * Q-codes describe where hospice care is furnished:
  *   Q5001 patient home/residence · Q5002 assisted-living facility · Q5003 long-term-care / nursing
  *   facility (non-SNF) · Q5004 skilled-nursing facility · Q5005 inpatient hospital · Q5006 inpatient
- *   hospice facility · Q5007 long-term care hospital · Q5008 inpatient psychiatric · Q5009 place N.O.S.
+ *   hospice facility · Q5007 long-term care hospital · Q5008 inpatient psychiatric · Q5009 place N.O.S. ·
+ *   Q5010 hospice home care furnished in a hospice facility.
+ *
+ * THE authoritative table (F-125, #251) — `claim-assembly.ts`'s own Q-code DERIVATION reads this map
+ * inverted rather than carrying an independently-authored copy. It used to carry one: `qCodeForPlaceOfService`
+ * assigned `snf`→Q5003 (this table's own `ltc`), `ipu`→Q5005 (this table's own `hospital`), `hospital`→Q5008
+ * (this table's own `psych`), and defaulted an UNKNOWN place to Q5006 ("inpatient hospice facility") under a
+ * doc comment that called Q5006 "unspecified" — CMS's actual catch-all is Q5009 ("place N.O.S."), so an
+ * unassessed patient's line was asserting a specific, wrong site of care rather than admitting the site was
+ * unknown. One shared table is what makes that class of drift impossible from here on.
  */
-const POS_BY_QCODE: Readonly<Record<string, string>> = {
+export const POS_BY_QCODE: Readonly<Record<string, string>> = {
   Q5001: "home",
   Q5002: "alf",
   Q5003: "ltc",
@@ -25,6 +34,16 @@ const POS_BY_QCODE: Readonly<Record<string, string>> = {
   Q5007: "ltch",
   Q5008: "psych",
   Q5009: "nos",
+  Q5010: "hospice_home",
+};
+
+/** Synonyms `claim-assembly.ts`'s Q-code derivation accepts for a place already named above, so a second
+ *  spelling never needs a second entry in {@link POS_BY_QCODE} (F-125, #251). */
+export const POS_LABEL_ALIASES: Readonly<Record<string, string>> = {
+  assisted_living: "alf",
+  nf: "snf",
+  inpatient_unit: "ipu",
+  hospice_facility: "ipu",
 };
 
 export const placeOfServiceConsistency: Rule = {

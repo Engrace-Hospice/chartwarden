@@ -30,11 +30,15 @@
  */
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { CMS_HOSPICE_MODIFIER_VALUE_SET } from "@wardenx/billing";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
 import { runWithRequestContext } from "@wardenx/tenancy";
-import { appRoleConnectionString } from "./_live-app-role";
-import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
+import { WardenXError } from "@wardenx/types";
+import { and, eq } from "drizzle-orm";
+import { Client } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
+import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { claimAssemblyRangeContextForOrg } from "../src/modules/06-admission/index";
 import {
@@ -44,15 +48,12 @@ import {
   signedEncounterSnapshotsInRangeForOrg,
 } from "../src/modules/08-encounters/index";
 import { complianceStatesForVisitsForOrg } from "../src/modules/18-evv/index";
-import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
-import {
-  createDbTerminologyStore,
-  registerTerminologySeams,
-} from "../src/modules/38-terminology/index";
+import type { ProviderCcnPort } from "../src/modules/23-billing-medicare/routes/write-service";
 import { buildM23BootAssemblyService } from "../src/modules/23-billing-medicare/services/boot-assembly";
 import {
   buildM23AdmissionRangeAdapters,
   buildM23BillableEncountersAdapter,
+  buildM23ClinicalParticipantsAdapter,
   buildM23EvvComplianceAdapter,
   buildM23MdmProviderEntityAdapter,
   buildM23PatientPayerAdapter,
@@ -60,12 +61,13 @@ import {
   buildM23SignedEncountersAdapter,
   buildM23TerminologyAdapter,
 } from "../src/modules/23-billing-medicare/services/claim-assembly-seam-adapters";
-import { CMS_HOSPICE_MODIFIER_VALUE_SET } from "@wardenx/billing";
-import type { ProviderCcnPort } from "../src/modules/23-billing-medicare/routes/write-service";
-import { and, eq } from "drizzle-orm";
-import { Client } from "pg";
-import { WardenXError } from "@wardenx/types";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import {
+  createDbTerminologyStore,
+  registerTerminologySeams,
+} from "../src/modules/38-terminology/index";
+import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
+import { appRoleConnectionString } from "./_live-app-role";
+import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 
 /** The same real `ProviderCcnPort` implementation `index.ts` binds against the SAME `tx` the adapter
  *  under test opens (its own `withOrgContext`), so these tests exercise the identical query production
@@ -111,13 +113,15 @@ function futureClaimRange(): { range: { from: string; to: string }; fiscalYearSt
   const to = new Date(from);
   to.setUTCDate(to.getUTCDate() + 27);
   const iso = (d: Date) => d.toISOString().slice(0, 10);
-  const fiscalYearStarting = from.getUTCMonth() + 1 >= 10 ? from.getUTCFullYear() : from.getUTCFullYear() - 1;
+  const fiscalYearStarting =
+    from.getUTCMonth() + 1 >= 10 ? from.getUTCFullYear() : from.getUTCFullYear() - 1;
   return { range: { from: iso(from), to: iso(to) }, fiscalYearStarting };
 }
 
 const CTI_CLINICAL = {
   terminalDiagnosisIcd10: "C34.90",
-  prognosisStatement: "Life expectancy of 6 months or less if the terminal illness runs its normal course.",
+  prognosisStatement:
+    "Life expectancy of 6 months or less if the terminal illness runs its normal course.",
   narrative: "Metastatic non-small-cell lung cancer with progressive functional decline.",
   clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
 } as const;
@@ -236,7 +240,9 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     endedAt?: string | null;
     visitId?: string | null;
   }): Promise<string> {
-    const signedAt = ["signed", "cosign_pending", "cosigned"].includes(input.status) ? new Date() : null;
+    const signedAt = ["signed", "cosign_pending", "cosigned"].includes(input.status)
+      ? new Date()
+      : null;
     // `encounter_vocab_pinned_when_finalized` requires a non-null vocab_version_id for every non-draft
     // status — an app-validated uuid, not a real FK (`vocab-version.ts`'s own schema comment).
     const vocabVersionId = input.status === "draft" ? null : crypto.randomUUID();
@@ -312,7 +318,16 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
          captured_at, event_at, coords_cipher, coords_dek_version, accuracy_m, gps_quality,
          device_attestation_id_at_record)
        VALUES ($1,$2,$3,$4,$5,'check_in','T1021',$6,'rn',$7, now(), now(),'enc',1,4.5,'high',$8)`,
-      [orgId, providerEntityId, locationId, visitId, patientId, membershipId, deviceId, crypto.randomUUID()],
+      [
+        orgId,
+        providerEntityId,
+        locationId,
+        visitId,
+        patientId,
+        membershipId,
+        deviceId,
+        crypto.randomUUID(),
+      ],
     );
     if (kind === "compliant") {
       await admin.query(
@@ -321,7 +336,16 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
            captured_at, event_at, coords_cipher, coords_dek_version, accuracy_m, gps_quality,
            device_attestation_id_at_record)
          VALUES ($1,$2,$3,$4,$5,'check_out','T1021',$6,'rn',$7, now(), now(),'enc',1,4.5,'high',$8)`,
-        [orgId, providerEntityId, locationId, visitId, patientId, membershipId, deviceId, crypto.randomUUID()],
+        [
+          orgId,
+          providerEntityId,
+          locationId,
+          visitId,
+          patientId,
+          membershipId,
+          deviceId,
+          crypto.randomUUID(),
+        ],
       );
       return;
     }
@@ -332,7 +356,8 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         : {
             resolvedByMembershipId: membershipId,
             resolvedAt: new Date(),
-            resolutionReason: "attested by the clinician for the F-123 compliance test fixture, 40+ chars",
+            resolutionReason:
+              "attested by the clinician for the F-123 compliance test fixture, 40+ chars",
           };
     await admin.query(
       `INSERT INTO evv_missing_resolution
@@ -409,6 +434,19 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
          (value_set_id, organization_id, system_id, code, reason) VALUES
          ('${CMS_HOSPICE_MODIFIER_VALUE_SET}', '${ORG_A}', 'hcpcs', 'GX',
           'org-A local extension seeded for F-124 live coverage')`,
+    );
+    // F-127 (#251) — M40's registered `MdmEntityProvider`, over the SAME real Drizzle store production
+    // binds (`index.ts`'s own `registerMdmSeams({store: createDbMdmStore(db)})` call), so
+    // `buildM23ClinicalParticipantsAdapter`'s `getSeam("MdmEntityProvider")` default resolves for real.
+    registerMdmSeams({ store: createDbMdmStore(handle.db) });
+    // Two canonical `external_physician` rows, ids reused as M6_MD/M6_ATTENDING — `activeAdmissionForRange`
+    // already sites both as the admission's `hospicePhysicianId` and the (signed) election statement's
+    // `attendingPhysicianId`, so seeding M40 canonical rows under those SAME ids is what makes the real
+    // M6→M40 identity bridge resolvable rather than inventing a third id nothing else references.
+    await admin.query(
+      `INSERT INTO "external_physician" (id, npi, first_name, last_name, status) VALUES
+         ('${M6_MD}', '1122334455', 'Hospice', 'MD', 'active'),
+         ('${M6_ATTENDING}', '1234567893', 'Attending', 'MD', 'deactivated')`,
     );
   }, 120_000);
 
@@ -648,6 +686,8 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         dischargeDate: null,
         dischargeReason: null,
         deceasedDate: null,
+        // F-127 (#251) — `activeAdmissionForRange` names M6_MD as the hospice physician.
+        hospicePhysicianId: M6_MD,
       });
       expect(ctx?.electionPeriods).toEqual([
         {
@@ -657,6 +697,8 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
           effectiveTo: null,
           revoked: false,
           revocationDate: null,
+          // F-127 (#251) — the SIGNED election statement names M6_ATTENDING.
+          attendingPhysicianId: M6_ATTENDING,
         },
       ]);
       expect(ctx?.certifications).toHaveLength(1);
@@ -687,7 +729,9 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const seams = buildM23AdmissionRangeAdapters({
         forRange: (orgId, pid, r) => claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r),
       });
-      expect(await seams.admission.resolveForRange(ORG_A, patientId, range)).toEqual(ctx?.admission);
+      expect(await seams.admission.resolveForRange(ORG_A, patientId, range)).toEqual(
+        ctx?.admission,
+      );
       expect(await seams.levelOfCare.periodsInRange(ORG_A, patientId, range)).toEqual(
         ctx?.levelOfCarePeriods,
       );
@@ -869,8 +913,9 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         serviceDate: "2026-07-01",
       });
       const store = createDrizzleEncounterReaderStore(handle.db);
-      const facts = await runWithRequestContext({ organizationId: ORG_A, userId: membershipId }, () =>
-        store.encounterFacts([volunteerEncounter]),
+      const facts = await runWithRequestContext(
+        { organizationId: ORG_A, userId: membershipId },
+        () => store.encounterFacts([volunteerEncounter]),
       );
       // Before F-122 this was always `[]` regardless of the id — the store never overrode the in-memory
       // fallback's empty default.
@@ -890,7 +935,16 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const compliantVisit = crypto.randomUUID();
       const unresolvedVisit = crypto.randomUUID();
       const documentedVisit = crypto.randomUUID();
-      await seedEvvChain(ORG_A, pe, locationId, deviceId, membershipId, compliantVisit, patientId, "compliant");
+      await seedEvvChain(
+        ORG_A,
+        pe,
+        locationId,
+        deviceId,
+        membershipId,
+        compliantVisit,
+        patientId,
+        "compliant",
+      );
       await seedEvvChain(
         ORG_A,
         pe,
@@ -978,7 +1032,16 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const locationIdB = await seedLocation(peB);
       const deviceIdB = await seedEvvDevice(ORG_B, membershipIdB);
       const visitB = crypto.randomUUID();
-      await seedEvvChain(ORG_B, peB, locationIdB, deviceIdB, membershipIdB, visitB, patientIdB, "compliant");
+      await seedEvvChain(
+        ORG_B,
+        peB,
+        locationIdB,
+        deviceIdB,
+        membershipIdB,
+        visitB,
+        patientIdB,
+        "compliant",
+      );
       const encounterB = await seedEncounter({
         orgId: ORG_B,
         providerEntityId: peB,
@@ -1006,11 +1069,9 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     it("resolves the platform CMS hospice-modifier value set, plus the calling org's own tenant extension", async () => {
       const seam = buildM23TerminologyAdapter();
       const resolutionA = await seam.resolveForClaim(ORG_A, "2026-06-01");
-      expect(resolutionA.valueSetMembership[CMS_HOSPICE_MODIFIER_VALUE_SET]?.slice().sort()).toEqual([
-        "GV",
-        "GW",
-        "GX",
-      ]);
+      expect(
+        resolutionA.valueSetMembership[CMS_HOSPICE_MODIFIER_VALUE_SET]?.slice().sort(),
+      ).toEqual(["GV", "GW", "GX"]);
       // Traced against `claim-assembly.ts`'s own hardcoded `icd10Sequence: []` (a separate, real
       // M23-side gap this seam does not create): no diagnosis code ever reaches this call, so the
       // honest bulk map has nothing to resolve.
@@ -1021,10 +1082,64 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       const seam = buildM23TerminologyAdapter();
       const resolutionB = await seam.resolveForClaim(ORG_B, "2026-06-01");
       // Org B gets the platform members but NOT org A's "GX" extension.
-      expect(resolutionB.valueSetMembership[CMS_HOSPICE_MODIFIER_VALUE_SET]?.slice().sort()).toEqual([
-        "GV",
-        "GW",
-      ]);
+      expect(
+        resolutionB.valueSetMembership[CMS_HOSPICE_MODIFIER_VALUE_SET]?.slice().sort(),
+      ).toEqual(["GV", "GW"]);
+    });
+  });
+
+  describe("mdm.resolveClinicalParticipants: the physician-identity half (F-127, #251)", () => {
+    it("resolves the hospice physician (active) and attending (deactivated) by real NPPES status", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381280");
+      await activeAdmissionForRange(ORG_A, patientId, pe, "2026-01-01T00:00:00.000Z");
+
+      const seam = buildM23ClinicalParticipantsAdapter({
+        forRange: (orgId, pid, r) => claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r),
+      });
+      const { range } = futureClaimRange();
+      const resolution = await seam.resolveClinicalParticipants(ORG_A, patientId, range.from);
+      expect(resolution.hospicePhysician).toEqual({
+        npi: "1122334455",
+        status: "active",
+        // Honest, not fabricated — M40 tracks no per-state license expiry date for an external
+        // physician (F-127); see `physician-credentials.ts`'s reworded defect message.
+        licenseUnexpiredOnServiceDates: false,
+      });
+      expect(resolution.attending).toEqual({
+        npi: "1234567893",
+        status: "inactive",
+        licenseUnexpiredOnServiceDates: false,
+      });
+      // Genuinely unbound — no facility-type taxonomy exists anywhere in the schema (F-127).
+      expect(resolution.placeOfService).toBeNull();
+    });
+
+    it("resolves null when the admission names no physician on file (no id, not a fabricated defect)", async () => {
+      const seam = buildM23ClinicalParticipantsAdapter({
+        forRange: async () => null,
+      });
+      const resolution = await seam.resolveClinicalParticipants(
+        ORG_A,
+        "no-such-patient",
+        "2026-06-01",
+      );
+      expect(resolution).toEqual({ attending: null, hospicePhysician: null, placeOfService: null });
+    });
+
+    it("never resolves another org's physician identity (cross-tenant isolation)", async () => {
+      const patientIdB = await seedPatient(ORG_B);
+      const peB = await seedProviderEntity(ORG_B, "381281");
+      await activeAdmissionForRange(ORG_B, patientIdB, peB, "2026-01-01T00:00:00.000Z");
+
+      const seam = buildM23ClinicalParticipantsAdapter({
+        forRange: (orgId, pid, r) => claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r),
+      });
+      const { range } = futureClaimRange();
+      // Org A asking about org B's patient: M6's own org-scoped read finds no admission at all, so the
+      // physician ids never resolve and the adapter correctly reports both physicians as null.
+      const resolution = await seam.resolveClinicalParticipants(ORG_A, patientIdB, range.from);
+      expect(resolution).toEqual({ attending: null, hospicePhysician: null, placeOfService: null });
     });
   });
 

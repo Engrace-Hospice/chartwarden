@@ -40,6 +40,8 @@ import {
   type LevelOfCare,
   type LevelOfCarePeriodSnapshot,
   type MdmResolution,
+  POS_BY_QCODE,
+  POS_LABEL_ALIASES,
   type RuleResult,
   type SignedEncounterSnapshot,
   type TerminologyResolution,
@@ -314,29 +316,26 @@ const REVENUE_BY_LOC: Record<LevelOfCare, "0651" | "0652" | "0655" | "0656"> = {
   general_inpatient_care: "0656",
 };
 
-/** Map the resolved place of service to its CMS hospice Q-code; unknown ⇒ Q5006 (unspecified). */
-function qCodeForPlaceOfService(
-  pos: string | null,
-): "Q5001" | "Q5002" | "Q5003" | "Q5005" | "Q5007" | "Q5008" | "Q5006" {
-  switch ((pos ?? "").toLowerCase()) {
-    case "home":
-      return "Q5001";
-    case "assisted_living":
-    case "alf":
-      return "Q5002";
-    case "snf":
-    case "nf":
-      return "Q5003";
-    case "ipu":
-    case "inpatient_unit":
-      return "Q5005";
-    case "hospice_facility":
-      return "Q5007";
-    case "hospital":
-      return "Q5008";
-    default:
-      return "Q5006";
-  }
+/**
+ * `POS_BY_QCODE` inverted (F-125, #251) — the single authoritative CMS Q-code table now lives in
+ * `@wardenx/billing`'s `place_of_service_consistency` rule; deriving from it rather than carrying a
+ * second, independently-authored mapping is what makes it impossible for this function and that rule to
+ * disagree about which Q-code a given place resolves to again (they used to, on three of nine places).
+ */
+const QCODE_BY_POS: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(POS_BY_QCODE).map(([qcode, pos]) => [pos, qcode]),
+);
+
+/**
+ * Map the resolved place of service to its CMS hospice Q-code. An unrecognized or absent place resolves
+ * to Q5009 — CMS's own "place N.O.S." catch-all — never a specific site: the prior version defaulted to
+ * Q5006 ("inpatient hospice facility") under a doc comment that called it "unspecified", which asserted a
+ * real, specific place of care for a patient whose location was never actually assessed (F-125).
+ */
+function qCodeForPlaceOfService(pos: string | null): repositories.NewClaimLineInput["qCode"] {
+  const label = (pos ?? "").toLowerCase();
+  const canonical = POS_LABEL_ALIASES[label] ?? label;
+  return (QCODE_BY_POS[canonical] ?? "Q5009") as repositories.NewClaimLineInput["qCode"];
 }
 
 /** The CMS hospice fiscal year STARTING year for a service date (the rate year flips each Oct 1). */

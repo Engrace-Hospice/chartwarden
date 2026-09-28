@@ -52,17 +52,20 @@ export const m23ClaimLineRevenueCode = pgEnum("m23_claim_line_revenue_code", [
   "0942", // bereavement services
 ]);
 
+// F-125 (#251): Q5005/Q5006/Q5007/Q5008 corrected against real CMS descriptions — a prior version of
+// this comment (and the `qCodeForPlaceOfService`/`POS_BY_QCODE` derivations it was copied into) had
+// Q5005 as the inpatient-hospice-unit code and Q5006 as "unspecified", which is backwards.
 export const m23ClaimLineQCode = pgEnum("m23_claim_line_q_code", [
-  "Q5001", // home
+  "Q5001", // home/residence
   "Q5002", // assisted living facility
-  "Q5003", // SNF / NF
-  "Q5004", // SNF as residence
-  "Q5005", // inpatient hospice unit (IPU)
-  "Q5006", // unspecified
-  "Q5007", // hospice facility
-  "Q5008", // hospital
-  "Q5009", // unidentified
-  "Q5010", // hospice home in facility
+  "Q5003", // nursing long-term-care / non-skilled nursing facility (LTC/NF)
+  "Q5004", // skilled nursing facility (SNF)
+  "Q5005", // inpatient hospital
+  "Q5006", // inpatient hospice facility / unit (IPU)
+  "Q5007", // long-term care hospital (LTCH)
+  "Q5008", // inpatient psychiatric facility
+  "Q5009", // place not otherwise specified (N.O.S.)
+  "Q5010", // hospice home care furnished in a hospice facility
 ]);
 
 export const m23ClaimLineLevelOfCare = pgEnum("m23_claim_line_level_of_care", [

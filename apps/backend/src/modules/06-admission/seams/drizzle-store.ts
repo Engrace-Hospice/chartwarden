@@ -43,6 +43,7 @@ const CTI = schema.certificationsOfTerminalIllness;
 const F2F = schema.faceToFaceEncounters;
 const LOC = schema.levelOfCarePeriods;
 const DE = schema.dischargeEvents;
+const ES = schema.electionStatements;
 
 type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -229,6 +230,9 @@ export interface ClaimRangeAdmission {
   /** `discharge_event.death_at`, read as a plain UTC calendar date (F-105: M6 models no time of death —
    *  every value in that column is midnight UTC of a typed `LocalDate`, never a real instant). */
   readonly deceasedDate: string | null;
+  /** `admission.hospice_physician_id` — the M40 physician who certifies the CTI (F-127, #251). `null`
+   *  when not yet on file. */
+  readonly hospicePhysicianId: string | null;
 }
 
 export interface ClaimRangeElectionPeriod {
@@ -240,6 +244,10 @@ export interface ClaimRangeElectionPeriod {
   readonly effectiveTo: string | null;
   readonly revoked: boolean;
   readonly revocationDate: string | null;
+  /** `election_statement.attending_physician_id` (M40) — only from a `signed` statement; a `drafted`
+   *  attending is not yet a legal election and `voided` carries no live claim (F-127, #251). `null` when
+   *  no signed statement names one. */
+  readonly attendingPhysicianId: string | null;
 }
 
 export interface ClaimRangeCertification {
@@ -308,6 +316,7 @@ export async function claimAssemblyRangeContextForOrg(
           admissionAt: ADM.admissionAt,
           activatedAt: ADM.activatedAt,
           dischargedAt: ADM.dischargedAt,
+          hospicePhysicianId: ADM.hospicePhysicianId,
         })
         .from(ADM)
         .where(and(eq(ADM.organizationId, organizationId), eq(ADM.patientId, patientId)))
@@ -318,8 +327,18 @@ export async function claimAssemblyRangeContextForOrg(
           id: r.id,
           start: r.admissionAt ?? r.activatedAt,
           end: r.dischargedAt,
+          hospicePhysicianId: r.hospicePhysicianId,
         }))
-        .filter((r): r is { id: string; start: Date; end: Date | null } => r.start !== null)
+        .filter(
+          (
+            r,
+          ): r is {
+            id: string;
+            start: Date;
+            end: Date | null;
+            hospicePhysicianId: string | null;
+          } => r.start !== null,
+        )
         .find((r) => {
           const start = localDate(r.start);
           const end = r.end ? localDate(r.end) : null;
@@ -344,6 +363,7 @@ export async function claimAssemblyRangeContextForOrg(
         dischargeDate: dischargeRow ? localDate(dischargeRow.effectiveAt) : null,
         dischargeReason: dischargeRow ? String(dischargeRow.dischargeType) : null,
         deceasedDate: dischargeRow ? localDateN(dischargeRow.deathAt) : null,
+        hospicePhysicianId: candidate.hospicePhysicianId,
       };
 
       const periodRows = await tx
@@ -364,6 +384,25 @@ export async function claimAssemblyRangeContextForOrg(
         return p.effectiveAt! <= range.to && (end === null || end >= range.from);
       });
 
+      const overlappingIds = overlapping.map((p) => p.id);
+
+      // Attending physician (F-127, #251) — only a SIGNED statement's `attending_physician_id` is a real
+      // election, not a drafted one (`election_statement_period_idx` is unique per period, so at most one
+      // row per id).
+      const attendingByPeriod = new Map<string, string | null>();
+      if (overlappingIds.length > 0) {
+        const statementRows = await tx
+          .select({
+            electionPeriodId: ES.electionPeriodId,
+            attendingPhysicianId: ES.attendingPhysicianId,
+          })
+          .from(ES)
+          .where(and(inArray(ES.electionPeriodId, overlappingIds), eq(ES.status, "signed")));
+        for (const row of statementRows) {
+          attendingByPeriod.set(row.electionPeriodId, row.attendingPhysicianId);
+        }
+      }
+
       const electionPeriods: ClaimRangeElectionPeriod[] = overlapping.map((p) => ({
         electionPeriodId: p.id,
         sequence: Number(p.sequenceNumber),
@@ -371,9 +410,8 @@ export async function claimAssemblyRangeContextForOrg(
         effectiveTo: localDateN(p.actualEndAt),
         revoked: p.completedByCause === "revocation",
         revocationDate: p.completedByCause === "revocation" ? localDateN(p.actualEndAt) : null,
+        attendingPhysicianId: attendingByPeriod.get(p.id) ?? null,
       }));
-
-      const overlappingIds = overlapping.map((p) => p.id);
       const bySequence = new Map(overlapping.map((p) => [p.id, Number(p.sequenceNumber)]));
 
       const certifications: ClaimRangeCertification[] = [];
@@ -393,7 +431,8 @@ export async function claimAssemblyRangeContextForOrg(
           .orderBy(asc(CTI.createdAt));
         for (const periodId of overlappingIds) {
           const rows = ctiRows.filter((r) => r.electionPeriodId === periodId);
-          const pick = rows.find((r) => r.status !== "voided" && r.status !== "superseded") ?? rows.at(-1);
+          const pick =
+            rows.find((r) => r.status !== "voided" && r.status !== "superseded") ?? rows.at(-1);
           if (!pick) continue;
           certifications.push({
             electionPeriodSequence: bySequence.get(periodId)!,

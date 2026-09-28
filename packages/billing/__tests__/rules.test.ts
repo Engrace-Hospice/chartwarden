@@ -571,6 +571,24 @@ describe("physician_credentials_active", () => {
     expect(r.passed).toBe(false);
     expect(r.severity).toBe("error");
   });
+  it("fails, honestly worded, when the license is not confirmed unexpired (F-126, #251)", () => {
+    const ctx = passingContext();
+    const r = run(physicianCredentialsActive, {
+      ...ctx,
+      mdm: {
+        ...ctx.mdm,
+        hospicePhysician: {
+          npi: "1234567893",
+          status: "active",
+          licenseUnexpiredOnServiceDates: false,
+        },
+      },
+    });
+    expect(r.passed).toBe(false);
+    // Never "is expired" — that would assert a fact (a confirmed expiry) M40 does not track.
+    expect(r.message).not.toMatch(/is expired/);
+    expect(r.annotations?.observed?.firstDefect).toMatch(/not confirmed unexpired/);
+  });
 });
 
 describe("noe_timeliness_5d", () => {
