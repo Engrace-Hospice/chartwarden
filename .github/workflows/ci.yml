@@ -225,11 +225,16 @@ jobs:
           - { name: "M10 HOPE answer engine", scripts: "test:m10:answer-engine:live" }
           - { name: "M11 Orders", scripts: "test:m11:read:live test:m11:write:live" }
           - { name: "M11 downstream signed fan-out", scripts: "test:m11:downstream-signed:live" }
+          # F-152 (#248) — the §2.7 D7 order-suggestion banner (Valkey) + the D8 one-shot auto-complete.
+          - { name: "M11 M9/M21 outbox consumers", scripts: "test:m11:m9-m21-consumers:live" }
           - { name: "M12 DoseSpot", scripts: "test:m12:read:live test:m12:write:live" }
           - {
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
             }
+          # F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet, opened from all four M6
+          # trigger events.
+          - { name: "M13 reconciliation triggers", scripts: "test:m13:reconciliation-triggers:live" }
           - {
               name: "M14 IDG",
               scripts:
@@ -241,6 +246,8 @@ jobs:
                 "test:m17:read:live test:m17:write:live test:m17:visit-create-abac:live
                 test:m17:membership-credential:live",
             }
+          # F-152 (#248) — the D14 EVV-authoritative visit advances + the §7.5 SOS-resolution cancellation.
+          - { name: "M17 EVV/SOS outbox consumers", scripts: "test:m17:evv-sos-consumers:live" }
           - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live" }
           # F-043/#103: M20's field-safety visit consumers — the first producer `safety_check_in_schedule`
           # has ever had. Live because the materializer's idempotence, the `mark_overdue` stamp constraint
@@ -421,6 +428,8 @@ jobs:
           # seam CLAUDE.md cites by filename, M31's right-to-erasure eraser, M36's real AlertEmitter.
           - { name: "M5 Patient death cascade", scripts: "test:m5:death-cascade:live" }
           - { name: "M5 census caseload scope (F-096)", scripts: "test:m5:census-scope:live" }
+          # F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization onto `patient`.
+          - { name: "M5 admission siting", scripts: "test:m5:admission-siting:live" }
           - {
               name: "M25 Remittance",
               scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live",

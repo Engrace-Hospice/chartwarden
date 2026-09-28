@@ -91,6 +91,10 @@ export const M17_OUTBOX_SUBSCRIPTIONS = [
   { eventName: "m6.admission.discharged", consumerName: "m17.m6-admission-lifecycle" },
   // M7 signed care-plan version — frequency proposals (`buildM17CarePlanProposalConsumer`).
   { eventName: "m7.care_plan.version_signed", consumerName: "m17.m7-care-plan-proposals" },
+  // F-152 (#248) — the D14 EVV-authoritative visit advances + the §7.5 SOS-resolution cancellation.
+  { eventName: "m18.evv.check_in_recorded", consumerName: "m17.m18-evv-check-in" },
+  { eventName: "m18.evv.at_patient_address", consumerName: "m17.m18-evv-at-patient-address" },
+  { eventName: "m20.safety.visit_cancellation_requested", consumerName: "m17.m20-safety-visit-cancellation" },
 ] as const;
 
 export interface M17EncounterSignedOutboxPort {

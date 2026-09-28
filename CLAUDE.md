@@ -1704,6 +1704,81 @@ row, `version` unchanged), a consent id no contact in the org tracks is a no-op,
 throws the documented `ILLEGAL_TRANSITION`, and cross-tenant isolation holds. Leaving #248 open — 194
 pairs across 25 modules remain.
 
+**Five modules' `handlers-unbound` groups were investigated in parallel by five independent forks, each
+independently re-verified against the actual code before being trusted, and 10 of the 24 events they
+covered are now real, live-bound relationships (F-152, #248).** Per the user's explicit instruction to
+scale this arc to parallel dispatch while guarding against mistakes, five forks each took one module
+(M11, M5, M13, M17, M14), applying the same F-150/F-151 rigor — a real decider check, a schema
+nullability/precedent check, an existing-route-to-mirror check, and a decider/machine graph
+compatibility check — and reporting back BUILT (with files + wiring) or BLOCKED (with precise
+file:line reasons) rather than guessing. **M5 — 1 of 9 built**: `m6.admission.activated` denormalizes
+the activating admission's `provider_entity_id`/`location_id` onto `patient` (§3.3/ARCH-011, "nullable
+until admission" — no write path had ever set either column), through M6's registered
+`AdmissionStatusReader.getAdmissionSiting` seam, deliberately scoped to ONLY the `patient` row (cascading
+onto the dozen-plus child tables carrying their own `provider_entity_id` is a separate, undecided
+question). **M11 — 2 of 9 built**: `m9.assessment.significant_change` (the §2.7 D7 order-suggestion
+banner, writing the `wardenx:m11:orders:suggestion:<patientId>` Valkey projection `suggestion-banner.ts`'s
+own header had always named as the mechanism — a new dedicated `orderSuggestionRedisClient` connection,
+mirroring `stepUpRedisClient`'s shape, since this is a distinct concern from every existing Redis client
+in the composition root) and `m21.supply_request.status_changed` (the D8 one-shot `supply`/`comfort_kit`
+auto-complete on `toStatus='delivered'`, `dme` deliberately excluded — it closes out via the separate
+monthly-rental path F-120 already bound). **M13 — 4 of 8 built, via one consumer**: `m6.admission
+.activated`/`.transfer.created`/`.discharge.created`/`.cti.signed` all open the §2.8 D17
+medication-reconciliation worksheet through the real `decideReconciliationTrigger`/
+`buildReconciliationWorksheet` cores, resolving admission siting via M6's org-explicit
+`admissionSchedulingContextForOrg` seam (M13's `dependsOn` has no edge to 6). **Independently verifying
+this build (not merely trusting the fork's report) found a real gap the fork's own type had introduced**:
+`AdmissionAnchor.providerEntityId` was declared non-null while the source `admission.provider_entity_id`
+column is nullable (ARCH-011) exactly like `locationId` already was in the same interface — widened to
+match and given the identical "refuse rather than fabricate" throw
+(`medication_reconciliation_worksheet.provider_entity_id` is NOT NULL and this path had never been
+exercised), rather than silently coercing past a real compile error at the central-wiring step, which is
+what the verification pass was for. **M17 — 3 of 12 built**: `m18.evv.check_in_recorded`
+(`published → en_route`) and `m18.evv.at_patient_address` (`en_route → in_visit`) — both named explicitly
+by `transitionVisit`'s own `VisitAdvanceSource: {via:"evv"}` doc comment as the D14 EVV-authoritative
+advances the spec calls the visit lifecycle's authoritative driver, unwired despite that — and
+`m20.safety.visit_cancellation_requested` (M20's own catalog: "M20 never writes an M17 row — this event
+IS the request and M17's D3 handler decides"), using the established `M17_SYSTEM_USER_ID` sentinel since
+`m17.visit.cancelled`'s payload requires a non-empty `cancelledBy` string. Building it surfaced two
+un-acted-on findings on the remaining M17 group: `m18.evv.check_out_recorded`'s own catalog DESCRIPTION
+claims it drives `in_visit → completed`, contradicted by `visit-machine.ts`'s hard `isSystemActor` guard
+restricting that transition to `m8.encounter.signed` alone; and `m18.evv.event_corrected`'s description
+reads as the same seam-pull shape F-140 already dropped on the M8 side of the identical event. **M14 — 0
+of 14 built, correctly**: the group's own header already named the real blocker (a whole unbuilt
+Valkey-backed per-patient "since last IDG" projection cache with no client, decider, or cache-key scheme
+anywhere in the repo) and the fork's read-only investigation confirmed it rather than forcing a partial
+bind. **Net on #248: 194 → 184** (10 bound: M5 ×1, M11 ×2, M13 ×4, M17 ×3). Each group's registry reason
+was rewritten to state its own remaining blockers precisely (M11's D8/D7 finding is documented in its own
+group text now, not repeated here), and each affected module's own hand-maintained subscription-list
+constant (`M11_OUTBOX_SUBSCRIPTIONS`, `M17_OUTBOX_SUBSCRIPTIONS`) was updated to agree — `arch:outbox-
+bindings` caught the disagreement immediately (rule 6) until both were corrected in the same change.
+**A second, unrelated defect was fixed in the same round, at the user's follow-up request**: the four
+pre-existing `verbalOrder` TypeScript errors in `11-orders/routes/service.ts` — flagged as out-of-scope
+in every prior round back to the "New order creation" commit that introduced them — were a genuine,
+material gap, not a cosmetic type mismatch. `OrderDetailView.verbalOrder` (the read-back attestation
+evidence CMS requires for a verbal order) had been added to the type without ever being populated by the
+in-memory order backend (`createInMemoryOrderBackend`, used by unit tests and dev seeds): `createVerbalOrder`
+and `recordVerbal` both captured, validated (`readBackVerified` must be true, attestation ≥100 chars) and
+then DISCARDED the actual evidence — nothing on `OrderRecord` ever stored it, so a verbal order's legal
+record existed only transiently in the request args. Fixed by mirroring the production Drizzle backend
+(`orders-route-service-db.ts`'s real `verbal_orders` table + `toOrderDetailView`'s exact re-add shape)
+exactly: `OrderRecord` now carries the real evidence at both capture sites, `detailView()` forwards it
+explicitly (the same reason production's `toOrderDetailView` does — `view()`'s declared return type omits
+it even though the destructure leaves it on the runtime object), `recordVerbal` gained the
+`readBackVerified` guard production has always had and the in-memory version was missing entirely, `sign`
+now advances a verbal order's own status/`signedAt` on completion, and `regenerateVerbalTimer` keeps the
+nested projection's `deadlineAt` in sync with the flat column rather than only updating one of the two.
+Verified: `bun run build`/`typecheck` fully clean (0 errors, the first time in this series), full non-live
+suite green except 12 pre-existing, unrelated frontend DOM test failures (confirmed via `git stash` to
+predate this round entirely — `encounter-authoring`/`admission-detail`/`hope-admission-workspace`, none
+touching M5/M11/M13/M14/M17 or order verbal-evidence code), `arch:fitness` 38/38 (`arch:outbox-bindings`
+0 disagreements both directions after the two subscription-list corrections), a clean `check:boot:platform`
+run against a freshly migrated, RLS-enforced disposable Postgres, and all four new live suites
+(`test:m5:admission-siting:live` 4/4, `test:m11:m9-m21-consumers:live` 11/11 against real Postgres+Valkey,
+`test:m13:reconciliation-triggers:live` 5/5 — proving the `providerEntityId` fix under real RLS — and
+`test:m17:evv-sos-consumers:live` 4/4) run individually against the same disposable database. Leaving
+#248 open — 184 pairs across 25 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

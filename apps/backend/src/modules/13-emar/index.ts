@@ -171,3 +171,10 @@ export {
   M13_DOCUMENT_BACKREF_CONSUMER,
   buildM13DocumentBackrefConsumer,
 } from "./outbox-consumers/m22-document-rendered";
+// F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet open, bound live for the first time.
+export {
+  type AdmissionAnchor,
+  type ReconciliationTriggerDeps,
+  M13_RECONCILIATION_TRIGGER_CONSUMER,
+  buildM13ReconciliationTriggerConsumer,
+} from "./outbox-consumers/m6-reconciliation-triggers";

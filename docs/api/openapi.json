@@ -132579,8 +132579,32 @@
                     "type": "integer"
                   },
                   "coverageKind": {
-                    "minLength": 1,
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "const": "medicare_ffs",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medicare_advantage",
+                        "type": "string"
+                      },
+                      {
+                        "const": "medicaid",
+                        "type": "string"
+                      },
+                      {
+                        "const": "commercial",
+                        "type": "string"
+                      },
+                      {
+                        "const": "hospice_carve_out",
+                        "type": "string"
+                      },
+                      {
+                        "const": "self_pay",
+                        "type": "string"
+                      }
+                    ]
                   },
                   "subscriberId": {
                     "minLength": 1,
@@ -155622,6 +155646,14 @@
                   "type": "string"
                 }
               ]
+            }
+          },
+          {
+            "name": "includeConverted",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
             }
           },
           {

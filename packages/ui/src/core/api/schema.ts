@@ -54017,7 +54017,7 @@ export interface operations {
                 "application/json": {
                     payerId: string;
                     rank: number;
-                    coverageKind: string;
+                    coverageKind: "medicare_ffs" | "medicare_advantage" | "medicaid" | "commercial" | "hospice_carve_out" | "self_pay";
                     subscriberId: string;
                     groupNumber?: string | null;
                     binPcn?: string | null;
@@ -60954,6 +60954,7 @@ export interface operations {
                 patientResolutionStatus?: string;
                 priority?: string;
                 assigned?: "mine" | "unassigned";
+                includeConverted?: boolean;
                 q?: string;
                 cursor?: string;
                 limit?: number;

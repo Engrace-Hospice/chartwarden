@@ -2,8 +2,8 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1301,
-    "coveredRoutes": 1301,
+    "routes": 1302,
+    "coveredRoutes": 1302,
     "directRoutesReferenced": 1244
   },
   "modules": [
@@ -119,7 +119,7 @@
     },
     {
       "module": "11-orders",
-      "routes": 28,
+      "routes": 29,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/orders-routes.test.ts"

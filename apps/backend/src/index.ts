@@ -161,6 +161,7 @@ import {
 import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction-workflow";
 import {
   M5_OUTBOX_EVENTS,
+  buildM5AdmissionSitingConsumer,
   buildM5DeathCascadeConsumer,
   buildM29ProposalApplierConsumer,
   createDrizzleCareTeamStore,
@@ -268,8 +269,10 @@ import {
 import {
   M11_OUTBOX_EVENTS,
   M11_PLATFORM_JOB_ID,
+  buildM11AssessmentSuggestionConsumer,
   buildM11DischargeCascadeConsumer,
   buildM11DocumentBackrefConsumer,
+  buildM11FulfillmentStatusConsumer,
   buildM11IdgDecisionConsumer,
   createDbOrderBackend,
   createDrizzleOrderEraseStore,
@@ -299,6 +302,7 @@ import {
 import {
   M13_OUTBOX_EVENTS,
   buildM13DocumentBackrefConsumer,
+  buildM13ReconciliationTriggerConsumer,
   createDrizzleEmarEraseStore,
   createDrizzleEmarSeamStore,
   mountEmarRoutes,
@@ -358,6 +362,9 @@ import {
   buildM17AdmissionLifecycleConsumer,
   buildM17CarePlanProposalConsumer,
   buildM17EncounterSignedConsumer,
+  buildM17EvvAtPatientAddressConsumer,
+  buildM17EvvCheckInConsumer,
+  buildM17SosVisitCancellationConsumer,
   buildM17WorkerDeps,
   createDrizzleCredentialStore,
   createDrizzleSchedulingSeamStore,
@@ -2320,8 +2327,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         maxRetriesPerRequest: null,
       })
     : null;
+  // F-152 (#248) — M11's §2.7 D7 order-suggestion banner (`orders:suggestion:<patientId>`, 7-day TTL).
+  // A dedicated connection rather than reusing `stepUpRedisClient`: low-traffic and non-hot-path like
+  // that one, but a distinct concern per this file's own one-connection-per-concern convention (see
+  // `rateLimitRedisClient` below) — mixing concerns on one connection couples their failure/retry
+  // tuning together for no shared benefit.
+  const orderSuggestionRedisClient = queueConnection
+    ? new Redis({
+        ...(queueConnection as RedisOptions),
+        maxRetriesPerRequest: null,
+      })
+    : null;
 
   stepUpRedisClient?.on("error", () => {});
+  orderSuggestionRedisClient?.on("error", () => {});
   redisHealthClient?.on("error", () => {});
   // WX-PR-017 — the SD-055 rate limiter's cluster-wide counter store. A DEDICATED connection, not a
   // reuse of `redisHealthClient` above: that one is tuned for a periodic /ready ping (lazyConnect,
@@ -5107,6 +5126,19 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             db: dbHandle.db,
             outbox: m17OutboxPublisher,
           }),
+          // F-152 — the D14 EVV-authoritative `published → en_route → in_visit` advances. EVV is the
+          // spec's own AUTHORITATIVE driver of the visit lifecycle; nothing ever bound either event.
+          buildM17EvvCheckInConsumer({
+            db: dbHandle.db,
+            outbox: m17OutboxPublisher,
+          }),
+          buildM17EvvAtPatientAddressConsumer({ db: dbHandle.db }),
+          // F-152 — the §7.5 SOS-resolution visit cancellation. M20's own catalog entry says M20 never
+          // writes an M17 row; this event IS the request and M17's D3 handler decides.
+          buildM17SosVisitCancellationConsumer({
+            db: dbHandle.db,
+            outbox: m17OutboxPublisher,
+          }),
           buildM36ClinicalAlertConsumer(
             getSeam("AlertEmitter") as AlertEmitter,
           ),
@@ -5193,6 +5225,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // DeathDischargeReader seam and flips patient.status='deceased' + emits
           // m5.patient.deceased (seeds M16 bereavement / M23 final claim / M28 FHIR / M36 IDG alert).
           buildM5DeathCascadeConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
+          // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization onto `patient`. Resolved
+          // through M6's registered AdmissionStatusReader seam (no `dependsOn` edge to M6 required).
+          buildM5AdmissionSitingConsumer({ db: dbHandle.db }),
           // M10 §2.2.1 (#48): the HOPE timepoint-schedule write path is `buildM10AdmissionWorkflowConsumer`
           // above. The lost-history `buildM10AdmissionSchedulingConsumer` handled the same two events and
           // wrote the same rows; only one may be bound (restored 2026-09-25, see the force-push recovery audit).
@@ -5255,6 +5290,21 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM6DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM11DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM12DocumentBackrefConsumer({ db: dbHandle.db }),
+          // F-152 (#248) — the §2.7 D7 order-suggestion banner. Needs `orderSuggestionRedisClient`
+          // (only present when `queueConnection` is configured), the same optional-worker posture
+          // `m34ProvisionQueue` below uses.
+          ...(orderSuggestionRedisClient
+            ? [
+                buildM11AssessmentSuggestionConsumer({
+                  db: dbHandle.db,
+                  redis: orderSuggestionRedisClient,
+                  outbox: m11OutboxPublisher,
+                }),
+              ]
+            : []),
+          // F-152 — the D8 one-shot (`supply`/`comfort_kit`) auto-complete on M21 delivery. `dme`
+          // stays open — it completes on receipt via a separate monthly-rental close-out.
+          buildM11FulfillmentStatusConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
           // F-102 — the M6 discharge cascade, both halves. Each decider has been complete, exported and
           // unit-tested since M11-T07 / M12-T08 with no caller but its own test, and neither COULD be
           // bound: `m6.admission.discharged` did not declare m11 or m12, and
@@ -5284,6 +5334,28 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
           buildM13DocumentBackrefConsumer({ db: dbHandle.db }),
+          // F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet, opened from all four of
+          // M6's trigger events. The admission siting comes from M6's ORG-EXPLICIT seam (a relay tick
+          // is not a request), the same `admissionSchedulingContextForOrg` template as M15's/M16's
+          // consumers above.
+          buildM13ReconciliationTriggerConsumer({
+            db: dbHandle.db,
+            outbox: m13OutboxPublisher,
+            resolveAdmission: async (organizationId, admissionId) => {
+              const ctx = await admissionSchedulingContextForOrg(
+                dbHandle.db,
+                organizationId,
+                admissionId,
+              );
+              return ctx
+                ? {
+                    patientId: ctx.patientId,
+                    providerEntityId: ctx.providerEntityId,
+                    locationId: ctx.locationId,
+                  }
+                : null;
+            },
+          }),
           buildM21DocumentBackrefConsumer({ db: dbHandle.db }),
           // F-120 (#248) — the OTHER two of the three M11 cascade deciders `consumers/m11-orders.ts` has
           // carried since M21-T04 ("the live outbox binding … land with the §4.6 workers alongside the

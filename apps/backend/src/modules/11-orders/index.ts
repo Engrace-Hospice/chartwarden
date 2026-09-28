@@ -146,3 +146,14 @@ export {
   M11_DOCUMENT_BACKREF_CONSUMER,
   buildM11DocumentBackrefConsumer,
 } from "./outbox-consumers/m22-document-rendered";
+// F-152 (#248) — the §2.7 D7 order-suggestion banner + the D8 one-shot auto-complete, bound live.
+export {
+  M11_ASSESSMENT_SUGGESTION_CONSUMER,
+  buildM11AssessmentSuggestionConsumer,
+  type AssessmentSuggestionDeps,
+} from "./outbox-consumers/m9-assessment-significant-change";
+export {
+  M11_FULFILLMENT_STATUS_CONSUMER,
+  buildM11FulfillmentStatusConsumer,
+  type FulfillmentStatusDeps,
+} from "./outbox-consumers/m21-fulfillment-status";

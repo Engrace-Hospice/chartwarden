@@ -575,6 +575,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       transmissionStatus: "not_applicable",
       resultsStatus: "not_applicable",
       verbalDeadlineAt: null,
+      verbalOrder: null,
       discontinuationReason: null,
       replacesOrderId: null,
       triggeringAssessmentId: null,
@@ -617,6 +618,11 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     ...view(r),
     kindVersion: r.kindVersion,
     data: r.data,
+    // `view()`'s declared return type (`OrderView`) omits `verbalOrder` (it's detail-only, per
+    // `OrderDetailView`'s own doc comment) even though the destructure leaves it on the runtime
+    // object — forwarded explicitly here, mirroring `orders-route-service-db.ts`'s
+    // `toOrderDetailView` doing the identical re-add.
+    verbalOrder: r.verbalOrder,
     ...buildOrderWorkflowProjection(r, actor, r.cosignerRoleNeeded),
   });
   const viewSt = (r: StandingRecord): StandingOrderView => {
@@ -716,6 +722,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         createdAt: now(),
         kindVersion: `${args.kind}.v1`,
         data: args.data,
+        verbalOrder: null,
       };
       orders.set(id, rec);
       emit(
@@ -806,6 +813,18 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         signedBy: null,
         completedAt: null,
         createdAt: now(),
+        // Mirrors `orders-route-service-db.ts`'s `verbal_orders` insert shape exactly (organizationId,
+        // status "pending", readBackVerified already gated true above, signedAt null until the sign
+        // path completes it — see `signInternal` below).
+        verbalOrder: {
+          status: "pending",
+          receivedAt: args.verbal.receivedAt,
+          effectiveAt: args.verbal.effectiveAt,
+          deadlineAt,
+          signedAt: null,
+          readBackVerified: args.verbal.readBackVerified,
+          attestation: args.verbal.verbalAttestation,
+        },
       };
       orders.set(id, rec);
       emit(
@@ -918,6 +937,12 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
 
     async recordVerbal(organizationId, userId, id, args, actor = EMPTY_ORDER_DETAIL_ACTOR) {
       const r = find(organizationId, id);
+      // Mirrors `orders-route-service-db.ts`'s `recordVerbal` guard exactly.
+      if (!args.readBackVerified)
+        throw Object.assign(new Error("Verbal order must be read back and verified"), {
+          code: "VERBAL_READ_BACK_REQUIRED",
+          statusCode: 422,
+        });
       const t = transitionOrder(r.status, {
         type: "recordVerbal",
         kind: r.kind,
@@ -932,6 +957,17 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         policyVersion: policy.policyVersion,
       });
       r.orderingPhysicianMdmId = args.orderingPhysicianMdmId;
+      // The detail-only verbal-order evidence (`OrderDetailView.verbalOrder`) — mirrors the real
+      // `verbal_orders` row shape `orders-route-service-db.ts` inserts.
+      r.verbalOrder = {
+        status: "pending",
+        receivedAt: args.receivedAt,
+        effectiveAt: args.effectiveAt,
+        deadlineAt: r.verbalDeadlineAt,
+        signedAt: null,
+        readBackVerified: args.readBackVerified,
+        attestation: args.verbalAttestation,
+      };
       emit(
         "m11.order.verbal_received",
         { orderId: id, deadlineAt: r.verbalDeadlineAt },
@@ -1208,6 +1244,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         createdAt: now(),
         kindVersion: r.kindVersion,
         data: r.data,
+        verbalOrder: null,
       });
       r.spawnCount += 1;
       emit(
@@ -1258,12 +1295,14 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       const r = find(organizationId, id);
       if (r.status !== "verbal_pending")
         throw new NotFoundError(`order ${id} is not verbal_pending`);
+      if (!r.verbalOrder) throw new NotFoundError(`order ${id} has no verbal-order receipt`);
       r.verbalDeadlineAt = computeVerbalDeadline(now(), {
         windowHours: policy.windowHours,
         businessHoursOnly: policy.businessHoursOnly,
         timeZone: tz,
         policyVersion: policy.policyVersion,
       });
+      r.verbalOrder = { ...r.verbalOrder, deadlineAt: r.verbalDeadlineAt };
       emit(
         "m11.order.verbal_received",
         { orderId: id, deadlineAt: r.verbalDeadlineAt, regenerated: true },
@@ -1319,6 +1358,16 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
     r.signedAt = now();
     r.signedBy = userId;
     r.version += 1;
+    // Mirrors `orders-route-service-db.ts`'s verbal-order sign path: a verbal order carries forward
+    // its own status/signedAt independent of the order's own transition.
+    if (r.verbalOrder) {
+      r.verbalOrder = { ...r.verbalOrder, status: "signed_in_time", signedAt: r.signedAt };
+      emit(
+        "m11.order.verbal_signed_in_time",
+        { orderId: id, signedAt: r.signedAt },
+        `${id}:verbal_signed_in_time`,
+      );
+    }
     emit(
       "m11.order.signed",
       { orderId: id, kind: r.kind, signedBy: userId, onBehalf },

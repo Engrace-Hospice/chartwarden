@@ -60,4 +60,6 @@ export const M11_OUTBOX_SUBSCRIPTIONS = [
   // the catalog or the bindings. Same shape as F-094's `idg.decision_recorded` in M16 — the one event a
   // module binds live that its own subscription list did not name.
   { eventName: "m22.document.rendered", consumerName: "m11.document-backref" },
+  // F-152 (#248) — the D8 one-shot (`supply`/`comfort_kit`) auto-complete on M21 delivery.
+  { eventName: "m21.supply_request.status_changed", consumerName: "m11.m21-fulfillment-status" },
 ] as const;

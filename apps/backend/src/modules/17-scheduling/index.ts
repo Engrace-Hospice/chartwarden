@@ -75,6 +75,22 @@ export {
 } from "./consumers/index";
 export { buildM17AdmissionLifecycleConsumer } from "./consumers/admission-lifecycle";
 export { buildM17CarePlanProposalConsumer } from "./consumers/care-plan-proposals";
+// F-152 (#248) — the D14 EVV-authoritative visit advances + the §7.5 SOS-resolution cancellation, bound live.
+export {
+  M17_EVV_CHECK_IN_CONSUMER,
+  buildM17EvvCheckInConsumer,
+  type EvvCheckInDeps,
+} from "./outbox-consumers/m18-evv-check-in";
+export {
+  M17_EVV_AT_PATIENT_ADDRESS_CONSUMER,
+  buildM17EvvAtPatientAddressConsumer,
+  type EvvAtPatientAddressDeps,
+} from "./outbox-consumers/m18-evv-at-patient-address";
+export {
+  M17_SOS_VISIT_CANCELLATION_CONSUMER,
+  buildM17SosVisitCancellationConsumer,
+  type SosVisitCancellationDeps,
+} from "./outbox-consumers/m20-safety-visit-cancellation";
 // M17-T07 — the four §4.7 pre-schedule ABAC predicate resolvers M17 owns + registers into M3.
 export {
   type SchedulingAbacDeps,

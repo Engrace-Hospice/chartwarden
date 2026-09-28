@@ -76,6 +76,13 @@ export {
 
 // M5-T10 — outbox events (§4.6), jobs (§4.5 geocode), privacy-flag recompute + SUD enforcement (§7.6).
 export { M5_OUTBOX_EVENTS } from "./events-by-m5";
+
+// F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization, bound live for the first time.
+export {
+  M5_ADMISSION_SITING_CONSUMER,
+  buildM5AdmissionSitingConsumer,
+  type AdmissionSitingDeps,
+} from "./outbox-consumers/m6-admission-activated";
 export {
   M5_QUEUES,
   M5_JOB_SCHEDULES,

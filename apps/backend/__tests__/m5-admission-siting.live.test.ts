@@ -1,0 +1,256 @@
+/**
+ * F-152 (#248) — LIVE Postgres proof that M5's `m6.admission.activated` binding
+ * (`buildM5AdmissionSitingConsumer`) denormalizes the activating admission's provider entity/location
+ * onto the real `patient` row, through the REAL `AdmissionStatusReader` seam (registered over a real
+ * Drizzle-backed store, `createDrizzleAdmissionReaderStore`), not a stub.
+ *
+ * `patient.provider_entity_id` / `patient.location_id` have carried the "nullable — until admission"
+ * comment since the schema landed (ARCH-011 / M05-F04) and nothing in this repository has ever written
+ * either column. This proves the real binding end to end: an admission's siting resolves through the
+ * cross-module seam (M5 has no `dependsOn` edge to M6 — this is the `getSeam(...)` boundary, not an
+ * import), the patient row is updated, a redelivery is a no-op re-apply, and a second admission
+ * activating for the same patient at a DIFFERENT provider entity correctly overwrites the earlier value.
+ *
+ *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m5:admission-siting:live
+ */
+import { readFileSync, readdirSync } from "node:fs";
+import { join } from "node:path";
+import { createDbClient } from "@wardenx/db";
+import { Client } from "pg";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { registerAdmissionSeams } from "../src/modules/06-admission/index";
+// Imported by exact file path, not the module barrel: the coordinator wires the barrel export
+// (`apps/backend/src/modules/05-patient/index.ts`) centrally after independently verifying this file.
+import { buildM5AdmissionSitingConsumer } from "../src/modules/05-patient/outbox-consumers/m6-admission-activated";
+import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
+
+const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
+const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
+const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+
+const ORG_A = "11111111-1111-1111-1111-111111111111";
+const ORG_B = "22222222-2222-2222-2222-222222222222";
+
+describe.skipIf(!DB_URL)(
+  "F-152 — M5's m6.admission.activated siting denormalization — LIVE Postgres",
+  () => {
+    let admin: Client;
+    let handle: ReturnType<typeof createDbClient>;
+    let providerA1: string;
+    let providerA2: string;
+    let providerB: string;
+    let locationA: string;
+    let consumer: ReturnType<typeof buildM5AdmissionSitingConsumer>;
+
+    async function resetSchema() {
+      await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
+      await admin.query("CREATE SCHEMA public");
+      for (const role of ROLES) {
+        await admin.query(
+          `DO $$ BEGIN IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${role}') THEN ` +
+            `EXECUTE 'DROP OWNED BY ${role} CASCADE'; EXECUTE 'DROP ROLE ${role}'; END IF; END $$;`,
+        );
+      }
+    }
+    async function applyMigrations() {
+      for (const file of readdirSync(MIGRATIONS_DIR)
+        .filter((f) => f.endsWith(".sql"))
+        .sort()) {
+        await admin.query(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
+      }
+    }
+
+    async function seedPatient(organizationId: string): Promise<string> {
+      const row = await admin.query(
+        `INSERT INTO patient
+           (organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth)
+         VALUES ($1, $2, 'Test', 'Patient', '1950-01-01', 'female')
+         RETURNING id`,
+        [organizationId, `MRN-${Math.random().toString(36).slice(2, 10)}`],
+      );
+      return row.rows[0].id as string;
+    }
+
+    async function seedAdmission(opts: {
+      organizationId: string;
+      patientId: string;
+      providerEntityId: string;
+      locationId: string | null;
+    }): Promise<string> {
+      const row = await admin.query(
+        `INSERT INTO admission
+           (organization_id, patient_id, provider_entity_id, location_id, status, activated_at)
+         VALUES ($1, $2, $3, $4, 'active', now())
+         RETURNING id`,
+        [opts.organizationId, opts.patientId, opts.providerEntityId, opts.locationId],
+      );
+      return row.rows[0].id as string;
+    }
+
+    async function patientSiting(patientId: string) {
+      const { rows } = await admin.query(
+        `SELECT provider_entity_id, location_id FROM patient WHERE id = $1`,
+        [patientId],
+      );
+      return rows[0];
+    }
+
+    beforeAll(async () => {
+      admin = new Client({ connectionString: DB_URL });
+      await admin.connect();
+      await resetSchema();
+      await applyMigrations();
+      await admin.query(
+        `INSERT INTO organization (id,slug,legal_name,display_name)
+         VALUES ($1,'m5-admission-siting-a','M5 Siting A','M5 Siting A'),
+                ($2,'m5-admission-siting-b','M5 Siting B','M5 Siting B')`,
+        [ORG_A, ORG_B],
+      );
+      providerA1 = (
+        await admin.query(
+          `INSERT INTO provider_entity
+             (organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,'M5SIT-A1','Siting Provider A1','1200000001','enc','12-31') RETURNING id`,
+          [ORG_A],
+        )
+      ).rows[0].id as string;
+      providerA2 = (
+        await admin.query(
+          `INSERT INTO provider_entity
+             (organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,'M5SIT-A2','Siting Provider A2','1200000002','enc','12-31') RETURNING id`,
+          [ORG_A],
+        )
+      ).rows[0].id as string;
+      providerB = (
+        await admin.query(
+          `INSERT INTO provider_entity
+             (organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
+           VALUES ($1,'M5SIT-B','Siting Provider B','1200000003','enc','12-31') RETURNING id`,
+          [ORG_B],
+        )
+      ).rows[0].id as string;
+      locationA = (
+        await admin.query(
+          `INSERT INTO location
+             (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+           VALUES ($1, 'Siting Location A', '1 Test St', 'Testville', 'OR', '97201', 'America/Los_Angeles')
+           RETURNING id`,
+          [providerA1],
+        )
+      ).rows[0].id as string;
+
+      await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
+      handle = createDbClient({ connectionString: appRoleUrl(DB_URL as string) });
+
+      registerAdmissionSeams({
+        store: (
+          await import("../src/modules/06-admission/index")
+        ).createDrizzleAdmissionReaderStore(handle.db),
+      });
+
+      consumer = buildM5AdmissionSitingConsumer({ db: handle.db });
+    }, 120_000);
+
+    afterAll(async () => {
+      await handle?.close();
+      if (admin) await admin.end();
+    });
+
+    it("denormalizes the activating admission's provider entity + location onto the patient row", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const admissionId = await seedAdmission({
+        organizationId: ORG_A,
+        patientId,
+        providerEntityId: providerA1,
+        locationId: locationA,
+      });
+
+      await consumer.handle({
+        organizationId: ORG_A,
+        payload: { admissionId, patientId },
+      });
+
+      const siting = await patientSiting(patientId);
+      expect(siting.provider_entity_id).toBe(providerA1);
+      expect(siting.location_id).toBe(locationA);
+    });
+
+    it("is idempotent on redelivery", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const admissionId = await seedAdmission({
+        organizationId: ORG_A,
+        patientId,
+        providerEntityId: providerA1,
+        locationId: null,
+      });
+
+      await consumer.handle({ organizationId: ORG_A, payload: { admissionId, patientId } });
+      await consumer.handle({ organizationId: ORG_A, payload: { admissionId, patientId } });
+
+      const siting = await patientSiting(patientId);
+      expect(siting.provider_entity_id).toBe(providerA1);
+      expect(siting.location_id).toBeNull();
+    });
+
+    it("a later admission at a different provider entity overwrites the earlier siting", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const firstAdmission = await seedAdmission({
+        organizationId: ORG_A,
+        patientId,
+        providerEntityId: providerA1,
+        locationId: locationA,
+      });
+      await consumer.handle({
+        organizationId: ORG_A,
+        payload: { admissionId: firstAdmission, patientId },
+      });
+      expect((await patientSiting(patientId)).provider_entity_id).toBe(providerA1);
+
+      // A real re-admission: the first admission must discharge before a second can open
+      // (`admission_patient_open_idx` — at most one OPEN (status NOT IN discharged/bereavement/closed)
+      // admission per patient).
+      await admin.query(
+        `UPDATE admission SET status = 'discharged', discharged_at = now() WHERE id = $1`,
+        [firstAdmission],
+      );
+
+      const secondAdmission = await seedAdmission({
+        organizationId: ORG_A,
+        patientId,
+        providerEntityId: providerA2,
+        locationId: null,
+      });
+      await consumer.handle({
+        organizationId: ORG_A,
+        payload: { admissionId: secondAdmission, patientId },
+      });
+
+      const siting = await patientSiting(patientId);
+      expect(siting.provider_entity_id).toBe(providerA2);
+      expect(siting.location_id).toBeNull();
+    });
+
+    it("is a no-op for an admission id invisible under this org's cross-tenant read", async () => {
+      const patientBId = await seedPatient(ORG_B);
+      const admissionB = await seedAdmission({
+        organizationId: ORG_B,
+        patientId: patientBId,
+        providerEntityId: providerB,
+        locationId: null,
+      });
+
+      // Deliver ORG A's context for an admission id that only exists under ORG B.
+      await expect(
+        consumer.handle({
+          organizationId: ORG_A,
+          payload: { admissionId: admissionB, patientId: patientBId },
+        }),
+      ).resolves.toBeUndefined();
+
+      // Org B's own patient row is untouched by the org-A-scoped delivery above.
+      const siting = await patientSiting(patientBId);
+      expect(siting.provider_entity_id).toBeNull();
+    });
+  },
+);
