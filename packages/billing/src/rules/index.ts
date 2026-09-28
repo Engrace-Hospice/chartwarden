@@ -29,7 +29,7 @@ import { hippsCodingCorrect } from "./hipps-coding";
 import { icd10Sequencing } from "./icd-sequencing";
 import { ipuCapProjection } from "./ipu-cap-projection";
 import { levelOfCareCoherence } from "./loc-coherence";
-import { modifierCodesValid } from "./modifier-codes";
+import { CMS_HOSPICE_MODIFIER_VALUE_SET, modifierCodesValid } from "./modifier-codes";
 import { noeTimeliness5d } from "./noe-timeliness";
 import { patientEligibilityPartAActive } from "./patient-eligibility-part-a";
 import { physicianCredentialsActive } from "./physician-credentials";
@@ -57,6 +57,7 @@ export {
   bereavementDischargeLegitimacy,
   modifierCodesValid,
   evvBracketCoherence,
+  CMS_HOSPICE_MODIFIER_VALUE_SET,
 };
 
 /**

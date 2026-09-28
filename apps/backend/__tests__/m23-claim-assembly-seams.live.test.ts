@@ -1,25 +1,29 @@
 /**
- * M23 claim-assembly seam bindings — LIVE Postgres proof (#250, #251, F-119, F-121, F-122, F-123).
+ * M23 claim-assembly seam bindings — LIVE Postgres proof (#250, #251, F-119, F-121, F-122, F-123, F-124).
  *
- * `boot-assembly.ts` binds NINE of the eleven named `ClaimAssemblySeams` reader ports to real data:
+ * `boot-assembly.ts` binds TEN of the eleven named `ClaimAssemblySeams` reader ports to real data:
  * `patientPayer` (M5), all FIVE M6 range-shaped seams (F-121, #251: `admission`, `electionPeriods`,
  * `certifications`, `faceToFace`, `levelOfCare`, over `claimAssemblyRangeContextForOrg`),
  * `billableEncounters`/`signedEncounters` (F-122, #251: M8, over `billableEncountersInRangeForOrg`/
- * `signedEncounterSnapshotsInRangeForOrg`), and — F-123 (#251) — `evvCompliance`, bridging M8's new
- * `encounterVisitIdsForOrg` and M18's new bulk `complianceStatesForVisitsForOrg`; `mdm.resolveProviderEntity`
- * and two of `referenceData`'s four methods are also real (#250). This proves each against real rows under
- * real RLS (`WARDENX_DEV_BYPASSRLS=0` discipline: this test connects as the migrated `wardenx_app` role via
+ * `signedEncounterSnapshotsInRangeForOrg`), `evvCompliance` (F-123, #251, bridging M8's new
+ * `encounterVisitIdsForOrg` and M18's new bulk `complianceStatesForVisitsForOrg`), and — F-124 (#251) —
+ * `terminology`, over M38's registered `TerminologyProvider.expand()`; `mdm.resolveProviderEntity` and two
+ * of `referenceData`'s four methods are also real (#250). This proves each against real rows under real
+ * RLS (`WARDENX_DEV_BYPASSRLS=0` discipline: this test connects as the migrated `wardenx_app` role via
  * `handle.db`, never the admin/superuser client used only to seed). F-122 also fixes a genuine,
  * previously-undocumented production defect: `EncounterReaderStore.encounterFacts` — and therefore
  * `BillableEncounterReader.billability` for EVERY caller, not only M23 — had been live-registered since
  * M8-T08 while still answering `[]` for any id, because the Drizzle store never overrode the in-memory
- * fallback's empty default (the F-093/F-100/F-103 shape again).
+ * fallback's empty default (the F-093/F-100/F-103 shape again). F-124 fixes an analogous gap one layer
+ * down in M38: `CMS_HOSPICE_MODIFIER_VALUE_SET` (the one value set M23's rule registry references) had no
+ * curated members anywhere — this suite seeds them directly (`value_set`/`value_set_member`), the same
+ * two rows `@wardenx/terminology`'s own seed now curates.
  *
- * The end-to-end `POST /claims/assemble` reachability boundary is unmoved by F-122/F-123 (stated, not
- * implied): it still fails at `referenceData.hippsRateTable` (no CMS per-diem rate file has ever been
- * loaded), which sits BEFORE `billableEncounters`/`signedEncounters`/`evvCompliance` in call order —
- * binding them is real, individually-verified progress on three more seam steps, not a further unblock of
- * the live wall.
+ * The end-to-end `POST /claims/assemble` reachability boundary is unmoved by F-122/F-123/F-124 (stated,
+ * not implied): it still fails at `referenceData.hippsRateTable` (no CMS per-diem rate file has ever been
+ * loaded), which sits BEFORE `billableEncounters`/`signedEncounters`/`evvCompliance`/`terminology` in call
+ * order — binding them is real, individually-verified progress on four more seam steps, not a further
+ * unblock of the live wall.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
  *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m23-claim-assembly-seams.live.test.ts
@@ -41,6 +45,10 @@ import {
 } from "../src/modules/08-encounters/index";
 import { complianceStatesForVisitsForOrg } from "../src/modules/18-evv/index";
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
+import {
+  createDbTerminologyStore,
+  registerTerminologySeams,
+} from "../src/modules/38-terminology/index";
 import { buildM23BootAssemblyService } from "../src/modules/23-billing-medicare/services/boot-assembly";
 import {
   buildM23AdmissionRangeAdapters,
@@ -50,7 +58,9 @@ import {
   buildM23PatientPayerAdapter,
   buildM23ReferenceDataAdapter,
   buildM23SignedEncountersAdapter,
+  buildM23TerminologyAdapter,
 } from "../src/modules/23-billing-medicare/services/claim-assembly-seam-adapters";
+import { CMS_HOSPICE_MODIFIER_VALUE_SET } from "@wardenx/billing";
 import type { ProviderCcnPort } from "../src/modules/23-billing-medicare/routes/write-service";
 import { and, eq } from "drizzle-orm";
 import { Client } from "pg";
@@ -371,6 +381,35 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     // The two M5 seams M6 intake consults (referral qualify/accept + activation readiness) — the
     // `_m6-admit.ts` precedent, over the same app-role handle.
     registerM5IntakeSeams(handle.db);
+    // F-124 (#251) — M38's registered `TerminologyProvider`, over the SAME real Drizzle store
+    // production binds (`index.ts`'s own `registerTerminologySeams(deps.db ? {store: ...} : {})`
+    // call), so `buildM23TerminologyAdapter()`'s `getSeam("TerminologyProvider")` default resolves
+    // for real rather than needing its own `resolve` override.
+    registerTerminologySeams({ store: createDbTerminologyStore(handle.db) });
+    // `cms_hospice_modifiers` (GV/GW) did not exist as real curated data before F-124 — seeded here
+    // the same way the seam's own migration-less curation file describes it: two rows in `value_set`
+    // + `value_set_member`, no RLS (platform-shared reference data, §3.7).
+    await admin.query(
+      `INSERT INTO "value_set" (id, name, description, scope) VALUES
+         ('${CMS_HOSPICE_MODIFIER_VALUE_SET}', 'CMS hospice-specific HCPCS modifiers',
+          'GV, GW', 'platform')`,
+    );
+    await admin.query(
+      `INSERT INTO "value_set_member" (value_set_id, system_id, code, member_effective) VALUES
+         ('${CMS_HOSPICE_MODIFIER_VALUE_SET}', 'hcpcs', 'GV', '2020-01-01'),
+         ('${CMS_HOSPICE_MODIFIER_VALUE_SET}', 'hcpcs', 'GW', '2020-01-01')`,
+    );
+    // A tenant extension for ORG_A only (§7.6 add-only) — raw insert rather than the real
+    // `addTenantExtension()` route, because hcpcs has no Phase-1 concept table (§2.3) and that
+    // method's own add-time validation would refuse ANY hcpcs code as unresolvable; this proves the
+    // adapter's `includeTenantExtensions: true` wiring reads the row the store already knows how to
+    // return, independent of that separate, real hcpcs-extension-validation gap.
+    await admin.query(
+      `INSERT INTO "value_set_tenant_extension"
+         (value_set_id, organization_id, system_id, code, reason) VALUES
+         ('${CMS_HOSPICE_MODIFIER_VALUE_SET}', '${ORG_A}', 'hcpcs', 'GX',
+          'org-A local extension seeded for F-124 live coverage')`,
+    );
   }, 120_000);
 
   const admissionSvc = () =>
@@ -960,6 +999,32 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       // org B's real "compliant" verdict.
       const snapshots = await seam.bracketsForEncounters(ORG_A, [encounterB]);
       expect(snapshots).toEqual([{ encounterId: encounterB, bracketState: "not_required" }]);
+    });
+  });
+
+  describe("terminology.resolveForClaim: the M38 bulk-expand bridge (F-124, #251)", () => {
+    it("resolves the platform CMS hospice-modifier value set, plus the calling org's own tenant extension", async () => {
+      const seam = buildM23TerminologyAdapter();
+      const resolutionA = await seam.resolveForClaim(ORG_A, "2026-06-01");
+      expect(resolutionA.valueSetMembership[CMS_HOSPICE_MODIFIER_VALUE_SET]?.slice().sort()).toEqual([
+        "GV",
+        "GW",
+        "GX",
+      ]);
+      // Traced against `claim-assembly.ts`'s own hardcoded `icd10Sequence: []` (a separate, real
+      // M23-side gap this seam does not create): no diagnosis code ever reaches this call, so the
+      // honest bulk map has nothing to resolve.
+      expect(resolutionA.icd10Billable).toEqual({});
+    });
+
+    it("never resolves another org's tenant extension (cross-tenant isolation, §7.6)", async () => {
+      const seam = buildM23TerminologyAdapter();
+      const resolutionB = await seam.resolveForClaim(ORG_B, "2026-06-01");
+      // Org B gets the platform members but NOT org A's "GX" extension.
+      expect(resolutionB.valueSetMembership[CMS_HOSPICE_MODIFIER_VALUE_SET]?.slice().sort()).toEqual([
+        "GV",
+        "GW",
+      ]);
     });
   });
 

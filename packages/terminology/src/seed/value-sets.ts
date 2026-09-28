@@ -75,4 +75,13 @@ export const PLATFORM_VALUE_SETS: readonly PlatformValueSetSeed[] = [
     description: "living will, DPOA-HC, POLST/MOLST, code status",
     scope: "platform",
   },
+  // cms_hospice_modifiers — the two CMS hospice-specific HCPCS modifiers (GV/GW), added binding M23's
+  // `modifier_codes_valid` rule (F-124, #251). Small, fully-enumerated, CMS-public — the same shape as
+  // `level_of_care` and `place_of_service_q_codes` above, curated in value-set-members.ts.
+  {
+    id: "cms_hospice_modifiers",
+    name: "CMS hospice-specific HCPCS modifiers",
+    description: "GV, GW — the two modifiers CMS defines specifically for hospice claim lines",
+    scope: "platform",
+  },
 ] as const;

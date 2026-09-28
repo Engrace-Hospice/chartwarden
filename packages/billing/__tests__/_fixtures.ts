@@ -2,7 +2,7 @@
 // PASSING `ValidationContext` (every applicable default rule passes; the cap + sia rules SKIP because
 // their seams/inputs are intentionally absent — a non-blocking deny-stub skip). PURE plain-data: no DB,
 // no Fastify, no clock, no PHI/MBI (D13). Each builder returns a FRESH object so tests can mutate freely.
-import type { ValidationContext } from "@wardenx/billing";
+import { CMS_HOSPICE_MODIFIER_VALUE_SET, type ValidationContext } from "@wardenx/billing";
 
 /**
  * A fully-passing `ValidationContext` for a single routine-home-care TOB-812 first-interim claim:
@@ -83,7 +83,7 @@ export function passingContext(): ValidationContext {
     signedEncounters: [],
     evvBrackets: [{ encounterId: "enc-1", bracketState: "compliant" }],
     terminology: {
-      valueSetMembership: { "vs.cms-hospice-modifiers": ["GV", "GW"] },
+      valueSetMembership: { [CMS_HOSPICE_MODIFIER_VALUE_SET]: ["GV", "GW"] },
       icd10Billable: { "G30.9": true },
     },
     mdm: {

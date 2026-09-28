@@ -48,9 +48,9 @@ describe("PLATFORM_CODE_SYSTEMS — the Phase-1 code_system catalog (§3.9)", ()
 
 // ── §3.9 value-set definitions ────────────────────────────────────────────────────────
 describe("PLATFORM_VALUE_SETS — Phase-1 value-set definitions (§3.9)", () => {
-  it("seeds the nine platform value sets with unique slugs and valid scopes", () => {
-    expect(PLATFORM_VALUE_SETS).toHaveLength(9);
-    expect(new Set(PLATFORM_VALUE_SETS.map((v) => v.id)).size).toBe(9);
+  it("seeds the ten platform value sets with unique slugs and valid scopes", () => {
+    expect(PLATFORM_VALUE_SETS).toHaveLength(10);
+    expect(new Set(PLATFORM_VALUE_SETS.map((v) => v.id)).size).toBe(10);
     for (const v of PLATFORM_VALUE_SETS) {
       expect(VALID_SCOPES.has(v.scope)).toBe(true);
       expect(v.name.length).toBeGreaterThan(0);
@@ -83,6 +83,9 @@ describe("PLATFORM_VALUE_SET_MEMBERS — curated reference-set members (§3.9 cu
     const q = PLATFORM_VALUE_SET_MEMBERS.filter((m) => m.valueSetId === "place_of_service_q_codes");
     expect(q).toHaveLength(10); // Q5001..Q5010
     expect(q.every((m) => m.systemId === "hcpcs" && /^Q50(0[1-9]|10)$/.test(m.code))).toBe(true);
+    const modifiers = PLATFORM_VALUE_SET_MEMBERS.filter((m) => m.valueSetId === "cms_hospice_modifiers");
+    expect(modifiers.map((m) => m.code).sort()).toEqual(["GV", "GW"]);
+    expect(modifiers.every((m) => m.systemId === "hcpcs")).toBe(true);
   });
 });
 

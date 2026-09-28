@@ -71,7 +71,7 @@ export const claimLine = pgTable(
       .notNull()
       .default(sql`'[]'::jsonb`), // int[] referencing the claim's ICD list 1..12
 
-    // Modifier codes (M38 value set vs.cms-hospice-modifiers):
+    // Modifier codes (M38 value set cms_hospice_modifiers):
     modifiers: jsonb("modifiers").$type<ClaimLineModifiers>().notNull().default(sql`'[]'::jsonb`), // string[] up to 4 per X12
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

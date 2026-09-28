@@ -1,14 +1,19 @@
 import { paramString } from "./_util";
 // @wardenx/billing — §4.5 rule `modifier_codes_valid` (modifiers, error, regulatory). Required modifiers
 // must be present where applicable and every modifier code must be valid per the current CMS list via
-// M38 `vs.cms-hospice-modifiers` (resolved as-of the claim's service-from). Reads the resolved
+// M38 `cms_hospice_modifiers` (resolved as-of the claim's service-from). Reads the resolved
 // `terminology` value-set membership; SKIPs when M38 is unbound. PURE: reads ctx only.
 import type { Rule } from "./types";
 import { fail, isMemberOf, pass, skip } from "./types";
 
 const KEY = "modifier_codes_valid";
 
-const MODIFIER_VALUE_SET = "vs.cms-hospice-modifiers";
+/** The one `@wardenx/billing` platform-default rule value set — exported so the M23 boot composition
+ *  (F-124, #251) resolves the SAME id when it bulk pre-fetches M38's expansion, rather than each side
+ *  carrying its own copy of the literal. */
+export const CMS_HOSPICE_MODIFIER_VALUE_SET = "cms_hospice_modifiers";
+
+const MODIFIER_VALUE_SET = CMS_HOSPICE_MODIFIER_VALUE_SET;
 
 export const modifierCodesValid: Rule = {
   key: KEY,
@@ -16,7 +21,7 @@ export const modifierCodesValid: Rule = {
   category: "modifiers",
   title: "Modifier codes valid",
   description:
-    "Every line modifier must be a current valid CMS hospice modifier (M38 vs.cms-hospice-modifiers, " +
+    "Every line modifier must be a current valid CMS hospice modifier (M38 cms_hospice_modifiers, " +
     "as-of service-from) and required modifiers must be present where applicable.",
   severity: "error",
   regulatoryRequired: true,

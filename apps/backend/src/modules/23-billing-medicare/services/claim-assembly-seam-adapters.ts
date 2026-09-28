@@ -8,7 +8,7 @@
 // (or a sibling M23 table) already owns and already has a repository for. The FIVE M6 seams below (F-121,
 // #251) needed exactly that owning-module read-surface addition — `claimAssemblyRangeContextForOrg`
 // (`06-admission/seams/drizzle-store.ts`) — and this file is the adapter over it, not the read itself.
-import { repositories } from "@wardenx/billing";
+import { CMS_HOSPICE_MODIFIER_VALUE_SET, repositories } from "@wardenx/billing";
 import type { LevelOfCare } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
 import { getSeam } from "../../../bootstrap/index";
@@ -28,6 +28,7 @@ import type {
   PatientPayerReader,
   ProviderEntityDirectoryEntry,
   SignedEncountersReader,
+  TerminologyProvider,
 } from "./claim-assembly";
 
 type BillingDb = repositories.BillingDb;
@@ -477,6 +478,86 @@ export function buildM23EvvComplianceAdapter(
         const bracketState = visitId === null ? "not_required" : (stateByVisit.get(visitId) ?? "not_required");
         return { encounterId, bracketState };
       });
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// 9. terminology (M38) — real, over the registered `TerminologyProvider` seam's bulk `expand()` (F-124,
+//    #251).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The minimal M38 `TerminologyProvider.expand()` surface this adapter consumes, duplicated locally per
+ * the no-package-import posture — the same shape {@link M5CoverageSeam} above uses. M38's
+ * `TerminologyProvider` is already a registered M1-registry seam (`registerTerminologySeams`, M38-T05),
+ * so — unlike the M6/M8/M18 bridges above, which needed brand-new bare functions the composition root has
+ * no other way to reach — this needs no `boot-assembly.ts` port injection at all; it resolves through
+ * `getSeam` exactly like {@link buildM23PatientPayerAdapter} does.
+ */
+export interface M38TerminologyReader {
+  expand(
+    valueSetId: string,
+    opts: {
+      readonly asOf?: Date;
+      readonly includeTenantExtensions?: boolean;
+      readonly orgId?: string;
+    },
+  ): AsyncIterable<{ readonly code: string }>;
+}
+
+/**
+ * F-124 (#251) — `terminology.resolveForClaim`. #251's own scoping was right that this seam needs a
+ * BULK, pre-resolved map with no codes given at fetch time, and wrong that the bridge needs a NEW M38
+ * capability: `TerminologyProvider.expand(valueSetId)` (§4.5) already IS that bulk method — the "small
+ * adapter, not a design task" framing #250 once used (wrongly) for a different seam turns out to be true
+ * here, once the right M38 method is used.
+ *
+ * `valueSetMembership` resolves exactly ONE value set. Checked against every rule file in
+ * `packages/billing/src/rules/`, not assumed: `modifier_codes_valid` is the ONLY one of the 19
+ * platform-default rules that reads `ctx.terminology.valueSetMembership` (via `isMemberOf`), and
+ * `CMS_HOSPICE_MODIFIER_VALUE_SET` is its only `valueSetId` (`defaultParameters`) — the platform boot
+ * (`createDefaultBillingRegistry()`, no tenant/MAC rule-parameter overlay is read at assembly time today)
+ * never asks this seam about a second value set. `includeTenantExtensions: true` is load-bearing, not a
+ * default left on: a tenant may ADD a locally-valid modifier to the platform set (§7.6, add-only /
+ * never-weaken) and omitting it here would report that tenant's own approved modifier as invalid on
+ * every claim that carries it.
+ *
+ * `CMS_HOSPICE_MODIFIER_VALUE_SET` itself did not exist as a real value set anywhere before this pass
+ * (F-124) — `modifier-codes.ts` referenced it and no migration, seed, or curation file ever defined it,
+ * so `expand()` would have answered an empty iterable forever, same shape as the `hope_j_codes`/
+ * `hospice_terminal_diagnosis` gap F-057 already documented and degrades honestly for. Two CMS-defined
+ * hospice modifiers (GV, GW) are now curated in `@wardenx/terminology`'s seed alongside the platform's
+ * other small, fully-enumerated reference sets (`level_of_care`, `place_of_service_q_codes`).
+ *
+ * `icd10Billable` is honestly `{}`. Traced rather than assumed: `icd10_sequencing` is the only reader of
+ * this map, over `ctx.claim.icd10Sequence` — and `claim-assembly.ts`'s own line-assembly hardcodes
+ * `icd10Sequence: []` on every claim it assembles today (no seam anywhere populates a diagnosis sequence
+ * at assembly time; a separate, real M23-side gap this pass did not create and did not fix — it is not
+ * part of #251's M38 item). With no diagnosis code ever on the claim to ask about, there is nothing to
+ * bulk-resolve; `{}` is what a per-code map looks like with zero codes asked about, not a placeholder for
+ * unknown data.
+ */
+export function buildM23TerminologyAdapter(
+  resolve: () => M38TerminologyReader = () =>
+    getSeam("TerminologyProvider") as M38TerminologyReader,
+): TerminologyProvider {
+  return {
+    async resolveForClaim(orgId, asOfDate) {
+      const reader = resolve();
+      const asOf = new Date(`${asOfDate}T00:00:00Z`);
+      const members: string[] = [];
+      for await (const m of reader.expand(CMS_HOSPICE_MODIFIER_VALUE_SET, {
+        asOf,
+        includeTenantExtensions: true,
+        orgId,
+      })) {
+        members.push(m.code);
+      }
+      return {
+        valueSetMembership: { [CMS_HOSPICE_MODIFIER_VALUE_SET]: members },
+        icd10Billable: {},
+      };
     },
   };
 }

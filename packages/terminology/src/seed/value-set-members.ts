@@ -4,7 +4,8 @@
 // members for the small, FULLY-ENUMERATED, CMS-public reference sets whose entire membership the spec
 // lists inline — `level_of_care` (UB-04 revenue codes), `place_of_service_q_codes` (HCPCS Q-codes) and
 // `hope_j_codes` (the CMS HOPE Section-J items). Their codes are stable platform reference data, so
-// they belong with the seed rather than a loader run.
+// they belong with the seed rather than a loader run. `cms_hospice_modifiers` (F-124, #251) joined this
+// list the same way: two CMS-defined HCPCS modifiers, never expected to change without a CMS rule update.
 //
 // The concept-data-dependent sets (SNOMED/RxNorm/ICD-keyed: route_of_administration, dosage_form,
 // comfort_kit_medications, hospice_terminal_diagnosis, hqrp_measure_codes, advance_directive_type)
@@ -143,5 +144,20 @@ export const PLATFORM_VALUE_SET_MEMBERS: readonly PlatformValueSetMemberSeed[] =
     systemId: "hcpcs",
     code: "Q5010",
     display: "Hospice home care provided in a hospice facility",
+  },
+
+  // cms_hospice_modifiers — the two CMS hospice-specific HCPCS modifiers (F-124, #251).
+  {
+    valueSetId: "cms_hospice_modifiers",
+    systemId: "hcpcs",
+    code: "GV",
+    display:
+      "Attending physician not employed or paid under arrangement by the patient's hospice provider",
+  },
+  {
+    valueSetId: "cms_hospice_modifiers",
+    systemId: "hcpcs",
+    code: "GW",
+    display: "Service not related to the hospice patient's terminal condition",
   },
 ] as const;

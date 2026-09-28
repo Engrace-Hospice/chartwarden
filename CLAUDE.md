@@ -572,6 +572,48 @@ by `m23-claim-assembly-seams.live.test.ts`: `compliant`/`unresolved_missing`/`do
 isolation (org A asking about org B's encounter gets `not_required`, never org B's real "compliant"
 verdict, because M8's own org-scoped read finds no matching row to bridge from).
 
+**`terminology` needed the RIGHT M38 method, not a new one, and binding it surfaced a value set that
+had never existed (F-124, #251).** #250/#251's own scoping said M23's bulk `TerminologyResolution`
+needed either "a bulk M38 method" or enumerating every value-set/ICD code the §11.A rule registry
+references — a real design task, the header's framing implied, not a wrapper — because the M25 CARC/RARC
+precedent this file used to cite reads M38 per-code (`lookup(system, code)`). Checked against
+`TerminologyProvider`'s actual interface rather than assumed from that precedent: `expand(valueSetId)`
+(§4.5) already IS the bulk method, published since M38-T05 with no caller anywhere for this purpose.
+Checked against every rule file in `packages/billing/src/rules/`, not assumed: `modifier_codes_valid` is
+the ONLY one of the 19 platform-default rules that reads `ctx.terminology.valueSetMembership`, and its own
+`defaultParameters.valueSetId` is the only value set the platform boot ever asks this seam about (no
+tenant/MAC rule-parameter overlay is read at assembly time today). `buildM23TerminologyAdapter`
+(`claim-assembly-seam-adapters.ts`) needs no `boot-assembly.ts` port injection the way the M6/M8/M18
+bridges did — M38's `TerminologyProvider` is already a registered M1-registry seam, so it resolves through
+`getSeam` lazily per call, the exact `buildM23PatientPayerAdapter` shape. `includeTenantExtensions: true`
+is load-bearing: a tenant may ADD a locally-valid modifier to the platform set (§7.6, add-only /
+never-weaken), and omitting it would report that tenant's own approved code as invalid on every claim
+carrying it. **Binding it surfaced a second, independent gap the M25 precedent had masked**: the value set
+the rule references (renamed here from the pre-existing but never-realized `vs.cms-hospice-modifiers`
+literal to the platform's own snake_case convention, `cms_hospice_modifiers`) had never been curated
+anywhere — no migration, no seed row, nothing — so `expand()` would have answered an empty iterable
+forever, the same shape F-057 already documented and degrades honestly for
+(`hope_j_codes`/`hospice_terminal_diagnosis`). Two CMS-defined hospice modifiers, GV (attending physician
+not employed/paid by the hospice) and GW (service unrelated to the terminal diagnosis), are now curated in
+`@wardenx/terminology`'s seed alongside the platform's other small, fully-enumerated reference sets
+(`level_of_care`, `place_of_service_q_codes`) — the same scale of fix, not the "no table exists" scale of
+the CMS rate-table gap below. The constant is exported from `@wardenx/billing` (`CMS_HOSPICE_MODIFIER_
+VALUE_SET`) so the rule and the M23 adapter share one literal rather than each carrying its own copy.
+**`icd10Billable` is honestly `{}`, traced rather than assumed**: `icd10_sequencing` is the only reader of
+that map, over `ctx.claim.icd10Sequence` — and `claim-assembly.ts`'s own line-assembly hardcodes
+`icd10Sequence: []` on every claim it assembles today (no seam anywhere populates a diagnosis sequence at
+assembly time; a separate, real M23-side gap this pass did not create and does not fix, reported here
+rather than silently worked around). With no diagnosis code ever on the claim to ask about, there is
+nothing to bulk-resolve. Net effect on `POST /claims/assemble` reachability: none, stated precisely —
+`terminology` sits later in call order than the still-unbound `referenceData.hippsRateTable`, so the live
+wall is unmoved; real, individually-verified progress on a fourth M23 seam this pass (patientPayer/M6/M8/
+M18/terminology is now 10 of the 11 named ports), not a further unblock. Proven by
+`m23-claim-assembly-seams.live.test.ts`: the platform value set resolves to exactly `["GV","GW"]`, an
+org's own tenant extension (`value_set_tenant_extension`, seeded directly since hcpcs has no Phase-1
+concept table and so no code on it could ever pass `addTenantExtension`'s own add-time validation — a
+separate, real limit on who can extend an hcpcs-keyed set, reported and not fixed here) is included for
+that org and NOT for a sibling org, and `icd10Billable` comes back empty.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

@@ -172,7 +172,7 @@ export type ClaimLineBackingEncounterIds = string[];
 // claim_line.icd_pointer_positions — int[] referencing the parent claim's ICD list 1..12 (default []).
 export type ClaimLineIcdPointerPositions = number[];
 
-// claim_line.modifiers — string[] up to 4 per X12 (M38 value set vs.cms-hospice-modifiers; default []).
+// claim_line.modifiers — string[] up to 4 per X12 (M38 value set cms_hospice_modifiers; default []).
 export type ClaimLineModifiers = string[];
 
 // validation_rule_config.parameters — tenant parameter overlay, typed by rule kind at the service
