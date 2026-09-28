@@ -350,7 +350,7 @@ describe("Admission HOPE workspace", () => {
     );
   });
 
-  it("serializes the CMS caret option as a clear patch instead of value '^'", async () => {
+  it("serializes the CMS caret option as its own explicit answer value '^', not a clear", async () => {
     const client = clientFor({
       workspace: workspace({
         sections: [
@@ -383,12 +383,16 @@ describe("Admission HOPE workspace", () => {
     fireEvent.change(screen.getByLabelText(/^Ethnicity/), { target: { value: "^" } });
 
     await waitFor(() => expect(client.PATCH).toHaveBeenCalled());
+    // The caret ("^", CMS "Dash — item not assessed") is a real, explicit HOPE answer code, distinct
+    // from clearing the item entirely — the serializer only sends `action: "clear"` for `null`/`""`
+    // (`hope-assessment-detail.tsx`'s `onCommit`), so selecting it PATCHes `action: "set", value: "^"`
+    // like any other option, rather than clearing the answer.
     expect(client.PATCH).toHaveBeenCalledWith(
       "/api/v1/hope/assessments/{id}/answers",
       expect.objectContaining({
         body: {
           ifVersion: 4,
-          changes: [{ itemCode: "A1005", action: "clear" }],
+          changes: [{ itemCode: "A1005", action: "set", value: "^" }],
         },
       }),
     );
