@@ -127,6 +127,7 @@
     "test:m18:visit-cancelled-encounter-signed:live": "vitest run apps/backend/__tests__/m18-visit-cancelled-encounter-signed-consumers.live.test.ts",
     "test:m21:comfort-kit-cascade:live": "vitest run apps/backend/__tests__/m21-comfort-kit-cascade.live.test.ts",
     "test:m23:revalidate-triggers:live": "vitest run apps/backend/__tests__/m23-revalidate-triggers.live.test.ts",
+    "test:m13:admission-discharged-cascade:live": "vitest run apps/backend/__tests__/m13-admission-discharged-cascade.live.test.ts",
     "test:m23:noe-draft:live": "vitest run apps/backend/__tests__/m23-noe-draft.live.test.ts",
     "test:m23:notr-draft:live": "vitest run apps/backend/__tests__/m23-notr-draft.live.test.ts",
     "test:m33:schedule-cron:live": "vitest run apps/backend/__tests__/gap-050-m33-schedule-cron.live.test.ts",

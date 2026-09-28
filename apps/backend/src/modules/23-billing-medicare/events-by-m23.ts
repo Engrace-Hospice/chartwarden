@@ -365,10 +365,16 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.noe.accepted",
     moduleOwner: "m23",
-    description:
-      "The NOE was accepted; ACK_PENDING → ACK_ACCEPTED — closes the M6 NOE compliance window.",
+    // F-155 (#248) — `m6` REMOVED (was misdeclared): no `compliance_window_kind` value, table, or
+    // column anywhere in M6's schema references NOE/NOTR (`notice_of_rights` is the unrelated CoP
+    // Notice of Rights document), M6's `dependsOn` excludes 23 so it has no seam to resolve which
+    // admission's window to touch even if one existed, and "closing the window" is already a side
+    // effect of THIS transition on the M23 side alone — `NoeRepository.listWindowWatchCandidates`
+    // filters `notInArray(N.state, NOE_TERMINAL_DB)`, so an `ACK_ACCEPTED` row self-excludes from
+    // every future watchdog scan with no cross-module handshake needed.
+    description: "The NOE was accepted; ACK_PENDING → ACK_ACCEPTED.",
     payloadSchema: Type.Object({ noeId: id, acknowledgmentId: id, payerNoeControlNumber: str }),
-    declaredConsumers: ["m6"],
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
@@ -441,10 +447,13 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m23.notr.accepted",
     moduleOwner: "m23",
-    description:
-      "The NOTR was accepted; ACK_PENDING → ACK_ACCEPTED — closes the M6 NOTR compliance window.",
+    // F-155 (#248) — `m6` REMOVED, the identical finding one event up (`m23.noe.accepted`): no M6
+    // mechanism, table, or seam exists to close a "NOTR compliance window," M6 cannot reach M23
+    // (`dependsOn` excludes 23), and the watchdog's own terminal-state exclusion already retires the
+    // row on the M23 side alone.
+    description: "The NOTR was accepted; ACK_PENDING → ACK_ACCEPTED.",
     payloadSchema: Type.Object({ notrId: id, acknowledgmentId: id, payerNotrControlNumber: str }),
-    declaredConsumers: ["m6"],
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

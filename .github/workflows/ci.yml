@@ -235,6 +235,12 @@ jobs:
           # F-152 (#248) — the §2.8 D17 medication-reconciliation worksheet, opened from all four M6
           # trigger events.
           - { name: "M13 reconciliation triggers", scripts: "test:m13:reconciliation-triggers:live" }
+          # F-155 (#248) — the §2.5/§2.7 D14 admission-discharge cascade (cancel future doses, flag
+          # comfort kits for return).
+          - {
+              name: "M13 admission-discharged cascade",
+              scripts: "test:m13:admission-discharged-cascade:live",
+            }
           - {
               name: "M14 IDG",
               scripts:

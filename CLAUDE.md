@@ -1866,6 +1866,71 @@ predate this round entirely (`gap-037-m23-remittance-feedback.live.test.ts`, 2/8
 .claim_paid` pending-row-count assertion untouched by anything this round built). Leaving #248 open — 172
 pairs across 24 modules remain.
 
+**A fifth parallel round (M6, M12, M13, M19, M24) built one real binding and corrected one real
+misdeclaration — the smallest yield of the series so far, and evidence the easy pairs are running out
+(F-155, #248).** Per the same "5 forks, verify before applying" discipline, each fork investigated one
+module's `handlers-unbound` group and reported BUILT or BLOCKED; the coordinator independently
+re-verified every claim (schema columns, enum values, `dependsOn` edges, seam signatures) before
+applying anything. **M13 — 1 of 7 built.** `m6.admission.discharged` (`m13.admission-discharged-cascade`,
+`outbox-consumers/m6-admission-discharged-cascade.ts`) is the §2.5/§2.7 D14 cascade: cancels every
+future pending `scheduled_dose` (never retro-marks a past one — the missed-dose sweep owns those) and
+flags every still-`deployed` comfort-kit deployment for return, via the pure, already-shipped
+`planDischargeCascade` (`@wardenx/emar`) fed by the same org-explicit `admissionSchedulingContextForOrg`
+seam F-152's reconciliation-trigger consumer established for this exact module boundary. Neither target
+table carries a `version` column, so idempotency under redelivery is enforced by conditioning each
+UPDATE's `WHERE` on the same state predicate the SELECT used, not on id alone — verified directly against
+the schema (`scheduled_dose.status`, `comfort_kit_deployment.disposal_status`/`return_required_at`) rather
+than trusted from the fork's report. **The remaining 6 M13 pairs stay genuinely blocked, precisely
+rescoped rather than merely re-asserted**: `m12.medication_order.active`/`.discontinued` need three
+cross-module facts with no seam surface for any of them (M12's order DTO carries no tenancy columns, no
+location→timezone resolution exists for DST-exact dose slots, and `.discontinued` has no order-level
+cancellation decider anywhere in M13); `m21.comfort_kit.deployed_at_patient`/`.replenished` are
+payload-blocked (the real emitted `dispatchedContent.medicationOrderId` is nullable while the target
+column is NOT NULL); `m21.comfort_kit.returned` is a genuine M21 producer-side defect — M21 emits this
+SAME event name at TWO different lifecycle points (return requested vs. return reconciled), and binding
+M13's `applyKitReturn` to it would flip `disposal_status='returned'` before the kit is physically
+returned; `.return_reconciliation` depends on that ambiguity being resolved first. **M6 — 0 of 4 built,
+but the verification pass corrected the group's own prior framing.** F-143 had called
+`m23.noe.accepted`/`m23.notr.accepted` "decisive, ready" subscriptions on M23's own "Done means" prose;
+checked against the actual mechanism rather than the description, both are MISDECLARED, not merely
+unbound — no `compliance_window_kind` enum value, table, or column anywhere in M6's schema references
+NOE/NOTR at all, M6's own `dependsOn` excludes 23 (so it has no seam to resolve which admission's window
+to touch even if a mechanism existed), and "closing the window" is already a side effect of the SAME
+transition on the M23 side alone (`NoeRepository.listWindowWatchCandidates` filters
+`notInArray(N.state, NOE_TERMINAL_DB)`, so an accepted row self-excludes from every future watchdog scan
+with no cross-module handshake needed). Both dropped from `events-by-m23.ts`'s `declaredConsumers` at the
+source — the F-101/F-131 shape in the opposite direction from usual: a prior pass's own "kept, decisive"
+call, overturned by checking the mechanism instead of trusting the cross-referenced prose.
+`m11.order.level_of_care_change_signed`/`.recertification_signed` remain genuinely blocked: real,
+self-contained write paths exist (`changeLoc`/`createElectionPeriod`, both already consumer-safe), but
+neither `level_of_care_period` nor `election_period` carries a column linking a row back to the
+triggering M11 order, and a genuine redelivery (the dispatcher retries up to `maxAttempts=8`) would
+silently open a second/third LOC period or benefit period — needs a schema migration (a
+`source_order_id` column + unique index), not an isolated-file fix. **M12, M19, M24 — 0 of 16 built,
+each blocked on missing infrastructure tiers rather than a binding gap.** M12's 6 `sync-triggers.ts`
+events need a whole BullMQ worker tier that does not exist anywhere in the module (no `jobs/` directory,
+no `Queue`/`Worker` construction, and the two "jobId" values the route service returns today are
+hardcoded template strings, not real `.add()` results); `m11.order.verbal_expired_unsigned` has no
+producer anywhere (the pure 48h-deadline check has zero callers) AND the real catalogued payload has no
+`targetKind` field the decider needs to discriminate on. M19's sole candidate
+(`m17.visit.assigned` shift-sync) needs a `jobs/` directory that doesn't exist plus a genuine design
+decision — no existing pattern in this codebase does a true reset-the-delay-on-each-trigger BullMQ
+debounce, and the closest precedent (M30's F-150 `enqueueRecompute`) is a different, DB-dedupe mechanism.
+M24's 6 events all route through an `M24ConsumerStore` interface with zero implementations anywhere
+(only an in-memory no-op stub) and 4 of the 6 need a `medicaid-revalidate` BullMQ worker that was never
+built — unlike M23's F-153 build, where the worker already existed and only needed a producer, here
+neither the store nor the worker exists; a real financial-state-transition write shape needing product
+sign-off, not guessed at. Net: **172 → 169** (1 bound, 2 dropped as misdeclared, 0 added; module count
+unchanged at 24). Verified: `bun run build`/`typecheck` clean (0 errors), full non-live suite 654 files /
+9592 tests green with no pinned-array assertions to update, `arch:fitness` 38/38
+(`arch:outbox-bindings` confirms 169 declared-but-unbound pairs, down from 172, and 77 live bindings
+now covering 88 catalogued events), a clean `check:boot:platform` run against a freshly migrated,
+RLS-enforced disposable Postgres, and the new live suite (`m13-admission-discharged-cascade.live.test.ts`,
+`test:m13:admission-discharged-cascade:live`, wired into the CI `lifecycle-live` M13 job) run individually
+(5/5), alongside four sibling live suites re-run to confirm no regression from the catalog edits
+(`m13:reconciliation-triggers` 5/5, `m16:discharge-death-secondary` 5/5, `m23:noe-draft` 8/8,
+`m23:notr-draft` 8/8, `m6:discharge-cascade` 6/6). Leaving #248 open — 169 pairs across 24 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

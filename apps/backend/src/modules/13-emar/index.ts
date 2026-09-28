@@ -178,3 +178,11 @@ export {
   M13_RECONCILIATION_TRIGGER_CONSUMER,
   buildM13ReconciliationTriggerConsumer,
 } from "./outbox-consumers/m6-reconciliation-triggers";
+// F-155 (#248) — the §2.5/§2.7 D14 admission-discharge cascade (cancel future doses, flag comfort kits
+// for return), bound live for the first time.
+export {
+  type DischargeCascadeAdmissionAnchor,
+  type DischargeCascadeConsumerDeps,
+  M13_ADMISSION_DISCHARGED_CASCADE_CONSUMER,
+  buildM13AdmissionDischargedCascadeConsumer,
+} from "./outbox-consumers/m6-admission-discharged-cascade";
