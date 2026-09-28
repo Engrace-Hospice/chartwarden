@@ -66,9 +66,12 @@ describe("M8 outbox event contract (§4.4)", () => {
     // nightly recompute cadence, so it moved to seamConsumers instead.
     // F-141 (#248) — m18 added: M18's own locked D6 + job catalog name a real, decisive consumer that
     // closes an open `evv_missing_resolution` row on encounter sign.
+    // F-143 (#248) — m9/m10 removed: both are M8 CALLING INTO the other module's API synchronously
+    // (M9's `recordAssessment`, M10's `recordHopeTimepoint`), never a push either would subscribe to.
     expect(signed?.declaredConsumers).toEqual(
-      expect.arrayContaining(["m9", "m10", "m14", "m18", "m22", "m31", "m36"]),
+      expect.arrayContaining(["m14", "m18", "m22", "m31", "m36"]),
     );
+    expect(signed?.declaredConsumers).not.toEqual(expect.arrayContaining(["m9", "m10"]));
     // m33 (MetricsProvider pull) and m30 (measure-recompute seam) receive this synchronously, not from
     // the outbox.
     expect(signed?.seamConsumers).toEqual(["m30", "m33"]);

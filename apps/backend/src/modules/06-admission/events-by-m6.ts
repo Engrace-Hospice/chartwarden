@@ -260,7 +260,16 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // transfer.created, discharge.created, discharge.death) and admission.activated is not among
       // them; it was part of this event's broad fan-out with no billing-specific rationale, the same
       // shape F-134 already found for m16 on this identical event.
-      "m37",
+      // F-143 (#248) — `m37` REMOVED: M37's own §4.5 "Outbox Subscriptions" table names two more
+      // granular M6 events it actually wants (`m6.level_of_care.requires_ipu_bed`/`.activated`, neither
+      // of which M6's real catalog publishes) and never names `admission.activated` — the same broad
+      // fan-out with no module-specific rationale F-134/F-136/F-137 already found repeatedly on this
+      // event.
+      // F-143 (#248) — `m12` ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list
+      // (consumers/index.ts) names this event for `m12.admission-activated-medhx`, backed by a real
+      // pure decider (`decideMedHxFetch`, sync-triggers.ts) per M12's D10 — genuinely undeclared until
+      // now, surviving five prior sweeps of this same event (F-101/F-134/F-136/F-137/F-140).
+      "m12",
     ],
     // F-130 (#248) — m27 REMOVED: M27's own §1.1 relationship inventory + manifest-patch dependsOn list
     // ([1,2,3,4,6,8,12,13,22,23,26,36,38,40]) names M6's `AdmissionCensusReader`/`LevelOfCarePeriodReader`
@@ -495,7 +504,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-140 (#248) — m13 ADDED: M13's own live `M13_OUTBOX_SUBSCRIPTIONS` list names this event with a
     // real decider (`m13.reconciliation-recertification-signed`) that opens the recertification
     // medication-reconciliation worksheet.
-    declaredConsumers: ["m13", "m22", "m23"],
+    // F-143 (#248) — m12 ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list names this event for
+    // `m12.recertification-medhx`, backed by the same `decideMedHxFetch` decider per M12's D10 — the
+    // MedHx pull also fires "at each F2F window," and a signed CTI is the trigger.
+    declaredConsumers: ["m13", "m22", "m23", "m12"],
     isOutboxOnly: true,
   },
   {

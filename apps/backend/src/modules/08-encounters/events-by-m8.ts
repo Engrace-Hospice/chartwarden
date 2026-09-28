@@ -123,7 +123,13 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
     // signs with `evv_missing_reason` populated — genuinely undeclared until now. NOTE: the payload here
     // does not yet carry `evvMissingReason` (the encounter route/schema has the field; this locked outbox
     // payload does not) — a producer-side gap for a future pass, reported rather than fixed here.
-    declaredConsumers: ["m9", "m10", "m14", "m17", "m18", "m22", "m24", "m31", "m36"],
+    // F-143 (#248) — m9 REMOVED: M9's own spec (line 61) states the relationship runs the OPPOSITE
+    // direction — "M8 calls M9's `recordAssessment` API with `source_encounter_id`" and "encounter-sign
+    // workflow consults M9's 'required scale' rules" — M8 calling INTO M9 synchronously, never M9
+    // subscribing to this outbox event. m10 REMOVED: M10's own spec (line 9, and its own re-lock note
+    // explicitly correcting the dep direction) is equally decisive the relationship is M8 → M10 (M8
+    // calls M10's `recordHopeTimepoint` API), never a push M10 would consume.
+    declaredConsumers: ["m14", "m17", "m18", "m22", "m24", "m31", "m36"],
     seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
@@ -311,8 +317,11 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       fieldsCaptured: Type.Array(Type.String({ minLength: 1 })),
       abnormalFlags: Type.Optional(Type.Array(Type.String({ minLength: 1 }))),
     }),
-    declaredConsumers: ["m9"],
-    seamConsumers: ["m36"],
+    // F-143 (#248) — m9 moved to seamConsumers: M9's own spec (line 75) states M9 trending "may read
+    // the encounter vital series via M8's seam ... but M9 does not own vital signs" — a documented
+    // seam PULL M9 would perform, never an outbox push (confirmed unbuilt on both sides).
+    declaredConsumers: [],
+    seamConsumers: ["m9", "m36"],
     isOutboxOnly: true,
   },
   {

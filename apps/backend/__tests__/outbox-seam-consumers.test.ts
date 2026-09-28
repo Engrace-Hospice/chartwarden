@@ -196,9 +196,14 @@ describe("#103 — the real catalog no longer declares a seam module as an outbo
     for (const seam of entry?.seamConsumers ?? []) {
       expect(entry?.declaredConsumers).not.toContain(seam);
     }
-    for (const clinical of ["m5", "m7", "m10", "m13", "m14", "m15", "m37"]) {
+    for (const clinical of ["m5", "m7", "m10", "m13", "m14", "m15", "m12"]) {
       expect(entry?.declaredConsumers).toContain(clinical);
     }
+    // F-143 (#248) — m37 dropped: M37's own §4.5 "Outbox Subscriptions" table names two more granular
+    // M6 events it actually wants (`m6.level_of_care.requires_ipu_bed`/`.activated`, neither of which
+    // M6's real catalog publishes) and never names `admission.activated`. m12 added: M12's own live
+    // `M12_OUTBOX_SUBSCRIPTIONS` list names this event for `m12.admission-activated-medhx` (D10).
+    expect(entry?.declaredConsumers).not.toContain("m37");
     // F-134 (#248) — m16 dropped: an admission ACTIVATION carries no fact M16's bereavement program
     // (which starts at death, not admission) needs; M16's own §4.5 outbox-subscriptions table never
     // named this event.

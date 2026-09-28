@@ -144,14 +144,19 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m19.triage_call.gip_admission_proposed",
     moduleOwner: "m19",
-    description: "A disposition proposed a GIP level-of-care change for M6/M37 to action.",
+    description: "A disposition proposed a GIP level-of-care change for M37 to action.",
     payloadSchema: Type.Object({
       ...callEventBase,
       patientId: nullableId,
       gipCriteriaSummary: nullableStr,
       preferredFacility: nullableStr,
     }),
-    declaredConsumers: ["m6", "m37"],
+    // F-143 (#248) — m6 REMOVED: M19's own spec (line 18, the "Consumed by" table; line 1947, Lock
+    // status) is decisive that M37 — never M6 — is the real consumer ("M37 IPU / GIP module consumes
+    // `m19.triage_call.gip_admission_proposed` at M37 lock"). M6's own advisory role on this
+    // disposition is a SEAM (line 401: "M11 `level_of_care_change` order draft via M11 seam"), not an
+    // outbox subscription; M6 never subscribes to this event.
+    declaredConsumers: ["m37"],
     isOutboxOnly: true,
   },
   {

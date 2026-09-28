@@ -1323,6 +1323,71 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   against a freshly migrated, RLS-enforced disposable Postgres. Leaving #248 open — 280 pairs across 28
   modules remain.
 
+  **A fourth round of six small groups (m6, m37, m9, m12, m10, m3) — every group with zero prior
+  citation, checked in parallel by six forks — resolved three groups outright and caught the sharpest
+  reverse-direction miss of the series so far on a fourth (F-143, #248).** **m6 — 4 kept, 2 dropped.**
+  `m11.order.level_of_care_change_signed`/`.recertification_signed` are decisive on M11's side (its
+  locked D9/D10, each with a rejected-alternatives table: "M11 emits ...; M6 subscribes and runs its LCP
+  transition" / "...validates F2F + CTI then transitions the next period") despite M6's own spec being
+  comparatively silent — the F-131 "kept, not dropped" asymmetry. `m23.noe.accepted`/`m23.notr.accepted`
+  are equally decisive on M23's side: its own "Done means" walkthroughs state plainly "M6's consumer
+  picks up the event and closes the M6 NOE compliance window" — a genuinely NEW fact (MAC acceptance)
+  M6's own F-106/F-107 emissions (which trigger the filing, not its acceptance) cannot derive.
+  `m19.triage_call.gip_admission_proposed` was dropped as a straightforward misdeclaration: M19's own
+  locked spec names M37, never M6, as the real consumer (cited three separate ways), and `m37` already
+  correctly carries this pair in its own group. `m37.ipu_admission.bed_assigned` is the seam-vs-push trap
+  from the opposite side: M6's real `confirmLocBedAssignment` route verifies the bed via a SEAM READ
+  (`ipuBedAssignmentReader.activeBedAssignmentForLevelOfCarePeriod`), never an outbox consumer. **m37 —
+  2 kept, 1 dropped.** `m19.triage_call.gip_admission_proposed` and `m6.admission.discharged` are both
+  named explicitly, with designated (unbuilt) consumer files, in M37's own §4.5 "Outbox Subscriptions"
+  table. `m6.admission.activated` is not in that table at all — checking surfaced a genuine spec-vs-
+  catalog naming mismatch worth flagging for a future pass rather than fixing here: M37's spec instead
+  names two more granular events (`m6.level_of_care.requires_ipu_bed`/`.activated`) that M6's real
+  catalog has never published, so M37's actual intended trigger is very likely M6's real
+  `m6.loc.changed` — untouched by this pass. **m9 — 0 kept, all 3 dropped, group fully resolved and
+  deleted** (the m8/m34/m7/m32/m10/m3 precedent): `m13.prn_administration_recorded` has no support
+  anywhere in M9's relationship inventory; `m8.encounter.signed` and `m8.vitals.captured` both run the
+  OPPOSITE direction from a push — M9's own spec states M8 calls INTO M9's `recordAssessment` API
+  synchronously, and separately that M9 "may read the encounter vital series via M8's seam ... but does
+  not own vital signs," moved to `seamConsumers` rather than dropped bare. **m10 — 0 kept, its one pair
+  dropped, group deleted.** `m8.encounter.signed` is the identical shape one module over: M10's own spec,
+  including a re-lock note explicitly correcting a prior encoding that "inverted the M8↔M10 dep
+  direction," states M8 calls M10's `recordHopeTimepoint` API synchronously — M10's two real outbox
+  consumers are both M6-only. **m3 — 0 kept, its one pair dropped, group deleted.**
+  `m39.consent.supersedes` resolves through M3's own boot-registered `ConsentEvaluator` seam PULL,
+  consulted fresh per ABAC evaluation; M3 has no `consumers/` directory and no consent-keyed cache to
+  rebind (its one cache invalidates only on role/permission changes) — the event's own "cache rebind"
+  phrasing reads as a mechanical carry-over from the sibling `consent.signed` consumer list rather than
+  an independent M3 decision. **m12 — both catalogued pairs kept, and the reverse check found the
+  sharpest miss of the series: 7 real, decisive, currently-undeclared subscriptions, one of which had
+  survived FIVE prior targeted sweeps of the exact same event.** `m13.reconciliation.draft_order_requested`/
+  `.discontinue_requested` are decisive on M13's own side (a separate reconciliation surface from M12's
+  own D10 MedHx flow, confirmed to have no M13 involvement anywhere). Checking M12's own live
+  `M12_OUTBOX_SUBSCRIPTIONS` list against the catalog — rather than trusting the group's stale
+  three-live-consumers reason, which was itself off by one — found `m5.patient.created`/`.updated`/
+  `.address_changed`/`.payer_changed` (D4's DoseSpot patient sync), `m6.cti.signed` (D10's MedHx pull),
+  and `m11.order.verbal_expired_unsigned` (the group's own already-registered `M12_OUTBOX_SUBSCRIPTIONS`
+  entry) all missing their `m12` declaration entirely — each backed by a shipped, unit-tested decider.
+  `m6.admission.activated` is the one worth naming specifically: it had been individually re-scrutinized
+  BY NAME in F-101, F-134, F-136, F-137 and F-140 — five separate passes, each checking it against a
+  different candidate module and correctly dropping or keeping that module — and none of them checked it
+  against M12, because each pass's fork was anchored to that round's own candidate list rather than to
+  the full universe of modules M6 could conceivably feed. A per-event check is only as complete as the
+  set of modules it's checked against; this is the first time in the series that a produced-and-declared
+  event's OWN group needed the reverse check to have been thorough, not merely present, to catch a real
+  gap. Two matching stale `outbox-subscription-exceptions.ts` rule-6 entries (`handler-unbound` and
+  `record-only-target`, covering all 7 pairs between them) were deleted once the catalog agreed with
+  M12's own subscription list. **Net: 280 → 279** (7 dropped, 7 added — a wash on the pair count that
+  hides real movement: three groups fully resolved and three events reassigned to their correct module;
+  28 → 25 modules, m9/m10/m3 fully resolved and deleted). Verified: `bun run build` clean, `bun run
+  typecheck` clean (0 errors), full non-live suite 654 files / 9589 tests green (two pinned-array
+  assertions updated — `encounter-outbox.test.ts` to drop m9/m10 from `m8.encounter.signed`'s expected
+  subscriber set, `outbox-seam-consumers.test.ts` to drop m37 and add m12 to `m6.admission.activated`'s
+  expected clinical fan-out), `arch:fitness` 38/38 (`arch:outbox-bindings` 0 disagreements both
+  directions after the two stale exception entries were deleted), and a clean `check:boot:platform` run
+  against a freshly migrated, RLS-enforced disposable Postgres. Leaving #248 open — 279 pairs across 25
+  modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

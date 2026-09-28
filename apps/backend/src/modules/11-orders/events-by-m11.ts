@@ -225,7 +225,10 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       orderingPhysicianMdmId: id,
     }),
     // F-115 (#248) — m30 moved to seamConsumers (same `getVerbalTimelinessCountsForOrg` seam).
-    declaredConsumers: [],
+    // F-143 (#248) — m12 ADDED: this event IS `M12_OUTBOX_SUBSCRIPTIONS`'s own entry for
+    // `m12.verbal-expired`, backed by a real pure decider (`decideVerbalExpiry`,
+    // consumers/verbal-expired.ts) — genuinely undeclared until now.
+    declaredConsumers: ["m12"],
     seamConsumers: ["m30", "m33", "m36"],
     isOutboxOnly: true,
   },

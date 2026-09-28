@@ -39,7 +39,7 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m37.ipu_admission.bed_assigned",
     moduleOwner: "m37",
-    description: "A bed was assigned; M6 confirms the LCP, M23 writes the place-of-service Q-code.",
+    description: "A bed was assigned; M6's own confirm route verifies it via a seam read.",
     payloadSchema: Type.Object({ ...admissionCore, bedId: id, levelOfCarePeriodId: id }),
     // F-136 (#248) — m23 REMOVED: the description's "M23 writes the place-of-service Q-code" claim is
     // false — F-127 already found `placeOfService` genuinely unbound: no table anywhere records which
@@ -47,7 +47,12 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // `place_of_service_consistency` fails honestly for every claim. M23's own spec never names M37 as
     // a consumed event either (the only M37↔M23 relationship runs the other way — M37 reads M23's
     // `ClaimReader.gipDaysForPatientInPeriod`).
-    declaredConsumers: ["m6"],
+    // F-143 (#248) — m6 REMOVED: the real mechanism is the OPPOSITE of a push — M6's own
+    // `confirmLocBedAssignment` route (admission-route-service-db.ts) verifies the bed via a SEAM READ
+    // (`ipuBedAssignmentReader.activeBedAssignmentForLevelOfCarePeriod`), never an outbox subscription.
+    // M6's own spec (line 621) names exactly one inbound external event it consumes
+    // (`m29.hl7_inbound_proposal.accepted`), and this is not it.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

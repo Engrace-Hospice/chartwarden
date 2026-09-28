@@ -200,7 +200,10 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     }),
     // F-115 (#248) — m30 moved to seamConsumers: reads PRN-effectiveness data via
     // `MedicationAdministrationProvider.getPrnEffectivenessCountsForOrg` on its nightly cadence.
-    declaredConsumers: ["m9", "m14"],
+    // F-143 (#248) — m9 REMOVED: no support anywhere in M9's own spec — M13/PRN is never named in
+    // M9's "Depends on"/"Consumed by" relationship inventory or its §2.4 outbox table, and
+    // `09-assessments/` has no `consumers/` directory at all.
+    declaredConsumers: ["m14"],
     seamConsumers: ["m30"],
     isOutboxOnly: true,
   },

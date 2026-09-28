@@ -164,27 +164,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     events: ["m10.hope.j2051_trigger_fired"],
   },
   {
-    module: "m12",
-    kind: "handler-unbound",
-    reason:
-      "`consumers/sync-triggers.ts` (`decidePatientSyncTrigger` covers all four M5 demographic reasons, plus the M6 MedHx fetch) and `verbal-expired.ts` are written and bound by nothing (F-102 bound `admission-discharged-cascade.ts` and removed `m6.admission.discharged` from this list). Every one of these events is already deferred by another unbound consumer, so the declaration lands with the binding.",
-    events: [
-      "m5.patient.updated",
-      "m5.patient.address_changed",
-      "m5.patient.payer_changed",
-      "m6.admission.activated",
-      "m6.cti.signed",
-      "m11.order.verbal_expired_unsigned",
-    ],
-  },
-  {
-    module: "m12",
-    kind: "record-only-target",
-    reason:
-      "M5 catalogues `patient.created` record-only — published for the record and delivered to nobody. M12's `decidePatientSyncTrigger` handles the `created` reason, so unlike its siblings the handler is ready; adding the first consumer to a record-only event is still M5's decision, not M12's.",
-    events: ["m5.patient.created"],
-  },
-  {
     module: "m13",
     kind: "no-such-event",
     reason:

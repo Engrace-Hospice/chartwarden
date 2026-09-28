@@ -58,7 +58,13 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035; M28's D3 egress consent gate
     // reads M39 live at request time via `ConsentEvaluator`, not via subscription).
-    declaredConsumers: ["m22", "m5", "m3"],
+    // F-143 (#248) — m3 REMOVED: M3's own spec (line 74) states it CONSUMES a consent attribute only
+    // via the boot-registered `ConsentEvaluator` seam PULL, consulted fresh per ABAC evaluation — never
+    // an outbox subscription; M3 has no `consumers/` directory and no consent-keyed cache to rebind
+    // (its one cache, the effective-permission cache, invalidates only on role/permission changes per
+    // §4.5.1/D6). "cache rebind" in this event's own description reads as a carry-over from the
+    // sibling `consent.signed` consumer list rather than an independent M3 decision.
+    declaredConsumers: ["m22", "m5"],
     isOutboxOnly: true,
   },
   {

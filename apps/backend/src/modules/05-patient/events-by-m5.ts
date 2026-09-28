@@ -19,7 +19,10 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m5",
     description: "A patient chart was created (after the §2.3 match pipeline cleared).",
     payloadSchema: Type.Object({ ...corePatient, mrn: Type.String({ minLength: 1 }) }),
-    declaredConsumers: [],
+    // F-143 (#248) — m12 ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list (consumers/index.ts)
+    // names this event for `m12.patient-sync-created`, backed by a real pure decider
+    // (`decidePatientSyncTrigger`, sync-triggers.ts) per M12's D4 — the DoseSpot patient sync.
+    declaredConsumers: ["m12"],
     isOutboxOnly: true,
   },
   {
@@ -33,7 +36,9 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-140 (#248) — m24 ADDED: M24's own authoritative `M24_SUBSCRIPTION_MAP` names this event with a
     // real handler (`trigger-revalidate` → `handleUpstreamChange`), re-validating a claim on any
     // upstream demographic change.
-    declaredConsumers: ["m24"],
+    // F-143 (#248) — m12 ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list names this event for
+    // `m12.patient-sync-updated` (D4).
+    declaredConsumers: ["m24", "m12"],
     isOutboxOnly: true,
   },
   {
@@ -59,7 +64,9 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // geocoding requests are M5's geocode job which runs on `patient.address_changed`
     // outbox" — M17 only ever reads the result afterward via the `PatientAddressReader`
     // seam PULL (`coordsForAddress`), never this push event.
-    declaredConsumers: ["m24"],
+    // F-143 (#248) — m12 ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list names this event for
+    // `m12.patient-sync-address-changed` (D4).
+    declaredConsumers: ["m24", "m12"],
     isOutboxOnly: true,
   },
   {
@@ -73,7 +80,10 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-140 (#248) — m24 REMOVED: the identical shape one module over — redundant with
     // `PatientPayerReader.coverageKindOn()`, a seam consumed at claim assembly (M24's own spec, the same
     // D5/D10 substrate M23 reuses); not in `M24_SUBSCRIPTION_MAP`.
-    declaredConsumers: [],
+    // F-143 (#248) — m12 ADDED: M12's own live `M12_OUTBOX_SUBSCRIPTIONS` list names this event for
+    // `m12.patient-sync-payer-changed` (D4, RxBenefit cache invalidation) — unlike M23/M24, M12 has a
+    // real still-unbound consumer for a payer change.
+    declaredConsumers: ["m12"],
     isOutboxOnly: true,
   },
   {

@@ -488,14 +488,12 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
     module: "m6",
     kind: "handlers-unbound",
     reason:
-      "M6 binds one live consumer (admission-event applier). The remainder are forward declarations.",
+      "F-143 (#248) checked all six pairs against M6's own spec text and, where M6 was silent, against the producing module's own decisive, cross-referenced claim — the F-131 'kept, not dropped' caution. 4 of 6 are genuine, real, still-unbound subscriptions: `m11.order.level_of_care_change_signed`/`.recertification_signed` are each decisive on M11's side — M11's own locked D9/D10 (with a rejected-alternatives table) state outright 'M11 emits `m11.order.level_of_care_change_signed`; M6 subscribes and runs its LCP transition' / 'M11 emits `m11.order.recertification_signed`; M6 subscribes and validates F2F + CTI then transitions the next period' — M6's own spec predates this cross-module decision and is comparatively silent, the same asymmetry F-131 named for `m25.remittance.claim_recouped`. `m23.noe.accepted`/`m23.notr.accepted` are both decisive on M23's side too: M23's own 'Done means' walkthroughs (§7.4/§7.6) state plainly 'the NOE transitions to ACK_ACCEPTED; emits `m23.noe.accepted`; M6's consumer picks up the event and closes the M6 NOE compliance window' and the identical shape for NOTR — a genuinely NEW fact (when the MAC accepted) M6 cannot derive from its own F-106/F-107 emissions, which trigger the NOE/NOTR filing, not its acceptance. **2 of 6 were genuinely misdeclared and dropped at the source**: `m19.triage_call.gip_admission_proposed` — M19's own locked spec names M37, never M6, as the real consumer (line 18's 'Consumed by' table and line 1947's Lock-status section both state 'M37 IPU / GIP module consumes `m19.triage_call.gip_admission_proposed` at M37 lock'); M6's own advisory role on this disposition is a SEAM (M11's `level_of_care_change` order draft), never an outbox subscription — `m6` was the spurious extra on an event `m37` already correctly declares. `m37.ipu_admission.bed_assigned` is the seam-vs-push trap: M6's real `confirmLocBedAssignment` route (admission-route-service-db.ts) verifies the bed via a SEAM READ (`ipuBedAssignmentReader.activeBedAssignmentForLevelOfCarePeriod`), never an outbox consumer, and M6's own spec (line 621) names exactly one inbound external event it consumes (`m29.hl7_inbound_proposal.accepted`) — not this one.",
     events: [
       "m11.order.level_of_care_change_signed",
       "m11.order.recertification_signed",
-      "m19.triage_call.gip_admission_proposed",
       "m23.noe.accepted",
       "m23.notr.accepted",
-      "m37.ipu_admission.bed_assigned",
     ],
   },
   // F-142 (#248) — the `m7` group is GONE, not merely emptied. All 5 pairs were checked against M7's own
@@ -542,48 +540,50 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   {
     module: "m37",
     kind: "no-consumer-surface",
-    reason: "M37 has no consumer directory and binds nothing.",
+    reason:
+      "F-143 (#248) checked all three pairs against M37's own §4.5 'Outbox Subscriptions (Consumers)' table (apps/backend/src/modules/37-ipu/, which has no `consumers/` directory yet — matching the blanket placeholder this reason used to carry, now checked per event rather than assumed for all three). 2 of 3 are genuine, real, still-unbuilt subscriptions the table names explicitly: `m19.triage_call.gip_admission_proposed` (with a named, unbuilt consumer file, and independently corroborated three separate ways in M19's own spec); `m6.admission.discharged` (named with a designated consumer file, 'If patient has open ipu_admission → cascade-discharge'). **1 of 3 was genuinely misdeclared and dropped at the source**: `m6.admission.activated` is NOT in M37's §4.5 table at all — the table instead names two more granular M6 events M37 actually wants (`m6.level_of_care.requires_ipu_bed`/`m6.level_of_care.activated`), neither of which exists in M6's real catalog (M6 only publishes `m6.loc.changed` and `m6.admission.activated`/`.discharged`) — a real spec-vs-catalog naming mismatch flagged for a future pass (M37's intended trigger is very likely M6's actual `m6.loc.changed`, which is not in this group and not addressed here), but `m6.admission.activated` itself has no support in M37's own consumption table and was part of that event's broad fan-out with no IPU-specific rationale, the same shape F-134/F-136/F-137 already found repeatedly on this identical event.",
     events: [
       "m19.triage_call.gip_admission_proposed",
-      "m6.admission.activated",
       "m6.admission.discharged",
     ],
   },
-  {
-    module: "m9",
-    kind: "no-consumer-surface",
-    reason: "M9 has no consumer directory and binds nothing.",
-    events: [
-      "m13.prn_administration_recorded",
-      "m8.encounter.signed",
-      "m8.vitals.captured",
-    ],
-  },
+  // F-143 (#248) — the `m9` group is GONE, not merely emptied. All 3 pairs were checked against M9's
+  // own spec: `m13.prn_administration_recorded` has no support anywhere in M9's "Depends on"/"Consumed
+  // by" relationship inventory or its §2.4 outbox table; `m8.encounter.signed` is M8 calling INTO M9's
+  // `recordAssessment` API synchronously (M9's own line 61), never a push M9 would subscribe to;
+  // `m8.vitals.captured` is the seam-vs-push trap — M9's own spec (line 75) states trending "may read
+  // the encounter vital series via M8's seam ... but M9 does not own vital signs," a documented pull
+  // M9 would perform, never an outbox push. All 3 dropped at the source (`m8.vitals.captured` moved to
+  // `seamConsumers` instead, recording the aspirational-but-unbuilt seam relationship).
   {
     module: "m12",
     kind: "handlers-unbound",
     reason:
-      "M12 binds two live consumers (IDG decision intake, document back-ref) and carries three further handler files that no binding reaches.",
+      "F-143 (#248) checked the group's two catalogued events plus M12's OWN authoritative `M12_OUTBOX_SUBSCRIPTIONS` list (consumers/index.ts, D4/D10-locked, 10 entries each with a real pure decider already shipped) rather than trusting the stale placeholder reason ('binds two live consumers... three further handler files' — actually three live consumers, and the 'third handler file' investigation found SEVEN undeclared real subscriptions, not one). Both catalogued events KEEP: M13's own spec (lines 266-267, plus its Wave/Done-means tables and test checklist) is decisive that `m13.reconciliation.draft_order_requested`/`.discontinue_requested` target M12 as consumer — a SEPARATE reconciliation surface from M12's own D10 MedHx-reconciliation mechanism (confirmed: M12's D10 flow has no M13 involvement anywhere), genuinely unbuilt on the M12 side (no `triggering_reconciliation_decision_id` column, no consumer file, and `M12_OUTBOX_SUBSCRIPTIONS` names no `m13.*` event). **The reverse check found 7 real, decisive, currently-undeclared subscriptions** — every one of them already on M12's own live subscription list with a shipped, unit-tested decider, and the catalog had simply never declared `m12` on any of them, surviving repeated prior sweeps of the SAME producing events (`m6.admission.activated` in particular had been re-scrutinized by name in F-101/F-134/F-136/F-137/F-140, none of which checked it for M12): `m5.patient.created`/`.updated`/`.address_changed`/`.payer_changed` (D4's DoseSpot patient sync, `sync-triggers.ts`'s `decidePatientSyncTrigger`), `m6.admission.activated`/`m6.cti.signed` (D10's MedHx pull 'on admission.activated and at each F2F window,' `decideMedHxFetch`), and `m11.order.verbal_expired_unsigned` (the group's own already-registered `M12_OUTBOX_SUBSCRIPTIONS` entry for `m12.verbal-expired`, `decideVerbalExpiry`). All 7 added at the source in each producing module's `events-by-mNN.ts`, not here.",
     events: [
+      "m11.order.verbal_expired_unsigned",
       "m13.reconciliation.discontinue_requested",
       "m13.reconciliation.draft_order_requested",
+      "m5.patient.address_changed",
+      "m5.patient.created",
+      "m5.patient.payer_changed",
+      "m5.patient.updated",
+      "m6.admission.activated",
+      "m6.cti.signed",
     ],
   },
-  {
-    module: "m10",
-    kind: "handlers-unbound",
-    reason:
-      "M10 binds one live consumer (admission timepoint scheduling). The remainder are forward declarations.",
-    events: [
-      "m8.encounter.signed",
-    ],
-  },
-  {
-    module: "m3",
-    kind: "no-consumer-surface",
-    reason: "M3 has no consumer directory and binds nothing.",
-    events: [
-      "m39.consent.supersedes",
-    ],
-  },
+  // F-143 (#248) — the `m10` group is GONE, not merely emptied. `m8.encounter.signed` was the sole
+  // member, and M10's own spec is decisive the relationship runs the OPPOSITE direction — line 9's
+  // "Consumed by" table and the spec's own re-lock note (explicitly correcting a prior encoding that
+  // "inverted the M8↔M10 dep direction") both state M8 CALLS M10's `recordHopeTimepoint` API
+  // synchronously; M10's two real outbox consumers (`apps/backend/src/modules/10-hope/outbox-consumers/`)
+  // are both M6-only. Dropped at the source with no `seamConsumers` replacement — the relationship is a
+  // synchronous API call, not a seam read either.
+  // F-143 (#248) — the `m3` group is GONE, not merely emptied. `m39.consent.supersedes` was the sole
+  // member; M3's own spec (line 74) states it consumes a consent attribute only via the boot-registered
+  // `ConsentEvaluator` seam PULL, consulted fresh per ABAC evaluation, never an outbox subscription — M3
+  // has no `consumers/` directory and no consent-keyed cache to rebind (its one cache invalidates only
+  // on role/permission changes). Dropped at the source; no `seamConsumers` replacement needed since the
+  // relationship the event's own description gestured at ("cache rebind") is already covered by the
+  // live `ConsentEvaluator` seam regardless of this declaration.
 ];
