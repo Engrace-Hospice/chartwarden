@@ -67,6 +67,9 @@ describe("M6 outbox event contract (§4.4)", () => {
     // subscription surface names the full M6 outbox catalog BY EVENT (election/cti/f2f/loc/revocation/
     // transfer/discharge), and admission.activated is not among them.
     expect(activated?.declaredConsumers).not.toContain("m23");
+    // F-137 (#248) — m11 dropped: M11's own spec's authoritative consumed-events list never names this
+    // event, and no consumer file anywhere in `11-orders/` mentions admission activation.
+    expect(activated?.declaredConsumers).not.toContain("m11");
   });
 
   it("applier-reused events carry the optional provenance `source` marker", () => {

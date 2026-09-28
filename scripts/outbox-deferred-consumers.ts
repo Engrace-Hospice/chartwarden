@@ -366,14 +366,13 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
     module: "m11",
     kind: "handlers-unbound",
     reason:
-      "M11 binds two live consumers (IDG decision intake, document back-ref) and carries four further handler files (admission-discharged-discontinue, assessment-trigger, hope-trigger, suggestion-banner) that no binding reaches.",
+      "F-137 (#248) checked every remaining pair against M11's own spec (its authoritative 'Outbox events consumed' list) and, where M11's own text was silent, against the PRODUCING module's spec for a specific, decided, cross-referenced claim — the F-131 'kept, not dropped' caution. 9 of 10 are genuine, real, still-unbound subscriptions: `m9.assessment.significant_change` is on M11's own live subscription list (`consumers/index.ts`'s `M11_OUTBOX_SUBSCRIPTIONS`) with a written, unit-tested decider (`consumers/assessment-trigger.ts`) — deferred only because nothing binds it to the dispatcher yet; the three `m21.supply_request.*` events are each individually named by M21's own catalog description as a real M11 relationship ('M11 auto-completes a one-shot order…', 'M11 releases the source order', 'Emitted so M11 learns the cascade ARRIVED… M11 would hold the order open forever') and `status_changed` additionally matches M11's own spec text (§4.5, 'auto-complete one-shots') — no M11 consumer file exists yet (`m21-fulfillment-status.ts`, named in the spec's file tree, was never built); the two `m39.consent.dpoa.*` events are each named for M11 twice over in M39's own spec — its §4.10-style outbox table ('M11 (attribution refresh)') and its dpoa_healthcare revocation-cascade table ('M11 (acting-consent revalidation on active orders)') — plus a checklist item stating outright 'Event m39.consent.dpoa.agent_appointed → M7/M11/M14 backref consumers stubbed'; and the three `m7.intervention.*` events are named by M7's own mutation-consumer table ('M14, M11 (if linked)') and M7's schema carries `linked_order_id` precisely for this handoff — M7's own architecture note states the READ direction runs the other way (M11 pulls M7 when authoring a care-plan-driven order) but the table still names M11 as a push consumer for the linked-order case. 1 of 10 was genuinely misdeclared and dropped at the source: `m6.admission.activated` has no support anywhere — M11's own consumed-events list never names it, and no file, decider, or even a comment in `11-orders/` mentions admission activation — the same broad-fan-out-no-rationale shape F-134/F-136 already found for m16/m23 on this identical event.",
     events: [
       "m21.supply_request.cancel_no_op",
       "m21.supply_request.cancelled",
       "m21.supply_request.status_changed",
       "m39.consent.dpoa.agent_appointed",
       "m39.consent.dpoa.agent_removed",
-      "m6.admission.activated",
       "m7.intervention.added",
       "m7.intervention.discontinued",
       "m7.intervention.updated",

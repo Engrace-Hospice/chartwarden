@@ -1045,6 +1045,38 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   `check:boot:platform` run against a freshly migrated, RLS-enforced disposable Postgres. Leaving #248
   open — 312 pairs across 31 modules remain.
 
+  **The m11 group (10 pairs) went the opposite way from m23 — 9 of 10 were genuine, real, still-unbound
+  subscriptions, and only 1 was misdeclared (F-137, #248).** Checked against M11's own spec's
+  authoritative "Outbox events consumed" list, and — where M11's own text was silent — against the
+  PRODUCING module's spec for a specific, decided, cross-referenced claim (the F-131/F-133 "kept, not
+  dropped" caution, applied a fifth time). **9 of 10 kept**: `m9.assessment.significant_change` is on
+  M11's own live subscription list (`consumers/index.ts`'s `M11_OUTBOX_SUBSCRIPTIONS`) with a written,
+  unit-tested decider (`consumers/assessment-trigger.ts`) — deferred only because nothing binds it to the
+  dispatcher yet, same as the already-registered `m10.hope.j2051_trigger_fired` gap one line above it.
+  The three `m21.supply_request.*` events (`cancel_no_op`/`cancelled`/`status_changed`) are each
+  individually named by M21's own catalog description as a real M11 relationship ("M11 auto-completes a
+  one-shot order…", "M11 releases the source order", "Emitted so M11 learns the cascade ARRIVED… M11
+  would hold the order open forever") and `status_changed` additionally matches M11's own spec text (§4.5,
+  the "auto-complete one-shots" cron) — M11 carries no consumer file yet (`m21-fulfillment-status.ts`,
+  named in the spec's own file tree, was never built). The two `m39.consent.dpoa.*` events are named for
+  M11 twice over in M39's own spec — its outbox table ("M11 (attribution refresh)") and its
+  `dpoa_healthcare` revocation-cascade table ("M11 (acting-consent revalidation on active orders)") — plus
+  a checklist item stating outright "Event `m39.consent.dpoa.agent_appointed` → M7/M11/M14 backref
+  consumers stubbed." The three `m7.intervention.*` events are named by M7's own mutation-consumer table
+  ("M14, M11 (if linked)"), and M7's schema carries a `linked_order_id` column precisely for this handoff
+  — M7's architecture note states the PULL direction runs the other way (M11 reads M7 when authoring a
+  care-plan-driven order) but the same table still names M11 as a push consumer for the linked-order case,
+  a genuinely different relationship from the pull. **1 of 10 dropped**: `m6.admission.activated` had no
+  support anywhere — M11's own consumed-events list never names it, and no file, decider, or even a
+  comment in `11-orders/` mentions admission activation at all — the same broad-fan-out-no-rationale shape
+  F-134/F-136 already found for m16/m23 on this identical event. Dropped at the source
+  (`events-by-m6.ts`). Net on #248: **312 → 311** (1 dropped, 0 added). Verified: `bun run build` clean,
+  `bun run typecheck` clean (0 errors), full non-live suite 654 files / 9589 tests green (two pinned-array
+  assertions updated — `admission-outbox-jobs.test.ts` and `outbox-seam-consumers.test.ts`, both to drop
+  `m11` from `m6.admission.activated`'s clinical fan-out), `arch:fitness` 38/38 (`arch:outbox-bindings` 0
+  disagreements), and a clean `check:boot:platform` run against a freshly migrated, RLS-enforced
+  disposable Postgres. Leaving #248 open — 311 pairs across 31 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

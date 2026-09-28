@@ -196,7 +196,7 @@ describe("#103 — the real catalog no longer declares a seam module as an outbo
     for (const seam of entry?.seamConsumers ?? []) {
       expect(entry?.declaredConsumers).not.toContain(seam);
     }
-    for (const clinical of ["m5", "m7", "m8", "m10", "m11", "m14", "m15", "m37"]) {
+    for (const clinical of ["m5", "m7", "m8", "m10", "m14", "m15", "m37"]) {
       expect(entry?.declaredConsumers).toContain(clinical);
     }
     // F-134 (#248) — m16 dropped: an admission ACTIVATION carries no fact M16's bereavement program
@@ -207,6 +207,10 @@ describe("#103 — the real catalog no longer declares a seam module as an outbo
     // subscription surface names the full M6 outbox catalog BY EVENT, and admission.activated is not
     // among them.
     expect(entry?.declaredConsumers).not.toContain("m23");
+    // F-137 (#248) — m11 dropped: M11's own spec's authoritative "Outbox events consumed" list never
+    // names this event, and no consumer file, decider, or comment anywhere in `11-orders/` mentions
+    // admission activation — the same broad-fan-out-no-rationale shape as m16/m23 above.
+    expect(entry?.declaredConsumers).not.toContain("m11");
   });
 });
 

@@ -224,7 +224,13 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // from this list for the same reason nothing ever inserted a `hope_timepoint_schedule` row: the
       // handshake the planners were written for had no consumer end.
       "m10",
-      "m11",
+      // F-137 (#248) — `m11` REMOVED: no support anywhere — M11's own spec's authoritative "Outbox
+      // events consumed" list (line 2859) names `m6.admission.discharged`/`.loc.changed`, M9's
+      // significant-change, M10's J2051 trigger, the M14/M22 back-refs and the M21 forward seam, and
+      // never this event; M11's codebase carries no consumer file, decider, or even a comment
+      // mentioning "activated" or "activation" anywhere. It was part of this event's broad fan-out
+      // with no order-specific rationale, the same shape F-134/F-136 already found for m16/m23 on this
+      // identical event.
       "m14",
       // F-103 — M15 bootstraps the three CoP discipline plans here (§1.1 D10), and this list did not name
       // it, so the consumer could not be bound and NOTHING in the repository has ever inserted a
