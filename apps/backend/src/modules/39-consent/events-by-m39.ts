@@ -135,7 +135,12 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       typeKey,
       signedAt: Type.String(),
     }),
-    declaredConsumers: ["m22", "m5", "m16"],
+    // F-134 (#248) — `m16` removed: unlike `m39.consent.signed`'s post-death-grant handshake (M16's
+    // own §4.5 table, under the name `consent.created`) and `.revoked`'s opt-out cascade (§2.6, a
+    // real pure decider in `lifecycle/cascades.ts`), neither M16's spec nor its cascades file
+    // mentions a renewal-triggered action anywhere; this looks like a mechanical carry-over from the
+    // signed/revoked consumer lists rather than an independent decision.
+    declaredConsumers: ["m22", "m5"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

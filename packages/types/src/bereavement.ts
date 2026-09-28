@@ -284,6 +284,14 @@ export const M16_EVENT_IDEMPOTENCY_KEYS = {
  * event that declares `m16`, and every catalogued event declaring `m16` is here. Before it the two
  * disagreed on 16 facts — including `idg.decision_recorded`, the ONE event M16 binds live, which this list
  * did not name.
+ *
+ * F-134/#248 — six names removed (`m5.patient.deceased`, `m6.admission.activated`,
+ * `m6.discharge.death`, `m7.care_plan.discharged`, `m15.plan.discharged`, `m39.consent.renewed`): each
+ * had been copied into both this list and the producing module's `declaredConsumers` on a claim
+ * ("seeds the bereavement plan") that F-105 already disproved — `m6.bereavement.eligible` is the ONLY
+ * path a `bereavement_plan` row can come into existence — or, for `m6.discharge.death`, was simply the
+ * co-emitted source event `bereavement.eligible` is itself derived from in the same transaction. Neither
+ * M16's own §4.5 table nor its `lifecycle/cascades.ts` deciders ever named any of the six.
  */
 export const M16_SUBSCRIBED_EVENT_NAMES = [
   // The two topics M16's `consumers/` actually decides on today.
@@ -292,16 +300,10 @@ export const M16_SUBSCRIBED_EVENT_NAMES = [
   // Catalogued AND declaring `m16`, so the relay routes each of these here the day a binding lands.
   // `idg.decision_recorded` is the one M16 already binds LIVE — and the one this list did not name.
   "idg.decision_recorded",
-  "m5.patient.deceased",
-  "m6.admission.activated",
   "m6.admission.discharged",
-  "m6.discharge.death",
-  "m7.care_plan.discharged",
-  "m15.plan.discharged",
   "m37.ipu_admission.death_recorded",
   "m39.consent.revoked",
   "m39.consent.signed",
-  "m39.consent.renewed",
   "m5.patient.bereavement_opt_out_changed",
   // §4.5 subscriptions the catalog does NOT declare `m16` on. Each is registered in
   // `scripts/outbox-subscription-exceptions.ts` with the reason, because the relay routes none of them

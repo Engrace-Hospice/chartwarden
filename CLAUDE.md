@@ -929,6 +929,44 @@ live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live
   pinned-array assertions to update this pass, and a clean `check:boot:platform` run against a freshly
   migrated, RLS-enforced disposable Postgres. Leaving #248 open — 339 pairs across 31 modules remain.
 
+  **The m16 group (12 pairs) mostly confirmed the prior pass's own reason rather than overturning it —
+  6 of 12 were real, still-blocked subscriptions and 6 were misdeclarations, all six variants of the
+  same defect: a claim that some OTHER event "seeds the bereavement plan" (F-134, #248).** Checked
+  per-event against M16's own §4.5 "Outbox Subscriptions (Consumers in M16)" table and
+  `lifecycle/cascades.ts`'s three pure deciders, rather than trusting five producing modules'
+  `declaredConsumers` guesses. **6 of 12 kept**: `m39.consent.revoked` (§2.6 opt-out cascade, backed by
+  a real pure decider) and `m39.consent.signed` (§4.5's "post-death-grant handler", under the spec's
+  stale name `consent.created` — M39's own catalog description says outright "the M16 post-mortem grant
+  when bereavement"); `m5.patient.bereavement_opt_out_changed` (§4.5 + D9, backed by
+  `decidePatientOptOutFlip`); `m6.admission.discharged` (filtered to `reason='death'`) — explicitly named
+  in §4.5 as a deliberate "secondary verifier (redundant safety net)", not an oversight; `m6.discharge
+  .cosigned` — the D18 gate-release decider, blocked producer-side (already documented by the prior
+  pass's reason, unchanged here); `m37.ipu_admission.death_recorded` — named three times in M37's own
+  spec as "M16 (bereavement onboarding)", kept on that asymmetric evidence despite M16's own spec being
+  silent on M37 (the F-131 "kept, not dropped" caution). **6 of 12 dropped, all the same shape**:
+  `m15.plan.discharged` and `m7.care_plan.discharged` each carried a producing-module description
+  claiming to "seed the bereavement plan" — flatly false, since F-105 already established
+  `m6.bereavement.eligible` is the ONLY creation path, and neither event is in M16's §4.5 table;
+  `m6.admission.activated` — an ACTIVATION carries no fact a program that starts at DEATH needs, and was
+  only ever part of that event's broad 15-consumer fan-out; `m6.discharge.death` — co-emitted from the
+  SAME `runEffects` transition as `bereavement.eligible` (one `t.effects` map, one transition), and
+  `bereavement.eligible`'s own description says it IS "the post-rule check on `m6.discharge.death`" —
+  M16's real consumer reads only the derived event; `m5.patient.deceased` — a THIRD hop downstream of
+  the same transaction (M5's own §7.8 death cascade reacting to `discharge.death`), carrying no fact
+  M16's intake decider reads; `m39.consent.renewed` — unlike `.signed`/`.revoked`, no spec text or
+  decider names a renewal-triggered action, reading as a mechanical carry-over from the sibling
+  consent-lifecycle events' consumer lists. All 6 dropped at the source (M5, M6 ×2, M7, M15, M39), and
+  `M16_SUBSCRIBED_EVENT_NAMES` (`packages/types/src/bereavement.ts`) — the F-095 rule-6 mirror of the
+  catalog, checked both ways — updated to match, which the gate itself caught (`arch:outbox-bindings`
+  failed with 6 fresh "does not declare 'm16'" disagreements until the list was corrected in the same
+  change). **Net: 339 → 333** (6 dropped, 0 added). Verified: `bun run build` clean, `bun run typecheck`
+  (same 3 pre-existing unrelated `m2-*.live.test.ts` errors), `arch:fitness` 38/38
+  (`arch:outbox-bindings` 0 disagreements after the subscription-list fix), full non-live suite 654
+  files / 9589 tests green (two pinned-array assertions updated — `admission-outbox-jobs.test.ts`'s
+  activation fan-out and `outbox-seam-consumers.test.ts`'s seam-split case, both to drop `m16`), and a
+  clean `check:boot:platform` run against a freshly migrated, RLS-enforced disposable Postgres. Leaving
+  #248 open — 333 pairs across 31 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

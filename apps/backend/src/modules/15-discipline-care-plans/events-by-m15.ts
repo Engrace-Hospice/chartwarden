@@ -76,14 +76,18 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m15.plan.discharged",
     moduleOwner: "m15",
     description:
-      "The plan sealed its final discharge-kind version on m6.admission.discharged (§7.11); M16 seeds the bereavement plan from it.",
+      "The plan sealed its final discharge-kind version on m6.admission.discharged (§7.11).",
     payloadSchema: Type.Object({
       planId: Id,
       admissionId: Id,
       kind: Str,
       finalSnapshotVersionId: Id,
     }),
-    declaredConsumers: ["m16", "m22", "m30"],
+    // F-134 (#248) — `m16` removed: F-105 already established `m6.bereavement.eligible` is the ONLY
+    // path a `bereavement_plan` row can come into existence (M16's own `consumers/index.ts`); this
+    // description's "M16 seeds the bereavement plan from it" claim was never true, and M16's own
+    // §4.5 outbox-subscriptions table never names this event.
+    declaredConsumers: ["m22", "m30"],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

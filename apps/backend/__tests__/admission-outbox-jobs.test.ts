@@ -59,6 +59,10 @@ describe("M6 outbox event contract (§4.4)", () => {
     // F-131 (#248) — m26 dropped: M26's cap math reads M6 via a build-time `ElectionPeriodReader` PULL,
     // never a push subscription to admission activation.
     expect(activated?.declaredConsumers).not.toContain("m26");
+    // F-134 (#248) — m16 dropped: an admission ACTIVATION carries no fact M16's bereavement program
+    // (which starts at death, not admission) needs; M16's own §4.5 outbox-subscriptions table never
+    // named this event.
+    expect(activated?.declaredConsumers).not.toContain("m16");
   });
 
   it("applier-reused events carry the optional provenance `source` marker", () => {

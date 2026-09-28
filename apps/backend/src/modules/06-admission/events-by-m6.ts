@@ -231,7 +231,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // `discipline_care_plan` row. Every M15 write route is `/discipline-plans/:planId/…`, so that
       // consumer is the only creation path there is.
       "m15",
-      "m16",
+      // F-134 (#248) — `m16` removed: an admission ACTIVATION carries no fact M16's bereavement
+      // program needs (the program starts at DEATH, not admission), M16's own §4.5 outbox-
+      // subscriptions table never names this event, and no consumer of it exists anywhere in
+      // `16-bereavement/` — the F-101 "broad fan-out the whole system keys off" phrasing described
+      // the list, not an individual decision to include M16.
       // F-101 — `m22` was here. The activation is the platform's broadest clinical fan-out and it
       // renders nothing: M22's §4.11 consumer table names six M6 events (election.signed, cti.signed,
       // f2f.attested, nor.acknowledged, revocation.created, discharge.created) plus the two still
@@ -776,7 +780,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m6.discharge.death",
     moduleOwner: "m6",
     description:
-      "Discharge reason was death (route 39 / recordExternalDeath) — seeds bereavement (D6) and, via " +
+      "Discharge reason was death (route 39 / recordExternalDeath) — via " +
       "M5's §7.8 death cascade (GAP-004), flips patient.status='deceased'.",
     payloadSchema: Type.Object({
       dischargeEventId: Type.String({ minLength: 1 }),
@@ -784,7 +788,13 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       dischargeDate: Type.String({ minLength: 1 }),
       source: applierSource,
     }),
-    declaredConsumers: ["m16", "m5"],
+    // F-134 (#248) — `m16` removed: this event is co-emitted with `m6.bereavement.eligible` from the
+    // SAME `runEffects` call on the SAME death-discharge transition (`admission-route-service-db.ts`
+    // — both are in one `t.effects` map keyed off one transition); `bereavement.eligible`'s own
+    // description says it IS the "post-rule check on `m6.discharge.death`" — so `discharge.death` is
+    // the source and `bereavement.eligible` is the already-bound, already-correct M16 handshake.
+    // M16's own `consumers/m6-eligibility.ts` reads only `bereavement.eligible`, never this event.
+    declaredConsumers: ["m5"],
     isOutboxOnly: true,
   },
   {

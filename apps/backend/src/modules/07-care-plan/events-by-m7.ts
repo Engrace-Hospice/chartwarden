@@ -153,14 +153,16 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
   {
     eventName: "m7.care_plan.discharged",
     moduleOwner: "m7",
-    description:
-      "The care plan was discharged when the admission ended — seeds M16 bereavement plan init.",
+    description: "The care plan was discharged when the admission ended.",
     payloadSchema: Type.Object({
       planId: Type.String({ minLength: 1 }),
       patientId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m16"],
+    // F-134 (#248) — `m16` removed: the "seeds M16 bereavement plan init" claim is false — F-105
+    // established `m6.bereavement.eligible` is the ONLY path a `bereavement_plan` row can come into
+    // existence, and M16's own §4.5 outbox-subscriptions table never names this event.
+    declaredConsumers: [],
     // F-115 (#248) — m30 moved here: same `fifteenDayCycleCountsForOrg` seam as `care_plan.version_signed`
     // above, read on M30's nightly cadence rather than a per-event reaction.
     seamConsumers: ["m30", "m33"],

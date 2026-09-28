@@ -98,9 +98,13 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m5.patient.deceased",
     moduleOwner: "m5",
     description:
-      "Patient death recorded; seeds bereavement (M16), enables final claim (M23), FHIR sync (M28, F-115/#248: at request time, not via this event), IDG alert (M36).",
+      "Patient death recorded (this module's own §7.8 death cascade, itself a consumer of M6's `m6.discharge.death` — a third hop from the real bereavement handshake); enables final claim (M23), FHIR sync (M28, F-115/#248: at request time, not via this event), IDG alert (M36).",
     payloadSchema: Type.Object({ ...corePatient, deceasedDate: Type.String() }),
-    declaredConsumers: ["m16", "m23"],
+    // F-134 (#248) — `m16` removed: F-105 established `m6.bereavement.eligible` (emitted synchronously
+    // in M6's own death-discharge transaction) is the ONLY path a `bereavement_plan` row can come into
+    // existence; this event is a downstream reaction to that SAME transaction two hops later and carries
+    // no fact M16's intake decider (`consumers/m6-eligibility.ts`) reads.
+    declaredConsumers: ["m23"],
     seamConsumers: ["m36"],
     isOutboxOnly: false,
   },
