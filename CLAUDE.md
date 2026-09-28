@@ -553,6 +553,25 @@ fix, not a further unblock. Proven by `m23-claim-assembly-seams.live.test.ts`: r
 0-minute no-bracket row, discipline-derived `cosignRequired` (`lpn` true, `rn` false), and
 `encounterFacts` returning a real row for the first time under `runWithRequestContext`.
 
+**`evvCompliance` needed a bridge across a module boundary neither side can cross alone (F-123, #251).**
+M23's `bracketsForEncounters` is ENCOUNTER-keyed; M18's published `EvvComplianceReader.
+bracketStateForVisit` is VISIT-keyed AND one-at-a-time (M23 has a LIST, from `billableEncounters.
+forRange`); and the link between the two — `encounter.visit_id` — is M8-owned, so M18 cannot resolve it
+itself: its manifest `dependsOn` is `[17]`, not `[8]`. Two new org-explicit seam functions, one per side —
+M8's `encounterVisitIdsForOrg` and M18's bulk `complianceStatesForVisitsForOrg` (batching the same
+`classify()` rule `bracketStateForVisit`/`bracketForVisit` already apply into two grouped scans instead of
+one round trip per visit) — meet in a single M23 adapter (`buildM23EvvComplianceAdapter`), the one place
+both facts are combined; neither M8 nor M18 imports the other. An encounter with NO visit (an ad-hoc note)
+maps to `not_required` — the same default `classify()` uses for "no events, no resolution trail": no M17
+visit means no EVV path exists to begin with, a different fact from "a visit exists but nothing was ever
+captured." Net effect on `POST /claims/assemble` reachability: none, stated precisely — `evvCompliance`
+sits later in call order than the still-unbound `referenceData.hippsRateTable`, so the live wall is
+unmoved; real, individually-verified progress on a third M23 seam this pass, not a further unblock. Proven
+by `m23-claim-assembly-seams.live.test.ts`: `compliant`/`unresolved_missing`/`documented_missing`/
+`not_required` all resolved correctly over real `evv_event`/`evv_missing_resolution` rows, and cross-tenant
+isolation (org A asking about org B's encounter gets `not_required`, never org B's real "compliant"
+verdict, because M8's own org-scoped read finds no matching row to bridge from).
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

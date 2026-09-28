@@ -225,6 +225,7 @@ import {
   createDrizzleEncounterEraseStore,
   createDrizzleEncounterReaderStore,
   createHearthnoteCiphers,
+  encounterVisitIdsForOrg,
   mountEncounterRoutes,
   registerEncounterAbacPredicates,
   registerEncounterErasers,
@@ -369,6 +370,7 @@ import {
 import {
   M18_OUTBOX_EVENTS,
   buildM18VisitPublishedConsumer,
+  complianceStatesForVisitsForOrg,
   createDrizzleEvvSeamStore,
   mountEvvRoutes,
   registerEvvAbacPredicates,
@@ -3251,6 +3253,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               m8SignedEncounters: {
                 inRange: (orgId, patientId, range) =>
                   signedEncounterSnapshotsInRangeForOrg(dbHandle.db, orgId, patientId, range),
+              },
+              // F-123 (#251) — the M8 encounter→visit bridge + M18's bulk compliance read.
+              m8EncounterVisitIds: {
+                forEncounters: (orgId, encounterIds) =>
+                  encounterVisitIdsForOrg(dbHandle.db, orgId, encounterIds),
+              },
+              m18Compliance: {
+                forVisits: (orgId, visitIds) =>
+                  complianceStatesForVisitsForOrg(dbHandle.db, orgId, visitIds),
               },
             }),
           });

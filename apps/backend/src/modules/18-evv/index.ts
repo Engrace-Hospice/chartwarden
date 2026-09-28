@@ -102,6 +102,7 @@ export {
   type EvvSeamStore,
   type EvvVerificationSummary,
   type EvvWindowSeedRow,
+  complianceStatesForVisitsForOrg,
   createDrizzleEvvSeamStore,
   createEvvAggregatorReferenceReader,
   createEvvBracketResolver,

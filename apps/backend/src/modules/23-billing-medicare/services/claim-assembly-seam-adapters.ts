@@ -20,6 +20,7 @@ import type {
   CertificationReader,
   DateRange,
   ElectionPeriodReader,
+  EvvComplianceReader,
   FaceToFaceReader,
   LevelOfCareReader,
   MdmEntityProvider,
@@ -421,6 +422,61 @@ export function buildM23SignedEncountersAdapter(
   return {
     async inWindow(orgId, patientId, window) {
       return reader.inRange(orgId, patientId, window);
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// 8. evvCompliance (M18) — real, bridging M8's encounter→visit link and M18's bulk compliance read
+//    (F-123, #251).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The exact shape of M8's `encounterVisitIdsForOrg`, duplicated locally per the no-package-import
+ *  posture — M23's manifest `dependsOn` does not even list M18, so this bridge MUST be composition-root
+ *  injected rather than a direct cross-module read either side. */
+export interface M8EncounterVisitIdsReader {
+  forEncounters(
+    orgId: string,
+    encounterIds: readonly string[],
+  ): Promise<ReadonlyMap<string, string | null>>;
+}
+
+/** The exact shape of M18's `complianceStatesForVisitsForOrg`, duplicated locally for the same reason. */
+export interface M18ComplianceStatesReader {
+  forVisits(
+    orgId: string,
+    visitIds: readonly string[],
+  ): Promise<ReadonlyMap<string, "compliant" | "documented_missing" | "unresolved_missing" | "not_required">>;
+}
+
+/**
+ * F-123 (#251) — `evvCompliance.bracketsForEncounters`. M23's contract is ENCOUNTER-keyed; M18's published
+ * `EvvComplianceReader.bracketStateForVisit` is VISIT-keyed, and the link between the two
+ * (`encounter.visit_id`) is M8-owned — M18's manifest `dependsOn` is `[17]`, not `[8]`, so M18 itself
+ * cannot resolve it. This adapter is the one place both facts meet: it asks M8 for the visit id behind
+ * each encounter, then asks M18 for compliance state over the resulting visit ids in ONE bulk call.
+ *
+ * An encounter with NO visit (an ad-hoc note) maps to `not_required` — the same default M18's own
+ * `classify()` uses for "no events, no resolution trail": an encounter with no M17 visit has no EVV path
+ * to begin with, which is a different fact from "a visit exists but nothing was ever captured for it."
+ */
+export function buildM23EvvComplianceAdapter(
+  m8VisitIds: M8EncounterVisitIdsReader,
+  m18Compliance: M18ComplianceStatesReader,
+): EvvComplianceReader {
+  return {
+    async bracketsForEncounters(orgId, encounterIds) {
+      if (encounterIds.length === 0) return [];
+      const visitIdByEncounter = await m8VisitIds.forEncounters(orgId, encounterIds);
+      const visitIds = [...visitIdByEncounter.values()].filter(
+        (v): v is string => v !== null,
+      );
+      const stateByVisit = await m18Compliance.forVisits(orgId, visitIds);
+      return encounterIds.map((encounterId) => {
+        const visitId = visitIdByEncounter.get(encounterId) ?? null;
+        const bracketState = visitId === null ? "not_required" : (stateByVisit.get(visitId) ?? "not_required");
+        return { encounterId, bracketState };
+      });
     },
   };
 }

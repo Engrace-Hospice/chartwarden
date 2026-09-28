@@ -385,3 +385,31 @@ export async function signedEncounterSnapshotsInRangeForOrg(
     },
   );
 }
+
+/**
+ * F-123 (#251) — the encounter→visit map `evvCompliance.bracketsForEncounters` needs before it can even
+ * ask M18 anything: M23's contract is ENCOUNTER-keyed, M18's `EvvComplianceReader.bracketStateForVisit` is
+ * VISIT-keyed, and `encounter.visit_id` — the only place that link lives — is M8-owned, so M18 cannot
+ * resolve it (M18's manifest `dependsOn` is `[17]`, not `[8]`). An encounter with no visit (an ad-hoc note,
+ * §3.3's own "nullable for ad-hoc encounters") has no EVV path at all — the M23 adapter maps that to
+ * `not_required`, the same default M18's own `classify()` uses for "no events, no resolution trail".
+ * Org-explicit for the composition-root injection (no ambient request context at M23's boot-time seams).
+ */
+export async function encounterVisitIdsForOrg(
+  db: DbClient,
+  organizationId: string,
+  encounterIds: readonly string[],
+): Promise<ReadonlyMap<string, string | null>> {
+  if (encounterIds.length === 0) return new Map();
+  return withOrgContext(
+    db,
+    { organizationId, userId: ENCOUNTER_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const rows = await tx
+        .select({ encounterId: E.id, visitId: E.visitId })
+        .from(E)
+        .where(and(eq(E.organizationId, organizationId), inArray(E.id, encounterIds as string[])));
+      return new Map(rows.map((r) => [r.encounterId, r.visitId]));
+    },
+  );
+}

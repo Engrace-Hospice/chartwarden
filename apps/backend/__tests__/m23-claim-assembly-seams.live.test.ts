@@ -1,23 +1,25 @@
 /**
- * M23 claim-assembly seam bindings — LIVE Postgres proof (#250, #251, F-119, F-121, F-122).
+ * M23 claim-assembly seam bindings — LIVE Postgres proof (#250, #251, F-119, F-121, F-122, F-123).
  *
- * `boot-assembly.ts` binds EIGHT of the eleven named `ClaimAssemblySeams` reader ports to real data:
+ * `boot-assembly.ts` binds NINE of the eleven named `ClaimAssemblySeams` reader ports to real data:
  * `patientPayer` (M5), all FIVE M6 range-shaped seams (F-121, #251: `admission`, `electionPeriods`,
- * `certifications`, `faceToFace`, `levelOfCare`, over `claimAssemblyRangeContextForOrg`), and — F-122
- * (#251) — `billableEncounters`/`signedEncounters` (M8, over `billableEncountersInRangeForOrg`/
- * `signedEncounterSnapshotsInRangeForOrg`); `mdm.resolveProviderEntity` and two of `referenceData`'s four
- * methods are also real (#250). This proves each against real rows under real RLS
- * (`WARDENX_DEV_BYPASSRLS=0` discipline: this test connects as the migrated `wardenx_app` role via
+ * `certifications`, `faceToFace`, `levelOfCare`, over `claimAssemblyRangeContextForOrg`),
+ * `billableEncounters`/`signedEncounters` (F-122, #251: M8, over `billableEncountersInRangeForOrg`/
+ * `signedEncounterSnapshotsInRangeForOrg`), and — F-123 (#251) — `evvCompliance`, bridging M8's new
+ * `encounterVisitIdsForOrg` and M18's new bulk `complianceStatesForVisitsForOrg`; `mdm.resolveProviderEntity`
+ * and two of `referenceData`'s four methods are also real (#250). This proves each against real rows under
+ * real RLS (`WARDENX_DEV_BYPASSRLS=0` discipline: this test connects as the migrated `wardenx_app` role via
  * `handle.db`, never the admin/superuser client used only to seed). F-122 also fixes a genuine,
  * previously-undocumented production defect: `EncounterReaderStore.encounterFacts` — and therefore
  * `BillableEncounterReader.billability` for EVERY caller, not only M23 — had been live-registered since
  * M8-T08 while still answering `[]` for any id, because the Drizzle store never overrode the in-memory
  * fallback's empty default (the F-093/F-100/F-103 shape again).
  *
- * The end-to-end `POST /claims/assemble` reachability boundary is unmoved by F-122 (stated, not implied):
- * it still fails at `referenceData.hippsRateTable` (no CMS per-diem rate file has ever been loaded), which
- * sits BEFORE `billableEncounters`/`signedEncounters` in call order — binding them is real,
- * individually-verified progress on two more seam steps, not a further unblock of the live wall.
+ * The end-to-end `POST /claims/assemble` reachability boundary is unmoved by F-122/F-123 (stated, not
+ * implied): it still fails at `referenceData.hippsRateTable` (no CMS per-diem rate file has ever been
+ * loaded), which sits BEFORE `billableEncounters`/`signedEncounters`/`evvCompliance` in call order —
+ * binding them is real, individually-verified progress on three more seam steps, not a further unblock of
+ * the live wall.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
  *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m23-claim-assembly-seams.live.test.ts
@@ -34,13 +36,16 @@ import { claimAssemblyRangeContextForOrg } from "../src/modules/06-admission/ind
 import {
   billableEncountersInRangeForOrg,
   createDrizzleEncounterReaderStore,
+  encounterVisitIdsForOrg,
   signedEncounterSnapshotsInRangeForOrg,
 } from "../src/modules/08-encounters/index";
+import { complianceStatesForVisitsForOrg } from "../src/modules/18-evv/index";
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import { buildM23BootAssemblyService } from "../src/modules/23-billing-medicare/services/boot-assembly";
 import {
   buildM23AdmissionRangeAdapters,
   buildM23BillableEncountersAdapter,
+  buildM23EvvComplianceAdapter,
   buildM23MdmProviderEntityAdapter,
   buildM23PatientPayerAdapter,
   buildM23ReferenceDataAdapter,
@@ -219,6 +224,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     serviceDate: string;
     startedAt?: string | null;
     endedAt?: string | null;
+    visitId?: string | null;
   }): Promise<string> {
     const signedAt = ["signed", "cosign_pending", "cosigned"].includes(input.status) ? new Date() : null;
     // `encounter_vocab_pinned_when_finalized` requires a non-null vocab_version_id for every non-draft
@@ -230,8 +236,8 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       `INSERT INTO encounter
          (organization_id, provider_entity_id, patient_id, admission_id, encounter_type, discipline,
           authored_by_membership_id, service_date, started_at, ended_at, status, signed_at,
-          vocab_version_id, voided_at, voided_by, voided_reason)
-       VALUES ($1,$2,$3,$4,'routine_visit',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          vocab_version_id, voided_at, voided_by, voided_reason, visit_id)
+       VALUES ($1,$2,$3,$4,'routine_visit',$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        RETURNING id`,
       [
         input.orgId,
@@ -249,9 +255,89 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         voided ? new Date() : null,
         voided ? input.membershipId : null,
         voided ? "voided for the F-122 billability test fixture, forty-plus characters" : null,
+        input.visitId ?? null,
       ],
     );
     return row.rows[0].id as string;
+  }
+
+  /** A `location` row (F-123, #251) — `evv_event.location_id` is NOT NULL. */
+  async function seedLocation(providerEntityId: string): Promise<string> {
+    const row = await admin.query(
+      `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+       VALUES ($1,$2,'1 St','Town','OR','97000','America/Los_Angeles') RETURNING id`,
+      [providerEntityId, `Loc-${crypto.randomUUID()}`],
+    );
+    return row.rows[0].id as string;
+  }
+
+  /** An `evv_device` row (F-123, #251) — `m2_device_attestation_id` carries no SQL FK (app-validated). */
+  async function seedEvvDevice(orgId: string, membershipId: string): Promise<string> {
+    const row = await admin.query(
+      `INSERT INTO evv_device (organization_id, membership_id, platform, device_key_fingerprint,
+         m2_device_attestation_id)
+       VALUES ($1,$2,'ios',$3,$4) RETURNING id`,
+      [orgId, membershipId, `fp-${crypto.randomUUID()}`, crypto.randomUUID()],
+    );
+    return row.rows[0].id as string;
+  }
+
+  /** The `m18-evv-read-service.live.test.ts` precedent: `evv_event.visit_id`/`patient_id` carry NO SQL FK,
+   *  so `visitId` is a plain literal — no real `visit` row is needed for these compliance reads (F-123,
+   *  #251). `kind`: 'compliant' (check-in + check-out), 'unresolved_missing' (check-in only, an OPEN
+   *  resolution), 'documented_missing' (check-in only, a CLOSED-attested resolution). */
+  async function seedEvvChain(
+    orgId: string,
+    providerEntityId: string,
+    locationId: string,
+    deviceId: string,
+    membershipId: string,
+    visitId: string,
+    patientId: string,
+    kind: "compliant" | "unresolved_missing" | "documented_missing",
+  ): Promise<void> {
+    await admin.query(
+      `INSERT INTO evv_event (organization_id, provider_entity_id, location_id, visit_id, patient_id, kind,
+         service_type_code, posting_membership_id, posting_discipline_at_recording, evv_device_id,
+         captured_at, event_at, coords_cipher, coords_dek_version, accuracy_m, gps_quality,
+         device_attestation_id_at_record)
+       VALUES ($1,$2,$3,$4,$5,'check_in','T1021',$6,'rn',$7, now(), now(),'enc',1,4.5,'high',$8)`,
+      [orgId, providerEntityId, locationId, visitId, patientId, membershipId, deviceId, crypto.randomUUID()],
+    );
+    if (kind === "compliant") {
+      await admin.query(
+        `INSERT INTO evv_event (organization_id, provider_entity_id, location_id, visit_id, patient_id, kind,
+           service_type_code, posting_membership_id, posting_discipline_at_recording, evv_device_id,
+           captured_at, event_at, coords_cipher, coords_dek_version, accuracy_m, gps_quality,
+           device_attestation_id_at_record)
+         VALUES ($1,$2,$3,$4,$5,'check_out','T1021',$6,'rn',$7, now(), now(),'enc',1,4.5,'high',$8)`,
+        [orgId, providerEntityId, locationId, visitId, patientId, membershipId, deviceId, crypto.randomUUID()],
+      );
+      return;
+    }
+    const status = kind === "unresolved_missing" ? "open" : "closed_clinician_attested";
+    const resolvedFields =
+      status === "open"
+        ? { resolvedByMembershipId: null, resolvedAt: null, resolutionReason: null }
+        : {
+            resolvedByMembershipId: membershipId,
+            resolvedAt: new Date(),
+            resolutionReason: "attested by the clinician for the F-123 compliance test fixture, 40+ chars",
+          };
+    await admin.query(
+      `INSERT INTO evv_missing_resolution
+         (organization_id, visit_id, kind, detected_by_source, status, resolved_by_membership_id,
+          resolved_at, resolution_reason)
+       VALUES ($1,$2,'missing_checkout','sync_reconcile',$3,$4,$5,$6)`,
+      [
+        orgId,
+        visitId,
+        status,
+        resolvedFields.resolvedByMembershipId,
+        resolvedFields.resolvedAt,
+        resolvedFields.resolutionReason,
+      ],
+    );
   }
 
   beforeAll(async () => {
@@ -751,6 +837,129 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       // fallback's empty default.
       expect(facts).toHaveLength(1);
       expect(facts[0]).toMatchObject({ encounterId: volunteerEncounter, discipline: "volunteer" });
+    });
+  });
+
+  describe("evvCompliance: the M8→M18 bridge (F-123, #251)", () => {
+    it("bracketsForEncounters: compliant / unresolved_missing / documented_missing / not_required", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381270");
+      const membershipId = await seedMembership(ORG_A);
+      const locationId = await seedLocation(pe);
+      const deviceId = await seedEvvDevice(ORG_A, membershipId);
+
+      const compliantVisit = crypto.randomUUID();
+      const unresolvedVisit = crypto.randomUUID();
+      const documentedVisit = crypto.randomUUID();
+      await seedEvvChain(ORG_A, pe, locationId, deviceId, membershipId, compliantVisit, patientId, "compliant");
+      await seedEvvChain(
+        ORG_A,
+        pe,
+        locationId,
+        deviceId,
+        membershipId,
+        unresolvedVisit,
+        patientId,
+        "unresolved_missing",
+      );
+      await seedEvvChain(
+        ORG_A,
+        pe,
+        locationId,
+        deviceId,
+        membershipId,
+        documentedVisit,
+        patientId,
+        "documented_missing",
+      );
+
+      const compliantEncounter = await seedEncounter({
+        orgId: ORG_A,
+        providerEntityId: pe,
+        patientId,
+        membershipId,
+        discipline: "rn",
+        status: "signed",
+        serviceDate: "2026-08-01",
+        visitId: compliantVisit,
+      });
+      const unresolvedEncounter = await seedEncounter({
+        orgId: ORG_A,
+        providerEntityId: pe,
+        patientId,
+        membershipId,
+        discipline: "rn",
+        status: "signed",
+        serviceDate: "2026-08-02",
+        visitId: unresolvedVisit,
+      });
+      const documentedEncounter = await seedEncounter({
+        orgId: ORG_A,
+        providerEntityId: pe,
+        patientId,
+        membershipId,
+        discipline: "rn",
+        status: "signed",
+        serviceDate: "2026-08-03",
+        visitId: documentedVisit,
+      });
+      // No visit at all — an ad-hoc encounter. `not_required`, not a fabricated verdict.
+      const adHocEncounter = await seedEncounter({
+        orgId: ORG_A,
+        providerEntityId: pe,
+        patientId,
+        membershipId,
+        discipline: "rn",
+        status: "signed",
+        serviceDate: "2026-08-04",
+        visitId: null,
+      });
+
+      const seam = buildM23EvvComplianceAdapter(
+        { forEncounters: (orgId, ids) => encounterVisitIdsForOrg(handle.db, orgId, ids) },
+        { forVisits: (orgId, ids) => complianceStatesForVisitsForOrg(handle.db, orgId, ids) },
+      );
+      const snapshots = await seam.bracketsForEncounters(ORG_A, [
+        compliantEncounter,
+        unresolvedEncounter,
+        documentedEncounter,
+        adHocEncounter,
+      ]);
+      const byId = new Map(snapshots.map((s) => [s.encounterId, s.bracketState]));
+      expect(byId.get(compliantEncounter)).toBe("compliant");
+      expect(byId.get(unresolvedEncounter)).toBe("unresolved_missing");
+      expect(byId.get(documentedEncounter)).toBe("documented_missing");
+      expect(byId.get(adHocEncounter)).toBe("not_required");
+    });
+
+    it("never resolves another org's visit compliance (cross-tenant RLS isolation)", async () => {
+      const patientIdB = await seedPatient(ORG_B);
+      const peB = await seedProviderEntity(ORG_B, "381271");
+      const membershipIdB = await seedMembership(ORG_B);
+      const locationIdB = await seedLocation(peB);
+      const deviceIdB = await seedEvvDevice(ORG_B, membershipIdB);
+      const visitB = crypto.randomUUID();
+      await seedEvvChain(ORG_B, peB, locationIdB, deviceIdB, membershipIdB, visitB, patientIdB, "compliant");
+      const encounterB = await seedEncounter({
+        orgId: ORG_B,
+        providerEntityId: peB,
+        patientId: patientIdB,
+        membershipId: membershipIdB,
+        discipline: "rn",
+        status: "signed",
+        serviceDate: "2026-08-05",
+        visitId: visitB,
+      });
+
+      const seam = buildM23EvvComplianceAdapter(
+        { forEncounters: (orgId, ids) => encounterVisitIdsForOrg(handle.db, orgId, ids) },
+        { forVisits: (orgId, ids) => complianceStatesForVisitsForOrg(handle.db, orgId, ids) },
+      );
+      // Org A asking about org B's encounter id: M8's org-scoped read finds no matching row at all, so the
+      // encounter→visit map is empty and the adapter correctly reports `not_required` rather than leaking
+      // org B's real "compliant" verdict.
+      const snapshots = await seam.bracketsForEncounters(ORG_A, [encounterB]);
+      expect(snapshots).toEqual([{ encounterId: encounterB, bracketState: "not_required" }]);
     });
   });
 

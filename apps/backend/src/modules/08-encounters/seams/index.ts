@@ -41,6 +41,7 @@ export {
   createDrizzleEncounterReaderStore,
   billableEncountersInRangeForOrg,
   signedEncounterSnapshotsInRangeForOrg,
+  encounterVisitIdsForOrg,
 } from "./drizzle-store";
 export {
   EncounterNotFoundError,

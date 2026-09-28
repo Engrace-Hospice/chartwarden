@@ -39,7 +39,7 @@
 // has no schema source the shape stays an honest zero-DENOMINATOR pair the provider's vacuous-window rules
 // already handle — nothing here answers a fixed rate.
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
+import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import type {
   EvvAggregatorSubmissionDto,
   EvvBracketDto,
@@ -561,4 +561,67 @@ export function createDrizzleEvvSeamStore(db: DbClient): EvvSeamStore {
       });
     },
   };
+}
+
+/**
+ * F-123 (#251) — the BULK-by-visit-ids compliance read M23's `evvCompliance.bracketsForEncounters` needs:
+ * the published `EvvComplianceReader.bracketStateForVisit` answers ONE visit at a time, and M23 has a LIST
+ * (from `billableEncounters.forRange`). Same `classify()` rule `bracketStateForVisit`/`bracketForVisit`
+ * already apply — batched into two grouped scans (events, resolutions) instead of one round trip per
+ * visit, never re-derived. Org-explicit (composition-root injection; M23's boot-time seam adapters have no
+ * ambient request context), the `admissionSchedulingContextForOrg` shape.
+ */
+export async function complianceStatesForVisitsForOrg(
+  db: DbClient,
+  organizationId: string,
+  visitIds: readonly string[],
+): Promise<ReadonlyMap<string, EvvComplianceState>> {
+  if (visitIds.length === 0) return new Map();
+  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    const events = await tx
+      .select({ visitId: EVENT.visitId, kind: EVENT.kind })
+      .from(EVENT)
+      .where(
+        and(
+          eq(EVENT.organizationId, organizationId),
+          inArray(EVENT.visitId, visitIds as string[]),
+          isNull(EVENT.supersededByEventId),
+        ),
+      );
+    const resolutions = await tx
+      .select({ visitId: MR.visitId, status: MR.status })
+      .from(MR)
+      .where(
+        and(eq(MR.organizationId, organizationId), inArray(MR.visitId, visitIds as string[])),
+      );
+
+    const hasCheckIn = new Set<string>();
+    const hasCheckOut = new Set<string>();
+    for (const e of events) {
+      if (e.kind === "check_in") hasCheckIn.add(e.visitId);
+      if (e.kind === "check_out") hasCheckOut.add(e.visitId);
+    }
+    const hasOpenResolution = new Set<string>();
+    const hasDocumentedClose = new Set<string>();
+    for (const r of resolutions) {
+      if (r.status === "open") hasOpenResolution.add(r.visitId);
+      if ((DOCUMENTED_CLOSE_STATUSES as readonly string[]).includes(r.status)) {
+        hasDocumentedClose.add(r.visitId);
+      }
+    }
+
+    const result = new Map<string, EvvComplianceState>();
+    for (const visitId of visitIds) {
+      result.set(
+        visitId,
+        classify({
+          hasCheckIn: hasCheckIn.has(visitId),
+          hasCheckOut: hasCheckOut.has(visitId),
+          hasOpenResolution: hasOpenResolution.has(visitId),
+          hasDocumentedClose: hasDocumentedClose.has(visitId),
+        }).compliance,
+      );
+    }
+    return result;
+  });
 }

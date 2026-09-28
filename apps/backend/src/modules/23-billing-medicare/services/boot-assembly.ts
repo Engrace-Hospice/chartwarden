@@ -6,26 +6,24 @@
 // since their own modules' -T05/-T08 tasks landed; the real blocker per seam is checked below, one at a
 // time).
 //
-// EIGHT of the eleven named `ClaimAssemblySeams` reader PORTS (the #250 issue's own count: patientPayer/
+// NINE of the eleven named `ClaimAssemblySeams` reader PORTS (the #250 issue's own count: patientPayer/
 // admission/electionPeriods/certifications/faceToFace/levelOfCare/billableEncounters/signedEncounters/
 // evvCompliance/mdm/terminology — `referenceData` is platform reference data, not one of the eleven) are
 // now bound to REAL data (`claim-assembly-seam-adapters.ts`): `patientPayer` (M5), all FIVE M6
 // range-shaped seams (F-121, #251: `admission`, `electionPeriods`, `certifications`, `faceToFace`,
-// `levelOfCare`, over `claimAssemblyRangeContextForOrg`), and — F-122 (#251) —
-// `billableEncounters`/`signedEncounters` (M8, over `billableEncountersInRangeForOrg`/
-// `signedEncounterSnapshotsInRangeForOrg`). `mdm` is PARTIALLY bound (`resolveProviderEntity` yes,
+// `levelOfCare`, over `claimAssemblyRangeContextForOrg`), `billableEncounters`/`signedEncounters` (F-122,
+// #251: M8, over `billableEncountersInRangeForOrg`/`signedEncounterSnapshotsInRangeForOrg`), and —
+// F-123 (#251) — `evvCompliance` (bridging M8's `encounterVisitIdsForOrg` and M18's new bulk
+// `complianceStatesForVisitsForOrg`). `mdm` is PARTIALLY bound (`resolveProviderEntity` yes,
 // `resolveClinicalParticipants` no — see below), so it counts toward neither the bound nor the fully-stub
 // tally cleanly. Two of `referenceData`'s four methods are also real (`wageIndexForCcn`,
 // `activeSequestrationPolicy`, #250). Each is individually live-tested against real rows under RLS
-// (`m23-claim-assembly-seams.live.test.ts`). Binding all eight is NOT "the route works end to end" — see
+// (`m23-claim-assembly-seams.live.test.ts`). Binding all nine is NOT "the route works end to end" — see
 // NET EFFECT ON REACHABILITY below.
 //
 // EVERY OTHER READER STAYS A DENY-STUB, and per-seam, not as one blanket "not ready yet" — each reason
 // below was checked against the owning module's actual published seam shape, not assumed from this file's
 // prior header:
-//   * evvCompliance (M18) — the published `EvvComplianceReader` answers one visit's bracket state or a
-//     windowed AGGREGATE rate, not "bracket snapshots for this LIST of encounter ids" — and depends on
-//     `billableEncounters` resolving the id list first regardless.
 //   * terminology (M38) — the published `TerminologyProvider` (the M25 CARC/RARC precedent this file
 //     used to cite as proof this is "a small adapter") is a per-CODE `lookup(system, code)`. M23's
 //     `TerminologyResolution` wants a BULK pre-resolved `valueSetMembership`/`icd10Billable` map, with
@@ -49,12 +47,12 @@
 // hippsRateTable` (`WAGE_INDEX_UNAVAILABLE`/422 fires first when no wage-index factor is loaded for the
 // CCN, so `hippsRateTable`'s `SEAM_UNBOUND`/503 is the live wall only once a factor resolves — both #250
 // and this pass's own live test exercise wage-index rows the migration 0080 seed covers). Binding
-// `billableEncounters`/`signedEncounters` (F-122, #251) does NOT move that wall at all — both sit LATER
-// in the call order than `hippsRateTable`/`activeSequestrationPolicy`, so they stay unreachable by a real
-// request until the CMS rate-table gap closes. This is real, individually-verified progress on two more
-// seam steps, not a further unblock of the live boundary — stated precisely rather than implied, the exact
-// discipline the #250/#251 issues themselves established. `POST /claims/assemble` remains unreachable
-// end-to-end for every real caller today.
+// `billableEncounters`/`signedEncounters`/`evvCompliance` (F-122/F-123, #251) does NOT move that wall at
+// all — all three sit LATER in the call order than `hippsRateTable`/`activeSequestrationPolicy`, so they
+// stay unreachable by a real request until the CMS rate-table gap closes. This is real,
+// individually-verified progress on three more seam steps, not a further unblock of the live boundary —
+// stated precisely rather than implied, the exact discipline the #250/#251 issues themselves established.
+// `POST /claims/assemble` remains unreachable end-to-end for every real caller today.
 //
 // Per RULE 4 (fail-closed-unbound), every method that stays a stub still throws the typed `SEAM_UNBOUND`
 // (503) only when an assemble request actually reaches it — boot stays green, and the route never
@@ -73,9 +71,12 @@ import {
 import {
   type M6ClaimRangeReader,
   type M8BillableEncountersReader,
+  type M8EncounterVisitIdsReader,
   type M8SignedEncountersReader,
+  type M18ComplianceStatesReader,
   buildM23AdmissionRangeAdapters,
   buildM23BillableEncountersAdapter,
+  buildM23EvvComplianceAdapter,
   buildM23MdmProviderEntityAdapter,
   buildM23PatientPayerAdapter,
   buildM23ReferenceDataAdapter,
@@ -113,6 +114,10 @@ export function buildM23BootAssemblyService(
      *  `billableEncounters`/`signedEncounters` stay their fail-closed `unbound()` deny-stubs below. */
     readonly m8BillableEncounters?: M8BillableEncountersReader;
     readonly m8SignedEncounters?: M8SignedEncountersReader;
+    /** F-123 (#251) — the M8 encounter→visit bridge + M18's bulk compliance read, injected by the
+     *  composition root. Absent, `evvCompliance` stays its fail-closed `unbound()` deny-stub below. */
+    readonly m8EncounterVisitIds?: M8EncounterVisitIdsReader;
+    readonly m18Compliance?: M18ComplianceStatesReader;
   } = {},
 ): ClaimAssemblyService {
   const outbox: AssemblyOutboxPort = ports.outbox ?? {
@@ -151,7 +156,12 @@ export function buildM23BootAssemblyService(
     signedEncounters: ports.m8SignedEncounters
       ? buildM23SignedEncountersAdapter(ports.m8SignedEncounters)
       : { inWindow: () => unbound("SignedEncountersReader") },
-    evvCompliance: { bracketsForEncounters: () => unbound("EvvComplianceReader") },
+    // REAL (#251, F-123) — bridges M8's encounter→visit link and M18's bulk compliance read, when both
+    // ports are injected.
+    evvCompliance:
+      ports.m8EncounterVisitIds && ports.m18Compliance
+        ? buildM23EvvComplianceAdapter(ports.m8EncounterVisitIds, ports.m18Compliance)
+        : { bracketsForEncounters: () => unbound("EvvComplianceReader") },
     mdm: {
       // REAL (#250) — CCN + MAC jurisdiction; cbsaCode is an honest `null` (unread field, see the adapter's
       // own doc comment).
