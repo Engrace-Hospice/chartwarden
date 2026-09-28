@@ -325,6 +325,52 @@ disposable Postgres — `assertBindableAgainstCatalog` is the real boot-time pro
 declaration and untouched
 gap still agrees with what is actually bound.
 
+**M20's SOS emergency-alert escalation ladder finally has a production caller (F-118, #249).**
+`lifecycle/sos-escalator.ts`'s `decideSosWatchdog` — §4.8 `m20.sos-sla-watchdog.cron`, D7 / M20-F05 / S13
+/ INT-031 — has been a complete, pure, unit-tested per-alert decision since M20-T03: the 5-second
+stale-cancel-window sweep, the tier-1/2/3 SLA-dwell escalation, the `emergency_terminus` re-page loop.
+**Nothing called it.** No file under `20-field-safety` matched `*cron*`/`*worker*`/`*job*`; the
+composition root wired M20's outbox consumers (F-043/#103) but registered no cron worker for this module
+at all — invisible to both `check-outbox-bindings.ts` and `check-live-suite-coverage.ts`, since this is a
+SCHEDULED decider with no producer event to wait on, not an outbox consumer. A field clinician's SOS
+alert that nobody acknowledged within its tier-1 SLA sat in `acknowledging` (or any later tier) forever,
+silently, because this is the absence of a background process rather than an error path anything logs.
+**Now bound**: `jobs/cron-workers.ts`'s `runSosSlaWatchdogCron` fans out over active orgs (the M9/M25/M33
+`buildActiveOrgEnumerator` + `withPlatformContext` template, `wireM20Tenancy`'s new
+`m20.platform_crons` allowlist entry), opens one `withOrgContext` tx per open alert (the
+`ssa_org_active_idx` predicate — deliberately wider than `ssa_sla_scan_idx`, since the cancel-window
+sweep needs `raised`/`cancel_window_open` too), resolves the pinned policy through the real
+`SafetyPolicyProvider.policyAtTime(orgId, alert.postedAt)`, and applies the decision through the SAME
+§2.5 version-guarded `UPDATE ... WHERE version = ?` the route layer and `consumers/
+m36-delivery-failed.ts` already use for the identical race — two ticks (or two workers) can never both
+win against one alert, because Postgres holds the row lock across the first UPDATE until it commits and
+the second's WHERE clause then matches zero rows; a lost race is logged and skipped, not retried within
+the same pass, since the next 15-second tick reads the alert's current state correctly either way. Every
+alert gets its OWN transaction, so one alert's lost race never aborts the rest of an org's tick.
+**The tier-3 → `emergency_terminus` rung is deliberately refused rather than completed, reusing
+`m36-delivery-failed.ts`'s own reasoning for the identical edge rather than re-deciding it**: that
+transition's entry effects are `dial_emergency_contact` / `surface_psap_number` / `page_wardenx_ops`, all
+three `CALLER_OWNED_EFFECT_KINDS` `runEffects` deliberately does not execute, and confirmed — no caller
+anywhere in this codebase implements a real telephony dial, an M40 jurisdiction lookup, or a platform
+page (the "manual escalate" path the decider's own header names as the ladder's other trigger has no
+live route either). Writing `lifecycleState = 'emergency_terminus'` and firing `sos_terminus_reached`
+while none of the three mandated actions actually happened would say the life-safety chain reached its
+mandated end when nothing dialed anyone — worse than not escalating. A breached tier-3 alert is instead
+logged loudly (`sosTerminusUnsupported: true`) and left visible at its current tier on the §4.2/§4.3
+board, a real (if incomplete) signal, rather than a misleading one. The re-page LOOP is still wired for
+an alert that reaches the terminus by some future path — its effects are all outbox/alert, no
+caller-owned kinds, so applying them is safe even though nothing can currently put an alert into that
+state. **A genuine, separate defect surfaced writing the live proof**: `sos_terminus_reached`'s catalog
+schema requires `emergencyContactCallInitiated`/`psapJurisdictionId`/`wardenxOpsPaged`, and the natural
+first draft reported the ALERT'S CONSENT STATUS as whether the call was "initiated" — which it never is,
+since the dial itself is one of the three unimplemented caller-owned effects. Fixed to always report
+`false`/`null`/`false`, honestly, rather than letting an active consent read as a call that was placed.
+Proven by `m20-sos-sla-watchdog.live.test.ts` against a real disposable Postgres: the cancel-window
+sweep, all three tier escalations, the tier-3 refusal (state/history/outbox all provably unchanged), the
+terminus re-page (loop iteration counted correctly, no spurious history row — `m20_ssash_no_self` would
+refuse one), the two-concurrent-ticks race (escalates exactly once, version 2 never 3), and a two-org fan
+out under each org's own tenant scope.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

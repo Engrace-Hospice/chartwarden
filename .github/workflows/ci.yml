@@ -251,6 +251,11 @@ jobs:
           # outcome rather than a throw), and the visit read only resolves under the binding's own scope.
           - { name: "M19 Inbound triggers", scripts: "test:m19:inbound-triggers:live" }
           - { name: "M20 Field-safety consumers", scripts: "test:m20:consumers:live" }
+          # F-111 (#249): the §4.8 `m20.sos-sla-watchdog.cron` worker — decideSosWatchdog shipped with
+          # M20-T03 and had no production caller anywhere. Live because the double-escalation lock is a
+          # statement about how Postgres serializes two concurrent version-guarded UPDATEs on the same
+          # row, and the policy-pinned SLA read goes through the real SafetyPolicyProvider.
+          - { name: "M20 SOS SLA watchdog", scripts: "test:m20:sos-sla-watchdog:live" }
           - {
               name: "M22 Documents",
               scripts:

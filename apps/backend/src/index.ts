@@ -390,19 +390,24 @@ import {
 } from "./modules/19-oncall/index";
 import {
   M20_OUTBOX_EVENTS,
+  M20_PLATFORM_JOB_ID,
   buildDrizzleM20ReadService,
   buildDrizzleM20WriteService,
   buildDrizzleSafetyAbacResolver,
   buildDrizzleSafetySeamStore,
   buildFieldSafetyConsumers,
+  buildM20WorkerDeps,
   createDrizzleSafetyEraseStore,
   createSafetyPolicyProvider,
   denyStubSafetyAbacResolver,
   mountM20Routes,
   registerFieldSafetyAbacPredicates,
   registerFieldSafetySeams,
+  registerM20CronWorkers,
   registerSafetyErasers,
   safetyClinicianSignalCache,
+  scheduleM20Jobs,
+  wireM20Tenancy,
 } from "./modules/20-field-safety/index";
 import {
   M21_OUTBOX_EVENTS,
@@ -1421,6 +1426,7 @@ export function wireModuleSeams(
   wireM9Tenancy();
   wireM10Tenancy();
   wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
+  wireM20Tenancy(); // F-111 (#249) — allowlist the cron job id so the SOS SLA watchdog may enter withPlatformContext
   registerPlatformJob(M11_PLATFORM_JOB_ID);
   // F-071/#174 — allowlist M37's cron job id so ipu.rn-coverage-watchdog may enter withPlatformContext.
   // Without the watchdog nothing ever wrote `ipu_rn_coverage_window`, and the four write paths that read
@@ -4666,6 +4672,45 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     app.log.info(
       { queues: m9Workers.length },
       "M9 §4.8 BullMQ compliance-scan crons constructed",
+    );
+
+    // ── M20 §4.8 `m20.sos-sla-watchdog.cron` (F-111, #249 — the M9 worker-runner shape) ─────────────────
+    // `decideSosWatchdog` (lifecycle/sos-escalator.ts) shipped with M20-T03 and had no production caller
+    // anywhere: no file under 20-field-safety matched *cron*/*worker*/*job*, so an unacknowledged SOS
+    // alert sat in `acknowledging` (or any later tier) forever. See jobs/cron-workers.ts's own header for
+    // why the tier-3 -> emergency_terminus rung is deliberately refused rather than completed (the same
+    // choice consumers/m36-delivery-failed.ts already made for the identical edge — no caller anywhere in
+    // this codebase implements the terminus's dial/PSAP/page effects).
+    const m20ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M20_PLATFORM_JOB_ID,
+      reason: "M20 §4.8 SOS SLA watchdog cron fan-out (active-org enumeration)",
+    });
+    const m20WorkerDeps = buildM20WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m20OutboxPublisher,
+      policy: createSafetyPolicyProvider(buildDrizzleSafetySeamStore(dbHandle.db)),
+      activeOrgs: m20ActiveOrgs,
+    });
+
+    const m20Workers = registerM20CronWorkers(m20WorkerDeps);
+    attachDlqAlertsToAll(m20Workers, "m20");
+    app.addHook("onClose", async () => {
+      await Promise.all(m20Workers.map((w) => w.close()));
+    });
+    try {
+      const m20ScheduleQueues = await scheduleM20Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m20ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M20 cron-schedule registration failed");
+    }
+    app.log.info(
+      { queues: m20Workers.length },
+      "M20 §4.8 SOS SLA watchdog cron constructed",
     );
 
     // ── M10 §4.8 HOPE crons (TASK-040D — the M25 worker-runner shape) ────────────────────────────────────

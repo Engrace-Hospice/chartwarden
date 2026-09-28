@@ -128,6 +128,24 @@ export * from "./permission-keys";
 export * from "./routes/index";
 export * from "./routes/mount";
 export * from "./seams";
+// F-111 (#249) — the §4.8 `m20.sos-sla-watchdog.cron` LIVE BullMQ Worker/Queue construction (the
+// M9/M25/M7 precedent) + the platform-tenancy registration its active-org fan-out needs.
+export {
+  M20_DLQ,
+  M20_JOB_SCHEDULES,
+  M20_QUEUES,
+  M20_QUEUE_PARAMS,
+  M20_SOS_WATCHDOG_JOB_NAME,
+} from "./jobs/index";
+export {
+  type ActiveOrgListPort as M20ActiveOrgListPort,
+  type M20WorkerDeps,
+  buildM20WorkerDeps,
+  registerM20CronWorkers,
+  runSosSlaWatchdogCron,
+  scheduleM20Jobs,
+} from "./jobs/cron-workers";
+export { M20_PLATFORM_JOB_ID, wireM20Tenancy } from "./wiring";
 export {
   type M20RegisteredAbacPredicate,
   type SafetyAbacDeps,
