@@ -1,6 +1,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from "@wardenx/types";
+import { isCmsSkipBlankOption } from "./hope-spec-registry";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { deriveHopeWorkflowControlAnswers } from "./hope-record-initializer";
 import {
@@ -288,7 +289,7 @@ export function normalizeHopeAnswerValue(input: {
     if (typeof inputValue !== "string") {
       throw new HopeInvalidAnswerValueError(item.itemCode, "text HOPE values must be strings");
     }
-    if (inputValue === "^") {
+    if (inputValue === "^" && isCmsSkipBlankOption(options)) {
       throw new HopeInvalidAnswerValueError(
         item.itemCode,
         "CMS ^ is represented as skipped + null, not as a normal answer value",
@@ -306,7 +307,7 @@ export function normalizeHopeAnswerValue(input: {
     if (typeof inputValue !== "string") {
       throw new HopeInvalidAnswerValueError(item.itemCode, "coded HOPE values must be strings");
     }
-    if (inputValue === "^") {
+    if (inputValue === "^" && isCmsSkipBlankOption(options)) {
       throw new HopeInvalidAnswerValueError(
         item.itemCode,
         "CMS ^ is represented as skipped + null, not as a normal answer value",

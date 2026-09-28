@@ -65,26 +65,26 @@
 - Election Statement we need to register who uplaoded the document - Ok
 - An RN should have the possibility to manage a patient HOPE and Care Plan, create an encounter - Ok
 - Erreur 404 sur le rôle nurse (RN) - Ok
-
-- Add a calendar so that the nurse can see all the encouters, HUV1, HOPE, CTI, F2F, MSW visits,...
-So when there is something regarding a patient, everybody can see it
-- Review and Fix the error when signing a care plan
-- Completed Admission in the HOPE admission after signing, the message should show the name of the user who signed
-- She is also the one assigning the care team in the Care Team & Assignments tab
+- For multiple choices questions, we can choose one or many answers then leave the rest blank (the backend should not block it anymore)  - Ok
+- Section I: Other Conditions it's better to have two checkboxew than the select options - Ok
+- Section J & M: Remove the visual O and 1 - Ok
+- A verbal order doesn't need to be linked to an order - Ok
+- WHen the user click on "+ New order", give him two options "Order" or "Verbal order" - Ok
 - Remove the verbal order Tab and add a button in the Order tab called Verbal order
-Create a verbal order: physician communication, created by, created at, check box "read back and verified", effective date, and the order, then send it for sigature
-ORG_WIDE_SCOPE_ROLES
-- Race (Select all that apply): Remove the word "Race" in front of the actual races
-- For multiple choices questions, we can choose one or many answers then leave the rest blank (the backend should not block it anymore)
-- Section I: Other Conditions it's better to have two checkboxew than the select options
-- Section J & M: Remove the visual O and 1
-- A verbal order doesn't need to be linked to an order
-- WHen the user click on "+ New order", give him two options "Order" or "Verbal order"
-- In visit in encounters, check why the backend send an empty array for the care plan (For the test, the patient Phil John has an active problem)
+Create a verbal order: physician communication, created by, created at, check box "read back and verified", effective date, and the order, then send it for sigature - oK
+- Race (Select all that apply): Remove the word "Race" in front of the actual races - Ok
+- Completed Admission in the HOPE admission after signing, the message should show the name of the user who signed - Ok
+- In visit in encounters, check why the backend send an empty array for the care plan (For the test, the patient Phil John has an active problem) - Ok
+- When the HOPE in Completed, the section "Review" says "Not started". Check why and fix - Ok
+- When a patient is converted in the referral intake, it shouldn't be there anymore - Ok
+- Give the possibility to modify all Referral Informations even if it's already created - Ok
+- Review and Fix the error when signing a care plan - Ok
+
+
+- RN is also the one assigning the care team in the Care Team & Assignments tab
 - Work on assessment module (in the patient and globaly) in visit's tab
-- When the HOPE in Completed, the section "Review" says "Not started". Check why and fix
-- When a patient is converted in the referral intake, it shouldn't be there anymore
-- Give the possibility to modify all Referral Informations even if it's already created
 - RN permission in admission & care plan modules
 - Show the notice of right in the "Election & Certification" tab as view.
 - Apart from passkeys, the user can sign using a code
+- Add a calendar so that the nurse can see all the encouters, HUV1, HOPE, CTI, F2F, MSW visits,...
+So when there is something regarding a patient, everybody can see it

@@ -601,6 +601,7 @@ export interface AdmissionRouteService {
       patientResolutionStatus?: string;
       priority?: string;
       assigned?: "mine" | "unassigned";
+      includeConverted?: boolean;
       q?: string;
       cursor?: string;
       limit?: number;
@@ -1453,6 +1454,7 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       let rows = listOfKind(organizationId, "referral");
       const status = query.status ?? query.state;
       if (status) rows = rows.filter((r) => r.state === status);
+      else if (!query.includeConverted) rows = rows.filter((r) => r.state !== "converted");
       if (query.source) rows = rows.filter((r) => r.source === query.source);
       if (query.patientResolutionStatus)
         rows = rows.filter(
@@ -1485,6 +1487,10 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
     async updateReferral(organizationId, id, input, ifVersion) {
       void input;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
+      if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
+      if (!["received", "under_review", "pending_information"].includes(rec.state)) {
+        throw new InvalidReferralStateError(id, rec.state, "update referral information");
+      }
       return transition(rec, rec.state, ifVersion);
     },
     async triageReferral(organizationId, id, outcome, ifVersion) {
@@ -1657,6 +1663,9 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       void actorUserId;
       const rec = get(organizationId, id, "referral") ?? notFound(id);
       if (rec.version !== ifVersion) throw new VersionMismatchError(id, rec.version, ifVersion);
+      if (!["received", "under_review", "pending_information"].includes(rec.state)) {
+        throw new InvalidReferralStateError(id, rec.state, "update referral priority");
+      }
       rec.priority = priority;
       rec.version += 1;
       return summary(rec);

@@ -133,6 +133,7 @@ export type WriteResult<T> =
       readonly status: number | null;
       readonly code: string | null;
       readonly message: string;
+      readonly details: unknown;
     };
 
 /**
@@ -147,7 +148,7 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
   const httpStatus = typeof status === "number" ? status : null;
   const err =
     body && typeof body === "object" && "error" in body
-      ? (body as { error?: { code?: unknown; message?: unknown } }).error
+      ? (body as { error?: { code?: unknown; message?: unknown; details?: unknown } }).error
       : undefined;
   const detail = typeof err?.message === "string" ? err.message : null;
   const code = typeof err?.code === "string" ? err.code : null;
@@ -168,7 +169,7 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
                 : httpStatus === 422
                   ? (detail ?? "The server rejected the details supplied.")
                   : (detail ?? "The action could not be completed.");
-  return { ok: false, status: httpStatus, code, message };
+  return { ok: false, status: httpStatus, code, message, details: err?.details };
 }
 
 const ok = <T>(value: T): WriteResult<T> => ({ ok: true, value });

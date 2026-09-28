@@ -456,6 +456,7 @@ export function EncounterRead(): JSX.Element {
           params: {
             query: {
               patientId: data.patientId,
+              admissionId: data.admissionId,
               encounterType: data.encounterType,
               discipline: data.discipline,
             },
@@ -2569,6 +2570,7 @@ function CarePlanPicker({
     carePlan.interventions.length;
 
   if (totalItems === 0) {
+    const restricted = carePlan.redacted;
     return (
       <div style={carePlanEmptyState}>
         <div style={carePlanEmptyIcon}>
@@ -2576,11 +2578,14 @@ function CarePlanPicker({
         </div>
 
         <div style={carePlanEmptyContent}>
-          <strong style={carePlanEmptyTitle}>No active Care Plan items</strong>
+          <strong style={carePlanEmptyTitle}>
+            {restricted ? "Care Plan items restricted" : "No active Care Plan items"}
+          </strong>
 
           <span style={carePlanEmptyDescription}>
-            The patient's Care Plan exists, but there are no active problems,
-            goals, or interventions available to link to this visit.
+            {restricted
+              ? "An active Care Plan exists, but its linkable items are restricted by privacy or consent settings. Review the Care Plan classification and the patient's applicable consent."
+              : "The patient's Care Plan exists, but there are no active problems, goals, or interventions available to link to this visit."}
           </span>
 
           <button type="button" onClick={onOpen} style={secondaryBtn}>

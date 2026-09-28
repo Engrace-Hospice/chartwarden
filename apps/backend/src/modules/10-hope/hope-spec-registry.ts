@@ -43,6 +43,15 @@ export class HopeAssessmentSpecNotInitializedError extends HopeSpecRegistryError
 
 export type HopeIsc = "HA" | "HUV" | "HD" | "XX";
 
+/** CMS uses caret for either a user-selectable blank or an applicability-owned skip. */
+export function isCmsSkipBlankOption(
+  options: readonly Pick<typeof schema.hopeSpecItemOptions.$inferSelect, "valueCode" | "label">[],
+): boolean {
+  return options.some(
+    (option) => option.valueCode === "^" && /skip\s*pattern/i.test(option.label),
+  );
+}
+
 export interface HopeSpecRegistry {
   requireVersion(versionId: string): Promise<typeof schema.hopeSpecVersions.$inferSelect>;
   resolveVersionForTargetDate(

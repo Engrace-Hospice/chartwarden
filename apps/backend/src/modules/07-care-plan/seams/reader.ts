@@ -34,8 +34,9 @@ export function createCarePlanReader(
       patientId: PatientId,
       _encounterType: string,
       discipline: InterventionDiscipline,
+      admissionId?: string,
     ): Promise<RelevantCarePlanElements | null> {
-      const record = await store.activeCarePlanElements(patientId);
+      const record = await store.activeCarePlanElements(patientId, admissionId);
       if (record === null) return null;
 
       // D7: when not entitled, SUD problems (and their goals/interventions) never enter the projection.

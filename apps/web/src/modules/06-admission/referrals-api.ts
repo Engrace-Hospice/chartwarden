@@ -89,6 +89,7 @@ export interface ReferralListQuery {
   patientResolutionStatus?: string;
   priority?: string;
   assigned?: "mine" | "unassigned";
+  includeConverted?: boolean;
   q?: string;
   cursor?: string;
   limit?: number;

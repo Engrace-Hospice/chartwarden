@@ -1326,7 +1326,10 @@ export function createDbEncounterRouteService(
           vocabVersion: VOCAB_VERSION,
           sections,
           layer1Preview: assembleSelections(r.encounterType, r.discipline, r.serviceDate, sections),
-          version: row ? Number(row.version) : 0,
+          // The If-Match contract protects the encounter aggregate, not its HearthNote child row.
+          // `hearthnote_selection.version` remains internal bookkeeping; returning it here causes a
+          // false 412 whenever the child and encounter counters differ.
+          version: Number(r.version),
         };
       });
     },
@@ -1518,6 +1521,7 @@ export function createDbEncounterRouteService(
           r.patientId as PatientId,
           r.encounterType,
           r.discipline as never,
+          r.admissionId,
         );
         if (!elements || elements.patientId !== r.patientId) {
           throw new ValidationError(

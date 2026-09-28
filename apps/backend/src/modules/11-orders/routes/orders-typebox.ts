@@ -20,16 +20,12 @@ import type {
   VerbalPolicyView as ServiceVerbalPolicyView,
 } from "./service";
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 if (!FormatRegistry.Has("uuid")) {
   FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
 }
 if (!FormatRegistry.Has("date-time")) {
-  FormatRegistry.Set(
-    "date-time",
-    (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)),
-  );
+  FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
 }
 // `recertification.periodEndDate` (packages/orders/src/kinds.ts) is `format: "date"` and this file never
 // registered it — every other format M11's own kinds use was covered, so nothing surfaced it until F-120's
@@ -39,17 +35,12 @@ if (!FormatRegistry.Has("date")) {
   FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
 }
 
-const lit = <T extends string>(xs: readonly T[]) =>
-  Type.Union(xs.map((x) => Type.Literal(x)));
+const lit = <T extends string>(xs: readonly T[]) => Type.Union(xs.map((x) => Type.Literal(x)));
 
 /** The canonical §2.1 order-kind union, mirrored from @wardenx/types `ORDER_KINDS` (single source). */
 const ORDER_KIND = lit(ORDER_KINDS);
 /** The §2.1 dispatch priority. */
-const PRIORITY = Type.Union([
-  Type.Literal("routine"),
-  Type.Literal("stat"),
-  Type.Literal("asap"),
-]);
+const PRIORITY = Type.Union([Type.Literal("routine"), Type.Literal("stat"), Type.Literal("asap")]);
 /** The §4.2 cosigner-role vocabulary (RN case manager / clinical supervisor / medical director). */
 const COSIGNER_ROLE = Type.Union([
   Type.Literal("rn_case_manager"),
@@ -155,6 +146,11 @@ export const RecordVerbalRequest = Type.Object({
   orderingPhysicianMdmId: Type.String({
     format: "uuid",
   }),
+});
+
+export const CreateVerbalOrderRequest = Type.Object({
+  order: CreateOrderRequest,
+  verbal: RecordVerbalRequest,
 });
 
 export const CosignRequest = Type.Object({
@@ -263,12 +259,7 @@ const ORDER_DISCONTINUATION_REASON = lit([
   "corrected_replacement",
   "expired_verbal",
 ] as const);
-const STANDING_ORDER_STATUS = lit([
-  "active",
-  "paused",
-  "expired",
-  "discontinued",
-] as const);
+const STANDING_ORDER_STATUS = lit(["active", "paused", "expired", "discontinued"] as const);
 const nullableString = () => Type.Union([Type.String(), Type.Null()]);
 
 /** Route 2 / mutation responses — the §2.2 D2 order view projection (never the raw Drizzle row). */
@@ -284,18 +275,11 @@ export const OrderViewResponseSchema = Type.Object({
   drafterDiscipline: Type.String(),
   orderingPhysicianMdmId: Type.String(),
   cosignRequired: Type.Boolean(),
-  cosignStatus: Type.Union([
-    Type.Literal("pending"),
-    Type.Literal("attached"),
-    Type.Null(),
-  ]),
+  cosignStatus: Type.Union([Type.Literal("pending"), Type.Literal("attached"), Type.Null()]),
   transmissionStatus: Type.String(),
   resultsStatus: Type.String(),
   verbalDeadlineAt: nullableString(),
-  discontinuationReason: Type.Union([
-    ORDER_DISCONTINUATION_REASON,
-    Type.Null(),
-  ]),
+  discontinuationReason: Type.Union([ORDER_DISCONTINUATION_REASON, Type.Null()]),
   replacesOrderId: nullableString(),
   triggeringAssessmentId: nullableString(),
   triggeringHopeAssessmentId: nullableString(),
@@ -311,6 +295,18 @@ export const OrderDetailResponseSchema = Type.Intersect([
   Type.Object({
     kindVersion: Type.String(),
     data: Type.Unknown(),
+    verbalOrder: Type.Union([
+      Type.Object({
+        status: Type.String(),
+        receivedAt: Type.String(),
+        effectiveAt: Type.String(),
+        deadlineAt: Type.String(),
+        signedAt: nullableString(),
+        readBackVerified: Type.Boolean(),
+        attestation: Type.String(),
+      }),
+      Type.Null(),
+    ]),
     requirements: Type.Array(
       Type.Object({
         code: Type.Union([
@@ -375,23 +371,15 @@ export const StandingOrderListResponseSchema = Type.Object({
 /** Route 17 — the derived §D7 suggestion banner. */
 export const SuggestionsResponseSchema = Type.Object({
   patientId: Type.String(),
-  suggestions: Type.Array(
-    Type.Object({ kind: ORDER_KIND, reason: Type.String() }),
-  ),
+  suggestions: Type.Array(Type.Object({ kind: ORDER_KIND, reason: Type.String() })),
 });
 /** Route 25 — the PRN manual-spawn result (the newly-minted order id). */
 export const SpawnResponseSchema = Type.Object({ orderId: Type.String() });
 
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
 type Conforms<T extends V, V> = T;
-type _OrderView = Conforms<
-  Static<typeof OrderViewResponseSchema>,
-  ServiceOrderView
->;
-type _OrderDetailView = Conforms<
-  Static<typeof OrderDetailResponseSchema>,
-  ServiceOrderDetailView
->;
+type _OrderView = Conforms<Static<typeof OrderViewResponseSchema>, ServiceOrderView>;
+type _OrderDetailView = Conforms<Static<typeof OrderDetailResponseSchema>, ServiceOrderDetailView>;
 type _StandingOrderView = Conforms<
   Static<typeof StandingOrderViewResponseSchema>,
   ServiceStandingOrderView
@@ -415,19 +403,14 @@ type _Suggestions = Conforms<
     readonly suggestions: ReadonlyArray<{ kind: OrderKind; reason: string }>;
   }
 >;
-type _Spawn = Conforms<
-  Static<typeof SpawnResponseSchema>,
-  { readonly orderId: string }
->;
+type _Spawn = Conforms<Static<typeof SpawnResponseSchema>, { readonly orderId: string }>;
 
 /** Parse `raw` through `schema` → typed value, or throw M1's VALIDATION_FAILED envelope. */
 export function parse<T extends TSchema>(schema: T, raw: unknown): Static<T> {
   const converted = Value.Convert(schema, raw ?? {});
   if (!Value.Check(schema, converted)) {
     const first = [...Value.Errors(schema, converted)][0];
-    const field = first
-      ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)"
-      : "(root)";
+    const field = first ? first.path.replace(/^\//, "").replace(/\//g, ".") || "(root)" : "(root)";
     throw new ValidationError("request validation failed", [
       { field, code: "INVALID", message: first?.message ?? "invalid request" },
     ]);
