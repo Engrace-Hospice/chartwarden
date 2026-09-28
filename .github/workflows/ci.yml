@@ -311,6 +311,9 @@ jobs:
           # org-less event reaching a real consumer, its org-less §4.11 receipt, and M40's canonical
           # write path (which had no SECURITY DEFINER function at all until migration 0202).
           - { name: "M1 platform outbox delivery", scripts: "test:m1:platform-outbox:live" }
+          # F-156 (#248) — the SECOND live `platformConsumers` binding (GAP-099): M33's replica-lag
+          # probe flips M1's shared, NON_ORG_SCOPED `system_status` row.
+          - { name: "M1 lag-probe system status", scripts: "test:m1:lag-probe-status:live" }
           # F-020 (#49): the ORG-scoped relay's own live proof — delivery, retry/backoff, the `failed`
           # DLQ terminal, deferred routing, record-only completion and the retention purge, driven as
           # NOBYPASSRLS `wardenx_app`. It had existed since TASK-006 with no package.json script and no

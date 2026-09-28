@@ -1931,6 +1931,72 @@ RLS-enforced disposable Postgres, and the new live suite (`m13-admission-dischar
 (`m13:reconciliation-triggers` 5/5, `m16:discharge-death-secondary` 5/5, `m23:noe-draft` 8/8,
 `m23:notr-draft` 8/8, `m6:discharge-cascade` 6/6). Leaving #248 open — 169 pairs across 24 modules remain.
 
+**F-155's own M13 build shipped with a real wiring gap this round's re-verification caught before it
+could ship a second time, and M1's `system_status` group turned out to be a much deeper misread than "not
+wired yet" (F-156, #248).** Re-checking F-155's own commit before starting new work — a habit this pass
+adopted specifically because the "verify to avoid mistakes" instruction applies to this agent's own prior
+output, not only to forked subagents' claims — found `buildM13AdmissionDischargedCascadeConsumer` was
+built, unit-proven live, and passed `check:boot:platform`/`arch:outbox-bindings` clean, but was **never
+added to `apps/backend/src/index.ts`'s `consumers` array**. Both of those green gates are proxies, not the
+real thing: `check-outbox-bindings.ts` discovers a "live binding" by statically importing every
+`consumerModule:`/`eventTypes:` source file and calling the exported `build…Consumer` factory with an
+absorbing stub — it never reads the composition root — and `check:boot:platform` only proves the server
+boots without throwing, not that every catalogued relationship is actually satisfied at runtime. A
+consumer built, tested, and passing every static gate can still be completely unreachable in production if
+the one line wiring it into the real dispatcher is missing — invisible to every check this arc has run
+except a direct `grep` for the factory name in `index.ts`, which is now a standing step in this arc's own
+verification checklist. Fixed by adding the import + construction call (mirroring
+`buildM13ReconciliationTriggerConsumer`'s own `admissionSchedulingContextForOrg` template immediately
+above it). A repo-wide sweep for every other `export function build*Consumer` not referenced by name in
+`index.ts` found two more candidates, both false positives on inspection rather than the same bug twice:
+`buildM30BillingConsumer` is a seam adapter (`QualityBillingConsumer`, called internally by
+`consumed-seam-adapters.ts`, never an outbox `handle(event)` shape) and `buildSosDeliveryFailureConsumer`
+is wired through M20's own aggregating `buildFieldSafetyConsumers()`, spread into the composition root's
+array rather than named directly — both correctly reachable, just not by a naive grep. **The M1
+`system_status` group's F-141 characterization — "a real, built mechanism that only lacks its automatic-
+consumer wiring" — was true about the mechanism EXISTING and false about it being LIVE.**
+`SystemStatusReader`'s interface (`bootstrap/routes/system.ts`) is ORG-scoped by signature
+(`upsert(orgId, component)`); the real Drizzle `system_status` table
+(`packages/db/src/schema/system-status.ts`) has no `organization_id` column at all — genuinely
+platform-global, its own header comment says so — and no Drizzle-backed reader implementation exists
+anywhere in the repository. The composition root never overrides the boot default, so every deployment has
+always run on `createInMemorySystemStatusReader()`: a per-process `Map` that resets on every restart and
+cannot be shared across horizontally-scaled instances. `POST /admin/system/status` has never once
+persisted a status flip to the real table, in any environment — a defect this pass found by checking the
+mechanism rather than trusting the cross-module agreement on its existence, the F-119/F-136 shape (three
+producing modules independently repeating the same claim is stronger evidence than one, but still not a
+substitute for reading the code). **2 of 6 built anyway, on a NEW write path that bypasses the broken
+reader entirely.** `m33.lag.exceeded`/`.recovered` have a real, already-existing emission
+(`m33-jobs.ts`'s `lagProbe.outbox`, `organizationId: null` — the documented GAP-099 platform-singleton
+pattern), and the dispatcher's separate `pollPlatform()`/`platformConsumers` binding path was already
+proven live by M40's NPPES appliers (`buildM29NppesPlatformConsumers`) — this pass's own first-draft file
+header claimed to be the FIRST live `platformConsumers` entry, caught and corrected by reading
+`apps/backend/src/index.ts` directly before trusting the draft comment. `buildM1LagProbeStatusConsumer`
+(`bootstrap/outbox-consumers/m33-lag-probe.ts`) writes the real `system_status` table directly via
+Drizzle — no RLS on the table, so no `withOrgContext` needed — flipping the shared `database_replication`
+component `degraded` on `.exceeded` and `operational` on `.recovered`; idempotency needs no version check
+beyond `ON CONFLICT DO UPDATE`, since the platform receipt table already dedupes a redelivery of the same
+event before `handle()` is ever called. **4 of 6 stay genuinely blocked, and two of them are a sharper
+finding than "not wired" — the event is never published to the outbox at all.**
+`m23.mac_portal.unavailable`/`.recovered`: `runMacPortalHealth` (`m23-jobs.ts`) calls only
+`alerts.dispatch()` (M36's `WorkerAlertPort` seam), never `outbox.publish()` — and that alert path is
+itself unbound at the composition root (`deps.alerts` is never passed to `buildM23WorkerDeps`, so every
+dispatch call throws `unboundWorkerPort`), so binding an M1 consumer to either event name would wire a
+line to a house that was never built, the F-150 `m18.evv.visit_verified` shape a module over.
+`m24.medicaid_state_channel.unavailable`/`.recovered` have no emit site anywhere in the codebase at all —
+a from-scratch state-channel health cron, mirroring M23's own (itself broken) pattern, not attempted here.
+Net: **169 → 167** (2 bound, 0 dropped, 0 added; module count unchanged at 24). Verified: `bun run
+build`/`typecheck` clean (0 errors), full non-live suite 654 files / 9592 tests green (two pinned-array
+assertions caught and fixed mid-pass — `check-live-suite-coverage.test.ts`/`fitness-gates.test.ts` both
+failed on the first `arch:fitness` run for a missing CI matrix row on the new M1 live suite, fixed before
+re-running), `arch:fitness` 38/38 (`arch:outbox-bindings` confirms 167 pairs, down from 169, and 78 live
+bindings now covering 90 catalogued events), a clean `check:boot:platform` run against a freshly migrated,
+RLS-enforced disposable Postgres (with the M13 wiring fix included, proving the discharge cascade is now
+actually reachable), and both new live suites run individually (`m13:admission-discharged-cascade` 5/5,
+`m1:lag-probe-status` 3/3) alongside two sibling live suites re-run for regression on the
+`platformConsumers` array change (`m1:platform-outbox` 11/11, `m1:outbox-dispatcher` 8/8). Leaving #248
+open — 167 pairs across 24 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

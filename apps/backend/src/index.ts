@@ -76,6 +76,7 @@ import {
   registerPartitionMetrics,
 } from "./bootstrap/metrics";
 import { wireOrganizationSettingsRegistry } from "./bootstrap/organization-settings-persister";
+import { buildM1LagProbeStatusConsumer } from "./bootstrap/outbox-consumers/m33-lag-probe";
 import {
   M1_OUTBOX_DISPATCHER_JOB_ID,
   type OutboxDispatcher,
@@ -301,6 +302,7 @@ import {
 } from "./modules/12-dosespot/index";
 import {
   M13_OUTBOX_EVENTS,
+  buildM13AdmissionDischargedCascadeConsumer,
   buildM13DocumentBackrefConsumer,
   buildM13ReconciliationTriggerConsumer,
   createDrizzleEmarEraseStore,
@@ -5395,6 +5397,21 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 : null;
             },
           }),
+          // F-155 (#248) — the §2.5/§2.7 D14 admission-discharge cascade: cancels future pending
+          // scheduled doses, flags active comfort-kit deployments for return. Same org-explicit M6
+          // seam template as the reconciliation-trigger consumer just above.
+          buildM13AdmissionDischargedCascadeConsumer({
+            db: dbHandle.db,
+            outbox: m13OutboxPublisher,
+            resolveAdmission: async (organizationId, admissionId) => {
+              const ctx = await admissionSchedulingContextForOrg(
+                dbHandle.db,
+                organizationId,
+                admissionId,
+              );
+              return ctx ? { patientId: ctx.patientId } : null;
+            },
+          }),
           buildM21DocumentBackrefConsumer({ db: dbHandle.db }),
           // F-120 (#248) — the OTHER two of the three M11 cascade deciders `consumers/m11-orders.ts` has
           // carried since M21-T04 ("the live outbox binding … land with the §4.6 workers alongside the
@@ -5581,26 +5598,32 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         // `m29.nppes.provider_synced` into a queue with no reachable consumer: every row sat pending on
         // the 30-minute deferred clock forever while M40's canonical went stale. These two appliers were
         // written and unit-tested in M40-T09 and have been waiting on the delivery path ever since.
-        platformConsumers: buildM29NppesPlatformConsumers({
-          db: dbHandle.db,
-          outbox: m40OutboxPublisher,
-          // The live M36 seam — the §4.7.2 per-tenant "your preferred physician was deactivated" alert.
-          alerts: getSeam("AlertEmitter") as {
-            emit(
-              organizationId: string,
-              input: {
-                eventType: string;
-                payload: Record<string, unknown>;
-                severity: string;
-                correlationId: string;
-              },
-            ): Promise<unknown>;
-          },
-          // The same audited enumerator the relay polls with — the deactivation fan-out asks each active
-          // org's overlay whether it marked this provider preferred (one RLS-scoped read per org; there
-          // is no legitimate single statement that spans tenants).
-          orgs: outboxRelayOrgs,
-        }),
+        platformConsumers: [
+          ...buildM29NppesPlatformConsumers({
+            db: dbHandle.db,
+            outbox: m40OutboxPublisher,
+            // The live M36 seam — the §4.7.2 per-tenant "your preferred physician was deactivated" alert.
+            alerts: getSeam("AlertEmitter") as {
+              emit(
+                organizationId: string,
+                input: {
+                  eventType: string;
+                  payload: Record<string, unknown>;
+                  severity: string;
+                  correlationId: string;
+                },
+              ): Promise<unknown>;
+            },
+            // The same audited enumerator the relay polls with — the deactivation fan-out asks each active
+            // org's overlay whether it marked this provider preferred (one RLS-scoped read per org; there
+            // is no legitimate single statement that spans tenants).
+            orgs: outboxRelayOrgs,
+          }),
+          // F-156 (#248) — M33's §4.10 replica-lag probe (`m33.lag.exceeded`/`.recovered`, emitted with
+          // `organizationId: null` since GAP-099 landed) flips M1's shared, NON_ORG_SCOPED `system_status`
+          // row. `system_status` carries no RLS, so this needs no org envelope.
+          buildM1LagProbeStatusConsumer({ db: dbHandle.db }),
+        ],
         eventCatalog: bootOutboxCatalog,
         options: {
           log: (m) => app.log.warn(m),
