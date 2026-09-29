@@ -576,4 +576,20 @@ describe.skipIf(!DB_URL)("F-184 — recovery of lab orders that cannot reach the
     expect(row.transmission_failure_reason).toBeNull();
     expect(await count(id, "m11.order.transmission_status_changed")).toBe(before);
   });
+
+  it("a refusal applies ONLY to a `pending` order — not to `pending_retry` or `not_required`, which the terminal-state check alone would let through", async () => {
+    for (const status of ["pending_retry", "not_required"]) {
+      const id = await signedLab();
+      await admin.query("UPDATE order_record SET transmission_status=$2 WHERE id=$1", [id, status]);
+      const before = await count(id, "m11.order.transmission_status_changed");
+      await applier.handle({
+        eventType: "m29.lab_order.dispatch_refused",
+        organizationId: ORG_A,
+        payload: { orderId: id, organizationId: ORG_A, feedId: null, refusalId: randomUUID(), reason: "no_active_feed" },
+      });
+      const row = await orderRow(id);
+      expect(row.transmission_status, `status=${status}`).toBe(status);
+      expect(await count(id, "m11.order.transmission_status_changed"), `status=${status}`).toBe(before);
+    }
+  });
 });
