@@ -85,6 +85,7 @@ import {
   decideRetry,
   inFlightLeaseMsFor,
 } from "./retry-policy";
+import { ormDispatchExistsForOrder, ormOrderDispatchLockKey } from "./order-dispatch-dedupe";
 import { resolveOutboundBaaResult } from "./resolve-baa";
 import type { M29WriteOutboxPort } from "../routes/store-drizzle";
 
@@ -639,6 +640,18 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
   const claimed = await withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (scoped): Promise<TransmitContext | null> => {
     const tx = scoped as unknown as DbClient;
     const now = deps.now();
+
+    // F-180 — ORDER-level dedupe, BEFORE feed resolution. The §2.6 key below hashes the feed the resolver picks
+    // NOW, so a redelivery after the routing changed (a relink, a swapped/suspended feed) resolves another feed,
+    // computes another key and would send the same order to a second endpoint. One ORM per ORDER: serialize every
+    // delivery for this order across ALL feeds, and if any outbound row exists for it (any feed, any status — a
+    // crashed `in_flight`, a `dlq`, a sent one) send nothing; the reclaim sweep is the only path that re-sends.
+    // Checking first also means a redelivery never trips `OutboundFeedIdentityIncompleteError` over a feed this
+    // order never used.
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${ormOrderDispatchLockKey(organizationId, payload.orderId)}, 0))`,
+    );
+    if (await ormDispatchExistsForOrder(tx, organizationId, payload.orderId)) return null;
 
     const feedResult = await deps.feedResolver.resolveForOrg(
       tx,
