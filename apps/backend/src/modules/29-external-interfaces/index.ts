@@ -433,7 +433,6 @@ export {
 } from "./outbound/queues";
 export {
   M29_OUTBOUND_DISPATCH_CONSUMER,
-  OutboundFeedIdentityIncompleteError,
   type OutboundAlertPort,
   type OutboundDispatchWorkerDeps,
   type OutboundRetrySweepDeps,

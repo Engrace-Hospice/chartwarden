@@ -36,12 +36,40 @@ export interface LabOrderTransmissionFailedPayload {
   readonly attemptCount: number;
 }
 
+/**
+ * F-184 — why the worker could not even PERSIST a dispatch row for an order. Every one is an operator-fixable
+ * configuration state (activate / link / complete a feed, renew the BAA), so the order must not sit `pending`
+ * forever: M11's applier flips it to `failed` with `dispatch_refused:<reason>`, and F-182's resend re-runs the
+ * producer once the operator has fixed it. NO outbound row exists for any of these, so a resend cannot duplicate.
+ */
+export type LabOrderDispatchRefusalReason =
+  | "no_active_feed"
+  | "ambiguous_feed"
+  | "no_feed_for_destination"
+  | "feed_identity_incomplete"
+  | "baa_inactive";
+
+/** `m29.lab_order.dispatch_refused` — the worker wrote NO row for this order; M11 consumes (F-184). */
+export interface LabOrderDispatchRefusedPayload {
+  readonly orderId: string;
+  readonly organizationId: string;
+  /** The feed the refusal concerns when one was resolved (identity-incomplete, BAA); null when none was. */
+  readonly feedId: string | null;
+  /** Unique per refusal — the applier's `sourceM29EventId` (there is no outbound row id to cite). */
+  readonly refusalId: string;
+  readonly reason: LabOrderDispatchRefusalReason;
+}
+
 /** The M11-facing outbound outbox events (§4.10). */
 export type OutboundOutboxEvent =
   | { readonly name: "m29.lab_order.transmitted"; readonly payload: LabOrderTransmittedPayload }
   | {
       readonly name: "m29.lab_order.transmission_failed";
       readonly payload: LabOrderTransmissionFailedPayload;
+    }
+  | {
+      readonly name: "m29.lab_order.dispatch_refused";
+      readonly payload: LabOrderDispatchRefusedPayload;
     };
 
 /** An M36 typed-alert intent (§4.9). M29 owns no delivery code — the T08 worker hands this to M36's engine. */

@@ -12107,6 +12107,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/{id}/recover-transmission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Attested recovery of a lab order that failed after its HL7 message was built (dlq_exhausted / application_reject): the operator attests the lab did NOT receive it (re-dispatch once) or DID (mark transmitted, send nothing) — 409 when not recoverable */
+        post: operations["postApiV1OrdersByIdRecovertransmission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/{id}/request-signature": {
         parameters: {
             query?: never;
@@ -52827,6 +52844,92 @@ export interface operations {
                         signedBy: string | null;
                         completedAt: string | null;
                         createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdRecovertransmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    attestation: "not_received_by_lab" | "received_by_lab";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        outcome: "redispatched" | "marked_transmitted" | "still_refused";
+                        refusalReason: string | null;
+                        order: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                            priority: "routine" | "stat" | "asap";
+                            version: number;
+                            drafterMembershipId: string;
+                            drafterDiscipline: string;
+                            orderingPhysicianMdmId: string;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            transmissionStatus: string;
+                            resultsStatus: string;
+                            verbalDeadlineAt: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                            replacesOrderId: string | null;
+                            triggeringAssessmentId: string | null;
+                            triggeringHopeAssessmentId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            completedAt: string | null;
+                            createdAt: string;
+                        } & {
+                            kindVersion: string;
+                            data: unknown;
+                            verbalOrder: {
+                                status: string;
+                                receivedAt: string;
+                                effectiveAt: string;
+                                deadlineAt: string;
+                                signedAt: string | null;
+                                readBackVerified: boolean;
+                                attestation: string;
+                            } | null;
+                            requirements: {
+                                code: "clinical_details" | "rn_cosignature" | "physician_signature" | "verbal_signature";
+                                label: string;
+                                status: "not_required" | "pending" | "satisfied";
+                                deadlineAt?: string;
+                            }[];
+                            allowedActions: {
+                                edit: boolean;
+                                request_signature: boolean;
+                                record_verbal: boolean;
+                                sign: boolean;
+                                cosign: boolean;
+                                complete: boolean;
+                                discontinue: boolean;
+                                correct: boolean;
+                            };
+                        };
                     };
                 };
             };

@@ -348,6 +348,12 @@ export interface OrmRequestedPayload {
   readonly priority: "R" | "S" | "A" | "T"; // ORC-7 / OBR-5
   readonly requestedAt: string; // signed_at as ISO
   readonly labOrderPayload: OrderHl7LabOrderPayload;
+  /**
+   * F-184 — set ONLY by the operator's attested re-dispatch (`recoverLabTransmission`, outcome
+   * `not_received_by_lab`): an id minted per attestation. It is the one sanctioned exception to M29's
+   * one-ORM-per-order guard (F-183) — see `dispatch-worker.ts`. Absent on every ordinary request.
+   */
+  readonly redispatchAttestationId?: string;
 }
 
 // ── §2.8 / §4.3 owned-seam read DTOs (read-only projections; never Drizzle rows) ──────────────────────

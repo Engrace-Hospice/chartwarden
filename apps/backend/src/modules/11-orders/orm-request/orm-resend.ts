@@ -35,6 +35,14 @@
 /** The prefix F-181's producer writes into `transmission_failure_reason`. */
 export const ORM_REFUSAL_PREFIX = "orm_refused:";
 
+/**
+ * F-184 — the prefix the `LabTransmissionApplier` writes when the M29 worker REFUSED to persist any outbound row
+ * (`m29.lab_order.dispatch_refused`: no/ambiguous/unlinked feed, incomplete MSH identity, lapsed BAA). Like an
+ * emit-time refusal, NOTHING was ever sent and NO outbound row exists for the order, so F-182's resend — which
+ * re-runs the producer and lets M29's guard see an order with no row — cannot duplicate it. Resendable.
+ */
+export const DISPATCH_REFUSED_PREFIX = "dispatch_refused:";
+
 /** Refusals whose fact lives in the immutable signed order — a resend cannot change them; correct the order. */
 export const ORM_REFUSALS_NEEDING_CORRECTED_ORDER: ReadonlySet<string> = new Set([
   "lab_test_codes_missing",
@@ -81,12 +89,18 @@ export function classifyOrmResend(order: OrmResendCandidate): OrmResendVerdict {
     };
   }
   const reason = order.transmissionFailureReason;
+  // F-184 — a worker refusal (`dispatch_refused:*`) wrote no outbound row either: resendable, and the cause
+  // (an inactive/unlinked feed, an incomplete MSH identity, a lapsed BAA) lives outside the order, so there is
+  // no SUD / immutable-order carve-out to apply — the producer re-runs its own gates on the resend.
+  if (reason !== null && reason.startsWith(DISPATCH_REFUSED_PREFIX)) {
+    return { ok: true, priorReason: reason };
+  }
   if (reason === null || !reason.startsWith(ORM_REFUSAL_PREFIX)) {
     return {
       ok: false,
       code: "not_an_orm_refusal",
       message:
-        "the failure did not come from the ORM request step (the message was built and sent) — a resend would create a duplicate outbound message",
+        "the failure did not come from the ORM request step (the message was built and sent) — a resend would create a duplicate outbound message; if the lab confirms it was NOT received, use the attested recovery",
     };
   }
   const refusal = reason.slice(ORM_REFUSAL_PREFIX.length);
@@ -103,6 +117,79 @@ export function classifyOrmResend(order: OrmResendCandidate): OrmResendVerdict {
       ok: false,
       code: "needs_corrected_order",
       message: `'${refusal}' comes from the signed order itself, which cannot change — issue a corrected order`,
+    };
+  }
+  return { ok: true, priorReason: reason };
+}
+
+// ── F-184 — ATTESTED RECOVERY of an M29-terminal order ──────────────────────────────────────────────────────────
+//
+// F-182's resend deliberately refuses an order that failed AFTER a message was built (`dlq_exhausted`,
+// `application_reject`, including F-183's "held, delivery unverified" reclaim, which surfaces as `dlq_exhausted`): the
+// lab MAY have received it, and re-emitting would order the test twice. Those orders were stranded with no way out.
+// This is the way out — but it needs a HUMAN to establish the one fact the system cannot: what the lab actually has.
+// The operator calls the lab and ATTESTS one of two outcomes, and the attestation is recorded in the order's
+// write-audit diff (who, when, what):
+//   `not_received_by_lab` — the lab has NO copy. The producer re-runs and M29 re-dispatches ONCE for this attestation
+//                           (the single sanctioned exception to F-183's one-ORM-per-order guard; see the worker).
+//   `received_by_lab`     — the lab HAS it. Nothing is sent; the order is marked `transmitted`.
+// An `application_reject` (`AR`) means the lab explicitly REFUSED the message, so "the lab received it" is not a
+// coherent outcome for it — only `not_received_by_lab` (i.e. re-dispatch after the cause was fixed) applies.
+
+/** The `transmission_failure_reason` prefix that carries the attestation into the order's write-audit diff. */
+export const RECOVERY_ATTESTATION_PREFIX = "recovery_attested:";
+
+export type RecoveryAttestation = "not_received_by_lab" | "received_by_lab";
+export const RECOVERY_ATTESTATIONS: readonly RecoveryAttestation[] = ["not_received_by_lab", "received_by_lab"];
+
+/** The M29-terminal failure reasons `LabTransmissionApplier` writes verbatim (no prefix). */
+export const RECOVERABLE_M29_FAILURE_REASONS: ReadonlySet<string> = new Set(["dlq_exhausted", "application_reject"]);
+
+export type TransmissionRecoveryVerdict =
+  | { readonly ok: true; readonly priorReason: string }
+  | {
+      readonly ok: false;
+      readonly code:
+        | "not_a_lab_order"
+        | "order_not_active"
+        | "not_failed"
+        | "not_an_m29_terminal_failure"
+        | "lab_rejected_order";
+      readonly message: string;
+    };
+
+/** PURE. May an operator's attestation act on this order's current failure? */
+export function classifyTransmissionRecovery(
+  order: OrmResendCandidate,
+  attestation: RecoveryAttestation,
+): TransmissionRecoveryVerdict {
+  if (order.kind !== "lab") {
+    return { ok: false, code: "not_a_lab_order", message: "only a lab order has an outbound HL7 request" };
+  }
+  if (order.status !== "active") {
+    return { ok: false, code: "order_not_active", message: "the order is not active" };
+  }
+  if (order.transmissionStatus !== "failed") {
+    return {
+      ok: false,
+      code: "not_failed",
+      message: `the order's transmission status is '${order.transmissionStatus}', not 'failed'`,
+    };
+  }
+  const reason = order.transmissionFailureReason;
+  if (reason === null || !RECOVERABLE_M29_FAILURE_REASONS.has(reason)) {
+    return {
+      ok: false,
+      code: "not_an_m29_terminal_failure",
+      message:
+        "the failure did not come from an M29 terminal outcome — an emit-time or dispatch refusal is fixed and re-sent with the plain resend, not attested",
+    };
+  }
+  if (reason === "application_reject" && attestation === "received_by_lab") {
+    return {
+      ok: false,
+      code: "lab_rejected_order",
+      message: "the lab explicitly rejected (AR) this order, so it cannot be marked as received",
     };
   }
   return { ok: true, priorReason: reason };

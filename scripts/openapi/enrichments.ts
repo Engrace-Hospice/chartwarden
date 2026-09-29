@@ -1302,6 +1302,8 @@ import {
   RecordVerbalRequest as M11RecordVerbalRequest,
   RegenerateVerbalTimerRequest as M11RegenerateVerbalTimerRequest,
   RequestSignatureRequest as M11RequestSignatureRequest,
+  RecoverLabTransmissionRequest as M11RecoverLabTransmissionRequest,
+  RecoverLabTransmissionResponseSchema as M11RecoverLabTransmissionResponseSchema,
   ResendLabTransmissionResponseSchema as M11ResendLabTransmissionResponseSchema,
   SignOnBehalfRequest as M11SignOnBehalfRequest,
   SignOrderRequest as M11SignOrderRequest,
@@ -4315,6 +4317,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary:
       "Re-run the outbound lab HL7 request for a signed lab order whose request was refused (orm_refused:*) — 409 when not resendable",
     response: M11ResendLabTransmissionResponseSchema,
+  },
+  "POST /api/v1/orders/:id/recover-transmission": {
+    summary:
+      "Attested recovery of a lab order that failed after its HL7 message was built (dlq_exhausted / application_reject): the operator attests the lab did NOT receive it (re-dispatch once) or DID (mark transmitted, send nothing) — 409 when not recoverable",
+    body: M11RecoverLabTransmissionRequest,
+    response: M11RecoverLabTransmissionResponseSchema,
   },
   "GET /api/v1/standing-orders": {
     summary: "Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5)",

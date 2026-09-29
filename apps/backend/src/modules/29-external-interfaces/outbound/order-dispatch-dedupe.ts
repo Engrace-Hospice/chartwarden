@@ -15,10 +15,41 @@
 // A redelivery that finds one must send nothing: the row owns the order's MSH-10 and the reclaim sweep (F-182) is
 // the only path allowed to re-send it. Runs on the caller's org-scoped transaction, so RLS applies.
 import { type DbClient, schema } from "@wardenx/db";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { ORM_SOURCE_KIND } from "./dispatch-planner";
 
 const HMO = schema.hl7MessageOutbound;
+
+/** The statuses that mean an outbound row still OWNS the order: a send is queued or under way, or the lab acked it. */
+const ROW_STILL_OWNS_ORDER = ["queued", "in_flight", "acked"] as const;
+
+/**
+ * F-184 — the ONE sanctioned exception to "one ORM per order", for an operator-ATTESTED re-dispatch. True when the
+ * order has an outbound row that is `queued` or `in_flight` (a send still owns the order) or `acked` (the lab has
+ * it). Only when every prior row is a dead end — `dlq` (exhausted, or held for delivery verification), `naked`
+ * (an `AR` structural reject) or `failed` — may an attested attempt add a new row, and only because a human has
+ * told us (attested, audited) that the lab did NOT receive the earlier attempt. Runs on the caller's org-scoped
+ * transaction, under the same per-order advisory lock as {@link ormDispatchExistsForOrder}.
+ */
+export async function ormDispatchHasLiveOrDeliveredRow(
+  tx: DbClient,
+  organizationId: string,
+  orderId: string,
+): Promise<boolean> {
+  const rows = await tx
+    .select({ id: HMO.id })
+    .from(HMO)
+    .where(
+      and(
+        eq(HMO.organizationId, organizationId),
+        eq(HMO.sourceAggregateKind, ORM_SOURCE_KIND),
+        eq(HMO.sourceAggregateId, orderId),
+        inArray(HMO.status, [...ROW_STILL_OWNS_ORDER]),
+      ),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
 
 /** True when ANY outbound ORM row already exists for this order, whatever feed or status it has. */
 export async function ormDispatchExistsForOrder(

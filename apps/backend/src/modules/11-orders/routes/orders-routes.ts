@@ -30,6 +30,7 @@ import {
   OrderParamsSchema,
   PatientParamsSchema,
   RecordVerbalRequest,
+  RecoverLabTransmissionRequest,
   RegenerateVerbalTimerRequest,
   RequestSignatureRequest,
   SignOnBehalfRequest,
@@ -441,6 +442,28 @@ export function registerOrderRoutes(
       organizationId,
       userId,
       id,
+      await detailActorOf(request),
+      request.context?.userId ?? "",
+    );
+  });
+
+  // F-184 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built (an M29
+  // terminal failure: `dlq_exhausted`, incl. F-183's "held, delivery unverified", or `application_reject`) — the
+  // orders F-182's resend refuses because the lab MAY already hold them. The body's `attestation` is required: the
+  // operator states what the lab actually has (`not_received_by_lab` → re-dispatch once; `received_by_lab` → mark
+  // transmitted, send nothing). Same `orders.amend` as the resend and no step-up: it re-discloses the SAME signed
+  // order to the SAME lab (or records a fact) and what protects it is the explicit attestation, recorded with who /
+  // when in the order's write-audit diff, plus the row-lock + conditional-update single-dispatch guards. The audit
+  // actor is the Better Auth USER id, as for the resend.
+  app.post("/api/v1/orders/:id/recover-transmission", { preHandler: [AMEND] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { id } = parse(OrderParamsSchema, request.params);
+    const body = parse(RecoverLabTransmissionRequest, request.body);
+    return service.recoverLabTransmission(
+      organizationId,
+      userId,
+      id,
+      body.attestation,
       await detailActorOf(request),
       request.context?.userId ?? "",
     );
