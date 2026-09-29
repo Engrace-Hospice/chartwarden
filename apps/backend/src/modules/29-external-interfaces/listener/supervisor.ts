@@ -15,6 +15,11 @@ import {
   type ExternalInterfaceBaaGate,
   evaluateFeedActivationBaaGate,
 } from "../feed/baa-gate";
+import {
+  PLAIN_LISTENER_REFUSAL,
+  inboundPlainAllowed,
+  listenerProtocolRefusal,
+} from "./protocol-policy";
 
 /** The minimal feed shape the supervisor reasons over (a subset of `external_feed`, §3.3). */
 export interface SupervisorFeedDescriptor {
@@ -66,6 +71,9 @@ export interface SupervisorDeps {
   drainInflight(deadlineMs: number): Promise<void>;
   /** Emit the per-feed shutdown audit marker (§4.11.4 step 3). */
   emitShutdownAudit(feedId: string): Promise<void>;
+  /** F-179 — may an inbound `mllp_plain` listener bind? Omitted ⇒ derived from the process environment
+   *  (`inboundPlainAllowed`: never in production, opt-in elsewhere) — FAIL CLOSED, never a silent default-allow. */
+  allowPlainProtocol?: boolean;
   /** The clock, INJECTED (the BAA gate's `asOf`). */
   now(): Date;
   /** Structured logger. */
@@ -86,7 +94,7 @@ export type FeedBootOutcome =
   | {
       readonly feedId: string;
       readonly started: false;
-      readonly reason: BaaGateRefuseReason | "not_inbound";
+      readonly reason: BaaGateRefuseReason | "not_inbound" | typeof PLAIN_LISTENER_REFUSAL;
     };
 
 /** The boot-sequence summary (§4.11.1). */
@@ -126,6 +134,25 @@ export async function startFeedListener(
 ): Promise<FeedBootOutcome> {
   if (!feedBindsInboundListener(feed.kind)) {
     return { feedId: feed.id, started: false, reason: "not_inbound" };
+  }
+  // F-179 — cleartext PHI: refuse a plain listener the deployment forbids BEFORE the BAA gate and before any
+  // socket exists. A fixed label only (no host/port/partner detail) reaches the alert.
+  const allowPlain = deps.allowPlainProtocol ?? inboundPlainAllowed(process.env);
+  if (listenerProtocolRefusal(feed.protocol, allowPlain) !== null) {
+    deps.log("warn", "hl7.listener.plain_refuse", {
+      feedId: feed.id,
+      organizationId: feed.organizationId,
+      reason: PLAIN_LISTENER_REFUSAL,
+    });
+    await deps.dispatchAlert({
+      severity: "critical",
+      channel: "compliance",
+      feedId: feed.id,
+      organizationId: feed.organizationId,
+      title: `Cleartext listener blocked for feed ${feed.displayName}`,
+      body: `Feed ${feed.id} on org ${feed.organizationId} is configured mllp_plain (cleartext PHI), which this deployment does not permit; its listener was NOT bound. Reconfigure the feed as mllp_tls.`,
+    });
+    return { feedId: feed.id, started: false, reason: PLAIN_LISTENER_REFUSAL };
   }
   const decision = await evaluateFeedActivationBaaGate({
     gate: deps.baaGate,

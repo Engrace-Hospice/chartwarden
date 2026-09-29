@@ -7,8 +7,9 @@
 //   2. A configured host on the destination deny list (link-local / cloud-metadata; loopback in production) is
 //      refused at configuration time as well as at send time, so the mistake surfaces to the operator rather
 //      than as a DLQ'd order later.
-//   3. In production an OUTBOUND feed may not be `mllp_plain` (cleartext PHI) — refused on create AND on
-//      activate (a feed created before a deployment became production must not be activatable).
+//   3. In production NO feed — outbound sender (F-178) or inbound listener (F-179) — may be `mllp_plain`
+//      (cleartext PHI): refused on create AND on activate (a feed created before a deployment became production
+//      must not be activatable). The inbound listener repeats the check at bind time (`listener/protocol-policy`).
 import { ValidationError } from "@wardenx/types";
 
 import { CertPinError, certPinFromPem } from "../feed/cert-pin";
@@ -61,11 +62,12 @@ export function assertProtocolAcceptable(
   feed: { readonly kind: string; readonly protocol: string },
   env: Env,
 ): void {
-  if (feed.kind === "orm_outbound" && feed.protocol === "mllp_plain" && isProductionEnv(env)) {
+  if (feed.protocol === "mllp_plain" && isProductionEnv(env)) {
+    const direction = feed.kind === "orm_outbound" ? "an outbound" : "an inbound";
     refuse(
       "protocol",
       "PLAIN_MLLP_REFUSED",
-      "mllp_plain (cleartext PHI) is not permitted for an outbound feed in production — use mllp_tls",
+      `mllp_plain (cleartext PHI) is not permitted for ${direction} feed in production — use mllp_tls`,
     );
   }
 }
