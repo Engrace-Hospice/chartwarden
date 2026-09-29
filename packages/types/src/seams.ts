@@ -206,6 +206,13 @@ export type SeamName =
   | "LevelOfCarePeriodReader" // M6 — election-period × CHC/GIP-day coverage counts (M30 HCI indicator 1)
   | "DischargeReader" // M6 — ALL-discharge-type census + early/late live-discharge counts (M30 HCI 3/4)
   | "AdmissionOnsetReader" // M6 — admissions started in a period (M30 opioid_on_admission_rate denominator)
+  // M6's F2F/compliance-window aggregate (F-178, #248) follows the OPAQUE rich-seam pattern instead of its
+  // leaf-typed siblings above: the consumer-facing view interface lives in M30's own `@wardenx/quality`
+  // package (`ComplianceWindowCountsView`, packages/quality/src/seams/consumed/m6-compliance-window.ts,
+  // the `ClaimLineReader`/`PatientDaysProvider` precedent), so the registry holds the instance as `unknown`
+  // and M30 resolves it via `getSeam` + a cast to that view. Registered by M6 at boot over the fail-closed
+  // deny-stub.
+  | "ComplianceWindowCountsProvider" // M6 — F2F/compliance-window on-time + override rate counts (M30 batch pull)
   // M7 (Care Plan / IPOC) reader seam (§7.8) — also leaf-typed (interface in ./care-plan), so it is
   // typed here like M6's readers. M8 (encounter authoring + sign gate), M14 (IDG packet), M15
   // (discipline care plans) consume it instead of importing M7's schema.
@@ -1042,6 +1049,11 @@ export interface SeamContracts {
   LevelOfCarePeriodReader: LevelOfCarePeriodReader;
   DischargeReader: DischargeReader;
   AdmissionOnsetReader: AdmissionOnsetReader;
+  // M6's `ComplianceWindowCountsProvider` (F-178, #248) is OPAQUE (`unknown`) here — the consumer-facing
+  // interface lives in `@wardenx/quality` (M30's own package; see the SeamName union comment above), not
+  // in this leaf. M6 registers the real Drizzle-backed provider over the fail-closed deny-stub; M30 resolves
+  // it via `getSeam` + a cast to its own `ComplianceWindowCountsView`.
+  ComplianceWindowCountsProvider: unknown;
   // M7's reader seam (§7.8) is LEAF-TYPED too — its interface lives in ./care-plan (this package), so
   // the registry is statically typed against the real contract. M7 registers the real Drizzle-backed
   // reader over the deny-stub; consumers that list `7` in their manifest `dependsOn` resolve it through

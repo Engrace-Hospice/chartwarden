@@ -680,7 +680,15 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Type.String({ minLength: 1 }),
     }),
     // F-129 (#248) — m14 dropped: same reasoning as `m6.cti.drafted` above (build-time seam pull).
-    declaredConsumers: ["m30"],
+    // F-178 (#248) — m30 MOVED to seamConsumers: M30 now pulls this fact via the real
+    // `ComplianceWindowCountsProvider` seam (`f2fWindowOverrideCounts` — override_reason IS NOT NULL among
+    // F2F windows due in the scope period), a nightly batch read over `compliance_window`, not a reaction
+    // to this push (M6 §7.5 W-OVR-02 is decisive M30's dashboard "Overrides count" is fed by this fact, but
+    // names no event handler). This event is F2F-SPECIFIC (`f2fId`, not `complianceWindowId`), so the
+    // F2F-scoped seam's coverage is complete for it — unlike its four `m6.compliance.window.*` siblings
+    // below, which are generic across all 11 window kinds and stay genuinely unbound (see their own notes).
+    declaredConsumers: [],
+    seamConsumers: ["m30"],
     isOutboxOnly: true,
   },
   {
@@ -692,7 +700,15 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       electionPeriodId: Type.String({ minLength: 1 }),
     }),
     // F-129 (#248) — m14 dropped: same reasoning as `m6.cti.drafted` above (build-time seam pull).
-    declaredConsumers: ["m30"],
+    // F-178 (#248) — m30 MOVED to seamConsumers: M30's `ComplianceWindowCountsProvider` reads
+    // `compliance_window` table state directly (the F2F window's due date + closed/override status), not
+    // this push. F-178b (#248) — HAS A REAL PRODUCER as of this round: `runF2fWindowMissedScanCron`
+    // (`jobs/cron-workers.ts`, on the previously-unwired `M6_QUEUES.windowAlert` schedule) opens the
+    // `f2f_recert_30d_prior` compliance_window row and publishes this event the moment
+    // `decideF2fWindowStatus` first reads "missed" for a recert election period; before this round the
+    // event was catalogued but never emitted anywhere (`decideF2fWindowStatus` had zero callers).
+    declaredConsumers: [],
+    seamConsumers: ["m30"],
     isOutboxOnly: true,
   },
   {
@@ -919,6 +935,17 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-145 (#248) — m14 REMOVED: same as `m6.admission.on_hold` above — no support in M14's own
     // exhaustive build-description; M6's own text (line 599) assigns the real overdue-window consumer to
     // M36's escalation chain, not M14.
+    // F-178 (#248) — m30 STAYS declared, genuinely unbound. This event is GENERIC across all 11
+    // `complianceWindowKind` values (payload carries `windowType`, not just F2F) — M6's spec (line 3868)
+    // confirms non-F2F kinds are real and actively created (`concurrent_hospital_admission`,
+    // `external_discharge_notice`, `hl7_admission_cancellation` informational windows). The new
+    // `ComplianceWindowCountsProvider` seam this round built is hardcoded to `windowKind =
+    // 'f2f_recert_30d_prior'` only (by design — Phase 1 was scoped to the F2F cluster), so it resolves
+    // NOTHING for the other 10 window kinds. Do not conflate with `m6.f2f.window_missed`/`.overridden`
+    // below, which are F2F-specific events the new seam genuinely does cover end-to-end. The real,
+    // still-unbuilt relationship here is the GENERAL compliance-window dashboard pull M6's spec describes
+    // (line 2322/2330, "M30 dashboard pulls open windows"; line 3047, the all-kind "Overrides — last 30
+    // days" widget) — a different, larger seam than the one this round built.
     declaredConsumers: ["m30"],
     isOutboxOnly: true,
   },
@@ -932,6 +959,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       closedAt: Type.String({ minLength: 1 }),
       closedVia: Type.String({ minLength: 1 }),
     }),
+    // F-178 (#248) — m30 STAYS declared, genuinely unbound — same reasoning as `m6.compliance.window.opened`
+    // above: this is the GENERIC, all-window-kind close event; the new F2F-only seam does not cover it.
     declaredConsumers: ["m30"],
     isOutboxOnly: true,
   },
@@ -947,6 +976,8 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-145 (#248) — m14 REMOVED: M6's own spec (line 599) is decisive and names the OPPOSITE
     // consumer for this exact fact: "`compliance_window.overdue` (for any window) → M36 escalating
     // alert chain (clinician → supervisor → DON)" — not mere silence, an affirmative counter-claim.
+    // F-178 (#248) — m30 STAYS declared, genuinely unbound — same reasoning as `m6.compliance.window.opened`
+    // above: generic across all window kinds, the new F2F-only seam does not cover it.
     declaredConsumers: ["m30"],
     isOutboxOnly: true,
   },
@@ -959,6 +990,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       complianceWindowId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
+    // F-178 (#248) — m30 STAYS declared, genuinely unbound — same reasoning as `m6.compliance.window.opened`
+    // above: this generic route-46 override event fires for ANY window kind, and the new
+    // `ComplianceWindowCountsProvider.f2fWindowOverrideCounts` only reads F2F-kind rows. Not to be confused
+    // with the F2F-specific `m6.f2f.window_overridden` sibling above, which the new seam DOES fully cover.
     declaredConsumers: ["m30"],
     isOutboxOnly: true,
   },

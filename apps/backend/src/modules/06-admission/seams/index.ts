@@ -22,6 +22,10 @@ import type {
 } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 import { createAdmissionOnsetReader } from "./admission-onset-reader";
+import {
+  type ComplianceWindowCountsProvider,
+  createComplianceWindowCountsProvider,
+} from "./compliance-window-counts-provider";
 import { createDeathDischargeReader } from "./death-discharge-reader";
 import { createDischargeReader } from "./discharge-reader";
 import { createReferralReader } from "./drizzle-store";
@@ -36,6 +40,12 @@ import {
 } from "./readers";
 import { type AdmissionReaderStore, createInMemoryAdmissionReaderStore } from "./store";
 
+export {
+  type ComplianceWindowCountsProvider,
+  type ComplianceWindowRateCounts,
+  type ComplianceWindowScope,
+  createComplianceWindowCountsProvider,
+} from "./compliance-window-counts-provider";
 export { createDeathDischargeReader } from "./death-discharge-reader";
 export { createDischargeReader } from "./discharge-reader";
 export { createLevelOfCarePeriodReader } from "./level-of-care-period-reader";
@@ -105,6 +115,10 @@ export interface AdmissionSeamDeps {
   admissionOnsetReader?: AdmissionOnsetReader;
   /** Explicit referral reader. Takes precedence over {@link db}; without either, the deny-stub stands. */
   referralReader?: ReferralReader;
+  /** Explicit F2F/compliance-window counts provider (an in-memory double in tests). Takes precedence over
+   * {@link db}; when neither is supplied M30's batch-pulled on-time/override rate seam falls through to the
+   * fail-closed boot deny-stub (F-178, #248). */
+  complianceWindowCountsProvider?: ComplianceWindowCountsProvider;
 }
 
 /**
@@ -152,6 +166,13 @@ export function registerAdmissionSeams(deps: AdmissionSeamDeps = {}): void {
     deps.admissionOnsetReader ?? (deps.db ? createAdmissionOnsetReader(deps.db) : undefined);
   if (admissionOnsetReader) {
     registerSeam("AdmissionOnsetReader", admissionOnsetReader);
+  }
+
+  const complianceWindowCountsProvider =
+    deps.complianceWindowCountsProvider ??
+    (deps.db ? createComplianceWindowCountsProvider(deps.db) : undefined);
+  if (complianceWindowCountsProvider) {
+    registerSeam("ComplianceWindowCountsProvider", complianceWindowCountsProvider);
   }
 }
 
@@ -208,4 +229,12 @@ export function getDischargeReader(): DischargeReader {
 /** Typed resolver for M6's AdmissionOnsetReader (registered when a db/reader is present; M30 opioid rate). */
 export function getAdmissionOnsetReader(): AdmissionOnsetReader {
   return getSeam("AdmissionOnsetReader");
+}
+
+/** Typed resolver for M6's ComplianceWindowCountsProvider (F-178, #248; registered when a db/reader is
+ * present; M30's batch-pulled F2F on-time/override rate). Opaque in the M1 registry (`unknown`) — cast to
+ * the local {@link ComplianceWindowCountsProvider} shape here, the same `getSeam(...) as never` pattern
+ * `m30-jobs.ts` uses for its other opaque operational-measure seams. */
+export function getComplianceWindowCountsProvider(): ComplianceWindowCountsProvider {
+  return getSeam("ComplianceWindowCountsProvider") as never;
 }

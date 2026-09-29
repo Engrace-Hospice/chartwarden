@@ -1,4 +1,4 @@
-// @wardenx/quality — operational (non-CMS) measure calculators barrel (§3.1). The fifteen CoP/operational
+// @wardenx/quality — operational (non-CMS) measure calculators barrel (§3.1). The eighteen CoP/operational
 // quality measures M30 tracks alongside the CMS HQRP measures. Each is a PURE numerator/denominator/rate
 // function over a declared already-fetched input type.
 export * from "./verbal_order_signature_on_time";
@@ -18,3 +18,5 @@ export * from "./late_encounter_entry_rate";
 export * from "./hope_submission_acceptance_rate";
 export * from "./hope_sfv_on_time_rate";
 export * from "./cost_report_filing_compliance";
+export * from "./f2f_window_on_time_rate";
+export * from "./f2f_window_override_rate";

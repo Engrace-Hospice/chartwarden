@@ -9,6 +9,7 @@ export * from "./forward-seam";
 // PRESENT producers (consumer interfaces only — bound to live seams via getSeam at boot, P2C).
 export * from "./m5-patient";
 export * from "./m6-admission";
+export * from "./m6-compliance-window";
 export * from "./m7-care-plan";
 export * from "./m8-encounter";
 export * from "./m9-assessment";

@@ -44,6 +44,7 @@ import {
   type CahpsExportPorts,
   type CahpsMonthlySampleCronPorts,
   CahpsRepository,
+  type ComplianceWindowCountsView,
   type ComputeHvldlInput,
   HCI_SKILLED_NURSING_GAP_DAYS,
   HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR,
@@ -518,6 +519,24 @@ const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = 
     direction: "gte",
     label: "cost-report filing compliance (CoP 418.310; regulatory floor — no partial compliance)",
   },
+  // CoP 418.22 — the F2F compliance window must close on time; higher is better. F-178 (#248): M6's
+  // nightly-batch `ComplianceWindowCountsProvider` pull. No CMS-published floor for this internal
+  // timeliness metric (unlike the 418.22 F2F-attestation requirement itself), so this is a platform
+  // default like the other CoP-adjacent operational entries above.
+  f2f_window_on_time_rate: {
+    value: 0.95,
+    direction: "gte",
+    label: "F2F compliance-window on-time rate (CoP 418.22; platform default)",
+  },
+  // LOWER is better — the Medical-Director override is a documented escape valve for a window that
+  // could not close on time; a high override rate signals the on-time process itself is failing, so the
+  // agency target keeps it rare. §7.5 W-OVR-02 (M6 spec): tracked as a SEPARATE signal from the on-time
+  // rate above, not folded into it (both share the same due-window denominator).
+  f2f_window_override_rate: {
+    value: 0.05,
+    direction: "lte",
+    label: "F2F compliance-window override rate (CoP 418.22; platform default; lower is better)",
+  },
 };
 
 /** The M17 on-time counts read, as this resolver uses it (the registry holds the seam opaquely). */
@@ -621,6 +640,8 @@ export const OPERATIONAL_BOUND_MEASURE_CODES = new Set([
   "bereavement_coverage_rate",
   "supervisory_visit_on_time",
   "volunteer_compliance_gate_rate",
+  "f2f_window_on_time_rate",
+  "f2f_window_override_rate",
 ]);
 
 /**
@@ -647,6 +668,7 @@ export async function resolveOperationalMeasureInput(
     readonly idg: IdgCadenceCountsView;
     readonly bereavementCompliance: BereavementCoverageCountsView;
     readonly disciplineCompliance: DisciplineComplianceCountsView;
+    readonly complianceWindow: ComplianceWindowCountsView;
   },
 ): Promise<unknown> {
   const { organizationId, providerEntityId, periodStart, periodEnd } = request;
@@ -748,6 +770,34 @@ export async function resolveOperationalMeasureInput(
         ...base,
         evaluatedPeriods: c.denominator,
         periodsMeetingGate: c.numerator,
+        threshold,
+      };
+    }
+    case "f2f_window_on_time_rate": {
+      const c = await seams.complianceWindow.f2fWindowOnTimeCounts({
+        orgId: organizationId,
+        providerEntityId,
+        fromIso: periodStart,
+        toIso: periodEnd,
+      });
+      return {
+        ...base,
+        f2fWindowsDue: c.denominator,
+        f2fClosedOnTime: c.numerator,
+        threshold,
+      };
+    }
+    case "f2f_window_override_rate": {
+      const c = await seams.complianceWindow.f2fWindowOverrideCounts({
+        orgId: organizationId,
+        providerEntityId,
+        fromIso: periodStart,
+        toIso: periodEnd,
+      });
+      return {
+        ...base,
+        f2fWindowsDue: c.denominator,
+        f2fClosedViaOverride: c.numerator,
         threshold,
       };
     }
@@ -1685,6 +1735,9 @@ export function buildM30WorkerPorts(deps: M30WorkerDeps): M30WorkerPortBundles {
             idg: getSeam("IdgScheduleProvider") as never,
             bereavementCompliance: getSeam("BereavementComplianceProvider") as never,
             disciplineCompliance: getSeam("DisciplineComplianceProvider") as never,
+            // F-178 (#248) — M6's F2F compliance-window aggregate. Opaque (`unknown`) in the M1 registry;
+            // the concrete view lives in @wardenx/quality's m6-compliance-window.ts consumer-side leaf.
+            complianceWindow: getSeam("ComplianceWindowCountsProvider") as never,
           });
         return resolveHopeMeasureInput(request, seams);
       },

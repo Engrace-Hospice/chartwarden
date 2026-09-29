@@ -670,6 +670,13 @@ export const admissionOnsetReaderDenyStub: AdmissionOnsetReader = {
   },
 };
 
+/** M6 — F2F/compliance-window on-time + override rate counts (F-178, #248; M30 batch pull). Opaque rich-seam
+ *  (interface in @wardenx/quality, `ComplianceWindowCountsView`); M30 resolves via `getSeam` + a cast.
+ *  Denies until M6 registers the real Drizzle-backed provider over this fail-closed deny-stub. */
+export const complianceWindowCountsProviderDenyStub: unknown = denyingSeamProxy(
+  "ComplianceWindowCountsProvider",
+);
+
 // M7 (Care Plan) reader seam (§7.8). LEAF-TYPED (interface in @wardenx/types), so — like M6's readers
 // — it gets a concrete typed deny-stub. Denies LOUDLY until M7 registers the real reader (M7-T04).
 

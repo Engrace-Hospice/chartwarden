@@ -9,11 +9,22 @@
 // - election_period is joined to recover the owning admission
 
 import { type DbClient, schema } from "@wardenx/db";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, ne, notInArray } from "drizzle-orm";
+import { addCalendarDays } from "../certification/window-math";
 
 const F2F = schema.faceToFaceEncounters;
 const CTI = schema.certificationsOfTerminalIllness;
 const EP = schema.electionPeriods;
+const CW = schema.complianceWindows;
+const ADM = schema.admissions;
+
+/** 42 CFR 418.22(a)(4)/R-F2F-04 — F2F is required starting the 3rd benefit period. */
+const F2F_RECERT_SEQUENCE_FLOOR = 3;
+
+/** Admission statuses whose benefit-period recert cycle is over — a lingering `pending`/`signed`
+ *  recert period on one of these (discharge deliberately leaves it untouched, see
+ *  admission-route-service-db.ts's `end_election_period` effect) must never false-positive as missed. */
+const F2F_TERMINAL_ADMISSION_STATUSES = ["discharged", "bereavement", "closed"] as const;
 
 export interface F2fDueCronRow {
   readonly f2fId: string;
@@ -128,4 +139,98 @@ export async function ctiSignatureDueRowsForOrg(
         ? isoInstant(row.hospiceMdSignedAt)
         : null,
     }));
+}
+
+/**
+ * Candidate recert (sequence >= {@link F2F_RECERT_SEQUENCE_FLOOR}) election periods for the F2F
+ * window-missed scan (F-178b, #248), with every fact `planF2fWindowMissedScan` (./index) needs already
+ * resolved: `periodStartDate` off the PRECEDING period's `scheduled_end_at + 1 day` (the period's own
+ * `effective_at`/`scheduled_end_at` are not populated until IT activates — election-period.ts), whether
+ * it already carries an attested F2F, and whether a non-closed `f2f_recert_30d_prior` compliance_window
+ * row is already open (the scan's own idempotency ledger).
+ *
+ * Three flat selects + an in-memory join (matching this file's existing style) rather than one query
+ * with a self-join, since Drizzle self-joins have no other precedent in this module.
+ */
+export async function f2fWindowMissedCandidatesForOrg(
+  tx: DbClient,
+  organizationId: string,
+): Promise<F2fWindowMissedCandidateRow[]> {
+  const pending = await tx
+    .select({
+      electionPeriodId: EP.id,
+      admissionId: EP.admissionId,
+      sequenceNumber: EP.sequenceNumber,
+    })
+    .from(EP)
+    .innerJoin(ADM, eq(ADM.id, EP.admissionId))
+    .where(
+      and(
+        eq(EP.organizationId, organizationId),
+        inArray(EP.status, ["pending", "signed"]),
+        notInArray(ADM.status, [...F2F_TERMINAL_ADMISSION_STATUSES]),
+      ),
+    );
+
+  const candidates = pending.filter((p) => p.sequenceNumber >= F2F_RECERT_SEQUENCE_FLOOR);
+  if (candidates.length === 0) return [];
+
+  const admissionIds = [...new Set(candidates.map((c) => c.admissionId))];
+  const electionPeriodIds = candidates.map((c) => c.electionPeriodId);
+
+  // The PRECEDING period per candidate — every period this org has on file for the same admissions;
+  // small and bounded (a handful of periods per admission), joined in JS below.
+  const priorPeriods = await tx
+    .select({
+      admissionId: EP.admissionId,
+      sequenceNumber: EP.sequenceNumber,
+      scheduledEndAt: EP.scheduledEndAt,
+    })
+    .from(EP)
+    .where(and(eq(EP.organizationId, organizationId), inArray(EP.admissionId, admissionIds)));
+  const priorEndByAdmissionSeq = new Map<string, string>();
+  for (const p of priorPeriods) {
+    if (p.scheduledEndAt) priorEndByAdmissionSeq.set(`${p.admissionId}:${p.sequenceNumber}`, p.scheduledEndAt);
+  }
+
+  const attestedRows = await tx
+    .select({ electionPeriodId: F2F.electionPeriodId })
+    .from(F2F)
+    .where(and(eq(F2F.organizationId, organizationId), inArray(F2F.electionPeriodId, electionPeriodIds), eq(F2F.status, "attested")));
+  const attestedPeriodIds = new Set(attestedRows.map((r) => r.electionPeriodId));
+
+  const flaggedRows = await tx
+    .select({ admissionId: CW.admissionId })
+    .from(CW)
+    .where(
+      and(
+        eq(CW.organizationId, organizationId),
+        inArray(CW.admissionId, admissionIds),
+        eq(CW.windowKind, "f2f_recert_30d_prior"),
+        ne(CW.status, "closed"),
+      ),
+    );
+  const flaggedAdmissionIds = new Set(flaggedRows.map((r) => r.admissionId));
+
+  const out: F2fWindowMissedCandidateRow[] = [];
+  for (const c of candidates) {
+    const priorEnd = priorEndByAdmissionSeq.get(`${c.admissionId}:${c.sequenceNumber - 1}`);
+    if (!priorEnd) continue; // preceding period unresolved (not yet active) — window unknowable
+    out.push({
+      electionPeriodId: c.electionPeriodId,
+      admissionId: c.admissionId,
+      periodStartDate: addCalendarDays(priorEnd, 1),
+      attested: attestedPeriodIds.has(c.electionPeriodId),
+      alreadyFlagged: flaggedAdmissionIds.has(c.admissionId),
+    });
+  }
+  return out;
+}
+
+export interface F2fWindowMissedCandidateRow {
+  readonly electionPeriodId: string;
+  readonly admissionId: string;
+  readonly periodStartDate: string;
+  readonly attested: boolean;
+  readonly alreadyFlagged: boolean;
 }

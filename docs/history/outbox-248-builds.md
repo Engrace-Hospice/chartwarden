@@ -1836,5 +1836,69 @@ suite's seed helper had to insert-then-update rather than seed the starting stat
 `typecheck` clean, `arch:fitness` 38/38 (declared-but-unbound: 50 → 48, the `m11` group's two m29 pairs resolved,
 its two `m39.consent.dpoa.*` pairs remain), full non-live suite green (9614, after updating one pinned
 `M11_OUTBOX_SUBSCRIPTIONS` assertion), new live suite `m11:lab-transmission-applier` (7/7) proven against a fresh
-disposable Postgres, `check:boot:platform` clean with a double-checked platform credential URL. Leaving #248 open
-— 48 pairs across 13 modules remain.
+disposable Postgres, `check:boot:platform` clean with a double-checked platform credential URL.
+
+**F-178 (#248) — Phase 1 of the M30 20-pair no-consumer-surface group, the user's own explicit scope: the M6
+compliance/F2F cluster. Three parallel forks (a shared interface contract designed centrally first, mirroring the
+F-175 `MllpTransport` pattern), then one central verify-and-reconcile pass.** Built the real
+`ComplianceWindowCountsProvider` seam M30's spec has long claimed (§7.5 W-OVR-02) but that was never actually
+built — `packages/quality/src/seams/consumed/m6-compliance-window.ts` (the consumer-side interface,
+`f2fWindowOnTimeCounts`/`f2fWindowOverrideCounts`, each `{numerator, denominator}` over a
+`{orgId, providerEntityId?, fromIso, toIso}` scope) and
+`apps/backend/src/modules/06-admission/seams/compliance-window-counts-provider.ts` (the Drizzle-backed
+implementation, registered as `"ComplianceWindowCountsProvider"` via the existing `registerAdmissionSeams(deps.db
+? {db, ...} : {})` call at the composition root — no new boot wiring needed). Deliberately F2F-scoped
+(`windowKind = 'f2f_recert_30d_prior'` only, joined to `admissions` for the optional `providerEntityId` narrow —
+`compliance_window` itself has no such column), matching the user's own Phase-1 scope decision, which explicitly
+deferred M23's NOE/NOTR `window_breached` pair (needs a persistent breach-log table, a different shape), M6
+`admission.on_hold`/`.resumed` (a live dashboard pull, a different shape), and `m6.applier.refused` (may not be a
+quality measure at all) to later rounds. Two new M30 measures consume it —
+`f2f_window_on_time_rate`/`f2f_window_override_rate` (`packages/quality/src/measures/operational/`), registered
+in both `MEASURE_CATALOG` (`registry.ts`) and the calculator-binding map (`registrations.ts` — the catalog
+descriptor alone does not make a measure computable; missing this would fail closed with
+`MeasureRegistrationMissing`) and wired into `m30-jobs.ts`'s `resolveOperationalMeasureInput` switch + the
+`getSeam("ComplianceWindowCountsProvider") as never` call site, with platform-default thresholds (0.95/gte
+on-time, 0.05/lte override — no CMS-published floor exists for either, CoP 418.22 mandates the F2F encounter
+itself, not a specific closure percentage). **A real scope-overclaim caught in central verification, not
+committed past:** the build-side fork's first pass moved all 6 of the group's M6 compliance-window pairs to
+`seamConsumers`, but 4 of them — `m6.compliance.window.opened/closed/overdue/overridden` — are GENERIC across all
+11 `complianceWindowKind` values (payload carries `windowType`, not just F2F; M6's own spec, line 3868, confirms
+non-F2F kinds are real and actively created today — `concurrent_hospital_admission`, `external_discharge_notice`,
+`hl7_admission_cancellation` informational windows), while the new seam's WHERE clause reads nothing outside
+`f2f_recert_30d_prior`. Corrected before commit: only the two truly F2F-specific events —
+`m6.f2f.window_overridden` and `m6.f2f.window_missed` — are genuinely resolved by this seam and dropped from the
+group; the four generic events stay `declaredConsumers: ["m30"]`, genuinely unbound, since the real relationship
+they represent (M6's spec, lines 2322/2330/3047 — a general compliance-window dashboard pull across every window
+kind, including an all-kind "Overrides — last 30 days" widget) is a different, larger, still-unbuilt seam than
+the F2F-scoped one this round shipped.
+
+**F-178b (#248) — `m6.f2f.window_missed` had NO PRODUCER anywhere in the codebase before this round** (the pure
+decider `decideF2fWindowStatus`, `certification/window-math.ts`, correctly implements "an attested F2F closes the
+window; otherwise, once the org-local day passes `windowEnd`, the window is missed" but shipped with zero
+callers — the file's own doc comment said "the caller emits `m6.f2f.window_missed`" while no such caller existed,
+the identical "decision core ships, nothing drains it" shape this arc keeps finding). Built a periodic scan
+(`runF2fWindowMissedScanCron`, `jobs/cron-workers.ts`) on the previously-declared-but-never-wired
+`M6_QUEUES.windowAlert`/`M6_JOB_SCHEDULES.windowAlert` (every 15 min) — the first work on that queue, distinct
+from `planWindowAlert`/`promoteWindowStatus`'s other window kinds, which assume a `compliance_window` row is
+already open and only promote its status; no code path ever opens an `f2f_recert_30d_prior` row (only
+`attestF2f`'s `close_window` effect touches that kind, and only as a no-op close), so this scan computes the
+window itself off the PRECEDING recert election period's `scheduled_end_at + 1 day` (a not-yet-active period's
+own `effective_at`/`scheduled_end_at` are unpopulated until it activates) and OPENS the row itself the moment
+`decideF2fWindowStatus` first reads "missed", reusing the real decider rather than reimplementing it. Idempotent
+by construction, not by an application-side check: the INSERT targets the existing partial unique index
+`cw_adm_kind_open_idx` (`UNIQUE (admission_id, window_kind) WHERE status <> 'closed'`) via `onConflictDoNothing`,
+so only the tick that actually opens the row publishes the event; a later `attestF2f` closes it through its
+pre-existing effect, unchanged. **A real, unrelated production bug found and fixed along the way**: this is the
+first M6 cron to write to an M4-audited PHI table, and `M6_WORKER_SYSTEM_USER_ID` (the synthetic system-actor id
+all three M6 crons share) was never seeded as a real `user` row, so the audit trigger's FK 23503s on the very
+first tick — fixed by using `userId: ""` (the established `withOrgContext` system-write idiom already used
+throughout `admission-route-service-db.ts`) for this call site only; the two sibling scans are untouched since
+neither writes to an audited table. Flagged, not fixed: the same latent defect likely affects
+`*_WORKER_SYSTEM_USER_ID` in the ~8 other modules whose system-actor crons don't yet touch an audited table.
+
+Verified centrally across all three F-178/F-178b forks (not trusting individual self-reports): `build`/`typecheck`
+clean, `arch:fitness` 38/38 (declared-but-unbound: 48 → 46 — the two genuine F2F pairs, not all 6), full non-live
+suite green (655 files / 9622 tests, 0 failed), the new live suite `test:m6:t5:counts:live` (6/6) and the extended
+`test:m6:t5:write:live` (6/6, 3 new F2F-window-missed producer tests alongside the original 3) both proven against
+a fresh disposable Postgres, `check:boot:platform` clean with a double-checked platform credential URL. Leaving
+#248 open — 46 pairs across 13 modules remain.

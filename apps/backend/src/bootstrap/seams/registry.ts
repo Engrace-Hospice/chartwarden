@@ -45,6 +45,7 @@ import {
   claimSubmissionReaderDenyStub,
   comfortKitDispatchProviderDenyStub,
   complianceStatusProviderDenyStub,
+  complianceWindowCountsProviderDenyStub,
   consentEvaluatorDenyStub,
   copilotProviderDenyStub,
   costReportFilingStatusReaderDenyStub,
@@ -728,6 +729,18 @@ export const REQUIRED_SEAMS = [
     ownerModule: 6,
     phi: false,
     denyStub: admissionOnsetReaderDenyStub,
+  },
+  // M6 (Admission) F2F/compliance-window aggregate (F-178, #248) — org-level COUNTS ONLY (no patient id
+  // ever returned, same posture as LevelOfCarePeriodReader/DischargeReader above), consumed by M30's
+  // nightly measure-recompute worker as a batch pull over `compliance_window`, not an outbox push
+  // (`events-by-m6.ts`'s six `m6.compliance.window.*`/`m6.f2f.window_*` entries carry `seamConsumers:
+  // ["m30"]`, not `declaredConsumers`). Opaque rich-seam (`unknown`; interface in @wardenx/quality) per
+  // the `ClaimLineReader`/`PatientDaysProvider` precedent — phi: false matches those aggregate-only binds.
+  {
+    key: "ComplianceWindowCountsProvider",
+    ownerModule: 6,
+    phi: false,
+    denyStub: complianceWindowCountsProviderDenyStub,
   },
   // M7 (Care Plan / IPOC) reader seam (§7.8). A read-only DTO surface over M7's PHI tables
   // (problems/goals/interventions + the version clock), consumed by M8 (encounter authoring + sign

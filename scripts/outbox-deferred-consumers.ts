@@ -192,7 +192,26 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       " `dosespot_sync_queue` MedHx drain; `m15-discipline.ts`'s forward-seam deny-stub is still the stale" +
       " dead file F-168 found (the real M15 counts route through `m30-jobs.ts`'s inline" +
       " `DisciplineComplianceProvider` seam, itself not called by any of the 4 M15 push events). No" +
-      " measure/consumer-table gap closed this round; nothing built, nothing dropped, nothing moved.",
+      " measure/consumer-table gap closed this round; nothing built, nothing dropped, nothing moved." +
+      " **F-178 (#248) built the real `ComplianceWindowCountsProvider` seam" +
+      " (`apps/backend/src/modules/06-admission/seams/compliance-window-counts-provider.ts`, registered at" +
+      " boot via `registerAdmissionSeams`) plus two new M30 measures" +
+      " (`f2f_window_on_time_rate`/`f2f_window_override_rate`) that consume it — closing 2 of this group's 6" +
+      " M6 compliance-window pairs.** The seam is deliberately F2F-SCOPED" +
+      " (`windowKind = 'f2f_recert_30d_prior'` only), matching Phase 1's approved scope (the M6 compliance/F2F" +
+      " cluster). This genuinely resolves the two F2F-specific events —" +
+      " `m6.f2f.window_overridden`/`m6.f2f.window_missed` — dropped from this group's `events` array" +
+      " (the latter also gained a real producer this round; see the m6 group's own text). It does NOT" +
+      " resolve the four GENERIC `m6.compliance.window.opened/closed/overdue/overridden` events, which stay" +
+      " below: those fire for all 11 `complianceWindowKind` values (M6's spec, line 3868, confirms non-F2F" +
+      " kinds are real and actively created — `concurrent_hospital_admission`, `external_discharge_notice`," +
+      " `hl7_admission_cancellation` informational windows), and the new seam's F2F-only WHERE clause reads" +
+      " nothing for the other 10. The real, still-unbuilt relationship for these four is the GENERAL" +
+      " compliance-window dashboard pull M6's spec describes (line 2322/2330's \"M30 dashboard pulls open" +
+      " windows\"; line 3047's all-kind \"Overrides — last 30 days\" widget) — a different, larger seam than" +
+      " the F2F-scoped one this round built. Caught in central verification before commit: a build-side" +
+      " fork's own `events-by-m6.ts` reason text had generalized the F2F seam's coverage to all four generic" +
+      " events, which this reason corrects.",
     events: [
       "m12.medication_order.transmission_failed",
       "m15.discipline_assessment.amended",
@@ -212,8 +231,6 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "m6.compliance.window.opened",
       "m6.compliance.window.overdue",
       "m6.compliance.window.overridden",
-      "m6.f2f.window_missed",
-      "m6.f2f.window_overridden",
     ],
   },
   {
