@@ -1624,3 +1624,64 @@ disposable Postgres after the CAS fix landed, to confirm the fix itself rather t
 (one confirming the real 283-migration boot with the new bindings, one directly confirming the M24
 state-channel-health cron worker actually constructs when `REDIS_URL` is set). Leaving #248 open —
 66 pairs across 15 modules remain.
+
+**F-173 (#248) — the last easy, precisely-diagnosed infra gap this arc had surfaced: M1's
+`system_status` reader was still an in-memory, non-persistent stub.** `POST /admin/system/status`
+had therefore never once persisted to the real table, in any environment — the composition root only
+ever constructed `createInMemorySystemStatusReader()`, a per-process `Map` reset by every restart and
+unshared across horizontally-scaled instances. New `createDrizzleSystemStatusReader()` satisfies the
+existing `SystemStatusReader` interface unchanged, deliberately ignoring `orgId` for the row key since
+the table (per its own header) carries no tenant column at all — the same NON_ORG_SCOPED, no-RLS shape
+the two existing outbox consumers (`buildM1LagProbeStatusConsumer`, `buildM1MacPortalHealthConsumer`)
+already use to write this table from the outbox side; this store is the admin-route side's independent
+twin of that same write path. **Investigated, correctly NOT forced**: whether the two still-declared-
+but-unbound `m24.medicaid_state_channel.*` events (F-172 gave them a real producer for the first time)
+could now bind onto this same table, mirroring the two existing platform-health consumers. Found a
+genuine cross-tenant disclosure risk instead — `GET /api/v1/system/status` requires only
+`requireSession()` (no elevated role, no org filter) and returns every row unfiltered, so a per-org
+Medicaid-credential-health component would put one tenant's billing-infrastructure status on every
+other tenant's shared status page, visible to any authenticated user of any org. Left deferred,
+documented in the `m1` group's own reason text. Verified: `build`/`typecheck` clean, `arch:fitness`
+38/38 (declared-but-unbound count held at 66/15, unchanged since nothing new was bound), non-live
+suite 9604 tests green, new live suite green (`m1:system-status-store` 4/4) plus 3 sibling live
+suites re-run individually for regression (`m1:lag-probe-status` 3/3, `m1:mac-portal-health` 4/4,
+`m1:feature-flags` 10/10), two `check:boot:platform` runs (the first used a malformed platform-
+credential URL and was discarded rather than trusted, redone correctly before accepting the result).
+Leaving #248 open — 66 pairs across 15 modules remain.
+
+**F-174 (#248) — a full return to standard investigation cadence across five groups untouched since
+early in this arc (m30's two groups, m27, m17, m31, m11), deliberately excluding M29's outbound MLLP
+transport worker (held for a dedicated, later multi-agent effort per explicit direction — a real
+multi-day build, not a small gap). Net result: 0 built, 0 dropped, all 35 pairs re-confirmed
+genuinely blocked** — the clearest evidence yet that this arc has reached its real plateau, not an
+illusory one. Every group's `reason` text was updated with a fresh re-verification, several correcting
+overstated or stale prior claims rather than merely restating them: **m30's high-priority lead**
+(`m37.ipu_admission.death_recorded`, freshly live-emitted by F-172's own new producer) was checked
+first and stays deferred for a sharper reason — the event only fires as a downstream effect of
+`m6.discharge.death`, and M30's OWN upstream consumer for that transaction (`createMortalityReviewDraft`)
+is itself still an unbound `unboundWorkerPort`, so binding `death_recorded` now would race a
+still-nonexistent primary mortality-review path for the same death, not merely wire an existing one.
+**m27's "hard cross-check" framing was found overstated**: no automated GL-mapping-to-Worksheet-A
+pipeline exists anywhere in the codebase to violate — Worksheet A is populated by direct human PUT
+today — which sharpens rather than clears the blocker, since M27's own locked spec answers the
+identical "vendor invoice not represented in the EHR" problem with a human-entered manual adjustment
+line, not an automated consumer, reinforcing that which mechanism M21's case should take is still a
+genuine undecided product call. **m31's "no envelope-encrypt capability exists" claim was found
+wrong**: M34's shared per-tenant DEK provider is already reused by three other modules and could cover
+telehealth-vendor-room ciphertext the same way — the real blocker stays the missing upstream M17
+telehealth-setting value, an M17 data-model decision this consumer can't invent. **m31's
+`m22.document.rendered` "misdeclared/redundant" framing was corrected to "real, schema-blocked"**: the
+target table is a genuine disclosure-view-tracking artifact (§164.528 accounting-of-disclosures),
+answering a different question than the existing seam pull, not a duplicate — it stays deferred
+because building it means minting M31's first new PHI table since M31-T02, a real schema decision out
+of scope for a consumer bind. **m11's DPOA citation was corrected** to the actually-decisive spec
+table (M39's own event catalog, not the unrelated revocation-cascade table two prior rounds had cited)
+and confirmed genuinely producer-decided-but-unbuilt on M39's own admission, with neither a push
+consumer nor a pull seam nor a schema column to build against — unlike M7/M14's already-dropped
+siblings, which each had a documented pull alternative. **m17's both pairs** and **m11's care-plan-
+intervention trio** were reconfirmed unchanged on direct re-grep (no third EVV bracket-resolution
+value, no risk-area producer anywhere in `20-field-safety/`, `linked_order_id` still never written).
+Verified per-fork: `build`/`typecheck` clean, `arch:fitness` 38/38 throughout (declared-but-unbound
+count held at 66/15 — the round changed zero bindings), full non-live suite 9604 tests green after all
+five forks' edits landed together (no live-Postgres run needed — nothing new was bound, so nothing
+needed proving against a real database). Leaving #248 open — 66 pairs across 15 modules remain.
