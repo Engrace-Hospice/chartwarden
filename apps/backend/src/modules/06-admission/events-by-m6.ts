@@ -811,6 +811,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
        *  paperwork was filed, not the day the transfer took effect. Both emit sites have it in hand. */
       effectiveAt: Type.String({ minLength: 1 }),
       otherHospiceCcn: Type.Optional(Type.String({ minLength: 1 })),
+      /** F-192 (#248) — the chart M22 files the rendered transfer-summary document against (F-100's
+       *  "every one of these artifacts is patient-scoped by definition — there is no defensible null"
+       *  reasoning, one event over). Widened onto both real emit sites (`transferOut`/`transferIn`,
+       *  `admission-route-service-db.ts`), which already resolve the admission's patient in the same
+       *  transaction. */
+      patientId: Type.String({ minLength: 1 }),
     }),
     declaredConsumers: ["m13", "m22", "m23", "m26"],
     isOutboxOnly: true,

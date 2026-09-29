@@ -202,7 +202,12 @@ export const M21_AUDIT_DENYLIST: { readonly [K in M21TableName]: readonly string
   comfort_kit_template_medication: ["notes"],
   vendor_routing_rule: [],
   par_stock: ["reorder_notes"],
-  supply_request: ["delivery_instructions", "cancellation_reason"],
+  supply_request: [
+    "delivery_instructions",
+    "cancellation_reason",
+    // F-193 (#248) — the caregiver-signature evidence jsonb can carry a typed or witness NAME.
+    "caregiver_signature_evidence_jsonb",
+  ],
   comfort_kit_dispatch: ["special_handling_notes"],
   comfort_kit_dispatched_content: [],
   comfort_kit_return: ["disposal_notes", "discrepancy_notes", "unreturnable_reason"],
@@ -346,11 +351,41 @@ export interface SupplyCourierAttestation {
   readonly evidenceDocumentId: DocumentId | null;
 }
 
-/** `m21.supply_request.delivered` — M22 opens the optional caregiver-signature flow. */
+/** `m21.supply_request.delivered` — the row reached `delivered` with its D7 courier attestation. The
+ *  optional caregiver-signature capture is M21's own (F-193, #248) — synchronous, not an outbox
+ *  consumer; see `SupplyCaregiverSignatureCaptureMethod` below. */
 export interface M21SupplyRequestDeliveredPayload extends M21PatientScopedEventBase {
   readonly supplyRequestId: SupplyRequestId;
   readonly kind: SupplyRequestKind;
   readonly courierAttestation: SupplyCourierAttestation;
+}
+
+/** F-193 (#248) — M21's OWN caregiver-signature capture. D7's spec line ("caregiver signature is optional
+ *  via M22's signature flow, triggered when policy or tenant config requires it") named a mechanism M22
+ *  was never going to build (M22's own spec disclaims signature capture; see the `delivered` payload's
+ *  F-191 history and `events-by-m21.ts`'s comment for the full citation trail). This mirrors the SHAPE
+ *  (not the type — M21's manifest `dependsOn` has no edge to M39) of `@wardenx/consent`'s proven
+ *  `ConsentCaptureEvidence.captureMethod`, narrowed to what is plausible for a courier-delivery caregiver
+ *  signature: no portal session, no uploaded PDF, no notary — just typed-in-app, a witnessed verbal
+ *  account, or an explicit decline (still evidence worth recording). ALWAYS OPTIONAL: nothing reads this
+ *  as a gate on delivery completion or any other transition. Mirrors `m21_caregiver_signature_capture_method`. */
+export type SupplyCaregiverSignatureCaptureMethod =
+  | "typed_signature_in_app"
+  | "witnessed_verbal_documented"
+  | "declined";
+
+/** F-193 (#248) — the method-specific free-text evidence stored in
+ *  `supply_request.caregiver_signature_evidence_jsonb`. Exactly one group is populated per method:
+ *  `typedSignatureName` for `typed_signature_in_app`; `witnessName` + `witnessAttestationText` for
+ *  `witnessed_verbal_documented` (the M22 document reference for that method is the discrete
+ *  `caregiverSignatureEvidenceDocumentId` field, not part of this jsonb — the same split
+ *  `deliveryEvidenceDocumentId` makes from the courier attestation); `declinedReason` (optional) for
+ *  `declined`. Free text — on the M4 audit denylist (`M21_AUDIT_DENYLIST.supply_request`). */
+export interface SupplyCaregiverSignatureEvidence {
+  readonly typedSignatureName?: string;
+  readonly witnessName?: string;
+  readonly witnessAttestationText?: string;
+  readonly declinedReason?: string;
 }
 
 /** `m21.supply_request.cancelled` — the row reached `cancelled`. M11 releases the order. */

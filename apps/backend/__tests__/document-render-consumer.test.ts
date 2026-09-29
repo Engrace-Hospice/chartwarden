@@ -402,6 +402,8 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     ["m6.revocation.created", "revocation", { revocationEventId: ORDER }],
     ["m6.discharge.created", "discharge_summary", { dischargeEventId: ORDER }],
     ["m6.discharge.cosigned", "discharge_summary", { dischargeEventId: ORDER }],
+    // F-192 (#248) — M6's seventh artifact, the transfer summary (both directions, one template).
+    ["m6.transfer.created", "discharge_summary_transfer", { transferEventId: ORDER }],
   ])("%s renders %s against its own row, on the patient's chart", (eventType, templateKey, ids) => {
     const { event, payload } = normalizeDocumentRequest({
       eventType,
@@ -429,14 +431,9 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     ).toThrow(/names no aggregate id/);
   });
 
-  // F-176 (#248) bound `m6.discharge.cosigned` (appends a discharge_summary version). The transfer stays
-  // deliberately unbound — see REQUEST_SHAPES for why. Pinned so binding it is a deliberate edit here.
-  it.each(["m6.transfer.created"])(
-    "does not consume %s — it is a documented deferral, not an oversight",
-    (eventType) => {
-      expect(M22_DOCUMENT_REQUEST_EVENTS as readonly string[]).not.toContain(eventType);
-    },
-  );
+  // F-176 (#248) bound `m6.discharge.cosigned` (appends a discharge_summary version). F-192 (#248) bound
+  // `m6.transfer.created` too (`discharge_summary_transfer`, migration 0267) — see the `it.each` above,
+  // which now covers it. No pinned "not consumed" list remains for this group.
 
   it("throws on an M33 aggregateType M22 has no template for", () => {
     expect(() =>
@@ -551,6 +548,10 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       // M17's side) and M7's care-plan-signed PDF (new `care_plan` aggregate type, migration 0252).
       "m17.caregiver_reminder_due",
       "m7.care_plan.version_signed",
+      // F-192 (#248) — the last of that group: the M22 spec's own "discharge_summary (transfer
+      // variant)" — a distinct `document_aggregate_type` (migration 0267), not a second version of the
+      // base `discharge_summary` template.
+      "m6.transfer.created",
       // F-166 (#248) — five GENESIS-only render requests, all real `document_aggregate_type` enum
       // values since migration 0048 that had never gotten a TemplateDescriptor or a subscription.
       "m8.encounter.signed",

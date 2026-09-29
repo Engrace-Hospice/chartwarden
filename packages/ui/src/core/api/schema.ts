@@ -17570,6 +17570,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/caregiver-signature": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** M21's own caregiver-signature capture (F-193, #248) — not a status transition, no outbox emission, refuses a second capture (If-Match) */
+        post: operations["postApiV1SuppliesSupplyrequestsBySupplyRequestIdCaregiversignature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/supplies/supply-requests/{supplyRequestId}/confirm-received": {
         parameters: {
             query?: never;
@@ -68385,6 +68402,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68472,6 +68499,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68556,6 +68593,116 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1SuppliesSupplyrequestsBySupplyRequestIdCaregiversignature: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                supplyRequestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    captureMethod: "typed_signature_in_app" | "witnessed_verbal_documented" | "declined";
+                    typedSignatureName?: string;
+                    witnessName?: string;
+                    witnessAttestationText?: string;
+                    /** Format: uuid */
+                    evidenceDocumentId?: string;
+                    declinedReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        supplyRequestId: string;
+                        patientId: string;
+                        locationId: string;
+                        kind: "dme" | "supply" | "comfort_kit_deploy" | "comfort_kit_replenish";
+                        status: "requested" | "vendor_assigned" | "ordered" | "in_transit" | "delivered" | "received_confirmed" | "completed" | "cancellation_pending" | "cancelled" | "returned";
+                        assignedVendorId: string | null;
+                        vendorOrderReference: string | null;
+                        trackingNumber: string | null;
+                        carrier: string | null;
+                        orderedAt: string | null;
+                        deliveredAt: string | null;
+                        createdAt: string;
+                        updatedAt: string;
+                        admissionId: string;
+                        providerEntityId: string;
+                        sourceOrderId: string | null;
+                        sourceReplenishmentEventId: string | null;
+                        requestedByMembershipId: string | null;
+                        data: unknown;
+                        routingRuleResolved: {
+                            resolverVersion: string;
+                            resolvedAt: string;
+                            precedenceLevelUsed: "sku" | "location" | "tenant";
+                            matchedRuleId: string | null;
+                            assignedVendorId: string | null;
+                            assignedFulfillmentMode: "vendor" | "internal_supply_hub" | "partner_pharmacy" | "dosespot_to_partner_pharmacy";
+                            defaultPharmacyDispatchMode: ("supply_hub_dispatch" | "partner_pharmacy_dispatch" | "dosespot_to_partner_pharmacy") | null;
+                            candidatesEvaluated: {
+                                precedenceLevel: "sku" | "location" | "tenant";
+                                ruleId: string | null;
+                                matched: boolean;
+                                reason: string;
+                            }[];
+                            routingPolicyDigest: string;
+                        } | null;
+                        pharmacyPartnerId: string | null;
+                        documentId: string | null;
+                        deliveryInstructions: string | null;
+                        deliveryMethod: ("agency_courier" | "vendor_direct_ship" | "pharmacy_partner_courier" | "patient_pickup" | "in_facility_internal") | null;
+                        deliveredByMembershipId: string | null;
+                        deliveryEvidenceDocumentId: string | null;
+                        receivedConfirmedAt: string | null;
+                        receivedConfirmedActor: ("caregiver" | "patient" | "supply_team" | "system_auto_confirm") | null;
+                        completedAt: string | null;
+                        cancelledAt: string | null;
+                        cancellationPendingAt: string | null;
+                        cancellationReason: string | null;
+                        shippedAt: string | null;
+                        invoiceTotalCents: number | null;
+                        invoiceAccruedAt: string | null;
+                        invoiceReconciledAt: string | null;
+                        invoiceVarianceCents: number | null;
+                        dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68642,6 +68789,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68730,6 +68887,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68815,6 +68982,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68899,6 +69076,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };
@@ -68983,6 +69170,16 @@ export interface operations {
                         invoiceReconciledAt: string | null;
                         invoiceVarianceCents: number | null;
                         dispatchId: string | null;
+                        caregiverSignatureCaptureMethod: ("typed_signature_in_app" | "witnessed_verbal_documented" | "declined") | null;
+                        caregiverSignatureCapturedAt: string | null;
+                        caregiverSignatureCapturedByMembershipId: string | null;
+                        caregiverSignatureEvidenceDocumentId: string | null;
+                        caregiverSignatureEvidence: {
+                            typedSignatureName?: string;
+                            witnessName?: string;
+                            witnessAttestationText?: string;
+                            declinedReason?: string;
+                        } | null;
                     };
                 };
             };

@@ -93,6 +93,10 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       // catalog: "drives … M22 PDF").
       "m17.caregiver_reminder_due",
       "m7.care_plan.version_signed",
+      // F-192 (#248) — the last of that same group-of-seven: M22's own spec calls it "discharge_summary
+      // (transfer variant)" — a distinct `document_aggregate_type` (migration 0267), not a second version
+      // of the base template.
+      "m6.transfer.created",
       // F-166 (#248) — five GENESIS-only render requests, all real `document_aggregate_type` enum
       // values since migration 0048 that had never gotten a TemplateDescriptor or a subscription.
       "m8.encounter.signed",

@@ -276,6 +276,7 @@ import {
   AssignRetrieverBody as M21AssignRetrieverBody,
   AssignVendorBody as M21AssignVendorBody,
   CancelRequestBody as M21CancelRequestBody,
+  CaptureCaregiverSignatureBody as M21CaptureCaregiverSignatureBody,
   ConfirmReceivedBody as M21ConfirmReceivedBody,
   CreateDispatchBody as M21CreateDispatchBody,
   CreateReturnBody as M21CreateReturnBody,
@@ -6487,6 +6488,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/supplies/supply-requests/:supplyRequestId/mark-delivered": {
     summary: "D7 courier attestation (deliveredBy stamped from session; If-Match)",
     body: M21MarkDeliveredBody,
+    response: M21SupplyRequestDetailSchema,
+  },
+  "POST /api/v1/supplies/supply-requests/:supplyRequestId/caregiver-signature": {
+    summary:
+      "M21's own caregiver-signature capture (F-193, #248) — not a status transition, no outbox emission, refuses a second capture (If-Match)",
+    body: M21CaptureCaregiverSignatureBody,
     response: M21SupplyRequestDetailSchema,
   },
   "POST /api/v1/supplies/supply-requests/:supplyRequestId/confirm-received": {

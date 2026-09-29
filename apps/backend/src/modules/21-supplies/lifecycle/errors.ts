@@ -38,6 +38,16 @@ export const M21_ERROR_STATUS = {
   M21_CANCELLATION_REASON_REQUIRED: 422,
   /** §2.2 — a vendor refusal must walk the row back to the state it actually left. */
   M21_CANCELLATION_RESTORE_STATE_INVALID: 422,
+  /** F-193 (#248) — a caregiver signature is captured against a DELIVERY; a request that has not yet
+   *  reached `delivered` has no delivery to attest to. */
+  M21_CAREGIVER_SIGNATURE_REQUIRES_DELIVERY: 422,
+  /** F-193 (#248) — the capture is a one-time evidentiary act, matching this module's append-only
+   *  posture for every other attestation (the DEA perpetual log, `order_transmission_attestation`); a
+   *  second submission is refused rather than silently overwriting the first. */
+  M21_CAREGIVER_SIGNATURE_ALREADY_CAPTURED: 409,
+  /** F-193 (#248) — the evidence given does not satisfy the declared capture method's floor (mirrors
+   *  M39's `validateCaptureEvidence` refusal). */
+  M21_CAREGIVER_SIGNATURE_EVIDENCE_REQUIRED: 422,
 
   // ── §2.3 comfort-kit template ──────────────────────────────────────────────────────────────────────
   /** §7.2 — a tenant template removed / loosened a platform-floor medication. */

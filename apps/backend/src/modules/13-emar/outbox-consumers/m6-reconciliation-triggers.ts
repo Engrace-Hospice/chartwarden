@@ -17,8 +17,10 @@
 // org-explicit `admissionSchedulingContextForOrg` (the §4.7 seam pins the tenant from the ambient
 // request scope and a relay tick is not a request — the F-105/F-150 precedent). That read also supplies
 // `providerEntityId`/`locationId`, which the three-column tenancy rule requires on
-// `medication_reconciliation_worksheet` and which none of the four M6 payloads carry (`m6.transfer.created`
-// does not even carry `patientId`).
+// `medication_reconciliation_worksheet` and which none of the four M6 payloads carry (F-192, #248 widened
+// `m6.transfer.created` with a `patientId` for M22's own render handshake, but `providerEntityId`/
+// `locationId` are still absent from every one of the four, so `resolveAdmission` stays the read this
+// consumer needs regardless).
 //
 // A consumer-driven write names no acting membership (F-102's `CONSUMER_USER_ID` convention) — there is
 // none to name here regardless: `medication_reconciliation_worksheet.finalized_by_membership_id` is the

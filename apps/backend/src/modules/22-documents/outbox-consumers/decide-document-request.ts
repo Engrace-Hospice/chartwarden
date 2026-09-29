@@ -116,6 +116,15 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   // why each of those five stays unconsumed.
   "m17.caregiver_reminder_due", // visit_confirmation — M17's own catalog: "M22 renders the reminder"
   "m7.care_plan.version_signed", // care_plan — M7's own catalog: "drives … M22 PDF"
+  // ── F-192 (#248) — the LAST of that same group-of-seven "decisively named" SOURCE events, checked and
+  // rebuilt three times (F-161/F-162/F-166/F-176) and left unbuilt each time for the identical reason:
+  // it wants what the M22 spec calls "discharge_summary (transfer variant)" (see the comment on
+  // `m6.discharge.created` below), a distinct `document_aggregate_type` from the base `discharge_summary`
+  // — never a second version of it, since a transfer is not a discharge for cause/death/routine. Mig
+  // 0267 adds `discharge_summary_transfer`. The F-100 M6-CoP-documents shape again: no separate
+  // `*.document_requested` sibling, the event NAME is the template; `transfer_event.document_id`
+  // ("(M22) transfer summary") has been on the schema since M6 landed, unread until now.
+  "m6.transfer.created", // discharge_summary_transfer — M6 §2.3.6/§7.7, both in/out directions
   // ── F-166 (#248) — M22's own `handlers-unbound` group's survey-then-build pass: five SOURCE-event
   // GENESIS renders (a first document per aggregate, never a re-render of one that already exists —
   // at the time this landed, the exact distinction that kept `m6.discharge.cosigned`/

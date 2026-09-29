@@ -159,14 +159,26 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m21.supply_request.delivered",
     moduleOwner: "m21",
     description:
-      "The row reached `delivered` with its D7 courier attestation. M22 opens the optional caregiver-signature flow off `evidenceDocumentId`.",
+      "The row reached `delivered` with its D7 courier attestation. The optional caregiver-signature capture is M21's own (F-191, #248) — synchronous, not an outbox consumer.",
     payloadSchema: Type.Object({
       ...patientScoped,
       supplyRequestId: Id,
       kind: Str,
       courierAttestation,
     }),
-    declaredConsumers: ["m22"],
+    // F-191 (#248) — m22 DROPPED from declaredConsumers, misdeclared: M22's own spec explicitly
+    // disclaims owning signature capture (`WARDENX_MODULE_22_DOCUMENTS_SPEC_v0_5.md:126`, "M22 does
+    // not capture signatures — the source module does"; line 2383 lists it as a non-goal even for
+    // M39 consent, the nearest structural analog), and no capture route/seam/FormFill consumer
+    // exists anywhere in `22-documents/` (confirmed by direct read, `render-consumer.ts:292-297`
+    // already independently reached the same conclusion). Every signature flow in this codebase is
+    // captured synchronously inside its OWNING module (M11/M12 orders, M7/M8/M15 attestations, M39
+    // consent's `ConsentCaptureEvidence`) — never via an M22 outbox consumer. D7's "caregiver
+    // signature is optional via M22's signature flow" describes a capability M22 was never going to
+    // build; the real, still-unbuilt gap is a small M21-owned capture (mirroring M39's
+    // `captureMethod`/`captureEvidence`/witness-evidence-document-reference shape), a scoped
+    // proposal — not decided here — not an outbox binding.
+    declaredConsumers: [],
     seamConsumers: ["m33"],
     isOutboxOnly: true,
   },

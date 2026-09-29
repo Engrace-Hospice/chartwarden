@@ -16,6 +16,8 @@
 //                       over-return guards, the computed discrepancy, and the 30d/90d escalation scan
 //   • ./par-stock       §2.7 / D5 — the nightly band evaluation (cron emits, observations do not) and the
 //                       refusing-not-clamping dispatch decrement
+//   • ./caregiver-signature  F-193 (#248) — the M21-owned caregiver-signature CAPTURE, NOT a §2.2
+//                       transition (evidence about an already-`delivered` row, not a step in the machine)
 //   • ./errors          the §7 / §2.10 code → status catalog on the M1 `WardenXError` envelope
 export * from "./effects";
 export * from "./errors";
@@ -24,3 +26,4 @@ export * from "./template";
 export * from "./dispatch";
 export * from "./return";
 export * from "./par-stock";
+export * from "./caregiver-signature";

@@ -9,6 +9,10 @@
 // certification of terminal illness, the election statement, the face-to-face encounter, the notice of
 // rights, the revocation and the discharge summary.
 //
+// F-192 (#248) — the seventh, `transfer_event.document_id` ("(M22) transfer summary"), landed the same
+// way once M22 published the `discharge_summary_transfer` variant (mig 0267): a row in the map below,
+// not a branch.
+//
 // The document was already DISCOVERABLE without the stamp — `document.(aggregate_type, aggregate_id)` is
 // the reverse index — so this is not "the PDF is lost". It is that every read path on the source row has
 // to know M22's taxonomy and join sideways, and the columns M6 built for exactly this stay NULL forever.
@@ -79,6 +83,15 @@ const M6_BACKREF_TARGETS: Readonly<Record<string, Stamp>> = {
   },
   discharge_summary: (tx, orgId, rowId, documentId) => {
     const T = schema.dischargeEvents;
+    return tx
+      .update(T)
+      .set({ documentId })
+      .where(and(eq(T.organizationId, orgId), eq(T.id, rowId), isNull(T.documentId)));
+  },
+  // F-192 (#248) — M6's seventh artifact, the transfer variant, landed. `transfer_event.document_id`
+  // ("(M22) transfer summary") has carried this exact comment since the schema landed.
+  discharge_summary_transfer: (tx, orgId, rowId, documentId) => {
+    const T = schema.transferEvents;
     return tx
       .update(T)
       .set({ documentId })

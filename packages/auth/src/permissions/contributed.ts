@@ -3831,9 +3831,9 @@ export const M16_CONTRIBUTED_PERMISSIONS = {
 export type M16ContributedPermissionKey = keyof typeof M16_CONTRIBUTED_PERMISSIONS;
 
 /**
- * M21-T05 — the twenty-eight Supplies / DME / Comfort-Kit permission keys Module 21 registers into M3's
- * catalog: §4.3's twenty-six, plus the two the §4.1 route inventory needs and §4.3 never named (see the
- * last block).
+ * M21-T05 — the twenty-nine Supplies / DME / Comfort-Kit permission keys Module 21 registers into M3's
+ * catalog: §4.3's twenty-six, plus the three the §4.1 route inventory needs and §4.3 never named (see the
+ * last block plus `caregiver_signature` beside `mark_delivered`, F-193/#248).
  *
  * `abac` names the DEFAULT predicate the M3 catalog records for the key; the §4.1 route table is what
  * actually binds a guard, and it may bind a different (or no) predicate per route. Both §4.4 predicate
@@ -3889,6 +3889,16 @@ export const M21_CONTRIBUTED_PERMISSIONS = {
   "supplies.request.mark_delivered": {
     resource: "supply_request",
     action: "mark_delivered",
+    category: "clinical",
+    abac: "none",
+  },
+  // F-193 (#248) — the M21-owned caregiver-signature capture (§4.1 has no row for it; D7's "optional via
+  // M22's signature flow" named a mechanism M22 was never going to build). Gated the same way
+  // `mark_delivered` is: RBAC only, no ABAC — the route further requires the request to already be
+  // `delivered` (a lifecycle guard, not an authorization predicate).
+  "supplies.request.caregiver_signature": {
+    resource: "supply_request",
+    action: "caregiver_signature",
     category: "clinical",
     abac: "none",
   },
@@ -4047,7 +4057,7 @@ export const M21_CONTRIBUTED_PERMISSIONS = {
   },
 } satisfies Record<string, PermissionDef>;
 
-/** Union of the M21 contributed permission keys (twenty-eight). */
+/** Union of the M21 contributed permission keys (twenty-nine). */
 export type M21ContributedPermissionKey = keyof typeof M21_CONTRIBUTED_PERMISSIONS;
 
 /**

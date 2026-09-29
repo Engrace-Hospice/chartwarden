@@ -304,6 +304,15 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "clinical_record",
     defaultTitle: "Plan of Care",
   },
+  // F-192 (#248) — M6 §2.3.6/§7.7 — the transfer summary (routes 37/38, both directions). The M22 spec's
+  // own "discharge_summary (transfer variant)" phrasing (see the `m6.discharge.created` comment above);
+  // mig 0267 adds the `document_aggregate_type` value. `clinical_record`, matching `discharge_summary`
+  // itself — this is the continuity-of-care record for a transferred patient's chart, not correspondence.
+  discharge_summary_transfer: {
+    aggregateType: "discharge_summary_transfer",
+    retentionClass: "clinical_record",
+    defaultTitle: "Transfer Summary",
+  },
   // F-166 (#248) — M14's two IDG render requests. Both `document_aggregate_type` values have existed
   // since migration 0048 with no descriptor and no subscription — F-162's own precise finding
   // ("even a first-ever render would hit `unknown_template` today"). `clinical_record`: both are the

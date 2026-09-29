@@ -4681,6 +4681,14 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         const period = await latestPeriod(tx, admissionId);
         if (!period) throw new ResourceNotFoundError(admissionId);
+        // F-192 (#248) — the chart M22's transfer-summary render files against; `transferIn` below
+        // already reads this same column for its own CTI-attribution needs.
+        const [xferAdm] = await tx
+          .select({ patientId: ADM.patientId })
+          .from(ADM)
+          .where(eq(ADM.id, admissionId))
+          .limit(1);
+        if (!xferAdm) throw new ResourceNotFoundError(admissionId);
         // §2.3.6 R-XFR-01 — only one transfer-out per benefit period (42 CFR 418.28). No DB constraint
         // enforces this (unlike revocation_event's `revocation_period_idx` unique index), so query the
         // real fact rather than assuming it can never happen (the admission-graph transition to
@@ -4731,6 +4739,8 @@ export function createDbAdmissionRouteService(
             // F-107 — `effectiveAt` is the transfer's own date, which M23 dates the 42 CFR 418.26
             // NOTR window from. `admission.discharged_at` is `now()` and cannot substitute.
             effectiveAt: input.effectiveDate,
+            // F-192 (#248) — M22's transfer-summary render handshake.
+            patientId: xferAdm.patientId,
           },
           organizationId,
           aggregateKind: "transfer_event",
@@ -4893,6 +4903,9 @@ export function createDbAdmissionRouteService(
             admissionId,
             direction: "in",
             effectiveAt: input.effectiveDate,
+            // F-192 (#248) — M22's transfer-summary render handshake; `adm.patientId` was already
+            // resolved above for the CTI hospice-physician attribution.
+            patientId: adm.patientId,
           },
           organizationId,
           aggregateKind: "transfer_event",

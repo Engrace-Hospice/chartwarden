@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1305,
-    "coveredRoutes": 1305,
-    "directRoutesReferenced": 1247
+    "routes": 1306,
+    "coveredRoutes": 1306,
+    "directRoutesReferenced": 1248
   },
   "modules": [
     {
@@ -215,12 +215,12 @@
     },
     {
       "module": "21-supplies",
-      "routes": 37,
+      "routes": 38,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/supplies-inject.test.ts"
       ],
-      "directRoutesReferenced": 37
+      "directRoutesReferenced": 38
     },
     {
       "module": "22-documents",

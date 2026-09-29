@@ -263,10 +263,11 @@ describe("F-101 — m6 events that declare m22 render nothing", () => {
     }
   });
 
-  it("the two the M22 spec names but cannot render yet keep m22 — they are deferred, not wrong", () => {
-    // `m6.discharge.cosigned` is a new VERSION of an existing document (W2 append path), and
-    // `m6.transfer.created` wants a `discharge_summary` transfer variant M22 does not publish. Both
-    // stay in scripts/outbox-deferred-consumers.ts, where a reason that will expire belongs.
+  it("m6.discharge.cosigned keeps m22 — a new VERSION of an existing document, deferred not wrong", () => {
+    // `m6.discharge.cosigned` is a new VERSION of an existing document (W2 append path) — it stays in
+    // scripts/outbox-deferred-consumers.ts, where a reason that will expire belongs. `m6.transfer.created`
+    // used to sit here too (it wanted a `discharge_summary` transfer variant M22 did not publish); F-192
+    // published `discharge_summary_transfer` and bound it, so it now belongs beside the six above.
     expect(catalog.get("m6.discharge.cosigned")?.declaredConsumers).toContain("m22");
     expect(catalog.get("m6.transfer.created")?.declaredConsumers).toContain("m22");
   });

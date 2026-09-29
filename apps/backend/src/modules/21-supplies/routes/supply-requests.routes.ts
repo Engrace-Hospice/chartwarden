@@ -18,6 +18,7 @@ import { ABAC_DISPATCHER_ON_KIND, P } from "./guards";
 import {
   AssignVendorBody,
   CancelRequestBody,
+  CaptureCaregiverSignatureBody,
   ConfirmReceivedBody,
   CreateSupplyRequestBody,
   ListSupplyRequestsQuery,
@@ -156,6 +157,25 @@ export function registerSupplyRequestRoutes(
       const { supplyRequestId } = parse(RequestIdParams, request.params);
       const body = parse(MarkDeliveredBody, request.body);
       return writeService.markDelivered(writeActorOf(request), supplyRequestId, {
+        expectedUpdatedAt: ifMatchStamp(request, true),
+        ...body,
+      });
+    },
+  );
+
+  // 7b — F-193 (#248) — M21's own caregiver-signature capture. NOT a §2.2 transition (status does not
+  //      move); `If-Match` is still required because this is a real mutation of the row and the same
+  //      §7.2 lost-update race a status transition guards against applies here too. `captureMethod`
+  //      picks the branch; `../lifecycle/caregiver-signature.ts` enforces the per-method evidence floor
+  //      and refuses a second capture (`M21_CAREGIVER_SIGNATURE_ALREADY_CAPTURED`, 409) rather than
+  //      overwriting or appending — the capture is a one-time evidentiary act.
+  app.post(
+    "/api/v1/supplies/supply-requests/:supplyRequestId/caregiver-signature",
+    { preHandler: [P("supplies.request.caregiver_signature"), IDEMPOTENT] },
+    async (request) => {
+      const { supplyRequestId } = parse(RequestIdParams, request.params);
+      const body = parse(CaptureCaregiverSignatureBody, request.body);
+      return writeService.captureCaregiverSignature(writeActorOf(request), supplyRequestId, {
         expectedUpdatedAt: ifMatchStamp(request, true),
         ...body,
       });
