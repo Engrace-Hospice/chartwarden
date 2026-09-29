@@ -49,6 +49,14 @@ export async function runVerbalOrderExpiryFanout(deps: VerbalOrderExpiryWorkerDe
     } catch (error) {
       failures.push(error);
     }
+    // F-191 (#248) — the same hourly tick lapses pending two-person lab-recovery requests past their 24 h `expires_at`
+    // (and raises the compliance alert for each). A separate try so one sweep's failure never skips the other, and
+    // riding this timer rather than a new queue keeps the deployment surface unchanged.
+    try {
+      await deps.service.expireStaleLabRecoveryRequests(organizationId);
+    } catch (error) {
+      failures.push(error);
+    }
   }
   if (failures.length)
     throw new AggregateError(failures, `M11_VERBAL_TIMER: ${failures.length} org failure(s)`);

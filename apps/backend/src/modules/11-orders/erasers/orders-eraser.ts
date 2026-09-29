@@ -36,6 +36,10 @@ export interface OrderEraseCounts {
   readonly standingInstances: number;
   /** `order_discontinuation` rows deleted (cascaded from the deleted orders). */
   readonly discontinuations: number;
+  /** F-191 — `order_transmission_attestation` rows deleted (the append-only recovery ledger; cascaded from the orders). */
+  readonly transmissionAttestations: number;
+  /** F-191 — `order_recovery_request` rows deleted (the two-person recovery requests; cascaded from the orders). */
+  readonly recoveryRequests: number;
   /** `standing_order` templates deleted for the patient. */
   readonly standingOrders: number;
   /** Whole `order_record` partitions DETACHed + DROPped (the partition-drop path, §3.4 / D12). */
@@ -94,6 +98,8 @@ export async function eraseOrderRecord(
     counts.verbalOrders +
     counts.standingInstances +
     counts.discontinuations +
+    counts.transmissionAttestations +
+    counts.recoveryRequests +
     counts.standingOrders;
   return { erased, counts };
 }
@@ -115,6 +121,8 @@ export function createInMemoryOrderEraseStore(seed: InMemoryOrderEraseSeed = {})
     verbalOrders: 0,
     standingInstances: 0,
     discontinuations: 0,
+    transmissionAttestations: 0,
+    recoveryRequests: 0,
     standingOrders: 0,
     partitionsDropped: 0,
   };
@@ -156,6 +164,8 @@ export function createDrizzleOrderEraseStore(db: DbClient): OrderEraseStore {
   const VO = schema.verbalOrders;
   const SOI = schema.standingOrderInstances;
   const DISC = schema.orderDiscontinuations;
+  const ATTEST = schema.orderTransmissionAttestations;
+  const RECOVERY = schema.orderRecoveryRequests;
   const SO = schema.standingOrders;
 
   /** The patient's erasable order ids (`created_at < boundary`) — the child cascade is keyed on these. */
@@ -225,6 +235,29 @@ export function createDrizzleOrderEraseStore(db: DbClient): OrderEraseStore {
                   .returning({ id: DISC.id }),
               );
 
+        // F-191 — the attested-recovery ledger and its two-person requests. Both carry the lab-contact NAME and the lab's
+        // reference for a patient's order, so a destruction certificate must reach them (they were missing from the
+        // destruction role's grants, so erasing an order left them behind). Runs as `wardenx_destruction`: the ledger's
+        // append-only trigger admits a DELETE from a member of that role and from nobody else.
+        const transmissionAttestations =
+          orderIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(ATTEST)
+                  .where(inArray(ATTEST.orderRecordId, orderIds))
+                  .returning({ id: ATTEST.id }),
+              );
+        const recoveryRequests =
+          orderIds.length === 0
+            ? 0
+            : await del(() =>
+                tx
+                  .delete(RECOVERY)
+                  .where(inArray(RECOVERY.orderRecordId, orderIds))
+                  .returning({ id: RECOVERY.id }),
+              );
+
         // The partitioned parent, via the partition-key predicate (row-delete arm of D12).
         const orders = await del(() =>
           tx
@@ -248,6 +281,8 @@ export function createDrizzleOrderEraseStore(db: DbClient): OrderEraseStore {
           verbalOrders,
           standingInstances,
           discontinuations,
+          transmissionAttestations,
+          recoveryRequests,
           standingOrders,
           partitionsDropped: 0,
         };

@@ -382,6 +382,41 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // F-191 (#248) — the two-person control on the attested lab-transmission recovery. Every EXECUTED
+  // `not_received_by_lab` recovery (a re-dispatch that orders the test twice if the attestation was wrong) and every
+  // lapsed / cancelled pending request goes to compliance, with `org_admin` as the backstop for a tenant that has no
+  // compliance-officer role assigned. The emitter routes at max(input, floor): an executed recovery warns, and the
+  // producer raises it to `critical` when the same requester keeps filing them. Ids and counts only in the payload.
+  {
+    eventType: "m11.order.recovery_executed",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m11.order.recovery_expired",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m11.order.recovery_cancelled",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
 ];
 
 /** The event types of the three `system_locked` platform rules (§7.4) — the always-on floor a

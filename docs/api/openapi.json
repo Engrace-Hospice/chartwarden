@@ -125452,6 +125452,8 @@
                         "data",
                         "verbalOrder",
                         "requirements",
+                        "transmissionAttestations",
+                        "pendingRecovery",
                         "allowedActions"
                       ],
                       "properties": {
@@ -125562,6 +125564,215 @@
                               }
                             }
                           }
+                        },
+                        "transmissionAttestations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": [
+                              "id",
+                              "attestation",
+                              "outcome",
+                              "priorFailureReason",
+                              "attestedByMembershipId",
+                              "cosignedByMembershipId",
+                              "attemptId",
+                              "createdAt",
+                              "labContactName",
+                              "labReference"
+                            ],
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "attestation": {
+                                "anyOf": [
+                                  {
+                                    "const": "not_received_by_lab",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "received_by_lab",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "outcome": {
+                                "anyOf": [
+                                  {
+                                    "const": "redispatched",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "marked_transmitted",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              "priorFailureReason": {
+                                "type": "string"
+                              },
+                              "attestedByMembershipId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "cosignedByMembershipId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "attemptId": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "createdAt": {
+                                "type": "string"
+                              },
+                              "labContactName": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              "labReference": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          }
+                        },
+                        "pendingRecovery": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "required": [
+                                "id",
+                                "orderId",
+                                "status",
+                                "requestedByMembershipId",
+                                "requestedAt",
+                                "expiresAt",
+                                "cosignedByMembershipId",
+                                "resolvedAt",
+                                "labContactName",
+                                "labReference"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "orderId": {
+                                  "type": "string"
+                                },
+                                "status": {
+                                  "anyOf": [
+                                    {
+                                      "const": "pending_cosign",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "executed",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "cancelled",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "expired",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "requestedByMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "requestedAt": {
+                                  "type": "string"
+                                },
+                                "expiresAt": {
+                                  "type": "string"
+                                },
+                                "cosignedByMembershipId": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "resolvedAt": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "labContactName": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "labReference": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                }
+                              }
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "allowedActions": {
                           "type": "object",
@@ -127432,7 +127643,7 @@
         "tags": [
           "11-orders"
         ],
-        "summary": "Attested recovery of a lab order that failed after its HL7 message was built (dlq_exhausted / application_reject): the operator attests the lab did NOT receive it (re-dispatch once) or DID (mark transmitted, send nothing) — 409 when not recoverable",
+        "summary": "Attested recovery of a lab order that failed after its HL7 message was built (dlq_exhausted / application_reject): the operator attests the lab did NOT receive it (FILES a two-person request a different user must co-sign; nothing is re-dispatched until then) or DID (mark transmitted, send nothing) — 409 when not recoverable",
         "parameters": [
           {
             "name": "id",
@@ -127453,7 +127664,8 @@
                   "required": [
                     "outcome",
                     "refusalReason",
-                    "order"
+                    "order",
+                    "recovery"
                   ],
                   "properties": {
                     "outcome": {
@@ -127468,6 +127680,10 @@
                         },
                         {
                           "const": "still_refused",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending_cosign",
                           "type": "string"
                         }
                       ]
@@ -127771,6 +127987,8 @@
                             "data",
                             "verbalOrder",
                             "requirements",
+                            "transmissionAttestations",
+                            "pendingRecovery",
                             "allowedActions"
                           ],
                           "properties": {
@@ -127882,6 +128100,1163 @@
                                 }
                               }
                             },
+                            "transmissionAttestations": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "attestation",
+                                  "outcome",
+                                  "priorFailureReason",
+                                  "attestedByMembershipId",
+                                  "cosignedByMembershipId",
+                                  "attemptId",
+                                  "createdAt",
+                                  "labContactName",
+                                  "labReference"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "attestation": {
+                                    "anyOf": [
+                                      {
+                                        "const": "not_received_by_lab",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "received_by_lab",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "outcome": {
+                                    "anyOf": [
+                                      {
+                                        "const": "redispatched",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "marked_transmitted",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "priorFailureReason": {
+                                    "type": "string"
+                                  },
+                                  "attestedByMembershipId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "cosignedByMembershipId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "attemptId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "createdAt": {
+                                    "type": "string"
+                                  },
+                                  "labContactName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "labReference": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            "pendingRecovery": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "id",
+                                    "orderId",
+                                    "status",
+                                    "requestedByMembershipId",
+                                    "requestedAt",
+                                    "expiresAt",
+                                    "cosignedByMembershipId",
+                                    "resolvedAt",
+                                    "labContactName",
+                                    "labReference"
+                                  ],
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "orderId": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "anyOf": [
+                                        {
+                                          "const": "pending_cosign",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "executed",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "cancelled",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "expired",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "requestedByMembershipId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "requestedAt": {
+                                      "type": "string"
+                                    },
+                                    "expiresAt": {
+                                      "type": "string"
+                                    },
+                                    "cosignedByMembershipId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "resolvedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "labContactName": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "labReference": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "allowedActions": {
+                              "type": "object",
+                              "required": [
+                                "edit",
+                                "request_signature",
+                                "record_verbal",
+                                "sign",
+                                "cosign",
+                                "complete",
+                                "discontinue",
+                                "correct"
+                              ],
+                              "properties": {
+                                "edit": {
+                                  "type": "boolean"
+                                },
+                                "request_signature": {
+                                  "type": "boolean"
+                                },
+                                "record_verbal": {
+                                  "type": "boolean"
+                                },
+                                "sign": {
+                                  "type": "boolean"
+                                },
+                                "cosign": {
+                                  "type": "boolean"
+                                },
+                                "complete": {
+                                  "type": "boolean"
+                                },
+                                "discontinue": {
+                                  "type": "boolean"
+                                },
+                                "correct": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "recovery": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "orderId",
+                            "status",
+                            "requestedByMembershipId",
+                            "requestedAt",
+                            "expiresAt",
+                            "cosignedByMembershipId",
+                            "resolvedAt",
+                            "labContactName",
+                            "labReference"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "orderId": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "pending_cosign",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "executed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "expired",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "requestedByMembershipId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "requestedAt": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            },
+                            "cosignedByMembershipId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "resolvedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "labContactName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "labReference": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "attestation",
+                  "contactName",
+                  "labReference"
+                ],
+                "properties": {
+                  "attestation": {
+                    "anyOf": [
+                      {
+                        "const": "not_received_by_lab",
+                        "type": "string"
+                      },
+                      {
+                        "const": "received_by_lab",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "contactName": {
+                    "pattern": "^[A-Za-z][A-Za-z .'-]{1,79}$",
+                    "type": "string"
+                  },
+                  "labReference": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._#/-]{2,63}$",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/orders/{id}/recover-transmission/{requestId}/cancel": {
+      "post": {
+        "operationId": "postApiV1OrdersByIdRecovertransmissionByRequestIdCancel",
+        "tags": [
+          "11-orders"
+        ],
+        "summary": "Cancel a pending recovery request (either person) — 409 when it is no longer pending",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "recovery",
+                    "order"
+                  ],
+                  "properties": {
+                    "recovery": {
+                      "type": "object",
+                      "required": [
+                        "id",
+                        "orderId",
+                        "status",
+                        "requestedByMembershipId",
+                        "requestedAt",
+                        "expiresAt",
+                        "cosignedByMembershipId",
+                        "resolvedAt",
+                        "labContactName",
+                        "labReference"
+                      ],
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "orderId": {
+                          "type": "string"
+                        },
+                        "status": {
+                          "anyOf": [
+                            {
+                              "const": "pending_cosign",
+                              "type": "string"
+                            },
+                            {
+                              "const": "executed",
+                              "type": "string"
+                            },
+                            {
+                              "const": "cancelled",
+                              "type": "string"
+                            },
+                            {
+                              "const": "expired",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "requestedByMembershipId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "requestedAt": {
+                          "type": "string"
+                        },
+                        "expiresAt": {
+                          "type": "string"
+                        },
+                        "cosignedByMembershipId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "resolvedAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "labContactName": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "labReference": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      }
+                    },
+                    "order": {
+                      "type": "object",
+                      "allOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "patientId",
+                            "admissionId",
+                            "kind",
+                            "status",
+                            "priority",
+                            "version",
+                            "drafterMembershipId",
+                            "drafterDiscipline",
+                            "orderingPhysicianMdmId",
+                            "cosignRequired",
+                            "cosignStatus",
+                            "transmissionStatus",
+                            "resultsStatus",
+                            "verbalDeadlineAt",
+                            "discontinuationReason",
+                            "replacesOrderId",
+                            "triggeringAssessmentId",
+                            "triggeringHopeAssessmentId",
+                            "signedAt",
+                            "signedBy",
+                            "completedAt",
+                            "createdAt"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "patientId": {
+                              "type": "string"
+                            },
+                            "admissionId": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "lab",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "dme",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "level_of_care_change",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "recertification",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "comfort_kit",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "supply",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ancillary_service",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "idg_requested",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "pending_signature",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "verbal_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "active",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "completed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "discontinued",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "expired_unsigned",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "priority": {
+                              "anyOf": [
+                                {
+                                  "const": "routine",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "stat",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "asap",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "version": {
+                              "type": "integer"
+                            },
+                            "drafterMembershipId": {
+                              "type": "string"
+                            },
+                            "drafterDiscipline": {
+                              "type": "string"
+                            },
+                            "orderingPhysicianMdmId": {
+                              "type": "string"
+                            },
+                            "cosignRequired": {
+                              "type": "boolean"
+                            },
+                            "cosignStatus": {
+                              "anyOf": [
+                                {
+                                  "const": "pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "attached",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "transmissionStatus": {
+                              "type": "string"
+                            },
+                            "resultsStatus": {
+                              "type": "string"
+                            },
+                            "verbalDeadlineAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "discontinuationReason": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "clinical_judgement",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "patient_request",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "adverse_event",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "replaced_by_corrected_order",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "admission_discharged",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "level_of_care_change",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "standing_order_discontinued",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "corrected_replacement",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "expired_verbal",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "replacesOrderId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "triggeringAssessmentId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "triggeringHopeAssessmentId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "signedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "signedBy": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "completedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "createdAt": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "kindVersion",
+                            "data",
+                            "verbalOrder",
+                            "requirements",
+                            "transmissionAttestations",
+                            "pendingRecovery",
+                            "allowedActions"
+                          ],
+                          "properties": {
+                            "kindVersion": {
+                              "type": "string"
+                            },
+                            "data": {},
+                            "verbalOrder": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "status",
+                                    "receivedAt",
+                                    "effectiveAt",
+                                    "deadlineAt",
+                                    "signedAt",
+                                    "readBackVerified",
+                                    "attestation"
+                                  ],
+                                  "properties": {
+                                    "status": {
+                                      "type": "string"
+                                    },
+                                    "receivedAt": {
+                                      "type": "string"
+                                    },
+                                    "effectiveAt": {
+                                      "type": "string"
+                                    },
+                                    "deadlineAt": {
+                                      "type": "string"
+                                    },
+                                    "signedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "readBackVerified": {
+                                      "type": "boolean"
+                                    },
+                                    "attestation": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "requirements": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "code",
+                                  "label",
+                                  "status"
+                                ],
+                                "properties": {
+                                  "code": {
+                                    "anyOf": [
+                                      {
+                                        "const": "clinical_details",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "rn_cosignature",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "physician_signature",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "verbal_signature",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "anyOf": [
+                                      {
+                                        "const": "not_required",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "pending",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "satisfied",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "deadlineAt": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "transmissionAttestations": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "attestation",
+                                  "outcome",
+                                  "priorFailureReason",
+                                  "attestedByMembershipId",
+                                  "cosignedByMembershipId",
+                                  "attemptId",
+                                  "createdAt",
+                                  "labContactName",
+                                  "labReference"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "attestation": {
+                                    "anyOf": [
+                                      {
+                                        "const": "not_received_by_lab",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "received_by_lab",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "outcome": {
+                                    "anyOf": [
+                                      {
+                                        "const": "redispatched",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "marked_transmitted",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "priorFailureReason": {
+                                    "type": "string"
+                                  },
+                                  "attestedByMembershipId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "cosignedByMembershipId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "attemptId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "createdAt": {
+                                    "type": "string"
+                                  },
+                                  "labContactName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "labReference": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            "pendingRecovery": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "id",
+                                    "orderId",
+                                    "status",
+                                    "requestedByMembershipId",
+                                    "requestedAt",
+                                    "expiresAt",
+                                    "cosignedByMembershipId",
+                                    "resolvedAt",
+                                    "labContactName",
+                                    "labReference"
+                                  ],
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "orderId": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "anyOf": [
+                                        {
+                                          "const": "pending_cosign",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "executed",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "cancelled",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "expired",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "requestedByMembershipId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "requestedAt": {
+                                      "type": "string"
+                                    },
+                                    "expiresAt": {
+                                      "type": "string"
+                                    },
+                                    "cosignedByMembershipId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "resolvedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "labContactName": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "labReference": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "allowedActions": {
                               "type": "object",
                               "required": [
@@ -127936,43 +129311,848 @@
           "5XX": {
             "$ref": "#/components/responses/Error"
           }
-        },
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "additionalProperties": false,
-                "type": "object",
-                "required": [
-                  "attestation",
-                  "contactName",
-                  "labReference"
-                ],
-                "properties": {
-                  "attestation": {
-                    "anyOf": [
-                      {
-                        "const": "not_received_by_lab",
-                        "type": "string"
-                      },
-                      {
-                        "const": "received_by_lab",
-                        "type": "string"
-                      }
-                    ]
-                  },
-                  "contactName": {
-                    "pattern": "^[A-Za-z][A-Za-z .'-]{1,79}$",
-                    "type": "string"
-                  },
-                  "labReference": {
-                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._#/-]{2,63}$",
-                    "type": "string"
+        }
+      }
+    },
+    "/api/v1/orders/{id}/recover-transmission/{requestId}/cosign": {
+      "post": {
+        "operationId": "postApiV1OrdersByIdRecovertransmissionByRequestIdCosign",
+        "tags": [
+          "11-orders"
+        ],
+        "summary": "Co-sign a pending not_received_by_lab recovery (the second person of the two-person control): re-dispatches once — 409 when the request is not pending, has lapsed (24 h), or was filed by the same user",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "requestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "outcome",
+                    "refusalReason",
+                    "order",
+                    "recovery"
+                  ],
+                  "properties": {
+                    "outcome": {
+                      "anyOf": [
+                        {
+                          "const": "redispatched",
+                          "type": "string"
+                        },
+                        {
+                          "const": "marked_transmitted",
+                          "type": "string"
+                        },
+                        {
+                          "const": "still_refused",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending_cosign",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "refusalReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "order": {
+                      "type": "object",
+                      "allOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "patientId",
+                            "admissionId",
+                            "kind",
+                            "status",
+                            "priority",
+                            "version",
+                            "drafterMembershipId",
+                            "drafterDiscipline",
+                            "orderingPhysicianMdmId",
+                            "cosignRequired",
+                            "cosignStatus",
+                            "transmissionStatus",
+                            "resultsStatus",
+                            "verbalDeadlineAt",
+                            "discontinuationReason",
+                            "replacesOrderId",
+                            "triggeringAssessmentId",
+                            "triggeringHopeAssessmentId",
+                            "signedAt",
+                            "signedBy",
+                            "completedAt",
+                            "createdAt"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "patientId": {
+                              "type": "string"
+                            },
+                            "admissionId": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "anyOf": [
+                                {
+                                  "const": "lab",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "dme",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "level_of_care_change",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "recertification",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "comfort_kit",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "supply",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "ancillary_service",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "idg_requested",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "draft",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "pending_signature",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "verbal_pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "active",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "completed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "discontinued",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "expired_unsigned",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "priority": {
+                              "anyOf": [
+                                {
+                                  "const": "routine",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "stat",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "asap",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "version": {
+                              "type": "integer"
+                            },
+                            "drafterMembershipId": {
+                              "type": "string"
+                            },
+                            "drafterDiscipline": {
+                              "type": "string"
+                            },
+                            "orderingPhysicianMdmId": {
+                              "type": "string"
+                            },
+                            "cosignRequired": {
+                              "type": "boolean"
+                            },
+                            "cosignStatus": {
+                              "anyOf": [
+                                {
+                                  "const": "pending",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "attached",
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "transmissionStatus": {
+                              "type": "string"
+                            },
+                            "resultsStatus": {
+                              "type": "string"
+                            },
+                            "verbalDeadlineAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "discontinuationReason": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "clinical_judgement",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "patient_request",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "adverse_event",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "replaced_by_corrected_order",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "admission_discharged",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "level_of_care_change",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "standing_order_discontinued",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "corrected_replacement",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "expired_verbal",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "replacesOrderId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "triggeringAssessmentId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "triggeringHopeAssessmentId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "signedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "signedBy": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "completedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "createdAt": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "object",
+                          "required": [
+                            "kindVersion",
+                            "data",
+                            "verbalOrder",
+                            "requirements",
+                            "transmissionAttestations",
+                            "pendingRecovery",
+                            "allowedActions"
+                          ],
+                          "properties": {
+                            "kindVersion": {
+                              "type": "string"
+                            },
+                            "data": {},
+                            "verbalOrder": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "status",
+                                    "receivedAt",
+                                    "effectiveAt",
+                                    "deadlineAt",
+                                    "signedAt",
+                                    "readBackVerified",
+                                    "attestation"
+                                  ],
+                                  "properties": {
+                                    "status": {
+                                      "type": "string"
+                                    },
+                                    "receivedAt": {
+                                      "type": "string"
+                                    },
+                                    "effectiveAt": {
+                                      "type": "string"
+                                    },
+                                    "deadlineAt": {
+                                      "type": "string"
+                                    },
+                                    "signedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "readBackVerified": {
+                                      "type": "boolean"
+                                    },
+                                    "attestation": {
+                                      "type": "string"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "requirements": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "code",
+                                  "label",
+                                  "status"
+                                ],
+                                "properties": {
+                                  "code": {
+                                    "anyOf": [
+                                      {
+                                        "const": "clinical_details",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "rn_cosignature",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "physician_signature",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "verbal_signature",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "label": {
+                                    "type": "string"
+                                  },
+                                  "status": {
+                                    "anyOf": [
+                                      {
+                                        "const": "not_required",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "pending",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "satisfied",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "deadlineAt": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "transmissionAttestations": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "attestation",
+                                  "outcome",
+                                  "priorFailureReason",
+                                  "attestedByMembershipId",
+                                  "cosignedByMembershipId",
+                                  "attemptId",
+                                  "createdAt",
+                                  "labContactName",
+                                  "labReference"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "attestation": {
+                                    "anyOf": [
+                                      {
+                                        "const": "not_received_by_lab",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "received_by_lab",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "outcome": {
+                                    "anyOf": [
+                                      {
+                                        "const": "redispatched",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "marked_transmitted",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "priorFailureReason": {
+                                    "type": "string"
+                                  },
+                                  "attestedByMembershipId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "cosignedByMembershipId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "attemptId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "createdAt": {
+                                    "type": "string"
+                                  },
+                                  "labContactName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "labReference": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            "pendingRecovery": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "id",
+                                    "orderId",
+                                    "status",
+                                    "requestedByMembershipId",
+                                    "requestedAt",
+                                    "expiresAt",
+                                    "cosignedByMembershipId",
+                                    "resolvedAt",
+                                    "labContactName",
+                                    "labReference"
+                                  ],
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "orderId": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "anyOf": [
+                                        {
+                                          "const": "pending_cosign",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "executed",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "cancelled",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "expired",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "requestedByMembershipId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "requestedAt": {
+                                      "type": "string"
+                                    },
+                                    "expiresAt": {
+                                      "type": "string"
+                                    },
+                                    "cosignedByMembershipId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "resolvedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "labContactName": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "labReference": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "allowedActions": {
+                              "type": "object",
+                              "required": [
+                                "edit",
+                                "request_signature",
+                                "record_verbal",
+                                "sign",
+                                "cosign",
+                                "complete",
+                                "discontinue",
+                                "correct"
+                              ],
+                              "properties": {
+                                "edit": {
+                                  "type": "boolean"
+                                },
+                                "request_signature": {
+                                  "type": "boolean"
+                                },
+                                "record_verbal": {
+                                  "type": "boolean"
+                                },
+                                "sign": {
+                                  "type": "boolean"
+                                },
+                                "cosign": {
+                                  "type": "boolean"
+                                },
+                                "complete": {
+                                  "type": "boolean"
+                                },
+                                "discontinue": {
+                                  "type": "boolean"
+                                },
+                                "correct": {
+                                  "type": "boolean"
+                                }
+                              }
+                            }
+                          }
+                        }
+                      ]
+                    },
+                    "recovery": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "id",
+                            "orderId",
+                            "status",
+                            "requestedByMembershipId",
+                            "requestedAt",
+                            "expiresAt",
+                            "cosignedByMembershipId",
+                            "resolvedAt",
+                            "labContactName",
+                            "labReference"
+                          ],
+                          "properties": {
+                            "id": {
+                              "type": "string"
+                            },
+                            "orderId": {
+                              "type": "string"
+                            },
+                            "status": {
+                              "anyOf": [
+                                {
+                                  "const": "pending_cosign",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "executed",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "cancelled",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "expired",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "requestedByMembershipId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "requestedAt": {
+                              "type": "string"
+                            },
+                            "expiresAt": {
+                              "type": "string"
+                            },
+                            "cosignedByMembershipId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "resolvedAt": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "labContactName": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "labReference": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
                   }
                 }
               }
             }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }
@@ -128700,6 +130880,8 @@
                             "data",
                             "verbalOrder",
                             "requirements",
+                            "transmissionAttestations",
+                            "pendingRecovery",
                             "allowedActions"
                           ],
                           "properties": {
@@ -128810,6 +130992,215 @@
                                   }
                                 }
                               }
+                            },
+                            "transmissionAttestations": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "id",
+                                  "attestation",
+                                  "outcome",
+                                  "priorFailureReason",
+                                  "attestedByMembershipId",
+                                  "cosignedByMembershipId",
+                                  "attemptId",
+                                  "createdAt",
+                                  "labContactName",
+                                  "labReference"
+                                ],
+                                "properties": {
+                                  "id": {
+                                    "type": "string"
+                                  },
+                                  "attestation": {
+                                    "anyOf": [
+                                      {
+                                        "const": "not_received_by_lab",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "received_by_lab",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "outcome": {
+                                    "anyOf": [
+                                      {
+                                        "const": "redispatched",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "marked_transmitted",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "priorFailureReason": {
+                                    "type": "string"
+                                  },
+                                  "attestedByMembershipId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "cosignedByMembershipId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "attemptId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "createdAt": {
+                                    "type": "string"
+                                  },
+                                  "labContactName": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "labReference": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            "pendingRecovery": {
+                              "anyOf": [
+                                {
+                                  "type": "object",
+                                  "required": [
+                                    "id",
+                                    "orderId",
+                                    "status",
+                                    "requestedByMembershipId",
+                                    "requestedAt",
+                                    "expiresAt",
+                                    "cosignedByMembershipId",
+                                    "resolvedAt",
+                                    "labContactName",
+                                    "labReference"
+                                  ],
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "orderId": {
+                                      "type": "string"
+                                    },
+                                    "status": {
+                                      "anyOf": [
+                                        {
+                                          "const": "pending_cosign",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "executed",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "cancelled",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "const": "expired",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "requestedByMembershipId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "requestedAt": {
+                                      "type": "string"
+                                    },
+                                    "expiresAt": {
+                                      "type": "string"
+                                    },
+                                    "cosignedByMembershipId": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "resolvedAt": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "labContactName": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "labReference": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
                             },
                             "allowedActions": {
                               "type": "object",

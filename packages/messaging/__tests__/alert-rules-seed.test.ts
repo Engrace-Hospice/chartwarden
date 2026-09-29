@@ -59,6 +59,10 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "hl7_outbound.transmission_failed",
       "external_feed.baa_expired",
       "external_feed.baa_missing",
+      // F-191 (#248) — the two-person lab-recovery control's compliance alerts.
+      "m11.order.recovery_executed",
+      "m11.order.recovery_expired",
+      "m11.order.recovery_cancelled",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();

@@ -5,9 +5,19 @@ import type { FastifyInstance } from "fastify";
 import { registerOrderAbacPredicates as _registerM11Abac } from "./abac-predicates";
 import { type OrderWriteOutboxPort, createDbOrderBackend } from "./orders-route-service-db";
 import type { OrmRequestedPorts } from "./orm-request/orm-requested";
+import type { RecoveryControls } from "./orm-request/orm-recovery-dual-control";
 import { registerOrderRoutes as _registerM11Routes } from "./routes/orders-routes";
 
 export { buildM11OrmRequestedPorts } from "./orm-request/ports";
+export {
+  RECOVERY_ALERT_KINDS,
+  RECOVERY_ANOMALY_THRESHOLD,
+  RECOVERY_ANOMALY_WINDOW_MS,
+  RECOVERY_REQUEST_TTL_MS,
+  type RecoveryAlertKind,
+  type RecoveryAlertPort,
+  type RecoveryControls,
+} from "./orm-request/orm-recovery-dual-control";
 export type { OrderWriteOutboxPort } from "./orders-route-service-db";
 export type {
   OrmDestinationPort,
@@ -46,8 +56,10 @@ export function mountOrderRoutes(
   outbox?: OrderWriteOutboxPort,
   /** F-181 (#248) — the lab-ORM producer's ports (M5 demographics, M40 physician, M29-aware destination). */
   orm?: OrmRequestedPorts,
+  /** F-191 (#248) — the two-person recovery control's alert port / TTL / repeat-attester knobs. */
+  recovery?: RecoveryControls,
 ): void {
-  const backend = createDbOrderBackend(db, outbox, orm);
+  const backend = createDbOrderBackend(db, outbox, orm, recovery);
   _registerM11Abac({ resolver: backend });
   _registerM11Routes(app, { service: backend });
 }

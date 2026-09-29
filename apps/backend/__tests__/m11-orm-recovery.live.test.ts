@@ -35,6 +35,8 @@ import { registerSeam } from "../src/bootstrap/seams/registry";
 import { hl7OrmDemographicsInTx } from "../src/modules/05-patient/seams/hl7-orm-demographics";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
+import { createDrizzleOrderEraseStore } from "../src/modules/11-orders/erasers/orders-eraser";
+import { runVerbalOrderExpiryFanout } from "../src/modules/11-orders/jobs/verbal-order-expiry-worker";
 import { buildM11OrmRequestedPorts } from "../src/modules/11-orders/orm-request/ports";
 import { buildM11LabTransmissionApplierConsumer } from "../src/modules/11-orders/outbox-consumers/m29-lab-transmission-applier";
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/events-by-m29";
@@ -58,6 +60,9 @@ const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const USER_B = "44444444-4444-4444-4444-444444444444";
+/** F-191 — two more ORG_A people: `USER_C` (a second co-signer / the alert test's requester), `USER_D` (the repeat-attester). */
+const USER_C = "66666666-6666-6666-6666-666666666666";
+const USER_D = "77777777-7777-7777-7777-777777777777";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
 
 const PH_ACTIVE = "a0000000-0000-0000-0000-000000000001";
@@ -86,6 +91,15 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   let m11OutboxPort: NonNullable<Parameters<typeof createDbOrderBackend>[1]>;
   let member: string;
   let memberB: string;
+  /** F-191 — a SECOND person in ORG_A (`USER_B`): the co-signer of the two-person recovery control. */
+  let memberA2: string;
+  let memberC: string;
+  let memberD: string;
+  /** The ORM ports, kept so a case can build a second backend (a 1 ms TTL, a low anomaly threshold) over the same facts. */
+  let ormPorts: ReturnType<typeof buildM11OrmRequestedPorts>;
+  let recoveryAlerts: { emit: (org: string, input: Record<string, unknown>) => Promise<void> };
+  /** F-191 — every compliance alert the recovery control raised (the real `AlertEmitter` port shape, captured). */
+  let alertLog: { org: string; eventType: string; severity: string; correlationId: string; payload: Record<string, unknown> }[] = [];
   let wires: string[] = [];
   /** `refuse` → a permanent destination refusal (a real `dlq_exhausted` through the real worker); `ack` → AA. */
   let mode: "ack" | "refuse" = "ack";
@@ -216,7 +230,11 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
 
   /** F-188 — the STRUCTURED evidence every attestation now carries (who at the lab + the lab's own reference). */
   const EVIDENCE = { contactName: "Dana Reyes", labReference: "REF-2026-0041" };
-  const recover = (
+  /**
+   * F-191 — FILE a recovery. `not_received_by_lab` no longer executes: it returns `pending_cosign` and a request a
+   * DIFFERENT person must co-sign. `received_by_lab` is still single-person and executes here.
+   */
+  const file = (
     id: string,
     attestation: "not_received_by_lab" | "received_by_lab",
     org = ORG_A,
@@ -224,11 +242,32 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     user = USER,
     evidence: { contactName: string; labReference: string } = EVIDENCE,
   ) => svc.recoverLabTransmission(org, membership, id, attestation, evidence, undefined, user);
+  /** F-191 — the SECOND person (`USER_B`, `memberA2`) co-signs the request, which executes the re-dispatch. */
+  const cosign = (id: string, requestId: string, org = ORG_A, membership = memberA2, user = USER_B) =>
+    svc.cosignLabTransmissionRecovery(org, membership, id, requestId, undefined, user);
+  /**
+   * The whole attested recovery as a caller of the ORIGINAL contract saw it: file, and — for the duplicate-risk
+   * attestation — have the second person co-sign, returning the EXECUTION's result. Every pre-F-191 case asserts
+   * through this, so what each one proves (single dispatch, the ledger, the blocked-request path…) is unchanged.
+   */
+  const recover = async (
+    id: string,
+    attestation: "not_received_by_lab" | "received_by_lab",
+    org = ORG_A,
+    membership = member,
+    user = USER,
+    evidence: { contactName: string; labReference: string } = EVIDENCE,
+  ) => {
+    const filed = await file(id, attestation, org, membership, user, evidence);
+    if (filed.outcome !== "pending_cosign") return filed;
+    return cosign(id, filed.recovery!.id, org);
+  };
   /** Every `order_transmission_attestation` row for an order, oldest first (read as the superuser). */
   async function attestations(orderId: string) {
     const { rows } = await admin.query(
       `SELECT id, attestation, outcome, lab_contact_name, lab_reference, prior_failure_reason, attempt_id,
-              attested_by_membership_id, attested_by_user_id
+              attested_by_membership_id, attested_by_user_id,
+              cosigned_by_membership_id, cosigned_by_user_id, recovery_request_id
          FROM order_transmission_attestation WHERE order_record_id=$1 ORDER BY created_at, id`,
       [orderId],
     );
@@ -242,6 +281,9 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
       attempt_id: string | null;
       attested_by_membership_id: string | null;
       attested_by_user_id: string | null;
+      cosigned_by_membership_id: string | null;
+      cosigned_by_user_id: string | null;
+      recovery_request_id: string | null;
     }[];
   }
   const resend = (id: string) => svc.resendLabTransmission(ORG_A, member, id, undefined, USER);
@@ -255,7 +297,10 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
       `INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-a','A','A'),($2,'org-b','B','B')`,
       [ORG_A, ORG_B],
     );
-    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,'f184@x.test'),($2,'f184b@x.test')`, [USER, USER_B]);
+    await admin.query(
+      `INSERT INTO "user" (id,email) VALUES ($1,'f184@x.test'),($2,'f184b@x.test'),($3,'f191c@x.test'),($4,'f191d@x.test')`,
+      [USER, USER_B, USER_C, USER_D],
+    );
     member = (
       await admin.query(
         `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
@@ -266,6 +311,24 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
       await admin.query(
         `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
         [USER_B, ORG_B],
+      )
+    ).rows[0].id as string;
+    memberA2 = (
+      await admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+        [USER_B, ORG_A],
+      )
+    ).rows[0].id as string;
+    memberC = (
+      await admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+        [USER_C, ORG_A],
+      )
+    ).rows[0].id as string;
+    memberD = (
+      await admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+        [USER_D, ORG_A],
       )
     ).rows[0].id as string;
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
@@ -293,16 +356,18 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     m11OutboxPort = m11Outbox as never;
     const m29Outbox = { publish: (tx: any, e: any) => publisher.publish(tx, { ...e, callerModule: "m29" }) };
 
-    svc = createDbOrderBackend(
-      handle.db,
-      m11Outbox,
-      buildM11OrmRequestedPorts({
-        patient: hl7OrmDemographicsInTx,
-        feeds: buildDrizzleOutboundFeedResolver(),
-        // F-188 — the evidence the attested recovery checks a `not_received_by_lab` against.
-        outboundEvidence: ormOutboundEvidenceForOrder,
-      }),
-    );
+    ormPorts = buildM11OrmRequestedPorts({
+      patient: hl7OrmDemographicsInTx,
+      feeds: buildDrizzleOutboundFeedResolver(),
+      // F-188 — the evidence the attested recovery checks a `not_received_by_lab` against.
+      outboundEvidence: ormOutboundEvidenceForOrder,
+    });
+    recoveryAlerts = {
+      emit: async (org, input) => {
+        alertLog.push({ org, ...input } as (typeof alertLog)[number]);
+      },
+    };
+    svc = createDbOrderBackend(handle.db, m11Outbox, ormPorts, { alerts: recoveryAlerts as never });
     applier = buildM11LabTransmissionApplierConsumer({ db: handle.db, outbox: m11Outbox });
 
     const orgs: ActiveOrgEnumerator = {
@@ -333,6 +398,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   });
 
   beforeEach(async () => {
+    alertLog = [];
     wires = [];
     mode = "ack";
     baaActive = true;
@@ -390,7 +456,11 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
       prior_failure_reason: "dlq_exhausted",
       attested_by_membership_id: member,
       attested_by_user_id: USER,
+      // F-191 — the SECOND person, and the request this ledger row executed.
+      cosigned_by_membership_id: memberA2,
+      cosigned_by_user_id: USER_B,
     });
+    expect(att!.recovery_request_id).not.toBeNull();
     // The attestation started THE current attempt: the order row and the row agree, and the event carries it too.
     const order = await orderRow(id);
     expect(att!.attempt_id).toBe(order.transmission_attempt_id);
@@ -410,7 +480,9 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
       [id],
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0].actor_user_id).toBe(USER);
+    // F-191 — the EXECUTION is the co-signer's act (the order moved in the second person's transaction); the requester is
+    // on the ledger row (`attested_by_*`) and on the request's own INSERT audit below.
+    expect(rows[0].actor_user_id).toBe(USER_B);
     expect(rows[0].br).toBe("dlq_exhausted");
     expect(rows[0].ar).toBeNull();
     // ... and the attestation row is audited under the same user, with the contact NAME scrubbed out of the diff.
@@ -420,19 +492,34 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
       [att!.id],
     );
     expect(aud).toHaveLength(1);
-    expect(aud[0].actor_user_id).toBe(USER);
+    expect(aud[0].actor_user_id).toBe(USER_B);
     expect(JSON.stringify(aud[0].after)).not.toContain("Dana Reyes");
     expect(aud[0].after.lab_reference).toBe("REF-2026-0041");
+    // F-191 — the request row is audited too: filed by the requester, resolved by the co-signer, NAME scrubbed both times.
+    const { rows: reqAud } = await admin.query(
+      `SELECT event_type, actor_user_id, after FROM audit_event
+        WHERE resource_kind='order_recovery_request' AND resource_id=$1 ORDER BY created_at, id`,
+      [att!.recovery_request_id],
+    );
+    expect(reqAud.map((r) => [r.event_type, r.actor_user_id])).toEqual([
+      ["order_recovery_request.insert", USER],
+      ["order_recovery_request.update", USER_B],
+    ]);
+    expect(JSON.stringify(reqAud)).not.toContain("Dana Reyes");
   });
 
-  it("two CONCURRENT attested recoveries dispatch ONE message; the loser is refused 409 (not_failed)", async () => {
+  it("two CONCURRENT attested recoveries dispatch ONE message; the loser is refused 409 (already_pending / not_failed / not_pending)", async () => {
     const id = await heldOrder();
     const results = await Promise.allSettled([recover(id, "not_received_by_lab"), recover(id, "not_received_by_lab")]);
     const ok = results.filter((r) => r.status === "fulfilled");
     const bad = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
     expect(ok).toHaveLength(1);
     expect(bad).toHaveLength(1);
-    expect(String(bad[0]!.reason.message)).toMatch(/Transmission recovery not allowed \(not_failed\)/);
+    // The order row is locked FOR UPDATE, so the two flows serialize; the loser meets the winner at whichever guard it
+    // reaches first: a request already pending, an order no longer failed, or a request already resolved.
+    expect(String(bad[0]!.reason.message)).toMatch(
+      /Transmission recovery not allowed \((already_pending|not_failed|not_pending)\)/,
+    );
     expect(bad[0]!.reason.statusCode).toBe(409);
 
     expect(await count(id, "m11.order.hl7_orm_requested")).toBe(2); // the original + ONE attested
@@ -975,6 +1062,16 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
          VALUES ($1,$2,'not_received_by_lab','redispatched','Dana Reyes','REF-2026-0041','dlq_exhausted',NULL)`,
         [ORG_A, id],
       ),
+      // (no co-signer either: Postgres reports one violated CHECK, and this case is about the OUTCOME rule)
+    ).rejects.toThrow(/outcome_agrees|dual_control/);
+    await expect(
+      admin.query(
+        `INSERT INTO order_transmission_attestation
+           (organization_id, order_record_id, attestation, outcome, lab_contact_name, lab_reference, prior_failure_reason,
+            attempt_id, attested_by_user_id, cosigned_by_user_id, recovery_request_id)
+         VALUES ($1,$2,'not_received_by_lab','redispatched','Dana Reyes','REF-2026-0041','dlq_exhausted',NULL,$3,$4,$5)`,
+        [ORG_A, id, USER, USER_B, randomUUID()],
+      ),
     ).rejects.toThrow(/outcome_agrees/);
   });
 
@@ -1043,6 +1140,483 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(wires).toHaveLength(1);
     expect((await orderRow(id)).transmission_status).toBe("transmitted");
     expect(await attestations(id)).toHaveLength(2); // both attestations are on record
+  });
+
+  // ── F-191 — the TWO-PERSON control on `not_received_by_lab` ─────────────────────────────────────────────────────
+  //
+  // `not_received_by_lab` is the duplicate-risk attestation (a wrong one orders the test twice). It now FILES a
+  // `pending_cosign` request that a DIFFERENT authorized person must co-sign; M3 break-glass's shape (a status, a
+  // `cosigned_by`, a distinctness CHECK, the guards in the UPDATE's WHERE). `received_by_lab` stays single-person.
+
+  /** Every `order_recovery_request` row for an order, oldest first (read as the superuser). */
+  async function requests(orderId: string) {
+    const { rows } = await admin.query(
+      "SELECT * FROM order_recovery_request WHERE order_record_id=$1 ORDER BY requested_at, id",
+      [orderId],
+    );
+    return rows as Record<string, unknown>[];
+  }
+  /** A second ORG_A backend over the SAME facts and publisher — a different clock/TTL/threshold, the same alert log. */
+  const backendWith = (controls: Record<string, unknown>) =>
+    createDbOrderBackend(handle.db, m11OutboxPort, ormPorts, { alerts: recoveryAlerts as never, ...controls } as never);
+
+  it("F-191: FILING a `not_received_by_lab` recovery re-dispatches NOTHING — a pending request (24 h), the order untouched", async () => {
+    const id = await heldOrder();
+    const before = await count(id, "m11.order.hl7_orm_requested");
+
+    const res = await file(id, "not_received_by_lab");
+    expect(res.outcome).toBe("pending_cosign");
+    expect(res.recovery).toMatchObject({
+      status: "pending_cosign",
+      orderId: id,
+      requestedByMembershipId: member,
+      cosignedByMembershipId: null,
+      resolvedAt: null,
+    });
+    expect(Date.parse(res.recovery!.expiresAt) - Date.parse(res.recovery!.requestedAt)).toBe(24 * 3_600_000);
+
+    // The order is EXACTLY as it was: still failed for the same reason, no event, no ledger row, nothing on the wire.
+    const row = await orderRow(id);
+    expect(row.transmission_status).toBe("failed");
+    expect(row.transmission_failure_reason).toBe("dlq_exhausted");
+    expect(await count(id, "m11.order.hl7_orm_requested")).toBe(before);
+    expect(await attestations(id)).toHaveLength(0);
+    await settle();
+    expect(wires).toHaveLength(0);
+    expect(await requests(id)).toHaveLength(1);
+  });
+
+  it("F-191: a DIFFERENT person's co-signature executes it ONCE — the request `executed`, the ledger carries BOTH people, one message goes out", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+
+    const done = await cosign(id, filed.recovery!.id);
+    expect(done.outcome).toBe("redispatched");
+    expect(done.recovery).toMatchObject({
+      id: filed.recovery!.id,
+      status: "executed",
+      requestedByMembershipId: member,
+      cosignedByMembershipId: memberA2,
+    });
+    const [req] = await requests(id);
+    expect(req).toMatchObject({
+      status: "executed",
+      requested_by_user_id: USER,
+      cosigned_by_user_id: USER_B,
+    });
+    expect(req!.resolved_at).not.toBeNull();
+    const [att] = await attestations(id);
+    expect(att).toMatchObject({
+      attested_by_user_id: USER,
+      cosigned_by_user_id: USER_B,
+      recovery_request_id: filed.recovery!.id,
+    });
+    expect(req!.attestation_id).toBe(att!.id);
+
+    await settle();
+    expect(wires).toHaveLength(1);
+    expect((await orderRow(id)).transmission_status).toBe("transmitted");
+    expect(await count(id, "m11.order.hl7_orm_requested")).toBe(2); // the original + ONE attested
+  });
+
+  it("F-191: the REQUESTER cannot co-sign their own request — 409 `self_cosign`, nothing dispatched, and the database refuses it too (CHECK)", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+
+    await expect(cosign(id, filed.recovery!.id, ORG_A, member, USER)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("(self_cosign)"),
+    });
+    const row = await orderRow(id);
+    expect(row.transmission_status).toBe("failed");
+    expect((await requests(id))[0]!.status).toBe("pending_cosign");
+    await settle();
+    expect(wires).toHaveLength(0);
+
+    // The at-rest twin: even a superuser cannot mark the request co-signed by the person who filed it.
+    await expect(
+      admin.query(
+        `UPDATE order_recovery_request
+            SET status='executed', cosigned_by_user_id=requested_by_user_id, cosigned_by_membership_id=requested_by_membership_id,
+                resolved_at=now(), attestation_id=gen_random_uuid()
+          WHERE id=$1`,
+        [filed.recovery!.id],
+      ),
+    ).rejects.toThrow(/cosigner_distinct/);
+  });
+
+  it("F-191: two DIFFERENT co-signers racing on one request dispatch ONE message — the loser is refused 409", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+    const results = await Promise.allSettled([
+      cosign(id, filed.recovery!.id, ORG_A, memberA2, USER_B),
+      cosign(id, filed.recovery!.id, ORG_A, memberC, USER_C),
+    ]);
+    const ok = results.filter((r) => r.status === "fulfilled");
+    const bad = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    expect(ok).toHaveLength(1);
+    expect(bad).toHaveLength(1);
+    expect(String(bad[0]!.reason.message)).toMatch(/Transmission recovery not allowed \((not_pending|not_failed)\)/);
+    expect(bad[0]!.reason.statusCode).toBe(409);
+
+    expect(await count(id, "m11.order.hl7_orm_requested")).toBe(2);
+    await settle();
+    expect(wires).toHaveLength(1);
+    expect((await requests(id)).filter((r) => r.status === "executed")).toHaveLength(1);
+    expect(await attestations(id)).toHaveLength(1);
+  });
+
+  it("F-191: at most ONE pending recovery per order — the service says so (409 `already_pending`) and a partial unique index backs it", async () => {
+    const id = await heldOrder();
+    await file(id, "not_received_by_lab");
+    await expect(file(id, "not_received_by_lab", ORG_A, memberC, USER_C)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("(already_pending)"),
+    });
+    await expect(
+      admin.query(
+        `INSERT INTO order_recovery_request
+           (organization_id, order_record_id, attestation, lab_contact_name, lab_reference, prior_failure_reason,
+            requested_by_user_id, expires_at)
+         VALUES ($1,$2,'not_received_by_lab','Dana Reyes','REF-2026-0041','dlq_exhausted',$3, now() + interval '1 hour')`,
+        [ORG_A, id, USER_C],
+      ),
+    ).rejects.toThrow(/one_pending_uq/);
+    expect(await requests(id)).toHaveLength(1);
+  });
+
+  it("F-191: a request that lapses (TTL) can no longer be co-signed (409 `expired`); the sweep marks it `expired`, alerts, and a NEW one may be filed", async () => {
+    const short = backendWith({ ttlMs: 1 });
+    const id = await heldOrder();
+    const filed = await short.recoverLabTransmission(ORG_A, member, id, "not_received_by_lab", EVIDENCE, undefined, USER);
+    expect(filed.outcome).toBe("pending_cosign");
+    await new Promise((r) => setTimeout(r, 25));
+
+    await expect(
+      short.cosignLabTransmissionRecovery(ORG_A, memberA2, id, filed.recovery!.id, undefined, USER_B),
+    ).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining("(expired)") });
+    expect((await orderRow(id)).transmission_status).toBe("failed");
+    expect(wires).toHaveLength(0);
+
+    // The hourly M11 timer's fan-out is what runs the sweep (it rides the verbal-order tick — no new queue).
+    await runVerbalOrderExpiryFanout({
+      connection: {} as never,
+      service: short,
+      activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+    });
+    const [req] = await requests(id);
+    expect(req).toMatchObject({ status: "expired", cosigned_by_user_id: null, attestation_id: null });
+    expect(req!.resolved_at).not.toBeNull();
+    const lapsed = alertLog.filter((a) => a.eventType === "m11.order.recovery_expired");
+    expect(lapsed).toHaveLength(1);
+    expect(lapsed[0]).toMatchObject({ org: ORG_A, severity: "warn" });
+    expect(lapsed[0]!.payload).toMatchObject({ orderId: id, requestId: filed.recovery!.id });
+
+    // The partial unique index only covers PENDING rows, so a fresh request is allowed — and completes normally.
+    const again = await file(id, "not_received_by_lab");
+    expect(again.outcome).toBe("pending_cosign");
+    expect((await cosign(id, again.recovery!.id)).outcome).toBe("redispatched");
+  });
+
+  it("F-191: either person can CANCEL a pending request — a cancelled one cannot be co-signed, and a settled one cannot be cancelled again", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+
+    const cancelled = await svc.cancelLabTransmissionRecovery(ORG_A, memberA2, id, filed.recovery!.id, undefined, USER_B);
+    expect(cancelled.recovery.status).toBe("cancelled");
+    const [req] = await requests(id);
+    expect(req).toMatchObject({ status: "cancelled", cancelled_by_user_id: USER_B, cosigned_by_user_id: null });
+    expect(alertLog.filter((a) => a.eventType === "m11.order.recovery_cancelled")).toHaveLength(1);
+    expect(alertLog.find((a) => a.eventType === "m11.order.recovery_cancelled")!.severity).toBe("info");
+
+    await expect(cosign(id, filed.recovery!.id, ORG_A, memberC, USER_C)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("(not_pending)"),
+    });
+    await expect(
+      svc.cancelLabTransmissionRecovery(ORG_A, memberA2, id, filed.recovery!.id, undefined, USER_B),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    await expect(
+      svc.cancelLabTransmissionRecovery(ORG_A, memberA2, id, randomUUID(), undefined, USER_B),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect((await orderRow(id)).transmission_status).toBe("failed");
+    expect(wires).toHaveLength(0);
+
+    // ... and after a cancel the order can be recovered afresh.
+    const again = await file(id, "not_received_by_lab");
+    expect((await cosign(id, again.recovery!.id)).outcome).toBe("redispatched");
+  });
+
+  it("F-191: `received_by_lab` stays SINGLE-person — it executes on the first call and files no request", async () => {
+    const id = await heldOrder();
+    const res = await file(id, "received_by_lab");
+    expect(res.outcome).toBe("marked_transmitted");
+    expect(res.recovery).toBeNull();
+    expect((await orderRow(id)).transmission_status).toBe("transmitted");
+    expect(await requests(id)).toHaveLength(0);
+    expect((await attestations(id))[0]).toMatchObject({ cosigned_by_user_id: null, recovery_request_id: null });
+  });
+
+  it("F-191: the co-sign RE-CHECKS the evidence — a lab result that arrived after the request was filed refuses it (409), and it stays pending", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+    await labObservationFor(id); // the lab answered in the meantime
+    await expect(cosign(id, filed.recovery!.id)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("lab_result_received"),
+    });
+    expect((await requests(id))[0]!.status).toBe("pending_cosign");
+    expect((await orderRow(id)).transmission_status).toBe("failed");
+    expect(wires).toHaveLength(0);
+  });
+
+  it("F-191: the ledger itself refuses a single-person `not_received_by_lab` row (NOT VALID CHECK), and a co-signer equal to the attester", async () => {
+    const id = await heldOrder();
+    const insert = (cols: string, vals: unknown[]) =>
+      admin.query(
+        `INSERT INTO order_transmission_attestation
+           (organization_id, order_record_id, attestation, outcome, lab_contact_name, lab_reference, prior_failure_reason,
+            attempt_id, ${cols})
+         VALUES ($1,$2,'not_received_by_lab','redispatched','Dana Reyes','REF-2026-0041','dlq_exhausted',$3, ${vals
+           .slice(3)
+           .map((_, i) => `$${i + 4}`)
+           .join(",")})`,
+        vals,
+      );
+    // no co-signer, no request
+    await expect(insert("attested_by_user_id", [ORG_A, id, randomUUID(), USER])).rejects.toThrow(/dual_control/);
+    // a co-signer but no request it executed
+    await expect(
+      insert("attested_by_user_id, cosigned_by_user_id", [ORG_A, id, randomUUID(), USER, USER_B]),
+    ).rejects.toThrow(/dual_control/);
+    // the SAME person twice
+    await expect(
+      insert("attested_by_user_id, cosigned_by_user_id, recovery_request_id", [
+        ORG_A,
+        id,
+        randomUUID(),
+        USER,
+        USER,
+        randomUUID(),
+      ]),
+    ).rejects.toThrow(/cosigner_distinct/);
+    // both, distinct, with a request: allowed
+    await insert("attested_by_user_id, cosigned_by_user_id, recovery_request_id", [
+      ORG_A,
+      id,
+      randomUUID(),
+      USER,
+      USER_B,
+      randomUUID(),
+    ]);
+    expect(await attestations(id)).toHaveLength(1);
+  });
+
+  it("F-191: a request is FROZEN once resolved and its evidence is immutable while pending; the app role can never delete one", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+    await expect(
+      admin.query("UPDATE order_recovery_request SET lab_reference='TAMPERED-001' WHERE id=$1", [filed.recovery!.id]),
+    ).rejects.toThrow(/immutable/);
+    await expect(
+      admin.query("UPDATE order_recovery_request SET requested_by_user_id=$2 WHERE id=$1", [filed.recovery!.id, USER_C]),
+    ).rejects.toThrow(/immutable/);
+    await cosign(id, filed.recovery!.id);
+    await expect(
+      admin.query("UPDATE order_recovery_request SET status='cancelled' WHERE id=$1", [filed.recovery!.id]),
+    ).rejects.toThrow(/immutable/);
+    await expect(
+      withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        tx.execute(sql`DELETE FROM order_recovery_request WHERE id = ${filed.recovery!.id}`),
+      ),
+    ).rejects.toThrow();
+    // Not even a superuser can delete one (only a non-superuser member of the destruction role can).
+    await expect(admin.query("DELETE FROM order_recovery_request WHERE id=$1", [filed.recovery!.id])).rejects.toThrow(
+      /cannot be deleted/,
+    );
+  });
+
+  it("F-191: cross-tenant — another org's context sees NO request and cannot co-sign or cancel this org's (RLS, as the real app role)", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+    const visibleTo = async (organizationId: string): Promise<number> => {
+      const res = await withOrgContext(handle.db, { organizationId, userId: "" }, (tx) =>
+        tx.execute(sql`SELECT id FROM order_recovery_request WHERE order_record_id = ${id}`),
+      );
+      return (res as unknown as { rows: unknown[] }).rows.length;
+    };
+    expect(await visibleTo(ORG_B)).toBe(0);
+    expect(await visibleTo(ORG_A)).toBe(1);
+    await expect(cosign(id, filed.recovery!.id, ORG_B, memberB, USER_B)).rejects.toMatchObject({ statusCode: 404 });
+    await expect(
+      svc.cancelLabTransmissionRecovery(ORG_B, memberB, id, filed.recovery!.id, undefined, USER_B),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect((await requests(id))[0]!.status).toBe("pending_cosign");
+  });
+
+  it("F-191: compliance ALERTS — executed warns, cancelled is info, lapsed warns; ids and counts ONLY (no lab contact, no reference, no patient); each correlation id distinct", async () => {
+    // A requester (`USER_C`) no other test uses, so the repeat-attester count is exactly this test's own.
+    const a = await heldOrder();
+    const fa = await file(a, "not_received_by_lab", ORG_A, memberC, USER_C);
+    await cosign(a, fa.recovery!.id);
+    const b = await heldOrder();
+    const fb = await file(b, "not_received_by_lab", ORG_A, memberC, USER_C);
+    await svc.cancelLabTransmissionRecovery(ORG_A, memberA2, b, fb.recovery!.id, undefined, USER_B);
+    const short = backendWith({ ttlMs: 1 });
+    const c = await heldOrder();
+    const fc = await short.recoverLabTransmission(ORG_A, memberC, c, "not_received_by_lab", EVIDENCE, undefined, USER_C);
+    await new Promise((r) => setTimeout(r, 25));
+    await short.expireStaleLabRecoveryRequests(ORG_A);
+
+    const byKind = (k: string) => alertLog.filter((x) => x.eventType === k);
+    expect(byKind("m11.order.recovery_executed")).toHaveLength(1);
+    expect(byKind("m11.order.recovery_cancelled")).toHaveLength(1);
+    expect(byKind("m11.order.recovery_expired")).toHaveLength(1);
+    const executed = byKind("m11.order.recovery_executed")[0]!;
+    // Only `fa` had been filed when it executed, so the repeat-attester count is exactly 1 (below the default 3).
+    expect(executed).toMatchObject({ org: ORG_A, severity: "warn" });
+    expect(executed.payload).toMatchObject({
+      orderId: a,
+      requestId: fa.recovery!.id,
+      requestedByMembershipId: memberC,
+      cosignedByMembershipId: memberA2,
+      repeatAttester: false,
+      requesterRequestsInWindow: 1,
+      deepLink: `/orders/${a}`,
+    });
+    expect(byKind("m11.order.recovery_cancelled")[0]!.severity).toBe("info");
+    expect(byKind("m11.order.recovery_expired")[0]).toMatchObject({ severity: "warn" });
+
+    const serialized = JSON.stringify(alertLog);
+    expect(serialized).not.toContain("Dana");
+    expect(serialized).not.toContain("Reyes");
+    expect(serialized).not.toContain("REF-2026");
+    const patientIds = (await admin.query("SELECT DISTINCT patient_id FROM order_record")).rows.map((r) => r.patient_id);
+    for (const p of patientIds) expect(serialized).not.toContain(String(p));
+    const ids = alertLog.map((x) => x.correlationId);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) expect(id).toMatch(/^m11-recovery:m11\.order\.recovery_(executed|cancelled|expired):/);
+    void fc;
+  });
+
+  it("F-191: a REPEAT attester is flagged — the same requester's Nth request inside the window turns the executed alert `critical` (threshold injectable, default 3)", async () => {
+    const strict = backendWith({ anomalyThreshold: 2 });
+    const run = async () => {
+      const id = await heldOrder();
+      const f = await strict.recoverLabTransmission(ORG_A, memberD, id, "not_received_by_lab", EVIDENCE, undefined, USER_D);
+      await strict.cosignLabTransmissionRecovery(ORG_A, memberA2, id, f.recovery!.id, undefined, USER_B);
+      return id;
+    };
+    const first = await run();
+    const second = await run();
+    const executed = alertLog.filter((x) => x.eventType === "m11.order.recovery_executed");
+    expect(executed).toHaveLength(2);
+    expect(executed[0]).toMatchObject({ severity: "warn" });
+    expect(executed[0]!.payload).toMatchObject({ orderId: first, repeatAttester: false, requesterRequestsInWindow: 1, repeatAttesterThreshold: 2 });
+    expect(executed[1]).toMatchObject({ severity: "critical" });
+    expect(executed[1]!.payload).toMatchObject({ orderId: second, repeatAttester: true, requesterRequestsInWindow: 2, repeatAttesterThreshold: 2 });
+  });
+
+  it("F-191: the order DETAIL shows the attestation history and the pending request — the lab contact's name and reference only with `orders.amend`", async () => {
+    const id = await heldOrder();
+    const amender = { membershipId: member, roles: [], disciplines: [], permissions: new Set(["orders.amend"]) };
+    const reader = { membershipId: member, roles: [], disciplines: [], permissions: new Set(["orders.read"]) };
+
+    expect((await svc.getOrder(ORG_A, id, amender)).transmissionAttestations).toEqual([]);
+    expect((await svc.getOrder(ORG_A, id, amender)).pendingRecovery).toBeNull();
+
+    const filed = await file(id, "not_received_by_lab");
+    expect((await svc.getOrder(ORG_A, id, amender)).pendingRecovery).toMatchObject({
+      id: filed.recovery!.id,
+      status: "pending_cosign",
+      labContactName: "Dana Reyes",
+      labReference: "REF-2026-0041",
+    });
+    // A reader who cannot recover sees THAT a recovery is pending, but not the third party's name or reference.
+    expect((await svc.getOrder(ORG_A, id, reader)).pendingRecovery).toMatchObject({
+      status: "pending_cosign",
+      labContactName: null,
+      labReference: null,
+    });
+
+    await cosign(id, filed.recovery!.id);
+    const asAmender = await svc.getOrder(ORG_A, id, amender);
+    expect(asAmender.pendingRecovery).toBeNull();
+    expect(asAmender.transmissionAttestations).toHaveLength(1);
+    expect(asAmender.transmissionAttestations[0]).toMatchObject({
+      attestation: "not_received_by_lab",
+      outcome: "redispatched",
+      priorFailureReason: "dlq_exhausted",
+      attestedByMembershipId: member,
+      cosignedByMembershipId: memberA2,
+      labContactName: "Dana Reyes",
+      labReference: "REF-2026-0041",
+    });
+    expect(asAmender.transmissionAttestations[0]!.attemptId).toBe((await orderRow(id)).transmission_attempt_id);
+    const asReader = await svc.getOrder(ORG_A, id, reader);
+    expect(asReader.transmissionAttestations[0]).toMatchObject({
+      attestedByMembershipId: member,
+      cosignedByMembershipId: memberA2,
+      labContactName: null,
+      labReference: null,
+    });
+    // Another tenant cannot read this order's history at all (the order itself is a 404).
+    await expect(svc.getOrder(ORG_B, id, amender)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
+  it("F-191: DESTRUCTION — a member of the destruction role erases an order's attestation ledger and recovery requests; the app role cannot, a superuser still cannot, another tenant's run reaches nothing", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+    await cosign(id, filed.recovery!.id);
+    const patientId = (await admin.query("SELECT patient_id FROM order_record WHERE id=$1", [id])).rows[0].patient_id as string;
+    expect(await attestations(id)).toHaveLength(1);
+    expect(await requests(id)).toHaveLength(1);
+
+    // The deployment's login role: `IN ROLE wardenx_destruction`, NOT a superuser (0157's contract).
+    await admin.query(
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='f191_destroyer') THEN
+         CREATE ROLE f191_destroyer LOGIN PASSWORD 'f191_destroyer_pw' IN ROLE wardenx_destruction;
+       END IF; END $$;`,
+    );
+    const url = new URL(DB_URL as string);
+    url.username = "f191_destroyer";
+    url.password = "f191_destroyer_pw";
+    const destroyer = createDbClient({ connectionString: url.toString() });
+    try {
+      // The app role cannot delete either table, and a superuser is stopped by the trigger.
+      await expect(
+        withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+          tx.execute(sql`DELETE FROM order_transmission_attestation WHERE order_record_id = ${id}`),
+        ),
+      ).rejects.toThrow();
+      await expect(admin.query("DELETE FROM order_transmission_attestation WHERE order_record_id=$1", [id])).rejects.toThrow(
+        /append-only/,
+      );
+      // The destruction role can DELETE but never UPDATE (the append-only guarantee is unchanged for everything else).
+      await expect(
+        withOrgContext(destroyer.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+          tx.execute(sql`UPDATE order_transmission_attestation SET lab_reference = 'TAMPERED-001' WHERE order_record_id = ${id}`),
+        ),
+      ).rejects.toThrow();
+
+      const store = createDrizzleOrderEraseStore(destroyer.db as never);
+      const boundary = new Date(Date.now() + 86_400_000).toISOString();
+      // ANOTHER tenant's destruction run is org-scoped: it reaches none of these rows.
+      const foreign = await store.eraseOrdersSubtree(ORG_B, patientId, boundary);
+      expect(foreign).toMatchObject({ orders: 0, transmissionAttestations: 0, recoveryRequests: 0 });
+      expect(await attestations(id)).toHaveLength(1);
+      expect(await requests(id)).toHaveLength(1);
+
+      const counts = await store.eraseOrdersSubtree(ORG_A, patientId, boundary);
+      expect(counts).toMatchObject({ transmissionAttestations: 1, recoveryRequests: 1 });
+      expect(counts.orders).toBeGreaterThanOrEqual(1);
+    } finally {
+      await destroyer.close();
+      await admin.query("DROP OWNED BY f191_destroyer");
+      await admin.query("DROP ROLE f191_destroyer");
+    }
+    expect(await attestations(id)).toHaveLength(0);
+    expect(await requests(id)).toHaveLength(0);
   });
 
 });

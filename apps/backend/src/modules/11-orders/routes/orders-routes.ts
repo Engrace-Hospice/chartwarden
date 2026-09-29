@@ -32,6 +32,7 @@ import {
   PatientParamsSchema,
   RecordVerbalRequest,
   RecoverLabTransmissionRequest,
+  RecoveryRequestParamsSchema,
   RegenerateVerbalTimerRequest,
   RequestSignatureRequest,
   SignOnBehalfRequest,
@@ -475,6 +476,48 @@ export function registerOrderRoutes(
       request.context?.userId ?? "",
     );
   });
+
+  // F-191 — the SECOND person of the two-person control on `not_received_by_lab`. The first call above only FILED a
+  // request (`outcome: "pending_cosign"`); THIS executes the re-dispatch, and only for a DIFFERENT user than the one who
+  // filed it (409 `self_cosign`; a DB CHECK backs the rule), before the request lapses (24 h → 409 `expired`). Same
+  // `orders.amend` and the same fresh step-up as the request: a co-signature is a second person accepting the
+  // duplicate risk, so it is gated at least as hard as the attestation. The distinctness rule compares the Better Auth
+  // USER id (`request.context.userId`), not the membership id.
+  app.post(
+    "/api/v1/orders/:id/recover-transmission/:requestId/cosign",
+    { preHandler: [AMEND, RECOVER_STEP_UP] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id, requestId } = parse(RecoveryRequestParamsSchema, request.params);
+      return service.cosignLabTransmissionRecovery(
+        organizationId,
+        userId,
+        id,
+        requestId,
+        await detailActorOf(request),
+        request.context?.userId ?? "",
+      );
+    },
+  );
+
+  // F-191 — cancel a pending recovery: either person (the requester who thinks better of it, or a colleague who finds
+  // the lab DID have the order). `orders.amend` alone — cancelling sends nothing and can only prevent a re-dispatch.
+  app.post(
+    "/api/v1/orders/:id/recover-transmission/:requestId/cancel",
+    { preHandler: [AMEND] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id, requestId } = parse(RecoveryRequestParamsSchema, request.params);
+      return service.cancelLabTransmissionRecovery(
+        organizationId,
+        userId,
+        id,
+        requestId,
+        await detailActorOf(request),
+        request.context?.userId ?? "",
+      );
+    },
+  );
 
   // 18 — list standing orders.
   app.get(
