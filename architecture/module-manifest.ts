@@ -498,6 +498,7 @@ export const MODULES: ModuleDef[] = [
       "order_discontinuation",
       "order_verbal_policy",
       "order_idg_decision_application",
+      "order_transmission_attestation",
     ],
   },
   {

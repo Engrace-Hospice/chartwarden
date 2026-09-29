@@ -183,7 +183,11 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
         Type.Literal("no_feed_for_destination"),
         Type.Literal("feed_identity_incomplete"),
         Type.Literal("baa_inactive"),
+        Type.Literal("attested_redispatch_blocked"),
       ]),
+      // F-186 — the outbound attempt this refusal concerns (echoed from the request); M11 applies it only to the
+      // order's current attempt.
+      attemptId: Type.Optional(Type.String({ minLength: 1 })),
     }),
     declaredConsumers: ["m11"],
     isOutboxOnly: true,

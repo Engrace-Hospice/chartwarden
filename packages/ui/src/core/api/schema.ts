@@ -52864,6 +52864,8 @@ export interface operations {
             content: {
                 "application/json": {
                     attestation: "not_received_by_lab" | "received_by_lab";
+                    contactName: string;
+                    labReference: string;
                 };
             };
         };

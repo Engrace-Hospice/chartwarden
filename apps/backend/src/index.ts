@@ -743,6 +743,7 @@ import {
   buildM29PatientDeceasedConsumer,
   buildNppesManualSyncTrigger,
   createDrizzleM29PublishedSeamStore,
+  ormOutboundEvidenceForOrder,
   createDrizzleM29Store,
   createFeedRateLimiter as createM29OutboundRateLimiter,
   denyStubM29AbacResolver,
@@ -3245,6 +3246,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             buildM11OrmRequestedPorts({
               patient: hl7OrmDemographicsInTx,
               feeds: buildDrizzleOutboundFeedResolver(),
+              // F-186 — the evidence the attested recovery checks a `not_received_by_lab` against.
+              outboundEvidence: ormOutboundEvidenceForOrder,
             }),
           );
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox

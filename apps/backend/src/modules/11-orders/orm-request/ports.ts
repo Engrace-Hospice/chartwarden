@@ -17,6 +17,7 @@ import type { DbClient } from "@wardenx/db";
 import { getMdmEntityProvider } from "../../40-mdm/seams";
 import type {
   OrmDestinationResult,
+  OrmOutboundEvidencePort,
   OrmPatientFacts,
   OrmPhysicianFacts,
   OrmRequestedPorts,
@@ -76,6 +77,8 @@ export interface M11OrmRequestPortDeps {
     patientId: string,
   ) => Promise<OrmPatientFacts | null>;
   readonly now?: () => Date;
+  /** M29's `ormOutboundEvidenceForOrder` — injected (M11 has no `dependsOn` edge to 29). F-186. */
+  readonly outboundEvidence?: OrmOutboundEvidencePort;
 }
 
 const NPI = /^[0-9]{10}$/;
@@ -89,6 +92,7 @@ export function buildM11OrmRequestedPorts(deps: M11OrmRequestPortDeps): OrmReque
 
   return {
     patient: deps.patient,
+    ...(deps.outboundEvidence !== undefined ? { outboundEvidence: deps.outboundEvidence } : {}),
 
     async physician(organizationId, mdmId): Promise<OrmPhysicianFacts | null> {
       const resolved = await mdm().resolvePhysician(organizationId, mdmId);

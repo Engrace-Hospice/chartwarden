@@ -27,8 +27,11 @@ import {
   ORM_REFUSAL_PREFIX,
   RECOVERABLE_M29_FAILURE_REASONS,
   RECOVERY_ATTESTATIONS,
+  RECOVERY_BLOCKED_PREFIX,
+  type OrmOutboundEvidence,
   type OrmResendCandidate,
   classifyOrmResend,
+  classifyRecoveryContradiction,
   classifyTransmissionRecovery,
 } from "../src/modules/11-orders/orm-request/orm-resend";
 import { RecoverLabTransmissionRequest } from "../src/modules/11-orders/routes/orders-typebox";
@@ -41,10 +44,19 @@ const failed = (reason: string | null, over: Partial<OrmResendCandidate> = {}): 
   ...over,
 });
 
-describe("F-187 — classifyTransmissionRecovery: which failures an attestation may act on", () => {
-  it("the recoverable set is exactly the two M29 terminal reasons", () => {
+describe("F-185 — classifyTransmissionRecovery: which failures an attestation may act on", () => {
+  it("the recoverable set is exactly the two M29 terminal reasons (plus F-186's `recovery_blocked:*`, by prefix)", () => {
     expect([...RECOVERABLE_M29_FAILURE_REASONS].sort()).toEqual(["application_reject", "dlq_exhausted"]);
     expect([...RECOVERY_ATTESTATIONS]).toEqual(["not_received_by_lab", "received_by_lab"]);
+  });
+
+  it("F-186 — a `recovery_blocked:row_owns_order` order (an attested re-dispatch the worker could not honour) is recoverable AGAIN, but NEVER resendable", () => {
+    const reason = `${RECOVERY_BLOCKED_PREFIX}row_owns_order`;
+    for (const a of RECOVERY_ATTESTATIONS) {
+      expect(classifyTransmissionRecovery(failed(reason), a)).toEqual({ ok: true, priorReason: reason });
+    }
+    // A row EXISTS for this order, so the plain resend must not act on it (it is neither `orm_refused:` nor `dispatch_refused:`).
+    expect(classifyOrmResend(failed(reason))).toMatchObject({ ok: false, code: "not_an_orm_refusal" });
   });
 
   it.each(["dlq_exhausted", "application_reject"])("a %s failure is recoverable by `not_received_by_lab`", (reason) => {
@@ -123,16 +135,94 @@ describe("F-187 — classifyOrmResend over a worker refusal (dispatch_refused:*)
   });
 });
 
-describe("F-187 — RecoverLabTransmissionRequest: the attestation is required, closed, and note-free", () => {
-  it.each(["not_received_by_lab", "received_by_lab"])("accepts attestation %s", (attestation) => {
-    expect(Value.Check(RecoverLabTransmissionRequest, { attestation })).toBe(true);
+const EVIDENCE = { contactName: "Dana Reyes", labReference: "REF-2026-0041" };
+
+describe("F-185/F-186 — RecoverLabTransmissionRequest: the attestation is required, closed, and carries STRUCTURED evidence", () => {
+  it.each(["not_received_by_lab", "received_by_lab"])("accepts attestation %s with evidence", (attestation) => {
+    expect(Value.Check(RecoverLabTransmissionRequest, { attestation, ...EVIDENCE })).toBe(true);
   });
-  it.each([{}, { attestation: "maybe" }, { attestation: "" }, { attestation: null }, { attestation: "received_by_lab", note: "called Sam" }])(
-    "rejects %j",
-    (body) => {
-      expect(Value.Check(RecoverLabTransmissionRequest, body)).toBe(false);
-    },
-  );
+  it.each([
+    {},
+    { ...EVIDENCE },
+    { attestation: "maybe", ...EVIDENCE },
+    { attestation: "", ...EVIDENCE },
+    { attestation: null, ...EVIDENCE },
+    { attestation: "received_by_lab", ...EVIDENCE, note: "called Sam" },
+  ])("rejects %j", (body) => {
+    expect(Value.Check(RecoverLabTransmissionRequest, body)).toBe(false);
+  });
+
+  // F-186 — the evidence is REQUIRED (an attestation with no evidence is just a click) and shaped so it cannot carry
+  // a patient identifier: a contact NAME has no digits, a lab REFERENCE has no spaces.
+  it.each([
+    ["no contact name", { attestation: "not_received_by_lab", labReference: "REF-2026-0041" }],
+    ["no lab reference", { attestation: "not_received_by_lab", contactName: "Dana Reyes" }],
+    ["a blank contact name", { attestation: "not_received_by_lab", contactName: "", labReference: "REF-2026-0041" }],
+    ["a one-letter contact name", { attestation: "not_received_by_lab", contactName: "D", labReference: "REF-2026-0041" }],
+    ["digits in the contact name (an MRN / DOB / phone could ride in it)", { attestation: "not_received_by_lab", contactName: "Dana 555-0100", labReference: "REF-2026-0041" }],
+    ["a contact name that starts with punctuation", { attestation: "not_received_by_lab", contactName: "-Dana", labReference: "REF-2026-0041" }],
+    ["a contact name over 80 characters", { attestation: "not_received_by_lab", contactName: "D".repeat(81), labReference: "REF-2026-0041" }],
+    ["a lab reference with spaces (free text — a name could ride in it)", { attestation: "not_received_by_lab", contactName: "Dana Reyes", labReference: "REF 2026 0041" }],
+    ["a lab reference that is too short", { attestation: "not_received_by_lab", contactName: "Dana Reyes", labReference: "R1" }],
+    ["a lab reference over 64 characters", { attestation: "not_received_by_lab", contactName: "Dana Reyes", labReference: "R".repeat(65) }],
+    ["a lab reference with a comma / paren", { attestation: "not_received_by_lab", contactName: "Dana Reyes", labReference: "REF(2026),41" }],
+  ])("rejects %s", (_label, body) => {
+    expect(Value.Check(RecoverLabTransmissionRequest, body)).toBe(false);
+  });
+});
+
+describe("F-186 — classifyRecoveryContradiction: inbound evidence that refutes `not_received_by_lab`", () => {
+  const clean = { resultsStatus: "not_expected", resultsFirstReceivedAt: null };
+  const noTraffic: OrmOutboundEvidence = { owningRowStatuses: [], labObservationCount: 0 };
+
+  it("no contradiction when the lab has returned nothing and no row owns the order", () => {
+    expect(classifyRecoveryContradiction("not_received_by_lab", clean, noTraffic)).toBeNull();
+  });
+
+  it.each([
+    ["partial_results_received", null],
+    ["results_received", null],
+    ["awaiting_results", new Date("2026-06-01T00:00:00Z")],
+  ])("a result already returned (results_status=%s, first_received=%s) refutes it — lab_result_received", (resultsStatus, at) => {
+    expect(
+      classifyRecoveryContradiction("not_received_by_lab", { resultsStatus, resultsFirstReceivedAt: at }, noTraffic),
+    ).toMatchObject({ code: "lab_result_received" });
+  });
+
+  it("an M29 `lab_observation` matched to the order refutes it — lab_result_received", () => {
+    expect(
+      classifyRecoveryContradiction("not_received_by_lab", clean, { owningRowStatuses: [], labObservationCount: 1 }),
+    ).toMatchObject({ code: "lab_result_received" });
+  });
+
+  it("an `acked` outbound row refutes it — lab_acknowledged", () => {
+    expect(
+      classifyRecoveryContradiction("not_received_by_lab", clean, { owningRowStatuses: ["acked"], labObservationCount: 0 }),
+    ).toMatchObject({ code: "lab_acknowledged" });
+  });
+
+  it.each(["queued", "in_flight"])("a %s outbound row refutes it — send_in_progress (a second send would duplicate)", (s) => {
+    expect(
+      classifyRecoveryContradiction("not_received_by_lab", clean, { owningRowStatuses: [s], labObservationCount: 0 }),
+    ).toMatchObject({ code: "send_in_progress" });
+  });
+
+  it("a result outranks an ack (the most conclusive evidence is reported)", () => {
+    expect(
+      classifyRecoveryContradiction("not_received_by_lab", clean, { owningRowStatuses: ["acked"], labObservationCount: 2 }),
+    ).toMatchObject({ code: "lab_result_received" });
+  });
+
+  it("FAILS CLOSED when the evidence cannot be read: absent evidence is `evidence_unavailable`, never 'no contradiction'", () => {
+    expect(classifyRecoveryContradiction("not_received_by_lab", clean, null)).toMatchObject({
+      code: "evidence_unavailable",
+    });
+  });
+
+  it("`received_by_lab` is never blocked — it sends nothing, and inbound evidence can only agree with it", () => {
+    expect(classifyRecoveryContradiction("received_by_lab", { resultsStatus: "results_received", resultsFirstReceivedAt: new Date() }, { owningRowStatuses: ["acked", "queued"], labObservationCount: 3 })).toBeNull();
+    expect(classifyRecoveryContradiction("received_by_lab", clean, null)).toBeNull();
+  });
 });
 
 // ── HTTP contract ────────────────────────────────────────────────────────────────────────────────────────────
@@ -146,6 +236,9 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
+  // F-186 — the harness's stand-in for the server-verified step-up state the authenticate hook stamps
+  // (`stepUpFreshFor`); the real predicate is M3's `step_up_recent`, exercised in `abac-step-up-boot.test.ts`.
+  request.context.attributes.stepUpRecent = request.headers["x-test-stepup"] === "fresh";
 }
 
 const ORG = "org_a";
@@ -174,17 +267,22 @@ function makeServer() {
   for (const [name, predicate] of Object.entries(buildOrderAbacPredicates({ resolver: backend }))) {
     reg.register(name, predicate);
   }
+  // F-186 — `requireStepUp("order.recover_transmission")` composes M3's `step_up_recent` (not an M11 predicate; the
+  // `ai-platform-inject` precedent): the harness decides it from the stand-in attribute above.
+  reg.register("step_up_recent", async (context) => context.attributes.stepUpRecent === true);
   registerAbacRegistry(reg);
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
   registerOrderRoutes(app, { service: backend });
   return { app, backend };
 }
 
-const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
-const RN_NO_AMEND = { "x-test-user": "rn_no_amend", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
-const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
+const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_case_manager", "x-test-stepup": "fresh" };
+/** Holds `orders.amend` but has NOT completed a fresh step-up (F-186). */
+const RN_NO_STEPUP = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
+const RN_NO_AMEND = { "x-test-user": "rn_no_amend", "x-test-org": ORG, "x-test-roles": "rn_case_manager", "x-test-stepup": "fresh" };
+const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor", "x-test-stepup": "fresh" };
 const UNKNOWN_ORDER = "99999999-9999-4999-8999-999999999999";
-const ATTEST = { attestation: "not_received_by_lab" };
+const ATTEST = { attestation: "not_received_by_lab", ...EVIDENCE };
 
 const labBody = {
   patientId: PATIENT,
@@ -228,6 +326,34 @@ describe("F-187 — POST /api/v1/orders/:id/recover-transmission", () => {
     await app.close();
   });
 
+  // F-186 — BOTH attestations are step-up gated: a wrong `not_received_by_lab` orders the test twice, a wrong
+  // `received_by_lab` hides an order the lab never got.
+  it.each(["not_received_by_lab", "received_by_lab"])(
+    "a caller who holds orders.amend but has NO fresh step-up is 403 for `%s` — and nothing is emitted",
+    async (attestation) => {
+      const { app, backend } = makeServer();
+      const id = await draft(app);
+      backend.drainEvents();
+      const res = await app.inject({
+        method: "POST",
+        url: url(id),
+        headers: RN_NO_STEPUP,
+        payload: { attestation, ...EVIDENCE },
+      });
+      expect(res.statusCode).toBe(403);
+      expect(backend.drainEvents()).toEqual([]);
+      await app.close();
+    },
+  );
+
+  it("with a fresh step-up the same caller passes the gate (it then reaches the service: a fresh draft is 409, not 403)", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({ method: "POST", url: url(id), headers: RN, payload: ATTEST });
+    expect(res.statusCode).toBe(409);
+    await app.close();
+  });
+
   it("is unauthenticated-safe: no session is 401", async () => {
     const { app } = makeServer();
     const res = await app.inject({ method: "POST", url: url(UNKNOWN_ORDER), payload: ATTEST });
@@ -252,9 +378,12 @@ describe("F-187 — POST /api/v1/orders/:id/recover-transmission", () => {
   it.each([
     ["no body", undefined],
     ["an empty body", {}],
-    ["an unknown attestation", { attestation: "probably" }],
-    ["a free-text note (nothing PHI-shaped may enter the audit diff)", { attestation: "received_by_lab", note: "spoke with Sam" }],
-  ])("%s is a 422 — the attestation is REQUIRED and closed, and nothing is emitted", async (_label, payload) => {
+    ["an unknown attestation", { attestation: "probably", ...EVIDENCE }],
+    ["a free-text note (nothing PHI-shaped may enter the audit diff)", { attestation: "received_by_lab", ...EVIDENCE, note: "spoke with Sam" }],
+    ["an attestation with NO evidence (F-186)", { attestation: "received_by_lab" }],
+    ["evidence with digits in the contact name (F-186)", { attestation: "received_by_lab", contactName: "Dana 5550100", labReference: "REF-2026-0041" }],
+    ["evidence with a spaced (free-text) lab reference (F-186)", { attestation: "received_by_lab", contactName: "Dana Reyes", labReference: "called about Jane Doe" }],
+  ])("%s is a 422 — the attestation and its evidence are REQUIRED and closed, and nothing is emitted", async (_label, payload) => {
     const { app, backend } = makeServer();
     const id = await draft(app);
     backend.drainEvents();

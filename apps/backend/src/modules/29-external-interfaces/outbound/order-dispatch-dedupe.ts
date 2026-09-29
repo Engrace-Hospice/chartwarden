@@ -80,6 +80,42 @@ export async function ormDispatchExistsForOrder(
   return rows.length > 0;
 }
 
+/**
+ * F-186 — READ-ONLY evidence for M11's attested recovery: what M29 already knows about this order that would
+ * CONTRADICT an operator's `not_received_by_lab` attestation. (1) the statuses of every outbound row that still owns
+ * the order (`queued` / `in_flight` = a send is under way; `acked` = the lab acknowledged it), and (2) how many
+ * `lab_observation` rows M29 has matched to the order (the lab has already returned a result). Runs on the caller's
+ * org-scoped transaction, so RLS applies; both reads are also explicitly org-filtered.
+ */
+export async function ormOutboundEvidenceForOrder(
+  tx: DbClient,
+  organizationId: string,
+  orderId: string,
+): Promise<{ readonly owningRowStatuses: readonly string[]; readonly labObservationCount: number }> {
+  const rows = await tx
+    .select({ status: HMO.status })
+    .from(HMO)
+    .where(
+      and(
+        eq(HMO.organizationId, organizationId),
+        eq(HMO.sourceAggregateKind, ORM_SOURCE_KIND),
+        eq(HMO.sourceAggregateId, orderId),
+        inArray(HMO.status, [...ROW_STILL_OWNS_ORDER]),
+      ),
+    );
+  const observations = await tx
+    .select({ id: schema.labObservation.id })
+    .from(schema.labObservation)
+    .where(
+      and(eq(schema.labObservation.organizationId, organizationId), eq(schema.labObservation.orderId, orderId)),
+    )
+    .limit(1);
+  return {
+    owningRowStatuses: rows.map((r) => r.status as string),
+    labObservationCount: observations.length,
+  };
+}
+
 /** The transaction-scoped advisory-lock key that serializes every delivery for ONE order across ALL feeds. */
 export function ormOrderDispatchLockKey(organizationId: string, orderId: string): string {
   return `m29.outbound.order:${organizationId}:${orderId}`;
