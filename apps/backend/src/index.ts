@@ -299,6 +299,7 @@ import {
   buildM11DocumentBackrefConsumer,
   buildM11FulfillmentStatusConsumer,
   buildM11IdgDecisionConsumer,
+  buildM11LabCancellationConsumer,
   buildM11LabTransmissionApplierConsumer,
   buildM11OrmRequestedPorts,
   buildM11SupplyCancelledConsumer,
@@ -6022,6 +6023,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // Drives `order_record.transmission_status` per D16 and re-publishes M11's own decisive
           // `m11.order.transmission_status_changed`/`.transmission_terminal_failed`.
           buildM11LabTransmissionApplierConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
+          // F-184 (#248) — a lab order discontinued/replaced after its ORM may already be at the laboratory:
+          // nothing withdraws the ORM (T-29.08 defines no outbound cancel), so this raises the M36 alert that
+          // tells the care team to cancel it with the lab. The M11-side self-consumption of
+          // `m11.order.discontinued` / `m11.order.corrected`.
+          buildM11LabCancellationConsumer({
+            db: dbHandle.db,
+            alerts: getSeam("AlertEmitter") as AlertEmitter,
+          }),
           // F-166 (#248) — a staff-initiated `m21.supply_request.cancelled` (never through M11's own
           // discharge cascade above, which already discontinues the order before asking M21) releases
           // the still-in-flight source order M11 never touched. Safe for the cascade-reply producer too

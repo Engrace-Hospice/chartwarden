@@ -169,6 +169,9 @@ describe("M11 outbox subscriptions (§4.5)", () => {
       // F-177 (#248) — `LabTransmissionApplier`: M29's real outbound HL7 lifecycle events.
       { eventName: "m29.lab_order.transmitted", consumerName: "m11.lab-transmission-applier" },
       { eventName: "m29.lab_order.transmission_failed", consumerName: "m11.lab-transmission-applier" },
+      // F-184 (#248) — SELF-consumption: the lab-order supersession alert (T-29.08 defines no outbound cancel).
+      { eventName: "m11.order.discontinued", consumerName: "m11.lab-cancellation-required" },
+      { eventName: "m11.order.corrected", consumerName: "m11.lab-cancellation-required" },
     ]);
   });
 
