@@ -1929,3 +1929,27 @@ patient-level M5 flag only — there is no classifier for a SUD-class ORDER (e.g
 non-restricted patient's SUD test order is transmitted; consent-aware release for a restricted patient is a
 follow-up, today it is a flat refusal; (6) `routingLabId` is optional on the lab kind, so every lab order without one
 is refused until the feed↔facility link makes a default destination derivable.
+
+**F-179 (#248) — inbound `mllp_plain` refused in production (the twin of F-178's outbound guard).** F-178 fork A
+refused cleartext `mllp_plain` for the OUTBOUND worker only and left inbound feeds untouched, but an inbound plain
+listener is the same PHI-on-the-wire exposure (a partner ADT/ORU feed over a plain socket). The rule is now one
+decision, shared: production is never allowed (the `M29_ALLOW_MLLP_PLAIN` opt-in is ignored there, and boot already
+refuses to start with it set); non-production needs the explicit opt-in; every caller defaults to the
+environment-derived answer, so a supervisor or registry built without the option FAILS CLOSED. Three layers:
+(1) **admin routes** — `assertProtocolAcceptable` no longer keys on `kind === 'orm_outbound'`: in production a create
+or an activate of ANY `mllp_plain` feed is a 422 `PLAIN_MLLP_REFUSED` (protocol is immutable after create, so a feed
+made before the deployment became production is caught at activate); (2) **supervisor** — `startFeedListener` refuses
+a plain feed before the BAA gate is even consulted, logs `hl7.listener.plain_refuse` and raises a critical compliance
+alert whose text carries the feed/org ids only (no host, port or sending-facility allowlist), outcome reason
+`plain_protocol_refused`; (3) **the bind point** — `createTlsListenerRegistry.start` throws `PlainListenerRefusedError`
+before `net.createServer`, so a caller that bypassed the supervisor still binds nothing and never loads a credential.
+New `listener/protocol-policy.ts` reuses F-178's `resolveDestinationPolicy`/`checkProtocol` (no second copy of the
+production test). No migration, no API shape change (openapi/client untouched). Note: this tree does not yet compose
+the inbound listener process from `apps/backend/src/index.ts` (the supervisor's real `main()` is still deferred per the
+`listener/index.ts` header), so the guard sits at the two points any such composition must pass through.
+Verified: 105 unit tests across the new `m29-inbound-plain-guard.test.ts` (policy, supervisor gate, a REAL-socket
+registry that must refuse and leave the port closed, plus a control that an opted-in non-production listener still
+binds), the extended route suite and the env suite; with the three guards disabled 7 of the new cases fail (all three
+layers) and the controls still pass. **Residual:** the `M29_ALLOW_MLLP_PLAIN` opt-in is one switch for both
+directions (a non-production deployment cannot allow one and not the other); `mllp_plain` inbound in non-production
+still needs the loopback/private-address hygiene of the deployment, since the listener binds `0.0.0.0`.

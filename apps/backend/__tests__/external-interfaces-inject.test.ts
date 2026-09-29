@@ -956,3 +956,50 @@ describe("M29-external-interfaces-inject — F-178 feed input policy", () => {
     await app.close();
   });
 });
+
+// ── F-179 — the production `mllp_plain` refusal covers INBOUND feeds too ────────────────────────────────────
+describe("M29-external-interfaces-inject — F-179 inbound mllp_plain", () => {
+  const FEEDS = "/api/admin/external-interfaces/feeds";
+  const inbound = (over: Record<string, unknown> = {}) => ({
+    kind: "adt_inbound",
+    displayName: "Partner ADT",
+    port: 6300,
+    protocol: "mllp_tls",
+    ...over,
+  });
+
+  it("production: creating an INBOUND mllp_plain feed is refused (422 PLAIN_MLLP_REFUSED, says inbound); inbound mllp_tls is fine", async () => {
+    const prod = makeServer({ env: { NODE_ENV: "production" } });
+    for (const kind of ["adt_inbound", "lab_inbound"]) {
+      const refused = await prod.app.inject({
+        method: "POST", url: FEEDS, headers: SUPER, payload: inbound({ kind, protocol: "mllp_plain" }),
+      });
+      expect(refused.statusCode).toBe(422);
+      expect(JSON.stringify(refused.json())).toContain("PLAIN_MLLP_REFUSED");
+      expect(JSON.stringify(refused.json())).toContain("inbound");
+    }
+    const tlsOk = await prod.app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: inbound() });
+    expect(tlsOk.statusCode).toBe(201);
+    await prod.app.close();
+  });
+
+  it("non-production: an inbound mllp_plain feed can still be created (the listener enforces the opt-in at bind time)", async () => {
+    const dev = makeServer({ env: { NODE_ENV: "development" } });
+    const res = await dev.app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: inbound({ protocol: "mllp_plain" }) });
+    expect(res.statusCode).toBe(201);
+    await dev.app.close();
+  });
+
+  it("a plain INBOUND feed created before the deployment became production cannot be ACTIVATED in production", async () => {
+    const env: Record<string, string | undefined> = { NODE_ENV: "development" };
+    const { app } = makeServer({ env });
+    const created = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: inbound({ protocol: "mllp_plain" }) });
+    expect(created.statusCode).toBe(201);
+    const feedId = created.json().feed.id as string;
+    env.NODE_ENV = "production";
+    const activate = await app.inject({ method: "POST", url: `${FEEDS}/${feedId}/activate`, headers: SUPER2 });
+    expect(activate.statusCode).toBe(422);
+    expect(JSON.stringify(activate.json())).toContain("PLAIN_MLLP_REFUSED");
+    await app.close();
+  });
+});
