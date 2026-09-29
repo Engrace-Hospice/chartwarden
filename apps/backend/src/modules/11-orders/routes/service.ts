@@ -40,7 +40,11 @@ import type {
   StandingOrderStatus,
 } from "@wardenx/types";
 import { ConflictError, NotFoundError, ValidationError } from "@wardenx/types";
-import { classifyOrmResend } from "../orm-request/orm-resend";
+import {
+  type RecoveryAttestation,
+  classifyOrmResend,
+  classifyTransmissionRecovery,
+} from "../orm-request/orm-resend";
 
 /** Minimal M40 `MdmEntityProvider` subset the order service binds (physician / DME-vendor resolution). */
 export interface OrderMdmValidator {
@@ -342,6 +346,22 @@ export interface ResendLabTransmissionResult {
   readonly order: OrderDetailView;
 }
 
+/**
+ * F-184 (#248) — the outcome of an operator's ATTESTED recovery of a lab order whose transmission ended in an M29
+ * terminal failure. `redispatched`: the operator attested the lab did NOT receive it; the producer re-ran, ONE
+ * `m11.order.hl7_orm_requested` (carrying the attestation id) was published in the same transaction and
+ * `transmission_status` is back to `pending`. `marked_transmitted`: the operator attested the lab DID receive it;
+ * nothing was sent and the order is `transmitted`. `still_refused`: a fact the ORM needs is missing NOW, so it
+ * cannot be rebuilt — the order is left EXACTLY as it was (still `failed` with its M29 reason, never rewritten to an
+ * `orm_refused:*` that would make the plain resend — and its duplicate risk — reachable). `refusalReason` is a fixed
+ * producer token (never PHI).
+ */
+export interface RecoverLabTransmissionResult {
+  readonly outcome: "redispatched" | "marked_transmitted" | "still_refused";
+  readonly refusalReason: string | null;
+  readonly order: OrderDetailView;
+}
+
 /** The resolver the §4.7 ABAC predicates read order facts through (the slice implements it in-memory). */
 export interface OrderAbacResolver {
   loadOrder(organizationId: string, orderId: string): Promise<OrderAbacFacts | null>;
@@ -445,6 +465,20 @@ export interface OrderRouteService extends OrderAbacResolver {
     actor?: OrderDetailActor,
     auditUserId?: string,
   ): Promise<ResendLabTransmissionResult>;
+  /**
+   * F-184 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built
+   * (`dlq_exhausted` incl. F-183's "held, delivery unverified", or `application_reject`). `attestation` is what the
+   * operator established WITH THE LAB: `not_received_by_lab` re-dispatches once, `received_by_lab` marks the order
+   * transmitted without sending. Recorded in the order's write-audit diff under `auditUserId`.
+   */
+  recoverLabTransmission(
+    organizationId: string,
+    membershipId: string,
+    id: string,
+    attestation: RecoveryAttestation,
+    actor?: OrderDetailActor,
+    auditUserId?: string,
+  ): Promise<RecoverLabTransmissionResult>;
   pendingSignature(organizationId: string): Promise<{ orders: OrderView[] }>;
   verbalExpiring(organizationId: string): Promise<{ orders: OrderView[] }>;
   cosignPending(organizationId: string): Promise<{ orders: OrderView[] }>;
@@ -1109,6 +1143,26 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       throw new ConflictError(
         `ORM resend not allowed (${verdict.ok ? "no_orm_producer" : verdict.code}): ${
           verdict.ok ? "the in-memory service has no outbound ORM producer" : verdict.message
+        }`,
+      );
+    },
+
+    async recoverLabTransmission(organizationId, _membershipId, id, attestation) {
+      // Like the resend: the in-mem slice never has an M29 terminal failure to recover, so it applies the SAME
+      // eligibility rule as the DB backend and always refuses.
+      const r = find(organizationId, id);
+      const verdict = classifyTransmissionRecovery(
+        {
+          kind: r.kind,
+          status: r.status,
+          transmissionStatus: r.transmissionStatus,
+          transmissionFailureReason: null,
+        },
+        attestation,
+      );
+      throw new ConflictError(
+        `Transmission recovery not allowed (${verdict.ok ? "no_outbound_transport" : verdict.code}): ${
+          verdict.ok ? "the in-memory service has no outbound transport" : verdict.message
         }`,
       );
     },

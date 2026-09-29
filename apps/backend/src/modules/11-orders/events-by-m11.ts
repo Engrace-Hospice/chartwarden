@@ -53,6 +53,8 @@ export const ormRequestedPayloadSchema = Type.Object({
   labDestinationFacilityId: id,
   priority: hl7Priority,
   requestedAt: isoInstant,
+  // F-184 — present only on an operator-attested re-dispatch (see `OrmRequestedPayload.redispatchAttestationId`).
+  redispatchAttestationId: Type.Optional(id),
   labOrderPayload: Type.Object({
     orderId: id,
     patientId: id,

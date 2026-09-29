@@ -17,8 +17,15 @@
 //
 // F-181 CLOSED THE TWO PHASE-1 GAPS this file used to inherit from `./feed-resolver.ts`: feeds now route by
 // `external_feed.lab_destination_facility_id` (single-feed fallback only for an unlinked sole feed), and MSH-3/4/5/6
-// come from dedicated `msh_*` columns — a feed missing a required one is REFUSED (`OutboundFeedIdentityIncompleteError`,
-// alert + throw so the outbox dispatcher retries/DLQs) instead of borrowing its display name. Read that file's header.
+// come from dedicated `msh_*` columns — a feed missing a required one is REFUSED instead of borrowing its display
+// name. Read that file's header.
+//
+// F-184 — NEVER SILENTLY STUCK. Every exit that writes NO row (no/ambiguous/unlinked feed, incomplete MSH identity,
+// lapsed BAA) now publishes `m29.lab_order.dispatch_refused` (see `refuseDispatch`), so M11 marks the order `failed`
+// with an actionable reason instead of leaving it `pending` forever; F-181's alert + throw for an incomplete identity
+// was replaced by that terminal signal (the outbox's dead-letter left the order `pending`). And a row that DID
+// reach a dead end (`dlq` / `naked`) can be re-dispatched exactly once per operator ATTESTATION that the lab never
+// received it (`redispatchAttestationId`, see the order-level guard in `handleOrmRequested`).
 //
 // A DECISION THIS FILE MAKES: there is NO app-level M4 `audit()` API anywhere in this codebase — every
 // M4 capture found (grep confirmed) is the GENERATED write-audit DB TRIGGER on a table write (migration 0148
@@ -70,7 +77,11 @@ import {
   type MllpTransportOutcome,
   createNodeMllpTransport,
 } from "./mllp-transport";
-import type { OutboundAlert, OutboundAuditRecord } from "./outbound-events";
+import type {
+  LabOrderDispatchRefusalReason,
+  OutboundAlert,
+  OutboundAuditRecord,
+} from "./outbound-events";
 import { M29_OUTBOUND_CRON_QUEUES, M29_OUTBOUND_JOB_SCHEDULES, M29_OUTBOUND_QUEUE_PARAMS, M29_OUTBOUND_RETRY_SWEEP_BATCH_SIZE } from "./queues";
 import { type FeedRateLimiter, createFeedRateLimiter } from "./rate-limiter";
 import {
@@ -85,7 +96,11 @@ import {
   decideRetry,
   inFlightLeaseMsFor,
 } from "./retry-policy";
-import { ormDispatchExistsForOrder, ormOrderDispatchLockKey } from "./order-dispatch-dedupe";
+import {
+  ormDispatchExistsForOrder,
+  ormDispatchHasLiveOrDeliveredRow,
+  ormOrderDispatchLockKey,
+} from "./order-dispatch-dedupe";
 import { resolveOutboundBaaResult } from "./resolve-baa";
 import type { M29WriteOutboxPort } from "../routes/store-drizzle";
 
@@ -228,7 +243,8 @@ function isOrmRequestedPayload(payload: unknown): payload is OrmRequestedPayload
     typeof p.organizationId === "string" &&
     typeof p.requestedAt === "string" &&
     typeof p.labOrderPayload === "object" &&
-    p.labOrderPayload !== null
+    p.labOrderPayload !== null &&
+    (p.redispatchAttestationId === undefined || typeof p.redispatchAttestationId === "string")
   );
 }
 
@@ -607,23 +623,37 @@ async function alertUnresolvedFeed(
 }
 
 /**
- * F-181 — thrown when the resolved feed lacks a REQUIRED MSH identity field. Unlike `no_active_feed` /
- * `ambiguous_feed` (alert + return), an incomplete identity is an OPERATOR-FIXABLE configuration gap on a feed
- * that IS the right destination, so the order must not be silently dropped: the throw lets the outbox
- * dispatcher retry and, if the operator has not completed the feed by `maxAttempts`, dead-letter the event
- * for redrive. The message carries the feed id and FIELD NAMES only — no value, nothing PHI-shaped.
+ * F-184 — the worker is about to write NO row for this order (no/ambiguous/unlinked feed, incomplete MSH identity,
+ * lapsed BAA). Ending silently — F-175's `return null`, or F-181's throw that the outbox eventually dead-letters —
+ * left the order `pending` forever with no path to resend. Publish `m29.lab_order.dispatch_refused` IN THE SAME
+ * TRANSACTION so M11's applier flips the order to `failed` with `dispatch_refused:<reason>`; F-182's resend then
+ * re-runs the producer once the operator has fixed the cause. All five reasons are TERMINAL for THIS event, not
+ * retried by the outbox: an outbox retry cannot tell a config gap an operator will fix in minutes from one that
+ * needs a day, its dead-letter leaves the order `pending`, and the resend is the deliberate, human-triggered retry.
+ * Only genuine faults (a throwing dependency, a lost DB connection) still throw and ride the outbox retry/DLQ.
+ * The payload is ids and an enum: no PHI, and never the missing MSH field VALUES or NAMES.
  */
-export class OutboundFeedIdentityIncompleteError extends Error {
-  readonly code = "M29_OUTBOUND_FEED_IDENTITY_INCOMPLETE";
-  constructor(
-    readonly feedId: string,
-    readonly missingFields: readonly string[],
-  ) {
-    super(
-      `outbound ORM dispatch refused: feed ${feedId} has no MSH identity for ${missingFields.join(", ")}`,
-    );
-    this.name = "OutboundFeedIdentityIncompleteError";
-  }
+async function refuseDispatch(
+  deps: ResolvedDeps,
+  tx: DbClient,
+  organizationId: string,
+  orderId: string,
+  feedId: string | null,
+  reason: LabOrderDispatchRefusalReason,
+): Promise<void> {
+  await deps.outbox.publish(tx, {
+    eventName: "m29.lab_order.dispatch_refused",
+    payload: {
+      orderId,
+      organizationId,
+      feedId,
+      refusalId: randomUUID(),
+      reason,
+    } as unknown as Record<string, unknown>,
+    organizationId,
+    aggregateKind: "order",
+    aggregateId: orderId,
+  });
 }
 
 async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxEvent): Promise<void> {
@@ -646,12 +676,29 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
     // computes another key and would send the same order to a second endpoint. One ORM per ORDER: serialize every
     // delivery for this order across ALL feeds, and if any outbound row exists for it (any feed, any status — a
     // crashed `in_flight`, a `dlq`, a sent one) send nothing; the reclaim sweep is the only path that re-sends.
-    // Checking first also means a redelivery never trips `OutboundFeedIdentityIncompleteError` over a feed this
-    // order never used.
+    // Checking first also means a redelivery never refuses (`dispatch_refused`) over a feed this order never used.
+    //
+    // F-184 — THE ONE EXCEPTION: an operator-ATTESTED re-dispatch (`redispatchAttestationId`, minted by M11's
+    // `recoverLabTransmission` after a human attested to the lab that it did NOT receive the earlier attempt).
+    // It may add a NEW row when every earlier row is a dead end (`dlq` / `naked` / `failed`); a `queued`,
+    // `in_flight` or `acked` row still owns the order and blocks it exactly as before. Nothing else — no ordinary
+    // redelivery, no resend of an emit-time refusal — carries the attestation id, so the guard is unchanged for them.
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${ormOrderDispatchLockKey(organizationId, payload.orderId)}, 0))`,
     );
-    if (await ormDispatchExistsForOrder(tx, organizationId, payload.orderId)) return null;
+    const attestationId = payload.redispatchAttestationId;
+    const orderOwned =
+      attestationId === undefined
+        ? await ormDispatchExistsForOrder(tx, organizationId, payload.orderId)
+        : await ormDispatchHasLiveOrDeliveredRow(tx, organizationId, payload.orderId);
+    if (orderOwned) {
+      // An ATTESTED re-dispatch blocked by a row that still owns the order is not a routine redelivery: the operator
+      // asked for a send that will not happen. Ids only — never a payload value.
+      if (attestationId !== undefined) {
+        console.warn("m29.outbound.attested_redispatch_blocked", { orderId: payload.orderId, attestationId });
+      }
+      return null;
+    }
 
     const feedResult = await deps.feedResolver.resolveForOrg(
       tx,
@@ -661,9 +708,14 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
     );
     if (feedResult.kind === "unresolved") {
       await alertUnresolvedFeed(deps, organizationId, payload.orderId, feedResult);
-      if (feedResult.reason === "feed_identity_incomplete") {
-        throw new OutboundFeedIdentityIncompleteError(feedResult.feedId, feedResult.missingFields);
-      }
+      await refuseDispatch(
+        deps,
+        tx,
+        organizationId,
+        payload.orderId,
+        feedResult.reason === "feed_identity_incomplete" ? feedResult.feedId : null,
+        feedResult.reason,
+      );
       return null;
     }
     const feed = feedResult.feed;
@@ -676,7 +728,14 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
     // serialized with a transaction-scoped advisory lock on (org, idempotency key): two overlapping deliveries
     // queue behind one another, and the loser's SELECT (a fresh READ COMMITTED snapshot, taken after the lock is
     // granted) sees the winner's committed row. The lock is released at commit/rollback — nothing to clean up.
-    const idempotencyKey = outboundIdempotencyKey(feed.id, ORM_SOURCE_KIND, payload.orderId);
+    // F-184 — an attested re-dispatch hashes the attestation id into the key (the persisted `source_aggregate_id`
+    // stays the bare order id), so it cannot collide with the dead attempt's key, while a REDELIVERY of the same
+    // attested event still finds its own row and sends nothing.
+    const idempotencyKey = outboundIdempotencyKey(
+      feed.id,
+      ORM_SOURCE_KIND,
+      attestationId === undefined ? payload.orderId : `${payload.orderId}#${attestationId}`,
+    );
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m29.outbound:${organizationId}:${idempotencyKey}`}, 0))`,
     );
@@ -710,10 +769,14 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
     });
 
     if (plan.kind === "baa_refused") {
-      // Per the dispatch planner's own header + the brief: NO row, NO `transmission_failed` (a BAA lapse
-      // is transient) — publish the audit/alert intent and stop.
+      // NO row, so NO `transmission_failed` (that event needs an outbound row to cite). F-175 stopped here and the
+      // order stayed `pending` forever — the planner's header assumed an M29-owned DLQ that auto-requeues on BAA
+      // restoration, which was never built (a refused plan writes no row for a requeue to find). F-184: publish
+      // `dispatch_refused` so the order becomes `failed` (`dispatch_refused:baa_inactive`) and F-182's resend
+      // re-runs the producer once the BAA is renewed.
       await emitAlert(deps, organizationId, plan.alert);
       logAuditIntent(plan.audit);
+      await refuseDispatch(deps, tx, organizationId, payload.orderId, feed.id, "baa_inactive");
       return null;
     }
 
@@ -725,6 +788,9 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
       .insert(HMO)
       .values({
         ...plan.row,
+        // F-184 — the attempt's own key (the planner keyed on the bare order id): identical for an ordinary
+        // dispatch, attestation-scoped for an attested re-dispatch.
+        idempotencyKey,
         payloadCipher,
         status: "in_flight",
         // F-182 — `next_retry_at` on an `in_flight` row is its LEASE EXPIRY: the reclaim sweep only takes a

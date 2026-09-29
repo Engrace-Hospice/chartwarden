@@ -161,6 +161,33 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: ["m11"],
     isOutboxOnly: true,
   },
+  {
+    // F-184 (#248) — the worker's "wrote NO row" exits (no/ambiguous/unlinked active feed, incomplete MSH identity
+    // on the feed, lapsed BAA) used to end silently, leaving the order `pending` forever with no path to resend.
+    // This is the terminal signal M11's `LabTransmissionApplier` consumes to flip such an order to `failed`
+    // (`dispatch_refused:<reason>`), which F-182's resend then acts on once the operator fixes the cause. Distinct
+    // from `transmission_failed` because there is NO outbound row (no `outboundMessageId`) and the reasons are
+    // configuration states, not wire outcomes.
+    eventName: "m29.lab_order.dispatch_refused",
+    moduleOwner: "m29",
+    description:
+      "The outbound ORM worker could not persist a dispatch row for an order — no/ambiguous/unlinked active feed, an incomplete MSH identity on the feed, or a lapsed BAA. Nothing was sent and no outbound row exists. M11 consumes to flip `order_record.transmission_status` to failed with `dispatch_refused:<reason>` so the order is never silently stuck pending; M36 raises the ordering-provider alert.",
+    payloadSchema: Type.Object({
+      orderId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      feedId: Type.Union([Type.String({ minLength: 1 }), Type.Null()]),
+      refusalId: Type.String({ minLength: 1 }),
+      reason: Type.Union([
+        Type.Literal("no_active_feed"),
+        Type.Literal("ambiguous_feed"),
+        Type.Literal("no_feed_for_destination"),
+        Type.Literal("feed_identity_incomplete"),
+        Type.Literal("baa_inactive"),
+      ]),
+    }),
+    declaredConsumers: ["m11"],
+    isOutboxOnly: true,
+  },
 
   {
     eventName: "m29.nppes.provider_synced",

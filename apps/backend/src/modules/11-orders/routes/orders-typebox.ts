@@ -16,6 +16,7 @@ import { ValidationError } from "@wardenx/types";
 import type {
   OrderDetailView as ServiceOrderDetailView,
   OrderView as ServiceOrderView,
+  RecoverLabTransmissionResult as ServiceRecoverLabTransmissionResult,
   ResendLabTransmissionResult as ServiceResendLabTransmissionResult,
   StandingOrderView as ServiceStandingOrderView,
   VerbalPolicyView as ServiceVerbalPolicyView,
@@ -170,6 +171,16 @@ export const CorrectOrderRequest = CreateOrderRequest;
 export const CompleteOrderRequest = Type.Object({
   reason: Type.Optional(Type.String({ maxLength: 2000 })),
 });
+
+/**
+ * F-184 — POST /orders/:id/recover-transmission. The `attestation` is REQUIRED and has no default: it is the
+ * operator's statement of what the lab actually holds, which the system cannot know. A free-text note is
+ * deliberately not accepted (nothing PHI-shaped enters the audit diff).
+ */
+export const RecoverLabTransmissionRequest = Type.Object(
+  { attestation: Type.Union([Type.Literal("not_received_by_lab"), Type.Literal("received_by_lab")]) },
+  { additionalProperties: false },
+);
 
 export const CreateStandingOrderRequest = Type.Object({
   patientId: Type.String({ format: "uuid" }),
@@ -380,6 +391,16 @@ export const ResendLabTransmissionResponseSchema = Type.Object({
   refusalReason: nullableString(),
   order: OrderDetailResponseSchema,
 });
+/** F-184 — POST /orders/:id/recover-transmission. `refusalReason` is a fixed producer token, never PHI. */
+export const RecoverLabTransmissionResponseSchema = Type.Object({
+  outcome: Type.Union([
+    Type.Literal("redispatched"),
+    Type.Literal("marked_transmitted"),
+    Type.Literal("still_refused"),
+  ]),
+  refusalReason: nullableString(),
+  order: OrderDetailResponseSchema,
+});
 /** Route 25 — the PRN manual-spawn result (the newly-minted order id). */
 export const SpawnResponseSchema = Type.Object({ orderId: Type.String() });
 
@@ -390,6 +411,10 @@ type _OrderDetailView = Conforms<Static<typeof OrderDetailResponseSchema>, Servi
 type _ResendLabTransmission = Conforms<
   Static<typeof ResendLabTransmissionResponseSchema>,
   ServiceResendLabTransmissionResult
+>;
+type _RecoverLabTransmission = Conforms<
+  Static<typeof RecoverLabTransmissionResponseSchema>,
+  ServiceRecoverLabTransmissionResult
 >;
 type _StandingOrderView = Conforms<
   Static<typeof StandingOrderViewResponseSchema>,

@@ -69,4 +69,7 @@ export const M11_OUTBOX_SUBSCRIPTIONS = [
   // order_record.transmission_status and re-publish M11's own D16-decisive events.
   { eventName: "m29.lab_order.transmitted", consumerName: "m11.lab-transmission-applier" },
   { eventName: "m29.lab_order.transmission_failed", consumerName: "m11.lab-transmission-applier" },
+  // F-184 (#248) — the worker's "wrote NO row" refusals (no/unlinked feed, incomplete MSH identity, lapsed BAA):
+  // the order becomes `failed` (`dispatch_refused:<reason>`) instead of sitting `pending` forever.
+  { eventName: "m29.lab_order.dispatch_refused", consumerName: "m11.lab-transmission-applier" },
 ] as const;

@@ -38,6 +38,8 @@
 // refuse-never-fabricate contract). Without `orm` ports (unit tests, the standing/verbal workers) a signed lab
 // order emits nothing, exactly as before. The returned object IS BOTH the OrderRouteService AND the §4.7
 // AbacResolver.
+import { randomUUID } from "node:crypto";
+
 import { type DbClient, schema } from "@wardenx/db";
 import {
   DEFAULT_COSIGN_POLICY,
@@ -74,7 +76,12 @@ import {
 import { ValidationError } from "@wardenx/types";
 import { type SQL, and, desc, eq, lte } from "drizzle-orm";
 import { type OrmRequestedPorts, resolveOrmRequested } from "./orm-request/orm-requested";
-import { ORM_REFUSAL_PREFIX, classifyOrmResend } from "./orm-request/orm-resend";
+import {
+  ORM_REFUSAL_PREFIX,
+  RECOVERY_ATTESTATION_PREFIX,
+  classifyOrmResend,
+  classifyTransmissionRecovery,
+} from "./orm-request/orm-resend";
 import { EMPTY_ORDER_DETAIL_ACTOR, buildOrderWorkflowProjection } from "./routes/service";
 import type {
   CreateOrderArgs,
@@ -83,6 +90,7 @@ import type {
   OrderDetailView,
   OrderRouteService,
   OrderView,
+  RecoverLabTransmissionResult,
   ResendLabTransmissionResult,
   StandingOrderView,
   VerbalPolicyView,
@@ -1229,6 +1237,119 @@ export function createDbOrderBackend(
             .where(stillFailed);
         }
         return { outcome: "still_refused", refusalReason: outcome.reason, order: await readOrder(t, id, actor) };
+      });
+    },
+
+    /**
+     * F-184 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built
+     * (`dlq_exhausted`, including F-183's "held, delivery unverified", or `application_reject`). F-182's resend refuses
+     * these on purpose: the lab MAY have the order, and re-emitting would order the test twice. The one fact the
+     * system cannot know is what the lab actually holds, so a human establishes it by calling the lab and ATTESTS:
+     *   • `not_received_by_lab` → re-run the producer and publish ONE `m11.order.hl7_orm_requested` carrying a fresh
+     *     `redispatchAttestationId`. M29's worker treats that id as the single sanctioned exception to F-183's
+     *     one-ORM-per-order guard — only when every earlier row is a dead end (`dlq`/`naked`/`failed`), with an
+     *     attestation-scoped idempotency key (a redelivery of the same attested event still sends nothing).
+     *   • `received_by_lab`     → nothing is sent; the order is marked `transmitted`.
+     * ONE transaction, and the same two independent single-dispatch guards as F-182: `SELECT … FOR UPDATE` on the
+     * order row (a double-click serializes; the second reads `pending`/`transmitted` and is refused `not_failed`) and
+     * a CONDITIONAL update (`WHERE transmission_status='failed' AND reason = <the one we read>`).
+     * THE ATTESTATION IS THE AUDIT RECORD: it is written into `transmission_failure_reason`
+     * (`recovery_attested:<attestation>:<attestationId>`) in the same UPDATE, so the M4 write-audit trigger's
+     * before/after diff on `order_record` records what was attested, when, and — via `auditUserId` on the
+     * transaction — by whom. No PHI: an enum and a uuid.
+     * If the producer now REFUSES (a fact is missing), the order is left EXACTLY as it was: rewriting it to
+     * `orm_refused:*` (as the plain resend does) would make F-182's resend — with none of this path's attestation —
+     * reachable for an order whose first attempt may have reached the lab.
+     */
+    async recoverLabTransmission(
+      organizationId,
+      _membershipId,
+      id,
+      attestation,
+      actor = EMPTY_ORDER_DETAIL_ACTOR,
+      auditUserId = "",
+    ): Promise<RecoverLabTransmissionResult> {
+      if (!orm) {
+        throw new ConflictError(
+          "Transmission recovery not allowed (not_configured): outbound lab requests are not configured",
+        );
+      }
+      return withOrgContext(db, { organizationId, userId: auditUserId }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [r] = (await t
+          .select()
+          .from(OR)
+          .where(and(eq(OR.organizationId, organizationId), eq(OR.id, id)))
+          .limit(1)
+          .for("update")) as (typeof OR.$inferSelect)[];
+        if (!r) throw new NotFoundError(`order ${id} not found`);
+        const verdict = classifyTransmissionRecovery(
+          {
+            kind: r.kind,
+            status: r.status,
+            transmissionStatus: r.transmissionStatus,
+            transmissionFailureReason: r.transmissionFailureReason,
+          },
+          attestation,
+        );
+        if (!verdict.ok) {
+          throw new ConflictError(`Transmission recovery not allowed (${verdict.code}): ${verdict.message}`);
+        }
+        const at = new Date();
+        const attestationId = randomUUID();
+        const marker = `${RECOVERY_ATTESTATION_PREFIX}${attestation}:${attestationId}`;
+        const stillFailed = and(
+          eq(OR.organizationId, organizationId),
+          eq(OR.id, id),
+          eq(OR.kind, "lab"),
+          eq(OR.transmissionStatus, "failed"),
+          eq(OR.transmissionFailureReason, verdict.priorReason),
+        );
+
+        if (attestation === "received_by_lab") {
+          const claimed = await t
+            .update(OR)
+            .set({ transmissionStatus: "transmitted", transmissionFailureReason: marker, updatedAt: at })
+            .where(stillFailed)
+            .returning({ id: OR.id });
+          if (claimed.length === 0) {
+            throw new ConflictError("Transmission recovery not allowed (not_failed): the order was recovered concurrently");
+          }
+          await emit(t, organizationId, "m11.order.transmission_status_changed", id, {
+            orderId: id,
+            organizationId,
+            fromStatus: "failed",
+            toStatus: "transmitted",
+            sourceM29EventId: attestationId,
+          });
+          return { outcome: "marked_transmitted", refusalReason: null, order: await readOrder(t, id, actor) };
+        }
+
+        const outcome = await resolveOrmRequested(orm, t, {
+          orderId: id,
+          organizationId,
+          patientId: r.patientId,
+          orderingPhysicianMdmId: r.orderingPhysicianMdmId,
+          priority: r.priority,
+          signedAt: r.signedAt ?? at,
+          data: r.data,
+        });
+        if (outcome.kind !== "ok") {
+          return { outcome: "still_refused", refusalReason: outcome.reason, order: await readOrder(t, id, actor) };
+        }
+        const claimed = await t
+          .update(OR)
+          .set({ transmissionStatus: "pending", transmissionFailureReason: marker, updatedAt: at })
+          .where(stillFailed)
+          .returning({ id: OR.id });
+        if (claimed.length === 0) {
+          throw new ConflictError("Transmission recovery not allowed (not_failed): the order was recovered concurrently");
+        }
+        await emit(t, organizationId, "m11.order.hl7_orm_requested", id, {
+          ...outcome.payload,
+          redispatchAttestationId: attestationId,
+        } as unknown as Record<string, unknown>);
+        return { outcome: "redispatched", refusalReason: null, order: await readOrder(t, id, actor) };
       });
     },
 

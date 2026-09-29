@@ -35,6 +35,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq } from "drizzle-orm";
 import type { OrderWriteOutboxPort } from "../orders-route-service-db";
+import { DISPATCH_REFUSED_PREFIX } from "../orm-request/orm-resend";
 
 const ORDER = schema.orderRecords;
 
@@ -42,7 +43,12 @@ const ORDER = schema.orderRecords;
 const CONSUMER_USER_ID = "";
 
 export const M11_LAB_TRANSMISSION_APPLIER_CONSUMER = {
-  eventNames: ["m29.lab_order.transmitted", "m29.lab_order.transmission_failed"] as const,
+  eventNames: [
+    "m29.lab_order.transmitted",
+    "m29.lab_order.transmission_failed",
+    // F-184 — the worker's "wrote NO row" refusals; see `DispatchRefusedFacts`.
+    "m29.lab_order.dispatch_refused",
+  ] as const,
   consumerName: "m11.lab-transmission-applier",
 } as const;
 
@@ -68,12 +74,38 @@ interface TransmissionFailedFacts {
   readonly attemptCount: number;
 }
 
-function factsOf(eventType: string, payload: unknown): TransmittedFacts | TransmissionFailedFacts {
+/**
+ * F-184 — `m29.lab_order.dispatch_refused`: the worker could not persist ANY outbound row for the order (no /
+ * ambiguous / unlinked feed, incomplete MSH identity on the feed, lapsed BAA). There is no `outboundMessageId`, so
+ * the refusal's own id stands in as `sourceM29EventId`. Applied ONLY to an order still `pending` — a stale or
+ * redelivered refusal never disturbs an order that has moved on.
+ */
+interface DispatchRefusedFacts {
+  readonly kind: "dispatch_refused";
+  readonly orderId: string;
+  readonly refusalId: string;
+  readonly reason: string;
+}
+
+function factsOf(
+  eventType: string,
+  payload: unknown,
+): TransmittedFacts | TransmissionFailedFacts | DispatchRefusedFacts {
   const p = (payload ?? {}) as Record<string, unknown>;
   const orderId = p.orderId;
   const outboundMessageId = p.outboundMessageId;
   if (typeof orderId !== "string" || orderId.length === 0) {
     throw new Error(`${M11_LAB_TRANSMISSION_APPLIER_CONSUMER.consumerName}: payload has no orderId`);
+  }
+  if (eventType === "m29.lab_order.dispatch_refused") {
+    const refusalId = p.refusalId;
+    const reason = p.reason;
+    if (typeof refusalId !== "string" || refusalId.length === 0 || typeof reason !== "string" || reason.length === 0) {
+      throw new Error(
+        `${M11_LAB_TRANSMISSION_APPLIER_CONSUMER.consumerName}: dispatch_refused payload has no refusalId/reason`,
+      );
+    }
+    return { kind: "dispatch_refused", orderId, refusalId, reason };
   }
   if (typeof outboundMessageId !== "string" || outboundMessageId.length === 0) {
     throw new Error(
@@ -137,8 +169,13 @@ export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionAppl
         const fromStatus = order.transmissionStatus;
         // Terminal states never regress — see the file header's "idempotent by design" note.
         if (fromStatus === "transmitted" || fromStatus === "failed") return;
+        // F-184 — a worker refusal only ever applies to an order still awaiting its first transmission.
+        if (facts.kind === "dispatch_refused" && fromStatus !== "pending") return;
 
         const toStatus = facts.kind === "transmitted" ? "transmitted" : "failed";
+        const failureReason =
+          facts.kind === "dispatch_refused" ? `${DISPATCH_REFUSED_PREFIX}${facts.reason}` : facts.kind === "transmission_failed" ? facts.reason : null;
+        const sourceM29EventId = facts.kind === "dispatch_refused" ? facts.refusalId : facts.outboundMessageId;
         const at = now();
 
         const updated = await tx
@@ -154,7 +191,7 @@ export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionAppl
                 }
               : {
                   transmissionStatus: "failed" as const,
-                  transmissionFailureReason: facts.reason,
+                  transmissionFailureReason: failureReason,
                   updatedAt: at,
                 },
           )
@@ -179,12 +216,12 @@ export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionAppl
             organizationId,
             fromStatus,
             toStatus,
-            ...(facts.kind === "transmitted" ? { ackCode: "AA" } : { failureReason: facts.reason }),
-            sourceM29EventId: facts.outboundMessageId,
+            ...(facts.kind === "transmitted" ? { ackCode: "AA" } : { failureReason: failureReason as string }),
+            sourceM29EventId,
           },
         });
 
-        if (facts.kind === "transmission_failed") {
+        if (facts.kind !== "transmitted") {
           await deps.outbox.publish(tx, {
             organizationId,
             eventName: "m11.order.transmission_terminal_failed",
@@ -193,8 +230,9 @@ export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionAppl
             payload: {
               orderId: order.id,
               organizationId,
-              failureReason: facts.reason,
-              transmittedAttempts: facts.attemptCount,
+              failureReason: failureReason as string,
+              // A refusal is by definition before any attempt: nothing was ever sent.
+              transmittedAttempts: facts.kind === "transmission_failed" ? facts.attemptCount : 0,
               lastAttemptAt: at.toISOString(),
               orderingPhysicianMdmId: order.orderingPhysicianMdmId,
             },

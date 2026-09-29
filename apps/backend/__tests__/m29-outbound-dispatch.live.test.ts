@@ -35,7 +35,6 @@ import {
 import type { OutboundTenantKeyProvider } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
 import { createOutboundPayloadCipher } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
 import {
-  OutboundFeedIdentityIncompleteError,
   type OutboundAlertPort,
   buildM29OutboundDispatchConsumer,
   runOutboundRetrySweepOnce,
@@ -423,7 +422,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("BAA-inactive: no row written, no transmission_failed emitted", async () => {
+  it("BAA-inactive: no row written, no transmission_failed emitted — but a terminal `dispatch_refused` (F-184: never a silently `pending` order)", async () => {
     registerSeam("BaaStatusProvider", {
       baaStatusByMdmEntity: async () => ({ isActive: false, status: "missing", expiresOn: null }),
     } as never);
@@ -446,7 +445,12 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
 
       const rows = await outboundRowFor(ORG_A, orderId);
       expect(rows).toHaveLength(0);
-      expect(outbox.published).toHaveLength(0);
+      // `transmission_failed` needs an outbound row to cite — there is none. F-175 published nothing at all, which
+      // left the order `pending` forever; F-184 publishes the row-less terminal signal M11 consumes instead.
+      expect(outbox.published.filter((e) => e.eventName === "m29.lab_order.transmission_failed")).toHaveLength(0);
+      const refused = outbox.published.filter((e) => e.eventName === "m29.lab_order.dispatch_refused");
+      expect(refused).toHaveLength(1);
+      expect(refused[0]!.payload).toMatchObject({ orderId, organizationId: ORG_A, reason: "baa_inactive" });
       expect(server.receivedWires).toHaveLength(0); // never even attempted the socket
       // The BAA refusal alert intent still fires (compliance-facing), just never `transmission_failed`.
       expect(alerts.emitted.some((a) => a.eventType === "external_feed.baa_missing")).toBe(true);
@@ -677,25 +681,24 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-181 identity: a feed with an unset MSH field is REFUSED with a typed PHI-free error — no row, no wire", async () => {
+  it("F-181/F-184 identity: a feed with an unset MSH field is REFUSED — no row, no wire, and a PHI-free terminal `dispatch_refused` (never a silent pending, never a throw)", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
       const feedId = await seedFeed({ organizationId: ORG_A, port: server.port, mshReceivingFacility: null });
-      const { consumer, alerts } = buildConsumer();
+      const { consumer, alerts, outbox } = buildConsumer();
       const orderId = randomUUID();
-      const err = await consumer
-        .handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })))
-        .then(() => null, (e: unknown) => e);
-      expect(err).toBeInstanceOf(OutboundFeedIdentityIncompleteError);
-      expect((err as OutboundFeedIdentityIncompleteError).code).toBe("M29_OUTBOUND_FEED_IDENTITY_INCOMPLETE");
-      expect((err as OutboundFeedIdentityIncompleteError).feedId).toBe(feedId);
-      expect((err as OutboundFeedIdentityIncompleteError).missingFields).toEqual(["mshReceivingFacility"]);
-      // Field names only — never the order, a patient or any value.
-      expect((err as Error).message).not.toMatch(/Doe|John|MRN/);
+      // F-184: the worker no longer THROWS (the outbox's dead-letter left the order `pending` forever); it publishes
+      // the terminal signal in the claim transaction and returns.
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
       expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(0);
       expect(server.receivedWires).toHaveLength(0);
       expect(JSON.stringify(alerts.emitted)).toContain("feed_identity_incomplete");
+      const refused = outbox.published.filter((e) => e.eventName === "m29.lab_order.dispatch_refused");
+      expect(refused).toHaveLength(1);
+      expect(refused[0]!.payload).toMatchObject({ orderId, organizationId: ORG_A, feedId, reason: "feed_identity_incomplete" });
+      // Ids and an enum only — never the order's patient, a value, or even the missing field's name.
+      expect(JSON.stringify(refused[0]!.payload)).not.toMatch(/Doe|John|MRN|mshReceivingFacility/);
     } finally {
       await server.close();
     }
@@ -1654,5 +1657,124 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       );
       expect(smuggled).toBe(false);
     }, 180_000);
+
+  // ── F-184 — the attested re-dispatch exception to the order-level guard, and the row-less refusals ─────────
+
+  /** Dispatch an order normally (acked by the mock lab), then force its one row into `status`. */
+  async function orderWithRowIn(server: { port: number }, status: string): Promise<string> {
+    await seedFeed({ organizationId: ORG_A, port: server.port });
+    const { consumer } = buildConsumer();
+    const orderId = randomUUID();
+    await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+    await admin.query(
+      "UPDATE hl7_message_outbound SET status=$3 WHERE organization_id=$1 AND source_aggregate_id=$2",
+      [ORG_A, orderId, status],
+    );
+    return orderId;
+  }
+  const attested = (orderId: string) => ({
+    ...ormRequestedPayload({ orderId, organizationId: ORG_A }),
+    redispatchAttestationId: randomUUID(),
+  });
+
+  it("F-184 guard: an ATTESTED re-dispatch is refused while ANY earlier row still owns the order (acked / queued / in_flight) — the lab may hold it", async () => {
+    registerActiveBaa();
+    for (const status of ["acked", "queued", "in_flight"]) {
+      const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+      try {
+        const orderId = await orderWithRowIn(server, status);
+        const wiresBefore = server.receivedWires.length;
+        const { consumer } = buildConsumer();
+        await consumer.handle(dispatchEvent(attested(orderId)));
+        expect(await outboundRowFor(ORG_A, orderId), `status=${status}`).toHaveLength(1);
+        expect(server.receivedWires.length, `status=${status}`).toBe(wiresBefore);
+      } finally {
+        await server.close();
+        await admin.query("DELETE FROM hl7_message_outbound WHERE organization_id=$1", [ORG_A]);
+        await admin.query("DELETE FROM external_feed WHERE organization_id=$1", [ORG_A]);
+      }
+    }
+  });
+
+  it("F-184: an ATTESTED re-dispatch over a DEAD-END row (dlq / naked / failed) adds ONE new row and sends once; redelivering the SAME attested event adds nothing", async () => {
+    registerActiveBaa();
+    for (const status of ["dlq", "naked", "failed"]) {
+      const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+      try {
+        const orderId = await orderWithRowIn(server, status);
+        expect(server.receivedWires).toHaveLength(1); // the original attempt
+        const { consumer } = buildConsumer();
+        const event = dispatchEvent(attested(orderId));
+        await consumer.handle(event);
+        const rows = await outboundRowFor(ORG_A, orderId);
+        expect(rows, `status=${status}`).toHaveLength(2);
+        expect(new Set(rows.map((r) => r.idempotencyKey)).size).toBe(2);
+        expect(new Set(rows.map((r) => r.messageControlId)).size).toBe(2);
+        expect(server.receivedWires, `status=${status}`).toHaveLength(2);
+        // At-least-once redelivery of the very same attested event: the attestation-scoped key finds its own row.
+        await consumer.handle(event);
+        await Promise.all([consumer.handle(event), consumer.handle(event)]);
+        expect(await outboundRowFor(ORG_A, orderId), `status=${status}`).toHaveLength(2);
+        expect(server.receivedWires, `status=${status}`).toHaveLength(2);
+      } finally {
+        await server.close();
+        await admin.query("DELETE FROM hl7_message_outbound WHERE organization_id=$1", [ORG_A]);
+        await admin.query("DELETE FROM external_feed WHERE organization_id=$1", [ORG_A]);
+      }
+    }
+  });
+
+  it("F-184: WITHOUT the attestation a dead-end row still blocks a redelivery — F-183's one-ORM-per-order guard is unchanged", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const orderId = await orderWithRowIn(server, "dlq");
+      const { consumer } = buildConsumer();
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+      expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(1);
+      expect(server.receivedWires).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-184: every row-less feed refusal publishes ONE `dispatch_refused` with its reason — no_active_feed, ambiguous_feed, no_feed_for_destination", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    const FAC_X = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+    const FAC_Y = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+    async function refusalFor(setup: () => Promise<void>, facility?: string) {
+      await admin.query("DELETE FROM external_feed WHERE organization_id=$1", [ORG_A]);
+      await setup();
+      const { consumer, outbox } = buildConsumer();
+      const orderId = randomUUID();
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, labDestinationFacilityId: facility })),
+      );
+      expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(0);
+      const refused = outbox.published.filter((e) => e.eventName === "m29.lab_order.dispatch_refused");
+      expect(refused).toHaveLength(1);
+      expect(refused[0]!.payload).toMatchObject({ orderId, organizationId: ORG_A });
+      return refused[0]!.payload as { reason: string; feedId: string | null; refusalId: string };
+    }
+    try {
+      const none = await refusalFor(async () => {});
+      expect(none).toMatchObject({ reason: "no_active_feed", feedId: null });
+      expect(none.refusalId).toMatch(/^[0-9a-f-]{36}$/);
+
+      const ambiguous = await refusalFor(async () => {
+        await seedFeed({ organizationId: ORG_A, port: server.port });
+        await seedFeed({ organizationId: ORG_A, port: server.port + 1 }); // (org, port, kind) is unique
+      });
+      expect(ambiguous.reason).toBe("ambiguous_feed");
+
+      const elsewhere = await refusalFor(async () => {
+        await seedFeed({ organizationId: ORG_A, port: server.port, labDestinationFacilityId: FAC_Y });
+      }, FAC_X);
+      expect(elsewhere.reason).toBe("no_feed_for_destination");
+      expect(server.receivedWires).toHaveLength(0);
+    } finally {
+      await server.close();
+    }
   });
 });
