@@ -41,6 +41,8 @@ export interface ResolvedFeedTransport {
   readonly protocol: "mllp_tls" | "mllp_plain";
   readonly channelCertPin: string | null;
   readonly rateLimitMsgPerSec: number;
+  /** F-180 — the feed's own `in_flight` lease in seconds; null = the platform default. */
+  readonly inFlightLeaseSeconds: number | null;
 }
 
 export interface ResolvedOutboundFeed extends ResolvedFeedTransport {
@@ -56,6 +58,7 @@ export interface OutboundFeedCandidateRow {
   readonly protocol: "mllp_tls" | "mllp_plain";
   readonly channelCertPin: string | null;
   readonly rateLimitMsgPerSec: number;
+  readonly inFlightLeaseSeconds: number | null;
   readonly activeFrom: Date | null;
   readonly activeThrough: Date | null;
   readonly labDestinationFacilityId: string | null;
@@ -179,6 +182,7 @@ function toTransport(row: OutboundFeedCandidateRow): ResolvedFeedTransport {
     protocol: row.protocol,
     channelCertPin: row.channelCertPin,
     rateLimitMsgPerSec: row.rateLimitMsgPerSec,
+    inFlightLeaseSeconds: row.inFlightLeaseSeconds,
   };
 }
 

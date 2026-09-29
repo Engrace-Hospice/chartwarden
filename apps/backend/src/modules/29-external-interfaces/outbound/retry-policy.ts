@@ -171,6 +171,9 @@ export function decideRetry(input: RetryDecisionInput): RetryDecision {
 //     attempt can dedupe (HL7 v2 receivers dedupe on MSH-10; a resend with a NEW id would be a second order);
 //   • the reclaim is an attempt, so it draws on the SAME `OUTBOUND_MAX_ATTEMPTS` budget: an outcome that stays
 //     unknown across the whole budget goes terminal (`dlq`) for human verification with the lab, never a loop.
+//   • F-180: the requeue above is only taken when the OPERATOR has declared the feed's receiver dedupes on MSH-10
+//     (`external_feed.receiver_dedupes_control_id`, default false). Otherwise the row is HELD — terminal, never
+//     automatically re-sent — because the platform cannot verify a lab's dedupe behaviour on its own.
 
 /** How long a claimed `in_flight` row is presumed to have a live worker behind it. Must sit well above the
  *  worst-case attempt (10s connect + 30s ack wait + rate-limiter wait + DB round trips): reclaiming a row whose
@@ -180,20 +183,62 @@ export const OUTBOUND_IN_FLIGHT_LEASE_MS = 5 * 60_000;
 /** The fixed, PHI-free `lastError` label a reclaim records. */
 export const IN_FLIGHT_RECLAIM_LABEL = "in_flight_lease_expired";
 
+/** F-180 — the fixed, PHI-free `detail` a HELD row records (the terminal event's `reason` stays the catalogued
+ *  `dlq_exhausted`; extending that union would need an M11 applier + catalog change, which this round avoids). */
+export const IN_FLIGHT_HELD_LABEL = "in_flight_lease_expired_delivery_unverified";
+
+/** F-180 — the per-feed lease bounds, mirroring the migration-0263 CHECK (60 s..1 h): the floor sits above the
+ *  transport's 10 s connect + 30 s ack worst case so a lease can never be shorter than a live send. */
+export const IN_FLIGHT_LEASE_MIN_SECONDS = 60;
+export const IN_FLIGHT_LEASE_MAX_SECONDS = 3600;
+
+/** The lease (ms) for a feed: its own `in_flight_lease_seconds` when set, else the injected platform default. */
+export function inFlightLeaseMsFor(feedSeconds: number | null | undefined, defaultMs: number): number {
+  if (typeof feedSeconds !== "number" || !Number.isFinite(feedSeconds)) return defaultMs;
+  return feedSeconds * 1000;
+}
+
 export type InFlightReclaimDecision =
   | (Extract<RetryDecision, { kind: "retry" }> & { readonly alert: OutboundAlert })
   | Extract<RetryDecision, { kind: "dlq" }>;
 
 /**
- * Decide the fate of an `in_flight` row whose lease expired. Reuses `decideRetry` (one budget, one backoff
- * ladder, one DLQ event shape — M11's F-177 applier and M36 treat it like any other terminal failure) and adds
- * the operator alert a reclaim always raises: a crashed/lost attempt is never silent.
+ * Decide the fate of an `in_flight` row whose lease expired. Whether the lab already got the message is UNKNOWN,
+ * and re-sending is only safe if the receiver dedupes on MSH-10 — an operator's per-feed statement
+ * (`external_feed.receiver_dedupes_control_id`, F-180), default false:
+ *   • `receiverDedupesControlId = false` — HELD: terminal (`dlq`, no automatic re-send ever), the same
+ *     `m29.lab_order.transmission_failed` M11's F-177 applier already applies, a HIGH alert telling a human to
+ *     verify with the lab, audit kind `hl7.outbound.held`;
+ *   • `true` — F-179's requeue (same wire, same MSH-10, shared attempt budget, audit kind `hl7.outbound.reclaimed`),
+ *     going terminal `dlq` once the budget is spent.
+ * Both raise an operator alert: a lost attempt is never silent.
  */
 export function decideInFlightReclaim(input: {
   readonly outbound: RetryOutboundRow;
   readonly now: Date;
+  readonly receiverDedupesControlId: boolean;
 }): InFlightReclaimDecision {
-  const decision = decideRetry({ ...input, lastError: IN_FLIGHT_RECLAIM_LABEL });
+  if (!input.receiverDedupesControlId) {
+    const held = decidePermanentFailure({
+      outbound: input.outbound,
+      now: input.now,
+      lastError: IN_FLIGHT_HELD_LABEL,
+    });
+    return {
+      ...held,
+      alert: {
+        ...held.alert,
+        detail:
+          "outbound ORM delivery unverified: the send outcome was lost (in_flight lease expired) and this feed is not marked as deduping message control ids, so it was NOT re-sent — verify with the lab whether it arrived, then resend",
+      },
+      audit: { ...held.audit, kind: "hl7.outbound.held" },
+    };
+  }
+  const decision = decideRetry({
+    outbound: input.outbound,
+    now: input.now,
+    lastError: IN_FLIGHT_RECLAIM_LABEL,
+  });
   const attemptNumber = input.outbound.retryCount + 1;
   if (decision.kind === "dlq") {
     return {
@@ -206,6 +251,7 @@ export function decideInFlightReclaim(input: {
   }
   return {
     ...decision,
+    audit: { ...decision.audit, kind: "hl7.outbound.reclaimed" },
     alert: {
       kind: "hl7_outbound.transmission_failed",
       severity: "NORMAL",

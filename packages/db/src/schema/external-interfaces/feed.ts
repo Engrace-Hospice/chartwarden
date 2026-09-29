@@ -60,6 +60,12 @@ export const externalFeed = pgTable(
     mshSendingFacility: text("msh_sending_facility"),
     mshReceivingApplication: text("msh_receiving_application"),
     mshReceivingFacility: text("msh_receiving_facility"),
+    /** F-180 (#248, migration 0263) — the operator's explicit statement that this OUTBOUND feed's receiver dedupes on
+     *  MSH-10. Only then may the `in_flight` reclaim sweep requeue a stale row (same wire, same MSH-10); otherwise the
+     *  row is HELD for human verification with the lab. Default false = never auto-resend an unknown-delivery ORM. */
+    receiverDedupesControlId: boolean("receiver_dedupes_control_id").notNull().default(false),
+    /** F-180 — per-feed `in_flight` lease in seconds (CHECK 60..3600); null = the platform default. */
+    inFlightLeaseSeconds: integer("in_flight_lease_seconds"),
     /** string[] of M40 Facility ids — the per-feed MSH-4 sender allowlist (§4.11.2). */
     sendingFacilityAllowlist: jsonb("sending_facility_allowlist")
       .notNull()

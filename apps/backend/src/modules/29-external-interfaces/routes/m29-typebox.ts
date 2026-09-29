@@ -108,7 +108,14 @@ const FeedRoutingAndIdentity = {
   mshSendingFacility: Type.Optional(MshIdentity),
   mshReceivingApplication: Type.Optional(MshIdentity),
   mshReceivingFacility: Type.Optional(MshIdentity),
+  /** F-180 — the operator's explicit statement that this feed's receiver dedupes on MSH-10. Default (unset) =
+   *  false: a send whose outcome was lost (`in_flight` lease expired) is HELD for verification with the lab, never
+   *  automatically re-sent. Set true ONLY after confirming the lab dedupes on MSH-10. */
+  receiverDedupesControlId: Type.Optional(Type.Boolean()),
 };
+
+/** F-180 — per-feed `in_flight` lease in seconds (mirrors the migration-0263 CHECK: 60..3600). */
+const InFlightLeaseSeconds = Type.Integer({ minimum: 60, maximum: 3600 });
 
 export const CreateFeedBody = Type.Object({
   kind: FeedKindSchema,
@@ -127,6 +134,7 @@ export const CreateFeedBody = Type.Object({
   baaContractRef: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   baaExpiresOn: Type.Optional(Instant),
   rateLimitMsgPerSec: Type.Optional(Type.Integer({ minimum: 1, maximum: 5000 })),
+  inFlightLeaseSeconds: Type.Optional(InFlightLeaseSeconds),
   ...FeedRoutingAndIdentity,
 });
 export type CreateFeedInput = Static<typeof CreateFeedBody>;
@@ -145,6 +153,8 @@ export const UpdateFeedBody = Type.Object({
   baaContractRef: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   baaExpiresOn: Type.Optional(Instant),
   rateLimitMsgPerSec: Type.Optional(Type.Integer({ minimum: 1, maximum: 5000 })),
+  /** `null` clears the per-feed lease back to the platform default. */
+  inFlightLeaseSeconds: Type.Optional(Type.Union([InFlightLeaseSeconds, Type.Null()])),
   ...FeedRoutingAndIdentity,
 });
 export type UpdateFeedInput = Static<typeof UpdateFeedBody>;

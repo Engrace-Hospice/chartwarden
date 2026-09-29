@@ -18,7 +18,7 @@ import { createDbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq } from "drizzle-orm";
 import { Client } from "pg";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
@@ -52,6 +52,7 @@ const ORG_B = "22222222-2222-2222-2222-222222222222";
 
 const TEST_DEK = Buffer.alloc(32, 7);
 const OUTBOUND_HMO = schema.hl7MessageOutbound;
+const FEED = schema.externalFeed;
 
 function fakeKeyProvider(): OutboundTenantKeyProvider {
   return {
@@ -285,6 +286,9 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     readonly mshSendingFacility?: string | null;
     readonly mshReceivingApplication?: string | null;
     readonly mshReceivingFacility?: string | null;
+    /** F-180 — the operator's dedupe declaration (default false, the schema default) and per-feed lease. */
+    readonly receiverDedupesControlId?: boolean;
+    readonly inFlightLeaseSeconds?: number | null;
   }): Promise<string> {
     const id = randomUUID();
     const pick = <T>(v: T | null | undefined, dflt: T): T | null => (v === undefined ? dflt : v);
@@ -292,9 +296,10 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       `INSERT INTO external_feed
          (id, organization_id, kind, display_name, host, port, protocol, channel_cert_pin,
           status, proposed_by_membership_id, rate_limit_msg_per_sec,
-          lab_destination_facility_id, msh_sending_facility, msh_receiving_application, msh_receiving_facility)
+          lab_destination_facility_id, msh_sending_facility, msh_receiving_application, msh_receiving_facility,
+          receiver_dedupes_control_id, in_flight_lease_seconds)
        VALUES ($1,$2,'orm_outbound','Mock Reference Lab','127.0.0.1',$3,'mllp_plain',NULL,
-               'active',$4,$5,$6,$7,$8,$9)`,
+               'active',$4,$5,$6,$7,$8,$9,$10,$11)`,
       [
         id,
         args.organizationId,
@@ -305,6 +310,8 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         pick(args.mshSendingFacility, "ENGRACE-HOSPICE"),
         pick(args.mshReceivingApplication, "REFLAB-LIS"),
         pick(args.mshReceivingFacility, "REFLAB-MAIN"),
+        args.receiverDedupesControlId ?? false,
+        args.inFlightLeaseSeconds ?? null,
       ],
     );
     return id;
@@ -821,9 +828,15 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
   }
 
   /** Crash a fresh dispatch after the wire was delivered; returns the stuck row. */
-  async function crashedDispatch(server: MockMllpServer, organizationId = ORG_A) {
+  async function crashedDispatch(
+    server: MockMllpServer,
+    organizationId = ORG_A,
+    feed: { receiverDedupesControlId?: boolean; inFlightLeaseSeconds?: number | null } = {},
+  ) {
     registerActiveBaa();
-    await seedFeed({ organizationId, port: server.port });
+    // F-180 — the F-179 cases below exercise the REQUEUE path, which is now the operator-declared
+    // `receiver_dedupes_control_id = true` behaviour; the held (false) path has its own cases.
+    await seedFeed({ organizationId, port: server.port, receiverDedupesControlId: true, ...feed });
     const orderId = randomUUID();
     const { consumer } = buildConsumer(
       fakeOutbox(),
@@ -956,7 +969,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
-      await seedFeed({ organizationId: ORG_A, port: server.port });
+      await seedFeed({ organizationId: ORG_A, port: server.port, receiverDedupesControlId: true });
       const orderId = randomUUID();
       let release!: () => void;
       let entered!: () => void;
@@ -1028,7 +1041,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
 
   it("F-179: an ack correlating to a DIFFERENT MSH-10 used to strand the row in_flight forever — it now sits on its lease and is reclaimed", async () => {
     registerActiveBaa();
-    await seedFeed({ organizationId: ORG_A, port: 2575 });
+    await seedFeed({ organizationId: ORG_A, port: 2575, receiverDedupesControlId: true });
     const orderId = randomUUID();
     const wrongAck: MllpTransport = {
       async send(req) {
@@ -1069,6 +1082,298 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       await server.close();
       await serverB.close();
     }
+  });
+
+  // ── F-180 — the per-feed reclaim policy: receiver-dedupe flag, per-feed lease, lease re-arm, audit kinds ─────
+
+  /** Every `m29.outbound.audit_intent` record the worker logged (the audit kinds with no M4 write-API). */
+  type AuditIntent = { kind: string; outboundMessageId: string | null; feedId: string | null };
+  function auditIntentsOf(info: { mock: { calls: readonly unknown[][] } }): AuditIntent[] {
+    return info.mock.calls
+      .filter((c) => c[0] === "m29.outbound.audit_intent")
+      .map((c) => c[1] as AuditIntent);
+  }
+
+  it("F-180 held: on a feed NOT marked as deduping MSH-10 a stale in_flight row is HELD — terminal dlq through the REAL publisher, HIGH alert, audit kind `held`, and it is NEVER re-sent", async () => {
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      const { orderId, row } = await crashedDispatch(server, ORG_A, { receiverDedupesControlId: false });
+      expect(row.status).toBe("in_flight");
+      expect(server.receivedWires).toHaveLength(1);
+
+      const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M29_OUTBOX_EVENTS]));
+      const s = sweep({
+        now: new Date(Date.now() + 10 * MINUTE),
+        outboxPort: {
+          publish: (tx: unknown, e: never) =>
+            publisher.publish(tx as never, { ...(e as object), callerModule: "m29" } as never),
+        },
+      });
+      await s.run();
+
+      const [held] = await outboundRowFor(ORG_A, orderId);
+      expect(held!.status).toBe("dlq");
+      expect(held!.retryCount).toBe(1); // the true number of attempts, not a fake exhausted budget
+      expect(held!.nextRetryAt).toBeNull();
+      const { rows } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m29.lab_order.transmission_failed'",
+        [row.id],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].payload).toMatchObject({
+        orderId,
+        reason: "dlq_exhausted",
+        detail: "in_flight_lease_expired_delivery_unverified",
+        attemptCount: 1,
+      });
+      expect(s.alerts.emitted).toHaveLength(1);
+      expect(s.alerts.emitted[0]!.severity).toBe("HIGH");
+      expect(JSON.stringify(s.alerts.emitted[0])).toMatch(/NOT re-sent/);
+      expect(auditIntentsOf(info)).toContainEqual(
+        expect.objectContaining({ kind: "hl7.outbound.held", outboundMessageId: row.id }),
+      );
+
+      // Held means held: no later sweep ever puts a second wire in front of the lab.
+      await sweep({ now: new Date(Date.now() + 60 * MINUTE) }).run();
+      expect(server.receivedWires).toHaveLength(1);
+      expect((await outboundRowFor(ORG_A, orderId))[0]!.status).toBe("dlq");
+    } finally {
+      info.mockRestore();
+      await server.close();
+    }
+  });
+
+  it("F-180 per-feed decision: in ONE sweep the deduping feed's row is requeued (audit `reclaimed`) and the non-deduping feed's row is held (audit `held`), each in its own org", async () => {
+    const serverA = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    const serverB = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      const a = await crashedDispatch(serverA, ORG_A, { receiverDedupesControlId: true });
+      const b = await crashedDispatch(serverB, ORG_B, { receiverDedupesControlId: false });
+      const s = sweep({ now: new Date(Date.now() + 10 * MINUTE), orgs: [ORG_A, ORG_B] });
+      await s.run();
+
+      const [rowA] = await outboundRowFor(ORG_A, a.orderId);
+      const [rowB] = await outboundRowFor(ORG_B, b.orderId);
+      expect(rowA!.status).toBe("queued");
+      expect(rowA!.retryCount).toBe(1);
+      expect(rowB!.status).toBe("dlq");
+      const kinds = auditIntentsOf(info);
+      expect(kinds).toContainEqual(expect.objectContaining({ kind: "hl7.outbound.reclaimed", outboundMessageId: a.row.id }));
+      expect(kinds).toContainEqual(expect.objectContaining({ kind: "hl7.outbound.held", outboundMessageId: b.row.id }));
+      // The reclaim requeue no longer masquerades as an ordinary dispatch.
+      expect(kinds.filter((k) => k.outboundMessageId === a.row.id).map((k) => k.kind)).not.toContain("hl7.outbound.dispatched");
+    } finally {
+      info.mockRestore();
+      await serverA.close();
+      await serverB.close();
+    }
+  });
+
+  it("F-180 lease: a feed's OWN shorter lease is what its claim commits and what the reclaim honours — a 60s feed is reclaimed at +2min while a default-lease feed is untouched", async () => {
+    const serverA = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    const serverB = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const a = await crashedDispatch(serverA, ORG_A, { inFlightLeaseSeconds: 60 });
+      const b = await crashedDispatch(serverB, ORG_B, { inFlightLeaseSeconds: null });
+      // The committed lease is exactly the feed's own length (claim time and lease expiry share one `now`).
+      expect(a.row.nextRetryAt!.getTime() - a.row.queuedAt.getTime()).toBe(60_000);
+      expect(b.row.nextRetryAt!.getTime() - b.row.queuedAt.getTime()).toBe(5 * MINUTE);
+
+      await sweep({ now: new Date(Date.now() + 2 * MINUTE), orgs: [ORG_A, ORG_B] }).run();
+      expect((await outboundRowFor(ORG_A, a.orderId))[0]!.status).toBe("queued");
+      expect((await outboundRowFor(ORG_B, b.orderId))[0]!.status).toBe("in_flight");
+    } finally {
+      await serverA.close();
+      await serverB.close();
+    }
+  });
+
+  it("F-180 lease: a feed's OWN longer lease protects a slow receiver — a 30min feed is untouched at +10min while a default-lease feed is reclaimed", async () => {
+    const serverA = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    const serverB = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const a = await crashedDispatch(serverA, ORG_A, { inFlightLeaseSeconds: 1800 });
+      const b = await crashedDispatch(serverB, ORG_B, { inFlightLeaseSeconds: null });
+      expect(a.row.nextRetryAt!.getTime() - a.row.queuedAt.getTime()).toBe(1800_000);
+
+      await sweep({ now: new Date(Date.now() + 10 * MINUTE), orgs: [ORG_A, ORG_B] }).run();
+      expect((await outboundRowFor(ORG_A, a.orderId))[0]!.status).toBe("in_flight");
+      expect((await outboundRowFor(ORG_B, b.orderId))[0]!.status).toBe("queued");
+    } finally {
+      await serverA.close();
+      await serverB.close();
+    }
+  });
+
+  it("F-180 lease: the RETRY sweep's claim (queued → in_flight) also takes the feed's own lease, not the platform default", async () => {
+    registerActiveBaa();
+    await seedFeed({ organizationId: ORG_A, port: 2575, receiverDedupesControlId: true, inFlightLeaseSeconds: 90 });
+    const orderId = randomUUID();
+    const failing: MllpTransport = {
+      async send() {
+        return { kind: "connect_error", errorClass: "econnrefused" } as never;
+      },
+    };
+    const { consumer } = buildConsumer(fakeOutbox(), fakeAlerts(), failing);
+    await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+    expect((await outboundRowFor(ORG_A, orderId))[0]!.status).toBe("queued");
+
+    const sweepNow = new Date(Date.now() + 10 * MINUTE);
+    let leaseDuringSend: number | null = null;
+    const observing: MllpTransport = {
+      async send(req) {
+        const [r] = await outboundRowFor(ORG_A, orderId);
+        leaseDuringSend = r!.nextRetryAt!.getTime() - sweepNow.getTime();
+        return { kind: "ack", rawAckPayload: buildAckWire(parseMshEnvelope(req.wireMessage), "AA") };
+      },
+    };
+    await runOutboundRetrySweepOnce({
+      db: handle.db,
+      outbox: fakeOutbox().port,
+      keys: fakeKeyProvider(),
+      alerts: fakeAlerts().port,
+      destinationPolicy: TEST_POLICY,
+      transport: observing,
+      activeOrgs: fakeActiveOrgs(ORG_A),
+      now: () => sweepNow,
+    });
+    expect(leaseDuringSend).toBe(90_000);
+    expect((await outboundRowFor(ORG_A, orderId))[0]!.status).toBe("acked");
+  });
+
+  /** A limiter whose wait advances a virtual clock: the worker's `now` is `clock`, so a "long wait" is instant. */
+  function slowLimiterWorld(args: { readonly waitMs: number; readonly onWaited?: () => Promise<void> }) {
+    const clock = { now: new Date() };
+    const startedAt = clock.now.getTime();
+    const rateLimiter = {
+      async acquire() {
+        clock.now = new Date(clock.now.getTime() + args.waitMs);
+        await args.onWaited?.();
+      },
+    };
+    return { clock, startedAt, rateLimiter };
+  }
+
+  it("F-180 limiter: a long rate-limiter wait cannot get a LIVE sender reclaimed — the lease is re-armed when the send BEGINS", async () => {
+    registerActiveBaa();
+    await seedFeed({ organizationId: ORG_A, port: 2575, receiverDedupesControlId: true, inFlightLeaseSeconds: 60 });
+    const orderId = randomUUID();
+    const world = slowLimiterWorld({ waitMs: 50_000 }); // the wait eats 50s of the 60s lease before the socket opens
+    let statusInSend: string | undefined;
+    let leaseInSend: Date | null = null;
+    const transport: MllpTransport = {
+      async send(req) {
+        // The worker is mid-send. 80s after the claim: past the ORIGINAL 60s lease, inside the re-armed one.
+        await sweep({ now: new Date(world.startedAt + 80_000) }).run();
+        const [r] = await outboundRowFor(ORG_A, orderId);
+        statusInSend = r!.status;
+        leaseInSend = r!.nextRetryAt;
+        return { kind: "ack", rawAckPayload: buildAckWire(parseMshEnvelope(req.wireMessage), "AA") };
+      },
+    };
+    const outbox = fakeOutbox();
+    const alerts = fakeAlerts();
+    const consumer = buildM29OutboundDispatchConsumer({
+      db: handle.db,
+      outbox: outbox.port,
+      keys: fakeKeyProvider(),
+      alerts: alerts.port,
+      transport,
+      destinationPolicy: TEST_POLICY,
+      rateLimiter: world.rateLimiter,
+      now: () => world.clock.now,
+    });
+    await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+
+    expect(statusInSend).toBe("in_flight"); // NOT reclaimed mid-send
+    expect(leaseInSend!.getTime()).toBe(world.startedAt + 50_000 + 60_000); // re-armed: send-start + 60s
+    const [done] = await outboundRowFor(ORG_A, orderId);
+    expect(done!.status).toBe("acked");
+    expect(done!.retryCount).toBe(0); // no phantom attempt was counted
+    expect(outbox.published.map((e) => e.eventName)).toEqual(["m29.lab_order.transmitted"]);
+    expect(alerts.emitted).toHaveLength(0);
+  });
+
+  it("F-180 limiter: if a reclaimer takes the row DURING the limiter wait, the worker sends NOTHING (the reclaimer's attempt stands) and logs the lost claim", async () => {
+    registerActiveBaa();
+    await seedFeed({ organizationId: ORG_A, port: 2575, receiverDedupesControlId: true, inFlightLeaseSeconds: 60 });
+    const orderId = randomUUID();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const world = slowLimiterWorld({
+      waitMs: 50_000,
+      // While this worker waits on the limiter another process finds the 60s lease expired and reclaims the row.
+      onWaited: async () => {
+        await sweep({ now: new Date(Date.now() + 2 * MINUTE) }).run();
+      },
+    });
+    let sends = 0;
+    const transport: MllpTransport = {
+      async send() {
+        sends += 1;
+        return { kind: "connect_error", errorClass: "should_not_be_called" } as never;
+      },
+    };
+    const outbox = fakeOutbox();
+    try {
+      const consumer = buildM29OutboundDispatchConsumer({
+        db: handle.db,
+        outbox: outbox.port,
+        keys: fakeKeyProvider(),
+        alerts: fakeAlerts().port,
+        transport,
+        destinationPolicy: TEST_POLICY,
+        rateLimiter: world.rateLimiter,
+        now: () => world.clock.now,
+      });
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+
+      expect(sends).toBe(0); // the stale claimant never opened a socket
+      const [row] = await outboundRowFor(ORG_A, orderId);
+      expect(row!.status).toBe("queued"); // the reclaimer's requeue stands
+      expect(row!.retryCount).toBe(1);
+      expect(outbox.published).toHaveLength(0);
+      expect(warn.mock.calls.some((c) => c[0] === "m29.outbound.claim_lost")).toBe(true);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("F-180 schema: safe defaults, the 60..3600 CHECK, and RLS on the new columns", async () => {
+    const feedA = randomUUID();
+    await admin.query(
+      `INSERT INTO external_feed (id, organization_id, kind, display_name, host, port, protocol,
+          status, proposed_by_membership_id)
+       VALUES ($1,$2,'orm_outbound','Defaults Lab','127.0.0.1',2601,'mllp_plain','active',$3)`,
+      [feedA, ORG_A, randomUUID()],
+    );
+    const defaults = await admin.query(
+      "SELECT receiver_dedupes_control_id AS d, in_flight_lease_seconds AS l FROM external_feed WHERE id=$1",
+      [feedA],
+    );
+    expect(defaults.rows[0]).toEqual({ d: false, l: null }); // safe by default: never assume a deduping receiver
+
+    for (const bad of [59, 0, -1, 3601]) {
+      await expect(
+        admin.query("UPDATE external_feed SET in_flight_lease_seconds=$2 WHERE id=$1", [feedA, bad]),
+      ).rejects.toThrow(/external_feed_in_flight_lease_chk/);
+    }
+    for (const ok of [60, 3600, null]) {
+      await admin.query("UPDATE external_feed SET in_flight_lease_seconds=$2 WHERE id=$1", [feedA, ok]);
+    }
+    await admin.query("UPDATE external_feed SET receiver_dedupes_control_id=true, in_flight_lease_seconds=90 WHERE id=$1", [feedA]);
+
+    // RLS as the real NOBYPASSRLS role: org A sees its own policy columns, org B sees no trace of the feed.
+    const asA = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+      tx.select().from(FEED).where(eq(FEED.id, feedA)),
+    );
+    expect(asA).toHaveLength(1);
+    expect(asA[0]).toMatchObject({ receiverDedupesControlId: true, inFlightLeaseSeconds: 90 });
+    const asB = await withOrgContext(handle.db, { organizationId: ORG_B, userId: "" }, (tx) =>
+      tx.select().from(FEED).where(eq(FEED.id, feedA)),
+    );
+    expect(asB).toHaveLength(0);
   });
 
   it("F-178: a mllp_plain feed under the production-safe policy is refused BEFORE any socket — terminal DLQ, one attempt, no retry", async () => {

@@ -189,6 +189,8 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
     mshSendingFacility: row.mshSendingFacility,
     mshReceivingApplication: row.mshReceivingApplication,
     mshReceivingFacility: row.mshReceivingFacility,
+    receiverDedupesControlId: row.receiverDedupesControlId,
+    inFlightLeaseSeconds: row.inFlightLeaseSeconds,
     proposedByMembershipId: row.proposedByMembershipId,
     approvedByOpId: row.approvedByOpId,
     approvedByComplId: row.approvedByComplId,
@@ -363,6 +365,8 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
             mshSendingFacility: args.mshSendingFacility ?? null,
             mshReceivingApplication: args.mshReceivingApplication ?? null,
             mshReceivingFacility: args.mshReceivingFacility ?? null,
+            receiverDedupesControlId: args.receiverDedupesControlId ?? false,
+            inFlightLeaseSeconds: args.inFlightLeaseSeconds ?? null,
             // operator proposes + submits for co-approval in one act; a DISTINCT compliance officer activates.
             status: "pending_approval",
             proposedByMembershipId: membershipId,
@@ -395,6 +399,10 @@ export function createDrizzleM29Store(db: DbClient, storeDeps: DrizzleM29StoreDe
             mshSendingFacility: args.mshSendingFacility ?? feed.mshSendingFacility,
             mshReceivingApplication: args.mshReceivingApplication ?? feed.mshReceivingApplication,
             mshReceivingFacility: args.mshReceivingFacility ?? feed.mshReceivingFacility,
+            receiverDedupesControlId: args.receiverDedupesControlId ?? feed.receiverDedupesControlId,
+            // `null` is meaningful here (clear back to the platform default), so only `undefined` keeps the value.
+            inFlightLeaseSeconds:
+              args.inFlightLeaseSeconds === undefined ? feed.inFlightLeaseSeconds : args.inFlightLeaseSeconds,
             updatedAt: new Date(),
           })
           .where(and(eq(FEED.id, feedId), eq(FEED.organizationId, orgId)))

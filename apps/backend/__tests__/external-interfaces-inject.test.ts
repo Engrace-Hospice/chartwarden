@@ -1003,3 +1003,81 @@ describe("M29-external-interfaces-inject — F-179 inbound mllp_plain", () => {
     await app.close();
   });
 });
+
+// ── F-180 — per-feed reclaim policy: receiver-dedupe flag + in_flight lease ──────────────────────────────────
+describe("M29-external-interfaces-inject — F-180 feed reclaim policy", () => {
+  const FEEDS = "/api/admin/external-interfaces/feeds";
+  const outbound = (over: Record<string, unknown> = {}) => ({
+    kind: "orm_outbound",
+    displayName: "Quest ORM",
+    host: "lab.example.org",
+    port: 6300,
+    protocol: "mllp_tls",
+    ...over,
+  });
+
+  it("defaults are the SAFE ones: the receiver is NOT assumed to dedupe, and the lease is the platform default (null)", async () => {
+    const { app } = makeServer({ env: { NODE_ENV: "production" } });
+    const res = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound() });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().feed).toMatchObject({ receiverDedupesControlId: false, inFlightLeaseSeconds: null });
+    await app.close();
+  });
+
+  it("create → get round-trips an explicit dedupe declaration and a per-feed lease", async () => {
+    const { app } = makeServer({ env: { NODE_ENV: "production" } });
+    const created = await app.inject({
+      method: "POST", url: FEEDS, headers: SUPER,
+      payload: outbound({ receiverDedupesControlId: true, inFlightLeaseSeconds: 120 }),
+    });
+    expect(created.statusCode).toBe(201);
+    const feedId = created.json().feed.id as string;
+    const got = await app.inject({ method: "GET", url: `${FEEDS}/${feedId}`, headers: SUPER });
+    expect(got.statusCode).toBe(200);
+    expect(got.json().feed).toMatchObject({ receiverDedupesControlId: true, inFlightLeaseSeconds: 120 });
+    await app.close();
+  });
+
+  it("update changes each independently; an omitted field is unchanged and an explicit null CLEARS the lease", async () => {
+    const { app } = makeServer({ env: { NODE_ENV: "production" } });
+    const created = await app.inject({
+      method: "POST", url: FEEDS, headers: SUPER,
+      payload: outbound({ receiverDedupesControlId: true, inFlightLeaseSeconds: 600 }),
+    });
+    const feedId = created.json().feed.id as string;
+
+    const lease = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { inFlightLeaseSeconds: 900 } });
+    expect(lease.statusCode).toBe(200);
+    expect(lease.json().feed).toMatchObject({ receiverDedupesControlId: true, inFlightLeaseSeconds: 900 });
+
+    const flag = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { receiverDedupesControlId: false } });
+    expect(flag.json().feed).toMatchObject({ receiverDedupesControlId: false, inFlightLeaseSeconds: 900 });
+
+    const cleared = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { inFlightLeaseSeconds: null } });
+    expect(cleared.statusCode).toBe(200);
+    expect(cleared.json().feed).toMatchObject({ receiverDedupesControlId: false, inFlightLeaseSeconds: null });
+    await app.close();
+  });
+
+  it("a lease outside the 60..3600 s bounds (or a non-integer / non-boolean value) is refused at the boundary — 422", async () => {
+    const { app } = makeServer({ env: { NODE_ENV: "production" } });
+    for (const bad of [59, 3601, 0, -5, 90.5]) {
+      const res = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ inFlightLeaseSeconds: bad }) });
+      expect(res.statusCode, `create lease ${bad}`).toBe(422);
+    }
+    const created = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound() });
+    const feedId = created.json().feed.id as string;
+    for (const bad of [59, 3601, "300"]) {
+      const res = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { inFlightLeaseSeconds: bad } });
+      expect(res.statusCode, `update lease ${String(bad)}`).toBe(422);
+    }
+    const notBool = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { receiverDedupesControlId: "yes" } });
+    expect(notBool.statusCode).toBe(422);
+    // The bounds themselves are valid.
+    for (const ok of [60, 3600]) {
+      const res = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { inFlightLeaseSeconds: ok } });
+      expect(res.statusCode, `update lease ${ok}`).toBe(200);
+    }
+    await app.close();
+  });
+});

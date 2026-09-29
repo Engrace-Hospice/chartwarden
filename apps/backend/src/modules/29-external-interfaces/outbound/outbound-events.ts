@@ -67,7 +67,11 @@ export interface OutboundAuditRecord {
     | "hl7.outbound.nacked"
     | "hl7.outbound.dlq"
     | "hl7.outbound.baa_refuse"
-    | "hl7.outbound.orphan_ack";
+    | "hl7.outbound.orphan_ack"
+    // F-180 — the `in_flight` lease-expiry outcomes, distinct from an ordinary retry's `dispatched` so the §164.528
+    // disclosure accounting can tell "requeued after a lost attempt" and "held, delivery unverified" apart.
+    | "hl7.outbound.reclaimed"
+    | "hl7.outbound.held";
   readonly feedId: string | null;
   readonly orderRecordId: string | null;
   readonly outboundMessageId: string | null;
