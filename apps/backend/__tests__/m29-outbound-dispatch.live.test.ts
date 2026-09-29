@@ -1657,6 +1657,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       );
       expect(smuggled).toBe(false);
     }, 180_000);
+  });
 
   // ── F-184 — the attested re-dispatch exception to the order-level guard, and the row-less refusals ─────────
 
