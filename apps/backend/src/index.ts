@@ -43,6 +43,7 @@ import {
   createDrizzleFeatureFlagAdmin,
   createDrizzleFeatureFlagReader,
 } from "./bootstrap/feature-flag-store";
+import { createDrizzleSystemStatusReader } from "./bootstrap/system-status-store";
 import {
   DEFAULT_RATE_LIMIT_TIERS,
   assertNoInMemoryBindingsOnDbBoot,
@@ -3016,10 +3017,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   // three surfaces that consume it, so the tenant read route and the module gates cannot disagree about
   // what a tenant's flags are. Undefined on a no-db boot, where the empty default remains correct.
   const featureFlagReader = dbHandle ? createDrizzleFeatureFlagReader(dbHandle.db) : undefined;
+  // F-173 (#248, m1 group) — the Drizzle-backed `SystemStatusReader` (`bootstrap/system-status-store.ts`).
+  // F-156 found the composition root never overrode the in-memory boot default, so `POST
+  // /admin/system/status` had never once persisted to the real `system_status` table in any environment.
+  // Same `dbHandle`-gated swap shape as `featureFlagReader` immediately above; `system_status` carries no
+  // RLS, so the reader is safe on the same handle with no org envelope (see the store file's own header).
+  const systemStatusReader = dbHandle ? createDrizzleSystemStatusReader(dbHandle.db) : undefined;
   const app = buildServer({
     db: dbHandle?.db,
     authenticate,
     ...(featureFlagReader ? { featureFlagReader } : {}),
+    ...(systemStatusReader ? { systemStatusReader } : {}),
     // WX-PR-017 — SD-055 rate-limit tiers enforced cluster-wide over the dedicated Valkey connection
     // above when REDIS_URL is set; falls back to the M1 baseline's own per-process default otherwise
     // (a slice/test/no-Redis boot, where a single process IS the whole "cluster").

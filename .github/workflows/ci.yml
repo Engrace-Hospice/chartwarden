@@ -381,6 +381,12 @@ jobs:
           # `ON CONFLICT` inference over it, and migration 0002's own-org-OR-global read policy — none
           # of which an in-memory double can be wrong about.
           - { name: "M1 feature flags", scripts: "test:m1:feature-flags:live" }
+          # F-173 (#248, m1 group) — the Drizzle-backed `SystemStatusReader` (`bootstrap/system-status-store.ts`).
+          # F-156 found the composition root always fell back to the in-memory reader, so `POST
+          # /admin/system/status` never persisted to the real table in any environment. LIVE by necessity:
+          # the claims are that `system_status` carries no RLS (a plain GRANT suffices for the NOBYPASSRLS
+          # app role) and that `ON CONFLICT (id)` upserts rather than duplicates.
+          - { name: "M1 system-status store", scripts: "test:m1:system-status-store:live" }
           - { name: "M1 locations lookup", scripts: "test:m1:locations-lookup:live" }
           # F-093: the §3.4.1 `system_locked` CoP floor existed only in the in-memory RoleStore the route
           # tests use; the Drizzle store production mounts had neither the floor check nor the delete
