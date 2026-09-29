@@ -1871,3 +1871,61 @@ convention is still an assumption nothing mints, `mllp_plain` still has no produ
 `m29-outbound-dispatch.live` 13/13 (7 existing + 6 new: facility routing, no-fallback refusal, configured MSH
 identity on the wire, identity refusal, concurrent redelivery, MSH CHECK + cross-tenant RLS on the new columns), the
 new `m29-feed-resolver` unit suite, and `check:boot:platform` clean on a fresh migrated database.
+
+**F-178 (#248) — the PRODUCER of `m11.order.hl7_orm_requested`: the middle of the lab-order pipeline F-175 (M29's
+T08 worker) and F-177 (M11's `LabTransmissionApplier`) built either end of, and that nothing had ever fed.** A
+signed lab order never became an HL7 ORM and `transmission_status` never left `pending`: F-120 had left `lab`
+unbound because `OrmRequestedPayload` needs patient demographics, a resolved M40 physician and a destination
+facility, none of which M11's own tables hold. Built in one branch (`f178-m11-orm-emitter`): on SIGN of a lab
+order, in the SAME transaction, `emitOrmRequested` (`orders-route-service-db.ts`) gathers the facts through THREE
+injected ports (`orm-request/orm-requested.ts` — pure decision core + port shapes; `orm-request/ports.ts` — the
+default binding) and publishes through the real catalog-validating publisher. **The ports:** `patient(tx, org,
+patientId)` is a NEW M5-owned seam function `hl7OrmDemographicsInTx` (M11 has no `dependsOn` edge to 5, so it is
+injected, never imported; it runs on the caller's tx rather than opening its own `withOrgContext`, because a
+second pooled connection beside the sign tx risks pool exhaustion); `physician(org, mdmId)` reads M40's
+`MdmEntityProvider.resolvePhysician` and returns an NPI only for an NPI-anchored canonical with a well-formed
+10-digit value; `destination(tx, org, {routingLabId})` requires an ACTIVE M40 facility (the order's own optional
+`data.routingLabId`) — `labDestinationFacilityId` must be a facility because M29's D16 BAA gate runs on exactly that
+id — AND, until fork B's feed↔facility link lands, exactly one active `orm_outbound` feed (the only routing M29
+supports), refusing `no_active_feed`/`ambiguous_feed` at sign time rather than emit an event M29 would only alert
+on and drop. Only that last half changes when B lands; the port shape does not. **REFUSE, NEVER FABRICATE.** Any
+unresolvable fact leaves the order signed, sets `transmission_status='failed'` with `orm_refused:<reason>` in the
+existing `transmission_failure_reason` column (no migration), and fires `m11.order.transmission_terminal_failed`
+(`transmittedAttempts: 0`) so M36 alerts the ordering provider; NOTHING partial is ever published. The reasons:
+`sud_restricted` (42 CFR Part 2 — F-035 D3 makes SUD redaction default-ON at every egress; the M5 flag is
+FAIL-CLOSED including an invalidated/stale snapshot, and the gate runs before any demographics are copied into a
+payload), `patient_not_found` (also another tenant's patient — the read is org-scoped), `patient_merged`,
+`patient_mrn_missing`/`patient_name_missing`/`patient_dob_missing`, `patient_sex_unrecorded` (M5's default `UNK`
+means "nobody asked" and is NOT turned into HL7 `U`; an explicit `U` passes) / `patient_sex_unmappable`,
+`physician_unresolved`/`physician_not_active` (deactivated)/`physician_npi_unconfirmed` (provisional, or no
+NPI)/`physician_name_missing`, `lab_test_codes_missing`/`multiple_test_codes_unsupported` (the payload carries ONE
+`observationIdentifier`, so a multi-test order would silently lose tests — refused instead),
+`no_routing_lab`/`lab_facility_unresolved`/`no_active_feed`/`ambiguous_feed`, `payload_invalid` (the assembled
+payload is `Value.Check`ed against the catalogued schema BEFORE publishing, so a schema defect refuses the ORM
+instead of throwing out of — and blocking — the sign), and `dependency_unavailable` (a port threw; a lab-routing
+hiccup must never fail the sign). **Minimum necessary:** the ORM carries `collectionInstructions` and a
+"FASTING REQUIRED" note as NTE lines (a specimen cannot be collected without them) and deliberately NOT
+`clinicalJustification` or `notes` (free text that routinely holds diagnoses). `internalMrnAuthority` is
+`WARDENX-<organizationId>` — M5 stores no issuer for the internal MRN and the MRN is unique per organization, so
+the tenant IS the assigning namespace (a label, not a demographic fact; flagged as an assumption). Priority maps
+`stat→S`, `asap→A`, else HL7's own default `R` (null is "unspecified", not a clinical fact). **Composition root:**
+`mountOrderRoutes(app, db, outbox, buildM11OrmRequestedPorts({ patient: hl7OrmDemographicsInTx, feeds:
+buildDrizzleOutboundFeedResolver() }))` — `arch:boundaries` caught the first draft, which put this binding in
+`bootstrap/` (module 1 may import no feature module), so M5 and M29 arrive as injected deps and only M40 (which M11
+may import) is bound in M11's own directory. Without the ports (unit tests, the standing/verbal workers) a signed
+lab emits nothing, exactly as before. **Proven live** (`m11-orm-requested.live.test.ts`, 17/17, real Postgres as
+`wardenx_app`): the whole chain — real M11 sign → real publisher → real dispatcher → M29's real T08 worker with a
+stub `MllpTransport` (the only fake) → `m29.lab_order.transmitted` → F-177's applier — ends with the order
+`transmitted`/`AA` and a wire containing the MRN, name, NPI and LOINC code; twelve refusal scenarios (every one
+asserts the order is still `active`, `failed` with the typed reason, the alert fired, and ZERO wires sent); a
+non-lab order emitting nothing; the no-ports default; and cross-tenant isolation through org B's own connection. **14
+of the 17 fail with the producer disabled** (the 3 that pass are the control cases), and 31 unit cases pin the pure
+core. **Residual risks, stated not hidden:** (1) `resolvePhysician` opens its own pooled connection while the sign
+tx holds one, so pool saturation under many concurrent signs could stall — the M5 read avoids this by running on
+the caller's tx, M40's seam cannot; (2) a refused order has no resend route — the alert tells a human, but nothing
+re-attempts the ORM after the missing fact is fixed; (3) `mllp_plain` is unguarded outside tests (F-175's note
+stands); (4) the `channelCertPin` DER-sha256 convention is still an unconfirmed assumption; (5) SUD detection is the
+patient-level M5 flag only — there is no classifier for a SUD-class ORDER (e.g. a drug-screen LOINC), so a
+non-restricted patient's SUD test order is transmitted; consent-aware release for a restricted patient is a
+follow-up, today it is a flat refusal; (6) `routingLabId` is optional on the lab kind, so every lab order without one
+is refused until the feed↔facility link makes a default destination derivable.

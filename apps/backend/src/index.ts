@@ -186,6 +186,7 @@ import {
   dosespotSyncDemographicsForOrg,
   getPatientCoverageReader,
   getPatientReader,
+  hl7OrmDemographicsInTx,
   membershipUserIdForOrg,
   mountPatientRoutes,
   registerPatientErasers,
@@ -299,6 +300,7 @@ import {
   buildM11FulfillmentStatusConsumer,
   buildM11IdgDecisionConsumer,
   buildM11LabTransmissionApplierConsumer,
+  buildM11OrmRequestedPorts,
   buildM11SupplyCancelledConsumer,
   createDbOrderBackend,
   createDrizzleOrderEraseStore,
@@ -735,6 +737,7 @@ import {
   M29_PLATFORM_JOB_ID,
   NPPES_SYNC_SCHEDULE,
   buildDrizzleM29AbacResolver,
+  buildDrizzleOutboundFeedResolver,
   buildM29OutboundDispatchConsumer,
   buildM29PatientDeceasedConsumer,
   buildNppesManualSyncTrigger,
@@ -3227,7 +3230,18 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           );
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox
           mountHopeRoutes(app, dbHandle.db, m10OutboxPublisher); // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox
-          mountOrderRoutes(app, dbHandle.db, m11OutboxPublisher); // M11 — reads + the write lifecycle over Drizzle+RLS, m11.order.* transactional outbox
+          // M11 — reads + the write lifecycle over Drizzle+RLS, m11.order.* transactional outbox. F-178 (#248): the
+          // fourth argument is what lets a signed lab order request its outbound HL7 ORM (M5 demographics, M40
+          // physician + facility, M29's single active `orm_outbound` feed) — refused-not-fabricated when unresolvable.
+          mountOrderRoutes(
+            app,
+            dbHandle.db,
+            m11OutboxPublisher,
+            buildM11OrmRequestedPorts({
+              patient: hl7OrmDemographicsInTx,
+              feeds: buildDrizzleOutboundFeedResolver(),
+            }),
+          );
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
           mountEmarRoutes(app, dbHandle.db, m13OutboxPublisher); // M13 — reads + the write lifecycle over Drizzle+RLS, m13.* transactional outbox
           mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
