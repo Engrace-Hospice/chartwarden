@@ -1030,7 +1030,14 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Type.String({ minLength: 1 }),
       refusedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m30"],
+    // F-180 (#248) — m30 DROPPED: M6's own spec places this beside a Prometheus gauge
+    // (`m6_applier_refused_total`, "dashboard data source") — its own framing is ops/observability, not a
+    // cross-module business-fact handoff. M30's own locked spec never mentions "applier"/"external-event"
+    // anywhere (0 hits), including its compile-checked §4.4 consumed-seams table. The refusal is already
+    // durably recorded independent of any consumer, via the live `m6.applier.contract_violation_refused`
+    // audit action (compliance retention). If a real gap remains, it's the never-built
+    // `m6_applier_refused_total` counter on the M6 side — metrics, not an outbox consumer.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
 ];

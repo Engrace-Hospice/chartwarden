@@ -232,22 +232,43 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       " identical \"decision core ships, nothing drains it\" shape this arc keeps finding in the other" +
       " direction. If a genuine backend consumer for this data ever materializes (e.g. a future M30-side" +
       " nightly rollup rather than a live dashboard read), it would be a fresh declaration against real new" +
-      " evidence, not a re-add of this one.",
+      " evidence, not a re-add of this one." +
+      " **F-180 (#248) — four parallel research forks re-checked the remaining previously-deferred items" +
+      " against current code (never merely re-asserting prior framing), dropping 6 of 9 investigated pairs" +
+      " as misdeclared and confirming 3 as genuinely blocked.** Dropped, all for the identical reason —" +
+      " M30's own LOCKED spec is decisive on what it actually consumes and none of these six appear in it —" +
+      " and none of the six had a real seam method or measure code either:" +
+      " `m6.applier.refused` (M6's own spec places it beside a Prometheus gauge, \"dashboard data source\" —" +
+      " ops/observability framing, not a business-fact handoff; already durably audited independent of any" +
+      " consumer via `m6.applier.contract_violation_refused`); `m23.noe.window_breached`/" +
+      "`m23.notr.window_breached` (the breach fact is a real, persisted column —" +
+      " `noe_record`/`notr_record.windowBreachedAt` — already served by a direct REST read" +
+      " (`GET /api/v1/noe-records`/`notr-records`, the F-179 shape exactly), M36 critical-severity alerting," +
+      " and M33's bound `mv_noe_window_breach_org_month` materialized view for NOE — though NOTR carries the" +
+      " same `seamConsumers: [\"m33\"]` catalog claim without a matching M33 subscription-map entry, a real" +
+      " M33-side asymmetry flagged for its own follow-up, out of this pass's scope); `m15.plan.version_signed`" +
+      " (kept its real `m22` consumer, only `m30` dropped), `m15.plan.discharged`, and" +
+      " `m15.discipline_assessment.amended` (M30's own §1.2 names exactly 4 `DisciplineComplianceProvider`" +
+      " measures — supervisory/MSW/chaplain on-time, volunteer-gate — as its real M15 consumption; none of" +
+      " these three events is among them, and the producer-side catalog comments asserting otherwise —" +
+      " e.g. \"M30 re-measures\" — were the unverified guesses this pass checked and found unsupported)." +
+      " **Confirmed still genuinely unbound, not misdeclared:** `m6.admission.on_hold`/`.resumed` (M6's" +
+      " spec names the same \"M30 dashboard\" phrasing F-179 resolved for compliance windows, but the" +
+      " REST-resolution check does NOT apply here — `holdReason`/`holdAt`/`releasedAt` are write-only" +
+      " everywhere in `06-admission/`, never selected by any existing read path, so unlike" +
+      " `GET /api/v1/compliance-windows` there is no already-live REST route serving this data; a real" +
+      " build gap on both the M6 reader side and the M30 consumer side) and `m15.volunteer.ratio_recomputed`" +
+      " (see the m15 group's own updated reason: the M27 `staffPatientCareMinutes` blocker is freshly" +
+      " reconfirmed current, not stale). Net this pass: declared-but-unbound 42 → 36.",
     events: [
       "m12.medication_order.transmission_failed",
-      "m15.discipline_assessment.amended",
-      "m15.plan.discharged",
-      "m15.plan.version_signed",
       "m15.volunteer.ratio_recomputed",
       "m16.bereavement.plan_skipped_per_patient_opt_out",
       "m16.bereavement.risk_score_computed",
-      "m23.noe.window_breached",
-      "m23.notr.window_breached",
       "m37.ipu_admission.death_recorded",
       "m37.restraint.applied",
       "m6.admission.on_hold",
       "m6.admission.resumed",
-      "m6.applier.refused",
     ],
   },
   {

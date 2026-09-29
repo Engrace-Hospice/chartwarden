@@ -1923,4 +1923,32 @@ fresh research surfaced the REST route first, so the actual, smaller, correct ac
 a new seam) was confirmed with the user before proceeding. Verified: `build`/`typecheck` clean, `arch:fitness`
 38/38 (declared-but-unbound: 46 → 42), full non-live suite green (655 files / 9622 tests, 0 failed) — a pure
 catalog/comment correction with no runtime behavior change, so no live-suite or `check:boot:platform` re-run was
-needed. Leaving #248 open — 42 pairs across 13 modules remain.
+needed.
+
+**F-180 (#248) — four parallel research-only forks re-checked the remaining previously-deferred M30 items** (M6
+`admission.on_hold`/`.resumed`, `m6.applier.refused`, M23 NOE/NOTR `window_breached`, and M15's 4 events) against
+current code rather than re-asserting prior framing, then one central verify-and-apply pass. **Dropped 6 of 9
+investigated pairs as misdeclared**, all for the same root reason — M30's own LOCKED spec is decisive on exactly
+what it consumes and none of these six appear in it, with no supporting seam method or measure code either:
+`m6.applier.refused` (M6's own spec places it beside a Prometheus gauge, "dashboard data source" — an
+ops/observability framing, not a cross-module business-fact handoff; already durably audited independent of any
+consumer via the live `m6.applier.contract_violation_refused` action); `m23.noe.window_breached`/
+`m23.notr.window_breached` (the breach fact is a real, persisted `windowBreachedAt` column on both
+`noe_record`/`notr_record`, already served by a direct REST read — `GET /api/v1/noe-records`/`notr-records`, the
+F-179 shape exactly — plus M36 critical-severity alerting and, for NOE, M33's bound
+`mv_noe_window_breach_org_month` materialized view; NOTR carries the identical `seamConsumers: ["m33"]` catalog
+claim without a matching M33 subscription-map entry, a real asymmetry flagged for its own follow-up, out of this
+pass's scope); `m15.plan.version_signed` (kept its real `m22` consumer, only `m30` dropped), `m15.plan.discharged`,
+and `m15.discipline_assessment.amended` (M30's own §1.2 names exactly 4 `DisciplineComplianceProvider` measures —
+supervisory/MSW/chaplain on-time, volunteer-gate — as its real M15 consumption; none of these three events is
+among them, and the producer-side catalog comments asserting otherwise, e.g. "M30 re-measures," were unverified
+guesses this pass checked and found unsupported). **Confirmed still genuinely unbound, not misdeclared:**
+`m6.admission.on_hold`/`.resumed` (M6's spec uses the identical "M30 dashboard" phrasing F-179 resolved for
+compliance windows, but the REST-resolution check does NOT apply here — `holdReason`/`holdAt`/`releasedAt` are
+write-only everywhere in `06-admission/`, never selected by any existing read path, so unlike
+`GET /api/v1/compliance-windows` there is no already-live REST route serving this data; a real build gap on both
+the M6 reader side and the M30 consumer side) and `m15.volunteer.ratio_recomputed` (the M27
+`staffPatientCareMinutes` blocker was independently re-verified as still current, not stale — M27 ships no hours
+seam anywhere). Verified: `build`/`typecheck` clean, `arch:fitness` 38/38 (declared-but-unbound: 42 → 36), full
+non-live suite green (655 files / 9622 tests, 0 failed) — another pure catalog/comment correction with no runtime
+behavior change. Leaving #248 open — 36 pairs across 13 modules remain.

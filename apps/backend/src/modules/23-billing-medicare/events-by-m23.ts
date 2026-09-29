@@ -402,7 +402,16 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The day-5+1 NOE-window watchdog tick fired (the CMS filing window was breached).",
     payloadSchema: Type.Object({ noeId: id, admissionId: id, breachedAt: isoInstant }),
-    declaredConsumers: ["m30"],
+    // F-180 (#248) — m30 DROPPED: misdeclared, not a genuine gap. M30's own locked spec never names NOE,
+    // NOTR, or window_breached anywhere (its `risk_register_view` source union is `sra_finding`/
+    // `incident_report`/`qapi_project`/`cop_compliance_status` only). The breach fact this event announces
+    // is already fully served without any M30 involvement: `noe_record.windowBreachedAt` is a real,
+    // persisted column (`packages/db/src/schema/billing/noe-record.ts`), returned directly by
+    // `GET /api/v1/noe-records` (a frontend REST read, the same F-179 shape), alerted on by M36's critical
+    // severity binding (M23 spec §5), and dashboarded live via M33's bound
+    // `mv_noe_window_breach_org_month` materialized view (`outbox-subscription-map.ts`) — three real
+    // consumers, none of them M30.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
@@ -480,7 +489,12 @@ export const M23_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m23",
     description: "The day-5+1 NOTR-window watchdog tick fired (the filing window was breached).",
     payloadSchema: Type.Object({ notrId: id, admissionId: id, breachedAt: isoInstant }),
-    declaredConsumers: ["m30"],
+    // F-180 (#248) — m30 DROPPED: same reasoning as the `m23.noe.window_breached` sibling above — no M30
+    // spec support, and the fact is already served by `notr_record.windowBreachedAt` (REST-read via
+    // `GET /api/v1/notr-records`) + M36 alerting. NOTE: unlike its NOE sibling, this event is NOT yet
+    // actually bound in M33's `outbox-subscription-map.ts` despite carrying `seamConsumers: ["m33"]` here
+    // — a real M33-side asymmetry, out of scope for this pass, reported not fixed.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
