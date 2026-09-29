@@ -81,7 +81,7 @@ export async function ormDispatchExistsForOrder(
 }
 
 /**
- * F-186 — READ-ONLY evidence for M11's attested recovery: what M29 already knows about this order that would
+ * F-188 — READ-ONLY evidence for M11's attested recovery: what M29 already knows about this order that would
  * CONTRADICT an operator's `not_received_by_lab` attestation. (1) the statuses of every outbound row that still owns
  * the order (`queued` / `in_flight` = a send is under way; `acked` = the lab acknowledged it), and (2) how many
  * `lab_observation` rows M29 has matched to the order (the lab has already returned a result). Runs on the caller's

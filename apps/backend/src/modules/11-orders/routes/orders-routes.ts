@@ -92,7 +92,7 @@ const VERBAL = P("orders.verbal.record");
 const COSIGN = P("orders.cosign");
 const DISCONTINUE = P("orders.discontinue");
 const AMEND = P("orders.amend");
-// F-186 — a fresh, server-verified second factor for the attested recovery (see the route).
+// F-188 — a fresh, server-verified second factor for the attested recovery (see the route).
 const RECOVER_STEP_UP = requireStepUp("order.recover_transmission") as PreHandler;
 const COMPLETE = P("orders.complete");
 const STANDING_MANAGE = P("orders.standing.manage");
@@ -458,7 +458,7 @@ export function registerOrderRoutes(
   // order to the SAME lab (or records a fact) and what protects it is the explicit attestation, recorded with who /
   // when in the order's write-audit diff, plus the row-lock + conditional-update single-dispatch guards. The audit
   // actor is the Better Auth USER id, as for the resend.
-  // F-186 — `requireStepUp("order.recover_transmission")`: BOTH attestations are gated (a wrong `not_received_by_lab`
+  // F-188 — `requireStepUp("order.recover_transmission")`: BOTH attestations are gated (a wrong `not_received_by_lab`
   // orders the test twice; a wrong `received_by_lab` hides an order the lab never got), so a fresh, server-verified
   // second-factor is required on top of `orders.amend`. The body also carries STRUCTURED lab-contact evidence.
   app.post("/api/v1/orders/:id/recover-transmission", { preHandler: [AMEND, RECOVER_STEP_UP] }, async (request) => {

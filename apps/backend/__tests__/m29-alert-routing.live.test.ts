@@ -1,9 +1,9 @@
 /**
- * F-186 (#248) — M29's outbound operator alerts, proven to reach a PERSON on the real M36 emitter over real Postgres
+ * F-188 (#248) — M29's outbound operator alerts, proven to reach a PERSON on the real M36 emitter over real Postgres
  * (the real NOBYPASSRLS `wardenx_app` role, the real platform-default `alert_rule` seed, the real `alert` /
  * `notification_delivery` persistence).
  *
- * Before F-186 three independent defects meant no outbound alert ever notified anyone, each proven live on this same
+ * Before F-188 three independent defects meant no outbound alert ever notified anyone, each proven live on this same
  * chain: (1) every emit THREW at the `alert` INSERT — M29's `HIGH`/`NORMAL` are not `alert_severity` values — and the
  * worker swallows alert failures; (2) with a valid severity the three kinds still resolved ZERO recipients, because no
  * platform-default `alert_rule` existed; (3) `alert` is unique on `(organization_id, correlation_id)` and the old id
@@ -47,7 +47,7 @@ const intent = (kind: OutboundAlert["kind"], severity: OutboundAlert["severity"]
   detail: "PHI-free operator summary",
 });
 
-describe.skipIf(!DB_URL)("F-186 — M29 outbound alerts reach a person, LIVE Postgres", () => {
+describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let emitter: ReturnType<typeof createDrizzleAlertEmitter>;
@@ -196,7 +196,7 @@ describe.skipIf(!DB_URL)("F-186 — M29 outbound alerts reach a person, LIVE Pos
       new Date(base.getTime() + OUTBOUND_ALERT_WINDOW_MS[kind]),
     );
     expect(nextWindow.alertId).not.toBe(first.alertId);
-    expect(nextWindow.resolvedRecipientCount).toBe(2); // the pre-F-186 permanent id would have swallowed this forever
+    expect(nextWindow.resolvedRecipientCount).toBe(2); // the pre-F-188 permanent id would have swallowed this forever
     expect(await recipientsOf(nextWindow.alertId)).toEqual([user.orgAdmin, user.clinicalLead].sort());
   });
 

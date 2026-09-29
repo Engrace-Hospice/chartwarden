@@ -3246,7 +3246,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             buildM11OrmRequestedPorts({
               patient: hl7OrmDemographicsInTx,
               feeds: buildDrizzleOutboundFeedResolver(),
-              // F-186 — the evidence the attested recovery checks a `not_received_by_lab` against.
+              // F-188 — the evidence the attested recovery checks a `not_received_by_lab` against.
               outboundEvidence: ormOutboundEvidenceForOrder,
             }),
           );

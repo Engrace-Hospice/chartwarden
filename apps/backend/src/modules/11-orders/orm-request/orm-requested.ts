@@ -106,7 +106,7 @@ export type OrmDestinationPort = (
   args: { readonly routingLabId: string | null },
 ) => Promise<OrmDestinationResult>;
 
-/** F-186 — M29's read-only outbound/inbound evidence for one order (injected: M11 does not depend on M29). */
+/** F-188 — M29's read-only outbound/inbound evidence for one order (injected: M11 does not depend on M29). */
 export type OrmOutboundEvidencePort = (
   tx: DbClient,
   organizationId: string,
@@ -115,7 +115,7 @@ export type OrmOutboundEvidencePort = (
 
 export interface OrmRequestedPorts {
   /**
-   * F-186 — evidence for the attested recovery's contradiction check. Optional: absent ⇒ the recovery FAILS CLOSED
+   * F-188 — evidence for the attested recovery's contradiction check. Optional: absent ⇒ the recovery FAILS CLOSED
    * (`evidence_unavailable`) for `not_received_by_lab`; the producer itself never reads it.
    */
   readonly outboundEvidence?: OrmOutboundEvidencePort;

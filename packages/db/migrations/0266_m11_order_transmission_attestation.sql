@@ -1,6 +1,6 @@
--- F-186 (#248) — M11: a proper home for the operator's ATTESTATION, and an attempt identity on the order.
+-- F-188 (#248) — M11: a proper home for the operator's ATTESTATION, and an attempt identity on the order.
 --
--- F-185's attested recovery (`POST /api/v1/orders/:id/recover-transmission`) had two placeholders because it
+-- F-187's attested recovery (`POST /api/v1/orders/:id/recover-transmission`) had two placeholders because it
 -- shipped without a migration:
 --   (a) the attestation lived in `order_record.transmission_failure_reason` (`recovery_attested:<enum>:<uuid>`) —
 --       the only column whose write-audit diff survived — which left a stale marker on a `transmitted` order after
@@ -16,7 +16,7 @@
 --     digits), a reference is `[A-Za-z0-9._#/-]` only (no spaces, so no names). Grants are SELECT + INSERT only and a
 --     trigger rejects UPDATE/DELETE, so an attestation can never be edited or removed after the fact.
 -- (2) `order_record.transmission_attempt_id` — the id of the CURRENT outbound attempt (set in the same transaction
---     as every `m11.order.hl7_orm_requested`: sign, F-182 resend, F-185/F-186 recovery). The applier applies a
+--     as every `m11.order.hl7_orm_requested`: sign, F-182 resend, F-187/F-188 recovery). The applier applies a
 --     `dispatch_refused` only when the refusal names the order's current attempt. Nullable and additive: existing
 --     rows and pre-migration in-flight events (which carry no attempt id) behave exactly as before.
 --

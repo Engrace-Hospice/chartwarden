@@ -181,7 +181,7 @@ export const RecoverLabTransmissionRequest = Type.Object(
   {
     attestation: Type.Union([Type.Literal("not_received_by_lab"), Type.Literal("received_by_lab")]),
     /**
-     * F-186 — STRUCTURED evidence, required with every attestation, shaped so it cannot carry a patient identifier:
+     * F-188 — STRUCTURED evidence, required with every attestation, shaped so it cannot carry a patient identifier:
      * the lab contact's NAME (letters, spaces and `.'-` only — no digits) and the lab's own REFERENCE for the call or
      * confirmation (`[A-Za-z0-9._#/-]`, no spaces). Do NOT enter a patient name, MRN, DOB or accession here — the
      * fields reject digits in a name and spaces in a reference precisely so free text cannot be smuggled in.

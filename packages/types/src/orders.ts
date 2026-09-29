@@ -355,11 +355,11 @@ export interface OrmRequestedPayload {
    */
   readonly redispatchAttestationId?: string;
   /**
-   * F-186 — the id of THIS outbound attempt, minted by the producer at every emission (sign, F-182 resend,
+   * F-188 — the id of THIS outbound attempt, minted by the producer at every emission (sign, F-182 resend,
    * attested recovery) and persisted as `order_record.transmission_attempt_id` in the same transaction. M29 echoes it
    * on `m29.lab_order.dispatch_refused`, and M11's applier applies a refusal only to the attempt it refused, so a
    * stale refusal redelivered after an operator resend cannot flip the order `failed` again. Optional: a request
-   * emitted before F-186 carries none, and its refusal is applied as it always was.
+   * emitted before F-188 carries none, and its refusal is applied as it always was.
    */
   readonly attemptId?: string;
 }

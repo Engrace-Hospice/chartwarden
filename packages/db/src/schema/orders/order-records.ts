@@ -96,7 +96,7 @@ export const orderRecords = pgTable(
     transmissionAckedAt: timestamp("transmission_acked_at", { withTimezone: true }),
     transmissionAckCode: text("transmission_ack_code"), // 'AA' | 'AE' | 'AR' once known
     transmissionFailureReason: text("transmission_failure_reason"),
-    // F-186 (mig 0266) — the id of the CURRENT outbound attempt, set in the same transaction as every
+    // F-188 (mig 0266) — the id of the CURRENT outbound attempt, set in the same transaction as every
     // `m11.order.hl7_orm_requested` (sign / resend / recovery). The applier applies a `dispatch_refused` only when the
     // refusal names this attempt, so a stale refusal redelivered after an operator resend cannot flip the order again.
     transmissionAttemptId: uuid("transmission_attempt_id"),

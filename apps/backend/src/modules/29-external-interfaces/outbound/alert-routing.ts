@@ -1,7 +1,7 @@
 // apps/backend/src/modules/29-external-interfaces/outbound/alert-routing.ts — how an `OutboundAlert` intent becomes
-// an M36 `AlertEmitter.emit()` input (F-186, #248). PURE.
+// an M36 `AlertEmitter.emit()` input (F-188, #248). PURE.
 //
-// WHY THIS EXISTS. Until F-186 the worker passed the intent straight through, and three independent defects meant
+// WHY THIS EXISTS. Until F-188 the worker passed the intent straight through, and three independent defects meant
 // no outbound alert ever notified anyone (each proven live on the real emitter, `m29-alert-routing.live.test.ts`):
 //   1. SEVERITY. M29's ladder is the §5.3 payload ladder (`HIGH` / `NORMAL`); the emitter takes the legacy
 //      `alert_severity` enum (`info` / `warn` / `critical`). `alert.severity` is an enum column, so every emit threw

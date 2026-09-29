@@ -575,7 +575,7 @@ export function createDbOrderBackend(
       data,
     });
     if (outcome.kind === "ok") {
-      // F-186 — every emission mints its own attempt id, persisted on the order in the SAME transaction, so a
+      // F-188 — every emission mints its own attempt id, persisted on the order in the SAME transaction, so a
       // `dispatch_refused` for THIS attempt can be told apart from one redelivered from an earlier attempt.
       const attemptId = randomUUID();
       await emit(tx, organizationId, "m11.order.hl7_orm_requested", orderId, {
@@ -1225,7 +1225,7 @@ export function createDbOrderBackend(
           eq(OR.transmissionFailureReason, verdict.priorReason),
         );
         if (outcome.kind === "ok") {
-          // F-186 — a NEW attempt: a `dispatch_refused` redelivered from the previous attempt no longer matches.
+          // F-188 — a NEW attempt: a `dispatch_refused` redelivered from the previous attempt no longer matches.
           const attemptId = randomUUID();
           const claimed = await t
             .update(OR)
@@ -1270,10 +1270,10 @@ export function createDbOrderBackend(
      * ONE transaction, and the same two independent single-dispatch guards as F-182: `SELECT … FOR UPDATE` on the
      * order row (a double-click serializes; the second reads `pending`/`transmitted` and is refused `not_failed`) and
      * a CONDITIONAL update (`WHERE transmission_status='failed' AND reason = <the one we read>`).
-     * F-186 — THE ATTESTATION HAS A PROPER HOME: one APPEND-ONLY `order_transmission_attestation` row per recovery
+     * F-188 — THE ATTESTATION HAS A PROPER HOME: one APPEND-ONLY `order_transmission_attestation` row per recovery
      * (what was attested, the structured evidence — who at the lab was contacted + the lab's reference — the prior
      * failure reason, the outcome, the attempt it started, who attested), inserted in the SAME transaction. The order's
-     * `transmission_failure_reason` is cleared (a `pending`/`transmitted` order carries none — F-185 left a
+     * `transmission_failure_reason` is cleared (a `pending`/`transmitted` order carries none — F-187 left a
      * `recovery_attested:` marker on a delivered order). The M4 write-audit trigger records both tables under the
      * real `auditUserId`. BEFORE anything is written, `not_received_by_lab` is checked against what the system CAN
      * verify (a lab result already returned, an acked/queued/in-flight outbound row): a contradiction is a 409.
@@ -1316,7 +1316,7 @@ export function createDbOrderBackend(
         if (!verdict.ok) {
           throw new ConflictError(`Transmission recovery not allowed (${verdict.code}): ${verdict.message}`);
         }
-        // F-186 — the CONTRADICTION CHECK, BEFORE anything is written: an operator's `not_received_by_lab` is a
+        // F-188 — the CONTRADICTION CHECK, BEFORE anything is written: an operator's `not_received_by_lab` is a
         // phone call the system cannot verify, but it CAN see whether the lab has already returned a result for the
         // order, acknowledged the message, or still has a send under way. Any of those refuses the attestation with
         // a specific 409; a missing evidence port fails CLOSED. `received_by_lab` is never blocked (it sends nothing).
@@ -1335,7 +1335,7 @@ export function createDbOrderBackend(
         }
         const at = new Date();
         // The attestation row's id doubles as the `redispatchAttestationId` M29's worker keys its exception on, so
-        // the persisted evidence and the wire attempt are linked by one id. The attempt id is separate (F-186).
+        // the persisted evidence and the wire attempt are linked by one id. The attempt id is separate (F-188).
         const attestationId = randomUUID();
         const recordAttestation = async (outcome: "redispatched" | "marked_transmitted", attemptId: string | null) => {
           await t.insert(ATT).values({
@@ -1366,7 +1366,7 @@ export function createDbOrderBackend(
         if (attestation === "received_by_lab") {
           const claimed = await t
             .update(OR)
-            // F-186 — a delivered order carries NO failure reason (F-185 left a `recovery_attested:` marker here);
+            // F-188 — a delivered order carries NO failure reason (F-187 left a `recovery_attested:` marker here);
             // what was attested, by whom, with what evidence, lives in `order_transmission_attestation`.
             .set({ transmissionStatus: "transmitted", transmissionFailureReason: null, updatedAt: at })
             .where(stillFailed)
@@ -1397,7 +1397,7 @@ export function createDbOrderBackend(
         if (outcome.kind !== "ok") {
           return { outcome: "still_refused", refusalReason: outcome.reason, order: await readOrder(t, id, actor) };
         }
-        // F-186 — a NEW attempt (its id is what a `dispatch_refused` for THIS re-dispatch must name) and no marker in
+        // F-188 — a NEW attempt (its id is what a `dispatch_refused` for THIS re-dispatch must name) and no marker in
         // the reason column: a `pending` order carries no failure reason.
         const attemptId = randomUUID();
         const claimed = await t

@@ -214,7 +214,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     for (let i = 0; i < 5; i++) await dispatcher.tick();
   }
 
-  /** F-186 — the STRUCTURED evidence every attestation now carries (who at the lab + the lab's own reference). */
+  /** F-188 — the STRUCTURED evidence every attestation now carries (who at the lab + the lab's own reference). */
   const EVIDENCE = { contactName: "Dana Reyes", labReference: "REF-2026-0041" };
   const recover = (
     id: string,
@@ -299,7 +299,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
       buildM11OrmRequestedPorts({
         patient: hl7OrmDemographicsInTx,
         feeds: buildDrizzleOutboundFeedResolver(),
-        // F-186 — the evidence the attested recovery checks a `not_received_by_lab` against.
+        // F-188 — the evidence the attested recovery checks a `not_received_by_lab` against.
         outboundEvidence: ormOutboundEvidenceForOrder,
       }),
     );
@@ -354,7 +354,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(res.refusalReason).toBeNull();
     expect(res.order.transmissionStatus).toBe("pending");
 
-    // State + event committed together. F-186: a `pending` order carries NO failure reason (F-185 parked a
+    // State + event committed together. F-188: a `pending` order carries NO failure reason (F-187 parked a
     // `recovery_attested:` marker here); the attestation lives in `order_transmission_attestation`.
     const pending = await orderRow(id);
     expect(pending.transmission_status).toBe("pending");
@@ -376,7 +376,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(rows[1]!.idempotency_key).not.toBe(first!.idempotency_key);
   });
 
-  it("F-186 — the attestation has a PROPER HOME: one append-only row (who, what, the evidence, the prior reason, the attempt) and the M4 diff carries the real user on BOTH the order and the attestation", async () => {
+  it("F-188 — the attestation has a PROPER HOME: one append-only row (who, what, the evidence, the prior reason, the attempt) and the M4 diff carries the real user on BOTH the order and the attestation", async () => {
     const id = await heldOrder();
     await recover(id, "not_received_by_lab");
 
@@ -508,7 +508,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     );
     expect(rows).toHaveLength(1);
     expect(rows[0].actor_user_id).toBe(USER);
-    // F-186 — a DELIVERED order carries no failure reason and no attestation marker (F-185 left
+    // F-188 — a DELIVERED order carries no failure reason and no attestation marker (F-187 left
     // `recovery_attested:received_by_lab:<uuid>` here forever); the attestation is in its own table.
     expect(rows[0].ar).toBeNull();
     const order = await orderRow(id);
@@ -677,8 +677,8 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     }
   });
 
-  // ══ F-186 ════════════════════════════════════════════════════════════════════════════════════════════════════
-  // Four residual risks of the F-185 attested recovery, closed. Every guard below is mutation-tested: the case named
+  // ══ F-188 ════════════════════════════════════════════════════════════════════════════════════════════════════
+  // Four residual risks of the F-187 attested recovery, closed. Every guard below is mutation-tested: the case named
   // in its comment fails with the guard removed.
 
   /** Assert a recovery was refused with a specific 409 code and changed NOTHING. */
@@ -726,7 +726,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
 
   // ── Risk 1 — WRONG ATTESTATION: structured evidence + a contradiction check ─────────────────────────────
 
-  it("F-186 risk 1: the DB itself rejects evidence that could carry a patient identifier (digits in a name, spaces in a reference) — nothing is dispatched, attested or changed", async () => {
+  it("F-188 risk 1: the DB itself rejects evidence that could carry a patient identifier (digits in a name, spaces in a reference) — nothing is dispatched, attested or changed", async () => {
     const id = await heldOrder();
     for (const bad of [
       { contactName: "Dana 5550100", labReference: "REF-2026-0041" }, // a phone number / MRN in the name
@@ -744,7 +744,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(wires).toHaveLength(0);
   });
 
-  it("F-186 risk 1: a result the lab ALREADY returned (order_record.results_*) refutes `not_received_by_lab` — 409 lab_result_received, nothing changes", async () => {
+  it("F-188 risk 1: a result the lab ALREADY returned (order_record.results_*) refutes `not_received_by_lab` — 409 lab_result_received, nothing changes", async () => {
     const id = await heldOrder();
     await admin.query(
       "UPDATE order_record SET results_status='partial_results_received', results_first_received_at=now() WHERE id=$1",
@@ -755,7 +755,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(wires).toHaveLength(0);
   });
 
-  it("F-186 risk 1: an M29 `lab_observation` matched to the order refutes `not_received_by_lab` — the lab cannot have returned a result for an order it never got", async () => {
+  it("F-188 risk 1: an M29 `lab_observation` matched to the order refutes `not_received_by_lab` — the lab cannot have returned a result for an order it never got", async () => {
     const id = await heldOrder();
     await labObservationFor(id);
     await expectRefusedUntouched(id, "not_received_by_lab", "lab_result_received");
@@ -764,7 +764,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(res.outcome).toBe("marked_transmitted");
   });
 
-  it("F-186 risk 1: an outbound row the lab ACKNOWLEDGED refutes `not_received_by_lab` (lab_acknowledged) — but `received_by_lab` is not blocked", async () => {
+  it("F-188 risk 1: an outbound row the lab ACKNOWLEDGED refutes `not_received_by_lab` (lab_acknowledged) — but `received_by_lab` is not blocked", async () => {
     const id = await signedLab();
     await settle();
     expect((await orderRow(id)).transmission_status).toBe("transmitted");
@@ -780,7 +780,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(res.outcome).toBe("marked_transmitted");
   });
 
-  it("F-186 risk 1: a send still queued or in flight refutes `not_received_by_lab` (send_in_progress) — a second send would duplicate it", async () => {
+  it("F-188 risk 1: a send still queued or in flight refutes `not_received_by_lab` (send_in_progress) — a second send would duplicate it", async () => {
     for (const status of ["queued", "in_flight"]) {
       const id = await heldOrder();
       await admin.query("UPDATE hl7_message_outbound SET status=$2 WHERE organization_id=$1 AND source_aggregate_id=$3", [
@@ -793,7 +793,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(wires).toHaveLength(0);
   });
 
-  it("F-186 risk 1: WITHOUT the evidence port the recovery FAILS CLOSED (evidence_unavailable) — a safety check that cannot run is not 'no contradiction'", async () => {
+  it("F-188 risk 1: WITHOUT the evidence port the recovery FAILS CLOSED (evidence_unavailable) — a safety check that cannot run is not 'no contradiction'", async () => {
     const noEvidence = createDbOrderBackend(
       handle.db,
       m11OutboxPort,
@@ -812,7 +812,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
 
   // ── Risk 2 — STALE REFUSAL: a refusal is bound to the attempt it refused ────────────────────────────────
 
-  it("F-186 risk 2: every emission mints its own attempt id, persisted on the order and carried on the event — sign, F-182 resend and recovery", async () => {
+  it("F-188 risk 2: every emission mints its own attempt id, persisted on the order and carried on the event — sign, F-182 resend and recovery", async () => {
     baaActive = false;
     const id = await signedLab();
     const signed = await orderRow(id);
@@ -831,7 +831,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(resent.transmission_attempt_id).not.toBe(signed.transmission_attempt_id);
   });
 
-  it("F-186 risk 2: a `dispatch_refused` redelivered AFTER the operator resent does NOT flip the order failed again; the refusal for the CURRENT attempt still does", async () => {
+  it("F-188 risk 2: a `dispatch_refused` redelivered AFTER the operator resent does NOT flip the order failed again; the refusal for the CURRENT attempt still does", async () => {
     baaActive = false;
     const id = await signedLab();
     await settle(); // refusal #1 (attempt A1) → failed / dispatch_refused:baa_inactive
@@ -847,7 +847,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(a2).not.toBe(staleRefusal.attemptId);
     const changed = await count(id, "m11.order.transmission_status_changed");
 
-    // The relay redelivers refusal #1 (its consumer receipt was lost). Before F-186 the `pending` guard alone let it
+    // The relay redelivers refusal #1 (its consumer receipt was lost). Before F-188 the `pending` guard alone let it
     // through and flipped the freshly re-requested order back to `failed`.
     await applier.handle({ eventType: "m29.lab_order.dispatch_refused", organizationId: ORG_A, payload: staleRefusal });
     const row = await orderRow(id);
@@ -863,7 +863,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await count(id, "m29.lab_order.dispatch_refused")).toBe(2);
   });
 
-  it("F-186 risk 2: a stale refusal is ignored after an ATTESTED recovery too (the recovery mints a new attempt)", async () => {
+  it("F-188 risk 2: a stale refusal is ignored after an ATTESTED recovery too (the recovery mints a new attempt)", async () => {
     const id = await heldOrder();
     const before = (await orderRow(id)).transmission_attempt_id;
     await recover(id, "not_received_by_lab");
@@ -898,7 +898,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect((await orderRow(id)).transmission_status).toBe("failed");
   });
 
-  it("F-186 risk 2: a refusal from a request that predates F-186 (no attempt id) is applied exactly as before", async () => {
+  it("F-188 risk 2: a refusal from a request that predates F-188 (no attempt id) is applied exactly as before", async () => {
     const id = await signedLab();
     await admin.query("UPDATE order_record SET transmission_attempt_id=NULL WHERE id=$1", [id]);
     await applier.handle({
@@ -911,7 +911,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
 
   // ── Risk 3 — the attestation's home: append-only, RLS-scoped, and the delivered order is clean ──────────
 
-  it("F-186 risk 3: the attestation table is APPEND-ONLY — the app role cannot UPDATE or DELETE a row, and not even a superuser can (trigger)", async () => {
+  it("F-188 risk 3: the attestation table is APPEND-ONLY — the app role cannot UPDATE or DELETE a row, and not even a superuser can (trigger)", async () => {
     const id = await heldOrder();
     await recover(id, "received_by_lab");
     const [att] = await attestations(id);
@@ -935,7 +935,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect((await attestations(id))[0]).toMatchObject({ lab_reference: "REF-2026-0041" });
   });
 
-  it("F-186 risk 3: cross-tenant — another org's context sees NO attestation rows and cannot write one for this org (RLS, as the real app role)", async () => {
+  it("F-188 risk 3: cross-tenant — another org's context sees NO attestation rows and cannot write one for this org (RLS, as the real app role)", async () => {
     const id = await heldOrder();
     await recover(id, "not_received_by_lab");
     expect(await attestations(id)).toHaveLength(1);
@@ -958,7 +958,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     ).rejects.toThrow();
   });
 
-  it("F-186 risk 3: the two outcome constraints agree — a `received_by_lab` row cannot claim an attempt, a re-dispatch must have one", async () => {
+  it("F-188 risk 3: the two outcome constraints agree — a `received_by_lab` row cannot claim an attempt, a re-dispatch must have one", async () => {
     const id = await heldOrder();
     await expect(
       admin.query(
@@ -978,7 +978,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     ).rejects.toThrow(/outcome_agrees/);
   });
 
-  it("F-186 risk 3: a re-dispatch that is later DELIVERED ends with a clean order (no reason, no marker) and the attestation still on record", async () => {
+  it("F-188 risk 3: a re-dispatch that is later DELIVERED ends with a clean order (no reason, no marker) and the attestation still on record", async () => {
     const id = await heldOrder();
     await recover(id, "not_received_by_lab");
     await settle();
@@ -990,7 +990,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
 
   // ── Risk 4 — BLOCKED ATTESTED REQUEST: never silently `pending` ─────────────────────────────────────────
 
-  it("F-186 risk 4: an attested re-dispatch the worker cannot honour (a row appeared and owns the order) ends the order ACTIONABLE — failed / recovery_blocked:row_owns_order — not `pending` forever", async () => {
+  it("F-188 risk 4: an attested re-dispatch the worker cannot honour (a row appeared and owns the order) ends the order ACTIONABLE — failed / recovery_blocked:row_owns_order — not `pending` forever", async () => {
     const id = await heldOrder();
     const res = await recover(id, "not_received_by_lab");
     expect(res.outcome).toBe("redispatched");
@@ -1017,7 +1017,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await count(id, "m11.order.transmission_terminal_failed")).toBeGreaterThanOrEqual(1); // M36's alert
   });
 
-  it("F-186 risk 4: a `recovery_blocked` order is NOT resendable (a row exists), refuses a new attestation while that row still owns it, and is recoverable once it settles", async () => {
+  it("F-188 risk 4: a `recovery_blocked` order is NOT resendable (a row exists), refuses a new attestation while that row still owns it, and is recoverable once it settles", async () => {
     const id = await heldOrder();
     await recover(id, "not_received_by_lab");
     await admin.query("UPDATE hl7_message_outbound SET status='in_flight' WHERE organization_id=$1 AND source_aggregate_id=$2", [

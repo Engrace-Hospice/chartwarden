@@ -1,4 +1,4 @@
-// F-186 (#248) — M29's outbound operator alerts must be able to reach a person. Pure guards; the live proof on the
+// F-188 (#248) — M29's outbound operator alerts must be able to reach a person. Pure guards; the live proof on the
 // real M36 emitter is `m29-alert-routing.live.test.ts`.
 import { PLATFORM_DEFAULT_ALERT_RULES } from "@wardenx/messaging";
 import { describe, expect, it } from "vitest";
@@ -24,7 +24,7 @@ const alert = (over: Partial<OutboundAlert> = {}): OutboundAlert => ({
   ...over,
 });
 
-describe("F-186 — every outbound alert kind has a seeded platform-default rule", () => {
+describe("F-188 — every outbound alert kind has a seeded platform-default rule", () => {
   it.each(OUTBOUND_ALERT_KINDS)("%s has an enabled rule that names real recipients", (kind) => {
     const rules = PLATFORM_DEFAULT_ALERT_RULES.filter((r) => r.eventType === kind);
     expect(rules, `no platform-default alert_rule for '${kind}' — its alerts reach nobody`).toHaveLength(1);
@@ -45,7 +45,7 @@ describe("F-186 — every outbound alert kind has a seeded platform-default rule
   });
 });
 
-describe("F-186 — the severity ladders meet in one place", () => {
+describe("F-188 — the severity ladders meet in one place", () => {
   it("maps M29's HIGH/NORMAL to the emitter's alert_severity enum — the pass-through threw at the INSERT", () => {
     expect(toEmitterSeverity("HIGH")).toBe("critical");
     expect(toEmitterSeverity("NORMAL")).toBe("warn");
@@ -64,7 +64,7 @@ describe("F-186 — the severity ladders meet in one place", () => {
   });
 });
 
-describe("F-186 — the correlation id is a window, not a permanent key", () => {
+describe("F-188 — the correlation id is a window, not a permanent key", () => {
   const t0 = new Date("2026-05-01T10:00:00Z");
 
   it("is stable inside a window for one (kind, feed) — a retry storm pages once", () => {

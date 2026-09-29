@@ -423,7 +423,7 @@ export {
   type OutboundFeedResolver,
   buildDrizzleOutboundFeedResolver,
 } from "./outbound/feed-resolver";
-// F-186 — the read-only outbound/inbound evidence M11's attested recovery checks a `not_received_by_lab` against.
+// F-188 — the read-only outbound/inbound evidence M11's attested recovery checks a `not_received_by_lab` against.
 export { ormOutboundEvidenceForOrder } from "./outbound/order-dispatch-dedupe";
 export { type FeedRateLimiter, createFeedRateLimiter } from "./outbound/rate-limiter";
 export { resolveOutboundBaaResult } from "./outbound/resolve-baa";

@@ -77,7 +77,7 @@ export interface M11OrmRequestPortDeps {
     patientId: string,
   ) => Promise<OrmPatientFacts | null>;
   readonly now?: () => Date;
-  /** M29's `ormOutboundEvidenceForOrder` — injected (M11 has no `dependsOn` edge to 29). F-186. */
+  /** M29's `ormOutboundEvidenceForOrder` — injected (M11 has no `dependsOn` edge to 29). F-188. */
   readonly outboundEvidence?: OrmOutboundEvidencePort;
 }
 

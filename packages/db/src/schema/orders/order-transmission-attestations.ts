@@ -1,4 +1,4 @@
-// @wardenx/db — `order_transmission_attestation` (F-186, #248; migration 0266). One APPEND-ONLY row per operator
+// @wardenx/db — `order_transmission_attestation` (F-188, #248; migration 0266). One APPEND-ONLY row per operator
 // ATTESTED recovery of a lab order that failed after a message was built (`POST /api/v1/orders/:id/recover-transmission`):
 // what was attested, the STRUCTURED evidence (who at the lab was contacted + the lab's own reference), what the order's
 // failure reason was at the time, what the system then did, the attempt it started (NULL for `received_by_lab`) and

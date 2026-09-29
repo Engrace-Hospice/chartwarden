@@ -55,7 +55,7 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "system.integration_failure",
       "system.ai_cost_threshold",
       "system.backup_failure",
-      // F-186 (#248) — M29's outbound operator alerts (spec §5.3); previously rule-less, so they reached nobody.
+      // F-188 (#248) — M29's outbound operator alerts (spec §5.3); previously rule-less, so they reached nobody.
       "hl7_outbound.transmission_failed",
       "external_feed.baa_expired",
       "external_feed.baa_missing",

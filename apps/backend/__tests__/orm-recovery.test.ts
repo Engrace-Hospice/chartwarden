@@ -44,13 +44,13 @@ const failed = (reason: string | null, over: Partial<OrmResendCandidate> = {}): 
   ...over,
 });
 
-describe("F-185 — classifyTransmissionRecovery: which failures an attestation may act on", () => {
-  it("the recoverable set is exactly the two M29 terminal reasons (plus F-186's `recovery_blocked:*`, by prefix)", () => {
+describe("F-187 — classifyTransmissionRecovery: which failures an attestation may act on", () => {
+  it("the recoverable set is exactly the two M29 terminal reasons (plus F-188's `recovery_blocked:*`, by prefix)", () => {
     expect([...RECOVERABLE_M29_FAILURE_REASONS].sort()).toEqual(["application_reject", "dlq_exhausted"]);
     expect([...RECOVERY_ATTESTATIONS]).toEqual(["not_received_by_lab", "received_by_lab"]);
   });
 
-  it("F-186 — a `recovery_blocked:row_owns_order` order (an attested re-dispatch the worker could not honour) is recoverable AGAIN, but NEVER resendable", () => {
+  it("F-188 — a `recovery_blocked:row_owns_order` order (an attested re-dispatch the worker could not honour) is recoverable AGAIN, but NEVER resendable", () => {
     const reason = `${RECOVERY_BLOCKED_PREFIX}row_owns_order`;
     for (const a of RECOVERY_ATTESTATIONS) {
       expect(classifyTransmissionRecovery(failed(reason), a)).toEqual({ ok: true, priorReason: reason });
@@ -137,7 +137,7 @@ describe("F-187 — classifyOrmResend over a worker refusal (dispatch_refused:*)
 
 const EVIDENCE = { contactName: "Dana Reyes", labReference: "REF-2026-0041" };
 
-describe("F-185/F-186 — RecoverLabTransmissionRequest: the attestation is required, closed, and carries STRUCTURED evidence", () => {
+describe("F-187/F-188 — RecoverLabTransmissionRequest: the attestation is required, closed, and carries STRUCTURED evidence", () => {
   it.each(["not_received_by_lab", "received_by_lab"])("accepts attestation %s with evidence", (attestation) => {
     expect(Value.Check(RecoverLabTransmissionRequest, { attestation, ...EVIDENCE })).toBe(true);
   });
@@ -152,7 +152,7 @@ describe("F-185/F-186 — RecoverLabTransmissionRequest: the attestation is requ
     expect(Value.Check(RecoverLabTransmissionRequest, body)).toBe(false);
   });
 
-  // F-186 — the evidence is REQUIRED (an attestation with no evidence is just a click) and shaped so it cannot carry
+  // F-188 — the evidence is REQUIRED (an attestation with no evidence is just a click) and shaped so it cannot carry
   // a patient identifier: a contact NAME has no digits, a lab REFERENCE has no spaces.
   it.each([
     ["no contact name", { attestation: "not_received_by_lab", labReference: "REF-2026-0041" }],
@@ -171,7 +171,7 @@ describe("F-185/F-186 — RecoverLabTransmissionRequest: the attestation is requ
   });
 });
 
-describe("F-186 — classifyRecoveryContradiction: inbound evidence that refutes `not_received_by_lab`", () => {
+describe("F-188 — classifyRecoveryContradiction: inbound evidence that refutes `not_received_by_lab`", () => {
   const clean = { resultsStatus: "not_expected", resultsFirstReceivedAt: null };
   const noTraffic: OrmOutboundEvidence = { owningRowStatuses: [], labObservationCount: 0 };
 
@@ -236,7 +236,7 @@ function headerAuth(request: FastifyRequest): void {
   request.context.organizationId = typeof org === "string" ? org : "";
   const roles = request.headers["x-test-roles"];
   request.context.roles = typeof roles === "string" && roles.length > 0 ? roles.split(",") : [];
-  // F-186 — the harness's stand-in for the server-verified step-up state the authenticate hook stamps
+  // F-188 — the harness's stand-in for the server-verified step-up state the authenticate hook stamps
   // (`stepUpFreshFor`); the real predicate is M3's `step_up_recent`, exercised in `abac-step-up-boot.test.ts`.
   request.context.attributes.stepUpRecent = request.headers["x-test-stepup"] === "fresh";
 }
@@ -267,7 +267,7 @@ function makeServer() {
   for (const [name, predicate] of Object.entries(buildOrderAbacPredicates({ resolver: backend }))) {
     reg.register(name, predicate);
   }
-  // F-186 — `requireStepUp("order.recover_transmission")` composes M3's `step_up_recent` (not an M11 predicate; the
+  // F-188 — `requireStepUp("order.recover_transmission")` composes M3's `step_up_recent` (not an M11 predicate; the
   // `ai-platform-inject` precedent): the harness decides it from the stand-in attribute above.
   reg.register("step_up_recent", async (context) => context.attributes.stepUpRecent === true);
   registerAbacRegistry(reg);
@@ -277,7 +277,7 @@ function makeServer() {
 }
 
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_case_manager", "x-test-stepup": "fresh" };
-/** Holds `orders.amend` but has NOT completed a fresh step-up (F-186). */
+/** Holds `orders.amend` but has NOT completed a fresh step-up (F-188). */
 const RN_NO_STEPUP = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
 const RN_NO_AMEND = { "x-test-user": "rn_no_amend", "x-test-org": ORG, "x-test-roles": "rn_case_manager", "x-test-stepup": "fresh" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor", "x-test-stepup": "fresh" };
@@ -326,7 +326,7 @@ describe("F-187 — POST /api/v1/orders/:id/recover-transmission", () => {
     await app.close();
   });
 
-  // F-186 — BOTH attestations are step-up gated: a wrong `not_received_by_lab` orders the test twice, a wrong
+  // F-188 — BOTH attestations are step-up gated: a wrong `not_received_by_lab` orders the test twice, a wrong
   // `received_by_lab` hides an order the lab never got.
   it.each(["not_received_by_lab", "received_by_lab"])(
     "a caller who holds orders.amend but has NO fresh step-up is 403 for `%s` — and nothing is emitted",
@@ -380,9 +380,9 @@ describe("F-187 — POST /api/v1/orders/:id/recover-transmission", () => {
     ["an empty body", {}],
     ["an unknown attestation", { attestation: "probably", ...EVIDENCE }],
     ["a free-text note (nothing PHI-shaped may enter the audit diff)", { attestation: "received_by_lab", ...EVIDENCE, note: "spoke with Sam" }],
-    ["an attestation with NO evidence (F-186)", { attestation: "received_by_lab" }],
-    ["evidence with digits in the contact name (F-186)", { attestation: "received_by_lab", contactName: "Dana 5550100", labReference: "REF-2026-0041" }],
-    ["evidence with a spaced (free-text) lab reference (F-186)", { attestation: "received_by_lab", contactName: "Dana Reyes", labReference: "called about Jane Doe" }],
+    ["an attestation with NO evidence (F-188)", { attestation: "received_by_lab" }],
+    ["evidence with digits in the contact name (F-188)", { attestation: "received_by_lab", contactName: "Dana 5550100", labReference: "REF-2026-0041" }],
+    ["evidence with a spaced (free-text) lab reference (F-188)", { attestation: "received_by_lab", contactName: "Dana Reyes", labReference: "called about Jane Doe" }],
   ])("%s is a 422 — the attestation and its evidence are REQUIRED and closed, and nothing is emitted", async (_label, payload) => {
     const { app, backend } = makeServer();
     const id = await draft(app);

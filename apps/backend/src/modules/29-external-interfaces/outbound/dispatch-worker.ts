@@ -219,7 +219,7 @@ async function emitAlert(
 ): Promise<void> {
   try {
     const emitter = deps.alerts ?? (getSeam("AlertEmitter") as OutboundAlertPort);
-    // F-186 — severity ladder translation + a windowed correlation id (see `alert-routing.ts`): the pass-through
+    // F-188 — severity ladder translation + a windowed correlation id (see `alert-routing.ts`): the pass-through
     // this replaced threw at the `alert` INSERT on every call, and its per-feed id could only ever notify once.
     await emitter.emit(organizationId, buildOutboundAlertEmit(alert, deps.now()));
   } catch (err) {
@@ -649,7 +649,7 @@ async function refuseDispatch(
       feedId,
       refusalId: randomUUID(),
       reason,
-      // F-186 — the attempt this refusal concerns, so M11 applies it only to the order's CURRENT attempt.
+      // F-188 — the attempt this refusal concerns, so M11 applies it only to the order's CURRENT attempt.
       ...(attemptId !== undefined ? { attemptId } : {}),
     } as unknown as Record<string, unknown>,
     organizationId,
@@ -695,7 +695,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
         : await ormDispatchHasLiveOrDeliveredRow(tx, organizationId, payload.orderId);
     if (orderOwned) {
       // An ATTESTED re-dispatch blocked by a row that still owns the order is not a routine redelivery: the operator
-      // asked for a send that will not happen, and until F-186 the order then sat `pending` forever with only this
+      // asked for a send that will not happen, and until F-188 the order then sat `pending` forever with only this
       // log line. Publish the terminal signal IN THIS TRANSACTION so M11's applier ends the order actionable
       // (`recovery_blocked:row_owns_order`, recoverable again once the owning row settles). Ids only.
       if (attestationId !== undefined) {

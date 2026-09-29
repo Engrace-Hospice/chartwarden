@@ -137,7 +137,7 @@ export function classifyOrmResend(order: OrmResendCandidate): OrmResendVerdict {
 // coherent outcome for it — only `not_received_by_lab` (i.e. re-dispatch after the cause was fixed) applies.
 
 /**
- * F-186 — the `transmission_failure_reason` prefix for an attested re-dispatch that the M29 worker could not honour
+ * F-188 — the `transmission_failure_reason` prefix for an attested re-dispatch that the M29 worker could not honour
  * because an outbound row that still owns the order appeared between the request and the claim
  * (`recovery_blocked:row_owns_order`). It is deliberately NOT `orm_refused:`/`dispatch_refused:`: a row EXISTS for
  * this order, so F-182's plain resend must not act on it (it would only be swallowed by F-183's order-level guard, or
@@ -183,7 +183,7 @@ export function classifyTransmissionRecovery(
     };
   }
   const reason = order.transmissionFailureReason;
-  // F-186 — a `recovery_blocked:*` reason (an attested re-dispatch the worker could not honour) is recoverable AGAIN,
+  // F-188 — a `recovery_blocked:*` reason (an attested re-dispatch the worker could not honour) is recoverable AGAIN,
   // through this attested path only; the contradiction check below re-verifies the outbound evidence first.
   const recoverable =
     reason !== null && (RECOVERABLE_M29_FAILURE_REASONS.has(reason) || reason.startsWith(RECOVERY_BLOCKED_PREFIX));
@@ -205,7 +205,7 @@ export function classifyTransmissionRecovery(
   return { ok: true, priorReason: reason };
 }
 
-// ── F-186 — the CONTRADICTION CHECK: does inbound evidence already say the lab HAS this order? ───────────────────────
+// ── F-188 — the CONTRADICTION CHECK: does inbound evidence already say the lab HAS this order? ───────────────────────
 //
 // An operator who attests `not_received_by_lab` can be wrong (the system cannot verify a phone call), and a wrong
 // attestation orders the test twice at the lab. Before acting on it the system checks what it CAN verify: (1) has the

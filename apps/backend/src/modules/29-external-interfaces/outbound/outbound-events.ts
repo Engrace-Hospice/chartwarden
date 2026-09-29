@@ -48,7 +48,7 @@ export type LabOrderDispatchRefusalReason =
   | "no_feed_for_destination"
   | "feed_identity_incomplete"
   | "baa_inactive"
-  // F-186 — an operator-ATTESTED re-dispatch that the worker could not honour because an outbound row that still
+  // F-188 — an operator-ATTESTED re-dispatch that the worker could not honour because an outbound row that still
   // owns the order (`queued`/`in_flight`/`acked`) appeared between the operator's request and the claim. Unlike the
   // reasons above a row DOES exist for this order, so it is NOT resendable: M11 records it as
   // `recovery_blocked:row_owns_order`, which only the attested recovery (not F-182's plain resend) can act on.
@@ -64,7 +64,7 @@ export interface LabOrderDispatchRefusedPayload {
   readonly refusalId: string;
   readonly reason: LabOrderDispatchRefusalReason;
   /**
-   * F-186 — the outbound attempt this refusal concerns (echoed from `OrmRequestedPayload.attemptId`). M11's applier
+   * F-188 — the outbound attempt this refusal concerns (echoed from `OrmRequestedPayload.attemptId`). M11's applier
    * applies the refusal only when it names the order's CURRENT attempt. Absent for a request that carried none.
    */
   readonly attemptId?: string;
@@ -83,7 +83,7 @@ export type OutboundOutboxEvent =
     };
 
 /**
- * Every M36 alert `eventType` the outbound worker can emit. A runtime list (not just a type) so F-186's guard can
+ * Every M36 alert `eventType` the outbound worker can emit. A runtime list (not just a type) so F-188's guard can
  * assert each one has a seeded platform-default `alert_rule` — an alert kind with no rule persists an `alert` row
  * with zero recipients, i.e. reaches nobody.
  */

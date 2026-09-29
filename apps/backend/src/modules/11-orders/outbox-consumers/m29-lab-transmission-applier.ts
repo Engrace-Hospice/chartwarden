@@ -80,11 +80,11 @@ interface TransmissionFailedFacts {
  * the refusal's own id stands in as `sourceM29EventId`. Applied ONLY to an order still `pending` — a stale or
  * redelivered refusal never disturbs an order that has moved on.
  *
- * F-186 — and ONLY to the attempt it refused. `attemptId` is echoed from the request; when present it must equal the
+ * F-188 — and ONLY to the attempt it refused. `attemptId` is echoed from the request; when present it must equal the
  * order's CURRENT `transmission_attempt_id`. An operator's resend/recovery mints a new attempt and sets the order
  * `pending` again, so a refusal redelivered from the PREVIOUS attempt names a stale id and is ignored — before this,
  * the `pending` guard alone let it flip the freshly re-requested order `failed` again. `null` = a refusal from a
- * request that predates F-186 (no attempt id): applied as it always was.
+ * request that predates F-188 (no attempt id): applied as it always was.
  */
 interface DispatchRefusedFacts {
   readonly kind: "dispatch_refused";
@@ -180,7 +180,7 @@ export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionAppl
         if (fromStatus === "transmitted" || fromStatus === "failed") return;
         // F-187 — a worker refusal only ever applies to an order still awaiting its first transmission.
         if (facts.kind === "dispatch_refused" && fromStatus !== "pending") return;
-        // F-186 — and only to the attempt it refused: a refusal from a PREVIOUS attempt (redelivered after the
+        // F-188 — and only to the attempt it refused: a refusal from a PREVIOUS attempt (redelivered after the
         // operator resent / recovered, which minted a new attempt and set the order `pending` again) is stale.
         if (
           facts.kind === "dispatch_refused" &&
@@ -191,7 +191,7 @@ export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionAppl
         }
 
         const toStatus = facts.kind === "transmitted" ? "transmitted" : "failed";
-        // F-186 — an attested re-dispatch the worker could not honour (a row owns the order) is NOT a
+        // F-188 — an attested re-dispatch the worker could not honour (a row owns the order) is NOT a
         // `dispatch_refused:*` (that prefix is what F-182's plain resend acts on, and a row exists here): it is
         // `recovery_blocked:row_owns_order`, recoverable again only through the attested path.
         const failureReason =
@@ -227,7 +227,7 @@ export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionAppl
               eq(ORDER.organizationId, organizationId),
               eq(ORDER.id, order.id),
               eq(ORDER.transmissionStatus, fromStatus),
-              // F-186 — the attempt the order is on must not have changed between the read above and this write
+              // F-188 — the attempt the order is on must not have changed between the read above and this write
               // (a concurrent resend/recovery mints a new one).
               order.transmissionAttemptId === null
                 ? isNull(ORDER.transmissionAttemptId)

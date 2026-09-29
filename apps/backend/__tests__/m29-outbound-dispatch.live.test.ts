@@ -881,7 +881,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       expect(server.receivedWires).toHaveLength(1);
       expect(s1.alerts.emitted).toHaveLength(1);
       expect(s1.alerts.emitted[0]!.eventType).toBe("hl7_outbound.transmission_failed");
-      expect(s1.alerts.emitted[0]!.severity).toBe("warn"); // F-186: the EMITTER's alert_severity enum (HIGH/NORMAL threw at the INSERT)
+      expect(s1.alerts.emitted[0]!.severity).toBe("warn"); // F-188: the EMITTER's alert_severity enum (HIGH/NORMAL threw at the INSERT)
 
       // Tick 2, backoff elapsed: the existing retry path re-sends the STORED wire.
       const s2 = sweep({ now: new Date(t0 + 11 * MINUTE) });
@@ -1038,7 +1038,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       expect(rows).toHaveLength(1);
       expect(rows[0].payload).toMatchObject({ orderId, reason: "dlq_exhausted", attemptCount: 5 });
       expect(s.alerts.emitted).toHaveLength(1);
-      expect(s.alerts.emitted[0]!.severity).toBe("critical"); // F-186: the EMITTER's alert_severity enum (HIGH/NORMAL threw at the INSERT)
+      expect(s.alerts.emitted[0]!.severity).toBe("critical"); // F-188: the EMITTER's alert_severity enum (HIGH/NORMAL threw at the INSERT)
       // Terminal means terminal: another sweep sends nothing further.
       await sweep({ now: new Date(Date.now() + 30 * MINUTE) }).run();
       expect(server.receivedWires).toHaveLength(1);
@@ -1136,7 +1136,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         attemptCount: 1,
       });
       expect(s.alerts.emitted).toHaveLength(1);
-      expect(s.alerts.emitted[0]!.severity).toBe("critical"); // F-186: the EMITTER's alert_severity enum (HIGH/NORMAL threw at the INSERT)
+      expect(s.alerts.emitted[0]!.severity).toBe("critical"); // F-188: the EMITTER's alert_severity enum (HIGH/NORMAL threw at the INSERT)
       expect(JSON.stringify(s.alerts.emitted[0])).toMatch(/NOT re-sent/);
       expect(auditIntentsOf(info)).toContainEqual(
         expect.objectContaining({ kind: "hl7.outbound.held", outboundMessageId: row.id }),
@@ -1423,7 +1423,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  // ── F-186 — the worker's alerts, through the REAL M36 emitter, reach a PERSON ───────────────────────────────
+  // ── F-188 — the worker's alerts, through the REAL M36 emitter, reach a PERSON ───────────────────────────────
   // Every case above hands the worker a FAKE alerts port, which is exactly how three defects hid: the worker's
   // `HIGH`/`NORMAL` severity threw at the real `alert` INSERT (swallowed by design), no platform-default rule
   // existed for the three kinds, and the per-feed correlation id could only ever notify once. Here a real dispatch
@@ -1472,7 +1472,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       .map((r) => r.recipient_user_id as string)
       .sort();
 
-  it("F-186 end to end: a BAA-refused dispatch notifies the compliance officer (and the org_admin backstop) through the real emitter", async () => {
+  it("F-188 end to end: a BAA-refused dispatch notifies the compliance officer (and the org_admin backstop) through the real emitter", async () => {
     const who = await seedAlertRecipients();
     registerSeam("BaaStatusProvider", {
       baaStatusByMdmEntity: async () => ({ isActive: false, status: "missing", expiresOn: null }),
@@ -1501,7 +1501,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-186 end to end: a dead-lettered transmission notifies the operator and the M11 owners through the real emitter", async () => {
+  it("F-188 end to end: a dead-lettered transmission notifies the operator and the M11 owners through the real emitter", async () => {
     const who = await seedAlertRecipients();
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
