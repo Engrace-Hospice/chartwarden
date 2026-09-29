@@ -181,6 +181,8 @@ export const M11_EVENT_NAMES = [
   "m11.order.document_requested",
   "m11.order.verbal_expiring_soon",
   "m11.order.suggestion_state_changed",
+  // F-195 (#248) — the DURABLE compliance-alert intent of the two-person lab-recovery control.
+  "m11.order.recovery_alert_requested",
 ] as const;
 
 /** An M11 outbox event name (§4.4). */

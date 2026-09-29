@@ -79,11 +79,16 @@ import { type OrmRequestedPorts, resolveOrmRequested } from "./orm-request/orm-r
 import {
   RECOVERY_ANOMALY_THRESHOLD,
   RECOVERY_ANOMALY_WINDOW_MS,
+  RECOVERY_ESCALATION_THRESHOLD,
+  RECOVERY_ORG_RATE_THRESHOLD,
   RECOVERY_REQUEST_TTL_MS,
   type RecoveryAlertKind,
   type RecoveryControls,
   buildRecoveryAlert,
+  buildRecoveryAnomalyAlert,
   decideRecoveryCosign,
+  decideRecoveryEscalation,
+  recoveryAlertEventPayload,
 } from "./orm-request/orm-recovery-dual-control";
 import {
   ORM_REFUSAL_PREFIX,
@@ -301,10 +306,18 @@ export function createDbOrderBackend(
   const recoveryTtlMs = recovery.ttlMs ?? RECOVERY_REQUEST_TTL_MS;
   const anomalyWindowMs = recovery.anomalyWindowMs ?? RECOVERY_ANOMALY_WINDOW_MS;
   const anomalyThreshold = recovery.anomalyThreshold ?? RECOVERY_ANOMALY_THRESHOLD;
-  type RecoveryAlert = ReturnType<typeof buildRecoveryAlert>;
+  const escalationThreshold = recovery.escalationThreshold ?? RECOVERY_ESCALATION_THRESHOLD;
+  const orgRateThreshold = recovery.orgRateThreshold ?? RECOVERY_ORG_RATE_THRESHOLD;
+  type RecoveryAlert = ReturnType<typeof buildRecoveryAlert> | ReturnType<typeof buildRecoveryAnomalyAlert>;
 
-  /** The lab contact's NAME and the lab's reference are a third party's personal data — only the recovery permission sees them. */
-  const canSeeRecoveryEvidence = (actor: OrderDetailActor): boolean => actor.permissions.has("orders.amend");
+  /**
+   * The lab contact's NAME and the lab's reference are a third party's personal data — only the recovery authority sees
+   * them (F-195: `orders.transmission.recover`, or the high-trust co-signer's `orders.transmission.cosign_escalated`;
+   * it was the broad `orders.amend`).
+   */
+  const canSeeRecoveryEvidence = (actor: OrderDetailActor): boolean =>
+    actor.permissions.has("orders.transmission.recover") ||
+    actor.permissions.has("orders.transmission.cosign_escalated");
 
   const toRequestView = (r: typeof REQ.$inferSelect, actor: OrderDetailActor): RecoveryRequestView => {
     const see = canSeeRecoveryEvidence(actor);
@@ -312,6 +325,7 @@ export function createDbOrderBackend(
       id: r.id,
       orderId: r.orderRecordId,
       status: r.status as RecoveryRequestView["status"],
+      supersededReason: r.supersededReason,
       requestedByMembershipId: r.requestedByMembershipId,
       requestedAt: r.requestedAt.toISOString(),
       expiresAt: r.expiresAt.toISOString(),
@@ -339,18 +353,20 @@ export function createDbOrderBackend(
   };
 
   /**
-   * Notify compliance AFTER the recovery transaction committed. Best-effort by design: the durable record is the
-   * ledger / request row (append-only, audited), and a notification failure must never undo or block a recovery that
-   * already happened. A failure is logged with ids only — never the alert payload's evidence (there is none) or a name.
+   * F-195 — DURABLE compliance alerts. Each alert is published as an `m11.order.recovery_alert_requested` outbox event on
+   * the recovery's OWN transaction, so it commits or rolls back WITH the recovery (an alert can never describe a recovery
+   * that did not happen, and a recovery can never commit without its alert intent). `buildM11RecoveryAlertConsumer` hands
+   * it to M36; a delivery failure is retried by the relay and the alert's correlation id makes a redelivery idempotent.
+   * (F-194 emitted after commit and swallowed a failure, so an emitter outage lost the notification.)
    */
-  async function emitRecoveryAlerts(organizationId: string, alerts: readonly RecoveryAlert[]): Promise<void> {
-    if (!recovery.alerts) return;
+  async function publishRecoveryAlerts(
+    t: DbClient,
+    organizationId: string,
+    orderId: string,
+    alerts: readonly RecoveryAlert[],
+  ): Promise<void> {
     for (const a of alerts) {
-      try {
-        await recovery.alerts.emit(organizationId, a);
-      } catch {
-        console.warn("m11.order_recovery.alert_failed", { kind: a.eventType, requestId: a.payload.requestId });
-      }
+      await emit(t, organizationId, "m11.order.recovery_alert_requested", orderId, recoveryAlertEventPayload(a));
     }
   }
   /** Emit one `m11.order.*` event on the caller's tx (validated + persisted by the bound publisher). */
@@ -1561,9 +1577,12 @@ export function createDbOrderBackend(
           "Transmission recovery not allowed (not_configured): outbound lab requests are not configured",
         );
       }
-      const alerts: RecoveryAlert[] = [];
-      const result = await withOrgContext(db, { organizationId, userId: auditUserId }, async (tx) => {
+      return withOrgContext(db, { organizationId, userId: auditUserId }, async (tx) => {
         const t = tx as unknown as DbClient;
+        const alerts: RecoveryAlert[] = [];
+        // The ORDER row lock first (as every path that moves the order takes it): a supersede — the trigger fired by a
+        // concurrent transition of this order — is serialized against this co-sign by it, so a request superseded by a
+        // committed transition is read below as `superseded`, never executed.
         const [r] = (await t
           .select()
           .from(OR)
@@ -1579,13 +1598,62 @@ export function createDbOrderBackend(
         if (!q) throw new NotFoundError(`recovery request ${requestId} not found`);
         const at = nowFn();
         const cosign = decideRecoveryCosign(
-          { status: q.status, requestedByUserId: q.requestedByUserId, expiresAt: q.expiresAt },
+          {
+            status: q.status,
+            requestedByUserId: q.requestedByUserId,
+            expiresAt: q.expiresAt,
+            supersededReason: q.supersededReason,
+          },
           auditUserId,
           at,
         );
         if (!cosign.ok) {
           throw new ConflictError(`Transmission recovery not allowed (${cosign.code}): ${cosign.message}`);
         }
+
+        // F-195 — the COLLUSION BOUND. Serialize concurrent co-signs that involve either person (advisory locks, taken in
+        // a fixed order so two co-signs cannot deadlock), then count the EXECUTED recoveries in the window for this
+        // requester, for this exact pair (either way round) and for the whole org. At the bound, only a holder of
+        // `orders.transmission.cosign_escalated` may co-sign. This raises the cost of two people agreeing to lie; it
+        // does not verify the lab — nothing inside the platform can.
+        for (const who of [q.requestedByUserId, auditUserId].sort()) {
+          await t.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`m11-recovery:${organizationId}:${who}`}))`);
+        }
+        const windowStart = new Date(at.getTime() - anomalyWindowMs);
+        const [tally] = await t
+          .select({
+            requester: sql<number>`count(*) filter (where ${ATT.attestedByUserId} = ${q.requestedByUserId})::int`,
+            pair: sql<number>`count(*) filter (where (${ATT.attestedByUserId} = ${q.requestedByUserId} and ${ATT.cosignedByUserId} = ${auditUserId}) or (${ATT.attestedByUserId} = ${auditUserId} and ${ATT.cosignedByUserId} = ${q.requestedByUserId}))::int`,
+            org: sql<number>`count(*)::int`,
+          })
+          .from(ATT)
+          .where(
+            and(
+              eq(ATT.organizationId, organizationId),
+              eq(ATT.attestation, "not_received_by_lab"),
+              eq(ATT.outcome, "redispatched"),
+              gte(ATT.createdAt, windowStart),
+              // The window is [at − W, at]: a row stamped AFTER this moment (clock skew, a test's private clock) is not "recent".
+              lte(ATT.createdAt, at),
+            ),
+          );
+        const priorRequester = Number(tally?.requester ?? 0);
+        const priorPair = Number(tally?.pair ?? 0);
+        const priorOrg = Number(tally?.org ?? 0);
+        const escalation = decideRecoveryEscalation(
+          { requesterExecuted: priorRequester, pairExecuted: priorPair },
+          escalationThreshold,
+        );
+        if (escalation.required && !actor.permissions.has("orders.transmission.cosign_escalated")) {
+          throw new ConflictError(
+            `Transmission recovery not allowed (escalation_required): ${
+              escalation.reason === "pair_bound" ? "this requester and co-signer have" : "this requester has"
+            } already executed ${escalationThreshold} recoveries in the last ${Math.round(
+              anomalyWindowMs / 3_600_000,
+            )} hours — a co-signer holding 'orders.transmission.cosign_escalated' (an administrator or compliance officer) must approve this one`,
+          );
+        }
+
         const verdict = classifyTransmissionRecovery(
           {
             kind: r.kind,
@@ -1627,6 +1695,34 @@ export function createDbOrderBackend(
         }
         const attemptId = randomUUID();
         const attestationId = randomUUID();
+        // BOTH guards in the WHERE, not in a read-then-write (the break-glass shape): a concurrent co-signer, a lapse
+        // between the read above and now, a supersede, or the requester themselves all match no row. F-195 — this runs
+        // BEFORE the order is moved: the order's own transition would otherwise fire the supersede trigger on this very
+        // request. Anything that fails below rolls this back with the rest of the transaction.
+        const executed = await t
+          .update(REQ)
+          .set({
+            status: "executed",
+            cosignedByMembershipId: membershipId || null,
+            cosignedByUserId: auditUserId,
+            resolvedAt: at,
+            attestationId,
+            cosignedEscalated: escalation.required,
+          })
+          .where(
+            and(
+              eq(REQ.id, requestId),
+              eq(REQ.status, "pending_cosign"),
+              gt(REQ.expiresAt, at),
+              ne(REQ.requestedByUserId, auditUserId),
+            ),
+          )
+          .returning();
+        if (executed.length === 0) {
+          throw new ConflictError(
+            "Transmission recovery not allowed (not_pending): the recovery request was resolved concurrently",
+          );
+        }
         const claimed = await t
           .update(OR)
           .set({
@@ -1668,36 +1764,12 @@ export function createDbOrderBackend(
           recoveryRequestId: requestId,
           createdAt: at,
         });
-        // BOTH guards in the WHERE, not in a read-then-write (the break-glass shape): a concurrent co-signer, a lapse
-        // between the read above and now, or the requester themselves all match no row.
-        const executed = await t
-          .update(REQ)
-          .set({
-            status: "executed",
-            cosignedByMembershipId: membershipId || null,
-            cosignedByUserId: auditUserId,
-            resolvedAt: at,
-            attestationId,
-          })
-          .where(
-            and(
-              eq(REQ.id, requestId),
-              eq(REQ.status, "pending_cosign"),
-              gt(REQ.expiresAt, at),
-              ne(REQ.requestedByUserId, auditUserId),
-            ),
-          )
-          .returning();
-        if (executed.length === 0) {
-          throw new ConflictError(
-            "Transmission recovery not allowed (not_pending): the recovery request was resolved concurrently",
-          );
-        }
         await emit(t, organizationId, "m11.order.hl7_orm_requested", orderId, {
           ...outcome.payload,
           redispatchAttestationId: attestationId,
           attemptId,
         } as unknown as Record<string, unknown>);
+
         // The repeat-attester signal: how many requests this requester filed inside the window (this one included).
         const [counted] = await t
           .select({ n: sql<number>`count(*)::int` })
@@ -1706,7 +1778,7 @@ export function createDbOrderBackend(
             and(
               eq(REQ.organizationId, organizationId),
               eq(REQ.requestedByUserId, q.requestedByUserId),
-              gte(REQ.requestedAt, new Date(at.getTime() - anomalyWindowMs)),
+              gte(REQ.requestedAt, windowStart),
             ),
           );
         alerts.push(
@@ -1717,8 +1789,36 @@ export function createDbOrderBackend(
             cosignedByMembershipId: membershipId || null,
             requesterCountInWindow: Number(counted?.n ?? 0),
             anomalyThreshold,
+            pairExecutionsInWindow: priorPair + 1,
+            escalatedCosign: escalation.required,
           }),
         );
+        // F-195 — the collusion / rate signals, each DEDUPLICATED per window by its own correlation id.
+        if (priorPair + 1 >= escalationThreshold) {
+          alerts.push(
+            buildRecoveryAnomalyAlert("repeat_pair", {
+              orderId,
+              at,
+              windowMs: anomalyWindowMs,
+              executionsInWindow: priorPair + 1,
+              threshold: escalationThreshold,
+              pairUserIds: [q.requestedByUserId, auditUserId],
+            }),
+          );
+        }
+        if (priorOrg + 1 >= orgRateThreshold) {
+          alerts.push(
+            buildRecoveryAnomalyAlert("org_rate", {
+              orderId,
+              at,
+              windowMs: anomalyWindowMs,
+              executionsInWindow: priorOrg + 1,
+              threshold: orgRateThreshold,
+            }),
+          );
+        }
+        // Durable: the alert intents commit with the recovery (see `publishRecoveryAlerts`).
+        await publishRecoveryAlerts(t, organizationId, orderId, alerts);
         return {
           outcome: "redispatched" as const,
           refusalReason: null,
@@ -1726,8 +1826,6 @@ export function createDbOrderBackend(
           recovery: toRequestView(executed[0] as typeof REQ.$inferSelect, actor),
         };
       });
-      await emitRecoveryAlerts(organizationId, alerts);
-      return result;
     },
 
     /** F-194 — cancel a pending recovery (either person). The guard is the WHERE; a miss re-reads to say WHY. */
@@ -1744,8 +1842,7 @@ export function createDbOrderBackend(
           "Transmission recovery not allowed (no_actor): cancelling a recovery needs an authenticated user",
         );
       }
-      const alerts: RecoveryAlert[] = [];
-      const result = await withOrgContext(db, { organizationId, userId: auditUserId }, async (tx) => {
+      return withOrgContext(db, { organizationId, userId: auditUserId }, async (tx) => {
         const t = tx as unknown as DbClient;
         const at = nowFn();
         const [cancelled] = await t
@@ -1767,37 +1864,42 @@ export function createDbOrderBackend(
           .returning();
         if (!cancelled) {
           const [q] = await t
-            .select({ status: REQ.status })
+            .select({ status: REQ.status, supersededReason: REQ.supersededReason })
             .from(REQ)
             .where(and(eq(REQ.organizationId, organizationId), eq(REQ.id, requestId), eq(REQ.orderRecordId, orderId)))
             .limit(1);
           if (!q) throw new NotFoundError(`recovery request ${requestId} not found`);
           throw new ConflictError(
-            `Transmission recovery not allowed (not_pending): this recovery request is ${q.status}, not awaiting a co-signature`,
+            `Transmission recovery not allowed (${q.status === "superseded" ? "superseded" : "not_pending"}): this recovery request is ${q.status}${
+              q.supersededReason ? ` (${q.supersededReason})` : ""
+            }, not awaiting a co-signature`,
           );
         }
-        alerts.push(
+        await publishRecoveryAlerts(t, organizationId, orderId, [
           buildRecoveryAlert("m11.order.recovery_cancelled", {
             orderId,
             requestId,
             requestedByMembershipId: cancelled.requestedByMembershipId,
             cancelledByMembershipId: membershipId || null,
           }),
-        );
+        ]);
         return { recovery: toRequestView(cancelled, actor), order: await readOrder(t, orderId, actor) };
       });
-      await emitRecoveryAlerts(organizationId, alerts);
-      return result;
     },
 
     /**
      * F-194 — the sweep. One UPDATE flips every pending request past its `expires_at` to `expired` (the guard is the
      * WHERE, so a request co-signed a millisecond ago is not touched) and each raises the compliance alert. The system
      * actor is empty, so the audit trigger records no user — an expiry is not a person's act.
+     *
+     * F-195 — the same tick is the BACKSTOP for stranded requests: any pending request whose order is no longer a failed
+     * lab order (or no longer exists) is superseded. The `order_record` trigger supersedes at the moment the order moves,
+     * so this only ever catches a request that trigger could not see (an order row rewritten with triggers disabled, a
+     * restore) — it is a net, not the mechanism. Its alerts are the expiry ones only: a supersede is not a compliance
+     * event (nothing was executed, nothing lapsed unattended), and the co-sign answers a clear 409 with the reason.
      */
     async expireStaleLabRecoveryRequests(organizationId) {
-      const alerts: RecoveryAlert[] = [];
-      const expired = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+      return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
         const t = tx as unknown as DbClient;
         const at = nowFn();
         const rows = await t
@@ -1808,18 +1910,33 @@ export function createDbOrderBackend(
           )
           .returning();
         for (const row of rows) {
-          alerts.push(
+          await publishRecoveryAlerts(t, organizationId, row.orderRecordId, [
             buildRecoveryAlert("m11.order.recovery_expired", {
               orderId: row.orderRecordId,
               requestId: row.id,
               requestedByMembershipId: row.requestedByMembershipId,
             }),
-          );
+          ]);
         }
-        return rows.length;
+        const stranded = await t
+          .update(REQ)
+          .set({ status: "superseded", resolvedAt: at, supersededReason: "order_no_longer_recoverable" })
+          .where(
+            and(
+              eq(REQ.organizationId, organizationId),
+              eq(REQ.status, "pending_cosign"),
+              sql`NOT EXISTS (
+                SELECT 1 FROM order_record o
+                 WHERE o.id = ${REQ.orderRecordId}
+                   AND o.organization_id = ${REQ.organizationId}
+                   AND o.kind = 'lab'
+                   AND o.transmission_status = 'failed'
+              )`,
+            ),
+          )
+          .returning({ id: REQ.id });
+        return { expired: rows.length, superseded: stranded.length };
       });
-      await emitRecoveryAlerts(organizationId, alerts);
-      return { expired };
     },
 
     async completeOrder(organizationId, userId, id, _reason, actor = EMPTY_ORDER_DETAIL_ACTOR) {

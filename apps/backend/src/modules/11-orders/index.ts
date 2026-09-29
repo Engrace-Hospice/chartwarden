@@ -13,7 +13,10 @@ export {
   RECOVERY_ALERT_KINDS,
   RECOVERY_ANOMALY_THRESHOLD,
   RECOVERY_ANOMALY_WINDOW_MS,
+  RECOVERY_ESCALATION_THRESHOLD,
+  RECOVERY_ORG_RATE_THRESHOLD,
   RECOVERY_REQUEST_TTL_MS,
+  parseRecoveryBound,
   type RecoveryAlertKind,
   type RecoveryAlertPort,
   type RecoveryControls,
@@ -235,6 +238,13 @@ export {
   buildM11LabCancellationConsumer,
   decideLabCancellation,
 } from "./outbox-consumers/lab-cancellation-required";
+// F-195 (#248) — durable delivery of the two-person lab-recovery control's compliance alerts.
+export {
+  M11_RECOVERY_ALERT_CONSUMER,
+  M11_RECOVERY_ALERT_TYPES,
+  type RecoveryAlertDeps,
+  buildM11RecoveryAlertConsumer,
+} from "./outbox-consumers/recovery-alert";
 // F-166 (#248) — the m21 `handlers-unbound` group's other real event: a staff-initiated
 // `m21.supply_request.cancelled` releases the still-in-flight M11 order it never touched.
 export {

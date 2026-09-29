@@ -16,7 +16,7 @@ import {
   requireStepUp,
   resolveActorPermissions,
 } from "@wardenx/auth";
-import { UnauthorizedError } from "@wardenx/types";
+import { ForbiddenError, UnauthorizedError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
   CompleteOrderRequest,
@@ -93,6 +93,19 @@ const VERBAL = P("orders.verbal.record");
 const COSIGN = P("orders.cosign");
 const DISCONTINUE = P("orders.discontinue");
 const AMEND = P("orders.amend");
+// F-195 — the lab-transmission recovery authority, SPLIT OUT of `orders.amend` (which nearly every clinical role holds):
+// resend, file/cancel a recovery and co-sign need `orders.transmission.recover`. A co-signature is also accepted from a
+// holder of `orders.transmission.cosign_escalated` (the high-trust co-signer the recovery bound requires — see the
+// service), so that guard is an any-of.
+const RECOVER = P("orders.transmission.recover");
+const RECOVER_COSIGN: PreHandler = async (request) => {
+  const ctx = request.context;
+  if (!ctx?.organizationId) throw new UnauthorizedError();
+  const granted = await resolveActorPermissions({ organizationId: ctx.organizationId, userId: ctx.userId });
+  if (!granted.has("orders.transmission.recover") && !granted.has("orders.transmission.cosign_escalated")) {
+    throw new ForbiddenError("requires permission 'orders.transmission.recover' or 'orders.transmission.cosign_escalated'");
+  }
+};
 // F-188 — a fresh, server-verified second factor for the attested recovery (see the route).
 const RECOVER_STEP_UP = requireStepUp("order.recover_transmission") as PreHandler;
 const COMPLETE = P("orders.complete");
@@ -439,7 +452,7 @@ export function registerOrderRoutes(
   // (the order was already signed for exactly this transmission — a resend discloses nothing new). There is no
   // body: the target is the order, the action is fixed. The audit actor is the Better Auth USER id (the M4
   // audit trigger's `actor_user_id` FKs `user`, unlike the membership id the rest of M11 passes).
-  app.post("/api/v1/orders/:id/resend-transmission", { preHandler: [AMEND] }, async (request) => {
+  app.post("/api/v1/orders/:id/resend-transmission", { preHandler: [RECOVER] }, async (request) => {
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(OrderParamsSchema, request.params);
     return service.resendLabTransmission(
@@ -462,7 +475,7 @@ export function registerOrderRoutes(
   // F-188 — `requireStepUp("order.recover_transmission")`: BOTH attestations are gated (a wrong `not_received_by_lab`
   // orders the test twice; a wrong `received_by_lab` hides an order the lab never got), so a fresh, server-verified
   // second-factor is required on top of `orders.amend`. The body also carries STRUCTURED lab-contact evidence.
-  app.post("/api/v1/orders/:id/recover-transmission", { preHandler: [AMEND, RECOVER_STEP_UP] }, async (request) => {
+  app.post("/api/v1/orders/:id/recover-transmission", { preHandler: [RECOVER, RECOVER_STEP_UP] }, async (request) => {
     const { organizationId, userId } = actorOf(request);
     const { id } = parse(OrderParamsSchema, request.params);
     const body = parse(RecoverLabTransmissionRequest, request.body);
@@ -485,7 +498,7 @@ export function registerOrderRoutes(
   // USER id (`request.context.userId`), not the membership id.
   app.post(
     "/api/v1/orders/:id/recover-transmission/:requestId/cosign",
-    { preHandler: [AMEND, RECOVER_STEP_UP] },
+    { preHandler: [RECOVER_COSIGN, RECOVER_STEP_UP] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id, requestId } = parse(RecoveryRequestParamsSchema, request.params);
@@ -504,7 +517,7 @@ export function registerOrderRoutes(
   // the lab DID have the order). `orders.amend` alone — cancelling sends nothing and can only prevent a re-dispatch.
   app.post(
     "/api/v1/orders/:id/recover-transmission/:requestId/cancel",
-    { preHandler: [AMEND] },
+    { preHandler: [RECOVER] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id, requestId } = parse(RecoveryRequestParamsSchema, request.params);

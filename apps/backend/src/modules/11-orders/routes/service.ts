@@ -119,7 +119,7 @@ export interface OrderDetailView extends OrderView {
   /**
    * F-194 — the order's attested-recovery HISTORY (append-only ledger rows, oldest first). Empty for a non-lab order
    * and for a lab order that was never recovered. The lab contact's NAME and the lab's reference are a third party's
-   * personal data: they are `null` unless the reader holds `orders.amend` (the recovery permission).
+   * personal data: they are `null` unless the reader holds `orders.transmission.recover` (F-195) or `orders.transmission.cosign_escalated`.
    */
   readonly transmissionAttestations: readonly TransmissionAttestationView[];
   /** F-194 — the recovery awaiting its co-signature, if any (at most one per order); `null` otherwise. */
@@ -137,7 +137,7 @@ export interface TransmissionAttestationView {
   readonly cosignedByMembershipId: string | null;
   readonly attemptId: string | null;
   readonly createdAt: string;
-  /** Redacted (`null`) for a reader without `orders.amend`. */
+  /** Redacted (`null`) for a reader without `orders.transmission.recover` / `.cosign_escalated` (F-195). */
   readonly labContactName: string | null;
   readonly labReference: string | null;
 }
@@ -146,7 +146,9 @@ export interface TransmissionAttestationView {
 export interface RecoveryRequestView {
   readonly id: string;
   readonly orderId: string;
-  readonly status: "pending_cosign" | "executed" | "cancelled" | "expired";
+  readonly status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+  /** F-195 — why a `superseded` request can no longer execute (a fixed token); `null` otherwise. */
+  readonly supersededReason: string | null;
   readonly requestedByMembershipId: string | null;
   readonly requestedAt: string;
   readonly expiresAt: string;
@@ -555,7 +557,9 @@ export interface OrderRouteService extends OrderAbacResolver {
    * F-194 — the sweep: every pending recovery past its `expires_at` becomes `expired` and raises the compliance alert.
    * Runs from the hourly M11 timer (system actor, per org). Returns how many lapsed.
    */
-  expireStaleLabRecoveryRequests(organizationId: string): Promise<{ readonly expired: number }>;
+  expireStaleLabRecoveryRequests(
+    organizationId: string,
+  ): Promise<{ readonly expired: number; readonly superseded: number }>;
   pendingSignature(organizationId: string): Promise<{ orders: OrderView[] }>;
   verbalExpiring(organizationId: string): Promise<{ orders: OrderView[] }>;
   cosignPending(organizationId: string): Promise<{ orders: OrderView[] }>;
@@ -1262,7 +1266,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       );
     },
     async expireStaleLabRecoveryRequests() {
-      return { expired: 0 };
+      return { expired: 0, superseded: 0 };
     },
 
     async completeOrder(organizationId, userId, id, _reason, actor = EMPTY_ORDER_DETAIL_ACTOR) {

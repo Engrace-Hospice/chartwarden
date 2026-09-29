@@ -69,6 +69,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "m11.order.recovery_executed",
       "m11.order.recovery_expired",
       "m11.order.recovery_cancelled",
+      // F-195 (#248) — the collusion / rate signal on that control (critical, deduplicated per window).
+      "m11.order.recovery_anomaly",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();

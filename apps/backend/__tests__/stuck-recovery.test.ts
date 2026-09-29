@@ -273,10 +273,19 @@ function headerAuth(request: FastifyRequest): void {
 
 const ORG = "org_a";
 const PERMISSION_SEED = [
-  { userId: "rn_1", permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend"] },
+  {
+    userId: "rn_1",
+    permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend", "orders.transmission.view_held"],
+  },
+  // F-195 — `orders.amend` (and even the recovery authority) does NOT open the worklist; `view_held` is its own grant.
+  {
+    userId: "amend_only",
+    permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend", "orders.transmission.recover"],
+  },
   { userId: "viewer_1", permissions: ["orders.read"] },
 ];
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG };
+const AMEND_ONLY = { "x-test-user": "amend_only", "x-test-org": ORG };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG };
 const URL = "/api/v1/orders/held-transmissions";
 
@@ -316,14 +325,16 @@ describe("F-193 — GET /api/v1/orders/held-transmissions", () => {
     expect(listHeld).not.toHaveBeenCalled();
   });
 
-  it("`orders.read` alone is 403 — the worklist is for the people who can ACT on it (`orders.amend`)", async () => {
+  it("`orders.read` alone is 403, and so is `orders.amend` + `orders.transmission.recover` — the worklist is its own grant (`orders.transmission.view_held`, F-195)", async () => {
     const { app, listHeld } = makeServer();
-    const res = await app.inject({ method: "GET", url: URL, headers: VIEWER });
-    expect(res.statusCode).toBe(403);
+    for (const headers of [VIEWER, AMEND_ONLY]) {
+      const res = await app.inject({ method: "GET", url: URL, headers });
+      expect(res.statusCode).toBe(403);
+    }
     expect(listHeld).not.toHaveBeenCalled();
   });
 
-  it("with `orders.amend` it returns the page for the CALLER's org, defaulting to 50 and forwarding the cursor", async () => {
+  it("with `orders.transmission.view_held` it returns the page for the CALLER's org, defaulting to 50 and forwarding the cursor", async () => {
     const { app, listHeld } = makeServer();
     const res = await app.inject({ method: "GET", url: URL, headers: RN });
     expect(res.statusCode).toBe(200);

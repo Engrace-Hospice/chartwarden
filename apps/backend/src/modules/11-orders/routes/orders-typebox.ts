@@ -315,7 +315,8 @@ export const OrderViewResponseSchema = Type.Object({
 /**
  * F-194 — the attested-recovery ledger row and the two-person request, as the order detail shows them. "Who" is a
  * membership id, like every other actor on the view. The lab contact's NAME and the lab's reference are a third
- * party's personal data: `null` unless the reader holds `orders.amend`.
+ * party's personal data: `null` unless the reader holds `orders.transmission.recover` (F-195; the recovery authority, no
+ * longer the broad `orders.amend`) or `orders.transmission.cosign_escalated`.
  */
 export const TransmissionAttestationViewSchema = Type.Object({
   id: Type.String(),
@@ -337,7 +338,10 @@ export const RecoveryRequestViewSchema = Type.Object({
     Type.Literal("executed"),
     Type.Literal("cancelled"),
     Type.Literal("expired"),
+    Type.Literal("superseded"),
   ]),
+  /** F-195 — why a `superseded` request can no longer execute (a fixed token, e.g. `order_discontinued`); else `null`. */
+  supersededReason: nullableString(),
   requestedByMembershipId: nullableString(),
   requestedAt: Type.String(),
   expiresAt: Type.String(),

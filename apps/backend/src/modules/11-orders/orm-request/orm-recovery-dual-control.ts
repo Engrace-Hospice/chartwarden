@@ -12,6 +12,15 @@
 //   • every execution / cancellation / expiry raises a compliance alert, and a requester who keeps filing them is
 //     flagged in that alert's detail.
 // `received_by_lab` sends nothing and stays single-person.
+//
+// F-195 — the residual risks of that control, mitigated (none of them VERIFIES the lab; that cannot be done from inside
+// the platform — they make a false attestation costlier and louder):
+//   • COLLUSION: a requester, or a requester/co-signer PAIR, that has already executed `RECOVERY_ESCALATION_THRESHOLD`
+//     recoveries in the window can only be co-signed by a holder of `orders.transmission.cosign_escalated`
+//     (`decideRecoveryEscalation`); a repeated pair and a high per-org rate raise CRITICAL, window-deduplicated alerts.
+//   • STRANDED requests are superseded by the order's own transitions (a trigger, migration 0272) — see `superseded`.
+//   • DURABLE alerts: every alert is now an outbox event published in the recovery's own transaction and delivered to M36
+//     by a consumer, so a failure after commit is retried instead of lost.
 
 const HOUR_MS = 60 * 60_000;
 
@@ -32,16 +41,58 @@ export const RECOVERY_ANOMALY_WINDOW_MS = 24 * HOUR_MS;
  */
 export const RECOVERY_ANOMALY_THRESHOLD = 3;
 
-export type RecoveryRequestStatus = "pending_cosign" | "executed" | "cancelled" | "expired";
+export type RecoveryRequestStatus = "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+
+/**
+ * F-195 — the bound. How many EXECUTED `not_received_by_lab` recoveries one requester (or one requester/co-signer pair,
+ * either way round) may have inside {@link RECOVERY_ANOMALY_WINDOW_MS} before the NEXT one needs a co-signer holding
+ * `orders.transmission.cosign_escalated`. Three: one is normal, two happens when a lab call resolves two orders, a third in
+ * a day is a pattern. Injectable; an invalid env value falls back to this rather than disabling the bound.
+ */
+export const RECOVERY_ESCALATION_THRESHOLD = 3;
+
+/** F-195 — executed recoveries across the WHOLE org inside the window that raise the (deduplicated) rate alert. */
+export const RECOVERY_ORG_RATE_THRESHOLD = 10;
+
+/** Parse a bound from an env-style string: an integer in `[min, max]`, else `fallback` (never NaN, never "off"). */
+export function parseRecoveryBound(raw: string | undefined, fallback: number, min = 2, max = 100_000): number {
+  if (raw === undefined || raw.trim() === "") return fallback;
+  if (!/^\d+$/.test(raw.trim())) return fallback;
+  const n = Number(raw.trim());
+  return Number.isInteger(n) && n >= min && n <= max ? n : fallback;
+}
+
+export type RecoveryEscalationReason = "requester_bound" | "pair_bound";
+
+/**
+ * Does THIS co-signature need the high-trust key? `requesterExecuted` = executed recoveries this requester attested in
+ * the window; `pairExecuted` = executed recoveries between this exact pair (either way round). Either at the bound ⇒ yes.
+ */
+export function decideRecoveryEscalation(
+  counts: { readonly requesterExecuted: number; readonly pairExecuted: number },
+  threshold: number = RECOVERY_ESCALATION_THRESHOLD,
+): { readonly required: false } | { readonly required: true; readonly reason: RecoveryEscalationReason } {
+  if (counts.pairExecuted >= threshold) return { required: true, reason: "pair_bound" };
+  if (counts.requesterExecuted >= threshold) return { required: true, reason: "requester_bound" };
+  return { required: false };
+}
 
 /** What the pure decisions read off a request row. */
 export interface RecoveryRequestFacts {
   readonly status: string;
   readonly requestedByUserId: string;
   readonly expiresAt: Date;
+  /** F-195 — why a `superseded` request can no longer execute (a fixed token). */
+  readonly supersededReason?: string | null;
 }
 
-export type RecoveryCosignRefusalCode = "not_pending" | "expired" | "self_cosign" | "no_actor";
+export type RecoveryCosignRefusalCode =
+  | "not_pending"
+  | "superseded"
+  | "expired"
+  | "self_cosign"
+  | "no_actor"
+  | "escalation_required";
 
 export type RecoveryCosignVerdict =
   | { readonly ok: true }
@@ -60,6 +111,13 @@ export function decideRecoveryCosign(
 ): RecoveryCosignVerdict {
   if (!actorUserId) {
     return { ok: false, code: "no_actor", message: "a co-signature needs an authenticated user" };
+  }
+  if (request.status === "superseded") {
+    return {
+      ok: false,
+      code: "superseded",
+      message: `this recovery request was superseded (${request.supersededReason ?? "the order changed"}) and can no longer execute — re-check the order and file a new one if it is still failed`,
+    };
   }
   if (request.status !== "pending_cosign") {
     return {
@@ -97,6 +155,8 @@ export const RECOVERY_ALERT_KINDS = [
   "m11.order.recovery_cancelled",
   "m11.order.recovery_expired",
 ] as const;
+/** F-195 — the collusion / rate signal (a repeated requester/co-signer pair, a high org-wide rate). Always critical. */
+export const RECOVERY_ANOMALY_ALERT_KIND = "m11.order.recovery_anomaly" as const;
 export type RecoveryAlertKind = (typeof RECOVERY_ALERT_KINDS)[number];
 
 export interface RecoveryAlertFacts {
@@ -108,6 +168,10 @@ export interface RecoveryAlertFacts {
   /** How many `not_received_by_lab` requests the requester filed inside the window (this one included). */
   readonly requesterCountInWindow?: number;
   readonly anomalyThreshold?: number;
+  /** F-195 — executed recoveries between THIS pair inside the window (this one included). */
+  readonly pairExecutionsInWindow?: number;
+  /** F-195 — the co-signature came from a `cosign_escalated` holder because the bound had been reached. */
+  readonly escalatedCosign?: boolean;
 }
 
 /**
@@ -127,7 +191,9 @@ export function buildRecoveryAlert(
 } {
   const threshold = facts.anomalyThreshold ?? RECOVERY_ANOMALY_THRESHOLD;
   const count = facts.requesterCountInWindow ?? 0;
-  const anomaly = kind === "m11.order.recovery_executed" && count >= threshold;
+  const pairCount = facts.pairExecutionsInWindow ?? 0;
+  const repeatPair = kind === "m11.order.recovery_executed" && pairCount >= threshold;
+  const anomaly = kind === "m11.order.recovery_executed" && (count >= threshold || repeatPair);
   const severity: RecoveryAlertSeverity =
     kind === "m11.order.recovery_executed" ? (anomaly ? "critical" : "warn") : kind === "m11.order.recovery_expired" ? "warn" : "info";
   return {
@@ -141,11 +207,77 @@ export function buildRecoveryAlert(
       // The repeat-attester signal: a count and a flag, never a name.
       requesterRequestsInWindow: count,
       repeatAttesterThreshold: threshold,
-      repeatAttester: anomaly,
+      repeatAttester: kind === "m11.order.recovery_executed" && count >= threshold,
+      // F-195 — the pair signal and whether the bound forced a high-trust co-signer. Counts and flags, never a name.
+      pairExecutionsInWindow: pairCount,
+      repeatPair,
+      escalatedCosign: facts.escalatedCosign === true,
       deepLink: `/orders/${facts.orderId}`,
     },
     severity,
     correlationId: `m11-recovery:${kind}:${facts.requestId}`,
+  };
+}
+
+export type RecoveryAnomalySignal = "repeat_pair" | "org_rate";
+
+/**
+ * F-195 — the collusion / rate alert: CRITICAL, and DEDUPLICATED per window by its correlation id (`alert` is unique on
+ * `(organization_id, correlation_id)` and absorbs a repeat silently), so a pair that keeps going pages compliance once
+ * per window, not once per recovery — the per-recovery `recovery_executed` alert (critical for a repeated pair) already
+ * carries each execution. IDS AND COUNTS ONLY: the pair is two user ids (identifiers, not content).
+ */
+export function buildRecoveryAnomalyAlert(
+  signal: RecoveryAnomalySignal,
+  facts: {
+    readonly orderId: string;
+    readonly at: Date;
+    readonly windowMs: number;
+    readonly executionsInWindow: number;
+    readonly threshold: number;
+    /** `repeat_pair` only — the two user ids, in any order (sorted here so the correlation id is symmetric). */
+    readonly pairUserIds?: readonly [string, string];
+  },
+): {
+  readonly eventType: typeof RECOVERY_ANOMALY_ALERT_KIND;
+  readonly payload: Record<string, unknown>;
+  readonly severity: RecoveryAlertSeverity;
+  readonly correlationId: string;
+} {
+  const bucket = Math.floor(facts.at.getTime() / facts.windowMs);
+  const pair = facts.pairUserIds ? [...facts.pairUserIds].sort() : null;
+  return {
+    eventType: RECOVERY_ANOMALY_ALERT_KIND,
+    payload: {
+      signal,
+      orderId: facts.orderId,
+      executionsInWindow: facts.executionsInWindow,
+      threshold: facts.threshold,
+      windowHours: Math.round(facts.windowMs / HOUR_MS),
+      pairUserIds: pair,
+      deepLink: `/orders/${facts.orderId}`,
+    },
+    severity: "critical",
+    correlationId: `m11-recovery:anomaly:${signal}:${pair ? `${pair[0]}:${pair[1]}:` : ""}${bucket}`,
+  };
+}
+
+/**
+ * F-195 — the alert INTENT an M11 transaction publishes as `m11.order.recovery_alert_requested`. The recovery's own
+ * transaction writes it, so it commits or rolls back WITH the recovery; a consumer delivers it to M36 and the transactional
+ * outbox retries a failed delivery. The alert's own correlation id makes the redelivery idempotent.
+ */
+export function recoveryAlertEventPayload(alert: {
+  readonly eventType: string;
+  readonly severity: string;
+  readonly correlationId: string;
+  readonly payload: Record<string, unknown>;
+}): { alertType: string; severity: string; correlationId: string; alertPayload: Record<string, unknown> } {
+  return {
+    alertType: alert.eventType,
+    severity: alert.severity,
+    correlationId: alert.correlationId,
+    alertPayload: alert.payload,
   };
 }
 
@@ -164,9 +296,18 @@ export interface RecoveryAlertPort {
 
 /** The knobs a composition root (or a test) can set on the recovery control; every one has a documented default. */
 export interface RecoveryControls {
+  /**
+   * @deprecated F-195 — alerts are DURABLE now: the service publishes `m11.order.recovery_alert_requested` in the
+   * recovery's own transaction and `buildM11RecoveryAlertConsumer` delivers it to the emitter. Optional and unused by
+   * the service, kept so an older composition root still compiles.
+   */
   readonly alerts?: RecoveryAlertPort;
   readonly ttlMs?: number;
   readonly anomalyWindowMs?: number;
   readonly anomalyThreshold?: number;
+  /** F-195 — see {@link RECOVERY_ESCALATION_THRESHOLD}. */
+  readonly escalationThreshold?: number;
+  /** F-195 — see {@link RECOVERY_ORG_RATE_THRESHOLD}. */
+  readonly orgRateThreshold?: number;
   readonly now?: () => Date;
 }

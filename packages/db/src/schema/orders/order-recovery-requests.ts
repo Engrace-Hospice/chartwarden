@@ -6,7 +6,7 @@
 // (CHECK); once a request leaves `pending_cosign` a trigger freezes it. `order_record_id` is a plain uuid with NO SQL FK
 // (order_record is partitioned — the `order_discontinuation` precedent). RLS + FORCE + the M4 write-audit trigger (the
 // contact NAME denylisted) land in the migration; the app role has SELECT/INSERT/UPDATE and no DELETE.
-import { index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { businessRule } from "../../business-rules";
 import { locations } from "../locations";
@@ -44,7 +44,11 @@ export const orderRecoveryRequests = pgTable(
     labReference: text("lab_reference").notNull(),
     /** The order's `transmission_failure_reason` when the request was filed. */
     priorFailureReason: text("prior_failure_reason").notNull(),
-    /** `pending_cosign` | `executed` | `cancelled` | `expired` (CHECK-constrained; agrees with the resolution columns). */
+    /**
+     * `pending_cosign` | `executed` | `cancelled` | `expired` | `superseded` (CHECK-constrained; agrees with the
+     * resolution columns). `superseded` (F-195, migration 0272) = the ORDER moved on (discontinued, corrected, delivered,
+     * recovered another way) so the request could never execute; a trigger on `order_record` sets it.
+     */
     status: text("status").notNull().default("pending_cosign"),
     requestedByMembershipId: uuid("requested_by_membership_id"),
     requestedByUserId: uuid("requested_by_user_id").notNull(),
@@ -57,6 +61,10 @@ export const orderRecoveryRequests = pgTable(
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     /** The `order_transmission_attestation` row this request produced (`executed` only). */
     attestationId: uuid("attestation_id"),
+    /** F-195 — a fixed token (`order_discontinued`, `transmission_transmitted`, …) — set exactly when `status = 'superseded'`. */
+    supersededReason: text("superseded_reason"),
+    /** F-195 — the co-signature came from a holder of `orders.transmission.cosign_escalated` (the recovery bound was reached). */
+    cosignedEscalated: boolean("cosigned_escalated").notNull().default(false),
   },
   (t) => ({
     onePending: uniqueIndex(ONE_PENDING_PER_ORDER_UQ)

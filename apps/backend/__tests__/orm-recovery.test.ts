@@ -248,8 +248,16 @@ const PHYS = "44444444-4444-4444-8444-444444444444";
 const NOW = "2026-06-08T12:00:00.000Z";
 
 const PERMISSION_SEED = [
-  { userId: "rn_1", permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend"] },
+  // F-195 — the recovery authority is `orders.transmission.recover`, NOT `orders.amend` (which nearly every clinical role holds).
+  {
+    userId: "rn_1",
+    permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend", "orders.transmission.recover"],
+  },
   { userId: "rn_no_amend", permissions: ["orders.read", "orders.draft", "orders.sign"] },
+  // Holds `orders.amend` (and everything else a clinician has) but NOT the recovery authority.
+  { userId: "amend_only", permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend"] },
+  // The high-trust co-signer: no `orders.transmission.recover`, only `cosign_escalated`.
+  { userId: "escalated_only", permissions: ["orders.read", "orders.transmission.cosign_escalated"] },
   { userId: "viewer_1", permissions: ["orders.read"] },
 ];
 
@@ -280,6 +288,8 @@ const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_case_
 /** Holds `orders.amend` but has NOT completed a fresh step-up (F-188). */
 const RN_NO_STEPUP = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
 const RN_NO_AMEND = { "x-test-user": "rn_no_amend", "x-test-org": ORG, "x-test-roles": "rn_case_manager", "x-test-stepup": "fresh" };
+const AMEND_ONLY = { "x-test-user": "amend_only", "x-test-org": ORG, "x-test-roles": "rn_case_manager", "x-test-stepup": "fresh" };
+const ESCALATED_ONLY = { "x-test-user": "escalated_only", "x-test-org": ORG, "x-test-roles": "compliance_officer", "x-test-stepup": "fresh" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor", "x-test-stepup": "fresh" };
 const UNKNOWN_ORDER = "99999999-9999-4999-8999-999999999999";
 const ATTEST = { attestation: "not_received_by_lab", ...EVIDENCE };
@@ -316,10 +326,10 @@ describe("F-187 — POST /api/v1/orders/:id/recover-transmission", () => {
   }
   const url = (id: string) => `/api/v1/orders/${id}/recover-transmission`;
 
-  it("is gated on orders.amend: read-only and clinician-without-amend are 403", async () => {
+  it("is gated on orders.transmission.recover: read-only, clinician-without-amend AND a holder of `orders.amend` alone are 403 (F-195)", async () => {
     const { app } = makeServer();
     const id = await draft(app);
-    for (const headers of [VIEWER, RN_NO_AMEND]) {
+    for (const headers of [VIEWER, RN_NO_AMEND, AMEND_ONLY, ESCALATED_ONLY]) {
       const res = await app.inject({ method: "POST", url: url(id), headers, payload: ATTEST });
       expect(res.statusCode).toBe(403);
     }
@@ -419,13 +429,25 @@ describe("F-194 — POST /api/v1/orders/:id/recover-transmission/:requestId/{cos
   it.each([
     ["cosign", cosignUrl],
     ["cancel", cancelUrl],
-  ])("%s is gated on orders.amend: read-only and clinician-without-amend are 403", async (_name, urlOf) => {
+  ])("%s is gated on orders.transmission.recover: read-only, clinician-without-amend and `orders.amend` ALONE are 403 (F-195)", async (_name, urlOf) => {
     const { app } = makeServer();
     const id = await draft(app);
-    for (const headers of [VIEWER, RN_NO_AMEND]) {
+    for (const headers of [VIEWER, RN_NO_AMEND, AMEND_ONLY]) {
       const res = await app.inject({ method: "POST", url: urlOf(id), headers });
       expect(res.statusCode).toBe(403);
     }
+    await app.close();
+  });
+
+  // F-195 — the high-trust co-signer holds ONLY `cosign_escalated`: it may co-sign (the recovery bound requires exactly
+  // that person) but it can neither file nor cancel — those need `orders.transmission.recover`.
+  it("co-sign ALSO admits a holder of orders.transmission.cosign_escalated alone; cancel does not", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const cosign = await app.inject({ method: "POST", url: cosignUrl(id), headers: ESCALATED_ONLY });
+    expect(cosign.statusCode).toBe(409); // past the gate; the in-memory service has no recovery requests
+    const cancel = await app.inject({ method: "POST", url: cancelUrl(id), headers: ESCALATED_ONLY });
+    expect(cancel.statusCode).toBe(403);
     await app.close();
   });
 

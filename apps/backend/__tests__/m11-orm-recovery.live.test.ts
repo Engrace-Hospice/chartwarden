@@ -34,11 +34,13 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { registerSeam } from "../src/bootstrap/seams/registry";
 import { hl7OrmDemographicsInTx } from "../src/modules/05-patient/seams/hl7-orm-demographics";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
+import { createDrizzleAlertEmitter, wireAlertRuleSeed } from "../src/modules/36-messaging/index";
 import { createDbOrderBackend } from "../src/modules/11-orders/orders-route-service-db";
 import { createDrizzleOrderEraseStore } from "../src/modules/11-orders/erasers/orders-eraser";
 import { runVerbalOrderExpiryFanout } from "../src/modules/11-orders/jobs/verbal-order-expiry-worker";
 import { buildM11OrmRequestedPorts } from "../src/modules/11-orders/orm-request/ports";
 import { buildM11LabTransmissionApplierConsumer } from "../src/modules/11-orders/outbox-consumers/m29-lab-transmission-applier";
+import { buildM11RecoveryAlertConsumer } from "../src/modules/11-orders/outbox-consumers/recovery-alert";
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/events-by-m29";
 import { parseMshEnvelope } from "../src/modules/29-external-interfaces/listener/mllp-framing";
 import type { OutboundTenantKeyProvider } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
@@ -78,6 +80,9 @@ const keys: OutboundTenantKeyProvider = {
   },
 };
 
+/** F-195 — the shared backend's collusion bound and org-rate alert are out of reach (see where `svc` is built). */
+const NO_BOUND = { escalationThreshold: 100_000, orgRateThreshold: 100_000 };
+
 const LOINC = [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }];
 const LAB_DATA = { testCodes: LOINC, fastingRequired: false, routingLabId: FAC_ACTIVE };
 
@@ -100,6 +105,10 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   let recoveryAlerts: { emit: (org: string, input: Record<string, unknown>) => Promise<void> };
   /** F-194 — every compliance alert the recovery control raised (the real `AlertEmitter` port shape, captured). */
   let alertLog: { org: string; eventType: string; severity: string; correlationId: string; payload: Record<string, unknown> }[] = [];
+  /** F-195 — while true the alert port throws (an emitter outage); the relay must redeliver, not lose, the alert. */
+  let alertFailure = false;
+  /** F-195 — the REAL M36 emitter (the `alert` table, the seeded rules), set only inside the durable-delivery case. */
+  let realEmitter: ReturnType<typeof createDrizzleAlertEmitter> | null = null;
   let wires: string[] = [];
   /** `refuse` → a permanent destination refusal (a real `dlq_exhausted` through the real worker); `ack` → AA. */
   let mode: "ack" | "refuse" = "ack";
@@ -364,10 +373,20 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     });
     recoveryAlerts = {
       emit: async (org, input) => {
+        // F-195 — an injectable emitter outage, and (for the durable-delivery case) the REAL M36 emitter behind the capture.
+        if (alertFailure) throw new Error("emitter down (injected)");
         alertLog.push({ org, ...input } as (typeof alertLog)[number]);
+        if (realEmitter) await realEmitter.emit(org, input as never);
       },
     };
-    svc = createDbOrderBackend(handle.db, m11Outbox, ormPorts, { alerts: recoveryAlerts as never });
+    // F-195 — the recovery control's alerts are DURABLE: the service publishes an outbox event in the recovery's own
+    // transaction and `buildM11RecoveryAlertConsumer` (bound below, on the real dispatcher) hands it to this port.
+    //
+    // F-195 — the collusion BOUND is set out of reach for this shared backend: these cases all use ONE requester/co-signer
+    // pair and the attestation ledger is append-only (it cannot be cleared between cases), so the default bound of 3 would
+    // trip on the fourth case for reasons unrelated to what it proves. The bound has its own cases (below) that build a
+    // backend with the real threshold on a private clock, so their windows share no rows with anything else.
+    svc = createDbOrderBackend(handle.db, m11Outbox, ormPorts, NO_BOUND);
     applier = buildM11LabTransmissionApplierConsumer({ db: handle.db, outbox: m11Outbox });
 
     const orgs: ActiveOrgEnumerator = {
@@ -386,6 +405,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
           destinationPolicy: { allowPlain: true, allowLoopback: true },
         }),
         applier,
+        buildM11RecoveryAlertConsumer({ alerts: recoveryAlerts as never }),
       ],
       eventCatalog: catalog,
       options: { log: () => {} },
@@ -399,6 +419,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
 
   beforeEach(async () => {
     alertLog = [];
+    alertFailure = false;
     wires = [];
     mode = "ack";
     baaActive = true;
@@ -1264,7 +1285,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   }
   /** A second ORG_A backend over the SAME facts and publisher — a different clock/TTL/threshold, the same alert log. */
   const backendWith = (controls: Record<string, unknown>) =>
-    createDbOrderBackend(handle.db, m11OutboxPort, ormPorts, { alerts: recoveryAlerts as never, ...controls } as never);
+    createDbOrderBackend(handle.db, m11OutboxPort, ormPorts, { ...NO_BOUND, ...controls } as never);
 
   it("F-194: FILING a `not_received_by_lab` recovery re-dispatches NOTHING — a pending request (24 h), the order untouched", async () => {
     const id = await heldOrder();
@@ -1413,6 +1434,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     const [req] = await requests(id);
     expect(req).toMatchObject({ status: "expired", cosigned_by_user_id: null, attestation_id: null });
     expect(req!.resolved_at).not.toBeNull();
+    await settle(); // F-195 — alerts are outbox events; the dispatcher delivers them to the (captured) emitter
     const lapsed = alertLog.filter((a) => a.eventType === "m11.order.recovery_expired");
     expect(lapsed).toHaveLength(1);
     expect(lapsed[0]).toMatchObject({ org: ORG_A, severity: "warn" });
@@ -1432,6 +1454,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(cancelled.recovery.status).toBe("cancelled");
     const [req] = await requests(id);
     expect(req).toMatchObject({ status: "cancelled", cancelled_by_user_id: USER_B, cosigned_by_user_id: null });
+    await settle();
     expect(alertLog.filter((a) => a.eventType === "m11.order.recovery_cancelled")).toHaveLength(1);
     expect(alertLog.find((a) => a.eventType === "m11.order.recovery_cancelled")!.severity).toBe("info");
 
@@ -1573,6 +1596,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     const fc = await short.recoverLabTransmission(ORG_A, memberC, c, "not_received_by_lab", EVIDENCE, undefined, USER_C);
     await new Promise((r) => setTimeout(r, 25));
     await short.expireStaleLabRecoveryRequests(ORG_A);
+    await settle();
 
     const byKind = (k: string) => alertLog.filter((x) => x.eventType === k);
     expect(byKind("m11.order.recovery_executed")).toHaveLength(1);
@@ -1615,6 +1639,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     };
     const first = await run();
     const second = await run();
+    await settle();
     const executed = alertLog.filter((x) => x.eventType === "m11.order.recovery_executed");
     expect(executed).toHaveLength(2);
     expect(executed[0]).toMatchObject({ severity: "warn" });
@@ -1623,9 +1648,22 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(executed[1]!.payload).toMatchObject({ orderId: second, repeatAttester: true, requesterRequestsInWindow: 2, repeatAttesterThreshold: 2 });
   });
 
-  it("F-194: the order DETAIL shows the attestation history and the pending request — the lab contact's name and reference only with `orders.amend`", async () => {
+  it("F-194: the order DETAIL shows the attestation history and the pending request — the lab contact's name and reference only with the recovery authority (F-195: `orders.transmission.recover`, NOT `orders.amend`)", async () => {
     const id = await heldOrder();
-    const amender = { membershipId: member, roles: [], disciplines: [], permissions: new Set(["orders.amend"]) };
+    const amender = {
+      membershipId: member,
+      roles: [],
+      disciplines: [],
+      permissions: new Set(["orders.transmission.recover"]),
+    };
+    // F-195 — `orders.amend` (every clinician has it) no longer opens the third party's name and lab reference.
+    const clinician = { membershipId: member, roles: [], disciplines: [], permissions: new Set(["orders.read", "orders.amend"]) };
+    const escalated = {
+      membershipId: member,
+      roles: [],
+      disciplines: [],
+      permissions: new Set(["orders.transmission.cosign_escalated"]),
+    };
     const reader = { membershipId: member, roles: [], disciplines: [], permissions: new Set(["orders.read"]) };
 
     expect((await svc.getOrder(ORG_A, id, amender)).transmissionAttestations).toEqual([]);
@@ -1643,6 +1681,16 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
       status: "pending_cosign",
       labContactName: null,
       labReference: null,
+    });
+    // F-195 — a clinician with `orders.amend` (nearly every one) is a "reader" here; the high-trust co-signer, who must
+    // judge the evidence before approving, is not.
+    expect((await svc.getOrder(ORG_A, id, clinician)).pendingRecovery).toMatchObject({
+      labContactName: null,
+      labReference: null,
+    });
+    expect((await svc.getOrder(ORG_A, id, escalated)).pendingRecovery).toMatchObject({
+      labContactName: "Dana Reyes",
+      labReference: "REF-2026-0041",
     });
 
     await cosign(id, filed.recovery!.id);
@@ -1723,6 +1771,464 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     }
     expect(await attestations(id)).toHaveLength(0);
     expect(await requests(id)).toHaveLength(0);
+  });
+
+
+  // ══ F-195 — the residual risks of the two-person control, mitigated (all as the NOBYPASSRLS `wardenx_app` role) ═══════════
+  //
+  // These cases build their OWN backend with the real collusion bound on a PRIVATE clock in a distinct year, so their
+  // windows share no rows with any other case (the attestation ledger is append-only and cannot be cleared between cases).
+  const clockFrom = (isoStart: string) => {
+    const clk = { t: Date.parse(isoStart) };
+    return { clk, now: () => new Date((clk.t += 1000)) };
+  };
+  type Person = readonly [membership: string, user: string];
+  const fileWith = (b: ReturnType<typeof backendWith>, id: string, [m, u]: Person) =>
+    b.recoverLabTransmission(ORG_A, m, id, "not_received_by_lab", EVIDENCE, undefined, u);
+  const cosignWith = (
+    b: ReturnType<typeof backendWith>,
+    id: string,
+    requestId: string,
+    [m, u]: Person,
+    permissions: string[] = [],
+  ) =>
+    b.cosignLabTransmissionRecovery(
+      ORG_A,
+      m,
+      id,
+      requestId,
+      { membershipId: m, roles: [], disciplines: [], permissions: new Set(permissions) },
+      u,
+    );
+  const executeOne = async (b: ReturnType<typeof backendWith>, requester: Person, cosigner: Person, permissions?: string[]) => {
+    const id = await heldOrder();
+    const filed = await fileWith(b, id, requester);
+    const done = await cosignWith(b, id, filed.recovery!.id, cosigner, permissions);
+    return { id, requestId: filed.recovery!.id, done };
+  };
+  const ESCALATED = ["orders.transmission.cosign_escalated"];
+  const PD: Person = [memberD, USER_D];
+  const PB: Person = [memberA2, USER_B];
+  const PC: Person = [memberC, USER_C];
+  const requestOf = async (requestId: string) =>
+    (await admin.query("SELECT * FROM order_recovery_request WHERE id=$1", [requestId])).rows[0] as Record<string, unknown>;
+
+  it("F-195 COLLUSION BOUND (requester): after 3 executed recoveries in the window the 4th needs a `cosign_escalated` co-signer — refused 409 with NOTHING dispatched, the request stays pending; a holder executes it and it is RECORDED", async () => {
+    const { now } = clockFrom("2031-03-01T00:00:00Z");
+    const b = backendWith({ now, escalationThreshold: 3 });
+    for (let i = 0; i < 3; i++) expect((await executeOne(b, PD, PB)).done.outcome).toBe("redispatched");
+
+    const id = await heldOrder();
+    const filed = await fileWith(b, id, PD);
+    const dispatched = await count(id, "m11.order.hl7_orm_requested");
+
+    // The SAME pair is at its pair bound…
+    await expect(cosignWith(b, id, filed.recovery!.id, PB)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("(escalation_required)"),
+    });
+    // …and a DIFFERENT co-signer is still stopped by the REQUESTER's own bound (the requester cannot shop for a friendlier second person).
+    await expect(cosignWith(b, id, filed.recovery!.id, PC)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("(escalation_required)"),
+    });
+    // Nothing moved: the request is still pending, the order still failed, no second ORM.
+    expect(await requestOf(filed.recovery!.id)).toMatchObject({ status: "pending_cosign", cosigned_escalated: false });
+    expect((await orderRow(id)).transmission_status).toBe("failed");
+    expect(await count(id, "m11.order.hl7_orm_requested")).toBe(dispatched);
+    expect(await attestations(id)).toHaveLength(0);
+
+    // A holder of `orders.transmission.cosign_escalated` approves it — and that is on the record.
+    const done = await cosignWith(b, id, filed.recovery!.id, PC, ESCALATED);
+    expect(done.outcome).toBe("redispatched");
+    expect(await requestOf(filed.recovery!.id)).toMatchObject({
+      status: "executed",
+      cosigned_escalated: true,
+      cosigned_by_user_id: USER_C,
+    });
+    await settle();
+    const executed = alertLog.find((a) => a.eventType === "m11.order.recovery_executed" && a.payload.orderId === id)!;
+    expect(executed.severity).toBe("critical");
+    expect(executed.payload).toMatchObject({ escalatedCosign: true });
+  });
+
+  it("F-195 COLLUSION BOUND (pair): a repeated PAIR is bounded either way round — swapping who files does not reset it — while a DIFFERENT pair is unaffected", async () => {
+    const { now } = clockFrom("2032-03-01T00:00:00Z");
+    const b = backendWith({ now, escalationThreshold: 3 });
+    for (let i = 0; i < 3; i++) expect((await executeOne(b, PC, PB)).done.outcome).toBe("redispatched");
+
+    // B files, C co-signs: B's own requester count is 0, but the (B, C) PAIR has executed 3 times.
+    const id = await heldOrder();
+    const filed = await fileWith(b, id, PB);
+    await expect(cosignWith(b, id, filed.recovery!.id, PC)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("this requester and co-signer have already executed 3"),
+    });
+    // A different second person for the same request is a different pair and a requester with no history: it executes.
+    expect((await cosignWith(b, id, filed.recovery!.id, PD)).outcome).toBe("redispatched");
+    expect(await requestOf(filed.recovery!.id)).toMatchObject({ status: "executed", cosigned_escalated: false });
+  });
+
+  it("F-195 COLLUSION BOUND: the window slides — recoveries older than 24 h no longer count, so the same pair is un-bounded again", async () => {
+    const { clk, now } = clockFrom("2033-03-01T00:00:00Z");
+    const b = backendWith({ now, escalationThreshold: 3 });
+    for (let i = 0; i < 3; i++) await executeOne(b, PD, PB);
+    // 23 h later the three still count.
+    clk.t += 23 * 3_600_000;
+    const stillBound = await heldOrder();
+    const f1 = await fileWith(b, stillBound, PD);
+    await expect(cosignWith(b, stillBound, f1.recovery!.id, PB)).rejects.toMatchObject({
+      message: expect.stringContaining("(escalation_required)"),
+    });
+    await svc.cancelLabTransmissionRecovery(ORG_A, memberA2, stillBound, f1.recovery!.id, undefined, USER_B);
+    // 25 h after the first three, they have aged out.
+    clk.t += 3 * 3_600_000;
+    expect((await executeOne(b, PD, PB)).done.outcome).toBe("redispatched");
+  });
+
+  it("F-195 COLLUSION BOUND (race): two co-signs by the same pair on DIFFERENT orders, in flight together at the bound's edge, cannot BOTH slip under it — the second waits, recounts, and needs the escalated key", async () => {
+    const { now } = clockFrom("2036-03-01T00:00:00Z");
+    const b = backendWith({ now, escalationThreshold: 2 });
+    await executeOne(b, PD, PB); // 1 executed: one more is still allowed, the one after that is not
+    const x = await heldOrder();
+    const y = await heldOrder();
+    const fx = await fileWith(b, x, PD);
+    const fy = await fileWith(b, y, PD);
+    // Different orders ⇒ different order-row locks: only the per-person advisory lock serializes them.
+    const results = await Promise.allSettled([
+      cosignWith(b, x, fx.recovery!.id, PB),
+      cosignWith(b, y, fy.recovery!.id, PB),
+    ]);
+    const ok = results.filter((r) => r.status === "fulfilled");
+    const refused = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
+    expect(ok).toHaveLength(1);
+    expect(refused).toHaveLength(1);
+    expect(String(refused[0]!.reason.message)).toContain("(escalation_required)");
+  });
+
+  it("F-195 COLLUSION SIGNALS: a high ORG-WIDE rate raises a critical `org_rate` alert from the threshold on, all under ONE window-scoped correlation id; ids and counts only", async () => {
+    const { now } = clockFrom("2034-03-01T00:00:00Z");
+    // The bound is out of reach (every execution proceeds — this case is about the SIGNAL); the org-rate threshold is 4.
+    // `escalationThreshold` also sets the PAIR signal's threshold, so the pair signal stays silent here.
+    const b = backendWith({ now, escalationThreshold: 100_000, orgRateThreshold: 4 });
+    for (let i = 0; i < 5; i++) await executeOne(b, PD, PB);
+    await settle();
+
+    const anomalies = alertLog.filter((a) => a.eventType === "m11.order.recovery_anomaly");
+    const rate = anomalies.filter((a) => a.payload.signal === "org_rate");
+    expect(anomalies.filter((a) => a.payload.signal === "repeat_pair")).toHaveLength(0);
+    expect(rate).toHaveLength(2); // the 4th and the 5th execution reach the threshold of 4
+    expect(new Set(rate.map((a) => a.correlationId)).size).toBe(1); // ONE id per window ⇒ M36 keeps ONE alert
+    expect(rate.every((a) => a.severity === "critical")).toBe(true);
+    expect(rate.map((a) => a.payload.executionsInWindow)).toEqual([4, 5]);
+    const serialized = JSON.stringify(anomalies);
+    expect(serialized).not.toContain("Dana");
+    expect(serialized).not.toContain("REF-2026");
+    for (const a of anomalies) {
+      expect(Object.keys(a.payload).sort()).toEqual(
+        ["deepLink", "executionsInWindow", "orderId", "pairUserIds", "signal", "threshold", "windowHours"].sort(),
+      );
+    }
+  });
+
+  it("F-195 COLLUSION SIGNALS: a pair at its threshold raises exactly one critical `repeat_pair` alert, symmetric under swapping requester/co-signer", async () => {
+    const { now } = clockFrom("2035-03-01T00:00:00Z");
+    const b = backendWith({ now, escalationThreshold: 3, orgRateThreshold: 100_000 });
+    await executeOne(b, PC, PB);
+    await executeOne(b, PC, PB);
+    await executeOne(b, PC, PB); // the pair's 3rd — at the threshold
+    await settle();
+    wires = []; // settling delivered the three real re-dispatches; the next `heldOrder()` asserts a clean wire
+    const pair =alertLog.filter((a) => a.eventType === "m11.order.recovery_anomaly" && a.payload.signal === "repeat_pair");
+    expect(pair).toHaveLength(1);
+    expect(pair[0]).toMatchObject({ severity: "critical" });
+    expect(pair[0]!.payload).toMatchObject({ executionsInWindow: 3, threshold: 3, pairUserIds: [USER_B, USER_C].sort() });
+    // The reversed pair (B files, C co-signs) is the SAME pair — bounded, so it needs the escalated key; when an escalated
+    // holder co-signs, the alert it raises carries the SAME correlation id (M36 keeps one alert for the window).
+    const id = await heldOrder();
+    const f = await fileWith(b, id, PB);
+    await cosignWith(b, id, f.recovery!.id, PC, ESCALATED);
+    await settle();
+    const again = alertLog.filter((a) => a.eventType === "m11.order.recovery_anomaly" && a.payload.signal === "repeat_pair");
+    expect(again.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(again.map((a) => a.correlationId)).size).toBe(1);
+  });
+
+  // ── stranded requests ───────────────────────────────────────────────────────────────────────────────────────────
+  it("F-195 STRANDED: a pending request is SUPERSEDED (not left to lapse) when its order is discontinued — the co-sign and cancel answer 409 `superseded` with the reason, and nothing is dispatched", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+    const before = await count(id, "m11.order.hl7_orm_requested");
+
+    await svc.discontinueOrder(ORG_A, member, id, { reason: "clinical_judgement" as const, effectiveAt: new Date().toISOString() } as never);
+
+    const req = await requestOf(filed.recovery!.id);
+    expect(req).toMatchObject({ status: "superseded", superseded_reason: "order_discontinued", cosigned_by_user_id: null, attestation_id: null });
+    expect(req.resolved_at).not.toBeNull();
+    await expect(cosign(id, filed.recovery!.id)).rejects.toMatchObject({
+      statusCode: 409,
+      message: expect.stringContaining("(superseded)"),
+    });
+    await expect(cosign(id, filed.recovery!.id)).rejects.toMatchObject({
+      message: expect.stringContaining("order_discontinued"),
+    });
+    await expect(
+      svc.cancelLabTransmissionRecovery(ORG_A, memberA2, id, filed.recovery!.id, undefined, USER_B),
+    ).rejects.toMatchObject({ statusCode: 409, message: expect.stringContaining("(superseded)") });
+    expect(await count(id, "m11.order.hl7_orm_requested")).toBe(before);
+    expect(await attestations(id)).toHaveLength(0);
+  });
+
+  it("F-195 STRANDED: another person's `received_by_lab` attestation (the order becomes `transmitted`) supersedes the pending duplicate-risk request", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+    const received = await svc.recoverLabTransmission(ORG_A, memberC, id, "received_by_lab", EVIDENCE, undefined, USER_C);
+    expect(received.outcome).toBe("marked_transmitted");
+    expect(await requestOf(filed.recovery!.id)).toMatchObject({
+      status: "superseded",
+      superseded_reason: "transmission_transmitted",
+    });
+    await expect(cosign(id, filed.recovery!.id)).rejects.toMatchObject({ message: expect.stringContaining("(superseded)") });
+    // The order was never re-dispatched: the only ledger row is the `received_by_lab` one.
+    expect((await attestations(id)).map((a) => a.attestation)).toEqual(["received_by_lab"]);
+  });
+
+  it("F-195 STRANDED: the order's failure reason changing under a pending request supersedes it too (any UPDATE by any path — the trigger, not a service call)", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+    await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+      tx.execute(sql`UPDATE order_record SET transmission_failure_reason = 'application_reject' WHERE id = ${id}`),
+    );
+    expect(await requestOf(filed.recovery!.id)).toMatchObject({
+      status: "superseded",
+      superseded_reason: "failure_reason_changed",
+    });
+  });
+
+  it("F-195 STRANDED: an EXECUTED request is never touched by the order's later transitions, and an unrelated tenant's order changes nothing", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+    await cosign(id, filed.recovery!.id);
+    await settle(); // the re-dispatch is acked: pending → transmitted
+    expect((await orderRow(id)).transmission_status).toBe("transmitted");
+    expect(await requestOf(filed.recovery!.id)).toMatchObject({ status: "executed", superseded_reason: null });
+  });
+
+  it("F-195 STRANDED RACE: a co-sign that arrives while the order is being moved by another transaction waits for it, then sees `superseded` — it can NEVER execute a superseded request", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+    const before = await count(id, "m11.order.hl7_orm_requested");
+
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const holding = new Promise<void>((r) => (locked = r));
+    // Transaction 1 moves the order (the trigger supersedes the request IN this transaction) and holds its row lock.
+    const mover = withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, async (tx) => {
+      await tx.execute(sql`UPDATE order_record SET transmission_failure_reason = 'application_reject' WHERE id = ${id}`);
+      locked();
+      await gate;
+    });
+    await holding;
+    // Transaction 2 tries to co-sign: it must block on the order row lock, not read a stale `pending_cosign`.
+    let settled = false;
+    const attempt = cosign(id, filed.recovery!.id).then(
+      (r) => {
+        settled = true;
+        return { ok: true as const, r };
+      },
+      (e: unknown) => {
+        settled = true;
+        return { ok: false as const, e };
+      },
+    );
+    await new Promise((r) => setTimeout(r, 400));
+    expect(settled, "the co-sign waits for the order's transaction").toBe(false);
+    release();
+    await mover;
+    const outcome = await attempt;
+    expect(outcome.ok).toBe(false);
+    if (!outcome.ok) expect(String((outcome.e as Error).message)).toContain("(superseded)");
+    expect(await requestOf(filed.recovery!.id)).toMatchObject({ status: "superseded" });
+    expect(await count(id, "m11.order.hl7_orm_requested")).toBe(before);
+    expect(await attestations(id)).toHaveLength(0);
+  });
+
+  it("F-195 STRANDED BACKSTOP: the hourly sweep supersedes a pending request whose order the trigger never saw (replica-role write), and reports the count", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+    // A superuser rewrite with triggers suppressed — exactly what the row-level trigger cannot see.
+    await admin.query("SET session_replication_role = replica");
+    try {
+      await admin.query("UPDATE order_record SET transmission_status = 'transmitted' WHERE id = $1", [id]);
+    } finally {
+      await admin.query("SET session_replication_role = DEFAULT");
+    }
+    expect((await requestOf(filed.recovery!.id)).status).toBe("pending_cosign");
+    const swept = await svc.expireStaleLabRecoveryRequests(ORG_A);
+    expect(swept.superseded).toBeGreaterThanOrEqual(1);
+    expect(await requestOf(filed.recovery!.id)).toMatchObject({
+      status: "superseded",
+      superseded_reason: "order_no_longer_recoverable",
+    });
+    // A request whose order IS still a failed lab order is left alone.
+    const live = await heldOrder();
+    const stillPending = await file(live, "not_received_by_lab");
+    await svc.expireStaleLabRecoveryRequests(ORG_A);
+    expect((await requestOf(stillPending.recovery!.id)).status).toBe("pending_cosign");
+  });
+
+  // ── durable alerts ──────────────────────────────────────────────────────────────────────────────────────────────
+  it("F-195 DURABLE ALERTS: the alert INTENT commits with the recovery; an emitter outage after commit does not lose it — the relay redelivers, M36 records ONE alert, and a duplicate delivery adds none", async () => {
+    // The real M36 emitter over the real seeded rules, with a compliance officer and an org admin to page.
+    const addRoleMember = async (tag: string, roleKey: string, category: string) => {
+      const roleId = (
+        await admin.query(
+          "INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,$3) RETURNING id",
+          [ORG_A, roleKey, category],
+        )
+      ).rows[0].id as string;
+      const userId = (await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`${tag}@f195.test`])).rows[0].id as string;
+      const membershipId = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [userId, ORG_A],
+        )
+      ).rows[0].id as string;
+      await admin.query("INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)", [
+        ORG_A,
+        membershipId,
+        roleId,
+      ]);
+      return userId;
+    };
+    const complianceUser = await addRoleMember("f195-compliance", "compliance_officer", "compliance_quality");
+    await wireAlertRuleSeed(handle.db);
+    realEmitter = createDrizzleAlertEmitter(handle.db);
+    try {
+      const id = await heldOrder();
+      const filed = await file(id, "not_received_by_lab");
+
+      // (1) The emitter is DOWN while the recovery executes: the recovery still commits, WITH its alert intent.
+      alertFailure = true;
+      const done = await cosign(id, filed.recovery!.id);
+      expect(done.outcome).toBe("redispatched");
+      const intents = await admin.query(
+        `SELECT id, payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m11.order.recovery_alert_requested'`,
+        [id],
+      );
+      expect(intents.rows).toHaveLength(1);
+      // (severity depends on how many requests earlier cases filed in the window, so it is not pinned here)
+      expect(intents.rows[0].payload).toMatchObject({ alertType: "m11.order.recovery_executed" });
+      const correlationId = intents.rows[0].payload.correlationId as string;
+
+      // (2) The relay tries and the emitter throws: NO alert exists yet, and the event is NOT dropped.
+      await settle();
+      expect(alertLog.filter((a) => a.correlationId === correlationId)).toHaveLength(0);
+      const alertRows = async () =>
+        (await admin.query("SELECT id, payload FROM alert WHERE organization_id=$1 AND correlation_id=$2", [ORG_A, correlationId])).rows;
+      expect(await alertRows()).toHaveLength(0);
+      const pending = await admin.query("SELECT dispatched_at, attempt_count FROM outbox_event WHERE id=$1", [intents.rows[0].id]);
+      expect(pending.rows[0].dispatched_at).toBeNull();
+      expect(pending.rows[0].attempt_count).toBeGreaterThanOrEqual(1);
+
+      // (3) The emitter recovers; the relay's backoff clock elapses: the SAME event is redelivered and the alert lands.
+      alertFailure = false;
+      await admin.query("UPDATE outbox_event SET next_attempt_at = now() - interval '1 second' WHERE id=$1", [intents.rows[0].id]);
+      await settle();
+      const landed = await alertRows();
+      expect(landed).toHaveLength(1);
+      const recipients = await admin.query("SELECT DISTINCT recipient_user_id FROM notification_delivery WHERE alert_id=$1", [landed[0].id]);
+      expect(recipients.rows.map((r) => r.recipient_user_id)).toContain(complianceUser);
+
+      // (4) A DUPLICATE delivery (a lost receipt redelivered) is absorbed by the alert's unique correlation id.
+      await admin.query("UPDATE outbox_event SET dispatched_at = NULL, next_attempt_at = NULL WHERE id=$1", [intents.rows[0].id]);
+      await admin.query("DELETE FROM outbox_consumer_receipt WHERE event_id=$1", [intents.rows[0].id]).catch(() => undefined);
+      await settle();
+      expect(await alertRows()).toHaveLength(1);
+      // No PHI: nothing about the lab contact, reference or patient reached the alert row.
+      const text = JSON.stringify(landed[0].payload);
+      expect(text).not.toContain("Dana");
+      expect(text).not.toContain("REF-2026");
+    } finally {
+      realEmitter = null;
+      alertFailure = false;
+    }
+  });
+
+  it("F-195 DURABLE ALERTS: the alert intent and the recovery are ONE transaction — if publishing the intent fails, the WHOLE recovery rolls back (nothing executes without its alert, no alert without its recovery)", async () => {
+    const id = await heldOrder();
+    const filed = await file(id, "not_received_by_lab");
+    const before = await count(id, "m11.order.hl7_orm_requested");
+    // The bound publisher, except that the alert intent (the LAST thing the co-sign publishes) fails.
+    const failingAlertOutbox = {
+      publish: (tx: unknown, e: { eventName: string }) =>
+        e.eventName === "m11.order.recovery_alert_requested"
+          ? Promise.reject(new Error("outbox down (injected)"))
+          : (m11OutboxPort as unknown as { publish: (t: unknown, ev: unknown) => Promise<unknown> }).publish(tx, e),
+    };
+    const broken = createDbOrderBackend(handle.db, failingAlertOutbox as never, ormPorts, NO_BOUND as never);
+    await expect(cosignWith(broken as never, id, filed.recovery!.id, PB)).rejects.toThrow("outbox down");
+
+    // Everything the co-sign did before that point is gone with it: request pending, order still failed, no ledger row,
+    // no second ORM, no alert intent.
+    expect((await requestOf(filed.recovery!.id)).status).toBe("pending_cosign");
+    expect((await orderRow(id)).transmission_status).toBe("failed");
+    expect(await attestations(id)).toHaveLength(0);
+    expect(await count(id, "m11.order.hl7_orm_requested")).toBe(before);
+    expect(await count(id, "m11.order.recovery_alert_requested")).toBe(0);
+    // And the healthy backend can still complete the very same request afterwards.
+    expect((await cosign(id, filed.recovery!.id)).outcome).toBe("redispatched");
+    expect(await count(id, "m11.order.recovery_alert_requested")).toBe(1);
+  });
+
+  // ── permission catalog: the migration ───────────────────────────────────────────────────────────────────────────
+  it("F-195 PERMISSIONS: migration 0272 mirrors the three keys and grants them to org_admin + administrator ONLY (idempotently) — never to a clinical role", async () => {
+    const { rows: perms } = await admin.query(
+      "SELECT key, resource, action, category FROM permission WHERE key LIKE 'orders.transmission.%' ORDER BY key",
+    );
+    expect(perms.map((p) => p.key)).toEqual([
+      "orders.transmission.cosign_escalated",
+      "orders.transmission.recover",
+      "orders.transmission.view_held",
+    ]);
+    expect(perms.every((p) => p.category === "admin" && p.resource === "order_transmission")).toBe(true);
+
+    // The migration ran on an EMPTY role table here, so create the roles a real tenant would already have and replay ITS
+    // backfill statement (the only one that touches `role_permission`).
+    const sqlText = readFileSync(join(MIGRATIONS_DIR, "0272_m11_recovery_mitigations.sql"), "utf8");
+    const backfill = sqlText.split("--> statement-breakpoint").find((s) => s.includes('INSERT INTO "role_permission"'))!;
+    expect(backfill).toBeTruthy();
+    const mkRole = async (key: string) =>
+      (
+        await admin.query(
+          "INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,'clinical_leadership') RETURNING id",
+          [ORG_B, key],
+        )
+      ).rows[0].id as string;
+    const roles = {
+      org_admin: await mkRole("org_admin"),
+      administrator: await mkRole("administrator"),
+      director_of_nursing: await mkRole("director_of_nursing"),
+      rn_case_manager: await mkRole("rn_case_manager"),
+      compliance_officer: await mkRole("compliance_officer"),
+    };
+    await admin.query(backfill);
+    await admin.query(backfill); // idempotent: ON CONFLICT DO NOTHING
+    const granted = async (roleId: string) =>
+      (
+        await admin.query(
+          "SELECT permission_key FROM role_permission WHERE role_id=$1 AND permission_key LIKE 'orders.transmission.%' ORDER BY 1",
+          [roleId],
+        )
+      ).rows.map((r) => r.permission_key as string);
+    const all3 = ["orders.transmission.cosign_escalated", "orders.transmission.recover", "orders.transmission.view_held"];
+    expect(await granted(roles.org_admin)).toEqual(all3);
+    expect(await granted(roles.administrator)).toEqual(all3);
+    // NARROW: nobody else gets any of it from the migration — a tenant grants a DON / compliance officer on purpose.
+    expect(await granted(roles.director_of_nursing)).toEqual([]);
+    expect(await granted(roles.rn_case_manager)).toEqual([]);
+    expect(await granted(roles.compliance_officer)).toEqual([]);
   });
 
 });

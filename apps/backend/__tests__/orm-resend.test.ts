@@ -138,10 +138,12 @@ const NOW = "2026-06-08T12:00:00.000Z";
 const PERMISSION_SEED = [
   {
     userId: "rn_1",
-    permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend"],
+    permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend", "orders.transmission.recover"],
   },
-  // Holds everything a clinician does EXCEPT the amend key the resend is gated on.
+  // Holds everything a clinician does EXCEPT the amend key.
   { userId: "rn_no_amend", permissions: ["orders.read", "orders.draft", "orders.sign"] },
+  // F-195 — holds `orders.amend` (the key the resend USED to be gated on) but NOT the recovery authority the resend is now gated on.
+  { userId: "amend_only", permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend"] },
   { userId: "viewer_1", permissions: ["orders.read"] },
 ];
 
@@ -167,6 +169,7 @@ function makeServer() {
 
 const RN = { "x-test-user": "rn_1", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
 const RN_NO_AMEND = { "x-test-user": "rn_no_amend", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
+const AMEND_ONLY = { "x-test-user": "amend_only", "x-test-org": ORG, "x-test-roles": "rn_case_manager" };
 const VIEWER = { "x-test-user": "viewer_1", "x-test-org": ORG, "x-test-roles": "auditor" };
 const UNKNOWN_ORDER = "99999999-9999-4999-8999-999999999999";
 
@@ -201,10 +204,10 @@ describe("F-182 — POST /api/v1/orders/:id/resend-transmission", () => {
     return res.json().id as string;
   }
 
-  it("is gated on orders.amend: read-only and clinician-without-amend are 403", async () => {
+  it("is gated on orders.transmission.recover: read-only, clinician-without-amend and a holder of `orders.amend` ALONE are 403 (F-195)", async () => {
     const { app } = makeServer();
     const id = await draft(app);
-    for (const headers of [VIEWER, RN_NO_AMEND]) {
+    for (const headers of [VIEWER, RN_NO_AMEND, AMEND_ONLY]) {
       const res = await app.inject({
         method: "POST",
         url: `/api/v1/orders/${id}/resend-transmission`,

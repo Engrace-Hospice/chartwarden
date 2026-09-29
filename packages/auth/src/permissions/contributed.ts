@@ -1321,6 +1321,34 @@ export const M11_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "caseload_or_scope",
   },
+  // F-195 (#248) — the lab-transmission recovery authority, split OUT of `orders.amend`. `orders.amend` (correct an
+  // order) is granted to nearly every prescribing/nursing role; the actions below re-disclose a signed order to a lab,
+  // attest to a fact about a third party, and can order a test TWICE, so they are a NARROW grant a tenant makes on
+  // purpose (org_admin / administrator by default; a DON or clinical lead when the tenant chooses).
+  // File / cancel a recovery, resend a refused order, co-sign a recovery, and read the lab contact's name + reference.
+  "orders.transmission.recover": {
+    resource: "order_transmission",
+    action: "recover",
+    category: "admin",
+    abac: "none",
+  },
+  // Read the held-transmission worklist (patient ids + reasons) without being able to act on it.
+  "orders.transmission.view_held": {
+    resource: "order_transmission",
+    action: "view_held",
+    category: "admin",
+    abac: "none",
+  },
+  // The HIGH-TRUST co-signer: once a requester or a requester/co-signer pair has reached the recovery bound
+  // (default 3 executed `not_received_by_lab` recoveries in 24 h) the next co-signature must come from a holder of this
+  // key (org_admin / administrator by default; a compliance officer when the tenant grants it). It also lets that
+  // holder co-sign and read the evidence without holding `orders.transmission.recover`.
+  "orders.transmission.cosign_escalated": {
+    resource: "order_transmission",
+    action: "cosign_escalated",
+    category: "admin",
+    abac: "none",
+  },
   // Manual completion (incl. lab "Mark reviewed", D17).
   "orders.complete": {
     resource: "order",

@@ -303,6 +303,10 @@ import {
   buildM11LabCancellationConsumer,
   buildM11LabTransmissionApplierConsumer,
   buildM11OrmRequestedPorts,
+  buildM11RecoveryAlertConsumer,
+  RECOVERY_ESCALATION_THRESHOLD,
+  RECOVERY_ORG_RATE_THRESHOLD,
+  parseRecoveryBound,
   buildM11SupplyCancelledConsumer,
   createDbOrderBackend,
   createStuckTransmissionRecovery,
@@ -2804,15 +2808,17 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m40OutboxPublisher = bindCallerModule(txOutboxPublisher, "m40");
   const m28OutboxPublisher = bindCallerModule(txOutboxPublisher, "m28");
   const m2OutboxPublisher = bindCallerModule(txOutboxPublisher, "m2");
-  // F-194 (#248) — M11's two-person lab-recovery control raises its compliance alerts through M36's AlertEmitter seam,
-  // resolved at call time (registered during boot, after M11's routes and its hourly timer are constructed).
+  // F-194/F-195 (#248) — M11's two-person lab-recovery control. Its compliance alerts are DURABLE (F-195): the service
+  // publishes `m11.order.recovery_alert_requested` in the recovery's own transaction and
+  // `buildM11RecoveryAlertConsumer` (registered with the outbox consumers below) delivers it to M36's AlertEmitter, so
+  // there is no alert port here. The bound that forces a high-trust co-signer, and the org-rate alert threshold, are
+  // env-overridable; an invalid value FALLS BACK to the default rather than disabling the bound.
   const m11RecoveryControls = {
-    alerts: {
-      emit: (
-        organizationId: string,
-        input: { eventType: string; payload: Record<string, unknown>; severity: string; correlationId: string },
-      ) => (getSeam("AlertEmitter") as AlertEmitter).emit(organizationId, input as never),
-    },
+    escalationThreshold: parseRecoveryBound(
+      process.env.M11_RECOVERY_ESCALATION_THRESHOLD,
+      RECOVERY_ESCALATION_THRESHOLD,
+    ),
+    orgRateThreshold: parseRecoveryBound(process.env.M11_RECOVERY_ORG_RATE_THRESHOLD, RECOVERY_ORG_RATE_THRESHOLD),
   };
   // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
   // here, not on the first tenant write; left undefined when no key is configured, which makes credential
@@ -6099,6 +6105,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             db: dbHandle.db,
             alerts: getSeam("AlertEmitter") as AlertEmitter,
           }),
+          // F-195 (#248) — the two-person lab-recovery control's compliance alerts, DURABLE: the recovery's own
+          // transaction publishes the intent, this hands it to M36, a failure is retried by the relay and the alert's
+          // correlation id makes the redelivery idempotent.
+          buildM11RecoveryAlertConsumer({ alerts: getSeam("AlertEmitter") as AlertEmitter }),
           // F-166 (#248) — a staff-initiated `m21.supply_request.cancelled` (never through M11's own
           // discharge cascade above, which already discontinues the order before asking M21) releases
           // the still-in-flight source order M11 never touched. Safe for the cascade-reply producer too

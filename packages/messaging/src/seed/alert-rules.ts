@@ -459,6 +459,19 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // F-195 (#248) — the collusion / rate signal on the two-person lab-recovery control: a requester/co-signer pair that keeps
+  // executing `not_received_by_lab` recoveries, or a high org-wide rate. Always critical (the floor), deduplicated per
+  // window by the emit's correlation id, ids and counts only. Same audience as the other recovery alerts.
+  {
+    eventType: "m11.order.recovery_anomaly",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
 ];
 
 /** The event types of the three `system_locked` platform rules (§7.4) — the always-on floor a
