@@ -23,6 +23,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/events-by-m29";
+import { createDrizzleAlertEmitter, wireAlertRuleSeed } from "../src/modules/36-messaging/index";
 import { buildDrizzleOutboundFeedResolver } from "../src/modules/29-external-interfaces/outbound/feed-resolver";
 import {
   ormDispatchExistsForOrder,
@@ -880,7 +881,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       expect(server.receivedWires).toHaveLength(1);
       expect(s1.alerts.emitted).toHaveLength(1);
       expect(s1.alerts.emitted[0]!.eventType).toBe("hl7_outbound.transmission_failed");
-      expect(s1.alerts.emitted[0]!.severity).toBe("NORMAL");
+      expect(s1.alerts.emitted[0]!.severity).toBe("warn"); // F-186: the EMITTER's alert_severity enum (HIGH/NORMAL threw at the INSERT)
 
       // Tick 2, backoff elapsed: the existing retry path re-sends the STORED wire.
       const s2 = sweep({ now: new Date(t0 + 11 * MINUTE) });
@@ -1037,7 +1038,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       expect(rows).toHaveLength(1);
       expect(rows[0].payload).toMatchObject({ orderId, reason: "dlq_exhausted", attemptCount: 5 });
       expect(s.alerts.emitted).toHaveLength(1);
-      expect(s.alerts.emitted[0]!.severity).toBe("HIGH");
+      expect(s.alerts.emitted[0]!.severity).toBe("critical"); // F-186: the EMITTER's alert_severity enum (HIGH/NORMAL threw at the INSERT)
       // Terminal means terminal: another sweep sends nothing further.
       await sweep({ now: new Date(Date.now() + 30 * MINUTE) }).run();
       expect(server.receivedWires).toHaveLength(1);
@@ -1135,7 +1136,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         attemptCount: 1,
       });
       expect(s.alerts.emitted).toHaveLength(1);
-      expect(s.alerts.emitted[0]!.severity).toBe("HIGH");
+      expect(s.alerts.emitted[0]!.severity).toBe("critical"); // F-186: the EMITTER's alert_severity enum (HIGH/NORMAL threw at the INSERT)
       expect(JSON.stringify(s.alerts.emitted[0])).toMatch(/NOT re-sent/);
       expect(auditIntentsOf(info)).toContainEqual(
         expect.objectContaining({ kind: "hl7.outbound.held", outboundMessageId: row.id }),
@@ -1417,6 +1418,108 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       expect(alerts.emitted.some((a) => a.eventType === "hl7_outbound.transmission_failed")).toBe(true);
       // PHI discipline: the terminal event/alert carry a fixed label, never the wire message.
       expect(JSON.stringify([outbox.published, alerts.emitted])).not.toContain("Doe");
+    } finally {
+      await server.close();
+    }
+  });
+
+  // ── F-186 — the worker's alerts, through the REAL M36 emitter, reach a PERSON ───────────────────────────────
+  // Every case above hands the worker a FAKE alerts port, which is exactly how three defects hid: the worker's
+  // `HIGH`/`NORMAL` severity threw at the real `alert` INSERT (swallowed by design), no platform-default rule
+  // existed for the three kinds, and the per-feed correlation id could only ever notify once. Here a real dispatch
+  // produces the intent and the real emitter routes it. (Kind/recipient/throttle detail: `m29-alert-routing.live`.)
+  let alertRecipients: { orgAdmin: string; compliance: string; clinicalLead: string } | null = null;
+  async function seedAlertRecipients(): Promise<NonNullable<typeof alertRecipients>> {
+    if (alertRecipients) return alertRecipients;
+    const add = async (tag: string, roleKey: string, category: string): Promise<string> => {
+      const roleId = (
+        await admin.query(
+          "INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,$3) RETURNING id",
+          [ORG_A, roleKey, category],
+        )
+      ).rows[0].id as string;
+      const userId = (
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [`${tag}@f186-outbound.test`])
+      ).rows[0].id as string;
+      const membershipId = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [userId, ORG_A],
+        )
+      ).rows[0].id as string;
+      await admin.query(
+        "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+        [ORG_A, membershipId, roleId],
+      );
+      return userId;
+    };
+    await wireAlertRuleSeed(handle.db);
+    alertRecipients = {
+      orgAdmin: await add("f186-admin", "org_admin", "admin_executive"),
+      compliance: await add("f186-compliance", "compliance_officer", "compliance_quality"),
+      clinicalLead: await add("f186-lead", "clinical_lead", "clinical_leadership"),
+    };
+    return alertRecipients;
+  }
+  const deliveredTo = async (eventType: string): Promise<string[]> =>
+    (
+      await admin.query(
+        `SELECT DISTINCT nd.recipient_user_id FROM notification_delivery nd JOIN alert a ON a.id = nd.alert_id
+          WHERE a.organization_id = $1 AND a.event_type = $2`,
+        [ORG_A, eventType],
+      )
+    ).rows
+      .map((r) => r.recipient_user_id as string)
+      .sort();
+
+  it("F-186 end to end: a BAA-refused dispatch notifies the compliance officer (and the org_admin backstop) through the real emitter", async () => {
+    const who = await seedAlertRecipients();
+    registerSeam("BaaStatusProvider", {
+      baaStatusByMdmEntity: async () => ({ isActive: false, status: "missing", expiresOn: null }),
+    } as never);
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const consumer = buildM29OutboundDispatchConsumer({
+        db: handle.db,
+        outbox: fakeOutbox().port,
+        keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
+        alerts: createDrizzleAlertEmitter(handle.db) as unknown as OutboundAlertPort,
+      });
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId: randomUUID(), organizationId: ORG_A })));
+
+      expect(await deliveredTo("external_feed.baa_missing")).toEqual([who.compliance, who.orgAdmin].sort());
+      const { rows } = await admin.query(
+        "SELECT severity FROM alert WHERE organization_id=$1 AND event_type='external_feed.baa_missing'",
+        [ORG_A],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].severity).toBe("critical");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-186 end to end: a dead-lettered transmission notifies the operator and the M11 owners through the real emitter", async () => {
+    const who = await seedAlertRecipients();
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const consumer = buildM29OutboundDispatchConsumer({
+        db: handle.db,
+        outbox: fakeOutbox().port,
+        keys: fakeKeyProvider(),
+        // production-safe policy ⇒ plain MLLP is refused before any socket ⇒ a terminal DLQ (the F-181 path)
+        destinationPolicy: { allowPlain: false, allowLoopback: false },
+        alerts: createDrizzleAlertEmitter(handle.db) as unknown as OutboundAlertPort,
+      });
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId: randomUUID(), organizationId: ORG_A })));
+
+      expect(await deliveredTo("hl7_outbound.transmission_failed")).toEqual(
+        [who.orgAdmin, who.clinicalLead].sort(),
+      );
     } finally {
       await server.close();
     }
