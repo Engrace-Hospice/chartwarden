@@ -403,3 +403,37 @@ export {
   type M29PatientDeceasedConsumerDeps,
   buildM29PatientDeceasedConsumer,
 } from "./outbox-consumers/m5-patient-deceased";
+
+// ── M29-T08: outbound ORM dispatch worker (F-175/#248) — the real IO shell over T06's pure cores ──────────
+export {
+  type OutboundTenantKeyProvider,
+  type OutboundPayloadCipher,
+  createOutboundPayloadCipher,
+} from "./outbound/dispatch-crypto";
+export {
+  OUTBOUND_SENDING_APPLICATION,
+  type ResolvedOutboundFeed,
+  type FeedResolutionFailureReason,
+  type FeedResolutionResult,
+  type OutboundFeedResolver,
+  buildDrizzleOutboundFeedResolver,
+} from "./outbound/feed-resolver";
+export { type FeedRateLimiter, createFeedRateLimiter } from "./outbound/rate-limiter";
+export { resolveOutboundBaaResult } from "./outbound/resolve-baa";
+export {
+  M29_OUTBOUND_CRON_QUEUES,
+  M29_OUTBOUND_JOB_SCHEDULES,
+  M29_OUTBOUND_QUEUE_PARAMS,
+  M29_OUTBOUND_RETRY_SWEEP_BATCH_SIZE,
+} from "./outbound/queues";
+export {
+  M29_OUTBOUND_DISPATCH_CONSUMER,
+  type OutboundAlertPort,
+  type OutboundDispatchWorkerDeps,
+  type OutboundRetrySweepDeps,
+  buildM29OutboundDispatchConsumer,
+  runOutboundRetrySweepOnce,
+  registerM29OutboundRetrySweepWorker,
+  scheduleM29OutboundRetrySweepJob,
+} from "./outbound/dispatch-worker";
+export { M29_PLATFORM_JOB_ID, wireM29Tenancy } from "./wiring";

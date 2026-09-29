@@ -346,6 +346,9 @@ jobs:
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
           # F-165 (#248): the m5.patient.deceased proposal-freeze consumer.
           - { name: "M29 patient-deceased freeze", scripts: "test:m29:patient-deceased-freeze:live" }
+          # F-175 (#248): the T08 outbound MLLP dispatch worker — real Postgres + a real in-process mock
+          # MLLP server over node:net.
+          - { name: "M29 outbound dispatch worker", scripts: "test:m29:outbound-dispatch:live" }
           # GAP-043: M27's approver gate over M2's real `membership_elevated_approval` designation —
           # the conjunct that was hardcoded false in the production resolver, blocking every cost-report
           # approve/submit/reopen in every tenant.

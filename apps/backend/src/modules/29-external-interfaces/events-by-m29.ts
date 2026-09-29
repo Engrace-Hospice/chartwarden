@@ -114,6 +114,54 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
   // an org-less row and M40's canonical had no write path. The three `sync_run.*` lifecycle events are
   // record-only: the row IS the operational record, and M33's dashboard reads `nppes_sync_run` directly
   // rather than subscribing.
+  // ── §4.4/§4.10 outbound ORM lifecycle (M29-T08, F-175/#248) ───────────────────────────────────────
+  // HAD NO CATALOG ENTRY AT ALL before F-175 — the task-11/F-165/F-167 "decision core ships, nothing
+  // registers or drains it" shape one module over: `dispatch-planner.ts`/`ack-correlation.ts`/
+  // `retry-policy.ts` have produced these exact envelopes since M29-T06, but `outbound-events.ts`'s own
+  // header ("published by the T08 worker") was future tense until this pass — no `M29_OUTBOX_EVENTS`
+  // entry existed, so `bindCallerModule(txOutboxPublisher, "m29")`'s `Value.Check` would have REJECTED
+  // every publish attempt even after a T08 worker existed to make one. `declaredConsumers: ["m11"]` per
+  // the spec's own §4.4 relationship text ("M11 also receives... consumed by M11 to update
+  // order_record.transmission_status") — checked directly, not guessed: no `LabTransmissionApplier`
+  // implementation exists anywhere in the repo (only the two doc-comment mentions on
+  // `m11.order.transmission_status_changed`/`.transmission_terminal_failed` in `events-by-m11.ts`), so
+  // this pair is itself now the SAME "declared but genuinely unbound" shape on M11's side that this
+  // register (`scripts/outbox-deferred-consumers.ts`) exists to track — a real, separate follow-up this
+  // pass surfaces but does not build (M11's own consumer, out of this task's scope).
+  {
+    eventName: "m29.lab_order.transmitted",
+    moduleOwner: "m29",
+    description:
+      "An outbound ORM^O01 the destination lab `AA`-acked (§4.12.2) — M11 consumes to flip `order_record.transmission_status` to TRANSMITTED.",
+    payloadSchema: Type.Object({
+      orderId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      feedId: Type.String({ minLength: 1 }),
+      outboundMessageId: Type.String({ minLength: 1 }),
+      messageControlId: Type.String({ minLength: 1 }),
+      ackReceivedAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: ["m11"],
+    isOutboxOnly: true,
+  },
+  {
+    eventName: "m29.lab_order.transmission_failed",
+    moduleOwner: "m29",
+    description:
+      "A terminal outbound ORM^O01 failure (§4.12.2/W-XI-09) — an `AR` structural reject (`application_reject`, no retry) or a transport/`AE` retry-budget exhaustion (`dlq_exhausted`); NEVER emitted for a pre-persist BAA refusal (that is transient and self-heals, per `dispatch-planner.ts`'s own header). M11 consumes to flip `order_record.transmission_status` to TRANSMISSION_FAILED; M36 raises the high-severity operator alert.",
+    payloadSchema: Type.Object({
+      orderId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      feedId: Type.String({ minLength: 1 }),
+      outboundMessageId: Type.String({ minLength: 1 }),
+      reason: Type.Union([Type.Literal("application_reject"), Type.Literal("dlq_exhausted")]),
+      detail: Type.Union([Type.String(), Type.Null()]),
+      attemptCount: Type.Integer({ minimum: 0 }),
+    }),
+    declaredConsumers: ["m11"],
+    isOutboxOnly: true,
+  },
+
   {
     eventName: "m29.nppes.provider_synced",
     moduleOwner: "m29",

@@ -731,18 +731,24 @@ import {
 // a lazy M5 CaseloadProvider adapter.
 import {
   M29_OUTBOX_EVENTS,
+  M29_PLATFORM_JOB_ID,
   NPPES_SYNC_SCHEDULE,
   buildDrizzleM29AbacResolver,
+  buildM29OutboundDispatchConsumer,
   buildM29PatientDeceasedConsumer,
   buildNppesManualSyncTrigger,
   createDrizzleM29PublishedSeamStore,
   createDrizzleM29Store,
+  createFeedRateLimiter as createM29OutboundRateLimiter,
   denyStubM29AbacResolver,
   mountM29Routes,
   registerM29AbacPredicates,
+  registerM29OutboundRetrySweepWorker,
   registerM29PublishedSeams,
   registerNppesSyncWorker,
+  scheduleM29OutboundRetrySweepJob,
   scheduleNppesSyncJob,
+  wireM29Tenancy,
 } from "./modules/29-external-interfaces/index";
 import {
   M30_OUTBOX_EVENTS,
@@ -1583,6 +1589,7 @@ export function wireModuleSeams(
   wireM25Tenancy(); // M25 — allowlist the cron job id so the denial-aging/appeal-deadline fan-outs may enter withPlatformContext
   wireM24Tenancy(); // F-172 (#248, m1 group) — allowlist the cron job id so state-channel-health may enter withPlatformContext
   wireM27Tenancy(); // M27 (WX-PR-013) — allowlist the cron job id so filing-deadline-scan may enter withPlatformContext
+  wireM29Tenancy(); // F-175 (#248) — allowlist the cron job id so the outbound-dispatch retry sweep may enter withPlatformContext
   // TASK-040D — allowlist M7/M9/M10's cron platform job ids (same fail-closed posture as M25/M30/M33/M34).
   wireM6Tenancy();
   wireM7Tenancy();
@@ -2358,6 +2365,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             );
           },
         };
+  // F-175 (#248) — the M29 outbound-dispatch per-feed rate limiter (`external_feed.rate_limit_msg_per_sec`),
+  // constructed ONCE and shared between the fresh-dispatch `OutboxConsumerBinding` and the retry-sweep
+  // worker (both below) so the throttle budget is genuinely shared across both send paths, not doubled.
+  const m29OutboundRateLimiter = createM29OutboundRateLimiter();
   // TASK-003 follow-up — the DESTRUCTION credential (a login role IN ROLE wardenx_destruction,
   // migration 0157: DELETE/UPDATE grants scoped to exactly what the erase stores execute, org-pinned
   // RLS policies — never BYPASSRLS). The append-only clinical/billing tables grant wardenx_app no
@@ -4798,6 +4809,42 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         "M24 state-channel-health cron disabled: configure M24_CREDENTIAL_ENCRYPTION_KEY",
       );
     }
+    // F-175 (#248) — the M29 outbound-dispatch retry sweep: a poll-based cron over `idx_hmo_next_retry`
+    // (`status='queued' AND nextRetryAt<=now`), the mechanism `./outbound/queues.ts`'s own header decides
+    // on and justifies over a per-row BullMQ delayed job. Needs only a queue connection + the tenant DEK
+    // seam (both unconditionally available whenever `dbHandle` exists, per the comment on the fresh-
+    // dispatch consumer above) — constructs whenever `queueConnection` exists, the `m24RevalidateWorker`
+    // "no extra credential needed" shape.
+    if (queueConnection) {
+      const m29ActiveOrgs = buildActiveOrgEnumerator({
+        platformDb: dbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M29_PLATFORM_JOB_ID,
+        reason: "M29 §4.9-shaped outbound-dispatch retry-sweep cron fan-out (active-org enumeration)",
+      });
+      const m29RetrySweepWorker = registerM29OutboundRetrySweepWorker({
+        connection: queueConnection,
+        db: dbHandle.db,
+        outbox: m29OutboxPublisher,
+        keys: getTenantKeyProvider(),
+        rateLimiter: m29OutboundRateLimiter,
+        activeOrgs: m29ActiveOrgs,
+      });
+      app.addHook("onClose", async () => {
+        await m29RetrySweepWorker.close();
+      });
+      try {
+        const m29RetrySweepQueue = await scheduleM29OutboundRetrySweepJob(queueConnection);
+        app.addHook("onClose", async () => {
+          await m29RetrySweepQueue.close();
+        });
+      } catch (err) {
+        app.log.error(err, "M29 outbound-dispatch retry-sweep cron schedule registration failed");
+      }
+      app.log.info("M29 outbound-dispatch retry-sweep cron worker constructed");
+    } else {
+      app.log.warn("M29 outbound-dispatch retry-sweep cron disabled: configure REDIS_URL");
+    }
     // ── M25 §4.8 Remittance crons (denial-aging rebucket + appeal-deadline watch) — same worker-runner
     // shape. buildM25WorkerDeps binds only the connection + db; the M2 active-org enumerator (the per-org
     // cron fan-out source, under withPlatformContext) + the M36 alert router stay fail-closed-unbound at boot
@@ -6390,6 +6437,22 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // post-death A01/A04" half needs a new M5 PatientReader field/seam or a new persistent marker
           // plus match-cascade consultation logic, neither of which exists; see the consumer file header.
           buildM29PatientDeceasedConsumer({ db: dbHandle.db, outbox: m29OutboxPublisher }),
+          // F-175 (#248) — the real T08 outbound MLLP dispatch worker: `dispatch-planner.ts`'s own header
+          // named this worker's job precisely ("mint the ids + clock, resolve the BAA seam, envelope-
+          // encrypt the wire into payload_cipher, do the insert, and dispatch over MLLP") and F-165/F-167
+          // both confirmed nothing called it. `getTenantKeyProvider()` is safe to call unconditionally here
+          // (the `createHearthnoteCiphers(getTenantKeyProvider())` precedent immediately above this array's
+          // sibling consumers) — M34's `validateModule34Seams()` guarantees SOME registration (a real one,
+          // or the fail-closed deny-stub) exists by the time any consumer runs; an unconfigured KEK fails
+          // closed per-call (`dekForOrg` throws), never at construction. `m29OutboundRateLimiter` is shared
+          // with the retry-sweep worker below (constructed once, passed to both) so the per-feed throttle
+          // budget is shared across the fresh-dispatch and retry paths.
+          buildM29OutboundDispatchConsumer({
+            db: dbHandle.db,
+            outbox: m29OutboxPublisher,
+            keys: getTenantKeyProvider(),
+            rateLimiter: m29OutboundRateLimiter,
+          }),
         ],
         // GAP-099 — the PLATFORM (`organization_id IS NULL`) binding list. Until now this list did not
         // exist and `pollPlatform()` could only claim a row and defer it, so M29's NPPES sync published

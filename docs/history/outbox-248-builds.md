@@ -1736,3 +1736,65 @@ ran, so this round committed only its own hunks (the registry was rebuilt from H
 than staged whole); and the first live-DB negative test was invalid because a reused disposable Postgres ran out of
 lock memory after repeated schema resets ("7 skipped" is a failed `beforeAll`, not a skip) — use a fresh container
 with `max_locks_per_transaction` raised.
+
+**F-175 (#248) — the deferred user directive from the F-173 round ("keep going, but once every other group is
+exhausted, use subagents to build M29's full outbound MLLP transport worker thoroughly") acted on once F-174
+confirmed the real plateau: two parallel forks build the T08 outbound MLLP dispatch worker end-to-end, closing
+the `m29` group's last pair (`m11.order.hl7_orm_requested`) outright.** The coordinator did the interface design
+itself before dispatching — a shared `MllpTransport`/`MllpTransportSendInput`/`MllpTransportOutcome` contract —
+so the two forks (transport client; dispatch worker) could build in true parallel despite the worker depending on
+the client's output. **Fork A built `outbound/mllp-transport.ts`**, the real `node:net`/`node:tls` client framing
+over the inbound listener's own `encodeMllpFrame`/`MllpFrameBuffer`. Found empirically, not assumed, that
+`checkServerIdentity` — the task's own suggested cert-pin enforcement point, since it runs mid-handshake — is
+inert on this repo's actual runtime: with `rejectUnauthorized:false` it is never invoked on either Node or Bun,
+and with `rejectUnauthorized:true`+trusted `ca`, Node correctly aborts on its returned `Error` but Bun (the real
+production runtime) still lets `secureConnect` fire regardless. Switched to a manual, synchronous pin check
+inside `secureConnect` (`sha256(DER cert)` via `getPeerCertificate().raw`) run before the frame is ever built or
+written — verified reliable on both runtimes, and proven by its own live suite's critical negative test: a
+mismatched pin refuses the connection with zero bytes ever reaching the peer. `channelCertPin`'s minting
+convention is unconfirmed anywhere else in the repo (every call site treats it as opaque, no minting code exists)
+— this file assumes sha256 of the DER encoding, not a re-serialized PEM string (PEM re-encoding isn't byte-stable
+across tools), flagged for reconciliation against whatever eventually mints pins in the admin UI. **Fork B built
+`outbound/dispatch-worker.ts`** (+ `dispatch-crypto.ts`, `feed-resolver.ts`, `resolve-baa.ts`, `rate-limiter.ts`,
+`queues.ts`, `wiring.ts`) orchestrating the already-built pure cores (`dispatch-planner.ts`/`ack-correlation.ts`/
+`retry-policy.ts`, all real since M29-T06 but never called by anything — the same "decision core ships, nothing
+drains it" shape F-165/F-167 already found here). BAA gate reuses the real M40 `BaaStatusProvider` seam via the
+exact `22-documents/outbox-consumers/baa-gate.ts` `getSeam(...)`-opaque pattern (fail-closed on any seam error);
+envelope encryption reuses M34's real per-org `getTenantKeyProvider().dekForOrg`/`dekForOrgVersion` (AES-256-GCM,
+DEK-version embedded for rotation survivability, AAD binding module+column+org) — the same shape three other
+live modules (`hearthnote-crypto.ts`, `portal-crypto.ts`, `consent-crypto.ts`) already use, confirmed by direct
+grep against the real `packages/saas-tenant-platform` seam, not assumed. `baa_refused` correctly never emits
+`transmission_failed` (no row, alert+audit-intent only — a BAA lapse is transient) — verified directly in the code
+and by a dedicated live test. Retry is a poll-based sweep over `idx_hmo_next_retry`, not per-row BullMQ delayed
+jobs (the index shape is the strongest signal of original intent, and it survives a Redis flush with zero lost
+retries since state lives entirely in Postgres) — the `state-channel-health-jobs.ts` cron-fan-out shape, one
+minute cadence. Idempotency is a SELECT-before-INSERT inside the same org-scoped transaction (`idx_hmo_idempotency`
+is a lookup index, not a unique constraint — checked against the migration): closes the realistic sequential-
+redelivery replay shape (proven by a live test), honestly does NOT close a true concurrent-delivery race, flagged
+as a real schema follow-up rather than silently accepted. **Two new real gaps surfaced and added to the `m11`
+group rather than built past:** `m29.lab_order.transmitted`/`.transmission_failed` had no catalog entry at all
+before this pass (`events-by-m29.ts` — the identical shape, one hop over) and are now correctly catalogued with
+`declaredConsumers:["m11"]` (M29's spec §4.4/§4.10 is decisive), but grepping `LabTransmissionApplier` finds only
+two doc-comment mentions and no actual consumer anywhere — M29 now publishes both events for real; M11 simply
+does not yet read them, a genuine M11-side follow-up out of this task's scope. Two schema gaps also surfaced and
+documented rather than guessed past: `external_feed` has no facility-routing column at all (the T-29.08 addendum
+sketch assumed one that was never migrated), so feed resolution falls back to "the org's one active
+`orm_outbound` feed, fail-closed on zero or ambiguous" rather than routing by `labDestinationFacilityId`; and the
+ORM wire's MSH-3/4/5/6 identity fields have no backing columns either, falling back to the feed's own
+`displayName` reused three ways. **Coordinator verification (independent of both forks' self-reports, per this
+arc's standing discipline):** re-read both new files in full; re-ran the transport's own 10-test live suite
+(10/10, no mocks — real in-process TCP/TLS servers including the pin-mismatch negative test); re-ran
+`build`/`typecheck` clean and `arch:fitness` 38/38 after all seven new/changed files landed together; re-ran the
+full non-live suite (9614 passed, matching the fork's own report exactly); spun up a **fresh** disposable Postgres
+(the F-176 round's own process note about a reused container running out of lock memory applied here too) and
+independently re-ran the new `m29-outbound-dispatch.live.test.ts` suite (7/7: happy-path AA-ack with the payload
+cipher decrypting back to the exact bytes the mock server received, BAA-inactive no-row/no-`transmission_failed`,
+AR-reject terminal no-retry, transport-failure schedules-retry-not-DLQ, 5th-attempt DLQ exhaustion, redelivery
+idempotency, cross-tenant isolation); re-ran `check:boot:platform` against the same instance with a freshly
+double-checked `DATABASE_PLATFORM_URL` (the F-173 lesson about not trusting a "pass" built on a malformed
+credential, applied again) — clean, confirming the worker and retry-sweep cron construct at boot. Grep-swept for
+F-number collisions: none — both forks were told to use F-175 explicitly and did, needing no renumbering. Net:
+**declared-but-unbound drops from 49 (post-F-176) to 50** (the `m29` group's 1 pair resolves, its own group
+deleted outright per the F-166/F-176 "group empties → delete" precedent; 2 new pairs land on the `m11` group for
+M29's own new outbound events, M11's consuming side unbuilt). Leaving #248 open — 50 pairs across 13 modules
+remain.
