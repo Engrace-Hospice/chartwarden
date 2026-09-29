@@ -114,6 +114,15 @@ export const M30_OUTBOX_SUBSCRIPTIONS: Readonly<Record<string, readonly M30Subsc
       },
     ],
 
+    // ── M37 IPU restraints ──────────────────────────────────────────────────────────────────────────
+    "m37.restraint.applied": [
+      {
+        kind: "incident_draft",
+        incidentKind: "restraint_use",
+        note: "A restraint application auto-files a `restraint_use` incident draft (F-185, D8, thin-pointer payload: restraintEventId + restraintKind).",
+      },
+    ],
+
     // ── M18 EVV ─────────────────────────────────────────────────────────────────────────────────────
     "m18.evv.visit_verified": [
       {

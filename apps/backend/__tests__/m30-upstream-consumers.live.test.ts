@@ -21,7 +21,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   buildM30ClaimAdjudicatedConsumer,
   buildM30HopeSubmissionAcceptedConsumer,
+  buildM30RestraintAppliedConsumer,
 } from "../src/modules/30-quality/index";
+import { restraintAdmissionSitingForOrg } from "../src/modules/37-ipu/seams/restraint-admission-siting-for-org";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -30,12 +32,14 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
+const PATIENT_A = "aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa";
 
 describe.skipIf(!DB_URL)("M30 upstream-event consumers — enqueueRecompute — LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let providerEntityA: string;
   let providerEntityB: string;
+  let ipuAdmissionA: string;
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -81,6 +85,21 @@ describe.skipIf(!DB_URL)("M30 upstream-event consumers — enqueueRecompute — 
            (organization_id,ccn,legal_name,npi,tax_id_encrypted,fiscal_year_end)
          VALUES ($1,'M30UP-B','Upstream Provider B','1000000002','enc','12-31') RETURNING id`,
         [ORG_B],
+      )
+    ).rows[0].id as string;
+    // F-185 (#248) — an `arranged`-kind `ipu_admission` (bypasses the unit RN-coverage gate; no
+    // `inpatient_unit` row needed, but `ipu_admission_unit_xor_remote` requires a non-null
+    // `remote_facility_id` for `kind='arranged'`) for `buildM30RestraintAppliedConsumer`'s siting
+    // resolution. `patient_id`/`admission_id` (M6)/`level_of_care_period_id`/`remote_facility_id`
+    // (M40)/`created_by` are logical, no-FK uuids (D17 outbox-decoupling) — any well-formed uuid
+    // satisfies the NOT NULL columns.
+    ipuAdmissionA = (
+      await admin.query(
+        `INSERT INTO ipu_admission
+           (organization_id,provider_entity_id,patient_id,admission_id,level_of_care_period_id,kind,remote_facility_id,created_by)
+         VALUES ($1,$2,$3,gen_random_uuid(),gen_random_uuid(),'arranged',gen_random_uuid(),gen_random_uuid())
+         RETURNING id`,
+        [ORG_A, providerEntityA, PATIENT_A],
       )
     ).rows[0].id as string;
     await admin.query(`ALTER ROLE wardenx_app LOGIN PASSWORD '${LIVE_APP_ROLE_PASSWORD}'`);
@@ -161,5 +180,85 @@ describe.skipIf(!DB_URL)("M30 upstream-event consumers — enqueueRecompute — 
       [ORG_A],
     );
     expect(crossCheck.rows[0].n).toBe(0);
+  });
+
+  // F-185 (#248) — the previously declared-but-unbound `m37.restraint.applied` → `restraint_use`
+  // incident-draft consumer. Proves `createIncidentDraft` (now real — `M30_SYSTEM_MEMBERSHIP_ID`) and the
+  // injected `restraintAdmissionSitingForOrg` M37 seam both work under real RLS, and that a redelivery
+  // (same outbox event id) is a no-op via the `triggering_event_outbox_id` partial-unique idempotency the
+  // `m12.medication.error_reported` shape already relies on (see `auto_creator.ts`'s own doc comment).
+  it("resolves providerEntityId/patientId via the IPU admission and auto-files a draft restraint_use incident; a redelivery does not duplicate it", async () => {
+    const consumer = buildM30RestraintAppliedConsumer({
+      db: handle.db,
+      restraintAdmissionSitingForOrg,
+    });
+    const event = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab",
+      organizationId: ORG_A,
+      eventType: "m37.restraint.applied",
+      aggregateKind: "ipu_restraint_event",
+      aggregateId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      attemptCount: 0,
+      createdAt: new Date("2026-03-01T10:00:00Z"),
+      payload: {
+        ipuAdmissionId: ipuAdmissionA,
+        organizationId: ORG_A,
+        restraintEventId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+        restraintKind: "four_point",
+      },
+    };
+    await consumer.handle(event);
+    await consumer.handle(event); // redelivery — must be a no-op, not a duplicate draft
+
+    const rows = await admin.query(
+      `SELECT kind, severity, lifecycle, provider_entity_id, patient_id, reported_by_membership_id,
+              triggering_event_outbox_id, kind_data, occurred_at
+       FROM incident_report WHERE organization_id = $1`,
+      [ORG_A],
+    );
+    expect(rows.rows).toHaveLength(1);
+    const row = rows.rows[0];
+    expect(row.kind).toBe("restraint_use");
+    expect(row.severity).toBe("moderate");
+    expect(row.lifecycle).toBe("draft");
+    expect(row.provider_entity_id).toBe(providerEntityA);
+    expect(row.patient_id).toBe(PATIENT_A);
+    expect(row.reported_by_membership_id).toBe("00000000-0000-0000-0000-000000000030");
+    expect(row.triggering_event_outbox_id).toBe(event.id);
+    expect(row.kind_data).toMatchObject({
+      restraintEventId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+      restraintKind: "four_point",
+      narrativeText: "Restraint applied; see IPU restraint record for clinical detail.",
+    });
+    expect(new Date(row.occurred_at).toISOString()).toBe(event.createdAt.toISOString());
+  });
+
+  it("an ipuAdmissionId this org does not recognise (cross-tenant / stale redelivery) is a silent no-op", async () => {
+    const consumer = buildM30RestraintAppliedConsumer({
+      db: handle.db,
+      restraintAdmissionSitingForOrg,
+    });
+    const event = {
+      id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      organizationId: ORG_B, // ipuAdmissionA belongs to ORG_A
+      eventType: "m37.restraint.applied",
+      aggregateKind: "ipu_restraint_event",
+      aggregateId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+      attemptCount: 0,
+      createdAt: new Date(),
+      payload: {
+        ipuAdmissionId: ipuAdmissionA,
+        organizationId: ORG_B,
+        restraintEventId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+        restraintKind: "four_point",
+      },
+    };
+    await expect(consumer.handle(event)).resolves.toBeUndefined();
+
+    const rows = await admin.query(
+      `SELECT count(*)::int AS n FROM incident_report WHERE organization_id = $1`,
+      [ORG_B],
+    );
+    expect(rows.rows[0].n).toBe(0);
   });
 });

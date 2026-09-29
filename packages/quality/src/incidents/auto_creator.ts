@@ -44,6 +44,15 @@ export type IncidentTriggerEvent =
       /** The verbal order that lapsed without a counter-signature (a §2.3 safety event). */
       readonly orderId: string;
       readonly summary?: string;
+    })
+  | (IncidentTriggerBase & {
+      readonly type: "m37.restraint.applied";
+      /** F-185 (#248) — the thin-pointer design: M30 never widens M37's payload or reads M37's
+       *  audit-denylisted `restraint_justification_text`; the draft carries only the restraint event's
+       *  id and kind, plus an auto-generated narrativeText (below). */
+      readonly restraintEventId: string;
+      readonly restraintKind: string;
+      readonly summary?: string;
     });
 
 /** A machine-readable failure when an unmapped event reaches the auto-creator. */
@@ -109,6 +118,22 @@ export function buildIncidentDraftFromEvent(event: IncidentTriggerEvent): schema
         ...base,
         kind: "other_safety_event",
         severity: INCIDENT_KIND_CATALOG.other_safety_event.defaultSeverity,
+        kindData,
+      };
+    }
+
+    case "m37.restraint.applied": {
+      const kindData: schema.IncidentKindData = {
+        restraintEventId: event.restraintEventId,
+        restraintKind: event.restraintKind,
+        narrativeText:
+          event.summary ?? "Restraint applied; see IPU restraint record for clinical detail.",
+        ...(event.summary !== undefined ? { summary: event.summary } : {}),
+      };
+      return {
+        ...base,
+        kind: "restraint_use",
+        severity: INCIDENT_KIND_CATALOG.restraint_use.defaultSeverity,
         kindData,
       };
     }
