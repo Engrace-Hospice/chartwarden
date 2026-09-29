@@ -14,12 +14,62 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch: {}
 
 concurrency:
   group: production-deploy
   cancel-in-progress: true
 
 jobs:
+  # ── Debounce (#257) ────────────────────────────────────────────────────────────────────────────
+  # `verify` below calls the WHOLE CI matrix (~150 jobs, several spinning up their own live-Postgres
+  # service container) — expensive, and this is a PRIVATE repo, so Actions minutes are metered, not
+  # unlimited the way a public repo's are. Before #257, every push to `main` triggered a full run of
+  # that matrix immediately. `concurrency.cancel-in-progress` above already kills a SUPERSEDED run,
+  # but "kill" happens only after GitHub has scheduled and started billing every one of its ~150
+  # jobs — so a burst of N pushes in a short window (multiple rounds landing minutes apart, which is
+  # the normal shape of this repo's parallel-agent workflow) still spun up N separate 150-job
+  # matrices, cancelled or not. On 2026-09-29 that burst pattern exhausted the org's included Actions
+  # minutes for the billing period, which silently blocked every subsequent deploy — including a
+  # real production sign-in fix (F-189, #248) — for the rest of the cycle, discovered only by
+  # noticing `main` had not actually reached the VPS in days.
+  #
+  # This job is cheap (one job, no matrix) and runs FIRST: it waits out a quiet window, then checks
+  # whether `main`'s HEAD is still the commit that triggered this run. If a newer push landed during
+  # the wait, `concurrency.cancel-in-progress` will have already cancelled THIS (cheap) job before it
+  # reaches that check in the normal case — the check is a belt-and-suspenders backstop for the race
+  # where a newer push lands right as the wait ends. Only the run for the LAST settled push ever
+  # reaches `verify`, so a burst of pushes costs one matrix run, not one per push. `workflow_dispatch`
+  # (a human asking for a deploy right now) skips the wait entirely — there is nothing to batch when
+  # someone explicitly asked for this SHA.
+  #
+  # RULE (mirrored in CLAUDE.md "Standing verification habits" and AGENTS.md): do not add a second
+  # way to trigger `verify`/`release`/`deploy` directly (e.g. a raw `push` job, a cron that always
+  # runs) without routing it through this gate — the whole point is that nothing expensive runs on
+  # `main` without first checking whether a fresher commit has already superseded it.
+  debounce:
+    name: Debounce rapid pushes
+    runs-on: ubuntu-latest
+    if: github.event_name != 'workflow_dispatch'
+    outputs:
+      proceed: ${{ steps.check.outputs.proceed }}
+    steps:
+      - name: Wait for a quiet period
+        run: sleep 300 # 5 minutes — long enough to absorb a burst of rounds landing minutes apart
+      - name: Proceed only if this is still main's latest commit
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          latest_sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/main" --jq .sha)
+          if [ "$latest_sha" = "${GITHUB_SHA}" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "main advanced to $latest_sha while this run (${GITHUB_SHA}) waited — a fresher run" \
+                 "already covers it; skipping the matrix for this one."
+          fi
+
   # ── The gate (#16) ──────────────────────────────────────────────────────────────────────────────
   # This workflow's own header has always said "a successful CI run on main is the only automatic
   # release source" — and that was not true of the configuration. `ci.yml` had no `push: main`
@@ -40,6 +90,8 @@ jobs:
   # remain open in #16.
   verify:
     name: Verify (full CI)
+    needs: debounce
+    if: always() && (needs.debounce.result == 'skipped' || needs.debounce.outputs.proceed == 'true')
     uses: ./.github/workflows/ci.yml
 
   release:
