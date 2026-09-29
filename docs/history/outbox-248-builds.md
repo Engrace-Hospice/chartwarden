@@ -1900,5 +1900,27 @@ Verified centrally across all three F-178/F-178b forks (not trusting individual 
 clean, `arch:fitness` 38/38 (declared-but-unbound: 48 → 46 — the two genuine F2F pairs, not all 6), full non-live
 suite green (655 files / 9622 tests, 0 failed), the new live suite `test:m6:t5:counts:live` (6/6) and the extended
 `test:m6:t5:write:live` (6/6, 3 new F2F-window-missed producer tests alongside the original 3) both proven against
-a fresh disposable Postgres, `check:boot:platform` clean with a double-checked platform credential URL. Leaving
-#248 open — 46 pairs across 13 modules remain.
+a fresh disposable Postgres, `check:boot:platform` clean with a double-checked platform credential URL.
+
+**F-179 (#248) investigated the general (all-window-kind) compliance-window dashboard-pull relationship F-178
+correctly left deferred, and dropped all four remaining `m6.compliance.window.*` pairs as misdeclared, not merely
+unbuilt.** `packages/types/src/admission.ts` DOES pre-declare a real, typed `ComplianceReader` interface
+(`listOpenWindows(scope): Promise<ComplianceWindowSummary[]>`) matching M6 spec §4.7's decisive text verbatim —
+but it is a pure aspirational leftover: never registered in `SeamName`, no deny-stub, no implementation anywhere,
+and the `apps/backend/src/modules/06-admission/readers/` directory the spec names for it does not exist. No
+M30-owned route, seam, or UI screen spec consumes it either — `docs/design/screens/` has no M30 "operational
+dashboard"/open-windows screen at all. What the M6 spec's "M30 dashboard pulls open windows"/"Overrides — last 30
+days" prose (line 2322/2330/3047) actually describes is already fully live: `GET /api/v1/compliance-windows`
+(`admission-routes.ts` route 44) is an org-wide, all-window-kind, filterable REST read, gated by
+`compliance.read`/the `compliance.scope` ABAC predicate — itself documented as "org-wide for compliance_officer,"
+the exact persona a compliance/quality dashboard would use. This is a direct frontend-to-M6 REST call, not a
+backend module-to-module relationship — nothing for the outbox/seam registry to track. Dropped `m30` from
+`declaredConsumers` on all four (`events-by-m6.ts`), not moved to `seamConsumers`: there is no seam to move it
+to, and building one (the pre-declared but unregistered `ComplianceReader`) would ship a seam with no caller —
+the identical "decision core ships, nothing drains it" shape this arc keeps finding, in the opposite direction.
+Caught before a build was dispatched: the user approved this round's topic as "build the general seam," but
+fresh research surfaced the REST route first, so the actual, smaller, correct action (a catalog correction, not
+a new seam) was confirmed with the user before proceeding. Verified: `build`/`typecheck` clean, `arch:fitness`
+38/38 (declared-but-unbound: 46 → 42), full non-live suite green (655 files / 9622 tests, 0 failed) — a pure
+catalog/comment correction with no runtime behavior change, so no live-suite or `check:boot:platform` re-run was
+needed. Leaving #248 open — 42 pairs across 13 modules remain.

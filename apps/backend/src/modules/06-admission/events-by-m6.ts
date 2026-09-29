@@ -935,18 +935,23 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-145 (#248) — m14 REMOVED: same as `m6.admission.on_hold` above — no support in M14's own
     // exhaustive build-description; M6's own text (line 599) assigns the real overdue-window consumer to
     // M36's escalation chain, not M14.
-    // F-178 (#248) — m30 STAYS declared, genuinely unbound. This event is GENERIC across all 11
+    // F-178 (#248) — m30 investigated, genuinely unbound at the time: this event is GENERIC across all 11
     // `complianceWindowKind` values (payload carries `windowType`, not just F2F) — M6's spec (line 3868)
     // confirms non-F2F kinds are real and actively created (`concurrent_hospital_admission`,
-    // `external_discharge_notice`, `hl7_admission_cancellation` informational windows). The new
-    // `ComplianceWindowCountsProvider` seam this round built is hardcoded to `windowKind =
-    // 'f2f_recert_30d_prior'` only (by design — Phase 1 was scoped to the F2F cluster), so it resolves
-    // NOTHING for the other 10 window kinds. Do not conflate with `m6.f2f.window_missed`/`.overridden`
-    // below, which are F2F-specific events the new seam genuinely does cover end-to-end. The real,
-    // still-unbuilt relationship here is the GENERAL compliance-window dashboard pull M6's spec describes
-    // (line 2322/2330, "M30 dashboard pulls open windows"; line 3047, the all-kind "Overrides — last 30
-    // days" widget) — a different, larger seam than the one this round built.
-    declaredConsumers: ["m30"],
+    // `external_discharge_notice`, `hl7_admission_cancellation` informational windows). The
+    // `ComplianceWindowCountsProvider` seam F-178 built is hardcoded to `windowKind = 'f2f_recert_30d_prior'`
+    // only (by design — Phase 1 was scoped to the F2F cluster), so it resolves NOTHING for the other 10
+    // window kinds.
+    // F-179 (#248) — m30 DROPPED: the "M30 dashboard pulls open windows"/"Overrides — last 30 days" text
+    // M6's spec (line 2322/2330/3047) describes for this GENERIC, all-window-kind fact is already satisfied
+    // by `GET /api/v1/compliance-windows` (`admission-routes.ts` route 44 — org-wide, all window kinds,
+    // filterable, gated by `compliance.read`/`compliance.scope`, explicitly "org-wide for
+    // compliance_officer"). This is a direct frontend-to-M6 REST read, not a backend module-to-module
+    // relationship — no M30 route, seam registration, or UI screen spec for an M30-owned dashboard exists
+    // anywhere (grepped); the `ComplianceReader`/`listOpenWindows` interface `packages/types/src/admission.ts`
+    // pre-declares for exactly this shape has zero registrations/implementations/callers, a pure aspirational
+    // leftover. Nothing for the outbox/seam registry to track: misdeclared, not merely unbuilt.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -959,9 +964,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       closedAt: Type.String({ minLength: 1 }),
       closedVia: Type.String({ minLength: 1 }),
     }),
-    // F-178 (#248) — m30 STAYS declared, genuinely unbound — same reasoning as `m6.compliance.window.opened`
-    // above: this is the GENERIC, all-window-kind close event; the new F2F-only seam does not cover it.
-    declaredConsumers: ["m30"],
+    // F-178/F-179 (#248) — m30 investigated then DROPPED — same reasoning as `m6.compliance.window.opened`
+    // above: this is the GENERIC, all-window-kind close event; the real "M30 reads this" fact is already
+    // satisfied by `GET /api/v1/compliance-windows`, a direct frontend REST read, not a backend relationship.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -976,9 +982,10 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-145 (#248) — m14 REMOVED: M6's own spec (line 599) is decisive and names the OPPOSITE
     // consumer for this exact fact: "`compliance_window.overdue` (for any window) → M36 escalating
     // alert chain (clinician → supervisor → DON)" — not mere silence, an affirmative counter-claim.
-    // F-178 (#248) — m30 STAYS declared, genuinely unbound — same reasoning as `m6.compliance.window.opened`
-    // above: generic across all window kinds, the new F2F-only seam does not cover it.
-    declaredConsumers: ["m30"],
+    // F-178/F-179 (#248) — m30 investigated then DROPPED — same reasoning as `m6.compliance.window.opened`
+    // above: generic across all window kinds; already satisfied by the direct `GET /api/v1/compliance-windows`
+    // REST read, not a backend relationship.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -990,11 +997,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       complianceWindowId: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
     }),
-    // F-178 (#248) — m30 STAYS declared, genuinely unbound — same reasoning as `m6.compliance.window.opened`
-    // above: this generic route-46 override event fires for ANY window kind, and the new
-    // `ComplianceWindowCountsProvider.f2fWindowOverrideCounts` only reads F2F-kind rows. Not to be confused
-    // with the F2F-specific `m6.f2f.window_overridden` sibling above, which the new seam DOES fully cover.
-    declaredConsumers: ["m30"],
+    // F-178/F-179 (#248) — m30 investigated then DROPPED — same reasoning as `m6.compliance.window.opened`
+    // above: this generic route-46 override event fires for ANY window kind, already satisfied by the direct
+    // `GET /api/v1/compliance-windows` REST read. Not to be confused with the F2F-specific
+    // `m6.f2f.window_overridden` sibling above, which the F-178 seam genuinely does bind as a real backend
+    // relationship.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   // ── bereavement / applier ───────────────────────────────────────────────────────────────────────

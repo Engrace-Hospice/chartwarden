@@ -211,7 +211,28 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       " windows\"; line 3047's all-kind \"Overrides — last 30 days\" widget) — a different, larger seam than" +
       " the F2F-scoped one this round built. Caught in central verification before commit: a build-side" +
       " fork's own `events-by-m6.ts` reason text had generalized the F2F seam's coverage to all four generic" +
-      " events, which this reason corrects.",
+      " events, which this reason corrects." +
+      " **F-179 (#248) investigated the general (all-window-kind) dashboard-pull relationship F-178 left" +
+      " deferred, and dropped all four remaining `m6.compliance.window.*` pairs as misdeclared, not merely" +
+      " unbuilt.** `packages/types/src/admission.ts` DOES pre-declare a real, typed `ComplianceReader`" +
+      " interface (`listOpenWindows(scope): Promise<ComplianceWindowSummary[]>`) matching M6 spec §4.7's" +
+      " decisive text verbatim — but it is a pure aspirational leftover: not registered in `SeamName`, no" +
+      " deny-stub, no implementation, and the `apps/backend/src/modules/06-admission/readers/` directory the" +
+      " spec names for it does not exist (grepped, zero hits). No M30-owned route, seam, or UI screen spec" +
+      " consumes it either — `docs/design/screens/` has no M30 \"operational dashboard\"/open-windows screen" +
+      " at all. What the M6 spec's \"M30 dashboard pulls open windows\"/\"Overrides — last 30 days\" prose" +
+      " (line 2322/2330/3047) actually describes is already fully live: `GET /api/v1/compliance-windows`" +
+      " (`admission-routes.ts` route 44) is an org-wide, all-window-kind, filterable REST read, gated by" +
+      " `compliance.read`/the `compliance.scope` ABAC predicate — itself documented as \"org-wide for" +
+      " compliance_officer,\" the exact persona a compliance/quality dashboard would use. This is a direct" +
+      " frontend-to-M6 REST call, not a backend module-to-module relationship — nothing for this registry (or" +
+      " any outbox/seam mechanism) to track. Dropped `m30` from `declaredConsumers` on all four" +
+      " (`events-by-m6.ts`), not moved to `seamConsumers`: there is no seam here to move it to, and building" +
+      " one (the pre-declared but unregistered `ComplianceReader`) would ship a seam with no caller, the" +
+      " identical \"decision core ships, nothing drains it\" shape this arc keeps finding in the other" +
+      " direction. If a genuine backend consumer for this data ever materializes (e.g. a future M30-side" +
+      " nightly rollup rather than a live dashboard read), it would be a fresh declaration against real new" +
+      " evidence, not a re-add of this one.",
     events: [
       "m12.medication_order.transmission_failed",
       "m15.discipline_assessment.amended",
@@ -227,10 +248,6 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "m6.admission.on_hold",
       "m6.admission.resumed",
       "m6.applier.refused",
-      "m6.compliance.window.closed",
-      "m6.compliance.window.opened",
-      "m6.compliance.window.overdue",
-      "m6.compliance.window.overridden",
     ],
   },
   {
