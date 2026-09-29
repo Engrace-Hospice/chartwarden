@@ -188,6 +188,7 @@ represent **completed, merged** waves and are retained as historical governance 
 | Document | Scope |
 |---|---|
 | [`REMEDIATION_SUMMARY.md`](./REMEDIATION_SUMMARY.md) | Architecture remediation summary (phases 0–6). |
+| [`history/`](./history/README.md) | Audit findings (F-0xx), #248 outbox-binding rounds, and per-gate incident history, split by topic (moved out of `CLAUDE.md`). |
 | [`adr/`](./adr/) | Decision records — see [`adr/README.md`](./adr/README.md). |
 | [`../audit/`](../audit/) | Point-in-time audit & fitness-enforcement reports (outside `docs/`). |
 
