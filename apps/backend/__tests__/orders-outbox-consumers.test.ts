@@ -166,6 +166,9 @@ describe("M11 outbox subscriptions (§4.5)", () => {
         eventName: "m21.supply_request.cancelled",
         consumerName: "m11.m21-supply-cancelled",
       },
+      // F-177 (#248) — `LabTransmissionApplier`: M29's real outbound HL7 lifecycle events.
+      { eventName: "m29.lab_order.transmitted", consumerName: "m11.lab-transmission-applier" },
+      { eventName: "m29.lab_order.transmission_failed", consumerName: "m11.lab-transmission-applier" },
     ]);
   });
 

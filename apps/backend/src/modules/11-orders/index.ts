@@ -164,6 +164,14 @@ export {
   buildM11FulfillmentStatusConsumer,
   type FulfillmentStatusDeps,
 } from "./outbox-consumers/m21-fulfillment-status";
+// F-177 (#248) — `LabTransmissionApplier`: M29's real outbound HL7 lifecycle events
+// (`m29.lab_order.transmitted`/`.transmission_failed`, live since F-175) drive `order_record.transmission_status`
+// and re-publish M11's own D16-decisive `m11.order.transmission_status_changed`/`.transmission_terminal_failed`.
+export {
+  M11_LAB_TRANSMISSION_APPLIER_CONSUMER,
+  buildM11LabTransmissionApplierConsumer,
+  type LabTransmissionApplierDeps,
+} from "./outbox-consumers/m29-lab-transmission-applier";
 // F-166 (#248) — the m21 `handlers-unbound` group's other real event: a staff-initiated
 // `m21.supply_request.cancelled` releases the still-in-flight M11 order it never touched.
 export {

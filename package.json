@@ -130,6 +130,7 @@
     "test:m5:patient-merge:live": "vitest run apps/backend/__tests__/m5-patient-merge.live.test.ts",
     "test:m11:m9-m21-consumers:live": "vitest run apps/backend/__tests__/m11-m9-m21-outbox-consumers.live.test.ts",
     "test:m11:supply-cancelled:live": "vitest run apps/backend/__tests__/m11-supply-cancelled.live.test.ts",
+    "test:m11:lab-transmission-applier:live": "vitest run apps/backend/__tests__/m11-lab-transmission-applier.live.test.ts",
     "test:m13:reconciliation-triggers:live": "vitest run apps/backend/__tests__/m13-reconciliation-triggers.live.test.ts",
     "test:m17:evv-sos-consumers:live": "vitest run apps/backend/__tests__/m17-evv-sos-consumers.live.test.ts",
     "test:m16:discharge-death-secondary:live": "vitest run apps/backend/__tests__/m16-discharge-death-secondary.live.test.ts",

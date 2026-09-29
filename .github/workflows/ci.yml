@@ -230,6 +230,9 @@ jobs:
           # F-166 (#248) — `m21.supply_request.cancelled`: releases the still-in-flight M11 order on the
           # staff-initiated M21 cancel route; a true no-op on the M11-cascade-reply producer.
           - { name: "M11 supply-cancelled consumer", scripts: "test:m11:supply-cancelled:live" }
+          # F-177 (#248) — `LabTransmissionApplier`: M29's real outbound HL7 lifecycle events drive
+          # order_record.transmission_status and re-publish M11's own D16-decisive events.
+          - { name: "M11 lab-transmission applier", scripts: "test:m11:lab-transmission-applier:live" }
           # F-164 (#248) — M11's hourly orders.verbal_timer fan-out + the M12 medication-order verbal
           # target-kind discrimination it drives.
           - { name: "M11 verbal-order expiry", scripts: "test:m11:verbal-order-expiry:live" }

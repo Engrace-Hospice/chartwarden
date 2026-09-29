@@ -298,6 +298,7 @@ import {
   buildM11DocumentBackrefConsumer,
   buildM11FulfillmentStatusConsumer,
   buildM11IdgDecisionConsumer,
+  buildM11LabTransmissionApplierConsumer,
   buildM11SupplyCancelledConsumer,
   createDbOrderBackend,
   createDrizzleOrderEraseStore,
@@ -6002,6 +6003,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-152 — the D8 one-shot (`supply`/`comfort_kit`) auto-complete on M21 delivery. `dme`
           // stays open — it completes on receipt via a separate monthly-rental close-out.
           buildM11FulfillmentStatusConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
+          // F-177 (#248) — `LabTransmissionApplier`: the m11 group's `m29.lab_order.transmitted`/
+          // `.transmission_failed` pairs F-175 surfaced when it built M29's real T08 dispatch worker.
+          // Drives `order_record.transmission_status` per D16 and re-publishes M11's own decisive
+          // `m11.order.transmission_status_changed`/`.transmission_terminal_failed`.
+          buildM11LabTransmissionApplierConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
           // F-166 (#248) — a staff-initiated `m21.supply_request.cancelled` (never through M11's own
           // discharge cascade above, which already discontinues the order before asking M21) releases
           // the still-in-flight source order M11 never touched. Safe for the cascade-reply producer too

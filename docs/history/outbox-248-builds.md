@@ -1798,3 +1798,43 @@ F-number collisions: none — both forks were told to use F-175 explicitly and d
 deleted outright per the F-166/F-176 "group empties → delete" precedent; 2 new pairs land on the `m11` group for
 M29's own new outbound events, M11's consuming side unbuilt). Leaving #248 open — 50 pairs across 13 modules
 remain.
+
+**F-177 (#248) — builds `LabTransmissionApplier`, the two `m11` pairs F-175 surfaced (`m29.lab_order.transmitted`/
+`.transmission_failed`) when it built M29's real T08 dispatch worker, at the user's direct follow-up request.**
+Research first (a dedicated fork, kept out of the coordinator's own context): confirmed `order_record` already
+carries the full D16 column set (`transmission_status`/`transmission_acked_at`/`transmission_ack_code`/
+`transmission_failure_reason`, migrated since M11-T07 — F-175's `fulfillment_status` citation was a stale gloss
+from M29's spec prose; the real column is `transmission_status`) and the `order_transmission_status` enum
+(`not_required`/`pending`/`pending_retry`/`transmitted`/`failed`) already exists. D16 (locked,
+`WARDENX_MODULE_11_ORDERS_SPEC_v0_4.md:2837`) and its own §4.10 event-consumption table (line ~1498, "Either way
+emit `m11.order.transmission_status_changed`") turned out to be fully decisive on the state machine and on both
+re-published events — no undecided design call remained once the state machine was read in full, contrary to
+F-175's own scoping note that this was "a real M11-side feature... a genuine design decision." **A real
+spec/producer mismatch surfaced and resolved, not guessed past**: D16's own reference implementation gates
+`failed` vs. `pending_retry` on a `willRetry` boolean it expects on the M29 payload — the REAL
+`LabOrderTransmissionFailedPayload` F-175 built carries no such field, only
+`reason:"application_reject"|"dlq_exhausted"`, and F-175's dispatch worker never publishes
+`m29.lab_order.transmission_failed` for a retry-in-progress state at all (a non-terminal transport failure or a
+retryable `AE` ack just updates the row and reschedules silently — no outbox event). So `pending_retry` is
+UNREACHABLE from this consumer against the real M29 contract as it stands today — every delivery of
+`.transmission_failed` this file will ever see is terminal and is applied straight to `failed`; this is the
+correct behavior for the actual producer, not a shortcut past the spec. Built
+`outbox-consumers/m29-lab-transmission-applier.ts` (mirrors `m21-fulfillment-status.ts`'s idempotent-optimistic-
+UPDATE shape): the UPDATE is guarded on `transmissionStatus = <the status just read>`; `transmitted`/`failed` are
+treated as already-settled (a redelivery against a settled row silently skips, never regresses); on a terminal
+failure it emits BOTH `m11.order.transmission_status_changed` and `m11.order.transmission_terminal_failed` per
+D16's own table (never `.transmission_terminal_failed` alone). `orderingPhysicianMdmId` (required by
+`.transmission_terminal_failed`'s own payload schema, absent from M29's payload) is read off the same
+`order_record` row the consumer already selects, not fabricated. **Two real gaps `arch:fitness`/the live suite
+caught, not guessed past:** `arch:outbox-bindings` rule 6 failed on the first run — the two new bindings were
+missing from `M11_OUTBOX_SUBSCRIPTIONS` (`11-orders/consumers/index.ts`), the exact F-095 catalog-vs.-source-of-
+truth disagreement that constant exists to catch, fixed by registering both; and the live suite's first run
+found a genuine DB behavior, not a test bug — the RLS migration's §3.4 "lab-initial-states" trigger forces a new
+`kind='lab'` row's `transmission_status` to `'pending'` at INSERT time regardless of what value is inserted
+(proven directly against a live container: an INSERT carrying `'failed'` came back `'pending'`), so the live
+suite's seed helper had to insert-then-update rather than seed the starting state in one INSERT. Verified: `build`/
+`typecheck` clean, `arch:fitness` 38/38 (declared-but-unbound: 50 → 48, the `m11` group's two m29 pairs resolved,
+its two `m39.consent.dpoa.*` pairs remain), full non-live suite green (9614, after updating one pinned
+`M11_OUTBOX_SUBSCRIPTIONS` assertion), new live suite `m11:lab-transmission-applier` (7/7) proven against a fresh
+disposable Postgres, `check:boot:platform` clean with a double-checked platform credential URL. Leaving #248 open
+— 48 pairs across 13 modules remain.

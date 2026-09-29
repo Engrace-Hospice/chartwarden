@@ -65,4 +65,8 @@ export const M11_OUTBOX_SUBSCRIPTIONS = [
   // F-166 (#248) — releases the still-in-flight source order on a staff-initiated M21 cancel (never
   // through M11's own discharge cascade above, which already discontinues the order before asking M21).
   { eventName: "m21.supply_request.cancelled", consumerName: "m11.m21-supply-cancelled" },
+  // F-177 (#248) — `LabTransmissionApplier`: M29's real outbound HL7 lifecycle events drive
+  // order_record.transmission_status and re-publish M11's own D16-decisive events.
+  { eventName: "m29.lab_order.transmitted", consumerName: "m11.lab-transmission-applier" },
+  { eventName: "m29.lab_order.transmission_failed", consumerName: "m11.lab-transmission-applier" },
 ] as const;
