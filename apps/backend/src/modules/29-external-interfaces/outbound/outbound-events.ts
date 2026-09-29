@@ -47,7 +47,12 @@ export type LabOrderDispatchRefusalReason =
   | "ambiguous_feed"
   | "no_feed_for_destination"
   | "feed_identity_incomplete"
-  | "baa_inactive";
+  | "baa_inactive"
+  // F-186 — an operator-ATTESTED re-dispatch that the worker could not honour because an outbound row that still
+  // owns the order (`queued`/`in_flight`/`acked`) appeared between the operator's request and the claim. Unlike the
+  // reasons above a row DOES exist for this order, so it is NOT resendable: M11 records it as
+  // `recovery_blocked:row_owns_order`, which only the attested recovery (not F-182's plain resend) can act on.
+  | "attested_redispatch_blocked";
 
 /** `m29.lab_order.dispatch_refused` — the worker wrote NO row for this order; M11 consumes (F-185). */
 export interface LabOrderDispatchRefusedPayload {
@@ -58,6 +63,11 @@ export interface LabOrderDispatchRefusedPayload {
   /** Unique per refusal — the applier's `sourceM29EventId` (there is no outbound row id to cite). */
   readonly refusalId: string;
   readonly reason: LabOrderDispatchRefusalReason;
+  /**
+   * F-186 — the outbound attempt this refusal concerns (echoed from `OrmRequestedPayload.attemptId`). M11's applier
+   * applies the refusal only when it names the order's CURRENT attempt. Absent for a request that carried none.
+   */
+  readonly attemptId?: string;
 }
 
 /** The M11-facing outbound outbox events (§4.10). */

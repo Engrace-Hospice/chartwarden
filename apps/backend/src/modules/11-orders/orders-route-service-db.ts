@@ -78,8 +78,8 @@ import { type SQL, and, desc, eq, lte } from "drizzle-orm";
 import { type OrmRequestedPorts, resolveOrmRequested } from "./orm-request/orm-requested";
 import {
   ORM_REFUSAL_PREFIX,
-  RECOVERY_ATTESTATION_PREFIX,
   classifyOrmResend,
+  classifyRecoveryContradiction,
   classifyTransmissionRecovery,
 } from "./orm-request/orm-resend";
 import { EMPTY_ORDER_DETAIL_ACTOR, buildOrderWorkflowProjection } from "./routes/service";
@@ -103,6 +103,7 @@ const OS = schema.orderSignatures;
 const VO = schema.verbalOrders;
 const VP = schema.orderVerbalPolicies;
 const OD = schema.orderDiscontinuations;
+const ATT = schema.orderTransmissionAttestations;
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
@@ -574,9 +575,17 @@ export function createDbOrderBackend(
       data,
     });
     if (outcome.kind === "ok") {
+      // F-186 — every emission mints its own attempt id, persisted on the order in the SAME transaction, so a
+      // `dispatch_refused` for THIS attempt can be told apart from one redelivered from an earlier attempt.
+      const attemptId = randomUUID();
       await emit(tx, organizationId, "m11.order.hl7_orm_requested", orderId, {
         ...outcome.payload,
+        attemptId,
       } as unknown as Record<string, unknown>);
+      await tx
+        .update(OR)
+        .set({ transmissionAttemptId: attemptId })
+        .where(and(eq(OR.organizationId, organizationId), eq(OR.id, orderId), eq(OR.kind, "lab")));
       return;
     }
     await tx
@@ -1216,9 +1225,16 @@ export function createDbOrderBackend(
           eq(OR.transmissionFailureReason, verdict.priorReason),
         );
         if (outcome.kind === "ok") {
+          // F-186 — a NEW attempt: a `dispatch_refused` redelivered from the previous attempt no longer matches.
+          const attemptId = randomUUID();
           const claimed = await t
             .update(OR)
-            .set({ transmissionStatus: "pending", transmissionFailureReason: null, updatedAt: at })
+            .set({
+              transmissionStatus: "pending",
+              transmissionFailureReason: null,
+              transmissionAttemptId: attemptId,
+              updatedAt: at,
+            })
             .where(stillFailed)
             .returning({ id: OR.id });
           if (claimed.length === 0) {
@@ -1226,6 +1242,7 @@ export function createDbOrderBackend(
           }
           await emit(t, organizationId, "m11.order.hl7_orm_requested", id, {
             ...outcome.payload,
+            attemptId,
           } as unknown as Record<string, unknown>);
           return { outcome: "requested", refusalReason: null, order: await readOrder(t, id, actor) };
         }
@@ -1253,19 +1270,23 @@ export function createDbOrderBackend(
      * ONE transaction, and the same two independent single-dispatch guards as F-182: `SELECT … FOR UPDATE` on the
      * order row (a double-click serializes; the second reads `pending`/`transmitted` and is refused `not_failed`) and
      * a CONDITIONAL update (`WHERE transmission_status='failed' AND reason = <the one we read>`).
-     * THE ATTESTATION IS THE AUDIT RECORD: it is written into `transmission_failure_reason`
-     * (`recovery_attested:<attestation>:<attestationId>`) in the same UPDATE, so the M4 write-audit trigger's
-     * before/after diff on `order_record` records what was attested, when, and — via `auditUserId` on the
-     * transaction — by whom. No PHI: an enum and a uuid.
+     * F-186 — THE ATTESTATION HAS A PROPER HOME: one APPEND-ONLY `order_transmission_attestation` row per recovery
+     * (what was attested, the structured evidence — who at the lab was contacted + the lab's reference — the prior
+     * failure reason, the outcome, the attempt it started, who attested), inserted in the SAME transaction. The order's
+     * `transmission_failure_reason` is cleared (a `pending`/`transmitted` order carries none — F-185 left a
+     * `recovery_attested:` marker on a delivered order). The M4 write-audit trigger records both tables under the
+     * real `auditUserId`. BEFORE anything is written, `not_received_by_lab` is checked against what the system CAN
+     * verify (a lab result already returned, an acked/queued/in-flight outbound row): a contradiction is a 409.
      * If the producer now REFUSES (a fact is missing), the order is left EXACTLY as it was: rewriting it to
      * `orm_refused:*` (as the plain resend does) would make F-182's resend — with none of this path's attestation —
      * reachable for an order whose first attempt may have reached the lab.
      */
     async recoverLabTransmission(
       organizationId,
-      _membershipId,
+      membershipId,
       id,
       attestation,
+      evidence,
       actor = EMPTY_ORDER_DETAIL_ACTOR,
       auditUserId = "",
     ): Promise<RecoverLabTransmissionResult> {
@@ -1295,9 +1316,45 @@ export function createDbOrderBackend(
         if (!verdict.ok) {
           throw new ConflictError(`Transmission recovery not allowed (${verdict.code}): ${verdict.message}`);
         }
+        // F-186 — the CONTRADICTION CHECK, BEFORE anything is written: an operator's `not_received_by_lab` is a
+        // phone call the system cannot verify, but it CAN see whether the lab has already returned a result for the
+        // order, acknowledged the message, or still has a send under way. Any of those refuses the attestation with
+        // a specific 409; a missing evidence port fails CLOSED. `received_by_lab` is never blocked (it sends nothing).
+        if (attestation === "not_received_by_lab") {
+          const observed = orm.outboundEvidence ? await orm.outboundEvidence(t, organizationId, id) : null;
+          const contradiction = classifyRecoveryContradiction(
+            attestation,
+            { resultsStatus: r.resultsStatus, resultsFirstReceivedAt: r.resultsFirstReceivedAt },
+            observed,
+          );
+          if (contradiction) {
+            throw new ConflictError(
+              `Transmission recovery not allowed (${contradiction.code}): ${contradiction.message}`,
+            );
+          }
+        }
         const at = new Date();
+        // The attestation row's id doubles as the `redispatchAttestationId` M29's worker keys its exception on, so
+        // the persisted evidence and the wire attempt are linked by one id. The attempt id is separate (F-186).
         const attestationId = randomUUID();
-        const marker = `${RECOVERY_ATTESTATION_PREFIX}${attestation}:${attestationId}`;
+        const recordAttestation = async (outcome: "redispatched" | "marked_transmitted", attemptId: string | null) => {
+          await t.insert(ATT).values({
+            id: attestationId,
+            organizationId,
+            providerEntityId: r.providerEntityId,
+            locationId: r.locationId,
+            orderRecordId: id,
+            attestation,
+            outcome,
+            labContactName: evidence.contactName,
+            labReference: evidence.labReference,
+            priorFailureReason: verdict.priorReason,
+            attemptId,
+            attestedByMembershipId: membershipId || null,
+            attestedByUserId: auditUserId || null,
+            createdAt: at,
+          });
+        };
         const stillFailed = and(
           eq(OR.organizationId, organizationId),
           eq(OR.id, id),
@@ -1309,12 +1366,15 @@ export function createDbOrderBackend(
         if (attestation === "received_by_lab") {
           const claimed = await t
             .update(OR)
-            .set({ transmissionStatus: "transmitted", transmissionFailureReason: marker, updatedAt: at })
+            // F-186 — a delivered order carries NO failure reason (F-185 left a `recovery_attested:` marker here);
+            // what was attested, by whom, with what evidence, lives in `order_transmission_attestation`.
+            .set({ transmissionStatus: "transmitted", transmissionFailureReason: null, updatedAt: at })
             .where(stillFailed)
             .returning({ id: OR.id });
           if (claimed.length === 0) {
             throw new ConflictError("Transmission recovery not allowed (not_failed): the order was recovered concurrently");
           }
+          await recordAttestation("marked_transmitted", null);
           await emit(t, organizationId, "m11.order.transmission_status_changed", id, {
             orderId: id,
             organizationId,
@@ -1337,17 +1397,27 @@ export function createDbOrderBackend(
         if (outcome.kind !== "ok") {
           return { outcome: "still_refused", refusalReason: outcome.reason, order: await readOrder(t, id, actor) };
         }
+        // F-186 — a NEW attempt (its id is what a `dispatch_refused` for THIS re-dispatch must name) and no marker in
+        // the reason column: a `pending` order carries no failure reason.
+        const attemptId = randomUUID();
         const claimed = await t
           .update(OR)
-          .set({ transmissionStatus: "pending", transmissionFailureReason: marker, updatedAt: at })
+          .set({
+            transmissionStatus: "pending",
+            transmissionFailureReason: null,
+            transmissionAttemptId: attemptId,
+            updatedAt: at,
+          })
           .where(stillFailed)
           .returning({ id: OR.id });
         if (claimed.length === 0) {
           throw new ConflictError("Transmission recovery not allowed (not_failed): the order was recovered concurrently");
         }
+        await recordAttestation("redispatched", attemptId);
         await emit(t, organizationId, "m11.order.hl7_orm_requested", id, {
           ...outcome.payload,
           redispatchAttestationId: attestationId,
+          attemptId,
         } as unknown as Record<string, unknown>);
         return { outcome: "redispatched", refusalReason: null, order: await readOrder(t, id, actor) };
       });

@@ -46,6 +46,7 @@ import { Value } from "@sinclair/typebox/value";
 import type { DbClient } from "@wardenx/db";
 import type { OrmRequestedPayload } from "@wardenx/types";
 import { ormRequestedPayloadSchema } from "../events-by-m11";
+import type { OrmOutboundEvidence } from "./orm-resend";
 
 // ── Port shapes (structural; the composition root binds them — see apps/backend/src/index.ts) ────────────
 
@@ -105,7 +106,19 @@ export type OrmDestinationPort = (
   args: { readonly routingLabId: string | null },
 ) => Promise<OrmDestinationResult>;
 
+/** F-186 — M29's read-only outbound/inbound evidence for one order (injected: M11 does not depend on M29). */
+export type OrmOutboundEvidencePort = (
+  tx: DbClient,
+  organizationId: string,
+  orderId: string,
+) => Promise<OrmOutboundEvidence>;
+
 export interface OrmRequestedPorts {
+  /**
+   * F-186 — evidence for the attested recovery's contradiction check. Optional: absent ⇒ the recovery FAILS CLOSED
+   * (`evidence_unavailable`) for `not_received_by_lab`; the producer itself never reads it.
+   */
+  readonly outboundEvidence?: OrmOutboundEvidencePort;
   /** M5 — `hl7OrmDemographicsInTx`. `null` = no such patient in this org. */
   readonly patient: (
     tx: DbClient,

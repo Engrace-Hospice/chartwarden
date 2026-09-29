@@ -244,7 +244,8 @@ function isOrmRequestedPayload(payload: unknown): payload is OrmRequestedPayload
     typeof p.requestedAt === "string" &&
     typeof p.labOrderPayload === "object" &&
     p.labOrderPayload !== null &&
-    (p.redispatchAttestationId === undefined || typeof p.redispatchAttestationId === "string")
+    (p.redispatchAttestationId === undefined || typeof p.redispatchAttestationId === "string") &&
+    (p.attemptId === undefined || typeof p.attemptId === "string")
   );
 }
 
@@ -640,6 +641,7 @@ async function refuseDispatch(
   orderId: string,
   feedId: string | null,
   reason: LabOrderDispatchRefusalReason,
+  attemptId: string | undefined,
 ): Promise<void> {
   await deps.outbox.publish(tx, {
     eventName: "m29.lab_order.dispatch_refused",
@@ -649,6 +651,8 @@ async function refuseDispatch(
       feedId,
       refusalId: randomUUID(),
       reason,
+      // F-186 — the attempt this refusal concerns, so M11 applies it only to the order's CURRENT attempt.
+      ...(attemptId !== undefined ? { attemptId } : {}),
     } as unknown as Record<string, unknown>,
     organizationId,
     aggregateKind: "order",
@@ -693,9 +697,20 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
         : await ormDispatchHasLiveOrDeliveredRow(tx, organizationId, payload.orderId);
     if (orderOwned) {
       // An ATTESTED re-dispatch blocked by a row that still owns the order is not a routine redelivery: the operator
-      // asked for a send that will not happen. Ids only — never a payload value.
+      // asked for a send that will not happen, and until F-186 the order then sat `pending` forever with only this
+      // log line. Publish the terminal signal IN THIS TRANSACTION so M11's applier ends the order actionable
+      // (`recovery_blocked:row_owns_order`, recoverable again once the owning row settles). Ids only.
       if (attestationId !== undefined) {
         console.warn("m29.outbound.attested_redispatch_blocked", { orderId: payload.orderId, attestationId });
+        await refuseDispatch(
+          deps,
+          tx,
+          organizationId,
+          payload.orderId,
+          null,
+          "attested_redispatch_blocked",
+          payload.attemptId ?? attestationId,
+        );
       }
       return null;
     }
@@ -715,6 +730,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
         payload.orderId,
         feedResult.reason === "feed_identity_incomplete" ? feedResult.feedId : null,
         feedResult.reason,
+        payload.attemptId,
       );
       return null;
     }
@@ -776,7 +792,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
       // re-runs the producer once the BAA is renewed.
       await emitAlert(deps, organizationId, plan.alert);
       logAuditIntent(plan.audit);
-      await refuseDispatch(deps, tx, organizationId, payload.orderId, feed.id, "baa_inactive");
+      await refuseDispatch(deps, tx, organizationId, payload.orderId, feed.id, "baa_inactive", payload.attemptId);
       return null;
     }
 

@@ -127945,7 +127945,9 @@
                 "additionalProperties": false,
                 "type": "object",
                 "required": [
-                  "attestation"
+                  "attestation",
+                  "contactName",
+                  "labReference"
                 ],
                 "properties": {
                   "attestation": {
@@ -127959,6 +127961,14 @@
                         "type": "string"
                       }
                     ]
+                  },
+                  "contactName": {
+                    "pattern": "^[A-Za-z][A-Za-z .'-]{1,79}$",
+                    "type": "string"
+                  },
+                  "labReference": {
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._#/-]{2,63}$",
+                    "type": "string"
                   }
                 }
               }

@@ -42,6 +42,7 @@ import type {
 import { ConflictError, NotFoundError, ValidationError } from "@wardenx/types";
 import {
   type RecoveryAttestation,
+  type RecoveryEvidence,
   classifyOrmResend,
   classifyTransmissionRecovery,
 } from "../orm-request/orm-resend";
@@ -469,13 +470,16 @@ export interface OrderRouteService extends OrderAbacResolver {
    * F-185 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built
    * (`dlq_exhausted` incl. F-183's "held, delivery unverified", or `application_reject`). `attestation` is what the
    * operator established WITH THE LAB: `not_received_by_lab` re-dispatches once, `received_by_lab` marks the order
-   * transmitted without sending. Recorded in the order's write-audit diff under `auditUserId`.
+   * transmitted without sending. F-186 — `evidence` (who at the lab was contacted + the lab's reference) is REQUIRED
+   * and persisted with the attestation in the append-only `order_transmission_attestation` table under
+   * `auditUserId`; `not_received_by_lab` is first checked against inbound evidence (409 on a contradiction).
    */
   recoverLabTransmission(
     organizationId: string,
     membershipId: string,
     id: string,
     attestation: RecoveryAttestation,
+    evidence: RecoveryEvidence,
     actor?: OrderDetailActor,
     auditUserId?: string,
   ): Promise<RecoverLabTransmissionResult>;
@@ -1147,7 +1151,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
       );
     },
 
-    async recoverLabTransmission(organizationId, _membershipId, id, attestation) {
+    async recoverLabTransmission(organizationId, _membershipId, id, attestation, _evidence) {
       // Like the resend: the in-mem slice never has an M29 terminal failure to recover, so it applies the SAME
       // eligibility rule as the DB backend and always refuses.
       const r = find(organizationId, id);
