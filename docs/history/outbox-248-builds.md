@@ -1687,7 +1687,7 @@ five forks' edits landed together (no live-Postgres run needed — nothing new w
 needed proving against a real database). Leaving #248 open — 66 pairs across 15 modules remain.
 
 **F-176 (#248) — five research-only forks (m22, m14, m31, m11 and the nine small groups), then one central apply,
-found exactly ONE buildable pair in ~35 re-checked and cleaned 21 misdeclared ones out of the registry.** The
+found exactly ONE buildable pair among the ~35 it re-checked, and 16 more that were misdeclared and came out of the registry (66 → 49).** The
 forks were told to change nothing and mint no F-numbers; every verdict below was then re-checked by the
 coordinator against the code before applying. **Built: `m6.discharge.cosigned` (m22).** M22's spec (§4.11/§7.17) names
 it: a for-cause cosign renders a NEW VERSION of the discharge summary. The append machinery already existed
@@ -1700,7 +1700,7 @@ stamps `document_id` only while NULL, so v2 never overwrites v1's link; if the f
 still undispatched the cosign render becomes v1 and `.created` idempotent-skips (benign). M16's unbound
 `decideCosignReceipt` also subscribes to this topic and needs a different payload — widening is additive, so it is
 unaffected. Known gap shared with the F-168 append events: `upsertRenderedDocument` does not mark the prior version
-superseded. **Dropped/moved (21 pairs; 66 → 43 counting F-175's concurrent M29 resolution separately):**
+superseded. **Dropped/moved (16 pairs; the m29 pair F-175 is resolving concurrently is NOT counted here):**
 `m7.intervention.added/.updated/.discontinued` (m11 → seamConsumers: M11's spec PULLS M7 via
 `OrderProvider.findByCarePlanIntervention`, and `care_plan_intervention.linked_order_id` is written by nothing, so
 the catalog's "M11 links it if an order backs it" condition can never hold);
