@@ -81,17 +81,23 @@ export type OrmDestinationResult =
   | { readonly ok: true; readonly facilityId: string }
   | {
       readonly ok: false;
-      readonly reason: "no_routing_lab" | "lab_facility_unresolved" | "no_active_feed" | "ambiguous_feed";
+      readonly reason: 
+        | "no_routing_lab"
+        | "lab_facility_unresolved"
+        | "no_active_feed"
+        | "ambiguous_feed"
+        | "no_feed_for_destination"
+        | "feed_identity_incomplete";
     };
 
 /**
  * The destination port. `routingLabId` is the order's own `data.routingLabId` (an M40 facility id, optional in
  * the lab kind schema). The binding MUST return an M40 FACILITY id that is `active`, because M29's D16 BAA gate
  * (`resolveOutboundBaaResult` → `BaaStatusProvider.baaStatusByMdmEntity({kind:'facility', id})`) runs on it and
- * `hl7_message_outbound.destination_facility_id` is a `uuid`. Until the feed↔facility link lands (a separate
- * schema task), the composition-root binding ALSO requires the org to have exactly one active `orm_outbound`
- * feed — the only routing M29 supports today — and refuses (`no_active_feed` / `ambiguous_feed`) rather than
- * emit an event M29 would only alert on and drop. Runs on the sign transaction (`tx`) so feed reads are RLS-scoped.
+ * `hl7_message_outbound.destination_facility_id` is a `uuid`. The composition-root binding then asks M29 to
+ * resolve the active `orm_outbound` feed LINKED to that facility (F-178: `external_feed.lab_destination_facility_id`)
+ * and refuses (`no_active_feed` / `ambiguous_feed` / `no_feed_for_destination` / `feed_identity_incomplete`) rather
+ * than emit an event M29 would only alert on and drop. Runs on the sign transaction (`tx`) so feed reads are RLS-scoped.
  */
 export type OrmDestinationPort = (
   tx: DbClient,
@@ -130,6 +136,8 @@ export type OrmRefusalReason =
   | "lab_facility_unresolved"
   | "no_active_feed"
   | "ambiguous_feed"
+  | "no_feed_for_destination"
+  | "feed_identity_incomplete"
   | "payload_invalid"
   | "dependency_unavailable";
 

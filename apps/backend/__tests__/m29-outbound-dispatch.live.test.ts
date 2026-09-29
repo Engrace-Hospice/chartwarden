@@ -591,6 +591,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         outbox: outbox.port,
         keys: fakeKeyProvider(),
         alerts: alerts.port,
+        destinationPolicy: TEST_POLICY,
       }),
     };
   }

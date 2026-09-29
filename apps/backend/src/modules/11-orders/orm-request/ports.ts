@@ -50,9 +50,18 @@ export interface OrmFeedResolverLike {
     tx: DbClient,
     organizationId: string,
     asOf: Date,
+    /** F-178 — the resolved M40 lab facility; M29 routes to the feed linked to it. */
+    labDestinationFacilityId?: string | null,
   ): Promise<
     | { readonly kind: "resolved" }
-    | { readonly kind: "unresolved"; readonly reason: "no_active_feed" | "ambiguous_feed" }
+    | {
+        readonly kind: "unresolved";
+        readonly reason:
+          | "no_active_feed"
+          | "ambiguous_feed"
+          | "no_feed_for_destination"
+          | "feed_identity_incomplete";
+      }
   >;
 }
 
@@ -104,7 +113,7 @@ export function buildM11OrmRequestedPorts(deps: M11OrmRequestPortDeps): OrmReque
       if (facility === null || facility.status !== "active") {
         return { ok: false, reason: "lab_facility_unresolved" };
       }
-      const feed = await feeds.resolveForOrg(tx, organizationId, now());
+      const feed = await feeds.resolveForOrg(tx, organizationId, now(), facility.id);
       if (feed.kind === "unresolved") return { ok: false, reason: feed.reason };
       // The survivor id (post-M40-redirect), not the id the order happened to store.
       return { ok: true, facilityId: facility.id };

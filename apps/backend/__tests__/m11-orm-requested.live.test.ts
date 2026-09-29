@@ -139,9 +139,11 @@ describe.skipIf(!DB_URL)("F-178 — M11 lab-order ORM producer → M29 worker �
     await admin.query(
       `INSERT INTO external_feed
          (id, organization_id, kind, display_name, host, port, protocol, channel_cert_pin,
-          status, proposed_by_membership_id, rate_limit_msg_per_sec)
-       VALUES ($1,$2,'orm_outbound','Reference Lab','127.0.0.1',$3,'mllp_plain',NULL,'active',$4,1000)`,
-      [id, organizationId, port, randomUUID()],
+          status, proposed_by_membership_id, rate_limit_msg_per_sec, lab_destination_facility_id,
+          msh_sending_application, msh_sending_facility, msh_receiving_application, msh_receiving_facility)
+       VALUES ($1,$2,'orm_outbound','Reference Lab','127.0.0.1',$3,'mllp_plain',NULL,'active',$4,1000,$5,
+               'WARDENX','HOSPICE-A','REFLAB','REFLAB-FAC')`,
+      [id, organizationId, port, randomUUID(), FAC_ACTIVE],
     );
     return id;
   }
@@ -290,6 +292,9 @@ describe.skipIf(!DB_URL)("F-178 — M11 lab-order ORM producer → M29 worker �
           keys,
           transport,
           alerts: { emit: async () => undefined } as never,
+          // F-178 — the seeded feed is `mllp_plain` on loopback; the stub transport never dials, but the
+          // worker's production-safe default policy refuses plain MLLP before it reaches the transport.
+          destinationPolicy: { allowPlain: true, allowLoopback: true },
         }),
         buildM11LabTransmissionApplierConsumer({ db: handle.db, outbox: m11Outbox }),
       ],
