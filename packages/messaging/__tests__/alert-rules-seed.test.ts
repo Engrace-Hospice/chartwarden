@@ -65,6 +65,10 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       // sweep giving up.
       "m11.order.transmission_held_aging",
       "m11.order.transmission_auto_retry_exhausted",
+      // F-194 (#248) — the two-person lab-recovery control's compliance alerts.
+      "m11.order.recovery_executed",
+      "m11.order.recovery_expired",
+      "m11.order.recovery_cancelled",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();

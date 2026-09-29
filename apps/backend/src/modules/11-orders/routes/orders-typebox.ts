@@ -312,6 +312,41 @@ export const OrderViewResponseSchema = Type.Object({
 });
 
 /** Single-order detail only. List and work-queue reads deliberately omit clinical JSON payloads. */
+/**
+ * F-194 — the attested-recovery ledger row and the two-person request, as the order detail shows them. "Who" is a
+ * membership id, like every other actor on the view. The lab contact's NAME and the lab's reference are a third
+ * party's personal data: `null` unless the reader holds `orders.amend`.
+ */
+export const TransmissionAttestationViewSchema = Type.Object({
+  id: Type.String(),
+  attestation: Type.Union([Type.Literal("not_received_by_lab"), Type.Literal("received_by_lab")]),
+  outcome: Type.Union([Type.Literal("redispatched"), Type.Literal("marked_transmitted")]),
+  priorFailureReason: Type.String(),
+  attestedByMembershipId: nullableString(),
+  cosignedByMembershipId: nullableString(),
+  attemptId: nullableString(),
+  createdAt: Type.String(),
+  labContactName: nullableString(),
+  labReference: nullableString(),
+});
+export const RecoveryRequestViewSchema = Type.Object({
+  id: Type.String(),
+  orderId: Type.String(),
+  status: Type.Union([
+    Type.Literal("pending_cosign"),
+    Type.Literal("executed"),
+    Type.Literal("cancelled"),
+    Type.Literal("expired"),
+  ]),
+  requestedByMembershipId: nullableString(),
+  requestedAt: Type.String(),
+  expiresAt: Type.String(),
+  cosignedByMembershipId: nullableString(),
+  resolvedAt: nullableString(),
+  labContactName: nullableString(),
+  labReference: nullableString(),
+});
+
 export const OrderDetailResponseSchema = Type.Intersect([
   OrderViewResponseSchema,
   Type.Object({
@@ -346,6 +381,8 @@ export const OrderDetailResponseSchema = Type.Intersect([
         deadlineAt: Type.Optional(Type.String()),
       }),
     ),
+    transmissionAttestations: Type.Array(TransmissionAttestationViewSchema),
+    pendingRecovery: Type.Union([RecoveryRequestViewSchema, Type.Null()]),
     allowedActions: Type.Object({
       edit: Type.Boolean(),
       request_signature: Type.Boolean(),
@@ -403,13 +440,26 @@ export const ResendLabTransmissionResponseSchema = Type.Object({
 });
 /** F-187 — POST /orders/:id/recover-transmission. `refusalReason` is a fixed producer token, never PHI. */
 export const RecoverLabTransmissionResponseSchema = Type.Object({
+  /** F-194 — `pending_cosign`: a `not_received_by_lab` attestation FILED a request a different person must co-sign. */
   outcome: Type.Union([
     Type.Literal("redispatched"),
     Type.Literal("marked_transmitted"),
     Type.Literal("still_refused"),
+    Type.Literal("pending_cosign"),
   ]),
   refusalReason: nullableString(),
   order: OrderDetailResponseSchema,
+  recovery: Type.Union([RecoveryRequestViewSchema, Type.Null()]),
+});
+/** F-194 — cancel a pending recovery. */
+export const CancelLabTransmissionRecoveryResponseSchema = Type.Object({
+  recovery: RecoveryRequestViewSchema,
+  order: OrderDetailResponseSchema,
+});
+/** F-194 — the co-sign / cancel path params. */
+export const RecoveryRequestParamsSchema = Type.Object({
+  id: Type.String({ format: "uuid" }),
+  requestId: Type.String({ format: "uuid" }),
 });
 /** Route 25 — the PRN manual-spawn result (the newly-minted order id). */
 export const SpawnResponseSchema = Type.Object({ orderId: Type.String() });

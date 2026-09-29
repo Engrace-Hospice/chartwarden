@@ -412,6 +412,21 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // F-194 (#248) — the two-person control on the attested lab-transmission recovery. Every EXECUTED
+  // `not_received_by_lab` recovery (a re-dispatch that orders the test twice if the attestation was wrong) and every
+  // lapsed / cancelled pending request goes to compliance, with `org_admin` as the backstop for a tenant that has no
+  // compliance-officer role assigned. The emitter routes at max(input, floor): an executed recovery warns, and the
+  // producer raises it to `critical` when the same requester keeps filing them. Ids and counts only in the payload.
+  {
+    eventType: "m11.order.recovery_executed",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   // The auto-retry sweep gave up on an order refused before any outbound row existed (attempts or window used up): the
   // configuration cause it was waiting out never cleared, so a person must fix it and resend. Raised ONCE per order.
   {
@@ -420,6 +435,26 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     severityFloor: "warn",
     recipientResolver: "role_set",
     resolverArgs: { roleKeys: ["org_admin", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m11.order.recovery_expired",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "m11.order.recovery_cancelled",
+    category: "administrative",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
     channelsOverride: null,
     systemLocked: false,
     enabled: true,

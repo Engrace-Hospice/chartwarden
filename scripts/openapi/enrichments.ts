@@ -1303,6 +1303,7 @@ import {
   RegenerateVerbalTimerRequest as M11RegenerateVerbalTimerRequest,
   RequestSignatureRequest as M11RequestSignatureRequest,
   RecoverLabTransmissionRequest as M11RecoverLabTransmissionRequest,
+  CancelLabTransmissionRecoveryResponseSchema as M11CancelLabTransmissionRecoveryResponseSchema,
   RecoverLabTransmissionResponseSchema as M11RecoverLabTransmissionResponseSchema,
   ResendLabTransmissionResponseSchema as M11ResendLabTransmissionResponseSchema,
   SignOnBehalfRequest as M11SignOnBehalfRequest,
@@ -4330,9 +4331,18 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/orders/:id/recover-transmission": {
     summary:
-      "Attested recovery of a lab order that failed after its HL7 message was built (dlq_exhausted / application_reject): the operator attests the lab did NOT receive it (re-dispatch once) or DID (mark transmitted, send nothing) — 409 when not recoverable",
+      "Attested recovery of a lab order that failed after its HL7 message was built (dlq_exhausted / application_reject): the operator attests the lab did NOT receive it (FILES a two-person request a different user must co-sign; nothing is re-dispatched until then) or DID (mark transmitted, send nothing) — 409 when not recoverable",
     body: M11RecoverLabTransmissionRequest,
     response: M11RecoverLabTransmissionResponseSchema,
+  },
+  "POST /api/v1/orders/:id/recover-transmission/:requestId/cosign": {
+    summary:
+      "Co-sign a pending not_received_by_lab recovery (the second person of the two-person control): re-dispatches once — 409 when the request is not pending, has lapsed (24 h), or was filed by the same user",
+    response: M11RecoverLabTransmissionResponseSchema,
+  },
+  "POST /api/v1/orders/:id/recover-transmission/:requestId/cancel": {
+    summary: "Cancel a pending recovery request (either person) — 409 when it is no longer pending",
+    response: M11CancelLabTransmissionRecoveryResponseSchema,
   },
   "GET /api/v1/standing-orders": {
     summary: "Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5)",

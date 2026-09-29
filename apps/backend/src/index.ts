@@ -2804,6 +2804,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m40OutboxPublisher = bindCallerModule(txOutboxPublisher, "m40");
   const m28OutboxPublisher = bindCallerModule(txOutboxPublisher, "m28");
   const m2OutboxPublisher = bindCallerModule(txOutboxPublisher, "m2");
+  // F-194 (#248) — M11's two-person lab-recovery control raises its compliance alerts through M36's AlertEmitter seam,
+  // resolved at call time (registered during boot, after M11's routes and its hourly timer are constructed).
+  const m11RecoveryControls = {
+    alerts: {
+      emit: (
+        organizationId: string,
+        input: { eventType: string; payload: Record<string, unknown>; severity: string; correlationId: string },
+      ) => (getSeam("AlertEmitter") as AlertEmitter).emit(organizationId, input as never),
+    },
+  };
   // M24 §8.7 — the trading-partner secret cipher port. Built once at boot so a missing/short KEK surfaces
   // here, not on the first tenant write; left undefined when no key is configured, which makes credential
   // WRITES fail closed while every other M24 route keeps working (production requires the key via env.ts).
@@ -3258,6 +3268,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               // F-188 — the evidence the attested recovery checks a `not_received_by_lab` against.
               outboundEvidence: ormOutboundEvidenceForOrder,
             }),
+            // F-194 — the two-person recovery control's compliance alerts. The seam is resolved LAZILY (at emit time):
+            // it is registered during boot, after the routes mount.
+            m11RecoveryControls,
           );
           // F-193 (#248) — the held-order worklist: lab orders waiting on a human's verification with the lab.
           registerHeldTransmissionRoutes(app, { recovery: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher) });
@@ -5317,7 +5330,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     const m11VerbalTimerWorker = registerM11VerbalOrderExpiryWorker({
       connection: queueConnection,
       activeOrgs: m11VerbalTimerActiveOrgs,
-      service: createDbOrderBackend(dbHandle.db, m11OutboxPublisher),
+      // F-194 — the same tick lapses stale two-person recovery requests, so the backend needs the alert port too.
+      service: createDbOrderBackend(dbHandle.db, m11OutboxPublisher, undefined, m11RecoveryControls),
     });
     attachDlqAlertsToAll([m11VerbalTimerWorker], "m11");
     app.addHook("onClose", async () => {
