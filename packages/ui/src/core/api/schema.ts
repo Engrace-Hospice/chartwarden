@@ -52606,7 +52606,8 @@ export interface operations {
                         pendingRecovery: {
                             id: string;
                             orderId: string;
-                            status: "pending_cosign" | "executed" | "cancelled" | "expired";
+                            status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                            supersededReason: string | null;
                             requestedByMembershipId: string | null;
                             requestedAt: string;
                             expiresAt: string;
@@ -53011,7 +53012,8 @@ export interface operations {
                             pendingRecovery: {
                                 id: string;
                                 orderId: string;
-                                status: "pending_cosign" | "executed" | "cancelled" | "expired";
+                                status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                                supersededReason: string | null;
                                 requestedByMembershipId: string | null;
                                 requestedAt: string;
                                 expiresAt: string;
@@ -53034,7 +53036,8 @@ export interface operations {
                         recovery: {
                             id: string;
                             orderId: string;
-                            status: "pending_cosign" | "executed" | "cancelled" | "expired";
+                            status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                            supersededReason: string | null;
                             requestedByMembershipId: string | null;
                             requestedAt: string;
                             expiresAt: string;
@@ -53072,7 +53075,8 @@ export interface operations {
                         recovery: {
                             id: string;
                             orderId: string;
-                            status: "pending_cosign" | "executed" | "cancelled" | "expired";
+                            status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                            supersededReason: string | null;
                             requestedByMembershipId: string | null;
                             requestedAt: string;
                             expiresAt: string;
@@ -53138,7 +53142,8 @@ export interface operations {
                             pendingRecovery: {
                                 id: string;
                                 orderId: string;
-                                status: "pending_cosign" | "executed" | "cancelled" | "expired";
+                                status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                                supersededReason: string | null;
                                 requestedByMembershipId: string | null;
                                 requestedAt: string;
                                 expiresAt: string;
@@ -53243,7 +53248,8 @@ export interface operations {
                             pendingRecovery: {
                                 id: string;
                                 orderId: string;
-                                status: "pending_cosign" | "executed" | "cancelled" | "expired";
+                                status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                                supersededReason: string | null;
                                 requestedByMembershipId: string | null;
                                 requestedAt: string;
                                 expiresAt: string;
@@ -53266,7 +53272,8 @@ export interface operations {
                         recovery: {
                             id: string;
                             orderId: string;
-                            status: "pending_cosign" | "executed" | "cancelled" | "expired";
+                            status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                            supersededReason: string | null;
                             requestedByMembershipId: string | null;
                             requestedAt: string;
                             expiresAt: string;
@@ -53417,7 +53424,8 @@ export interface operations {
                             pendingRecovery: {
                                 id: string;
                                 orderId: string;
-                                status: "pending_cosign" | "executed" | "cancelled" | "expired";
+                                status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
+                                supersededReason: string | null;
                                 requestedByMembershipId: string | null;
                                 requestedAt: string;
                                 expiresAt: string;

@@ -125676,6 +125676,7 @@
                                 "id",
                                 "orderId",
                                 "status",
+                                "supersededReason",
                                 "requestedByMembershipId",
                                 "requestedAt",
                                 "expiresAt",
@@ -125708,6 +125709,20 @@
                                     {
                                       "const": "expired",
                                       "type": "string"
+                                    },
+                                    {
+                                      "const": "superseded",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "supersededReason": {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
                                     }
                                   ]
                                 },
@@ -128211,6 +128226,7 @@
                                     "id",
                                     "orderId",
                                     "status",
+                                    "supersededReason",
                                     "requestedByMembershipId",
                                     "requestedAt",
                                     "expiresAt",
@@ -128243,6 +128259,20 @@
                                         {
                                           "const": "expired",
                                           "type": "string"
+                                        },
+                                        {
+                                          "const": "superseded",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "supersededReason": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
                                         }
                                       ]
                                     },
@@ -128360,6 +128390,7 @@
                             "id",
                             "orderId",
                             "status",
+                            "supersededReason",
                             "requestedByMembershipId",
                             "requestedAt",
                             "expiresAt",
@@ -128392,6 +128423,20 @@
                                 {
                                   "const": "expired",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "superseded",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "supersededReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             },
@@ -128553,6 +128598,7 @@
                         "id",
                         "orderId",
                         "status",
+                        "supersededReason",
                         "requestedByMembershipId",
                         "requestedAt",
                         "expiresAt",
@@ -128585,6 +128631,20 @@
                             {
                               "const": "expired",
                               "type": "string"
+                            },
+                            {
+                              "const": "superseded",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        "supersededReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
                             }
                           ]
                         },
@@ -129159,6 +129219,7 @@
                                     "id",
                                     "orderId",
                                     "status",
+                                    "supersededReason",
                                     "requestedByMembershipId",
                                     "requestedAt",
                                     "expiresAt",
@@ -129191,6 +129252,20 @@
                                         {
                                           "const": "expired",
                                           "type": "string"
+                                        },
+                                        {
+                                          "const": "superseded",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "supersededReason": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
                                         }
                                       ]
                                     },
@@ -129896,6 +129971,7 @@
                                     "id",
                                     "orderId",
                                     "status",
+                                    "supersededReason",
                                     "requestedByMembershipId",
                                     "requestedAt",
                                     "expiresAt",
@@ -129928,6 +130004,20 @@
                                         {
                                           "const": "expired",
                                           "type": "string"
+                                        },
+                                        {
+                                          "const": "superseded",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "supersededReason": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
                                         }
                                       ]
                                     },
@@ -130045,6 +130135,7 @@
                             "id",
                             "orderId",
                             "status",
+                            "supersededReason",
                             "requestedByMembershipId",
                             "requestedAt",
                             "expiresAt",
@@ -130077,6 +130168,20 @@
                                 {
                                   "const": "expired",
                                   "type": "string"
+                                },
+                                {
+                                  "const": "superseded",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "supersededReason": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
                                 }
                               ]
                             },
@@ -131104,6 +131209,7 @@
                                     "id",
                                     "orderId",
                                     "status",
+                                    "supersededReason",
                                     "requestedByMembershipId",
                                     "requestedAt",
                                     "expiresAt",
@@ -131136,6 +131242,20 @@
                                         {
                                           "const": "expired",
                                           "type": "string"
+                                        },
+                                        {
+                                          "const": "superseded",
+                                          "type": "string"
+                                        }
+                                      ]
+                                    },
+                                    "supersededReason": {
+                                      "anyOf": [
+                                        {
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
                                         }
                                       ]
                                     },
