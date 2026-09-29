@@ -45,9 +45,8 @@ export {
  * projection-cache + back-ref paths run their Valkey/Drizzle effects. Consumer dedup is keyed on `(eventId,
  * consumerName)` per the M1 outbox-consumer pattern; re-delivery is safe. */
 export const M14_OUTBOX_SUBSCRIPTIONS = [
-  // inclusion-cache: which patients belong to a location's next scheduled meeting (§2.4 D1)
-  { eventName: "m6.admission.activated", consumerName: "m14.m6-admission-activated" },
-  { eventName: "m6.admission.discharged", consumerName: "m14.m6-admission-discharged" },
+  // F-176 (#248) — the two M6 inclusion-cache subscriptions (`m6.admission.activated`/`.discharged`) were removed:
+  // D9 inclusion is answered by PULL at packet-build time (`idgPacketInclusionForOrg`, F-171), no cache exists.
   // D8 action-item auto-close (linked-artifact absorbing states)
   { eventName: "m7.care_plan.version_signed", consumerName: "m14.m7-version-signed" },
   { eventName: "m8.encounter.signed", consumerName: "m14.m8-encounter-signed" },

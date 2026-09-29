@@ -293,7 +293,10 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       discipline: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m11"],
+    // F-176 (#248) — m11 moved to seamConsumers: M11's spec has it PULL M7 (`OrderProvider.findByCarePlanIntervention`),
+    // not subscribe; `care_plan_intervention.linked_order_id` is written by nothing, so an "if linked" push never fires.
+    declaredConsumers: [],
+    seamConsumers: ["m11"],
     isOutboxOnly: true,
   },
   {
@@ -306,7 +309,10 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       discipline: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m11"],
+    // F-176 (#248) — m11 moved to seamConsumers: M11's spec has it PULL M7 (`OrderProvider.findByCarePlanIntervention`),
+    // not subscribe; `care_plan_intervention.linked_order_id` is written by nothing, so an "if linked" push never fires.
+    declaredConsumers: [],
+    seamConsumers: ["m11"],
     isOutboxOnly: true,
   },
   {
@@ -319,7 +325,10 @@ export const M7_OUTBOX_EVENTS: ModuleEventContribution = [
       status: Type.String({ minLength: 1 }),
       discipline: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m11"],
+    // F-176 (#248) — m11 moved to seamConsumers: M11's spec has it PULL M7 (`OrderProvider.findByCarePlanIntervention`),
+    // not subscribe; `care_plan_intervention.linked_order_id` is written by nothing, so an "if linked" push never fires.
+    declaredConsumers: [],
+    seamConsumers: ["m11"],
     isOutboxOnly: true,
   },
 ];

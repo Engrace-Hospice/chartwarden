@@ -428,6 +428,62 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
     expect(await backref("certification_of_terminal_illness", adm.ctiId)).toBe(first.id);
   });
 
+  it("F-176: a for-cause cosign appends v2 of the SAME discharge summary; the back-ref keeps v1's link; a redelivery adds no v3", async () => {
+    const patientId = randomUUID();
+    const adm = await activeAdmission(patientId);
+    await settle();
+    const filed = await svc.discharge(
+      ORG_A,
+      adm.admissionId,
+      {
+        reason: "for_cause",
+        dischargeDate: "2026-05-05",
+        narrative: "Discharge for cause; safety of staff could not be assured.",
+        forCauseReason: "Staff safety could not be assured at the residence after repeated incidents.",
+      } as never,
+      USER,
+    );
+    await settle();
+    const v1 = await documentFor("discharge_summary", filed.id);
+    expect(v1, "the filing-time `.created` render").not.toBeNull();
+    expect(await backref("discharge_event", filed.id)).toBe(v1.id);
+
+    await svc.cosignDischarge(
+      ORG_A,
+      filed.id,
+      { cosignerName: "Dr Director", cosignerNpi: "1234567893" } as never,
+      filed.version,
+      MD,
+    );
+    await settle();
+    const versions = async () =>
+      (
+        await admin.query(
+          `SELECT v.version_number, v.source_event_id FROM document d JOIN document_version v ON v.document_id = d.id
+            WHERE d.aggregate_type='discharge_summary' AND d.aggregate_id=$1 ORDER BY v.version_number`,
+          [filed.id],
+        )
+      ).rows;
+    // ONE document, TWO versions — never a second document — and both carry the chart.
+    const afterCosign = await documentFor("discharge_summary", filed.id);
+    expect(afterCosign.id).toBe(v1.id);
+    expect(afterCosign.patient_id).toBe(patientId);
+    expect(await versions()).toHaveLength(2);
+    // The M6 back-ref only stamps an UNSET column, so v2 does not overwrite v1's link.
+    expect(await backref("discharge_event", filed.id)).toBe(v1.id);
+
+    // A further relay pass redelivers nothing new: no v3.
+    await settle();
+    expect(await versions()).toHaveLength(2);
+
+    // Org B sees neither version through RLS.
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM document WHERE aggregate_type='discharge_summary' AND aggregate_id=$1 AND organization_id=$2",
+      [filed.id, ORG_B],
+    );
+    expect(rows[0].n).toBe(0);
+  });
+
   it("every one of the six is a published template M22 renders and M6 stamps", async () => {
     // The pairing this whole change is about, asserted as a set rather than per case: a template with no
     // stamper leaves the column NULL (the bug), a stamper for a template M22 never renders is dead code.

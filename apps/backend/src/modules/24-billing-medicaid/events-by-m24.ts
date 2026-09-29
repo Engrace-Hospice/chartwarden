@@ -457,7 +457,10 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       lastSeenUpAt: Iso,
       downedAt: Iso,
     }),
-    declaredConsumers: ["m1"],
+    // F-176 (#248) — m1 REMOVED: `system_status` is platform-global with no tenant column and a session-gated
+    // read route, while this fact is per-org Medicaid-credential health; writing it there would show one org's
+    // channel state to every tenant. The M1 lag-probe / MAC-portal writers are unaffected.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },
@@ -472,7 +475,10 @@ export const M24_OUTBOX_EVENTS: ModuleEventContribution = [
       downedAt: Iso,
       recoveredAt: Iso,
     }),
-    declaredConsumers: ["m1"],
+    // F-176 (#248) — m1 REMOVED: `system_status` is platform-global with no tenant column and a session-gated
+    // read route, while this fact is per-org Medicaid-credential health; writing it there would show one org's
+    // channel state to every tenant. The M1 lag-probe / MAC-portal writers are unaffected.
+    declaredConsumers: [],
     seamConsumers: ["m36", "m33"],
     isOutboxOnly: true,
   },

@@ -151,6 +151,8 @@ describe("M6's back-ref map covers exactly what M22 renders for M6", () => {
     "m6.nor.acknowledged": "nor",
     "m6.revocation.created": "revocation",
     "m6.discharge.created": "discharge_summary",
+    // F-176 (#248) — a for-cause cosign appends a new version of the same discharge_summary document.
+    "m6.discharge.cosigned": "discharge_summary",
   };
 
   it("every m6 event M22 subscribes to resolves to a published template", () => {
@@ -164,9 +166,12 @@ describe("M6's back-ref map covers exactly what M22 renders for M6", () => {
   });
 
   it("the stamp table is exactly the aggregate types those templates file under", () => {
-    const rendered = Object.values(M6_TEMPLATE_BY_EVENT)
-      .map((key) => PLATFORM_TEMPLATE_TABLE[key]?.aggregateType)
-      .sort();
+    // Distinct: F-176's `m6.discharge.cosigned` files under the SAME `discharge_summary` aggregate as `.created`.
+    const rendered = [
+      ...new Set(
+        Object.values(M6_TEMPLATE_BY_EVENT).map((key) => PLATFORM_TEMPLATE_TABLE[key]?.aggregateType),
+      ),
+    ].sort();
     expect([...M6_BACKREF_AGGREGATE_TYPES].sort()).toEqual(rendered);
   });
 });

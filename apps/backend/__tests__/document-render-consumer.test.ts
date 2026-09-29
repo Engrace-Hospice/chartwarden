@@ -401,6 +401,7 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     ["m6.nor.acknowledged", "nor", { norAcknowledgmentId: ORDER }],
     ["m6.revocation.created", "revocation", { revocationEventId: ORDER }],
     ["m6.discharge.created", "discharge_summary", { dischargeEventId: ORDER }],
+    ["m6.discharge.cosigned", "discharge_summary", { dischargeEventId: ORDER }],
   ])("%s renders %s against its own row, on the patient's chart", (eventType, templateKey, ids) => {
     const { event, payload } = normalizeDocumentRequest({
       eventType,
@@ -428,9 +429,9 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     ).toThrow(/names no aggregate id/);
   });
 
-  // Both are named by the M22 spec and both are deliberately unbound — see REQUEST_SHAPES for why.
-  // Pinned so that binding either one is a deliberate edit here rather than a silent widening.
-  it.each(["m6.discharge.cosigned", "m6.transfer.created"])(
+  // F-176 (#248) bound `m6.discharge.cosigned` (appends a discharge_summary version). The transfer stays
+  // deliberately unbound — see REQUEST_SHAPES for why. Pinned so binding it is a deliberate edit here.
+  it.each(["m6.transfer.created"])(
     "does not consume %s — it is a documented deferral, not an oversight",
     (eventType) => {
       expect(M22_DOCUMENT_REQUEST_EVENTS as readonly string[]).not.toContain(eventType);
@@ -536,6 +537,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       "m6.nor.acknowledged",
       "m6.revocation.created",
       "m6.discharge.created",
+      "m6.discharge.cosigned",
       // F-144 (#248) — four render requests catalogued, spec-named by their producing module's own
       // document-request table, and never emitted anywhere (the producer-side gap, not a declaration
       // gap): the M13 machine's effect list was never read, and M23/M24/M25 had every typed builder and

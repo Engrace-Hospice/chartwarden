@@ -41,8 +41,10 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: Str,
       requiredSignerSet: RequiredSignerSet,
     }),
-    declaredConsumers: ["m14"],
-    seamConsumers: ["m33"],
+    // F-176 (#248) — m14 moved to seamConsumers: M14's spec never names M15; M15's own spec makes the packet
+    // integration a `DisciplinePlanReader` PULL.
+    declaredConsumers: [],
+    seamConsumers: ["m14", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -73,8 +75,9 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035; the CarePlan projection is read
     // live at request time). m30 stays declared — no current M30 measure reads discipline-plan
     // signing data, so this remains a genuine gap.
-    declaredConsumers: ["m22", "m14", "m30"],
-    seamConsumers: ["m33"],
+    // F-176 (#248) — m14 moved to seamConsumers (same DisciplinePlanReader pull reasoning as `plan.bootstrapped`).
+    declaredConsumers: ["m22", "m30"],
+    seamConsumers: ["m14", "m33"],
     isOutboxOnly: true,
   },
   {

@@ -84,6 +84,7 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   "m6.nor.acknowledged", // nor
   "m6.revocation.created", // revocation
   "m6.discharge.created", // discharge_summary
+  "m6.discharge.cosigned", // discharge_summary — F-176: appends a new version on the for-cause cosign
   // ── F-144 (#248) — four render requests M22's own §4.11 sweep confirmed were catalogued, named by
   // their producing module's own document-request table, and STILL never emitted (the producer-side
   // half of the gap, distinct from every event above this line, which was a catalog-declaration

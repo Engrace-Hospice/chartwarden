@@ -107,7 +107,9 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       typeKey,
       expiredAt: Type.String(),
     }),
-    declaredConsumers: ["m5", "m22"],
+    // F-176 (#248) — m22 REMOVED: M22 keeps no signed-URL/subsetter state a push could act on (the real control gap is a
+    // consent re-check at URL mint, in M22's mint path).
+    declaredConsumers: ["m5"],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
@@ -176,7 +178,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       recipientEntityId: Type.Optional(Type.String()),
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m22"],
+    // F-176 (#248) — m22 REMOVED: M22 owns no disclosure-subsetter state to invalidate (`subsetter_dirty_at` is in no schema).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -196,7 +199,8 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     // patient/patient-privacy-flag-snapshots.ts`), and the payload doesn't even carry `typeKey`.
     // M22's own `outbox-consumers/render-consumer.ts` (F-161) independently reached the identical
     // "no persistent state to invalidate" conclusion for this exact event.
-    declaredConsumers: ["m22"],
+    // F-176 (#248) — m22 REMOVED: M22 owns no disclosure-subsetter state to invalidate (`subsetter_dirty_at` is in no schema).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -258,7 +262,10 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-158 (#248) — m17 removed: M17's own spec is decisive (twice) that portal-caregiver visit access
     // is a live seam PULL via M31's `ConsentEvaluator`-backed ABAC predicate, never a push to M17; M17's
     // manifest `dependsOn` excludes 39 entirely, and no M17 table stores anything delegated-access-shaped.
-    declaredConsumers: ["m31"],
+    // F-176 (#248) — m31 moved to seamConsumers: M31's §4.10 table names no delegated_access event; the projection is a
+    // forward-seam PULL (route 21), and nothing publishes this event.
+    declaredConsumers: [],
+    seamConsumers: ["m31"],
     isOutboxOnly: true,
   },
   {
@@ -276,7 +283,9 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-141 (#248) — m18 removed: same D14/D16 reasoning as `.granted` above.
     // F-158 (#248) — m17 removed: same seam-pull reasoning as `.granted` above (no M17-side grant state
     // exists to invalidate either — the gate is a live M31 ABAC predicate, not an M17 cache).
-    declaredConsumers: ["m31"],
+    // F-176 (#248) — m31 REMOVED: M31's §4.10 table names no delegated_access event, its bound broad
+    // `m39.consent.revoked` consumer already revokes grants by `source_consent_record_id`, and nothing publishes this.
+    declaredConsumers: [],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

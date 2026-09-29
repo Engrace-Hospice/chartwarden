@@ -80,6 +80,7 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       "m6.nor.acknowledged",
       "m6.revocation.created",
       "m6.discharge.created",
+      "m6.discharge.cosigned",
       // F-144 (#248) — four render requests catalogued, spec-named by their producing module's own
       // document-request table, and never emitted anywhere (the producer-side gap): the M13 machine's
       // effect list was never read, and M23/M24/M25 had every typed builder and no caller.

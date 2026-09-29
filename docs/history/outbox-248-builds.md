@@ -1685,3 +1685,54 @@ Verified per-fork: `build`/`typecheck` clean, `arch:fitness` 38/38 throughout (d
 count held at 66/15 — the round changed zero bindings), full non-live suite 9604 tests green after all
 five forks' edits landed together (no live-Postgres run needed — nothing new was bound, so nothing
 needed proving against a real database). Leaving #248 open — 66 pairs across 15 modules remain.
+
+**F-176 (#248) — five research-only forks (m22, m14, m31, m11 and the nine small groups), then one central apply,
+found exactly ONE buildable pair in ~35 re-checked and cleaned 21 misdeclared ones out of the registry.** The
+forks were told to change nothing and mint no F-numbers; every verdict below was then re-checked by the
+coordinator against the code before applying. **Built: `m6.discharge.cosigned` (m22).** M22's spec (§4.11/§7.17) names
+it: a for-cause cosign renders a NEW VERSION of the discharge summary. The append machinery already existed
+(F-168: `RequestShape.appends`, per-request idempotency key, `upsertRenderedDocument`'s append branch); what was
+missing was the shape, the subscription entry, and a payload M22 could file — the event carried only
+`{dischargeEventId, medicalDirectorCosignedAt}`, no chart. The catalog schema now also requires
+`admissionId`/`patientId`/`dischargeDate`/`reason` (`patientForAdmission` at the one real emit site,
+`cosignDischarge`); the in-memory route service only pushes the event NAME so it is unaffected. The M6 back-ref
+stamps `document_id` only while NULL, so v2 never overwrites v1's link; if the filing-time `.created` row is
+still undispatched the cosign render becomes v1 and `.created` idempotent-skips (benign). M16's unbound
+`decideCosignReceipt` also subscribes to this topic and needs a different payload — widening is additive, so it is
+unaffected. Known gap shared with the F-168 append events: `upsertRenderedDocument` does not mark the prior version
+superseded. **Dropped/moved (21 pairs; 66 → 43 counting F-175's concurrent M29 resolution separately):**
+`m7.intervention.added/.updated/.discontinued` (m11 → seamConsumers: M11's spec PULLS M7 via
+`OrderProvider.findByCarePlanIntervention`, and `care_plan_intervention.linked_order_id` is written by nothing, so
+the catalog's "M11 links it if an order backs it" condition can never hold);
+`m6.admission.activated/.discharged` (m14 dropped, also removed from `M14_OUTBOX_SUBSCRIPTIONS`: F-171's packet
+worker answers D9 inclusion by PULL); `m15.plan.bootstrapped/.version_signed` (m14 → seamConsumers: M14's spec never
+names M15, M15's own spec makes the packet integration a `DisciplinePlanReader` pull);
+`m24.medicaid_state_channel.unavailable/.recovered` (m1 dropped, group deleted: `system_status` is platform-global
+with a session-gated read route, so per-org Medicaid-credential health there would show one tenant's channel state
+to every tenant — F-172's cron now genuinely produces both events, which is why this needed a fresh look);
+`m39.consent.delegated_access.granted/.revoked` (m31: not in M31's §4.10 table, covered by the bound broad
+`m39.consent.revoked` consumer, forward-seam pull, and no producer — also removed from
+`M31_SUBSCRIBED_EVENT_NAMES`); and from m22: `m11.order.draft_created` and `m12.medication_order.signature_requested`
+(no form content in the payload, and a render here would take the genesis-only key and turn the signed
+`.document_requested` render into an `idempotent_skip` — binding them would have been actively harmful) plus
+`m39.consent.expired/.recipient_added/.recipient_removed` (M22 keeps no signed-URL/subsetter state a push could act
+on; `subsetter_dirty_at` is in no schema). **A stale claim corrected:** F-161 said M22 "resolves ConsentEvaluator
+fresh on every signed-URL mint" — `signed-url-service.ts` gates only on the external-recipient BAA and
+`resolveSudConsentPresent` runs at render time only; the real unbuilt control (a consent re-check at mint) belongs
+in M22's mint path, not in an outbox consumer. **Reported, not built:** the two `m39.consent.dpoa.*` events stay
+declared for m11 but now have a confirmed NO PRODUCER (`addDpoaAgent`/`updateDpoaAgent` never publish) and M11 has
+no DPOA field or decider — do not build the M39 producer while `m11` stays declared and unbound; an m31
+post-discharge-grace sweep for the non-death `m6.admission.discharged` branch (new M6 seam + `31-portal/jobs/` +
+live suite, needs a sweep-vs-delayed-job decision and a grace default); `m6.transfer.created` (needs a
+`discharge_summary_transfer` aggregate type, migration, template and an out-only decision). **Verified:** `build`
+and `typecheck` clean, `arch:fitness` 38/38, full non-live suite green after five pinned assertions were updated
+(`document-backref-consumers` ×2, `document-consumers`, `document-render-consumer` ×2, `outbox-seam-consumers`),
+`check:boot:platform` clean on a fresh migrated DB, and the new live case in `m6-cop-document-renders.live.test.ts`
+(7/7) — it FAILS with the request shape removed (one version, not two) — plus `f168:document-request-idempotency`
+5/5, `m22:render-handshake` 14/14, `m23:notr-draft` 8/8, `m6:discharge-cascade` 6/6, `m16:discharge-death-secondary`
+5/5 and `m6:t4:write` 15/15. **Process notes:** a concurrent agent (F-175, the M29 outbound T08 worker) edited
+`scripts/outbox-deferred-consumers.ts`, `events-by-m29.ts` and `index.ts` in the same working tree while this round
+ran, so this round committed only its own hunks (the registry was rebuilt from HEAD plus this round's edits rather
+than staged whole); and the first live-DB negative test was invalid because a reused disposable Postgres ran out of
+lock memory after repeated schema resets ("7 skipped" is a failed `beforeAll`, not a skip) — use a fresh container
+with `max_locks_per_transaction` raised.

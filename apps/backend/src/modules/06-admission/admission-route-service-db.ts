@@ -5085,6 +5085,11 @@ export function createDbAdmissionRouteService(
           payload: {
             dischargeEventId: id,
             medicalDirectorCosignedAt: now().toISOString(),
+            // F-176 (#248) — M22 renders a new discharge-summary version on cosign and files it on the chart.
+            admissionId: cur.admissionId,
+            patientId: await patientForAdmission(tx, cur.admissionId),
+            dischargeDate: cur.effectiveAt,
+            reason: "for_cause",
           },
           organizationId,
           aggregateKind: "discharge_event",

@@ -219,21 +219,22 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     aggregateIdFields: ["revocationEventId"],
     templateKey: "revocation",
   },
-  // `m6.discharge.cosigned` and `m6.transfer.created` are deliberately NOT here. The cosign fires on the
-  // SAME `discharge_event` id, so it is a new VERSION of this document rather than a new one — F-168
-  // (#248, migration 0261) fixed the idempotency-granularity gate that used to answer `idempotent_skip`
-  // for exactly this shape, so the W2 append machinery itself is no longer the blocker (it never was:
-  // `upsertRenderedDocument` has always appended correctly once actually reached). Left unbound anyway,
-  // deliberately, for its own review pass rather than a drive-by add alongside the three F-168 events
-  // that ARE bound below — a for-cause discharge cosign is a different kind of "new version" (does the
-  // surveyor-facing discharge summary need to visibly change on cosign, or does the cosign only need to
-  // be recorded on the `discharge_event` row itself?) that this pass did not investigate. The transfer
-  // wants what the M22 spec calls "discharge_summary (transfer variant)", and no variant exists;
+  // `m6.transfer.created` is deliberately NOT here: it wants what the M22 spec calls "discharge_summary
+  // (transfer variant)", and no variant exists;
   // rendering the base template would file a document titled Discharge Summary for a patient who was
   // transferred, not discharged — unrelated to the granularity fix, still genuinely unbuilt.
   "m6.discharge.created": {
     aggregateIdFields: ["dischargeEventId"],
     templateKey: "discharge_summary",
+  },
+  // F-176 (#248) — M22 spec §4.11/§7.17: a for-cause cosign renders a NEW VERSION of the discharge summary. Fires on
+  // the SAME `discharge_event` id `.created` rendered, so it appends (F-168's per-request idempotency key). If the
+  // filing-time `.created` row is still undispatched, the cosign render becomes v1 and `.created` idempotent-skips
+  // (benign). The M6 back-ref stamps `document_id` only while NULL, so v2 never overwrites the v1 link.
+  "m6.discharge.cosigned": {
+    aggregateIdFields: ["dischargeEventId"],
+    templateKey: "discharge_summary",
+    appends: true,
   },
   // ── F-144 (#248) — four render requests M22's own §4.11 sweep found catalogued, spec-named, and never
   // emitted (the producer-side gap, not a declaration gap). All emit `patientId` inside the content blob

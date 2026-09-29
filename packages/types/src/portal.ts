@@ -218,8 +218,7 @@ export const M31_SUBSCRIBED_EVENT_NAMES = [
   "m16.bereavement.contact_active",
   "m16.bereavement.plan_opened",
   "m16.bereavement.plan_closed_completed",
-  "m39.consent.delegated_access.granted",
-  "m39.consent.delegated_access.revoked",
+  // F-176 (#248) — `m39.consent.delegated_access.granted`/`.revoked` removed: M31's §4.10 table names neither and nothing publishes them.
   "m39.consent.revoked",
   "m6.admission.discharged",
   "m22.document.rendered",

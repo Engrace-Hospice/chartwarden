@@ -92,7 +92,10 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
       kind: orderKind,
       drafterMembershipId: id,
     }),
-    declaredConsumers: ["m22"],
+    // F-176 (#248) — m22 REMOVED: M11's spec names only `.document_requested` for M22 and this payload carries no form
+    // content; a render here would take the genesis-only `(order_record, orderId)` key and make the signed render an
+    // `idempotent_skip`.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

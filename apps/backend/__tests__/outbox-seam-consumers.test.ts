@@ -196,9 +196,11 @@ describe("#103 — the real catalog no longer declares a seam module as an outbo
     for (const seam of entry?.seamConsumers ?? []) {
       expect(entry?.declaredConsumers).not.toContain(seam);
     }
-    for (const clinical of ["m5", "m7", "m10", "m13", "m14", "m15", "m12"]) {
+    // F-176 (#248) — m14 dropped: D9 inclusion is a build-time PULL (`idgPacketInclusionForOrg`, F-171).
+    for (const clinical of ["m5", "m7", "m10", "m13", "m15", "m12"]) {
       expect(entry?.declaredConsumers).toContain(clinical);
     }
+    expect(entry?.declaredConsumers).not.toContain("m14");
     // F-143 (#248) — m37 dropped: M37's own §4.5 "Outbox Subscriptions" table names two more granular
     // M6 events it actually wants (`m6.level_of_care.requires_ipu_bed`/`.activated`, neither of which
     // M6's real catalog publishes) and never names `admission.activated`. m12 added: M12's own live

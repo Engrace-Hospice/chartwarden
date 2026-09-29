@@ -238,7 +238,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // mentioning "activated" or "activation" anywhere. It was part of this event's broad fan-out
       // with no order-specific rationale, the same shape F-134/F-136 already found for m16/m23 on this
       // identical event.
-      "m14",
+      // F-176 (#248) — m14 REMOVED: F-171's T-24h packet-build worker answers §2.3 D9 inclusion by PULL (`idgPacketInclusionForOrg` reads `admission` at build time; no inclusion cache exists to write into), so there is nothing for this push to update.
       // F-103 — M15 bootstraps the three CoP discipline plans here (§1.1 D10), and this list did not name
       // it, so the consumer could not be bound and NOTHING in the repository has ever inserted a
       // `discipline_care_plan` row. Every M15 write route is `/discipline-plans/:planId/…`, so that
@@ -345,7 +345,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // a real decider (`m13.admission-discharged-cascade`) that enqueues the D14 cancel-future-schedule
       // cascade.
       "m13",
-      "m14",
+      // F-176 (#248) — m14 REMOVED: F-171's T-24h packet-build worker answers §2.3 D9 inclusion by PULL (`idgPacketInclusionForOrg` reads `admission` at build time; no inclusion cache exists to write into), so there is nothing for this push to update.
       "m7",
       "m16",
       "m17",
@@ -871,6 +871,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       dischargeEventId: Type.String({ minLength: 1 }),
       medicalDirectorCosignedAt: Type.String({ minLength: 1 }),
+      // F-176 (#248) — widened for M22's cosign render (a new VERSION of the discharge summary, M22 spec §4.11/§7.17).
+      // The renderer files the document against the chart and renders the same facts `m6.discharge.created` carried.
+      admissionId: Type.String({ minLength: 1 }),
+      patientId: Type.String({ minLength: 1 }),
+      dischargeDate: Type.String({ minLength: 1 }),
+      reason: Type.String({ minLength: 1 }),
     }),
     // F-094/#205 — M16's `consumers/m6-eligibility.ts` carries `decideCosignReceipt`, the D18
     // gate-release decider for exactly this topic, and the catalog named only m22.

@@ -79,7 +79,8 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       prescriberMembershipId: id,
       prescribingPhysicianMdmId: id,
     }),
-    declaredConsumers: ["m22"],
+    // F-176 (#248) — m22 REMOVED: same harm as `m11.order.draft_created`; the real signed render is `.document_requested`.
+    declaredConsumers: [],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
