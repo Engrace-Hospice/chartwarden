@@ -12226,6 +12226,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/held-transmissions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Held lab-order worklist — orders that failed AFTER their HL7 message was built (dlq_exhausted / application_reject / recovery_blocked:*) and wait for an operator to verify with the lab; oldest first, cursor-paginated, with age + escalation stage (orders.amend) */
+        get: operations["getApiV1OrdersHeldtransmissions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/pending-signature": {
         parameters: {
             query?: never;
@@ -53298,6 +53315,44 @@ export interface operations {
                             completedAt: string | null;
                             createdAt: string;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1OrdersHeldtransmissions: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            orderId: string;
+                            /** Format: uuid */
+                            patientId: string;
+                            reason: string;
+                            failedAt: string;
+                            ageSeconds: number;
+                            stage: "none" | "warn" | "critical";
+                            feedId: string | null;
+                        }[];
+                        nextCursor: string | null;
                     };
                 };
             };

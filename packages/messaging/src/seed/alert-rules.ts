@@ -395,6 +395,35 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // ── M11 stuck lab-order recovery (F-193, #248) ─────────────────────────────────────────────────────────────────────
+  // A lab order that failed AFTER its HL7 message was built (`dlq_exhausted`, F-183's "held, delivery unverified",
+  // `application_reject`, `recovery_blocked:*`) may already be at the laboratory, so it is never retried automatically: a
+  // person verifies with the lab and attests (F-188). Before F-193 nothing said one was waiting. The audience is the people
+  // who can act — a tenant's operator (`org_admin`) and the clinical leads who own lab orders (the §5.3 "operator, M11
+  // owners" pairing F-188 used for the outbound-failure alert). Warn at 4 h, critical at 24 h (the emit severity carries the
+  // stage; ids + a fixed reason token only in the payload).
+  {
+    eventType: "m11.order.transmission_held_aging",
+    category: "operational",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  // The auto-retry sweep gave up on an order refused before any outbound row existed (attempts or window used up): the
+  // configuration cause it was waiting out never cleared, so a person must fix it and resend. Raised ONCE per order.
+  {
+    eventType: "m11.order.transmission_auto_retry_exhausted",
+    category: "operational",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
 ];
 
 /** The event types of the three `system_locked` platform rules (§7.4) — the always-on floor a

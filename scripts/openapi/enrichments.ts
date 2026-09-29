@@ -1318,6 +1318,10 @@ import {
   VerbalPolicyViewResponseSchema as M11VerbalPolicyViewResponseSchema,
 } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
 import {
+  HeldTransmissionsQuerySchema as M11HeldTransmissionsQuerySchema,
+  HeldTransmissionsResponseSchema as M11HeldTransmissionsResponseSchema,
+} from "../../apps/backend/src/modules/11-orders/routes/held-transmissions-typebox";
+import {
   ApproveRefillRequest as M12ApproveRefillRequest,
   CompleteRequest as M12CompleteRequest,
   ControlledSubstancePolicyRequest as M12ControlledSubstancePolicyRequest,
@@ -4225,6 +4229,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "List orders by patient / admission / kind / status (§4.1; ABAC caseload_or_scope)",
     query: M11OrderListQuerySchema,
     response: M11OrderListResponseSchema,
+  },
+  "GET /api/v1/orders/held-transmissions": {
+    summary:
+      "Held lab-order worklist — orders that failed AFTER their HL7 message was built (dlq_exhausted / application_reject / recovery_blocked:*) and wait for an operator to verify with the lab; oldest first, cursor-paginated, with age + escalation stage (orders.amend)",
+    query: M11HeldTransmissionsQuerySchema,
+    response: M11HeldTransmissionsResponseSchema,
   },
   "GET /api/v1/orders/pending-signature": {
     summary: "Physician pending-signature inbox — orders in pending_signature (§4.1 / §5.2)",

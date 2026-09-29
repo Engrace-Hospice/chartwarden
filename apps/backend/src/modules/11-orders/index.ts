@@ -31,7 +31,35 @@ export {
   registerM11VerbalOrderExpiryWorker,
   runVerbalOrderExpiryFanout,
   scheduleM11VerbalOrderExpiry,
+  // F-193 (#248) — the stuck lab-order recovery tick (auto-retry of row-less refusals + held-order aging).
+  M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID,
+  M11_STUCK_TRANSMISSION_QUEUE,
+  M11_STUCK_TRANSMISSION_SCHEDULE,
+  registerM11StuckTransmissionWorker,
+  runStuckTransmissionFanout,
+  scheduleM11StuckTransmission,
 } from "./jobs";
+// F-193 (#248) — auto-retry of orders refused before any outbound row existed, and the held-order worklist + escalation.
+export {
+  type HeldAgingSweepSummary,
+  type HeldTransmissionItem,
+  type HeldTransmissionPage,
+  type AutoRetrySweepSummary,
+  type StuckOrderAlertPort,
+  type StuckTransmissionRecovery,
+  type StuckTransmissionRecoveryDeps,
+  createStuckTransmissionRecovery,
+} from "./stuck-transmission-recovery";
+export { registerHeldTransmissionRoutes } from "./routes/held-transmissions-routes";
+export {
+  AUTO_RETRY_BACKOFF_MS,
+  AUTO_RETRY_MAX_ATTEMPTS,
+  AUTO_RETRY_WINDOW_MS,
+  DEFAULT_HELD_THRESHOLDS,
+  M11_STUCK_ORDER_ALERT_KINDS,
+  assertHeldThresholds,
+  heldThresholdsFromEnv,
+} from "./orm-request/stuck-recovery";
 
 /**
  * M11L — mount the M11 order routes over the PRODUCTION Drizzle backend (RLS-scoped under `withOrgContext`).
