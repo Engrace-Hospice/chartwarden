@@ -1838,3 +1838,36 @@ its two `m39.consent.dpoa.*` pairs remain), full non-live suite green (9614, aft
 `M11_OUTBOX_SUBSCRIPTIONS` assertion), new live suite `m11:lab-transmission-applier` (7/7) proven against a fresh
 disposable Postgres, `check:boot:platform` clean with a double-checked platform credential URL. Leaving #248 open
 — 48 pairs across 13 modules remain.
+
+**F-178 (#248) — M29 outbound schema follow-ups: a feed→destination link, dedicated MSH identity columns, and the
+concurrent-redelivery race (fork B of the F-175 follow-ups).** F-175's resolver documented two schema gaps it had
+to work around and one race it could not close. **Routing:** `external_feed` had no column linking a feed to the
+lab it delivers to, so `OrmRequestedPayload.labDestinationFacilityId` was ignored and dispatch required exactly one
+active `orm_outbound` feed per org. Migration 0262 adds `lab_destination_facility_id` (a LOGICAL M40 facility id, no
+FK across the module edge; partial index on `(organization_id, lab_destination_facility_id)`), and the resolver's
+pure `selectOutboundFeed` now routes by it. The single-feed fallback survives ONLY for exactly one candidate whose
+link is genuinely NULL (a pre-F-178 tenant); a sole feed linked to a different facility never receives another
+destination's order (`no_feed_for_destination`), two feeds linked to one facility are `ambiguous_feed`. The retry
+sweep now resolves each queued row's OWN feed (`resolveById`) instead of demanding a sole feed, so adding a second
+feed no longer stalls rows already bound to the first. **Identity:** `msh_sending_application`/`_sending_facility`/
+`_receiving_application`/`_receiving_facility` replace the `displayName`-for-three-fields fallback; each is
+CHECK-constrained (1–180 chars, no `| ^ ~ \ &` and no control characters, so a value cannot break segment framing).
+MSH-3 alone defaults to the fixed platform identity `WARDENX` (a constant, not a guess). A feed missing a required
+field is REFUSED: the worker alerts and throws `OutboundFeedIdentityIncompleteError` (feed id + FIELD NAMES only), so
+the outbox dispatcher retries and dead-letters for redrive rather than silently dropping the order the way the
+`no_active_feed`/`ambiguous_feed` refusals do — it is an operator-fixable gap on the right destination. The admin
+create/update/detail routes, OpenAPI enrichment and typed client carry all five fields. **Idempotency, and a
+deliberate deviation from "add a unique index":** `hl7_message_outbound` is PARTITIONED BY RANGE (`queued_at`), and
+Postgres requires any unique index on a partitioned table to include the partition key — a `UNIQUE (organization_id,
+idempotency_key)` cannot exist, and one that included `queued_at` would never collide (each attempt stamps its own
+time). The race is closed instead with a transaction-scoped advisory lock on `(org, idempotency key)` taken before
+the existing SELECT: a concurrent redelivery queues behind the first and its SELECT (a fresh READ COMMITTED
+snapshot after the lock is granted) sees the committed row. The new live case FAILS without the lock (two rows, 3
+of 3 runs) and passes with it. If a database-level guarantee is ever wanted (a non-worker writer), the honest
+options are a tiny non-partitioned `(organization_id, idempotency_key)` guard table or a non-partitioned outbound
+table — both new-table work, not attempted here. **Residual, unchanged:** the DER-vs-PEM `channel_cert_pin`
+convention is still an assumption nothing mints, `mllp_plain` still has no production guard, and the M11
+`hl7_orm_requested` emitter is still unbuilt (fork C). Verified: `build`/`typecheck` clean, `arch:fitness` 38/38,
+`m29-outbound-dispatch.live` 13/13 (7 existing + 6 new: facility routing, no-fallback refusal, configured MSH
+identity on the wire, identity refusal, concurrent redelivery, MSH CHECK + cross-tenant RLS on the new columns), the
+new `m29-feed-resolver` unit suite, and `check:boot:platform` clean on a fresh migrated database.

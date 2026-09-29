@@ -99,6 +99,17 @@ export const FeedListQuery = Type.Object({
 });
 export type FeedListQueryInput = Static<typeof FeedListQuery>;
 
+/** F-178 (#248) — an HL7 v2 MSH identity value: no field/component/repetition/escape/subcomponent delimiter and
+ *  no control characters (mirrors the migration-0262 CHECK), 1–180 chars. */
+const MshIdentity = Type.String({ pattern: "^[^|^~\\\\&\\u0000-\\u001f\\u007f]{1,180}$" });
+const FeedRoutingAndIdentity = {
+  labDestinationFacilityId: Type.Optional(Type.String({ format: "uuid" })),
+  mshSendingApplication: Type.Optional(MshIdentity),
+  mshSendingFacility: Type.Optional(MshIdentity),
+  mshReceivingApplication: Type.Optional(MshIdentity),
+  mshReceivingFacility: Type.Optional(MshIdentity),
+};
+
 export const CreateFeedBody = Type.Object({
   kind: FeedKindSchema,
   displayName: Type.String({ minLength: 3, maxLength: 120 }),
@@ -112,6 +123,7 @@ export const CreateFeedBody = Type.Object({
   baaContractRef: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   baaExpiresOn: Type.Optional(Instant),
   rateLimitMsgPerSec: Type.Optional(Type.Integer({ minimum: 1, maximum: 5000 })),
+  ...FeedRoutingAndIdentity,
 });
 export type CreateFeedInput = Static<typeof CreateFeedBody>;
 
@@ -125,6 +137,7 @@ export const UpdateFeedBody = Type.Object({
   baaContractRef: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
   baaExpiresOn: Type.Optional(Instant),
   rateLimitMsgPerSec: Type.Optional(Type.Integer({ minimum: 1, maximum: 5000 })),
+  ...FeedRoutingAndIdentity,
 });
 export type UpdateFeedInput = Static<typeof UpdateFeedBody>;
 

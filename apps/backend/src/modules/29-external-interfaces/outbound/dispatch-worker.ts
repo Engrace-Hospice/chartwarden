@@ -8,13 +8,12 @@
 // RETRY MECHANISM: a poll-based sweep over `idx_hmo_next_retry`, not per-row BullMQ delayed jobs — the
 // decision and its reasoning live in `./queues.ts`'s header.
 //
-// TWO DOCUMENTED PHASE-1 GAPS THIS FILE INHERITS FROM `./feed-resolver.ts` (read that file's header first):
-// (1) feed resolution ignores `labDestinationFacilityId` (no column links a feed to a facility on the real
-// schema) and instead requires exactly one active `orm_outbound` feed per org; (2) the ORM wire's MSH-3/4/5/6
-// identity fields fall back to the feed's `displayName` (no dedicated columns exist). Both are flagged for
-// the coordinator, not silently guessed past.
+// F-178 CLOSED THE TWO PHASE-1 GAPS this file used to inherit from `./feed-resolver.ts`: feeds now route by
+// `external_feed.lab_destination_facility_id` (single-feed fallback only for an unlinked sole feed), and MSH-3/4/5/6
+// come from dedicated `msh_*` columns — a feed missing a required one is REFUSED (`OutboundFeedIdentityIncompleteError`,
+// alert + throw so the outbox dispatcher retries/DLQs) instead of borrowing its display name. Read that file's header.
 //
-// A THIRD DECISION THIS FILE MAKES: there is NO app-level M4 `audit()` API anywhere in this codebase — every
+// A DECISION THIS FILE MAKES: there is NO app-level M4 `audit()` API anywhere in this codebase — every
 // M4 capture found (grep confirmed) is the GENERATED write-audit DB TRIGGER on a table write (migration 0148
 // declares one on `hl7_message_outbound` for exactly this table, denylisting `payload_cipher`/
 // `ack_payload_cipher`). Every `OutboundAuditRecord` this file's cores hand back that corresponds to a REAL
@@ -28,7 +27,7 @@ import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { OrmRequestedPayload } from "@wardenx/types";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
-import { and, eq, isNotNull, lte } from "drizzle-orm";
+import { and, eq, isNotNull, lte, sql } from "drizzle-orm";
 
 import type {
   DispatchableOutboxEvent,
@@ -410,7 +409,18 @@ async function alertUnresolvedFeed(
   orderId: string,
   failure: Extract<FeedResolutionResult, { kind: "unresolved" }>,
 ): Promise<void> {
-  const feedId = failure.reason === "ambiguous_feed" ? failure.candidateFeedIds.join(",") : "none";
+  const feedId =
+    failure.reason === "ambiguous_feed" || failure.reason === "no_feed_for_destination"
+      ? failure.candidateFeedIds.join(",")
+      : failure.reason === "feed_identity_incomplete"
+        ? failure.feedId
+        : "none";
+  const detail =
+    failure.reason === "feed_identity_incomplete"
+      ? `outbound ORM dispatch refused: feed_identity_incomplete — MSH identity not configured (${failure.missingFields.join(",")}) (orderId=${orderId})`
+      : failure.reason === "no_feed_for_destination"
+        ? `outbound ORM dispatch refused: no_feed_for_destination — no active orm_outbound feed is linked to the order's lab destination (orderId=${orderId})`
+        : `outbound ORM dispatch refused: ${failure.reason} active orm_outbound feed for org (orderId=${orderId})`;
   await emitAlert(deps, organizationId, {
     // Borrows the closest catalogued `OutboundAlert.kind` — no dedicated kind exists for "no destination
     // feed configured" in the pinned `outbound-events.ts` union, and extending that union is out of this
@@ -419,8 +429,28 @@ async function alertUnresolvedFeed(
     severity: "HIGH",
     channel: "operator-on-call",
     feedId,
-    detail: `outbound ORM dispatch refused: ${failure.reason} active orm_outbound feed for org (orderId=${orderId})`,
+    detail,
   });
+}
+
+/**
+ * F-178 — thrown when the resolved feed lacks a REQUIRED MSH identity field. Unlike `no_active_feed` /
+ * `ambiguous_feed` (alert + return), an incomplete identity is an OPERATOR-FIXABLE configuration gap on a feed
+ * that IS the right destination, so the order must not be silently dropped: the throw lets the outbox
+ * dispatcher retry and, if the operator has not completed the feed by `maxAttempts`, dead-letter the event
+ * for redrive. The message carries the feed id and FIELD NAMES only — no value, nothing PHI-shaped.
+ */
+export class OutboundFeedIdentityIncompleteError extends Error {
+  readonly code = "M29_OUTBOUND_FEED_IDENTITY_INCOMPLETE";
+  constructor(
+    readonly feedId: string,
+    readonly missingFields: readonly string[],
+  ) {
+    super(
+      `outbound ORM dispatch refused: feed ${feedId} has no MSH identity for ${missingFields.join(", ")}`,
+    );
+    this.name = "OutboundFeedIdentityIncompleteError";
+  }
 }
 
 async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxEvent): Promise<void> {
@@ -436,22 +466,33 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
     const tx = scoped as unknown as DbClient;
     const now = deps.now();
 
-    const feedResult = await deps.feedResolver.resolveForOrg(tx, organizationId, now);
+    const feedResult = await deps.feedResolver.resolveForOrg(
+      tx,
+      organizationId,
+      now,
+      payload.labDestinationFacilityId ?? null,
+    );
     if (feedResult.kind === "unresolved") {
       await alertUnresolvedFeed(deps, organizationId, payload.orderId, feedResult);
+      if (feedResult.reason === "feed_identity_incomplete") {
+        throw new OutboundFeedIdentityIncompleteError(feedResult.feedId, feedResult.missingFields);
+      }
       return;
     }
     const feed = feedResult.feed;
 
     // Idempotency (D14/§2.6): a redelivered `m11.order.hl7_orm_requested` for the same (feed, order) must
-    // never double-dispatch. `idx_hmo_idempotency` is a lookup index, not a unique constraint (checked
-    // against the migration) — this SELECT-before-INSERT, run inside the same org-scoped transaction as
-    // the insert, is the defense the brief asks for against a sequential redelivery (the realistic replay
-    // shape: the SAME event handled twice by this consumer). It does not close a true concurrent-delivery
-    // race (two overlapping transactions both passing the SELECT before either commits) — that would need
-    // a real unique index, a genuine schema follow-up flagged in `feed-resolver.ts`'s header, not added
-    // here since it is schema surface this task's scope did not include touching.
+    // never double-dispatch — including under a TRUE CONCURRENT redelivery (F-178). `hl7_message_outbound` is
+    // PARTITIONED BY RANGE (queued_at), and Postgres requires every unique index on a partitioned table to
+    // contain the partition key, so a `UNIQUE (organization_id, idempotency_key)` cannot exist (a key that
+    // included `queued_at` would never collide, since each attempt stamps its own). The dedupe is instead
+    // serialized with a transaction-scoped advisory lock on (org, idempotency key): two overlapping deliveries
+    // queue behind one another, and the loser's SELECT (a fresh READ COMMITTED snapshot, taken after the lock is
+    // granted) sees the winner's committed row. The lock is released at commit/rollback — nothing to clean up.
     const idempotencyKey = outboundIdempotencyKey(feed.id, ORM_SOURCE_KIND, payload.orderId);
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${`m29.outbound:${organizationId}:${idempotencyKey}`}, 0))`,
+    );
     const existing = await tx
       .select({ id: HMO.id })
       .from(HMO)
@@ -568,11 +609,11 @@ export async function runOutboundRetrySweepOnce(deps: OutboundRetrySweepDeps): P
         .limit(M29_OUTBOUND_RETRY_SWEEP_BATCH_SIZE);
 
       for (const row of due) {
-        const feedResult = await resolved.feedResolver.resolveForOrg(tx, organizationId, now);
-        // The row's feed must still be THE org's sole resolvable active feed — if the feed configuration
-        // changed (suspended, or a second `orm_outbound` feed added) since this row was queued, defer
-        // rather than risk transmitting through the wrong endpoint; the next tick re-checks.
-        if (feedResult.kind !== "resolved" || feedResult.feed.id !== row.feedId) continue;
+        // F-178 — resolve the row's OWN feed. The wire was built (and its destination decided) at queue time,
+        // so a second feed appearing later must not stall it; if the row's feed was suspended/revoked/expired
+        // since, defer rather than transmit through a feed no longer authorised — the next tick re-checks.
+        const feedResult = await resolved.feedResolver.resolveById(tx, organizationId, row.feedId, now);
+        if (feedResult.kind !== "resolved") continue;
 
         const wirePlaintext = await resolved.cipher.decrypt(organizationId, "payload", row.payloadCipher);
         await attemptTransmit(

@@ -24,6 +24,7 @@ import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/regist
 import type { OutboundTenantKeyProvider } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
 import { createOutboundPayloadCipher } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
 import {
+  OutboundFeedIdentityIncompleteError,
   type OutboundAlertPort,
   buildM29OutboundDispatchConsumer,
   runOutboundRetrySweepOnce,
@@ -80,6 +81,7 @@ function fakeAlerts() {
     eventType: string;
     severity: string;
     correlationId: string;
+    payload: unknown;
   }> = [];
   const port: OutboundAlertPort = {
     async emit(organizationId, input) {
@@ -88,6 +90,7 @@ function fakeAlerts() {
         eventType: input.eventType,
         severity: input.severity,
         correlationId: input.correlationId,
+        payload: input.payload,
       });
     },
   };
@@ -261,20 +264,37 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     );
   }
 
-  /** Seed one ACTIVE `orm_outbound` feed pointed at the mock server, org-scoped. */
+  /** Seed one ACTIVE `orm_outbound` feed pointed at the mock server, org-scoped. F-178: the MSH identity
+   *  columns default to a COMPLETE set (pass `null` to leave one unset) and the destination link to NULL. */
   async function seedFeed(args: {
     readonly organizationId: string;
     readonly port: number;
     readonly rateLimitMsgPerSec?: number;
+    readonly labDestinationFacilityId?: string | null;
+    readonly mshSendingFacility?: string | null;
+    readonly mshReceivingApplication?: string | null;
+    readonly mshReceivingFacility?: string | null;
   }): Promise<string> {
     const id = randomUUID();
+    const pick = <T>(v: T | null | undefined, dflt: T): T | null => (v === undefined ? dflt : v);
     await admin.query(
       `INSERT INTO external_feed
          (id, organization_id, kind, display_name, host, port, protocol, channel_cert_pin,
-          status, proposed_by_membership_id, rate_limit_msg_per_sec)
+          status, proposed_by_membership_id, rate_limit_msg_per_sec,
+          lab_destination_facility_id, msh_sending_facility, msh_receiving_application, msh_receiving_facility)
        VALUES ($1,$2,'orm_outbound','Mock Reference Lab','127.0.0.1',$3,'mllp_plain',NULL,
-               'active',$4,$5)`,
-      [id, args.organizationId, args.port, randomUUID(), args.rateLimitMsgPerSec ?? 1000],
+               'active',$4,$5,$6,$7,$8,$9)`,
+      [
+        id,
+        args.organizationId,
+        args.port,
+        randomUUID(),
+        args.rateLimitMsgPerSec ?? 1000,
+        args.labDestinationFacilityId ?? null,
+        pick(args.mshSendingFacility, "ENGRACE-HOSPICE"),
+        pick(args.mshReceivingApplication, "REFLAB-LIS"),
+        pick(args.mshReceivingFacility, "REFLAB-MAIN"),
+      ],
     );
     return id;
   }
@@ -544,6 +564,149 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     } finally {
       await server.close();
     }
+  });
+
+  // ── F-178 (#248, migration 0262): routing link, MSH identity, concurrent-redelivery race ────────────────────
+
+  const FACILITY_X = "44444444-4444-4444-4444-444444444444";
+  const FACILITY_Y = "55555555-5555-5555-5555-555555555555";
+
+  function buildConsumer(outbox = fakeOutbox(), alerts = fakeAlerts()) {
+    return {
+      outbox,
+      alerts,
+      consumer: buildM29OutboundDispatchConsumer({
+        db: handle.db,
+        outbox: outbox.port,
+        keys: fakeKeyProvider(),
+        alerts: alerts.port,
+      }),
+    };
+  }
+
+  it("F-178 routing: an order rides the feed LINKED to its lab destination, never the sibling feed", async () => {
+    registerActiveBaa();
+    const serverX = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    const serverY = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const feedX = await seedFeed({ organizationId: ORG_A, port: serverX.port, labDestinationFacilityId: FACILITY_X });
+      await seedFeed({ organizationId: ORG_A, port: serverY.port, labDestinationFacilityId: FACILITY_Y });
+      const { consumer } = buildConsumer();
+      const orderId = randomUUID();
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, labDestinationFacilityId: FACILITY_X })),
+      );
+      expect(serverX.receivedWires).toHaveLength(1);
+      expect(serverY.receivedWires).toHaveLength(0);
+      const rows = await outboundRowFor(ORG_A, orderId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.feedId).toBe(feedX);
+      expect(rows[0]!.destinationFacilityId).toBe(FACILITY_X);
+    } finally {
+      await serverX.close();
+      await serverY.close();
+    }
+  });
+
+  it("F-178 routing: a SINGLE feed linked to a DIFFERENT facility is refused (no fallback), alerted, nothing sent", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port, labDestinationFacilityId: FACILITY_Y });
+      const { consumer, alerts } = buildConsumer();
+      const orderId = randomUUID();
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, labDestinationFacilityId: FACILITY_X })),
+      );
+      expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(0);
+      expect(server.receivedWires).toHaveLength(0);
+      expect(JSON.stringify(alerts.emitted)).toContain("no_feed_for_destination");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-178 identity: the wire carries the feed's configured MSH-3/4/5/6, not its display name", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const { consumer } = buildConsumer();
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId: randomUUID(), organizationId: ORG_A })),
+      );
+      const env = parseMshEnvelope(server.receivedWires[0]!);
+      expect(env.sendingApplication).toBe("WARDENX");
+      expect(env.sendingFacility).toBe("ENGRACE-HOSPICE");
+      expect(env.receivingApplication).toBe("REFLAB-LIS");
+      expect(env.receivingFacility).toBe("REFLAB-MAIN");
+      expect(server.receivedWires[0]).not.toContain("Mock Reference Lab");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-178 identity: a feed with an unset MSH field is REFUSED with a typed PHI-free error — no row, no wire", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const feedId = await seedFeed({ organizationId: ORG_A, port: server.port, mshReceivingFacility: null });
+      const { consumer, alerts } = buildConsumer();
+      const orderId = randomUUID();
+      const err = await consumer
+        .handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })))
+        .then(() => null, (e: unknown) => e);
+      expect(err).toBeInstanceOf(OutboundFeedIdentityIncompleteError);
+      expect((err as OutboundFeedIdentityIncompleteError).code).toBe("M29_OUTBOUND_FEED_IDENTITY_INCOMPLETE");
+      expect((err as OutboundFeedIdentityIncompleteError).feedId).toBe(feedId);
+      expect((err as OutboundFeedIdentityIncompleteError).missingFields).toEqual(["mshReceivingFacility"]);
+      // Field names only — never the order, a patient or any value.
+      expect((err as Error).message).not.toMatch(/Doe|John|MRN/);
+      expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(0);
+      expect(server.receivedWires).toHaveLength(0);
+      expect(JSON.stringify(alerts.emitted)).toContain("feed_identity_incomplete");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-178 idempotency: two CONCURRENT deliveries of the same event dispatch exactly once", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const a = buildConsumer();
+      const b = buildConsumer();
+      const orderId = randomUUID();
+      const event = dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A }));
+      await Promise.all([a.consumer.handle(event), b.consumer.handle(event)]);
+      expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(1);
+      expect(server.receivedWires).toHaveLength(1);
+      const transmitted = [...a.outbox.published, ...b.outbox.published].filter(
+        (e) => e.eventName === "m29.lab_order.transmitted",
+      );
+      expect(transmitted).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-178 schema: the MSH CHECK refuses a value that would break HL7 framing; RLS hides org A's feed link from org B", async () => {
+    const feedId = await seedFeed({ organizationId: ORG_A, port: 6100, labDestinationFacilityId: FACILITY_X });
+    await expect(
+      admin.query("UPDATE external_feed SET msh_receiving_facility = 'A|B' WHERE id = $1", [feedId]),
+    ).rejects.toThrow(/external_feed_msh_identity_chk/);
+    await expect(
+      admin.query("UPDATE external_feed SET msh_sending_facility = E'A\\rB' WHERE id = $1", [feedId]),
+    ).rejects.toThrow(/external_feed_msh_identity_chk/);
+    const asB = await withOrgContext(handle.db, { organizationId: ORG_B, userId: "" }, (tx) =>
+      tx.select().from(schema.externalFeed).where(eq(schema.externalFeed.id, feedId)),
+    );
+    expect(asB).toHaveLength(0);
+    const asA = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+      tx.select().from(schema.externalFeed).where(eq(schema.externalFeed.id, feedId)),
+    );
+    expect(asA[0]!.labDestinationFacilityId).toBe(FACILITY_X);
   });
 
   it("cross-tenant isolation: org A's dispatch never touches org B's feed or rows", async () => {

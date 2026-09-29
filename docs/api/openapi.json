@@ -767,6 +767,26 @@
                     "minimum": 1,
                     "maximum": 5000,
                     "type": "integer"
+                  },
+                  "labDestinationFacilityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "mshSendingApplication": {
+                    "pattern": "^[^|^~\\\\&\\u0000-\\u001f\\u007f]{1,180}$",
+                    "type": "string"
+                  },
+                  "mshSendingFacility": {
+                    "pattern": "^[^|^~\\\\&\\u0000-\\u001f\\u007f]{1,180}$",
+                    "type": "string"
+                  },
+                  "mshReceivingApplication": {
+                    "pattern": "^[^|^~\\\\&\\u0000-\\u001f\\u007f]{1,180}$",
+                    "type": "string"
+                  },
+                  "mshReceivingFacility": {
+                    "pattern": "^[^|^~\\\\&\\u0000-\\u001f\\u007f]{1,180}$",
+                    "type": "string"
                   }
                 }
               }
@@ -820,6 +840,11 @@
                         "channelCertPin",
                         "sendingFacilityAllowlist",
                         "rateLimitMsgPerSec",
+                        "labDestinationFacilityId",
+                        "mshSendingApplication",
+                        "mshSendingFacility",
+                        "mshReceivingApplication",
+                        "mshReceivingFacility",
                         "proposedByMembershipId",
                         "approvedByOpId",
                         "approvedByComplId",
@@ -954,6 +979,57 @@
                         },
                         "rateLimitMsgPerSec": {
                           "type": "integer"
+                        },
+                        "labDestinationFacilityId": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mshSendingApplication": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mshSendingFacility": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mshReceivingApplication": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mshReceivingFacility": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "proposedByMembershipId": {
                           "type": "string"
@@ -1082,6 +1158,26 @@
                     "minimum": 1,
                     "maximum": 5000,
                     "type": "integer"
+                  },
+                  "labDestinationFacilityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "mshSendingApplication": {
+                    "pattern": "^[^|^~\\\\&\\u0000-\\u001f\\u007f]{1,180}$",
+                    "type": "string"
+                  },
+                  "mshSendingFacility": {
+                    "pattern": "^[^|^~\\\\&\\u0000-\\u001f\\u007f]{1,180}$",
+                    "type": "string"
+                  },
+                  "mshReceivingApplication": {
+                    "pattern": "^[^|^~\\\\&\\u0000-\\u001f\\u007f]{1,180}$",
+                    "type": "string"
+                  },
+                  "mshReceivingFacility": {
+                    "pattern": "^[^|^~\\\\&\\u0000-\\u001f\\u007f]{1,180}$",
+                    "type": "string"
                   }
                 }
               }
@@ -1135,6 +1231,11 @@
                         "channelCertPin",
                         "sendingFacilityAllowlist",
                         "rateLimitMsgPerSec",
+                        "labDestinationFacilityId",
+                        "mshSendingApplication",
+                        "mshSendingFacility",
+                        "mshReceivingApplication",
+                        "mshReceivingFacility",
                         "proposedByMembershipId",
                         "approvedByOpId",
                         "approvedByComplId",
@@ -1269,6 +1370,57 @@
                         },
                         "rateLimitMsgPerSec": {
                           "type": "integer"
+                        },
+                        "labDestinationFacilityId": {
+                          "anyOf": [
+                            {
+                              "format": "uuid",
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mshSendingApplication": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mshSendingFacility": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mshReceivingApplication": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "mshReceivingFacility": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "proposedByMembershipId": {
                           "type": "string"

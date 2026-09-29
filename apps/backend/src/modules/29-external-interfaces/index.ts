@@ -413,6 +413,11 @@ export {
 export {
   OUTBOUND_SENDING_APPLICATION,
   type ResolvedOutboundFeed,
+  type ResolvedFeedTransport,
+  type OutboundFeedCandidateRow,
+  type FeedIdentityField,
+  type RetryFeedResolutionResult,
+  selectOutboundFeed,
   type FeedResolutionFailureReason,
   type FeedResolutionResult,
   type OutboundFeedResolver,
@@ -428,6 +433,7 @@ export {
 } from "./outbound/queues";
 export {
   M29_OUTBOUND_DISPATCH_CONSUMER,
+  OutboundFeedIdentityIncompleteError,
   type OutboundAlertPort,
   type OutboundDispatchWorkerDeps,
   type OutboundRetrySweepDeps,
