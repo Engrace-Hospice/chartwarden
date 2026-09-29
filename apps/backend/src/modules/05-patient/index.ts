@@ -90,6 +90,10 @@ export {
   dosespotSyncDemographicsForOrg,
 } from "./seams/dosespot-sync-snapshot-for-org";
 
+// F-178 (#248) — the minimum-necessary PID facts + fail-closed SUD flag M11's outbound lab-ORM producer reads,
+// on the caller's transaction, injected as a port (M11 has no `dependsOn` edge to 5).
+export { type Hl7OrmDemographics, hl7OrmDemographicsInTx } from "./seams/hl7-orm-demographics";
+
 // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization, bound live for the first time.
 export {
   M5_ADMISSION_SITING_CONSUMER,
