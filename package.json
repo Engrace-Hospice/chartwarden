@@ -127,6 +127,8 @@
     "test:m18:visit-cancelled-encounter-signed:live": "vitest run apps/backend/__tests__/m18-visit-cancelled-encounter-signed-consumers.live.test.ts",
     "test:m21:comfort-kit-cascade:live": "vitest run apps/backend/__tests__/m21-comfort-kit-cascade.live.test.ts",
     "test:m23:revalidate-triggers:live": "vitest run apps/backend/__tests__/m23-revalidate-triggers.live.test.ts",
+    "test:m23:late-check-resolved:live": "vitest run apps/backend/__tests__/m23-late-check-resolved.live.test.ts",
+    "test:m35:org-lifecycle-consumer:live": "vitest run apps/backend/__tests__/m35-org-lifecycle-consumer.live.test.ts",
     "test:m13:admission-discharged-cascade:live": "vitest run apps/backend/__tests__/m13-admission-discharged-cascade.live.test.ts",
     "test:m1:lag-probe-status:live": "vitest run apps/backend/__tests__/m1-lag-probe-status-consumer.live.test.ts",
     "test:m1:mac-portal-health:live": "vitest run apps/backend/__tests__/m1-mac-portal-health-consumer.live.test.ts",

@@ -165,6 +165,14 @@ export {
   type RevalidateEnqueuePort,
 } from "./outbox-consumers/m23-revalidate-triggers";
 export { buildDrizzleRevalidationTargetResolver } from "./outbox-consumers/m23-revalidation-target-resolver";
+// F-162 (#248) — the seventh revalidate-trigger: m18.evv.late_check_resolved, resolved through an
+// injected M8 visitId→encounterId port (see the file for why this needed a new M8 seam function first).
+export {
+  M23_LATE_CHECK_RESOLVED_EVENT,
+  type M23LateCheckResolvedConsumerDeps,
+  type M8EncounterIdsForVisitsReader,
+  buildM23LateCheckResolvedConsumer,
+} from "./outbox-consumers/m18-late-check-resolved";
 
 // §4.4 — the M23→M27 cost-report published seam (PatientDaysProvider): the billed-and-accepted patient-day
 // census the cost-report Worksheet-D reconciliation reads. The composition root registers it into the M1

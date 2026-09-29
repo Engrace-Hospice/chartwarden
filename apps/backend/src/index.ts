@@ -231,6 +231,7 @@ import {
   createDrizzleEncounterEraseStore,
   createDrizzleEncounterReaderStore,
   createHearthnoteCiphers,
+  encounterIdsForVisitsForOrg,
   encounterVisitIdsForOrg,
   mountEncounterRoutes,
   registerEncounterAbacPredicates,
@@ -509,6 +510,7 @@ import {
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
   buildM23BootAssemblyService,
+  buildM23LateCheckResolvedConsumer,
   buildM23NoeDraftConsumer,
   buildM23NotrDraftConsumer,
   buildM23OutboxBackedSubmissionGate,
@@ -794,6 +796,7 @@ import {
 import {
   M35_OUTBOX_EVENTS,
   buildDrizzleM35RouteService,
+  buildM35OrgLifecycleConsumer,
   mountM35Routes,
   registerM35AbacPredicates,
 } from "./modules/35-subscription/index";
@@ -5845,6 +5848,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // already-registered `runRevalidateConsumer` worker (only runs when `m23LaunchGateway` is
           // configured, same as every other M23 launch worker).
           ...buildM23RevalidateTriggerConsumers({ enqueue: m23RevalidateEnqueue.port }),
+          // F-162 (#248) — the seventh revalidate trigger: m18.evv.late_check_resolved, resolved through
+          // M8's new reverse visitId→encounterId seam (encounterIdsForVisitsForOrg), injected as a port
+          // per this module's established no-package-import posture for M8 bridges.
+          buildM23LateCheckResolvedConsumer({
+            resolveEncounterForVisit: {
+              forVisits: (orgId, visitIds) => encounterIdsForVisitsForOrg(dbHandle.db, orgId, visitIds),
+            },
+            enqueue: m23RevalidateEnqueue.port,
+          }),
+          // F-162 (#248) — M35's first outbox consumer: the §4.12 org-lifecycle-handler over M2's
+          // organization activate/suspend/close triggers (D21's 3 decisive-mechanism events of its 8
+          // exhaustive inbound subscriptions; the other 3 — m2.session.created, m5.patient.deceased/
+          // .merged — stay deferred on the platform's missing PseudonymKeyProvider/KMS infrastructure).
+          buildM35OrgLifecycleConsumer({ db: dbHandle.db, outbox: m35OutboxPublisher }),
         ],
         // GAP-099 — the PLATFORM (`organization_id IS NULL`) binding list. Until now this list did not
         // exist and `pollPlatform()` could only claim a row and defer it, so M29's NPPES sync published

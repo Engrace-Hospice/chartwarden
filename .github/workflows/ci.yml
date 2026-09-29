@@ -556,6 +556,12 @@ jobs:
           - { name: "M23 NOTR draft", scripts: "test:m23:notr-draft:live" }
           # F-153 (#248) — the §4.8 revalidate.consumer producer side, six M6/M8 trigger events.
           - { name: "M23 revalidate triggers", scripts: "test:m23:revalidate-triggers:live" }
+          # F-162 (#248) — the seventh revalidate trigger, m18.evv.late_check_resolved, over a new M8
+          # reverse visitId→encounterId seam.
+          - { name: "M23 late-check resolved", scripts: "test:m23:late-check-resolved:live" }
+          # F-162 (#248) — M35's first outbox consumer: the §4.12 org-lifecycle-handler over M2's
+          # organization activate/suspend/close triggers.
+          - { name: "M35 org-lifecycle consumer", scripts: "test:m35:org-lifecycle-consumer:live" }
           # GAP-050: M33 scheduled-report create/update/resume over the real `cron-parser` adapter —
           # all three compute `next_run_at` through a port that was a fail-closed stub, so no tenant
           # could create a schedule at all and the §4.8 scheduled-run cron had nothing to fire.

@@ -42,6 +42,7 @@ export {
   billableEncountersInRangeForOrg,
   signedEncounterSnapshotsInRangeForOrg,
   encounterVisitIdsForOrg,
+  encounterIdsForVisitsForOrg,
 } from "./drizzle-store";
 export {
   EncounterNotFoundError,

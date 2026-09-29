@@ -47,3 +47,10 @@ export {
   buildDrizzleM35RouteService,
   mountM35Routes,
 } from "./routes/index";
+// F-162 (#248) — M35's first-ever outbox consumer: the §4.12 org-lifecycle-handler over M2's
+// organization activate/suspend/close triggers.
+export {
+  M35_ORG_LIFECYCLE_CONSUMER,
+  type OrgLifecycleConsumerDeps,
+  buildM35OrgLifecycleConsumer,
+} from "./outbox-consumers/m2-organization-lifecycle";

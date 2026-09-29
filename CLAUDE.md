@@ -2292,6 +2292,72 @@ clean (0 errors), `arch:fitness` 38/38, full non-live suite 654 files / 9601 tes
 9599 before the two regression fixes), and `docs/api/openapi.json` + the generated typed client
 regenerated and checked in sync.
 
+**A five-fork survey-then-build round found the easy pairs genuinely running out — 3 of 5 targets were
+real, precisely-scoped builds, and the other 2 correctly stopped short of fabricating business logic they
+were never handed a decision for (F-163, #248).** Rather than dispatch blind, a research-only fork first
+ranked all 21 remaining `outbox-deferred-consumers.ts` groups (126 pairs) by buildability from their own
+documented reasons, and the five build forks that followed targeted its top picks. **M23's `m18.evv
+.late_check_resolved`** — the one pair F-159 had scoped precisely as needing "one new M8 seam function" —
+is now bound as the group's 7th of 8: a new `encounterIdsForVisitsForOrg` (`08-encounters/seams/
+drizzle-store.ts`), the reverse of the already-published `encounterVisitIdsForOrg` and genuinely 1:1
+(`encounter_org_visit_unique`, a partial unique index on `(organization_id, visit_id)`), injected as a
+port into a new `m18-late-check-resolved.ts` consumer that enqueues onto the SAME `revalidate.consumer`
+queue the module's six sibling triggers already use — no new infrastructure, matching this module's
+established no-package-import posture for M8 bridges exactly. **M35 got its first-ever `outbox-consumers/`
+directory**, binding 3 of its 8 D21-exhaustive inbound subscriptions: `m2.organization.{activated,
+suspended,closed}` now mirror the real admin/tenant route operations they were always described as
+triggering "in sympathy" with — `.suspended`→the same write `adminPauseSubscription` performs,
+`.closed`→the TENANT self-serve `cancelSubscription`'s period-end schedule (not the platform immediate
+cancel — D19/§4.12 both say "at period end"), `.activated`→RESUME ONLY (a `paused` subscription returning
+to `active`, mirroring `adminResumeSubscription`), never CREATE — the spec's own "(optionally) create
+initial trial subscription" hedge is its own tell that which of the three plan tiers a newly-activated org
+should default onto was never decided, and inventing one would have been exactly the fabricated-business-
+logic move this round's forks were instructed to stop short of. The other 3 of M35's 8 (`m2.session
+.created`, `m5.patient.{deceased,merged}`) stay deferred on one shared, genuinely blocking root cause:
+`PseudonymKeyProvider.activeKey()` has ZERO implementations anywhere in `apps/backend` — no seeded active
+key row, no KMS-decrypt path, nothing that generates/wraps/inserts the platform's first epoch (the same
+gap F-158 already named for this module's webhook `WebhookPayloadEncryptor` sibling port) — confirmed
+M34's real per-tenant DEK-wrap mechanism does not transfer, since `patient_pseudonym_key` is platform-wide
+rather than per-org, a structurally different scheme new security-critical infrastructure would be needed
+to build. **The other 3 forks investigated and correctly reported BLOCKED, no files changed, each
+sharpening a finding rather than merely re-asserting one.** M31's two previously-unchecked pairs
+(`m17.visit.published`, `m22.document.rendered`) are each blocked deeper than this module's other
+deferrals: the first needs a telehealth signal that exists nowhere in M17's real `VisitPurpose`/
+`VisitSetting` schema (a missing upstream data-model fact, not a missing binding) stacked on a missing
+envelope-encrypt capability for the vendor room-id columns and a whole absent BullMQ tier for this module;
+the second's target table, `portal_document_share`, was never manifest-owned per M31's own schema
+barrel's header and, independently, M31 already answers "what documents can this account see" via a live
+seam pull already wired into its dashboard — the seam-vs-push trap this arc's F-101/F-115/F-129/F-140
+findings keep finding, applied to M31 for the first time. M1's `m24.medicaid_state_channel.{unavailable,
+recovered}` attempted the direct M23 MAC-portal-health mirror and found it doesn't transfer: unlike M23,
+M24 has NO cron infrastructure running at all (`registerM24CronWorkers`/`scheduleM24Jobs` are never called
+anywhere in `index.ts` — not even this module's two OTHER, already-built-and-tested crons), and a genuine,
+unresolved contradiction sits under the specific pair — the catalog declares `organizationId` non-nullable
+(per-tenant) while the spec's own worked example and the one real non-throwing health-check method that
+exists today (`MedicaidAdapter.healthy()`, a single composition-root instance built once from env config)
+both point platform-scoped; the one mechanism that WOULD answer per-tenant needs new credential-handling
+plumbing this pass declined to guess the shape of. M22's `m14.minutes.amended` investigation found its own
+premise was wrong before finding the real blocker: `m14.minutes.signed` — cited elsewhere in this corpus
+as this event's "real trigger" — is not bound either (no template, no catalog entry, confirmed absent at
+every point in `git log` history), and the actual gap one layer down is sharper than "needs the W2 append
+path" — the append MACHINERY is fully built at the store layer (`DocumentSeamStore.upsertRenderedDocument`
+already does genesis-vs-append correctly), but the shared pure decider's idempotency key is `(aggregateType,
+aggregateId)` only, never `(sourceEvent, aggregateId)` as its own header comment says is the intended
+design, which is necessary today for crash-safety (traced: the outbox dispatcher's delivery receipt commits
+in a SEPARATE transaction after `handle()` returns) but means every subsequent render request for an
+already-rendered aggregate silently no-ops — exactly backwards for an amendment that needs a NEW version.
+Fixing it is shared infrastructure spanning every one of M22's ~40 rendered events, not an M14-scoped
+narrow extension, and matches the shape already on record for `m6.discharge.cosigned`. Net on #248:
+122 pairs across 21 modules remain (126 → 122; `m18.evv.late_check_resolved` bound at M23, 3 of M35's 8
+bound, M35's own group re-typed `no-consumer-surface`→`handlers-unbound` now that a real directory exists).
+Verified centrally: `bun run build`/`typecheck` clean (0 errors), `arch:fitness` 38/38 on the first run (no
+new HTTP routes this round, so `openapi:check`/`client:check` needed no regen), full non-live suite
+654 files / 9601 tests green, both new live suites individually against a fresh disposable Postgres
+(`m23:late-check-resolved` 8/8, `m35:org-lifecycle-consumer` 10/10), sibling regression suites
+(`m23:revalidate-triggers` 6/6, `m8:read` 4/4), and a clean `check:boot:platform` run against the same
+freshly migrated, RLS-enforced disposable Postgres, proving the real 111-binding dispatcher (up from 109)
+accepts both new consumers at boot.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit
