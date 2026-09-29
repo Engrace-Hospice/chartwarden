@@ -23,8 +23,20 @@ export interface AlertEmitter {
       payload: Record<string, unknown>; // structured; PHI fields handled by the §4.7 sanitizer
       severity: AlertSeverity;
       correlationId: string;
+      /**
+       * F-191 — OPT-IN. A repeat emit with the SAME `correlationId` is absorbed by the `(org, correlation_id)` dedupe
+       * (one page per window). With `countRepeats` the absorbed repeat is COUNTED instead of vanishing: the alert's
+       * `payload.occurrences` starts at 1 and each repeat increments it atomically, WITHOUT paging again. Off by
+       * default, because a redelivered event that re-emits the same id is idempotent, not an occurrence.
+       */
+      countRepeats?: boolean;
     },
-  ): Promise<{ alertId: string; resolvedRecipientCount: number }>;
+  ): Promise<{
+    alertId: string;
+    resolvedRecipientCount: number;
+    /** F-191 — the alert's occurrence count AFTER this emit; present only when `countRepeats` was set. */
+    occurrences?: number;
+  }>;
 }
 
 /**

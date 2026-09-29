@@ -362,6 +362,19 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // F-191 — the ESCALATION for a failure storm: raised once per (feed, window) when the count of failures crosses the
+  // threshold. Same audience as the failure it escalates, floor `critical`; a separate kind because the failure alert
+  // of that window has already paged and M36 (rightly) never re-pages a deduped alert.
+  {
+    eventType: "hl7_outbound.transmission_storm",
+    category: "operational",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
   {
     eventType: "external_feed.baa_expired",
     category: "administrative",

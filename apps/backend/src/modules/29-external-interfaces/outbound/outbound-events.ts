@@ -91,6 +91,10 @@ export const OUTBOUND_ALERT_KINDS = [
   "hl7_outbound.transmission_failed",
   "external_feed.baa_expired",
   "external_feed.baa_missing",
+  // F-191 — the ESCALATION raised once per window when a feed's failures cross the storm threshold
+  // (`alert-routing.ts` `emitOutboundAlert`). Its own kind, so it is a SECOND alert row (its own correlation id)
+  // with its own seeded rule — the first alert of the window has already paged and cannot be re-paged.
+  "hl7_outbound.transmission_storm",
 ] as const;
 
 /** An M36 typed-alert intent (§4.9). M29 owns no delivery code — the T08 worker hands this to M36's engine. */

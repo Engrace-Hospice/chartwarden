@@ -56,7 +56,7 @@ import {
   correlateAck,
   parseAckMsa,
 } from "./ack-correlation";
-import { buildOutboundAlertEmit } from "./alert-routing";
+import { emitOutboundAlert } from "./alert-routing";
 import {
   type OutboundPayloadCipher,
   type OutboundTenantKeyProvider,
@@ -221,7 +221,8 @@ async function emitAlert(
     const emitter = deps.alerts ?? (getSeam("AlertEmitter") as OutboundAlertPort);
     // F-188 — severity ladder translation + a windowed correlation id (see `alert-routing.ts`): the pass-through
     // this replaced threw at the `alert` INSERT on every call, and its per-feed id could only ever notify once.
-    await emitter.emit(organizationId, buildOutboundAlertEmit(alert, deps.now()));
+    // F-191 — counts absorbed repeats and escalates once per window at the storm threshold (`emitOutboundAlert`).
+    await emitOutboundAlert(emitter, organizationId, alert, deps.now());
   } catch (err) {
     // Alerting failure must never block or crash the dispatch pipeline itself.
     // F-181 — log only the error's class and the feed id, never the error object: an emitter/driver error can
