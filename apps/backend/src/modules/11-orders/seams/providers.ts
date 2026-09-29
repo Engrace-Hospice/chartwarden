@@ -47,8 +47,9 @@ function matches(
  * routes medication-order signatures through. `signOrderTarget` records the signature with a server-stamped
  * timestamp and, for a local `order_record` target in a signable state, transitions it to `active` (a
  * verbal_pending order's open verbal row is resolved to signed_in_time / expired_unsigned at the same time).
- * `recordVerbalOrder` computes `deadline_at = received_at + window` (the 48-hour platform-floor policy) and
- * moves a local order to `verbal_pending`. `cosignOrder` / `discontinueOrder` record their own rows (D13).
+ * `recordVerbalOrder` computes `deadline_at = received_at + window` under the org's real `order_verbal_policy`
+ * (the 48h platform floor when the org has never tightened it — `store.verbalPolicyForOrg`) and moves a
+ * local order to `verbal_pending`. `cosignOrder` / `discontinueOrder` record their own rows (D13).
  * A `medication_order` target records the primitive only — M12 owns that lifecycle (no local M11 row).
  * `now` is the authoritative server clock (injectable for deterministic tests; defaults to the wall clock).
  */
@@ -76,7 +77,10 @@ export function createOrderSignatureProvider(
     },
 
     async recordVerbalOrder(input: RecordVerbalOrderInput) {
-      const deadlineAt = computeVerbalDeadline(input.receivedAt);
+      // The tenant's real §2.3 D3 policy (tighten-only floor), not the platform default alone — a hospice
+      // that has tightened its window gets the same math through this seam as through M11's own route.
+      const policy = await store.verbalPolicyForOrg();
+      const deadlineAt = computeVerbalDeadline(input.receivedAt, policy);
       const verbalOrderId = await store.insertVerbalOrder({
         targetKind: input.targetKind,
         targetId: input.targetId,
@@ -86,6 +90,7 @@ export function createOrderSignatureProvider(
         effectiveAt: input.receivedAt,
         receivedAt: input.receivedAt,
         deadlineAt,
+        deadlinePolicyVersion: policy.policyVersion,
       });
       if (input.targetKind === "order") {
         await store.applyOrderStatus(input.targetId, "verbal_pending", null);

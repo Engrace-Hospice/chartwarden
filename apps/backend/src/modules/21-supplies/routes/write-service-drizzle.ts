@@ -171,6 +171,210 @@ export async function patchSupplyRequest(
     .where(eq(REQUEST.id, id));
 }
 
+/** The §4.5.2 tenancy block every per-patient `m21.*` payload repeats.
+ *
+ * Module-level (not closed over `buildDrizzleM21WriteService`'s deps) for the same reason as
+ * {@link patchSupplyRequest}: a §4.5.1 outbox consumer that never opens the write service needs the exact
+ * same anchor shape a route builds, and a second hand-rolled projection is how the two drift.
+ */
+export const anchorOf = (row: {
+  organizationId: string;
+  patientId: string;
+  admissionId: string;
+  providerEntityId: string;
+  locationId: string;
+}) => ({
+  orgId: row.organizationId,
+  patientId: row.patientId,
+  admissionId: row.admissionId,
+  providerEntityId: row.providerEntityId,
+  locationId: row.locationId,
+});
+
+/** The `skuClass` the D4 ladder matches on: the HCPCS family for a goods request, `comfort_kit` for a kit. */
+function skuClassOf(kind: string, data: Record<string, unknown>): string {
+  if (kind === "comfort_kit_deploy" || kind === "comfort_kit_replenish") return "comfort_kit";
+  const hcpcs = typeof data.hcpcs === "string" ? data.hcpcs : "";
+  return hcpcs.length > 0 ? hcpcs.slice(0, 1) : "internal";
+}
+
+/** The `skuId` the D4 per-SKU pin matches on (kits have none — they route on the kit class). */
+function skuIdOf(data: Record<string, unknown>): string | null {
+  const direct = data.supplyItemId;
+  if (typeof direct === "string") return direct;
+  const lines = data.lineItems;
+  if (Array.isArray(lines) && lines.length > 0) {
+    const first = lines[0] as Record<string, unknown>;
+    if (typeof first?.supplyItemId === "string") return first.supplyItemId;
+  }
+  return null;
+}
+
+/**
+ * D4 — resolve the routing ladder for a request. Reads every candidate rule (RLS gives the tenant's own
+ * plus the platform-scope ones), runs the PURE precedence walk, and returns the immutable record with its
+ * full roads-not-taken trace. A no-match is NOT an error here: §3.1.7 only requires the resolution to be
+ * frozen before the row leaves `requested`, and a tenant that has not configured a rule needs to see the
+ * empty trace on the request rather than a 500 at intake.
+ *
+ * Module-level for the same reason as {@link insertSupplyRequest} below, which is its only caller outside
+ * `buildDrizzleM21WriteService`'s own `assignVendor`.
+ */
+async function resolveRouting(
+  tx: Tx,
+  input: {
+    orgId: string;
+    locationId: string;
+    skuId: string | null;
+    skuClass: string;
+    at: Date;
+  },
+): Promise<RoutingRuleResolved> {
+  const RULE = schema.vendorRoutingRule;
+  const rows = await tx.select().from(RULE).where(eq(RULE.isActive, true));
+  const candidates: RoutingRuleCandidate[] = rows.map((r) => ({
+    ruleId: r.id,
+    scopeKind: r.scopeKind,
+    scopeId: r.scopeId ?? null,
+    skuClassPattern: r.skuClassPattern ?? null,
+    assignedVendorId: r.assignedVendorId ?? null,
+    assignedFulfillmentMode: r.assignedFulfillmentMode,
+    defaultPharmacyDispatchMode: r.defaultPharmacyDispatchMode ?? null,
+    precedencePriority: r.precedencePriority,
+    isActive: r.isActive,
+    effectiveFrom: r.effectiveFrom,
+    effectiveTo: r.effectiveTo ?? null,
+  }));
+  const resolution = resolveVendorRouting(candidates, {
+    orgId: input.orgId,
+    locationId: input.locationId,
+    skuId: input.skuId,
+    skuClass: input.skuClass,
+    resolvedAt: input.at,
+    // The digest covers the RULE SET as evaluated, so a survey can prove the same inputs produce the
+    // same answer years later even after every rule has been rewritten.
+    routingPolicyDigest: sha256({ version: ROUTING_RESOLVER_VERSION, candidates }),
+  });
+  return resolution.resolved;
+}
+
+/**
+ * The shared creation path — a route, an M11 cascade and the §4.8 seam all land here (see the service
+ * port's `createDirect` doc-comment for why), and — as of the §2.1 replenishment-intake bind (F-153/#248's
+ * m21 group) — an M13 `outbox-consumers` cascade too. `emitCreatedFromExternal` is the ONE behavioural
+ * difference: §7.1 acceptance 3 is explicit that the M11 cascade must not emit it, and the same reasoning
+ * applies to any system-actor cascade (M13's replenishment intake included) — `created_from_external`'s own
+ * payload requires a real `createdByMembershipId`, which a cascade with no acting human cannot honestly
+ * supply.
+ *
+ * Module-level (not closed over `buildDrizzleM21WriteService`'s deps) so a §4.5.1 outbox consumer can run
+ * the SAME creation path a route runs, rather than a second hand-rolled INSERT that could drift from it —
+ * the `patchSupplyRequest` / F-102 precedent this file already applies to the update side.
+ */
+export async function insertSupplyRequest(
+  tx: Tx,
+  outbox: WriteOutboxPort,
+  input: {
+    organizationId: string;
+    patientId: string;
+    admissionId: string;
+    locationId: string;
+    providerEntityId: string;
+    kind: string;
+    data: Record<string, unknown>;
+    sourceOrderId: string | null;
+    sourceReplenishmentEventId: string | null;
+    requestedByMembershipId: string | null;
+    deliveryInstructions: string | null;
+    at: Date;
+    emitCreatedFromExternal: boolean;
+  },
+): Promise<{ id: string; routingRuleResolved: RoutingRuleResolved; updatedAt: Date }> {
+  const REQUEST = schema.supplyRequest;
+  // D1 — the per-kind payload is validated against `@wardenx/supplies`'s TypeBox + the §2.10 cross-field
+  // rules TypeBox cannot state. ONE validator: the route boundary asserts only the discriminator.
+  const validation = validateSupplyRequestData(
+    input.kind as Parameters<typeof validateSupplyRequestData>[0],
+    input.data,
+  );
+  if (!validation.ok) {
+    throw new ValidationError(
+      "the supply-request payload does not satisfy its kind schema",
+      validation.violations.map((v) => ({
+        field: v.path,
+        code: "INVALID",
+        message: v.message,
+      })),
+    );
+  }
+
+  const routingRuleResolved = await resolveRouting(tx, {
+    orgId: input.organizationId,
+    locationId: input.locationId,
+    skuId: skuIdOf(input.data),
+    skuClass: skuClassOf(input.kind, input.data),
+    at: input.at,
+  });
+
+  const [row] = await tx
+    .insert(REQUEST)
+    .values({
+      organizationId: input.organizationId,
+      patientId: input.patientId,
+      admissionId: input.admissionId,
+      locationId: input.locationId,
+      providerEntityId: input.providerEntityId,
+      sourceOrderId: input.sourceOrderId,
+      sourceReplenishmentEventId: input.sourceReplenishmentEventId,
+      requestedByMembershipId: input.requestedByMembershipId,
+      kind: input.kind as typeof REQUEST.$inferInsert.kind,
+      data: input.data,
+      status: "requested",
+      deliveryInstructions: input.deliveryInstructions,
+      // Rule 1 — the frozen record is written at `vendor_assigned`, never at intake. §3.1.7's CHECK only
+      // requires it once the row LEAVES `requested`, and writing it here would claim a decision the
+      // coordinator has not made yet.
+      createdAt: input.at,
+      updatedAt: input.at,
+    })
+    .returning();
+  if (!row) throw new ConflictError("supply_request insert produced no row");
+
+  const anchor = anchorOf(row);
+  await outbox.publish(tx, {
+    eventName: "m21.supply_request.status_changed",
+    payload: {
+      ...anchor,
+      supplyRequestId: row.id,
+      kind: row.kind,
+      sourceOrderId: row.sourceOrderId ?? null,
+      // §7.1 acceptance 4 — `fromStatus` is null on the intake insert.
+      fromStatus: null,
+      toStatus: row.status,
+      occurredAt: iso(input.at),
+    },
+    organizationId: input.organizationId,
+    aggregateKind: "supply_request",
+    aggregateId: row.id,
+  });
+  if (input.emitCreatedFromExternal) {
+    await outbox.publish(tx, {
+      eventName: "m21.supply_request.created_from_external",
+      payload: {
+        ...anchor,
+        supplyRequestId: row.id,
+        kind: row.kind,
+        createdByMembershipId: input.requestedByMembershipId ?? "",
+        occurredAt: iso(input.at),
+      },
+      organizationId: input.organizationId,
+      aggregateKind: "supply_request",
+      aggregateId: row.id,
+    });
+  }
+  return { id: row.id, routingRuleResolved, updatedAt: row.updatedAt };
+}
+
 /** RxNorm → the D3 floor key that line satisfies, or null for a tenant ADDITION. */
 const FLOOR_KEY_BY_RXNORM = new Map(
   COMFORT_KIT_PLATFORM_FLOOR.map((m) => [m.rxNorm, m.key] as const),
@@ -273,21 +477,6 @@ export function buildDrizzleM21WriteService(
     }
   }
 
-  /** The §4.5.2 tenancy block every per-patient `m21.*` payload repeats. */
-  const anchorOf = (row: {
-    organizationId: string;
-    patientId: string;
-    admissionId: string;
-    providerEntityId: string;
-    locationId: string;
-  }) => ({
-    orgId: row.organizationId,
-    patientId: row.patientId,
-    admissionId: row.admissionId,
-    providerEntityId: row.providerEntityId,
-    locationId: row.locationId,
-  });
-
   /** Load one supply request or 404 (RLS already scoped the read). */
   async function loadRequest(tx: Tx, id: string) {
     const [row] = await tx.select().from(REQUEST).where(eq(REQUEST.id, id)).limit(1);
@@ -298,176 +487,6 @@ export function buildDrizzleM21WriteService(
   /** Apply an {@link EffectPatch} to `supply_request`, stamping `updated_at` from the tx clock. */
   const patchRequest = (tx: Tx, id: string, status: string, patch: EffectPatch, at: Date) =>
     patchSupplyRequest(tx, id, status, patch, at);
-
-  /**
-   * D4 — resolve the routing ladder for a request. Reads every candidate rule (RLS gives the tenant's own
-   * plus the platform-scope ones), runs the PURE precedence walk, and returns the immutable record with its
-   * full roads-not-taken trace. A no-match is NOT an error here: §3.1.7 only requires the resolution to be
-   * frozen before the row leaves `requested`, and a tenant that has not configured a rule needs to see the
-   * empty trace on the request rather than a 500 at intake.
-   */
-  async function resolveRouting(
-    tx: Tx,
-    input: {
-      orgId: string;
-      locationId: string;
-      skuId: string | null;
-      skuClass: string;
-      at: Date;
-    },
-  ): Promise<RoutingRuleResolved> {
-    const rows = await tx.select().from(RULE).where(eq(RULE.isActive, true));
-    const candidates: RoutingRuleCandidate[] = rows.map((r) => ({
-      ruleId: r.id,
-      scopeKind: r.scopeKind,
-      scopeId: r.scopeId ?? null,
-      skuClassPattern: r.skuClassPattern ?? null,
-      assignedVendorId: r.assignedVendorId ?? null,
-      assignedFulfillmentMode: r.assignedFulfillmentMode,
-      defaultPharmacyDispatchMode: r.defaultPharmacyDispatchMode ?? null,
-      precedencePriority: r.precedencePriority,
-      isActive: r.isActive,
-      effectiveFrom: r.effectiveFrom,
-      effectiveTo: r.effectiveTo ?? null,
-    }));
-    const resolution = resolveVendorRouting(candidates, {
-      orgId: input.orgId,
-      locationId: input.locationId,
-      skuId: input.skuId,
-      skuClass: input.skuClass,
-      resolvedAt: input.at,
-      // The digest covers the RULE SET as evaluated, so a survey can prove the same inputs produce the
-      // same answer years later even after every rule has been rewritten.
-      routingPolicyDigest: sha256({ version: ROUTING_RESOLVER_VERSION, candidates }),
-    });
-    return resolution.resolved;
-  }
-
-  /** The `skuClass` the D4 ladder matches on: the HCPCS family for a goods request, `comfort_kit` for a kit. */
-  function skuClassOf(kind: string, data: Record<string, unknown>): string {
-    if (kind === "comfort_kit_deploy" || kind === "comfort_kit_replenish") return "comfort_kit";
-    const hcpcs = typeof data.hcpcs === "string" ? data.hcpcs : "";
-    return hcpcs.length > 0 ? hcpcs.slice(0, 1) : "internal";
-  }
-
-  /** The `skuId` the D4 per-SKU pin matches on (kits have none — they route on the kit class). */
-  function skuIdOf(data: Record<string, unknown>): string | null {
-    const direct = data.supplyItemId;
-    if (typeof direct === "string") return direct;
-    const lines = data.lineItems;
-    if (Array.isArray(lines) && lines.length > 0) {
-      const first = lines[0] as Record<string, unknown>;
-      if (typeof first?.supplyItemId === "string") return first.supplyItemId;
-    }
-    return null;
-  }
-
-  /**
-   * The shared creation path — a route, an M11 cascade and the §4.8 seam all land here (see the service
-   * port's `createDirect` doc-comment for why). `emitCreatedFromExternal` is the ONE behavioural
-   * difference: §7.1 acceptance 3 is explicit that the M11 cascade must not emit it.
-   */
-  async function insertRequest(
-    tx: Tx,
-    input: {
-      organizationId: string;
-      patientId: string;
-      admissionId: string;
-      locationId: string;
-      providerEntityId: string;
-      kind: string;
-      data: Record<string, unknown>;
-      sourceOrderId: string | null;
-      sourceReplenishmentEventId: string | null;
-      requestedByMembershipId: string | null;
-      deliveryInstructions: string | null;
-      at: Date;
-      emitCreatedFromExternal: boolean;
-    },
-  ): Promise<{ id: string; routingRuleResolved: RoutingRuleResolved; updatedAt: Date }> {
-    // D1 — the per-kind payload is validated against `@wardenx/supplies`'s TypeBox + the §2.10 cross-field
-    // rules TypeBox cannot state. ONE validator: the route boundary asserts only the discriminator.
-    const validation = validateSupplyRequestData(
-      input.kind as Parameters<typeof validateSupplyRequestData>[0],
-      input.data,
-    );
-    if (!validation.ok) {
-      throw new ValidationError(
-        "the supply-request payload does not satisfy its kind schema",
-        validation.violations.map((v) => ({
-          field: v.path,
-          code: "INVALID",
-          message: v.message,
-        })),
-      );
-    }
-
-    const routingRuleResolved = await resolveRouting(tx, {
-      orgId: input.organizationId,
-      locationId: input.locationId,
-      skuId: skuIdOf(input.data),
-      skuClass: skuClassOf(input.kind, input.data),
-      at: input.at,
-    });
-
-    const [row] = await tx
-      .insert(REQUEST)
-      .values({
-        organizationId: input.organizationId,
-        patientId: input.patientId,
-        admissionId: input.admissionId,
-        locationId: input.locationId,
-        providerEntityId: input.providerEntityId,
-        sourceOrderId: input.sourceOrderId,
-        sourceReplenishmentEventId: input.sourceReplenishmentEventId,
-        requestedByMembershipId: input.requestedByMembershipId,
-        kind: input.kind as typeof REQUEST.$inferInsert.kind,
-        data: input.data,
-        status: "requested",
-        deliveryInstructions: input.deliveryInstructions,
-        // Rule 1 — the frozen record is written at `vendor_assigned`, never at intake. §3.1.7's CHECK only
-        // requires it once the row LEAVES `requested`, and writing it here would claim a decision the
-        // coordinator has not made yet.
-        createdAt: input.at,
-        updatedAt: input.at,
-      })
-      .returning();
-    if (!row) throw new ConflictError("supply_request insert produced no row");
-
-    const anchor = anchorOf(row);
-    await outbox.publish(tx, {
-      eventName: "m21.supply_request.status_changed",
-      payload: {
-        ...anchor,
-        supplyRequestId: row.id,
-        kind: row.kind,
-        sourceOrderId: row.sourceOrderId ?? null,
-        // §7.1 acceptance 4 — `fromStatus` is null on the intake insert.
-        fromStatus: null,
-        toStatus: row.status,
-        occurredAt: iso(input.at),
-      },
-      organizationId: input.organizationId,
-      aggregateKind: "supply_request",
-      aggregateId: row.id,
-    });
-    if (input.emitCreatedFromExternal) {
-      await outbox.publish(tx, {
-        eventName: "m21.supply_request.created_from_external",
-        payload: {
-          ...anchor,
-          supplyRequestId: row.id,
-          kind: row.kind,
-          createdByMembershipId: input.requestedByMembershipId ?? "",
-          occurredAt: iso(input.at),
-        },
-        organizationId: input.organizationId,
-        aggregateKind: "supply_request",
-        aggregateId: row.id,
-      });
-    }
-    return { id: row.id, routingRuleResolved, updatedAt: row.updatedAt };
-  }
 
   /**
    * Resolve the M6 provider entity for a patient's admission. M21's PHI tables carry
@@ -551,7 +570,7 @@ export function buildDrizzleM21WriteService(
       const at = now();
       const providerEntityId = await providerEntityFor(actor.organizationId, input.admissionId);
       const created = await scoped(actor, (tx) =>
-        insertRequest(tx, {
+        insertSupplyRequest(tx, outbox, {
           organizationId: actor.organizationId,
           patientId: input.patientId,
           admissionId: input.admissionId,
@@ -1762,7 +1781,7 @@ export function buildDrizzleM21WriteService(
       actorLike.userId = ctx.userId ?? "";
       const providerEntityId = await providerEntityFor(ctx.organizationId, input.admissionId);
       const created = await scoped(actorLike, (tx) =>
-        insertRequest(tx, {
+        insertSupplyRequest(tx, outbox, {
           organizationId: ctx.organizationId,
           patientId: input.patientId,
           admissionId: input.admissionId,

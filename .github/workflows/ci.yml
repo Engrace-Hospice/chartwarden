@@ -227,7 +227,20 @@ jobs:
           - { name: "M11 downstream signed fan-out", scripts: "test:m11:downstream-signed:live" }
           # F-152 (#248) — the §2.7 D7 order-suggestion banner (Valkey) + the D8 one-shot auto-complete.
           - { name: "M11 M9/M21 outbox consumers", scripts: "test:m11:m9-m21-consumers:live" }
+          # F-16x (#248) — M11's hourly orders.verbal_timer fan-out + the M12 medication-order verbal
+          # target-kind discrimination it drives.
+          - { name: "M11 verbal-order expiry", scripts: "test:m11:verbal-order-expiry:live" }
+          - { name: "M11/M12 verbal expiry handshake", scripts: "test:m11:m12-verbal-expiry:live" }
           - { name: "M12 DoseSpot", scripts: "test:m12:read:live test:m12:write:live" }
+          # F-161 (#248) — the §2.8 D17 reconciliation-discontinue handshake.
+          - {
+              name: "M12 reconciliation discontinue",
+              scripts: "test:m12:reconciliation-discontinue:live",
+            }
+          # F-16x (#248) — the §2.6 D4 / §2.8 D10 patient-sync + MedHx-fetch job-queue tier
+          # (dosespot_sync_queue) draining the six m5.patient.*/m6.{admission.activated,cti.signed}
+          # triggers.
+          - { name: "M12 sync triggers", scripts: "test:m12:sync-triggers:live" }
           - {
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",
@@ -240,6 +253,12 @@ jobs:
           - {
               name: "M13 admission-discharged cascade",
               scripts: "test:m13:admission-discharged-cascade:live",
+            }
+          # F-16x (#248) — the §2.8 D17 reconciliation draft-order-requested handshake (a real drug
+          # content payload, minting a real draft medication_order).
+          - {
+              name: "M13/M12 draft-order-requested",
+              scripts: "test:m13:m12-draft-order-requested:live",
             }
           - {
               name: "M14 IDG",
@@ -316,6 +335,9 @@ jobs:
           # F-156 (#248) — the SECOND live `platformConsumers` binding (GAP-099): M33's replica-lag
           # probe flips M1's shared, NON_ORG_SCOPED `system_status` row.
           - { name: "M1 lag-probe system status", scripts: "test:m1:lag-probe-status:live" }
+          # F-161 (#248) — the THIRD live `platformConsumers` binding: M23's §4.8 MAC-portal health
+          # probe flips M1's shared, NON_ORG_SCOPED `system_status` row (one component per jurisdiction).
+          - { name: "M1 MAC-portal health status", scripts: "test:m1:mac-portal-health:live" }
           # F-020 (#49): the ORG-scoped relay's own live proof — delivery, retry/backoff, the `failed`
           # DLQ terminal, deferred routing, record-only completion and the retention purge, driven as
           # NOBYPASSRLS `wardenx_app`. It had existed since TASK-006 with no package.json script and no
@@ -474,7 +496,9 @@ jobs:
           - {
               name: "M30 HQRP & Quality",
               scripts:
-                "test:m30:scheduled-jobs:live test:m30:cost-report-filing-measure:live test:m30:hci-inputs:live test:m30:upstream-consumers:live",
+                # F-161 (#248) adds test:m30:bereavement-plan-closed-consumer:live — the M16 bereavement
+                # plan-closure trio's `bereavement_coverage_rate` recompute enqueue.
+                "test:m30:scheduled-jobs:live test:m30:cost-report-filing-measure:live test:m30:hci-inputs:live test:m30:upstream-consumers:live test:m30:bereavement-plan-closed-consumer:live",
             }
           - {
               name: "M31 Portal & Telehealth",
@@ -494,6 +518,12 @@ jobs:
           # billing NOE/NOTR/claim/denial letters, M24 Medicaid claim ack letter, M25 denial resolution
           # letter): each producer had every builder and no caller.
           - { name: "M22 F-144 render requests", scripts: "test:f144:render-requests:live" }
+          # F-161 (#248) — M7's care-plan-signed PDF (new `care_plan` aggregate type, migration 0252)
+          # and M17's caregiver-reminder PDF (`visit_confirmation`, no producer yet on M17's side).
+          - {
+              name: "M22 F-161 render requests",
+              scripts: "test:f161:m7-m17-render-requests:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
@@ -506,6 +536,12 @@ jobs:
           - { name: "M21 order cascade", scripts: "test:m21:order-cascade:live" }
           # F-153 (#248) — M13's §2.5 deployment-ack link + §2.6 return-required chain-of-custody open.
           - { name: "M21 comfort-kit cascade", scripts: "test:m21:comfort-kit-cascade:live" }
+          # F-161 (#248) — §2.1 comfort-kit replenishment intake, the third of the four
+          # `consumers/m13-comfort-kit.ts` deciders.
+          - {
+              name: "M21 comfort-kit replenishment",
+              scripts: "test:m21:comfort-kit-replenishment:live",
+            }
           - { name: "M15 plan bootstrap", scripts: "test:m15:plan-bootstrap:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
           - { name: "M16 bereavement intake", scripts: "test:m16:bereavement-intake:live" }

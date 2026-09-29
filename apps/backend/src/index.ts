@@ -77,6 +77,7 @@ import {
 } from "./bootstrap/metrics";
 import { wireOrganizationSettingsRegistry } from "./bootstrap/organization-settings-persister";
 import { buildM1LagProbeStatusConsumer } from "./bootstrap/outbox-consumers/m33-lag-probe";
+import { buildM1MacPortalHealthConsumer } from "./bootstrap/outbox-consumers/m23-mac-portal-health";
 import {
   M1_OUTBOX_DISPATCHER_JOB_ID,
   type OutboxDispatcher,
@@ -171,6 +172,7 @@ import {
   createDrizzlePatientEraseStore,
   createDrizzlePatientMutatorStore,
   createDrizzlePatientReaderStore,
+  dosespotSyncDemographicsForOrg,
   getPatientCoverageReader,
   getPatientReader,
   mountPatientRoutes,
@@ -272,6 +274,7 @@ import {
 import {
   M11_OUTBOX_EVENTS,
   M11_PLATFORM_JOB_ID,
+  M11_VERBAL_TIMER_PLATFORM_JOB_ID,
   buildM11AssessmentSuggestionConsumer,
   buildM11DischargeCascadeConsumer,
   buildM11DocumentBackrefConsumer,
@@ -283,24 +286,42 @@ import {
   createMedicationOrderSignatureCascade,
   mountOrderRoutes,
   registerM11StandingSpawnWorker,
+  registerM11VerbalOrderExpiryWorker,
   registerOrderAbacPredicates,
   registerOrderErasers,
   registerOrderRoutes,
   registerOrderSeams,
   scheduleM11StandingSpawn,
+  scheduleM11VerbalOrderExpiry,
 } from "./modules/11-orders/index";
 import {
   M12_OUTBOX_EVENTS,
+  M12_PLATFORM_JOB_ID,
+  buildM12AdmissionActivatedMedHxConsumer,
   buildM12DischargeCascadeConsumer,
   buildM12DocumentBackrefConsumer,
+  buildM12DraftOrderRequestedConsumer,
   buildM12IdgDecisionConsumer,
+  buildM12PatientSyncAddressChangedConsumer,
+  buildM12PatientSyncCreatedConsumer,
+  buildM12PatientSyncPayerChangedConsumer,
+  buildM12PatientSyncUpdatedConsumer,
+  buildM12ReconciliationDiscontinueConsumer,
+  buildM12RecertificationMedHxConsumer,
+  buildM12VerbalExpiredConsumer,
+  createDrizzleAdmissionIdForElectionPeriodPort,
   createDrizzleDoseSpotSeamStore,
+  createDrizzleMedHxFetchEnqueuePort,
   createDrizzleMedicationOrderEraseStore,
+  createDrizzlePatientSyncEnqueuePort,
   mountDoseSpotRoutes,
   registerDoseSpotAbacPredicates,
   registerDoseSpotErasers,
   registerDoseSpotRoutes,
   registerDoseSpotSeams,
+  registerDoseSpotSyncQueueWorker,
+  scheduleDoseSpotSyncQueueDrain,
+  wireM12Tenancy,
 } from "./modules/12-dosespot/index";
 import {
   M13_OUTBOX_EVENTS,
@@ -364,6 +385,9 @@ import {
   registerBereavementErasers,
   registerBereavementSeams,
 } from "./modules/16-bereavement/index";
+// F-161 (#248) — M16's org-explicit bereavement-plan-siting seam, injected as a port into M30's
+// plan-closure consumer (M30's manifest `dependsOn` excludes 16, the F-160 `CapConsumerStore` shape).
+import { bereavementPlanSitingForOrg } from "./modules/16-bereavement/seams/plan-provider-entity-for-org";
 import {
   M17_OUTBOX_EVENTS,
   buildM17AdmissionLifecycleConsumer,
@@ -441,6 +465,7 @@ import {
   buildDrizzleSuppliesAbacResolver,
   buildDrizzleSuppliesSeamStore,
   buildM21ComfortKitDeploymentAckConsumer,
+  buildM21ComfortKitReplenishmentIntakeConsumer,
   buildM21ComfortKitReturnRequiredConsumer,
   buildM21DocumentBackrefConsumer,
   buildM21OrderDiscontinuedConsumer,
@@ -500,9 +525,10 @@ import {
   mountM23Routes,
   registerBillingErasers,
   registerM23AbacPredicates,
+  registerM23CronWorkers,
   registerM23LaunchWorkers,
   registerM23PublishedSeams,
-  scheduleM23LaunchJobs,
+  scheduleM23Jobs,
 } from "./modules/23-billing-medicare/index";
 // M24 (Billing — Medicaid) boot surface — the §4.11 outbox catalog, the §4.8 ABAC resolvers
 // (provider_entity_medicaid_billing_scope / medicaid_claim_in_billing_manager_caseload /
@@ -653,6 +679,7 @@ import {
   M30_PLATFORM_JOB_ID,
   buildDrizzleM30ReadService,
   buildDrizzleM30WriteService,
+  buildM30BereavementPlanClosedConsumer,
   buildM30ClaimAdjudicatedConsumer,
   buildM30HopeSubmissionAcceptedConsumer,
   buildM30RecomputeEnqueue,
@@ -1474,6 +1501,8 @@ export function wireModuleSeams(
   wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
   wireM20Tenancy(); // F-111 (#249) — allowlist the cron job id so the SOS SLA watchdog may enter withPlatformContext
   registerPlatformJob(M11_PLATFORM_JOB_ID);
+  registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
+  wireM12Tenancy(); // F-16x (#248) — allowlist the cron job id so the dosespot_sync_queue drain may enter withPlatformContext
   // F-071/#174 — allowlist M37's cron job id so ipu.rn-coverage-watchdog may enter withPlatformContext.
   // Without the watchdog nothing ever wrote `ipu_rn_coverage_window`, and the four write paths that read
   // it treat an absent row as uncovered — so every GIP and respite admission was refused at open.
@@ -4456,10 +4485,34 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // are follow-ups.
     let m23Workers: Worker[] = [];
     if (m23LaunchGateway) {
+      // F-161 (#248) — the §4.9 MAC-portal-health/window-watch alert routing, over the live M36
+      // AlertEmitter seam (the M27 `WX-PR-013` pattern). Was never bound: every real
+      // `alerts.dispatch()` call threw `unboundWorkerPort`.
+      const m23AlertEmitter = getSeam("AlertEmitter") as {
+        emit(
+          orgId: string,
+          input: {
+            eventType: string;
+            payload: Record<string, unknown>;
+            severity: string;
+            correlationId: string;
+          },
+        ): Promise<unknown>;
+      };
       const m23WorkerDeps = buildM23WorkerDeps({
         connection: queueConnection,
         db: dbHandle.db,
         outbox: m23OutboxPublisher,
+        alerts: {
+          dispatch: async ({ alertCode, severity, organizationId, payload }) => {
+            await m23AlertEmitter.emit(organizationId, {
+              eventType: alertCode,
+              payload,
+              severity,
+              correlationId: `m23-cron:${alertCode}`,
+            });
+          },
+        },
         x12: m23LaunchGateway.x12,
         macPortal: m23LaunchGateway.macPortal,
         jurisdictions: {
@@ -4469,25 +4522,35 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
         // unbound; every job would have thrown the moment it ran).
         revalidationTargets: buildDrizzleRevalidationTargetResolver(),
       });
-      m23Workers = registerM23LaunchWorkers(m23WorkerDeps);
+      m23Workers = [
+        ...registerM23LaunchWorkers(m23WorkerDeps),
+        // F-161 (#248) — `registerM23CronWorkers` (NOE/NOTR window-watch, eligibility-stale-watch,
+        // and MAC-portal health) was never called anywhere in this file — only the narrower
+        // `registerM23LaunchWorkers` (claim/NOE/NOTR submit + the two ack-pull crons) was wired, so
+        // all four of these crons were unregistered and never ran a single tick in any deployment.
+        // Their remaining unbound ports (`noticeWindow`/`hets`/`activeOrgs`/`validationRunner`) stay
+        // RULE-4 fail-closed and throw only when a job actually runs.
+        ...registerM23CronWorkers(m23WorkerDeps),
+      ];
       attachDlqAlertsToAll(m23Workers, "m23");
       app.addHook("onClose", async () => {
         await Promise.all(m23Workers.map((worker) => worker.close()));
       });
       try {
-        const m23ScheduleQueues = await scheduleM23LaunchJobs(queueConnection);
+        // F-161 (#248) — `scheduleM23Jobs` is a superset of `scheduleM23LaunchJobs` (it schedules the
+        // same `ackPull999`/`ackPull277ca` repeat patterns plus the 4 crons `scheduleM23LaunchJobs`
+        // never covered) — BullMQ dedupes an identical repeat pattern re-added to the same queue, but
+        // there is no reason to call both; this one call now covers all six.
+        const m23ScheduleQueues = await scheduleM23Jobs(queueConnection);
         app.addHook("onClose", async () => {
           await Promise.all(m23ScheduleQueues.map((queue) => queue.close()));
         });
       } catch (err) {
-        app.log.error(
-          err,
-          "M23 launch acknowledgment schedule registration failed",
-        );
+        app.log.error(err, "M23 cron schedule registration failed");
       }
       app.log.info(
         { queues: m23Workers.length },
-        "M23 launch submission workers constructed",
+        "M23 launch submission + cron workers constructed",
       );
     } else {
       app.log.warn(
@@ -4925,6 +4988,61 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M11 standing-spawn schedule registration failed");
     }
+    // M11 §2.3 D3 — the verbal-order-expiry hourly sweep. Fans out over active orgs the same way the
+    // standing-spawn worker above does; the real scan/write logic lives on `OrderRouteService
+    // .expireOverdueVerbals`, this is a thin fan-out wrapper (F-16x, #248).
+    const m11VerbalTimerActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M11_VERBAL_TIMER_PLATFORM_JOB_ID,
+      reason: "M11 §2.3 D3 verbal-order-expiry hourly sweep fan-out",
+    });
+    const m11VerbalTimerWorker = registerM11VerbalOrderExpiryWorker({
+      connection: queueConnection,
+      activeOrgs: m11VerbalTimerActiveOrgs,
+      service: createDbOrderBackend(dbHandle.db, m11OutboxPublisher),
+    });
+    attachDlqAlertsToAll([m11VerbalTimerWorker], "m11");
+    app.addHook("onClose", async () => {
+      await m11VerbalTimerWorker.close();
+    });
+    try {
+      const m11VerbalTimerQueue = await scheduleM11VerbalOrderExpiry(queueConnection);
+      app.addHook("onClose", async () => {
+        await m11VerbalTimerQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M11 verbal-order-expiry schedule registration failed");
+    }
+    // M12 §2.6 D4 / §2.8 D10 — the `dosespot_sync_queue` drain (patient-sync + MedHx-fetch). Scheduled
+    // separately from the six outbox consumers that enqueue onto it (below) — the drain performs real
+    // outbound vendor I/O, so it runs as its own scheduled worker (F-16x, #248).
+    const m12SyncActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M12_PLATFORM_JOB_ID,
+      reason: "M12 §2.6/§2.8 dosespot_sync_queue drain fan-out",
+    });
+    const m12SyncWorker = registerDoseSpotSyncQueueWorker({
+      db: dbHandle.db,
+      activeOrgs: m12SyncActiveOrgs,
+      outbox: m12OutboxPublisher,
+      connection: queueConnection,
+      demographicsForOrg: (organizationId, patientId) =>
+        dosespotSyncDemographicsForOrg(dbHandle.db, organizationId, patientId),
+    });
+    attachDlqAlertsToAll([m12SyncWorker], "m12");
+    app.addHook("onClose", async () => {
+      await m12SyncWorker.close();
+    });
+    try {
+      const m12SyncQueue = await scheduleDoseSpotSyncQueueDrain(queueConnection);
+      app.addHook("onClose", async () => {
+        await m12SyncQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M12 dosespot_sync_queue drain schedule registration failed");
+    }
     // ── M37 §4.8 `ipu.rn-coverage-watchdog` cron (F-071/#174 — the M14 worker-runner shape) ──────────────
     //
     // The producer that did not exist. `ipu_rn_coverage_window` is a MATERIALIZED invariant that
@@ -5263,6 +5381,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // consume only the real `enqueueRecompute` port (`outbox-consumers/upstream-consumer-ports.ts`).
           buildM30HopeSubmissionAcceptedConsumer({ db: dbHandle.db }),
           buildM30ClaimAdjudicatedConsumer({ db: dbHandle.db }),
+          // F-161 (#248) — the M16 bereavement plan-closure trio. All three closure transitions run a
+          // `cancel_future_outreach` effect that shrinks `bereavement_coverage_rate`'s denominator.
+          // `bereavementPlanSitingForOrg` is M16's seam, injected as a port — M30's manifest `dependsOn`
+          // excludes 16 (the F-160 `CapConsumerStore` shape).
+          buildM30BereavementPlanClosedConsumer({
+            db: dbHandle.db,
+            bereavementPlanSitingForOrg,
+          }),
           // F-158 (#248) — M37's §4.5 "If patient has open `ipu_admission` → cascade-discharge", M37's
           // first outbox consumer. Death discharges are a deliberate no-op here (see the file header) —
           // that path is the separate, still catalog-unbindable `m6-discharge-death.ts` consumer.
@@ -5430,6 +5556,53 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // including `queued_for_transmission`, an order waiting to reach the e-prescribing vendor.
           buildM11DischargeCascadeConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
           buildM12DischargeCascadeConsumer({ db: dbHandle.db, outbox: m12OutboxPublisher }),
+          // F-161 (#248) — the §2.8 D17 reconciliation-discontinue handshake: an M13 reconciliation
+          // decision to discontinue an `m12_active` line now actually reaches the medication order.
+          buildM12ReconciliationDiscontinueConsumer({ db: dbHandle.db, outbox: m12OutboxPublisher }),
+          // F-16x (#248) — the §2.8 D17 reconciliation "draft order" handshake: a real `medication_order`
+          // draft minted from a reconciliation decision, never the historical hardcoded `{}` payload.
+          buildM12DraftOrderRequestedConsumer({
+            db: dbHandle.db,
+            outbox: m12OutboxPublisher,
+            resolveAdmissionContext: (organizationId, patientId) =>
+              activeAdmissionDraftContextForPatient(dbHandle.db, organizationId, patientId),
+          }),
+          // F-16x (#248) — the §2.3 D3 verbal-order-expiry backref: M11's polymorphic `verbal_order`
+          // sweep (above) flips a medication order to `expired_unsigned` once its deadline passes.
+          buildM12VerbalExpiredConsumer({ db: dbHandle.db, outbox: m12OutboxPublisher }),
+          // F-16x (#248) — the six §2.6 D4 / §2.8 D10 patient-sync + MedHx-fetch triggers. Each enqueues
+          // a debounced row onto `dosespot_sync_queue` (the scheduled drain worker above), never a direct
+          // vendor call — the outbox consumer's own transaction is where the debounce is atomic with the
+          // delivery. `m6.cti.signed`'s missing `admissionId` resolves through M6's own org-explicit
+          // `electionPeriodContextForOrg` seam rather than a schema import (M6 is not in M12's `dependsOn`).
+          buildM12PatientSyncCreatedConsumer({
+            patientSync: createDrizzlePatientSyncEnqueuePort(dbHandle.db),
+            medHxFetch: createDrizzleMedHxFetchEnqueuePort(dbHandle.db),
+          }),
+          buildM12PatientSyncUpdatedConsumer({
+            patientSync: createDrizzlePatientSyncEnqueuePort(dbHandle.db),
+            medHxFetch: createDrizzleMedHxFetchEnqueuePort(dbHandle.db),
+          }),
+          buildM12PatientSyncAddressChangedConsumer({
+            patientSync: createDrizzlePatientSyncEnqueuePort(dbHandle.db),
+            medHxFetch: createDrizzleMedHxFetchEnqueuePort(dbHandle.db),
+          }),
+          buildM12PatientSyncPayerChangedConsumer({
+            patientSync: createDrizzlePatientSyncEnqueuePort(dbHandle.db),
+            medHxFetch: createDrizzleMedHxFetchEnqueuePort(dbHandle.db),
+          }),
+          buildM12AdmissionActivatedMedHxConsumer({
+            patientSync: createDrizzlePatientSyncEnqueuePort(dbHandle.db),
+            medHxFetch: createDrizzleMedHxFetchEnqueuePort(dbHandle.db),
+          }),
+          buildM12RecertificationMedHxConsumer({
+            patientSync: createDrizzlePatientSyncEnqueuePort(dbHandle.db),
+            medHxFetch: createDrizzleMedHxFetchEnqueuePort(dbHandle.db),
+            admissionIdForElectionPeriod: createDrizzleAdmissionIdForElectionPeriodPort(
+              dbHandle.db,
+              electionPeriodContextForOrg,
+            ),
+          }),
           // F-103 — the §1.1 D10 discipline-plan bootstrap, and the ONLY path by which a
           // `discipline_care_plan` row has ever been created: `bootstrapDisciplinePlan`'s own doc names
           // "the `m6.admission.activated` consumer" and there was none, m15 was not declared on the
@@ -5504,6 +5677,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // chain-of-custody open (no outbox effect of its own — the return row's own state is the fact).
           buildM21ComfortKitDeploymentAckConsumer({ db: dbHandle.db }),
           buildM21ComfortKitReturnRequiredConsumer({ db: dbHandle.db }),
+          // F-161 (#248) — §2.1 comfort-kit replenishment intake, the third of the four
+          // `consumers/m13-comfort-kit.ts` deciders. Resolves the per-line pharmacy identity and
+          // delivery-address snapshot from M21's own tables (M13's payload carries neither).
+          buildM21ComfortKitReplenishmentIntakeConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
           // F-108 — M27's. Unlike the five clinical ones it stamps THREE columns off one event, resolved
           // from `aggregateType`: M27 fans the ECR file, the Print Image and the supporting-doc bundle out
           // under ONE request event name, so the aggregate type is the only discriminator on the wire —
@@ -5699,6 +5876,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // `organizationId: null` since GAP-099 landed) flips M1's shared, NON_ORG_SCOPED `system_status`
           // row. `system_status` carries no RLS, so this needs no org envelope.
           buildM1LagProbeStatusConsumer({ db: dbHandle.db }),
+          // F-161 (#248) — M23's §4.8 MAC-portal health probe (`m23.mac_portal.unavailable`/`.recovered`,
+          // emitted with `organizationId: null` — a MAC jurisdiction serves many tenants). One
+          // `system_status` component PER JURISDICTION, not a platform-wide singleton.
+          buildM1MacPortalHealthConsumer({ db: dbHandle.db }),
         ],
         eventCatalog: bootOutboxCatalog,
         options: {

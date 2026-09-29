@@ -15,6 +15,12 @@ export {
   registerM11StandingSpawnWorker,
   runStandingSpawnFanout,
   scheduleM11StandingSpawn,
+  M11_VERBAL_TIMER_PLATFORM_JOB_ID,
+  M11_VERBAL_TIMER_QUEUE,
+  M11_VERBAL_TIMER_SCHEDULE,
+  registerM11VerbalOrderExpiryWorker,
+  runVerbalOrderExpiryFanout,
+  scheduleM11VerbalOrderExpiry,
 } from "./jobs";
 
 /**

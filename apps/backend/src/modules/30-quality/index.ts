@@ -143,3 +143,7 @@ export {
   buildM30ClaimAdjudicatedConsumer,
   buildM30HopeSubmissionAcceptedConsumer,
 } from "./outbox-consumers/upstream-events";
+// F-160-follow-up (#248): the `m16.bereavement.plan_closed_completed` / `.plan_closed_declined` /
+// `.plan_closed_early` consumer — enqueues a `bereavement_coverage_rate` recompute (see the file header
+// for why a plan closure has a real, if narrow, data dependency on that one measure).
+export { buildM30BereavementPlanClosedConsumer } from "./outbox-consumers/m16-plan-closed";

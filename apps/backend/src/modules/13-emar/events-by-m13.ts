@@ -26,6 +26,33 @@ const mode = Type.Union([
   Type.Literal("iv_continuous_resume"),
   Type.Literal("iv_continuous_stop"),
 ]);
+// F-16x (#248) — the real `medicationOrderDraftPayload` shape M12's reconciliation consumer mints a draft
+// `medication_order` from (mirrors `@wardenx/emar`'s `ReconciliationMedicationDetails`). `lineKind` is
+// narrowed to the ONE source this event can actually carry real content from today: `m12_medhx` is
+// genuinely blocked (no medication-history record projection exists anywhere in this codebase — see
+// `packages/emar/src/reconciliation/reconciliation.ts`'s header) and `m12_active` never reaches this event
+// (`carry_forward` of an active line is a no-op — the order already exists).
+const medClassLiteral = Type.Union([
+  Type.Literal("standard"),
+  Type.Literal("controlled_substance"),
+  Type.Literal("compounded"),
+]);
+const deaScheduleLiteral = Type.Union([
+  Type.Literal("II"),
+  Type.Literal("III"),
+  Type.Literal("IV"),
+  Type.Literal("V"),
+]);
+const medicationOrderDraftPayload = Type.Object({
+  drugName: id,
+  strength: id,
+  doseForm: id,
+  route: id,
+  medClass: medClassLiteral,
+  deaSchedule: Type.Optional(Type.Union([deaScheduleLiteral, Type.Null()])),
+  rxnormRxcui: Type.Optional(Type.Union([id, Type.Null()])),
+  ndc: Type.Optional(Type.Union([id, Type.Null()])),
+});
 
 // The §4.4 wire names mirror `M13_EVENT_NAMES` (@wardenx/types) EXACTLY — several merge resource+verb into a
 // single token (`m13.prn_administration_recorded`) rather than the stricter two-dot `OutboxEventName` template.
@@ -369,13 +396,21 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     eventName: "m13.reconciliation.draft_order_requested",
     moduleOwner: "m13",
     description:
-      "A `carry_forward` / `new_order` decision asked M12 to mint a draft medication order.",
+      "A `carry_forward` (caregiver-reported line) / `new_order` decision asked M12 to mint a draft " +
+      "medication order with real drug content (F-16x, #248 — the payload used to be a hardcoded `{}`).",
     payloadSchema: Type.Object({
       worksheetId: id,
       decisionId: id,
-      medicationOrderDraftPayload: Type.Unknown(),
+      patientId: id,
+      // The membership who recorded the M13 reconciliation decision — M12's consumer attributes the
+      // minted draft's `prescriber_membership_id` to this real actor (never a system/empty sentinel: the
+      // column is a NOT NULL FK to `membership`, and this is the honest "who decided this" fact).
+      decisionMadeByMembershipId: id,
+      lineKind: Type.Union([Type.Literal("caregiver_reported")]),
+      medicationOrderDraftPayload,
+      // Always null today — see `lineKind` note above. Kept nullable/optional so an eventual real medhx
+      // projection can populate it (`medication_order.derived_from_history_id`) with no schema change here.
       derivedFromHistoryId: Type.Optional(Type.Union([id, Type.Null()])),
-      lineKind: id,
     }),
     declaredConsumers: ["m12"],
     isOutboxOnly: true,

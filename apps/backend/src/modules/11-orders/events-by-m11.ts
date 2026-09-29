@@ -34,6 +34,13 @@ const hl7Priority = Type.Union([
   Type.Literal("A"),
   Type.Literal("T"),
 ]);
+// §2.8 D14 — the polymorphic verbal-order/signature discriminator (mirrors the DB's
+// `order_signature_target_kind` enum): 'order' → the M11 `order_record` timer; 'medication_order' → an M12
+// `medication_order` recorded through M11's published OrderSignatureProvider seam.
+const orderSignatureTargetKind = Type.Union([
+  Type.Literal("order"),
+  Type.Literal("medication_order"),
+]);
 
 // The §4.4 pinned `m11.order.hl7_orm_requested` payload (M11 produces, M29 consumes). Mirrors the
 // `OrmRequestedPayload` interface in @wardenx/types — the contract shared with the T-29.08 ORM builder.
@@ -232,10 +239,15 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m11.order.verbal_expired_unsigned",
     moduleOwner: "m11",
     description:
-      "The `verbal-timer` worker flipped a `verbal_pending` order past the 48h deadline to `expired_unsigned`; M36 raises the high-severity alert, M30 counts the 418.104(b) violation.",
+      "The `verbal-order-expiry-worker` (§2.3/§2.6, the `orders.verbal_timer` cron) flipped a `verbal_pending` verbal_order row past its 48h deadline to `expired_unsigned` — `targetKind='order'` for an M11 `order_record`, `targetKind='medication_order'` for an M12 `medication_order` (§2.8 D14, the polymorphic `verbal_order` table); M36 raises the high-severity alert, M30 counts the 418.104(b) violation.",
     payloadSchema: Type.Object({
       orderId: id,
       verbalOrderId: id,
+      // Added (previously absent) — the polymorphic discriminator M12's own `decideVerbalExpiry` decider
+      // has always needed to tell an M11 order from an M12 medication order apart; the event could not
+      // previously be delivered to a real M12 consumer because nothing on the wire said which table
+      // `orderId` names. Additive on a never-actually-emitted event — see the worker header for why.
+      targetKind: orderSignatureTargetKind,
       expiredAt: isoInstant,
       hoursOverdue: Type.Number(),
       orderingPhysicianMdmId: id,

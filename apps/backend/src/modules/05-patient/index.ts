@@ -77,6 +77,15 @@ export {
 // M5-T10 — outbox events (§4.6), jobs (§4.5 geocode), privacy-flag recompute + SUD enforcement (§7.6).
 export { M5_OUTBOX_EVENTS } from "./events-by-m5";
 
+// M12 job-queue infra (#248) — the org-explicit, worker-callable demographic read M12's
+// `dosespot_sync_queue` drain needs, injected as a port rather than read via a direct cross-module
+// schema import (see the file for why `patient_address`/`patient_phone` are not in
+// `check-table-ownership.ts`'s exempt set the way bare `patient` is).
+export {
+  type DosespotSyncDemographics,
+  dosespotSyncDemographicsForOrg,
+} from "./seams/dosespot-sync-snapshot-for-org";
+
 // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization, bound live for the first time.
 export {
   M5_ADMISSION_SITING_CONSUMER,

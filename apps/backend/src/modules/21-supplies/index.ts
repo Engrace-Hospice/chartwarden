@@ -100,3 +100,8 @@ export {
   buildM21ComfortKitDeploymentAckConsumer,
   buildM21ComfortKitReturnRequiredConsumer,
 } from "./outbox-consumers/m13-comfort-kit-cascade";
+// F-161 (#248) — M13's §2.1 comfort-kit replenishment intake.
+export {
+  type M21ComfortKitReplenishmentDeps,
+  buildM21ComfortKitReplenishmentIntakeConsumer,
+} from "./outbox-consumers/m13-comfort-kit-replenishment";

@@ -52,25 +52,29 @@ describe("§2.8 D17 buildReconciliationWorksheet", () => {
 });
 
 describe("§2.8 D17 planReconciliationDecision", () => {
-  it("carry_forward of a non-active (medhx) line mints a draft order", () => {
-    const r = planReconciliationDecision("ws-1", {
-      lineId: "ln-lisinopril",
-      lineKind: "m12_medhx",
+  const MELATONIN = {
+    drugName: "Melatonin",
+    strength: "3 mg",
+    doseForm: "tablet",
+    route: "oral",
+    medClass: "standard",
+  } as const;
+
+  it("carry_forward of a caregiver-reported line mints a draft with the real supplied content", () => {
+    const r = planReconciliationDecision({
+      lineKind: "caregiver_reported",
       decisionKind: "carry_forward",
-      medicationOrderId: "medhx-1",
+      medicationDetails: MELATONIN,
     });
     expect(r.draftOrderRequested).toEqual({
-      worksheetId: "ws-1",
-      lineId: "ln-lisinopril",
-      lineKind: "m12_medhx",
-      fromMedicationOrderId: "medhx-1",
+      lineKind: "caregiver_reported",
+      medicationOrderDraftPayload: MELATONIN,
     });
     expect(r.discontinueRequested).toBeNull();
     expect(r.statusAfter).toBe("in_progress");
   });
   it("carry_forward of an already-active M12 order emits no event (it stays active)", () => {
-    const r = planReconciliationDecision("ws-1", {
-      lineId: "ln-x",
+    const r = planReconciliationDecision({
       lineKind: "m12_active",
       decisionKind: "carry_forward",
       medicationOrderId: "ord-1",
@@ -78,18 +82,56 @@ describe("§2.8 D17 planReconciliationDecision", () => {
     expect(r.draftOrderRequested).toBeNull();
     expect(r.discontinueRequested).toBeNull();
   });
-  it("new_order (caregiver-reported melatonin) mints a draft", () => {
-    const r = planReconciliationDecision("ws-1", {
-      lineId: "ln-melatonin",
+  it("carry_forward / new_order of an m12_medhx line is refused — no medhx projection exists", () => {
+    for (const decisionKind of ["carry_forward", "new_order"] as const) {
+      expect(() =>
+        planReconciliationDecision({
+          lineKind: "m12_medhx",
+          decisionKind,
+          medicationDetails: MELATONIN,
+        }),
+      ).toThrow(expect.objectContaining({ code: "RECONCILIATION_MEDHX_UNAVAILABLE" }));
+    }
+  });
+  it("carry_forward / new_order of a non-active line with no supplied content is refused, not fabricated", () => {
+    expect(() =>
+      planReconciliationDecision({ lineKind: "caregiver_reported", decisionKind: "carry_forward" }),
+    ).toThrow(expect.objectContaining({ code: "RECONCILIATION_MEDICATION_DETAILS_REQUIRED" }));
+    expect(() =>
+      planReconciliationDecision({ lineKind: "caregiver_reported", decisionKind: "new_order" }),
+    ).toThrow(expect.objectContaining({ code: "RECONCILIATION_MEDICATION_DETAILS_REQUIRED" }));
+  });
+  it("a controlled-substance decision requires deaSchedule; a non-controlled decision must omit it", () => {
+    expect(() =>
+      planReconciliationDecision({
+        lineKind: "caregiver_reported",
+        decisionKind: "new_order",
+        medicationDetails: { ...MELATONIN, medClass: "controlled_substance" },
+      }),
+    ).toThrow(expect.objectContaining({ code: "RECONCILIATION_MEDICATION_DETAILS_REQUIRED" }));
+    const r = planReconciliationDecision({
       lineKind: "caregiver_reported",
       decisionKind: "new_order",
+      medicationDetails: {
+        ...MELATONIN,
+        drugName: "Oxycodone",
+        medClass: "controlled_substance",
+        deaSchedule: "II",
+      },
     });
-    expect(r.draftOrderRequested?.lineId).toBe("ln-melatonin");
+    expect(r.draftOrderRequested?.medicationOrderDraftPayload.deaSchedule).toBe("II");
+  });
+  it("new_order (a newly identified caregiver-reported med) mints a draft", () => {
+    const r = planReconciliationDecision({
+      lineKind: "caregiver_reported",
+      decisionKind: "new_order",
+      medicationDetails: MELATONIN,
+    });
+    expect(r.draftOrderRequested?.medicationOrderDraftPayload).toEqual(MELATONIN);
   });
   it("new_order on an already-active order is a contradiction → RECONCILIATION_DECISION_INVALID", () => {
     expect(() =>
-      planReconciliationDecision("ws-1", {
-        lineId: "ln-x",
+      planReconciliationDecision({
         lineKind: "m12_active",
         decisionKind: "new_order",
         medicationOrderId: "ord-1",
@@ -97,21 +139,15 @@ describe("§2.8 D17 planReconciliationDecision", () => {
     ).toThrow(expect.objectContaining({ code: "RECONCILIATION_DECISION_INVALID" }));
   });
   it("discontinue of an active order emits discontinue_requested with the back-link", () => {
-    const r = planReconciliationDecision("ws-1", {
-      lineId: "ln-y",
+    const r = planReconciliationDecision({
       lineKind: "m12_active",
       decisionKind: "discontinue",
       medicationOrderId: "ord-2",
     });
-    expect(r.discontinueRequested).toEqual({
-      worksheetId: "ws-1",
-      lineId: "ln-y",
-      medicationOrderId: "ord-2",
-    });
+    expect(r.discontinueRequested).toEqual({ medicationOrderId: "ord-2" });
   });
   it("discontinue of a non-active (medhx) line documents only — no order to stop (metformin/atorvastatin)", () => {
-    const r = planReconciliationDecision("ws-1", {
-      lineId: "ln-metformin",
+    const r = planReconciliationDecision({
       lineKind: "m12_medhx",
       decisionKind: "discontinue",
       medicationOrderId: "medhx-2",
@@ -121,8 +157,7 @@ describe("§2.8 D17 planReconciliationDecision", () => {
   });
   it("hold and document_only emit nothing", () => {
     for (const decisionKind of ["hold", "document_only"] as const) {
-      const r = planReconciliationDecision("ws-1", {
-        lineId: "ln-z",
+      const r = planReconciliationDecision({
         lineKind: "m12_active",
         decisionKind,
         medicationOrderId: "ord-3",

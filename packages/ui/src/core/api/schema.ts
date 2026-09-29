@@ -60643,10 +60643,20 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    lineKind: string;
+                    lineKind: "m12_active" | "m12_medhx" | "caregiver_reported";
                     sourceId: string;
                     decision: "carry_forward" | "discontinue" | "hold" | "new_order" | "document_only";
                     decisionNotes?: string;
+                    medicationDetails?: {
+                        drugName: string;
+                        strength: string;
+                        doseForm: string;
+                        route: string;
+                        medClass: "standard" | "controlled_substance" | "compounded";
+                        deaSchedule?: ("II" | "III" | "IV" | "V") | null;
+                        rxnormRxcui?: string | null;
+                        ndc?: string | null;
+                    };
                 };
             };
         };

@@ -91,6 +91,15 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   "m23.billing.document_render_requested", // noe_confirmation_receipt | notr_confirmation_receipt | claim_acknowledgment_letter | denial_appeal_cover_letter
   "m24.medicaid_billing.document_render_requested", // medicaid_claim_acknowledgment_letter
   "m25.denial_resolution_letter.render_requested", // denial_resolution_letter
+  // ── F-161 (#248) — two of M22's own `handlers-unbound` group's seven "decisively named by the
+  // producing module's own outbox table" events that checked out as genuine, buildable SOURCE-event
+  // renders, the F-100 M6-CoP-documents shape (no separate `*.document_requested` event — the event
+  // NAME is the template, per the source module's own catalog comment). The other five in that group of
+  // seven were checked and found NOT to be document renders at all — see render-consumer.ts's
+  // REQUEST_SHAPES comment above `"m17.caregiver_reminder_due"` and `"m7.care_plan.version_signed"` for
+  // why each of those five stays unconsumed.
+  "m17.caregiver_reminder_due", // visit_confirmation — M17's own catalog: "M22 renders the reminder"
+  "m7.care_plan.version_signed", // care_plan — M7's own catalog: "drives … M22 PDF"
 ] as const;
 
 /** §4.11 render-request events the SPEC anticipates but no module's event catalog declares yet. Listed —

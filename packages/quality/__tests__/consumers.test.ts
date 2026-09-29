@@ -1,5 +1,6 @@
 import type { schema } from "@wardenx/db";
 import {
+  type BereavementPlanClosedEvent,
   type CahpsCandidateAddRequest,
   type ClaimAdjudicatedEvent,
   type DischargeDeathEvent,
@@ -17,6 +18,7 @@ import {
   type RecomputeEnqueueRequest,
   effectKindsForTopic,
   effectsForTopic,
+  handleBereavementPlanClosed,
   handleClaimAdjudicated,
   handleDischargeDeath,
   handleElectionSigned,
@@ -76,6 +78,9 @@ describe("M30 §4.10 outbox-subscription map", () => {
         "m6.election.signed",
         "m10.hope.submission_accepted",
         "m12.medication.error_reported",
+        "m16.bereavement.plan_closed_completed",
+        "m16.bereavement.plan_closed_declined",
+        "m16.bereavement.plan_closed_early",
         "m18.evv.visit_verified",
         "m23.claim.adjudicated",
       ].sort(),
@@ -90,6 +95,9 @@ describe("M30 §4.10 outbox-subscription map", () => {
     expect(effectKindsForTopic("m6.election.signed")).toEqual(["recompute"]);
     expect(effectKindsForTopic("m10.hope.submission_accepted")).toEqual(["recompute"]);
     expect(effectKindsForTopic("m12.medication.error_reported")).toEqual(["incident_draft"]);
+    expect(effectKindsForTopic("m16.bereavement.plan_closed_completed")).toEqual(["recompute"]);
+    expect(effectKindsForTopic("m16.bereavement.plan_closed_declined")).toEqual(["recompute"]);
+    expect(effectKindsForTopic("m16.bereavement.plan_closed_early")).toEqual(["recompute"]);
     expect(effectKindsForTopic("m18.evv.visit_verified")).toEqual(["hvldl_near_death_recompute"]);
     expect(effectKindsForTopic("m23.claim.adjudicated")).toEqual(["recompute"]);
   });
@@ -223,6 +231,40 @@ describe("M30 §4.10 upstream handlers", () => {
     });
     expect(cap.recomputes[0]?.measureCodes).toEqual(measureCodesForFamilies(["hci"]));
   });
+
+  it.each([
+    "m16.bereavement.plan_closed_completed",
+    "m16.bereavement.plan_closed_declined",
+    "m16.bereavement.plan_closed_early",
+  ] as const)(
+    "%s → enqueues ONLY bereavement_coverage_rate, not the whole operational family",
+    async (sourceEventName) => {
+      const cap = capturePorts();
+      const event: BereavementPlanClosedEvent = {
+        eventId: "evt-plan-closed-1",
+        organizationId: "org-1",
+        providerEntityId: "pe-1",
+        planId: "plan-1",
+        sourceEventName,
+      };
+      const report = await handleBereavementPlanClosed(event, cap.ports);
+      expect(report.eventName).toBe(sourceEventName);
+      expect(report.effects).toEqual(["recompute"]);
+      expect(cap.recomputes).toHaveLength(1);
+      expect(cap.recomputes[0]).toMatchObject({
+        organizationId: "org-1",
+        providerEntityId: "pe-1",
+        triggeringEventId: "evt-plan-closed-1",
+      });
+      // Explicit measure code, NOT measureCodesForFamilies(["operational"]) — the whole point (see the
+      // handler's own doc comment): a plan closure has no data dependency on missed-dose rate, IDG
+      // cadence, etc.
+      expect(cap.recomputes[0]?.measureCodes).toEqual(["bereavement_coverage_rate"]);
+      expect(cap.recomputes[0]?.measureCodes.length).toBeLessThan(
+        measureCodesForFamilies(["operational"]).length,
+      );
+    },
+  );
 
   it("m10.hope.submission_accepted → enqueues a HOPE-derived (TFP) recompute", async () => {
     const cap = capturePorts();

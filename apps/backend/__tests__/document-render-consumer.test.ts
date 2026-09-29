@@ -7,11 +7,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
+import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
+import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import {
@@ -538,6 +540,11 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       "m23.billing.document_render_requested",
       "m24.medicaid_billing.document_render_requested",
       "m25.denial_resolution_letter.render_requested",
+      // F-161 (#248) — 2 of the 10 "confirmed genuine" events, the two with the most decisive
+      // producer-side evidence: M17's caregiver-reminder PDF (`visit_confirmation`, no producer yet on
+      // M17's side) and M7's care-plan-signed PDF (new `care_plan` aggregate type, migration 0252).
+      "m17.caregiver_reminder_due",
+      "m7.care_plan.version_signed",
     ]);
   });
 
@@ -555,11 +562,13 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
     const declared = new Map(
       [
         ...M6_OUTBOX_EVENTS,
+        ...M7_OUTBOX_EVENTS,
         ...M10_OUTBOX_EVENTS,
         ...M11_OUTBOX_EVENTS,
         ...M12_OUTBOX_EVENTS,
         ...M13_OUTBOX_EVENTS,
         ...M16_OUTBOX_EVENTS,
+        ...M17_OUTBOX_EVENTS,
         ...M20_OUTBOX_EVENTS,
         ...M21_OUTBOX_EVENTS,
         ...M23_OUTBOX_EVENTS,
@@ -568,7 +577,13 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
         ...M27_OUTBOX_EVENTS,
         ...M33_OUTBOX_EVENTS,
         ...M37_OUTBOX_EVENTS,
-      ].map((e) => [e.eventName, e]),
+      ].map(
+        // `e.eventName` widened to `string`: M17's own catalog (events-by-m17.ts's own header comment)
+        // deliberately relaxes single-segment alert names below the stricter `OutboxEventName` template
+        // (`m${number}.${string}.${string}`) — `m17.caregiver_reminder_due` has only one dot — so the
+        // Map's key type must not be narrowed to that template or `.get()` below fails to accept it.
+        (e) => [e.eventName as string, e] as const,
+      ),
     );
     for (const eventName of M22_DOCUMENT_REQUEST_EVENTS) {
       const entry = declared.get(eventName);

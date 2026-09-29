@@ -20,6 +20,7 @@ import {
   computeNextSpawnAt,
   computeVerbalDeadline,
   disciplineCanOrder,
+  hoursOverdue,
   planCosignAttest,
   planStandingCreation,
   planStandingDiscontinuation,
@@ -463,6 +464,17 @@ export interface OrderRouteService extends OrderAbacResolver {
     organizationId: string,
     now?: string,
   ): Promise<{ spawnedOrderIds: string[] }>;
+  /**
+   * §2.3 D3 / §4.8 `orders.verbal_timer` — scan the polymorphic `verbal_order` table for every `pending`
+   * receipt whose `deadline_at` has passed and flip each to `expired_unsigned`, emitting
+   * `m11.order.verbal_expired_unsigned` (§2.8 D14: `targetKind='order'` for M11's own `order_record`,
+   * `targetKind='medication_order'` for an M12 row — M11 owns the ONE timer for both, per the module's own
+   * "why M12 has no parallel timer" design). One bad/raced row must not stop the rest of the sweep.
+   */
+  expireOverdueVerbals(
+    organizationId: string,
+    at?: string,
+  ): Promise<{ expiredVerbalOrderIds: string[] }>;
   getVerbalPolicy(organizationId: string): Promise<VerbalPolicyView>;
   putVerbalPolicy(organizationId: string, args: VerbalPolicyArgs): Promise<VerbalPolicyView>;
   regenerateVerbalTimer(
@@ -1274,6 +1286,40 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         }
       }
       return { spawnedOrderIds };
+    },
+
+    async expireOverdueVerbals(organizationId, at = now()) {
+      const expiredVerbalOrderIds: string[] = [];
+      for (const [id, r] of orders) {
+        if (r.organizationId !== organizationId) continue;
+        if (r.status !== "verbal_pending" || !r.verbalDeadlineAt) continue;
+        if (r.verbalDeadlineAt > at) continue;
+        // Validates NOT_SYSTEM_ACTOR / VERBAL_DEADLINE_NOT_REACHED / ILLEGAL_ORDER_TRANSITION.
+        const t = transitionOrder(r.status, {
+          type: "expire",
+          isSystemActor: true,
+          deadlineReached: true,
+        });
+        r.status = t.to;
+        r.discontinuationReason = "expired_verbal";
+        if (r.verbalOrder) r.verbalOrder = { ...r.verbalOrder, status: "expired_unsigned" };
+        // The slice models only M11's own `order_record` target (`targetKind='order'`) — it has no
+        // polymorphic `verbal_order` table of its own to represent an M12 `medication_order` receipt.
+        emit(
+          "m11.order.verbal_expired_unsigned",
+          {
+            orderId: id,
+            verbalOrderId: id,
+            targetKind: "order",
+            expiredAt: at,
+            hoursOverdue: hoursOverdue(at, r.verbalDeadlineAt),
+            orderingPhysicianMdmId: r.orderingPhysicianMdmId,
+          },
+          `${id}:verbal_expired_unsigned`,
+        );
+        expiredVerbalOrderIds.push(id);
+      }
+      return { expiredVerbalOrderIds };
     },
 
     async getVerbalPolicy(_organizationId) {

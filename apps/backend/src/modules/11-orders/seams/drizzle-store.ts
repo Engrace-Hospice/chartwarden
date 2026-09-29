@@ -32,6 +32,7 @@ import {
   DEFAULT_COSIGN_POLICY,
   DEFAULT_VERBAL_POLICY,
   type OrderCosignPolicy,
+  type VerbalDeadlinePolicy,
   lpnCosignRequired,
   planCosignAttest,
   transitionOrder,
@@ -186,6 +187,27 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
     };
   }
 
+  /** The per-org verbal-deadline policy projection (default-filled when unseeded) — same-tx, RLS pins the
+   * org. Copied from `orders-route-service-db.ts`'s `verbalPolicyOf` (its helper is a closure inside
+   * `createDbOrderBackend`) so a seam caller (M12/M19) computes the identical deadline M11's own route
+   * would for the same org, rather than a second, platform-default-only computation. */
+  async function verbalPolicyOf(tx: Tx): Promise<VerbalDeadlinePolicy> {
+    const [r] = (await tx
+      .select({
+        windowHours: VP.windowHours,
+        businessHoursOnly: VP.businessHoursOnly,
+        policyVersion: VP.policyVersion,
+      })
+      .from(VP)
+      .limit(1)) as { windowHours: number; businessHoursOnly: boolean; policyVersion: string }[];
+    if (!r) return DEFAULT_VERBAL_POLICY;
+    return {
+      windowHours: Number(r.windowHours),
+      businessHoursOnly: r.businessHoursOnly,
+      policyVersion: r.policyVersion,
+    };
+  }
+
   return {
     // ── reads (OrderProvider) — consumer's ambient request scope, RLS pins the tenant ─────────────────
     async getOrder(orderId) {
@@ -317,6 +339,10 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
       );
     },
 
+    async verbalPolicyForOrg() {
+      return withOrgContextFromRequest(db, async (tx) => verbalPolicyOf(tx));
+    },
+
     // ── writes (OrderSignatureProvider — polymorphic by targetKind, D4; caller's request scope) ────────
     async insertSignature(input) {
       const { organizationId } = requireRequestContext();
@@ -384,9 +410,9 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
             effectiveAt: new Date(input.effectiveAt),
             receivedAt: new Date(input.receivedAt),
             deadlineAt: new Date(input.deadlineAt),
-            // The provider computed `deadlineAt` with the DEFAULT platform-floor policy (it reads no
-            // per-org policy row) — stamping any other version here would mis-attribute the math.
-            deadlinePolicyVersion: DEFAULT_VERBAL_POLICY.policyVersion,
+            // The provider computed `deadlineAt` (and this version) from `verbalPolicyForOrg` — the org's
+            // real `order_verbal_policy` row, defaulting to the platform floor when unseeded.
+            deadlinePolicyVersion: input.deadlinePolicyVersion,
             status: "pending",
           })
           .returning({ id: V.id });

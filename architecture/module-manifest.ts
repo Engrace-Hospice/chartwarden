@@ -516,7 +516,9 @@ export const MODULES: ModuleDef[] = [
       "medication_order",
       "medication_order_transmission",
       "medication_order_idg_decision_application",
+      "medication_order_reconciliation_decision_application",
       "refill_request",
+      "dosespot_sync_queue",
     ],
   },
   {

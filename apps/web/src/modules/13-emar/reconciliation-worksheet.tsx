@@ -39,6 +39,7 @@ import { useParams } from "react-router-dom";
 import {
   type ActiveMedicationOrder,
   type ReconciliationDecisionKind,
+  type ReconciliationLineKind,
   type WorksheetView,
   addCaregiverReportedLine,
   errorMessage,
@@ -60,6 +61,13 @@ const DECISIONS: readonly { value: ReconciliationDecisionKind; label: string }[]
   { value: "document_only", label: "Document only" },
 ];
 
+/** §2.8 D17 — the closed line-kind vocabulary a decision may name. */
+const LINE_KINDS: readonly { value: ReconciliationLineKind; label: string }[] = [
+  { value: "m12_active", label: "M12 active order" },
+  { value: "m12_medhx", label: "M12 MedHx pull" },
+  { value: "caregiver_reported", label: "Caregiver-reported medication" },
+];
+
 /** `FinalizeReconciliationRequest.attestation` — minLength 1 on the server; a signature needs more. */
 const ATTESTATION_MIN = 10;
 
@@ -72,7 +80,7 @@ export function ReconciliationWorksheet(): JSX.Element {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [lineKind, setLineKind] = useState("home_medication");
+  const [lineKind, setLineKind] = useState<ReconciliationLineKind>("m12_active");
   const [sourceId, setSourceId] = useState("");
   const [decision, setDecision] = useState<ReconciliationDecisionKind>("carry_forward");
   const [drugName, setDrugName] = useState("");
@@ -252,11 +260,12 @@ export function ReconciliationWorksheet(): JSX.Element {
             <div style={panels}>
               <section style={panel}>
                 <h2 style={sectionTitle}>Record a decision</h2>
-                <TextField
+                <SelectField
                   label="Line kind"
                   value={lineKind}
-                  hint="The kind of line this decision covers, e.g. home_medication or active_order."
-                  onChange={(e) => setLineKind(e.target.value)}
+                  options={LINE_KINDS}
+                  hint="The kind of line this decision covers."
+                  onChange={(e) => setLineKind(e.target.value as ReconciliationLineKind)}
                 />
                 <TextField
                   label="Source id"
@@ -273,12 +282,12 @@ export function ReconciliationWorksheet(): JSX.Element {
                 <Button
                   tone="primary"
                   loading={busy}
-                  disabled={busy || lineKind.trim().length === 0 || sourceId.trim().length === 0}
+                  disabled={busy || sourceId.trim().length === 0}
                   onClick={() =>
                     void run(
                       () =>
                         recordDecision(client, row.id, {
-                          lineKind: lineKind.trim(),
+                          lineKind,
                           sourceId: sourceId.trim(),
                           decision,
                         }),

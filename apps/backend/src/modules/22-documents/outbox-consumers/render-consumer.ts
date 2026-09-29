@@ -259,6 +259,40 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     templateKey: "denial_resolution_letter",
     contentField: "payload",
   },
+  // ── F-161 (#248) — two of M22's own `handlers-unbound` group's seven "decisively named" SOURCE
+  // events that turned out to be real, buildable renders. The other five in that same group of seven
+  // were checked and are NOT document renders, despite the group's own reason text calling all seven
+  // "genuine, no catalog change needed": `m14.minutes.amended` wants a RE-render of the SAME
+  // `idg_minutes` aggregate `m14.minutes.signed` would first render — the identical "new VERSION, not a
+  // new document" gap `m6.discharge.cosigned` is deliberately NOT bound for, two sections up ("the W2
+  // append path has to be built before it can be bound"); `m21.supply_request.delivered`'s own catalog
+  // text is "M22 opens the optional caregiver-signature flow off `evidenceDocumentId`" — D7's "optional
+  // caregiver signature … via M22 form rendering" is an e-signature CAPTURE workflow, not a render from
+  // typed payload, and no such capability (route, seam, or FormFill consumer) exists anywhere in
+  // `22-documents/` to bind it to; and all three `m39.consent.{expired,recipient_added,recipient_removed}`
+  // events are M39's own catalog naming a "signed-URL revoke" / "disclosure-subsetter cache invalidation"
+  // that M22 has no state for — `consent-gate.ts`'s `resolveSudConsentPresent` (and the disclosure
+  // subsetter it mirrors) resolves M39's `ConsentEvaluator` FRESH on every signed-URL mint, the identical
+  // F-115/M28 seam-pull shape one module over, so there is no persistent access grant or cache to revoke
+  // or invalidate — the consent-lifecycle events need no M22-side consumer at all.
+  //
+  // M17 §4.11 D15 — the 24h-out caregiver visit-confirmation reminder. One artifact per visit, so the
+  // key is fixed; `patientId` rides the payload top level. NOTE (reported, not fixed): no producer
+  // exists anywhere in `17-scheduling/` for this event — `jobs/cron-workers.ts` registers only
+  // `recurringMaterialize` and `visitAttention`, no caregiver-reminder cron — so this consumer binding
+  // is real and tested against the real catalogued payload shape, but nothing in production emits the
+  // event yet.
+  "m17.caregiver_reminder_due": {
+    aggregateIdFields: ["visitId"],
+    templateKey: "visit_confirmation",
+  },
+  // M7 §2.4 — the care-plan PDF, rendered on every quorum-met sign (initial and each IDG review). One
+  // artifact per VERSION (`versionId`), never per plan — a superseding version is a new render, matching
+  // `care_plan_version`'s own append-only versioning model.
+  "m7.care_plan.version_signed": {
+    aggregateIdFields: ["versionId"],
+    templateKey: "care_plan",
+  },
 };
 
 /** Raised when a delivered render request cannot be read into M22's canonical shape (unknown event name,

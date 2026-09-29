@@ -117,6 +117,11 @@ export type PrnRequestedByKind = NonNullable<
 export type ReconciliationDecisionKind = ReqBody<
   operations["postApiV1ReconciliationWorksheetsByIdDecisions"]
 >["decision"];
+/** §2.8 D17 — which source produced this worksheet line: an active M12 order, an M12 MedHx pull, or a
+ *  caregiver-reported home medication with no order behind it. */
+export type ReconciliationLineKind = ReqBody<
+  operations["postApiV1ReconciliationWorksheetsByIdDecisions"]
+>["lineKind"];
 /** The body of the record route — assembled by the ceremony, sent verbatim. */
 export type RecordAdministrationBody = ReqBody<operations["postApiV1Administrations"]>;
 /** §2.9 BCMA — the optional bedside scan. The server re-derives the canonical `barcodeMatchResult`. */

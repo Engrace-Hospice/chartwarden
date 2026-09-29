@@ -45,11 +45,13 @@ import {
   computeNextSpawnAt,
   computeVerbalDeadline,
   disciplineCanOrder,
+  hoursOverdue,
   lpnCosignRequired,
   planCosignAttest,
   planStandingCreation,
   planStandingDiscontinuation,
   planStandingSpawn,
+  planVerbalExpiry,
   resolveCosignRequirement,
   signerEligible,
   transitionOrder,
@@ -1427,6 +1429,92 @@ export function createDbOrderBackend(
         }
       }
       return { spawnedOrderIds };
+    },
+
+    // ── §2.3 D3 / §4.8 `orders.verbal_timer` — the ONE timer for both M11's own `order_record` verbals
+    // AND an M12 `medication_order` verbal recorded through the OrderSignatureProvider seam (§2.8 D14).
+    // M12's own spec names this design explicitly: no parallel M12 timer, because `verbal_order.target_kind`
+    // already discriminates the row M11's single sweep scans. Each candidate gets its own transaction so one
+    // stale/raced row (signed or discontinued between the scan and this tx) never aborts the rest of the
+    // org's sweep — the `spawnDueStandingOrders` per-candidate isolation convention immediately above.
+    async expireOverdueVerbals(organizationId, at = new Date().toISOString()) {
+      const now = new Date(at);
+      const candidates = await withOrgContext(db, { organizationId, userId: "" }, async (tx) =>
+        tx
+          .select({
+            id: VO.id,
+            targetKind: VO.targetKind,
+            targetId: VO.targetId,
+            deadlineAt: VO.deadlineAt,
+            orderingPhysicianMdmId: VO.orderingPhysicianMdmId,
+          })
+          .from(VO)
+          .where(and(eq(VO.status, "pending"), lte(VO.deadlineAt, now))),
+      );
+      const expiredVerbalOrderIds: string[] = [];
+      for (const candidate of candidates) {
+        try {
+          const expired = await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+            const t = tx as unknown as DbClient;
+            const deadlineIso = candidate.deadlineAt.toISOString();
+            if (candidate.targetKind === "order") {
+              const [r] = await t
+                .select({ status: OR.status, version: OR.version })
+                .from(OR)
+                .where(eq(OR.id, candidate.targetId))
+                .limit(1);
+              if (!r || r.status !== "verbal_pending") return false; // already resolved elsewhere
+              // Validates NOT_SYSTEM_ACTOR / VERBAL_DEADLINE_NOT_REACHED / ILLEGAL_ORDER_TRANSITION before
+              // any write — the guard-before-write discipline every other M11 write method follows.
+              planVerbalExpiry(at, deadlineIso);
+              const updatedOr = await t
+                .update(OR)
+                .set({ status: "expired_unsigned", version: r.version + 1, updatedAt: now })
+                .where(and(eq(OR.id, candidate.targetId), eq(OR.status, "verbal_pending")))
+                .returning({ id: OR.id });
+              if (updatedOr.length === 0) return false; // lost the race
+            }
+            // For a `medication_order` target M11 has no local row to transition — M12 owns that
+            // lifecycle and flips it itself, via `decideVerbalExpiry`, on receiving the event below.
+            const updatedVo = await t
+              .update(VO)
+              .set({ status: "expired_unsigned", expiredAt: now })
+              .where(and(eq(VO.id, candidate.id), eq(VO.status, "pending")))
+              .returning({ id: VO.id });
+            if (updatedVo.length === 0) return false; // lost the race (signed/discontinued in the gap)
+            // Audit-symmetry discontinuation row (§2.6), regardless of target kind — `order_discontinuation`
+            // is M11-owned and its `target_kind`/`order_record_id` columns already discriminate exactly
+            // this way for the seam's own `insertDiscontinuation` (mig 0156); system actor, no membership.
+            await t.insert(OD).values({
+              organizationId,
+              orderRecordId: candidate.targetId,
+              targetKind: candidate.targetKind,
+              actorMembershipId: null,
+              reason: "expired_verbal",
+              effectiveAt: now,
+            });
+            await outbox.publish(t, {
+              eventName: "m11.order.verbal_expired_unsigned",
+              organizationId,
+              aggregateKind: candidate.targetKind,
+              aggregateId: candidate.targetId,
+              payload: {
+                orderId: candidate.targetId,
+                verbalOrderId: candidate.id,
+                targetKind: candidate.targetKind,
+                expiredAt: at,
+                hoursOverdue: hoursOverdue(at, deadlineIso),
+                orderingPhysicianMdmId: candidate.orderingPhysicianMdmId,
+              },
+            });
+            return true;
+          });
+          if (expired) expiredVerbalOrderIds.push(candidate.id);
+        } catch {
+          // Isolate one illegal/raced row; the rest of the org's sweep must still complete.
+        }
+      }
+      return { expiredVerbalOrderIds };
     },
 
     // ── Verbal-order policy (one row per org; upsert on the per-org unique index) ─────────────────────

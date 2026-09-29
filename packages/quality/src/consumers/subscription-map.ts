@@ -77,6 +77,34 @@ export const M30_OUTBOX_SUBSCRIPTIONS: Readonly<Record<string, readonly M30Subsc
       },
     ],
 
+    // ── M16 bereavement ─────────────────────────────────────────────────────────────────────────────
+    // F-160-follow-up (#248) — narrower than the `recompute` variant's own `families` field implies: the
+    // handler (`./handlers.ts` `handleBereavementPlanClosed`) enqueues ONLY `bereavement_coverage_rate`
+    // by explicit code, not every measure in the `operational` family — see that handler's doc comment
+    // for why (the real dependency is the `cancel_future_outreach` effect on `bereavement_outreach`, not
+    // the dormant `planClosureCounts`/`riskScreeningCompletenessCounts` seam methods).
+    "m16.bereavement.plan_closed_completed": [
+      {
+        kind: "recompute",
+        families: ["operational"],
+        note: "A closed plan cancels future outreach touchpoints, shrinking the CoP 418.64(d) coverage denominator — enqueue bereavement_coverage_rate.",
+      },
+    ],
+    "m16.bereavement.plan_closed_declined": [
+      {
+        kind: "recompute",
+        families: ["operational"],
+        note: "Same as plan_closed_completed — closeOnAllContactsOptedOut also cancels future outreach.",
+      },
+    ],
+    "m16.bereavement.plan_closed_early": [
+      {
+        kind: "recompute",
+        families: ["operational"],
+        note: "Same as plan_closed_completed — closeEarly also cancels future outreach.",
+      },
+    ],
+
     // ── M12 medication orders ───────────────────────────────────────────────────────────────────────
     "m12.medication.error_reported": [
       {

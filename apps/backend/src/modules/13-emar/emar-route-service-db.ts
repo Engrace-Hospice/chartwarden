@@ -68,6 +68,7 @@ import {
   deriveIvSessionState,
   evaluateBarcodeScan,
   planIvSegment,
+  planReconciliationDecision,
   resolveLateEntryTier,
   verifyWitnessAttestationToken,
   witnessTokenDigest,
@@ -1395,7 +1396,17 @@ export function createDbEmarBackend(
     // ── reconciliation worksheet writes ───────────────────────────────────────────────────────────────
     async recordDecision(orgId, userId, id, args: RecordDecisionArgs): Promise<WorksheetView> {
       return withOrg(orgId, async (tx) => {
-        await loadWorksheet(tx, id);
+        const worksheet = await loadWorksheet(tx, id);
+        // Plan BEFORE inserting: a decision that cannot legally produce its M12-handshake event (an
+        // m12_medhx carry_forward with no medhx projection to source content from, or a non-active
+        // carry_forward/new_order with no supplied drug content) throws and the whole transaction rolls
+        // back — never a half-recorded decision with no matching outbox event.
+        const plan = planReconciliationDecision({
+          lineKind: args.lineKind,
+          decisionKind: args.decision,
+          medicationOrderId: args.lineKind === "m12_active" ? args.sourceId : null,
+          medicationDetails: args.medicationDetails ?? null,
+        });
         const decision = (
           await tx
             .insert(RD)
@@ -1405,13 +1416,20 @@ export function createDbEmarBackend(
               lineKind: args.lineKind,
               m12MedicationOrderId: args.lineKind === "m12_active" ? args.sourceId : null,
               m12MedicationHistoryRecordId: args.lineKind === "m12_medhx" ? args.sourceId : null,
+              // The real, caller-typed drug content backing a caregiver_reported decision — persisted on
+              // the decision row itself (audit-relevant: what the clinician actually recorded), not only
+              // relayed on the wire.
+              caregiverReportedSnapshot:
+                args.lineKind === "caregiver_reported" && args.medicationDetails
+                  ? args.medicationDetails
+                  : null,
               decisionKind: args.decision,
               decisionMadeByMembershipId: userId,
             })
             .returning({ id: RD.id })
         )[0]!;
         await tx.update(WS).set({ status: "in_progress" }).where(eq(WS.id, id));
-        if (args.decision === "carry_forward" || args.decision === "new_order")
+        if (plan.draftOrderRequested)
           await emit(
             tx,
             orgId,
@@ -1421,11 +1439,16 @@ export function createDbEmarBackend(
             {
               worksheetId: id,
               decisionId: decision.id,
-              medicationOrderDraftPayload: {},
-              lineKind: args.lineKind,
+              patientId: worksheet.patientId,
+              decisionMadeByMembershipId: userId,
+              lineKind: plan.draftOrderRequested.lineKind,
+              medicationOrderDraftPayload: plan.draftOrderRequested.medicationOrderDraftPayload,
+              // Always null today — an m12_medhx line refuses before reaching this branch (see
+              // `planReconciliationDecision`'s doc), so there is never a real history record to link.
+              derivedFromHistoryId: null,
             },
           );
-        if (args.decision === "discontinue")
+        if (plan.discontinueRequested)
           await emit(
             tx,
             orgId,
@@ -1435,7 +1458,7 @@ export function createDbEmarBackend(
             {
               worksheetId: id,
               decisionId: decision.id,
-              medicationOrderId: args.sourceId,
+              medicationOrderId: plan.discontinueRequested.medicationOrderId,
               reason: "reconciled_discontinue",
             },
           );

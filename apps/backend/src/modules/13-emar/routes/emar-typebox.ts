@@ -148,8 +148,32 @@ export const OfflineSyncRequest = Type.Object({
 export const IntentionalHoldRequest = Type.Object({
   reason: Type.Optional(Type.String({ maxLength: 1000 })),
 });
+/** §2.4 controlled-substance schedules (mirrors M12's `DeaSchedule`). */
+const DEA_SCHEDULE = Type.Union([
+  Type.Literal("II"),
+  Type.Literal("III"),
+  Type.Literal("IV"),
+  Type.Literal("V"),
+]);
+/** §2.8 D17 — the real drug content a `carry_forward` (caregiver-reported line) / `new_order` decision
+ *  must supply to mint an M12 draft (mirrors `@wardenx/emar`'s `ReconciliationMedicationDetails`). Never
+ *  fabricated server-side — see `packages/emar/src/reconciliation/reconciliation.ts`'s header. */
+const RECONCILIATION_MEDICATION_DETAILS = Type.Object({
+  drugName: Type.String({ minLength: 1, maxLength: 255 }),
+  strength: Type.String({ minLength: 1, maxLength: 128 }),
+  doseForm: Type.String({ minLength: 1, maxLength: 128 }),
+  route: Type.String({ minLength: 1, maxLength: 128 }),
+  medClass: MED_CLASS,
+  deaSchedule: Type.Optional(Type.Union([DEA_SCHEDULE, Type.Null()])),
+  rxnormRxcui: Type.Optional(Type.Union([Type.String({ maxLength: 32 }), Type.Null()])),
+  ndc: Type.Optional(Type.Union([Type.String({ maxLength: 32 }), Type.Null()])),
+});
 export const RecordDecisionRequest = Type.Object({
-  lineKind: Type.String({ minLength: 1, maxLength: 64 }),
+  lineKind: Type.Union([
+    Type.Literal("m12_active"),
+    Type.Literal("m12_medhx"),
+    Type.Literal("caregiver_reported"),
+  ]),
   sourceId: Type.String({ minLength: 1, maxLength: 128 }),
   decision: Type.Union([
     Type.Literal("carry_forward"),
@@ -159,6 +183,10 @@ export const RecordDecisionRequest = Type.Object({
     Type.Literal("document_only"),
   ]),
   decisionNotes: Type.Optional(Type.String({ maxLength: 1000 })),
+  // Required (by the pure `planReconciliationDecision` core, not here) for `carry_forward` of a
+  // `caregiver_reported` line or any `new_order` — optional at the wire so every other decision kind /
+  // line kind combination (which needs none of this) stays a small request body.
+  medicationDetails: Type.Optional(RECONCILIATION_MEDICATION_DETAILS),
 });
 export const UpdateDecisionRequest = Type.Object({
   decision: Type.Union([

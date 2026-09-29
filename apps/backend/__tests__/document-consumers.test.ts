@@ -87,6 +87,11 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       "m23.billing.document_render_requested",
       "m24.medicaid_billing.document_render_requested",
       "m25.denial_resolution_letter.render_requested",
+      // F-16x (#248) — two render requests M22's own spec names as producer-side commitments, corrected
+      // from the misattributions F-144 found (M17's own catalog: "M22 renders the reminder"; M7's own
+      // catalog: "drives … M22 PDF").
+      "m17.caregiver_reminder_due",
+      "m7.care_plan.version_signed",
     ]);
   });
 

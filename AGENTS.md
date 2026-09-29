@@ -2224,6 +2224,74 @@ re-run for regression on every touched shared file (`m13:emar-write` 24/24, `m13
 `m6:loc-change-signed` 7/7, `m6:discharge-cascade` 6/6). Leaving #248 open — 143 pairs across 22 modules
 remain.
 
+**The last 3 items in the m12 `handlers-unbound` group are now built, and the dispatch round that built
+them surfaced the largest redundant-multi-agent-dispatch episode this arc has hit, resolved by centralized
+verification rather than by trusting any single report (F-162, #248).** A context compaction mid-session
+caused this arc's own coordinator to lose track of having already dispatched work on M12's three remaining
+blocked items — `m11.order.verbal_expired_unsigned`, the six `sync-triggers.ts` patient-sync/MedHx-fetch
+events, and `m13.reconciliation.draft_order_requested` — and re-dispatch a fresh round for the identical
+targets; `ListAgents` surfaced **ten** subagents in flight, several of them themselves confused about
+whether they were the coordinator or a worker (the F-158 shape at several times the scale). Rather than
+force a pick between competing implementations sight unseen, every report was collected, every claim
+independently re-verified against the actual working tree (`git status`/`git diff`, not the reports'
+narrative), and conflicts were reconciled by keeping the best-reasoned surviving pieces from each side
+rather than discarding either wholesale. **M11's verbal-order-expiry timer** is now real end to end, for
+both M11's own clinical orders and M12's medication orders, closing three independently stacked defects:
+the published `OrderSignatureProvider.recordVerbalOrder` seam (which M12's `recordVerbal` route now
+actually calls, writing a real polymorphic `verbal_order` row) had always computed every deadline off the
+48h platform DEFAULT, never the tenant's real `order_verbal_policy` override — a real, independent bug fix,
+not a fabrication — fixed via a new `OrderSeamStore.verbalPolicyForOrg()`; the catalog payload gained the
+`targetKind` field `decideVerbalExpiry` needed to discriminate on and never had; and a new hourly
+`orders.verbal_timer` BullMQ fan-out (`11-orders/jobs/verbal-order-expiry-worker.ts`) drives
+`OrderRouteService.expireOverdueVerbals`, publishing the event M12's `verbal-expired-binding.ts` consumer
+was already correctly written to receive. **M12's DoseSpot sync job-queue tier** resolves the group's
+oldest-standing blocker (no `jobs/` directory, no `Queue`/`Worker` construction anywhere, the two `jobId`
+values the route service returned were hardcoded template strings, never a real enqueue) by reconciling
+TWO independently-built, architecturally-different concurrent implementations of the same six-event
+tier — a pure-BullMQ design (complete event-ingestion bindings, `jobId`-keyed dedupe) and a durable
+Postgres debounce table (`dosespot_sync_queue`, migration 0253, `FOR UPDATE SKIP LOCKED` claim,
+`measure_recompute_queue`/F-150 precedent) — rather than picking one and discarding the other's real work.
+The DB-table design won as the QUEUE BACKEND: its partial-unique `dosespot_sync_queue_pending_uq` index
+collapses two DIFFERENT trigger events for the same patient arriving close together (e.g. `.created` then
+`.updated` seconds apart) onto one pending row, atomically with the outbox delivery — a property a BullMQ
+`jobId` dedupe cannot express, since that only catches an exact redelivery of the identical event. The
+OTHER design's event-ingestion binding layer (`consumers/sync-trigger-bindings.ts` — parsing each of the
+six source payloads, running the already-shipped pure `decidePatientSyncTrigger`/`decideMedHxFetch`
+deciders, and the honest injected-port pattern for `m6.cti.signed`'s missing `admissionId`, resolved
+through M6's own `electionPeriodContextForOrg` seam since M12's manifest has no `dependsOn` edge to 6) was
+kept as-is and simply repointed at the DB-table repository instead of a raw BullMQ `.add()` — nothing
+thrown away, both real pieces of work combined. The vendor boundary stays an HONEST fail-closed stub, not
+fabricated: no `DOSESPOT_*` credential exists anywhere in this repository, so every drained row fails
+closed with a structured `DegradedError`, never a manufactured success; the one real edge
+(`dosespotSyncDemographicsForOrg`, a new M5-owned org-explicit seam) resolves the patient-sync demographic
+snapshot honestly, while the DoseSpot-side patient-id mapping and the RxBenefit cache both stay genuinely
+unbuilt and reported as such (no table, no cache implementation, anywhere). **M13's
+`m13.reconciliation.draft_order_requested`** now carries real drug content instead of the historical
+hardcoded `{}`: `planReconciliationDecision` refuses (`RECONCILIATION_MEDHX_UNAVAILABLE`, 501) a
+`carry_forward`/`new_order` decision on an `m12_medhx` line — no MedHx-record projection exists anywhere to
+source real content from, and minting a draft claiming "derived from history" with nothing behind it would
+misstate the order's provenance — and refuses (`RECONCILIATION_MEDICATION_DETAILS_REQUIRED`, 422) the same
+decision on any other non-active line with no caller-supplied `medicationDetails`, validating
+`medClass='controlled_substance' ⇔ deaSchedule` present. `carry_forward` on an already-`m12_active` line is
+now correctly a no-op (a real bug fix — it used to wrongly emit). M12's new
+`draft-order-requested-binding.ts` consumer mints the real `medication_order` draft, siting and attributing
+it via M6's `activeAdmissionDraftContextForPatient` seam (the same one `m12.idg-decision-intake` already
+binds), idempotent through a new non-partitioned ledger table
+(`medication_order_reconciliation_decision_application`, migration 0254 — `medication_order` is
+partitioned, so a direct unique constraint on the triggering decision id cannot exist) rather than a
+pre-read. **Two pre-existing, unrelated test regressions surfaced by the full suite run were fixed, not
+worked around**: `document-consumers.test.ts`'s pinned `M22_DOCUMENT_REQUEST_EVENTS` array was stale
+against two legitimately-added entries from separate concurrent work; `emar-routes.test.ts`'s M13-T08
+draft-order test used a `lineKind` value (`"active_medication"`) that predates the real
+`"m12_active"|"m12_medhx"|"caregiver_reported"` vocabulary and asserted an event that the corrected
+`m12_active` no-op fix means can never fire for that line kind — rewritten against a `caregiver_reported`
+line with real `medicationDetails`, which is what actually exercises the handshake. Net on #248: the
+`m12` `handlers-unbound` group (8 pairs — all remaining items) is now fully resolved and deleted from
+`scripts/outbox-deferred-consumers.ts`, not merely emptied. Verified centrally: `bun run build`/`typecheck`
+clean (0 errors), `arch:fitness` 38/38, full non-live suite 654 files / 9601 tests green (0 failed, up from
+9599 before the two regression fixes), and `docs/api/openapi.json` + the generated typed client
+regenerated and checked in sync.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

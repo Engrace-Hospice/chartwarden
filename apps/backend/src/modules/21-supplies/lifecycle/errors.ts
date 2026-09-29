@@ -112,6 +112,12 @@ export const M21_ERROR_STATUS = {
   /** §2.8 / §3.1 — a replenish request has no M11 order behind it, so the outbox event id is its ONLY
    *  provenance and the one-upstream CHECK cannot be satisfied without it. */
   M21_REPLENISHMENT_PROVENANCE_MISSING: 422,
+  /** §2.1 — `m13.comfort_kit.replenishment_needed` named a medication with no matching DISPATCHED line on
+   *  the dispatch it maps to; the pharmacy identity (rxNorm/strength/dosageForm/…) cannot be assembled. */
+  M21_REPLENISHMENT_LINE_NOT_FOUND: 422,
+  /** §2.1 — the dispatch's originating `supply_request` carries no `deliveryAddress` snapshot to reuse
+   *  (an IPU-room deployment has none); `comfort_kit_replenish`'s schema requires one unconditionally. */
+  M21_REPLENISHMENT_ADDRESS_UNRESOLVED: 422,
 
   // ── Optimistic concurrency (§7.2 / §7.3 / §7.4) ────────────────────────────────────────────────────
   M21_STALE_VERSION: 412,

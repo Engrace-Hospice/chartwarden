@@ -241,14 +241,24 @@ describe("M13-T11 §5 workflow acceptance", () => {
         },
       ],
     });
+    // carry_forward of a caregiver-reported line mints an M12 draft from real, typed drug content — a
+    // `m12_medhx` line CANNOT (no medication-history record projection exists anywhere in this codebase;
+    // see `@wardenx/emar`'s `ReconciliationMedicationDetails` doc — that refusal is its own test below).
     await svc.recordDecision(ORG, RN_USER, "ws-1", {
-      lineKind: "m12_medhx",
+      lineKind: "caregiver_reported",
       sourceId: "hist_1",
       decision: "carry_forward",
+      medicationDetails: {
+        drugName: "Melatonin",
+        strength: "3 mg",
+        doseForm: "tablet",
+        route: "oral",
+        medClass: "standard",
+      },
     });
     await svc.recordDecision(ORG, RN_USER, "ws-1", {
-      lineKind: "m12_medhx",
-      sourceId: "hist_2",
+      lineKind: "m12_active",
+      sourceId: ORDER,
       decision: "discontinue",
     });
     const partial = await svc.recordDecision(ORG, RN_USER, "ws-1", {
@@ -283,12 +293,60 @@ describe("M13-T11 §5 workflow acceptance", () => {
       ],
     });
     await svc.recordDecision(ORG, RN_USER, "ws-2", {
-      lineKind: "m12_medhx",
-      sourceId: "hist_1",
+      lineKind: "m12_active",
+      sourceId: ORDER,
       decision: "carry_forward",
     });
     await expect(svc.finalizeReconciliation(ORG, RN_USER, "ws-2")).rejects.toThrowError(
       expect.objectContaining({ code: "VALIDATION_FAILED", statusCode: 422 }),
+    );
+  });
+
+  it("W-EMAR-08 edge — carry_forward of an m12_medhx line is refused (no medhx record projection exists)", async () => {
+    const svc = createInMemoryEmarBackend({
+      now: () => NOW,
+      worksheets: [
+        {
+          id: "ws-3",
+          organizationId: ORG,
+          patientId: PATIENT,
+          admissionId: ADMISSION,
+          triggerKind: "admission",
+          lineCount: 1,
+        },
+      ],
+    });
+    await expect(
+      svc.recordDecision(ORG, RN_USER, "ws-3", {
+        lineKind: "m12_medhx",
+        sourceId: "hist_1",
+        decision: "carry_forward",
+      }),
+    ).rejects.toThrowError(expect.objectContaining({ code: "RECONCILIATION_MEDHX_UNAVAILABLE" }));
+  });
+
+  it("W-EMAR-08 edge — carry_forward of a caregiver-reported line with no drug content is refused, not fabricated", async () => {
+    const svc = createInMemoryEmarBackend({
+      now: () => NOW,
+      worksheets: [
+        {
+          id: "ws-4",
+          organizationId: ORG,
+          patientId: PATIENT,
+          admissionId: ADMISSION,
+          triggerKind: "admission",
+          lineCount: 1,
+        },
+      ],
+    });
+    await expect(
+      svc.recordDecision(ORG, RN_USER, "ws-4", {
+        lineKind: "caregiver_reported",
+        sourceId: "hist_1",
+        decision: "carry_forward",
+      }),
+    ).rejects.toThrowError(
+      expect.objectContaining({ code: "RECONCILIATION_MEDICATION_DETAILS_REQUIRED" }),
     );
   });
 

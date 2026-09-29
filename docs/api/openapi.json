@@ -154368,9 +154368,20 @@
                 ],
                 "properties": {
                   "lineKind": {
-                    "minLength": 1,
-                    "maxLength": 64,
-                    "type": "string"
+                    "anyOf": [
+                      {
+                        "const": "m12_active",
+                        "type": "string"
+                      },
+                      {
+                        "const": "m12_medhx",
+                        "type": "string"
+                      },
+                      {
+                        "const": "caregiver_reported",
+                        "type": "string"
+                      }
+                    ]
                   },
                   "sourceId": {
                     "minLength": 1,
@@ -154404,6 +154415,103 @@
                   "decisionNotes": {
                     "maxLength": 1000,
                     "type": "string"
+                  },
+                  "medicationDetails": {
+                    "type": "object",
+                    "required": [
+                      "drugName",
+                      "strength",
+                      "doseForm",
+                      "route",
+                      "medClass"
+                    ],
+                    "properties": {
+                      "drugName": {
+                        "minLength": 1,
+                        "maxLength": 255,
+                        "type": "string"
+                      },
+                      "strength": {
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "type": "string"
+                      },
+                      "doseForm": {
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "type": "string"
+                      },
+                      "route": {
+                        "minLength": 1,
+                        "maxLength": 128,
+                        "type": "string"
+                      },
+                      "medClass": {
+                        "anyOf": [
+                          {
+                            "const": "standard",
+                            "type": "string"
+                          },
+                          {
+                            "const": "controlled_substance",
+                            "type": "string"
+                          },
+                          {
+                            "const": "compounded",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "deaSchedule": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "const": "II",
+                                "type": "string"
+                              },
+                              {
+                                "const": "III",
+                                "type": "string"
+                              },
+                              {
+                                "const": "IV",
+                                "type": "string"
+                              },
+                              {
+                                "const": "V",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "rxnormRxcui": {
+                        "anyOf": [
+                          {
+                            "maxLength": 32,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "ndc": {
+                        "anyOf": [
+                          {
+                            "maxLength": 32,
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    }
                   }
                 }
               }

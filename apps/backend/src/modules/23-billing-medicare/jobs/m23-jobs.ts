@@ -30,6 +30,7 @@
 // The actor id a §4.8 worker's `withOrgContext` carries is the empty-string system sentinel (M4 NULLIFs it).
 //
 // AI-BLOCK (D13): no `@wardenx/ai-platform` import anywhere here; a background job has no acting user.
+import { createHash } from "node:crypto";
 import {
   type ClaimState,
   type ClaimTransitionEvent,
@@ -144,7 +145,12 @@ export interface RevalidateConsumerJob {
 export interface WorkerOutboxInput {
   readonly eventName: string;
   readonly payload: Record<string, unknown>;
-  readonly organizationId: string;
+  /** `null` only for a genuinely platform-wide event (no single tenant it belongs to, e.g. the MAC-portal
+   *  health probe — a MAC jurisdiction serves many provider entities across many orgs) — mirrors
+   *  {@link OutboxPublishInput.organizationId} (apps/backend/src/bootstrap/outbox-persister.ts) exactly;
+   *  widened from `string` (F-1xx, #248) so `runMacPortalHealth`'s platform-status emit type-checks against
+   *  the SAME `deps.outbox` binding every org-scoped `m23.*` emit in this file already uses. */
+  readonly organizationId: string | null;
   readonly aggregateKind: string;
   readonly aggregateId: string;
 }
@@ -1523,25 +1529,106 @@ async function runEligibilityStaleWatch(deps: M23WorkerDeps): Promise<void> {
   }
 }
 
+/** Per-jurisdiction breaker state (§4.8 mac-portal.health): `lastUpAt` is refreshed on EVERY up tick (not
+ *  only at a transition), so the `lastSeenUpAt` fact the `.unavailable` payload carries is the actual last
+ *  observed-up instant, not merely "since the current streak began." `downedAt` is the instant the CURRENT
+ *  down streak began (set once, at the down transition; carried forward on subsequent still-down ticks so
+ *  the eventual `.recovered` payload reports the true outage start rather than the last tick before it). */
+export interface MacPortalBreakerState {
+  readonly up: boolean;
+  readonly lastUpAt: Date | null;
+  readonly downedAt: Date | null;
+}
+
+/** Deterministic per-jurisdiction synthetic aggregate id — MAC jurisdictions have no uuid PK anywhere in
+ *  the schema (`MacJurisdictionListPort.listJurisdictions()` returns a plain code like `"ngs-j6"`, and
+ *  `outbox_event.aggregate_id` is a NOT NULL `uuid` column). Stable across ticks/restarts (the same
+ *  jurisdiction code always hashes to the same id) and formatted as a valid v4/variant-8 uuid literal — the
+ *  `LAG_PROBE_SINGLETON_AGGREGATE_ID` precedent (`33-reporting/jobs/m33-jobs.ts`) extended to a per-key
+ *  derivation rather than one fixed literal, since MAC-portal health is per-jurisdiction, not a platform
+ *  singleton like the replica-lag probe. */
+function macPortalAggregateId(macJurisdiction: string): string {
+  const hex = createHash("sha256").update(`m23.mac_portal:${macJurisdiction}`).digest("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+}
+
 /**
  * `mac-portal.health` (§4.8 cron, every 5 min): per MAC jurisdiction probe the portal (HEAD via the bound
  * transport) and, on a state TRANSITION, emit `m23.mac_portal.unavailable` (down) or `m23.mac_portal.recovered`
- * (back up) + the §4.9 system-locked alert. A simple in-memory circuit-breaker holds last-known state across
- * ticks (the worker process is the breaker's home; a durable store is the follow-up). Platform-scoped (no org tx).
+ * (back up) to the outbox — the catalogued `declaredConsumers: ["m1"]` event M1's `system_status`-writing
+ * platform consumer binds to — plus the §4.9 system-locked alert. A simple in-memory circuit-breaker holds
+ * last-known state across ticks (the worker process is the breaker's home; a durable store is the follow-up).
+ *
+ * Platform-scoped (no org tx, no single tenant this event belongs to — `organizationId: null`). This goes
+ * through the SAME `deps.outbox` (`bindCallerModule(txOutboxPublisher, "m23")`) every org-scoped `m23.*` emit
+ * in this file already uses: a `null` organizationId does NOT need a `withPlatformContext`-opened tx the way
+ * an ordinary platform-scoped READ does — `buildTxOutboxPublisher`'s persist step routes a null-org record
+ * through the `report_writer_insert_platform_outbox_event` SECURITY DEFINER function (migration 0186),
+ * EXECUTE-granted directly to `wardenx_app` with no GUC precondition, so the plain `deps.db` handle (never
+ * wrapped in `withOrgContext` here) is the correct tx to pass — the exact same shape M33's own platform-wide
+ * `m33.lag.exceeded`/`.recovered` emits already use (`deps.outboxPublisher!.publish(db, {organizationId: null,
+ * ...})`, `m33-jobs.ts`).
  */
-async function runMacPortalHealth(
+export async function runMacPortalHealth(
   deps: M23WorkerDeps,
-  breaker: Map<string, boolean>,
+  breaker: Map<string, MacPortalBreakerState>,
 ): Promise<void> {
   const portal = macPortalOf(deps);
   const alerts = alertsOf(deps);
+  const outbox = outboxOf(deps);
+  const now = (deps.now ?? (() => new Date()))();
   const jurisdictions = await jurisdictionsOf(deps).listJurisdictions();
 
   for (const { macJurisdiction } of jurisdictions) {
     const up = await portal.probeHealth(macJurisdiction);
     const prev = breaker.get(macJurisdiction);
-    breaker.set(macJurisdiction, up);
-    if (prev === undefined || prev === up) continue; // first probe or no transition
+
+    if (prev === undefined) {
+      // First probe for this jurisdiction this process lifetime: seed state, no transition to report.
+      breaker.set(macJurisdiction, {
+        up,
+        lastUpAt: up ? now : null,
+        downedAt: up ? null : now,
+      });
+      continue;
+    }
+
+    if (prev.up === up) {
+      // No transition — still refresh `lastUpAt` on every up tick so it reflects the true last-observed-up
+      // instant (not merely "since the streak began") the next time this jurisdiction goes down.
+      if (up) breaker.set(macJurisdiction, { up: true, lastUpAt: now, downedAt: null });
+      continue;
+    }
+
+    const aggregateId = macPortalAggregateId(macJurisdiction);
+    if (up) {
+      const downedAt = prev.downedAt ?? now; // prev.up === false guarantees this was set at the down transition
+      await outbox.publish(deps.db, {
+        eventName: "m23.mac_portal.recovered",
+        organizationId: null,
+        aggregateKind: "mac_jurisdiction",
+        aggregateId,
+        payload: {
+          macJurisdiction,
+          downedAt: downedAt.toISOString(),
+          recoveredAt: now.toISOString(),
+        },
+      });
+      breaker.set(macJurisdiction, { up: true, lastUpAt: now, downedAt: null });
+    } else {
+      await outbox.publish(deps.db, {
+        eventName: "m23.mac_portal.unavailable",
+        organizationId: null,
+        aggregateKind: "mac_jurisdiction",
+        aggregateId,
+        payload: {
+          macJurisdiction,
+          lastSeenUpAt: prev.lastUpAt ? prev.lastUpAt.toISOString() : null,
+          downedAt: now.toISOString(),
+        },
+      });
+      breaker.set(macJurisdiction, { up: false, lastUpAt: prev.lastUpAt, downedAt: now });
+    }
     await alerts.dispatch({
       alertCode: up ? "m23.mac_portal.recovered" : "m23.mac_portal.unavailable",
       severity: up ? "info" : "critical",
@@ -1683,7 +1770,7 @@ export function registerM23LaunchWorkers(deps: M23WorkerDeps): Worker[] {
  */
 export function registerM23CronWorkers(deps: M23WorkerDeps): Worker[] {
   const { connection } = deps;
-  const portalBreaker = new Map<string, boolean>();
+  const portalBreaker = new Map<string, MacPortalBreakerState>();
   const cron = (queue: string, concurrency: number, run: () => Promise<void>): Worker =>
     new Worker(queue, async () => run(), {
       connection,

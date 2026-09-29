@@ -111,16 +111,78 @@ export {
   type PatientChangedPayload,
   type PatientSyncTriggerAction,
   type VerbalExpiredAction,
+  type VerbalExpiredConsumerDeps,
   type VerbalExpiredFacts,
   type VerbalExpiredPayload,
   M12_DISCHARGE_CASCADE_CONSUMER,
   M12_OUTBOX_SUBSCRIPTIONS,
+  M12_VERBAL_EXPIRED_CONSUMER,
   buildM12DischargeCascadeConsumer,
+  buildM12VerbalExpiredConsumer,
   decideMedHxFetch,
   decideMedicationDischargeCascade,
   decidePatientSyncTrigger,
   decideVerbalExpiry,
 } from "./consumers/index";
+// F-161 (#248) — the §2.8 D17 reconciliation-discontinue handshake.
+export {
+  type ReconciliationDiscontinueConsumerDeps,
+  M12_RECONCILIATION_DISCONTINUE_CONSUMER,
+  buildM12ReconciliationDiscontinueConsumer,
+} from "./consumers/reconciliation-discontinue-binding";
+// F-16x (#248) — the §2.8 D17 reconciliation "draft order" handshake (a real `medication_order` draft,
+// never the historical hardcoded `{}` payload).
+export {
+  type DraftOrderAdmissionContext,
+  type DraftOrderRequestedPayload,
+  type PlannedMedicationOrderDraft,
+  planDraftMedicationOrder,
+} from "./consumers/draft-order-requested";
+export {
+  type DraftOrderRequestedConsumerDeps,
+  M12_DRAFT_ORDER_REQUESTED_CONSUMER,
+  buildM12DraftOrderRequestedConsumer,
+} from "./consumers/draft-order-requested-binding";
+// F-16x (#248) — the six §2.6 D4 / §2.8 D10 patient-sync + MedHx-fetch consumers, backed by the durable
+// `dosespot_sync_queue` table (`./jobs/`).
+export {
+  type AdmissionIdForElectionPeriodPort,
+  type MedHxFetchEnqueuePort,
+  type MedHxFetchJob,
+  type PatientSyncEnqueuePort,
+  type PatientSyncJob,
+  type SyncTriggerBindingDeps,
+  buildM12AdmissionActivatedMedHxConsumer,
+  buildM12PatientSyncAddressChangedConsumer,
+  buildM12PatientSyncCreatedConsumer,
+  buildM12PatientSyncPayerChangedConsumer,
+  buildM12PatientSyncUpdatedConsumer,
+  buildM12RecertificationMedHxConsumer,
+  buildM12SyncTriggerConsumers,
+  createDrizzleAdmissionIdForElectionPeriodPort,
+  createDrizzleMedHxFetchEnqueuePort,
+  createDrizzlePatientSyncEnqueuePort,
+  unboundAdmissionIdForElectionPeriod,
+} from "./consumers/index";
+export {
+  type ActiveOrgListPort,
+  type DoseSpotSyncWorkerDeps,
+  type DosespotPatientIdResolver,
+  type EnqueueInput,
+  type EnqueueResult,
+  type PatientSyncSnapshotResolver,
+  DosespotSyncQueueRepository,
+  M12DosespotPatientIdUnbound,
+  M12_DOSESPOT_SYNC_QUEUE,
+  M12_DOSESPOT_SYNC_SCHEDULE,
+  M12_PLATFORM_JOB_ID,
+  createDrizzlePatientSyncSnapshotResolver,
+  createUnboundDosespotPatientIdResolver,
+  registerDoseSpotSyncQueueWorker,
+  runDoseSpotSyncQueueDrain,
+  scheduleDoseSpotSyncQueueDrain,
+  wireM12Tenancy,
+} from "./jobs/index";
 // M12-T09 — the `medication_order_record` destruction-cert eraser (§7.7 / D15). Registered over the Phase-0
 // deny-stub via the composition root's wireModuleErasers() (apps/backend/src/index.ts).
 export {

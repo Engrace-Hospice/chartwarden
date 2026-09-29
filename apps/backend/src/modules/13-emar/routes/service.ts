@@ -21,12 +21,15 @@ import {
   type FiveRightsOrderContext,
   type IvSegment,
   type IvSegmentMode,
+  type ReconciliationLineKind,
+  type ReconciliationMedicationDetails,
   assertFiveRights,
   barcodeScanBlocks,
   composeIvSession,
   deriveIvSessionState,
   evaluateBarcodeScan,
   planIvSegment,
+  planReconciliationDecision,
   resolveLateEntryTier,
 } from "@wardenx/emar";
 import type {
@@ -210,9 +213,13 @@ export interface RecordRefusalArgs {
   readonly refusedAt: string;
 }
 export interface RecordDecisionArgs {
-  readonly lineKind: string;
+  readonly lineKind: ReconciliationLineKind;
   readonly sourceId: string;
   readonly decision: ReconciliationDecisionKind;
+  /** Real, caller-typed drug content for a decision that mints an M12 draft (`carry_forward` of a
+   *  `caregiver_reported` line, or any `new_order`) — required in that case, never fabricated. See
+   *  `@wardenx/emar`'s `ReconciliationMedicationDetails` for why `m12_medhx` cannot use this at all yet. */
+  readonly medicationDetails?: ReconciliationMedicationDetails;
 }
 
 /** The §4.1 route surface the Fastify handlers compose over. */
@@ -1120,6 +1127,15 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
     },
     async recordDecision(orgId, userId, id, args): Promise<WorksheetView> {
       const w = requireWorksheet(orgId, id);
+      // Plan BEFORE mutating: a decision that cannot legally produce its M12-handshake event (an
+      // m12_medhx carry_forward with no medhx projection to source from, or a non-active
+      // carry_forward/new_order with no supplied drug content) is refused rather than half-recorded.
+      const plan = planReconciliationDecision({
+        lineKind: args.lineKind,
+        decisionKind: args.decision,
+        medicationOrderId: args.lineKind === "m12_active" ? args.sourceId : null,
+        medicationDetails: args.medicationDetails ?? null,
+      });
       const lineId = `${args.lineKind}:${args.sourceId}`;
       w.decisions.set(lineId, {
         lineId,
@@ -1129,18 +1145,23 @@ export function createInMemoryEmarBackend(seed: EmarRouteSeed = {}): EmarRouteSe
         resultingMedicationOrderId: null,
       });
       w.status = "in_progress";
-      if (args.decision === "carry_forward" || args.decision === "new_order")
+      if (plan.draftOrderRequested)
         emit("m13.reconciliation.draft_order_requested", {
           worksheetId: id,
           decisionId: lineId,
-          medicationOrderDraftPayload: {},
-          lineKind: args.lineKind,
+          patientId: w.patientId,
+          decisionMadeByMembershipId: userId,
+          lineKind: plan.draftOrderRequested.lineKind,
+          medicationOrderDraftPayload: plan.draftOrderRequested.medicationOrderDraftPayload,
+          // Always null today — see `planReconciliationDecision`'s doc for why an m12_medhx line can
+          // never reach this branch (it refuses earlier), so there is never a real history record id.
+          derivedFromHistoryId: null,
         });
-      if (args.decision === "discontinue")
+      if (plan.discontinueRequested)
         emit("m13.reconciliation.discontinue_requested", {
           worksheetId: id,
           decisionId: lineId,
-          medicationOrderId: args.sourceId,
+          medicationOrderId: plan.discontinueRequested.medicationOrderId,
           reason: "reconciled_discontinue",
         });
       return wView(w);

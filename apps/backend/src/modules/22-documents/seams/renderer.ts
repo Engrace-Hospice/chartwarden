@@ -271,6 +271,26 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "compliance",
     defaultTitle: "Tenant Export Cover Letter",
   },
+  // F-161 (#248) — two of the seven events in M22's own `handlers-unbound` group's "decisively named by
+  // the producing module's own outbox table" bucket that actually turned out to be real, buildable
+  // renders (the other five — m14.minutes.amended, m21.supply_request.delivered, and all three
+  // m39.consent.* events — are NOT document renders at all; see the render-consumer.ts comment on each).
+  //
+  // M17 §4.11 D15 — the caregiver visit-confirmation reminder. `visit_confirmation` has been a published
+  // `document_aggregate_type` value since the enum's base definition with no descriptor here and no
+  // producer request event ever wired to it.
+  visit_confirmation: {
+    aggregateType: "visit_confirmation",
+    retentionClass: "operational",
+    defaultTitle: "Visit Confirmation Reminder",
+  },
+  // M7 §2.4 — the care-plan PDF. `m7.care_plan.version_signed`'s own catalog comment ("drives the M8
+  // encounter gate + M22 PDF") is decisive; mig 0252 adds the `document_aggregate_type` value.
+  care_plan: {
+    aggregateType: "care_plan",
+    retentionClass: "clinical_record",
+    defaultTitle: "Plan of Care",
+  },
 } as const;
 
 /** The shape every W2 caller's typed payload carries (a structural minimum; the full payload is template-

@@ -95,6 +95,10 @@ export const medicationOrders = pgTable(
     derivedFromRefillId: uuid("derived_from_refill_id"), // refill_request mint
     derivedFromHistoryId: uuid("derived_from_history_id"), // medhx reconciliation carry-forward
     triggeringIdgDecisionId: uuid("triggering_idg_decision_id"), // M14 decision provenance
+    // M13 §2.8 D17 reconciliation-decision provenance (F-16x, #248). No SQL FK/uniqueness (partitioned
+    // table — see `medication_order_reconciliation_decision_application`'s own header for why); nullable,
+    // set only when the draft was minted by the reconciliation consumer.
+    triggeringReconciliationDecisionId: uuid("triggering_reconciliation_decision_id"),
 
     // Cosign control.
     cosignRequired: boolean("cosign_required").notNull().default(false),
@@ -141,6 +145,11 @@ export const medicationOrders = pgTable(
     byTriggeringIdgDecision: index("medication_order_triggering_idg_decision_idx")
       .on(t.organizationId, t.triggeringIdgDecisionId)
       .where(sql`triggering_idg_decision_id IS NOT NULL`),
+    byTriggeringReconciliationDecision: index(
+      "medication_order_triggering_reconciliation_decision_idx",
+    )
+      .on(t.organizationId, t.triggeringReconciliationDecisionId)
+      .where(sql`triggering_reconciliation_decision_id IS NOT NULL`),
     byCreatedAt: index("medication_order_created_idx").on(t.createdAt),
     controlledScheduleConsistency: check(
       "medication_order_controlled_schedule_consistency",

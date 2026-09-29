@@ -634,6 +634,10 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
 
   it("reconciliation: record → update decisions, add a caregiver line, finalize with the handshake emits", async () => {
     const ws = await seedWorksheet(ORG_A, 1);
+    // carry_forward of an m12_active line is a no-op (the order already exists) — the real
+    // draft_order_requested handshake below is what proves the fix (F-16x, #248): the payload used to be
+    // a hardcoded `{}` for EVERY carry_forward/new_order, including this one, which is why this case is
+    // asserted separately from the caregiver-reported one that legitimately mints a draft.
     const afterCarry = await svc.recordDecision(ORG_A, memberOf[ORG_A], ws, {
       lineKind: "m12_active",
       sourceId: MED_ORDER,
@@ -641,10 +645,26 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
     });
     expect(afterCarry.status).toBe("in_progress");
     expect(afterCarry.decisions.length).toBe(1);
-    expect(await eventsFor(ws)).toContain("m13.reconciliation.draft_order_requested");
+    expect(await eventsFor(ws)).not.toContain("m13.reconciliation.draft_order_requested");
     const lineId = afterCarry.decisions[0].lineId;
     await svc.updateDecision(ORG_A, memberOf[ORG_A], ws, lineId, "discontinue");
     await svc.addCaregiverReportedLine(ORG_A, ws, "home aspirin 81mg");
+    const withDraft = await svc.recordDecision(ORG_A, memberOf[ORG_A], ws, {
+      lineKind: "caregiver_reported",
+      sourceId: "home-aspirin-1",
+      decision: "carry_forward",
+      medicationDetails: {
+        drugName: "Aspirin",
+        strength: "81 mg",
+        doseForm: "tablet",
+        route: "oral",
+        medClass: "standard",
+      },
+    });
+    // 3 decision rows by now: the m12_active carry_forward (updated to discontinue), the caregiver line
+    // addCaregiverReportedLine seeds as document_only, and this caregiver_reported carry_forward.
+    expect(withDraft.decisions.length).toBe(3);
+    expect(await eventsFor(ws)).toContain("m13.reconciliation.draft_order_requested");
     const finalized = await svc.finalizeReconciliation(ORG_A, memberOf[ORG_A], ws);
     expect(finalized.status).toBe("finalized");
     const events = await eventsFor(ws);
@@ -658,6 +678,13 @@ describe.skipIf(!DB_URL)("M13 eMAR write lifecycle — LIVE Postgres (M13L)", ()
       lineKind: "caregiver_reported",
       sourceId: "home-med-1",
       decision: "new_order",
+      medicationDetails: {
+        drugName: "Melatonin",
+        strength: "3 mg",
+        doseForm: "tablet",
+        route: "oral",
+        medClass: "standard",
+      },
     });
     const line = recorded.decisions[0]!;
     expect(line.resultingMedicationOrderId).toBeNull();
