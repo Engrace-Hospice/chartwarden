@@ -42,6 +42,14 @@ export interface UploadDocumentArgs {
 }
 
 export interface DocumentProvenanceMetadata {
+  /** F-197 (#248) — §7.16/D20/D23's render/integrity flag, not provenance, but the same `document.metadata`
+   *  jsonb column carries both (`document.ts`'s own comment: "non-PHI render/integrity metadata: {
+   *  sudRedacted?, observationId?, ... }"). Written once at render time (`decide-document-request.ts`'s
+   *  `sudRedacted: payload.isSudClass === true`, and the two render-variant paths' identical stamp) and
+   *  read at signed-URL MINT time (`signed-url-service.ts`'s `mint()`) to re-check 42 CFR Part 2 consent —
+   *  the only reliable SUD-class signal that survives past the original render request, which itself is
+   *  long gone by the time a later mint happens. */
+  readonly sudRedacted?: boolean;
   readonly documentType?: string;
   readonly sourceChannel?:
     | "email"
@@ -857,7 +865,13 @@ export function createInMemoryDocumentBackend(seed: DocumentRouteSeed = {}): {
       if (!r || r.organizationId !== organizationId) return null;
       const v = r.versions.find((x) => x.id === versionId);
       if (!v) return null;
-      return { objectKey: v.objectKey, externalRecipient: v.externalRecipient };
+      return {
+        objectKey: v.objectKey,
+        externalRecipient: v.externalRecipient,
+        // F-197 (#248) — §7.16 mint-time SUD-consent re-check facts.
+        patientId: r.patientId,
+        isSudClass: r.metadata?.sudRedacted === true,
+      };
     },
   };
 

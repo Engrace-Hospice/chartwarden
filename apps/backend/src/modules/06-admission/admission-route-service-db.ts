@@ -1645,13 +1645,23 @@ export function createDbAdmissionRouteService(
             state: ADM.status,
             version: ADM.version,
             patientId: ADM.patientId,
+            // F-195 (#248) — M6's own spec (line 2983) names these "surfaced in M30's operational
+            // dashboard"; this org-wide, `state`-filterable list (`?state=on_hold`) IS that dashboard read.
+            holdReason: ADM.holdReason,
+            holdAt: ADM.holdAt,
+            releasedAt: ADM.releasedAt,
           })
           .from(ADM)
           .where(where)
           .orderBy(desc(ADM.admissionAt), desc(ADM.id))
           .limit(limit + 1)
           .offset(offset);
-        const items = rows.slice(0, limit).map(toSummary);
+        const items = rows.slice(0, limit).map((r) => ({
+          ...toSummary(r),
+          holdReason: r.holdReason ?? null,
+          holdAt: r.holdAt ? r.holdAt.toISOString() : null,
+          releasedAt: r.releasedAt ? r.releasedAt.toISOString() : null,
+        }));
         const nextCursor = rows.length > limit ? String(offset + limit) : null;
         return { items, nextCursor };
       });

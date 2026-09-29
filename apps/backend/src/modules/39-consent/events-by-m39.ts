@@ -94,7 +94,18 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     // grant revocation and closes active sessions — a genuinely broader fact than
     // `m39.consent.delegated_access.revoked` (which covers only the `family_caregiver_access`
     // projection row), so this is not redundant with that kept declaration.
-    declaredConsumers: ["m5", "m22", "m16", "m2", "m31"],
+    // F-197 (#248) — m22 REMOVED. The #248 declared-but-unbound registry's prior reason for this pair
+    // ("`media_release` unseeded") was stale/unclear; the REAL gap, found and fixed this round, is that
+    // M22's §7.16 SUD-consent gate (`consent-gate.ts`'s `resolveSudConsentPresent`) only ever ran ONCE, at
+    // document RENDER time — nothing re-checked consent at any LATER signed-URL MINT, so a document
+    // rendered while consent was active stayed freely downloadable after a later revocation. That is a
+    // PULL at mint time (`signed-url-service.ts`'s `mint()`, and the portal `mintPortalDownloadUrl` path),
+    // not a push reaction to `.revoked` — the identical reasoning this event's siblings `.expired`/
+    // `.recipient_added`/`.recipient_removed` already used to drop `m22` here in F-176 ("M22 keeps no
+    // signed-URL/subsetter state a push could act on; the real control gap is a consent re-check at URL
+    // mint, in M22's mint path"). `m5`/`m16`/`m2`/`m31` are unaffected — each has its own real, separately
+    // verified reason to stay declared.
+    declaredConsumers: ["m5", "m16", "m2", "m31"],
     isOutboxOnly: true,
   },
   {
@@ -220,7 +231,14 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     // M6 recert/F2F reader + M7/M39 (raw, pre-redaction)" at build time — a seam pull, not a push cache.
     // F-142 (#248) — m7 dropped: M7's own D7 (locked) is decisive — "single ABAC seam to Module 39...
     // DPOA attribution captured at write time via `acting_consent_id`" — the same seam-pull shape.
-    declaredConsumers: ["m11"],
+    // F-198 (#248) — m11 dropped, the last holdout of this same pattern. Every order in M11's own catalog
+    // (`events-by-m11.ts`) carries only `orderingPhysicianMdmId`/`certifyingPhysicianMdmId` — every order
+    // is physician-signed, never patient/representative-signed, and an exhaustive grep of `11-orders/` and
+    // `packages/orders/` for any consent/authorization/decision-making concept returns nothing. Unlike M7
+    // (a real, wired `acting_consent_id` write-time field) and M14 (a real build-time seam pull), M11 has
+    // no analogous mechanism to point to, at write time or read time — there is nothing for this fact to
+    // attach to in an order-signing flow that never involves patient consent in the first place.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {
@@ -236,7 +254,9 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     // F-129 (#248) — m14 dropped: same reasoning as `dpoa.agent_appointed` above (build-time seam pull).
     // F-142 (#248) — m7 dropped: same D7 seam-pull reasoning as `dpoa.agent_appointed` above.
-    declaredConsumers: ["m11"],
+    // F-198 (#248) — m11 dropped, same reasoning as `dpoa.agent_appointed` above (no consent/DPOA concept
+    // anywhere in M11's orders module).
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

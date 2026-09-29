@@ -298,6 +298,8 @@ jobs:
             }
           # F-152 (#248) — the D14 EVV-authoritative visit advances + the §7.5 SOS-resolution cancellation.
           - { name: "M17 EVV/SOS outbox consumers", scripts: "test:m17:evv-sos-consumers:live" }
+          # F-196 (#248) — the §4.10 missing-EVV resolution stamp.
+          - { name: "M17 EVV late-check-resolved", scripts: "test:m17:evv-late-check-resolved:live" }
           # F-158 (#248) — the §3.3 EVV checkout/correction provenance-pointer consumers.
           - { name: "M17 EVV checkout/corrected consumers", scripts: "test:m17:evv-checkout-corrected:live" }
           # F-166 (#248) — the §7.5 volunteer-gate scheduler warning + the §2.2.4 D5 after-hours triage proposal.
@@ -629,6 +631,14 @@ jobs:
               name: "M22 F-171 lab-results back-ref",
               scripts: "test:f171:m22-lab-backref:live",
             }
+          # F-197 (#248) — the §7.16 SUD-consent MINT-TIME re-check (both the staff `signed-url-service.ts`
+          # `mint()` and the portal `mintPortalDownloadUrl` path), against the real M39 `ConsentEvaluator`:
+          # a document rendered while consent was active must refuse a later mint once that consent is
+          # revoked, never gates a non-SUD document, and RLS still isolates a cross-tenant mint attempt.
+          - {
+              name: "F-197 M22 mint-time SUD consent",
+              scripts: "test:f197:m22-mint-time-sud-consent:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
@@ -639,6 +649,12 @@ jobs:
           - {
               name: "F-192 M6 transfer render request",
               scripts: "test:f192:m6-transfer-render:live",
+            }
+          # F-194 (#248) — `m18.evv.visit_verified` end to end: a real check-in/check-out through M18's
+          # real Drizzle write service into a real outbox row, then the real M30 `hvldl` recompute consumer.
+          - {
+              name: "F-194 M18 visit verified",
+              scripts: "test:f194:m18-visit-verified:live",
             }
           - { name: "M6 discharge cascade", scripts: "test:m6:discharge-cascade:live" }
           # F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.

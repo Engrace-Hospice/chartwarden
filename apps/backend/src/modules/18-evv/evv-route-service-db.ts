@@ -425,6 +425,23 @@ export function createDbEvvBackend(
           appliedRadiusM: policy.radiusM,
           kind: "check_out",
         });
+      } else if (priorCheckIn) {
+        // F-194 (#248) — the check-out paired with an in-geofence, non-superseded check-in; the last
+        // condition the catalog's own description names ("no open evv_missing_resolution") mirrors the
+        // exact `bracketState` query `getBracket` already runs (`MR.status = "open"`, above in this file).
+        const [openMissing] = await tx
+          .select({ id: MR.id })
+          .from(MR)
+          .where(and(eq(MR.visitId, input.visitId), eq(MR.status, "open")))
+          .limit(1);
+        if (!openMissing) {
+          await emit(tx, orgId, "m18.evv.visit_verified", "evv_event", eventId, {
+            visitId: input.visitId,
+            patientId: visit.patientId,
+            organizationId: orgId,
+            verifiedAt: recordedAt,
+          });
+        }
       }
     }
 

@@ -24498,6 +24498,9 @@ export interface operations {
                             state: string;
                             version: number;
                             patientId?: string | null;
+                            holdReason: string | null;
+                            holdAt: string | null;
+                            releasedAt: string | null;
                         }[];
                         nextCursor: string | null;
                     };

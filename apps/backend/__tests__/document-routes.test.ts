@@ -131,7 +131,13 @@ const sharedBackend = createInMemoryDocumentBackend({
 const sharedObjectResolver: SignedUrlObjectResolver = {
   async loadObject(args) {
     if (args.versionId === VERSION && args.documentId === DOC && args.organizationId === ORG) {
-      return { objectKey: `documents/${PATIENT}/other/${DOC}/v1.pdf`, externalRecipient: null };
+      return {
+        objectKey: `documents/${PATIENT}/other/${DOC}/v1.pdf`,
+        externalRecipient: null,
+        // F-197 (#248) — not SUD-class; this fixture never exercised the §7.16 mint-time gate.
+        patientId: PATIENT,
+        isSudClass: false,
+      };
     }
     return sharedBackend.objectResolver.loadObject(args);
   },

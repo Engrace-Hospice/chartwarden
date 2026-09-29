@@ -96,6 +96,7 @@ import {
   LocChangeSchema,
   LocConfirmBedSchema,
   LocPatchSchema,
+  AdmissionSummaryPageResponseSchema as M6AdmissionSummaryPageResponseSchema,
   ComplianceCloseSchema as M6ComplianceCloseSchema,
   ComplianceListQuerySchema as M6ComplianceListQuerySchema,
   ComplianceOverrideSchema as M6ComplianceOverrideSchema,
@@ -3508,7 +3509,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/admissions": {
     summary: "Admission census (cursor-paginated, filterable by state)",
     query: AdmissionListQuerySchema,
-    response: M6SummaryPageResponseSchema,
+    response: M6AdmissionSummaryPageResponseSchema,
   },
   "GET /api/v1/admissions/:id": {
     summary: "Admission aggregate + the R-AC-01 activation gate (route 10, §5.2.4/§5.2.5)",

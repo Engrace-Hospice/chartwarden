@@ -137,7 +137,8 @@ export {
 // §4.10 upstream — F-150 (#248): the two `OutboxConsumerBinding`s for M30's real, previously-unbound
 // §4.10 upstream-event handlers that are fully ready to bind (`m10.hope.submission_accepted`,
 // `m23.claim.adjudicated`; both call only the real `enqueueRecompute` port). See the file headers for
-// why `m6.discharge.death` / `m12.medication.error_reported` / `m18.evv.visit_verified` are not bound.
+// why `m6.discharge.death` / `m12.medication.error_reported` are not bound (`m18.evv.visit_verified` is
+// now bound too — F-194, below).
 export {
   M30_SYSTEM_MEMBERSHIP_ID,
   buildM30UpstreamConsumerPorts,
@@ -157,3 +158,10 @@ export {
   type RestraintAdmissionSitingForOrg,
   buildM30RestraintAppliedConsumer,
 } from "./outbox-consumers/m37-restraint-applied";
+// F-194 (#248): the `m18.evv.visit_verified` consumer — enqueues an HVLDL recompute (the already-built
+// `handleEvvVisitVerified`/`hvldl_near_death_recompute` pure logic, previously unwired). See the file
+// header for why `providerEntityId` needs the injected M18 siting port, the same shape a third time.
+export {
+  type EvvVisitProviderEntityForOrg,
+  buildM30VisitVerifiedConsumer,
+} from "./outbox-consumers/m18-evv-visit-verified";

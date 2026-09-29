@@ -441,6 +441,17 @@ export interface SummaryRow {
   readonly patientId?: string | null;
 }
 
+/** F-195 (#248) — `GET /api/v1/admissions`'s own row, carrying the hold/resume facts M6's spec (line 2983)
+ *  names as surfaced on "M30's operational dashboard" — `holdReason`/`holdAt`/`releasedAt` were write-only
+ *  everywhere in this module until now (see `events-by-m6.ts`'s corrected `m30` declaration on
+ *  `m6.admission.on_hold`/`.resumed` for the full citation). A dedicated type rather than widening the
+ *  shared `SummaryRow` (also used by referral summaries, which have no hold concept at all). */
+export interface AdmissionSummary extends SummaryRow {
+  readonly holdReason: string | null;
+  readonly holdAt: string | null;
+  readonly releasedAt: string | null;
+}
+
 /** One of a patient's admissions (F-065) — enough to pick the one being documented against. */
 export interface PatientAdmissionSummary {
   readonly id: string;
@@ -732,7 +743,7 @@ export interface AdmissionRouteService {
       cursor?: string;
       limit?: number;
     },
-  ): Promise<Page<SummaryRow>>;
+  ): Promise<Page<AdmissionSummary>>;
   getAdmission(organizationId: string, id: string): Promise<AdmissionDetail | null>;
   getAdmissionReadiness(
     organizationId: string,
@@ -1731,7 +1742,13 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       let rows = listOfKind(organizationId, "admission");
       if (query.state) rows = rows.filter((r) => r.state === query.state);
       if (query.patientId) rows = rows.filter((r) => r.patientId === query.patientId);
-      return page(rows.map(summary), query);
+      // F-195 (#248) — this in-memory slice's `holdAdmission`/`resumeAdmission` discard the reason and
+      // never persist a timestamp (a lightweight state-transition double, not the D1 record); the real
+      // values are proven against the Drizzle implementation's own live suite.
+      return page(
+        rows.map((r) => ({ ...summary(r), holdReason: null, holdAt: null, releasedAt: null })),
+        query,
+      );
     },
     async getAdmission(organizationId, id) {
       const rec = get(organizationId, id, "admission");

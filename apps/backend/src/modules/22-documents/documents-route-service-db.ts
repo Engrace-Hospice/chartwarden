@@ -852,14 +852,27 @@ export function createDbSignedUrlObjectResolver(db: DbClient): SignedUrlObjectRe
     }): Promise<SignedUrlObjectFacts | null> {
       return withOrg(db, organizationId, async (tx) => {
         const [v] = await tx
-          .select({ objectKey: DV.minioObjectKey })
+          .select({
+            objectKey: DV.minioObjectKey,
+            // F-197 (#248) — §7.16 mint-time SUD-consent re-check facts, joined off `document`: the
+            // version row itself carries neither the patient nor the render-time SUD flag.
+            patientId: DOC.patientId,
+            metadata: DOC.metadata,
+          })
           .from(DV)
+          .innerJoin(DOC, eq(DOC.id, DV.documentId))
           .where(and(eq(DV.id, versionId), eq(DV.documentId, documentId)))
           .limit(1);
         if (!v) return null;
         // `document_version` carries no external-recipient column — the disclosure gate's recipient is
         // resolved at request time from the access purpose, not the row; the read wire supplies none.
-        return { objectKey: v.objectKey, externalRecipient: null };
+        const metadata = (v.metadata ?? null) as { sudRedacted?: boolean } | null;
+        return {
+          objectKey: v.objectKey,
+          externalRecipient: null,
+          patientId: v.patientId,
+          isSudClass: metadata?.sudRedacted === true,
+        };
       });
     },
   };

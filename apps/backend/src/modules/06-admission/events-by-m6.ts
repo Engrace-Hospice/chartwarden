@@ -304,7 +304,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // walkthrough names the eleven seam reads + the four Valkey-projected outbox topics M14 actually
     // consumes, and M6's own "Consumed by 14" text names only `m6.referral.withdrawn` for M14) —
     // no packet field or readiness check references hold status anywhere.
-    declaredConsumers: ["m17", "m30"],
+    // F-195 (#248) — m30 REMOVED: M6's own spec (line 2983) names `holdReason`/`holdAt`/`releasedAt` as
+    // "surfaced in M30's operational dashboard" — the F-179 REST-resolution shape, not a push. Those
+    // columns were write-only until this round; `GET /api/v1/admissions` (org-wide, `?state=on_hold`
+    // filterable) now projects all three, the real dashboard read the spec describes.
+    declaredConsumers: ["m17"],
     isOutboxOnly: true,
   },
   {
@@ -316,7 +320,9 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       resumedAt: Type.String({ minLength: 1 }),
     }),
     // F-145 (#248) — m14 REMOVED: same as `.on_hold` above.
-    declaredConsumers: ["m17", "m30"],
+    // F-195 (#248) — m30 REMOVED: same REST-resolution correction as `.on_hold` above — see that entry's
+    // comment for the full citation.
+    declaredConsumers: ["m17"],
     isOutboxOnly: true,
   },
   {

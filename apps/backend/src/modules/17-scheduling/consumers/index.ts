@@ -98,6 +98,8 @@ export const M17_OUTBOX_SUBSCRIPTIONS = [
   // F-158 (#248) — the §3.3 EVV checkout/correction provenance pointers.
   { eventName: "m18.evv.check_out_recorded", consumerName: "m17.m18-evv-check-out" },
   { eventName: "m18.evv.event_corrected", consumerName: "m17.m18-evv-event-corrected" },
+  // F-196 (#248) — the §4.10 missing-EVV resolution stamp, bound live.
+  { eventName: "m18.evv.late_check_resolved", consumerName: "m17.m18-evv-late-check-resolved" },
   // F-166 (#248) — the §7.5 volunteer-gate scheduler warning and the §2.2.4 D5 after-hours triage
   // dispatch proposal.
   {
