@@ -5,6 +5,7 @@
 // Also proves 2FA-at-rest encryption (ADR-0034) and the password-reset flow (token issuance via the
 // sendResetPassword seam → resetPassword → credential rotation). Passkey enrollment is out of scope
 // (a browser WebAuthn ceremony — not CI-testable without a virtual authenticator).
+import { appRoleConnectionString } from "./_live-app-role";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { isSealed } from "@wardenx/auth";
@@ -698,7 +699,10 @@ describe.skipIf(!DB_URL)(
       resetAuthorizationContract();
       resetRbacEngine();
 
-      const handle11 = mkDb11({ connectionString: DB_URL as string });
+      // The REAL NOBYPASSRLS `wardenx_app` — not the suite's superuser DB_URL. Through the superuser every RLS policy
+      // is bypassed, which is how `select-organization`'s outbox publish (an `outbox_event` insert under
+      // `organization_id = current_setting('app.org_id')::uuid`) could fail in production yet pass here.
+      const handle11 = mkDb11({ connectionString: await appRoleConnectionString(admin, DB_URL as string) });
       registerDbEffectivePermissionResolver(handle11.db as never);
 
       // Seed a real user, org, membership, role, and the patient.read grant (superuser — RLS bypassed
@@ -710,7 +714,7 @@ describe.skipIf(!DB_URL)(
         .id as string;
       const org = (
         await admin.query(
-          "INSERT INTO organization (slug,legal_name,display_name) VALUES ($1,'SS','SS') RETURNING id",
+          "INSERT INTO organization (slug,legal_name,display_name,status) VALUES ($1,'SS','SS','active') RETURNING id",
           [`ss-${Date.now()}`],
         )
       ).rows[0].id as string;
@@ -771,10 +775,23 @@ describe.skipIf(!DB_URL)(
       });
       const app = buildServer({ db: handle11.db as never, authenticate });
       registerIdentityAuth(app, auth); // mounts /api/auth/* (Better Auth's real HTTP handler)
+      // The production composition passes `outbox: m2OutboxPublisher` (`bindCallerModule(txOutboxPublisher, "m2")`),
+      // so `select-organization`'s `m2.session.created` publish actually RUNS. Mounting without it made that publish a
+      // silent no-op here and hid a 500 that only appeared once the real publisher was bound (see the assertion below).
+      const { M2_OUTBOX_EVENTS: _m2Events } = await import("../src/modules/02-identity/index");
+      const { buildBootOutboxCatalog: _bootCat, buildTxOutboxPublisher: _txPub } = await import(
+        "../src/bootstrap/outbox-persister"
+      );
+      const _m2Publisher = _txPub(_bootCat([_m2Events]));
       mountIdentityRoutes(
         app,
         handle11.db as never,
         createDbAdminMembershipReader(handle11.db as never),
+        {
+          outbox: {
+            publish: (tx: never, input: never) => _m2Publisher.publish(tx, { ...(input as object), callerModule: "m2" } as never),
+          },
+        } as never,
       );
       // The census route resolves its §7.5 narrowing set through M5's `CaseloadProvider` seam, exactly
       // as the composition root wires it. Without the registration the seam is the Phase-0 deny-stub,
@@ -877,6 +894,13 @@ describe.skipIf(!DB_URL)(
       });
       expect(select.statusCode).toBe(200);
       expect(select.json().activeOrganizationId).toBe(org);
+      // The event lands, keyed on the org the session was JUST bound to (the request context carried no org
+      // when the handler started — the publish must open its transaction for the org being bound).
+      const sessionCreated = await admin.query(
+        "SELECT organization_id, payload FROM outbox_event WHERE event_type = 'm2.session.created' AND organization_id = $1",
+        [org],
+      );
+      expect(sessionCreated.rows).toHaveLength(1);
 
       // 4. The SAME cookie now resolves the real, DB-backed org+role+permission chain end-to-end over
       //    HTTP: /auth/context reports the real membershipId/roles, and the patient census route — real
