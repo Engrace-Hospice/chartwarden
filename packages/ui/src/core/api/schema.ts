@@ -19782,6 +19782,12 @@ export interface operations {
                     /** Format: date-time */
                     baaExpiresOn?: string;
                     rateLimitMsgPerSec?: number;
+                    /** Format: uuid */
+                    labDestinationFacilityId?: string;
+                    mshSendingApplication?: string;
+                    mshSendingFacility?: string;
+                    mshReceivingApplication?: string;
+                    mshReceivingFacility?: string;
                 };
             };
         };
@@ -19831,6 +19837,11 @@ export interface operations {
                             channelCertPin: string | null;
                             sendingFacilityAllowlist: string[];
                             rateLimitMsgPerSec: number;
+                            labDestinationFacilityId: string | null;
+                            mshSendingApplication: string | null;
+                            mshSendingFacility: string | null;
+                            mshReceivingApplication: string | null;
+                            mshReceivingFacility: string | null;
                             proposedByMembershipId: string;
                             approvedByOpId: string | null;
                             approvedByComplId: string | null;
@@ -19864,6 +19875,12 @@ export interface operations {
                     /** Format: date-time */
                     baaExpiresOn?: string;
                     rateLimitMsgPerSec?: number;
+                    /** Format: uuid */
+                    labDestinationFacilityId?: string;
+                    mshSendingApplication?: string;
+                    mshSendingFacility?: string;
+                    mshReceivingApplication?: string;
+                    mshReceivingFacility?: string;
                 };
             };
         };
@@ -19913,6 +19930,11 @@ export interface operations {
                             channelCertPin: string | null;
                             sendingFacilityAllowlist: string[];
                             rateLimitMsgPerSec: number;
+                            labDestinationFacilityId: string | null;
+                            mshSendingApplication: string | null;
+                            mshSendingFacility: string | null;
+                            mshReceivingApplication: string | null;
+                            mshReceivingFacility: string | null;
                             proposedByMembershipId: string;
                             approvedByOpId: string | null;
                             approvedByComplId: string | null;
