@@ -404,3 +404,67 @@ describe("F-187 — POST /api/v1/orders/:id/recover-transmission", () => {
     await app.close();
   });
 });
+
+// ── F-191 — the two-person control's routes: co-sign (`orders.amend` + step-up) and cancel (`orders.amend`) ───────────
+describe("F-191 — POST /api/v1/orders/:id/recover-transmission/:requestId/{cosign,cancel}", () => {
+  async function draft(app: ReturnType<typeof makeServer>["app"]): Promise<string> {
+    const res = await app.inject({ method: "POST", url: "/api/v1/orders", headers: RN, payload: labBody });
+    expect(res.statusCode).toBe(201);
+    return res.json().id as string;
+  }
+  const REQUEST = "88888888-8888-4888-8888-888888888888";
+  const cosignUrl = (id: string, requestId = REQUEST) => `/api/v1/orders/${id}/recover-transmission/${requestId}/cosign`;
+  const cancelUrl = (id: string, requestId = REQUEST) => `/api/v1/orders/${id}/recover-transmission/${requestId}/cancel`;
+
+  it.each([
+    ["cosign", cosignUrl],
+    ["cancel", cancelUrl],
+  ])("%s is gated on orders.amend: read-only and clinician-without-amend are 403", async (_name, urlOf) => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    for (const headers of [VIEWER, RN_NO_AMEND]) {
+      const res = await app.inject({ method: "POST", url: urlOf(id), headers });
+      expect(res.statusCode).toBe(403);
+    }
+    await app.close();
+  });
+
+  it("co-sign needs a FRESH step-up — a second person accepting the duplicate risk is gated at least as hard as the attestation — and nothing is emitted", async () => {
+    const { app, backend } = makeServer();
+    const id = await draft(app);
+    backend.drainEvents();
+    const res = await app.inject({ method: "POST", url: cosignUrl(id), headers: RN_NO_STEPUP });
+    expect(res.statusCode).toBe(403);
+    expect(backend.drainEvents()).toEqual([]);
+    await app.close();
+  });
+
+  it("cancel does NOT need a step-up (it sends nothing and can only prevent a re-dispatch): the same caller passes the gate and reaches the service", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({ method: "POST", url: cancelUrl(id), headers: RN_NO_STEPUP });
+    expect(res.statusCode).not.toBe(403);
+    expect(res.statusCode).toBe(409); // the in-memory service has no recovery requests: refused, not a 5xx
+    await app.close();
+  });
+
+  it("with a fresh step-up co-sign passes the gate and reaches the service (409 from the in-memory service, never 403/500)", async () => {
+    const { app } = makeServer();
+    const id = await draft(app);
+    const res = await app.inject({ method: "POST", url: cosignUrl(id), headers: RN });
+    expect(res.statusCode).toBe(409);
+    await app.close();
+  });
+
+  it.each([
+    ["cosign", cosignUrl],
+    ["cancel", cancelUrl],
+  ])("%s: no session is 401, an unknown order is 404, malformed ids are 422 (not 500)", async (_name, urlOf) => {
+    const { app } = makeServer();
+    expect((await app.inject({ method: "POST", url: urlOf(UNKNOWN_ORDER) })).statusCode).toBe(401);
+    expect((await app.inject({ method: "POST", url: urlOf(UNKNOWN_ORDER), headers: RN })).statusCode).toBe(404);
+    expect((await app.inject({ method: "POST", url: urlOf("not-a-uuid"), headers: RN })).statusCode).toBe(422);
+    expect((await app.inject({ method: "POST", url: urlOf(UNKNOWN_ORDER, "not-a-uuid"), headers: RN })).statusCode).toBe(422);
+    await app.close();
+  });
+});
