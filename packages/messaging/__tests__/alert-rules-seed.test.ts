@@ -57,6 +57,8 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "system.backup_failure",
       // F-188 (#248) — M29's outbound operator alerts (spec §5.3); previously rule-less, so they reached nobody.
       "hl7_outbound.transmission_failed",
+      // F-191 — the failure-storm escalation.
+      "hl7_outbound.transmission_storm",
       "external_feed.baa_expired",
       "external_feed.baa_missing",
     ]);
