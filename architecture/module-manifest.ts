@@ -795,6 +795,7 @@ export const MODULES: ModuleDef[] = [
       "notr_record",
       "sequestration_policy",
       "sia_calculation",
+      "unmapped_taxonomy_occurrence",
       "validation_override",
       "validation_result",
       "validation_rule_config",

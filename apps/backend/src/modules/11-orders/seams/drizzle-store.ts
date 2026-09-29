@@ -582,3 +582,24 @@ export function createDrizzleOrderSeamStore(db: DbClient): OrderSeamStore {
     },
   };
 }
+
+/**
+ * F-164 (#248) — the org-explicit `patientId`/`kind` lookup M14's "since last IDG" cache consumer needs
+ * for `m11.order.discontinued` (whose payload carries neither): a relay tick is not a request, so the
+ * published `OrderProvider` seam (which opens every read under `withOrgContextFromRequest`) cannot be
+ * called from here — the `encounterIdsForVisitsForOrg` (M8) precedent applied to this module.
+ */
+export async function orderPatientAndKindForOrg(
+  db: DbClient,
+  organizationId: string,
+  orderId: string,
+): Promise<{ readonly patientId: string; readonly kind: string } | null> {
+  return withOrgContext(db, { organizationId, userId: ORDER_READER_SYSTEM_USER_ID }, async (tx) => {
+    const [row] = await tx
+      .select({ patientId: OR.patientId, kind: OR.kind })
+      .from(OR)
+      .where(and(eq(OR.organizationId, organizationId), eq(OR.id, orderId)))
+      .limit(1);
+    return row ?? null;
+  });
+}

@@ -8,6 +8,8 @@ export const M26_SUBSCRIPTION_MAP = {
   // M23 — claim corrections produce reversal/adjustment accrual lines.
   "m23.claim.replaced": "record-reversal-line",
   "m23.claim.voided": "record-reversal-line",
+  // M25 — a CLP02=22 reversal posted directly (F-163, #248: the last of M26's originally-deferred pairs).
+  "m25.remittance.claim_recouped": "record-reversal-line",
   // M23 — inpatient (GIP 0656 / IRC 0655) day lines for the 20% cap.
   "m23.claim.line_finalized": "record-inpatient-day-line",
   // M5 — freeze the per-patient projection denominator at death.

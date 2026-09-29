@@ -29,7 +29,7 @@ export { createOrderProvider, createOrderSignatureProvider } from "./providers";
 // The production Drizzle-backed store (reads + the polymorphic signature writes over M11's tables under
 // the consumer's RLS context) — injected via `registerOrderSeams({ store })` from the composition root's
 // db branch (the M8 `createDrizzleEncounterReaderStore` pattern).
-export { createDrizzleOrderSeamStore } from "./drizzle-store";
+export { createDrizzleOrderSeamStore, orderPatientAndKindForOrg } from "./drizzle-store";
 
 /** Deps for M11's owned-seam registration (slice defaults to the in-memory store). */
 export interface OrderSeamDeps {

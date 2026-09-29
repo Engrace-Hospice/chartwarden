@@ -169,6 +169,7 @@ export {
   getHopeSubmissionProvider,
   getHopeTimepointProvider,
   getLatestAssessmentProviderForHope,
+  hopeAssessmentPatientIdForOrg,
   registerHopeSeams,
 } from "./seams/index";
 // M10-T06 — the §4.1 route inventory over an in-memory backend + the §4.7 ABAC predicates M10 owns

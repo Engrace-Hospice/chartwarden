@@ -58,7 +58,9 @@ export type M23SubscriptionEffect =
   /** Record the M22-returned `document_id` as the back-ref on `noe_record` / `notr_record` / `claim` (task 57). */
   | { readonly kind: "record_document_back_reference"; readonly note: string }
   /** Transition a claim to PAID / PARTIAL_PAID / DENIED from an M25 remittance (task 55; DENY-STUB today). */
-  | { readonly kind: "claim_remittance_transition"; readonly note: string };
+  | { readonly kind: "claim_remittance_transition"; readonly note: string }
+  /** Record the occurrence + alert past the §11.A/D13 30-day/50-threshold (F-164, #248). */
+  | { readonly kind: "taxonomy_occurrence_alert"; readonly note: string };
 
 /** The §4.4 / §8 documented M40 canonical-update topic (see EVENT-NAME PROVENANCE above). */
 export const M40_CANONICAL_UPDATED_TOPIC = "m40.canonical.updated" as const;
@@ -220,6 +222,21 @@ export const M23_OUTBOX_SUBSCRIPTIONS: Readonly<Record<string, M23TopicSubscript
         {
           kind: "revalidate",
           note: "An M40 canonical entity (NPI / physician credential) changed — re-validate affected claims so the `physician credentials` rule re-runs against the new canonical fact (task 53/54).",
+        },
+      ],
+    },
+
+    // ── M25 unmapped-taxonomy occurrence → §11.A/D13 threshold alert (F-164, #248) ──────────────────────
+    // Bound via a dedicated `outbox-consumers/m25-taxonomy-unmapped-code-observed.ts` consumer, NOT
+    // `registerM23Consumers`'s effect dispatch (the `m6.cti.signed`/`m18.evv.late_check_resolved`
+    // "revalidate" entries above are the same shape — this map documents every subscription regardless of
+    // which mechanism implements it).
+    "m25.taxonomy.unmapped_code_observed": {
+      status: "live",
+      effects: [
+        {
+          kind: "taxonomy_occurrence_alert",
+          note: "A CARC/RARC code M38's catalog doesn't map was observed on a denial — record the occurrence and, once the org's rolling 30-day count for that CARC exceeds 50, dispatch an unmapped_taxonomy_alert via the M36 AlertEmitter seam.",
         },
       ],
     },

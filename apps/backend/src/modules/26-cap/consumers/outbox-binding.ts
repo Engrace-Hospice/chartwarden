@@ -8,7 +8,7 @@
 // it — `registerM26Consumers({ store, bind })` was never itself an `OutboxConsumerBinding`, and nothing
 // in `apps/backend/src/index.ts` has ever called it.
 //
-// BOUND_TOPICS covers all eight keys of `M26_SUBSCRIPTION_MAP` as of F-160 (#248): the original six
+// BOUND_TOPICS covers all nine keys of `M26_SUBSCRIPTION_MAP` as of F-163 (#248): the original six
 // F-131 confirmed as real, catalog-agreeing §4.4 subscriptions — `m23.claim.line_finalized` / `.replaced`
 // / `.voided`, `m25.remittance.advice_posted`, `m6.revocation.created`, `m6.transfer.created` — plus two
 // more whose routing was already real but whose catalog declaration was missing:
@@ -20,6 +20,15 @@
 //     it live fixes the catalog/binding disagreement even though no delivery does anything observable yet,
 //     and the event still has no real producer (`events-by-m36.ts`'s own header). `events-by-m36.ts` now
 //     lists `m26` in its `declaredConsumers` (F-160).
+// F-163 (#248) added the ninth and last of M26's originally-deferred pairs: `m25.remittance.claim_recouped`
+// routes to the same `record-reversal-line` action (`handleClaimReversed`) as `m23.claim.replaced`/
+// `.voided`, now that its payload actually carries the `patientId`/`recoupedAmountCents`/`serviceFrom`/
+// `serviceTo` fields the handler reads (widened at the M25 emit site — see `events-by-m25.ts` and
+// `ingest/service-drizzle.ts`'s own F-163 comments). `m23.claim.replaced`/`.voided` themselves stay a
+// documented, PRE-EXISTING no-op independent of this fix — neither payload carries `patientId` or any
+// amount field under any of the three names `handleClaimReversed` reads (F-131's own note, confirmed
+// still true here) — so they are correctly BOUND (routed, catalog-agreeing) while still functionally
+// inert until a future pass widens THEIR payloads the same way.
 import { type CapConsumerStore, dispatchM26UpstreamEvent } from "./index";
 import type { M26SubscribedTopic } from "./subscription-map";
 
@@ -30,15 +39,13 @@ export interface OutboxEventToConsume {
   readonly payload: unknown;
 }
 
-/** All eight confirmed-real, catalog-agreeing §4.4 subscriptions (F-131, F-160) — see the header.
- *  `m25.remittance.claim_recouped` stays unbound entirely (its handler, `handleClaimReversed`, reads
- *  payload fields — `patientId`/`claimId`/`priorPaidAmountCents` — that no catalogued M23/M24/M25 payload
- *  carries; see F-131's own note). */
+/** All nine confirmed-real, catalog-agreeing §4.4 subscriptions (F-131, F-160, F-163) — see the header. */
 export const BOUND_TOPICS: readonly M26SubscribedTopic[] = [
   "m23.claim.line_finalized",
   "m23.claim.replaced",
   "m23.claim.voided",
   "m25.remittance.advice_posted",
+  "m25.remittance.claim_recouped",
   "m5.patient.deceased",
   "m6.revocation.created",
   "m6.transfer.created",

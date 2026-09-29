@@ -218,3 +218,12 @@ export function getM23BootContracts() {
     permissionKeyList: M23_PERMISSION_KEY_LIST,
   } as const;
 }
+
+// F-164 (#248) — the m25.taxonomy.unmapped_code_observed consumer, M23's last originally
+// `handlers-unbound` pair: the §11.A/D13 30-day rolling occurrence tracker + threshold alert.
+export {
+  M23_TAXONOMY_UNMAPPED_CODE_OBSERVED_ALERT_CODE,
+  M23_TAXONOMY_UNMAPPED_CODE_OBSERVED_EVENT,
+  type M23TaxonomyUnmappedCodeConsumerDeps,
+  buildM23TaxonomyUnmappedCodeObservedConsumer,
+} from "./outbox-consumers/m25-taxonomy-unmapped-code-observed";

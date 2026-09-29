@@ -35,6 +35,7 @@ export {
   DoseSpotSeamGapError,
   costBasisOfLines,
   createDrizzleDoseSpotSeamStore,
+  medicationOrderPatientAndDrugForOrg,
 } from "./drizzle-store";
 
 /** Deps for M12's owned-seam registration (slice defaults to the in-memory store). */

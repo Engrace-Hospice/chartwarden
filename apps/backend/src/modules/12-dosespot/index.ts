@@ -46,6 +46,7 @@ export {
   getDoseSpotTerminologyValidator,
   getMedicationOrderProvider,
   getRefillInboxProvider,
+  medicationOrderPatientAndDrugForOrg,
   registerDoseSpotSeams,
 } from "./seams/index";
 // M12-T08 — the §4.7 ABAC predicates M12 owns (`prescriber_eligible` / `dea_schedule_authorized` /
@@ -130,7 +131,7 @@ export {
   M12_RECONCILIATION_DISCONTINUE_CONSUMER,
   buildM12ReconciliationDiscontinueConsumer,
 } from "./consumers/reconciliation-discontinue-binding";
-// F-16x (#248) — the §2.8 D17 reconciliation "draft order" handshake (a real `medication_order` draft,
+// F-164 (#248) — the §2.8 D17 reconciliation "draft order" handshake (a real `medication_order` draft,
 // never the historical hardcoded `{}` payload).
 export {
   type DraftOrderAdmissionContext,
@@ -143,7 +144,7 @@ export {
   M12_DRAFT_ORDER_REQUESTED_CONSUMER,
   buildM12DraftOrderRequestedConsumer,
 } from "./consumers/draft-order-requested-binding";
-// F-16x (#248) — the six §2.6 D4 / §2.8 D10 patient-sync + MedHx-fetch consumers, backed by the durable
+// F-164 (#248) — the six §2.6 D4 / §2.8 D10 patient-sync + MedHx-fetch consumers, backed by the durable
 // `dosespot_sync_queue` table (`./jobs/`).
 export {
   type AdmissionIdForElectionPeriodPort,

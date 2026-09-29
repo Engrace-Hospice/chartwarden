@@ -62,6 +62,7 @@ export {
   getOrderProvider,
   getOrderSignatureProvider,
   getOrderTerminologyValidator,
+  orderPatientAndKindForOrg,
   registerOrderSeams,
 } from "./seams/index";
 // M11-T06 — the §4.1 route inventory over an in-memory backend + the §4.7 ABAC predicates M11 owns

@@ -220,12 +220,30 @@ export function buildDrizzleM25IngestService(
           },
         });
       } else {
+        // F-163 (#248) — M26's `handleClaimReversed` needs `patientId` + a cents amount that neither this
+        // payload nor `m23.claim.replaced`/`.voided` ever carried (M26's own standing finding). Resolved
+        // the same way `postAdjustments`' PR-ledger seed already resolves it two functions up in this same
+        // file: the real M23 seam (`claimCandidates`, already in scope), honestly `null` when the claim
+        // cannot be sited to a patient (the deny-stub default, or a genuinely orphaned match) — never
+        // fabricated. `recoupedAmountCents` is a NEW, correctly-unit-named field computed directly from the
+        // same float dollars `recoupedAmount`'s own `money()` string already carries, rather than asking
+        // `handleClaimReversed` to parse a decimal string through its `cents()` helper (which does not
+        // convert dollars → cents at all — a real, separate defect this pass declined to touch, since
+        // every other `cents()` caller already passes it a pre-converted integer).
+        const patientId = await claimCandidates.patientIdForClaim(actor.organizationId, match.claimId as string);
         await outbox.publish(tx, {
           eventName: "m25.remittance.claim_recouped",
           organizationId: actor.organizationId,
           aggregateKind: "remittance_line",
           aggregateId: line.id,
-          payload: { ...eventBase, recoupedAmount: money(claim.totalPayment) },
+          payload: {
+            ...eventBase,
+            patientId,
+            recoupedAmount: money(claim.totalPayment),
+            recoupedAmountCents: Math.round(claim.totalPayment * 100),
+            serviceFrom: claim.serviceFrom ?? null,
+            serviceTo: claim.serviceTo ?? null,
+          },
         });
       }
     }

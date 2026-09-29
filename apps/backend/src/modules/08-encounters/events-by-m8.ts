@@ -292,7 +292,19 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       organizationId: Type.String({ minLength: 1 }),
       recordedAt: Type.String({ minLength: 1 }),
     }),
-    declaredConsumers: ["m17"],
+    // F-164 (#248) — m17 REMOVED: this event has NO production emitter anywhere in `08-encounters/`
+    // (grep-confirmed against all 13 real `emit(...)` call sites), so binding an M17 consumer to it
+    // would wire a line to a house never built. Independently redundant even if it were built: the
+    // identical fact — a just-signed encounter with no `visit_id` — is already delivered to M17 TODAY
+    // via the live `m17.m8-encounter-signed` consumer (`17-scheduling/consumers/index.ts`), whose own
+    // `EncounterSignedConsumed` doc comment names this exact branch "M17 reconciliation, M8 D2" and
+    // whose `planVisitCompletionFromEncounter` already returns `{kind:"skip", reason:"no_visit_link"}`
+    // for it. M17's own later spec text additionally names the real reconciliation mechanism as a SEAM
+    // PULL (`BillableEncounterReader`, "for retroactive reconciliation only") rather than this push —
+    // registered at the M17 composition root but not yet called from any route, a separate, unrelated
+    // gap. No `seamConsumers` replacement: the relationship this event's name gestures at is already
+    // covered by `.signed`, not by the pulled seam.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   // ── HearthNote Layer 2 (§2.6 D5) ──────────────────────────────────────────────────────────────────

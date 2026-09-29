@@ -36,7 +36,7 @@
 //     THROWS the same typed refusal and points the consumer at M13's
 //     `MedicationAdministrationProvider.getComfortKitDeploymentTimeline`, which computes the real timeline.
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
+import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import type { MedicationOrderDto, RefillRequestDto, SigStructuredDto } from "@wardenx/types";
 import { and, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import type { DoseSpotSeamStore } from "./store";
@@ -378,4 +378,26 @@ export function createDrizzleDoseSpotSeamStore(db: DbClient): DoseSpotSeamStore 
       });
     },
   };
+}
+
+/**
+ * F-164 (#248) — the org-explicit `patientId`/`drugName` lookup M14's "since last IDG" cache consumer
+ * needs for `m12.medication_order.discontinued` (neither payload carries them). A relay tick is not a
+ * request, so the published `MedicationOrderProvider.getMedicationOrder` seam (which opens every read
+ * under `withOrgContextFromRequest`) cannot be called from here — the `encounterIdsForVisitsForOrg` (M8)
+ * precedent applied to this module.
+ */
+export async function medicationOrderPatientAndDrugForOrg(
+  db: DbClient,
+  organizationId: string,
+  orderId: string,
+): Promise<{ readonly patientId: string; readonly drugName: string } | null> {
+  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    const [row] = await tx
+      .select({ patientId: MO.patientId, drugName: MO.drugName })
+      .from(MO)
+      .where(and(eq(MO.organizationId, organizationId), eq(MO.id, orderId)))
+      .limit(1);
+    return row ?? null;
+  });
 }

@@ -2358,6 +2358,100 @@ new HTTP routes this round, so `openapi:check`/`client:check` needed no regen), 
 freshly migrated, RLS-enforced disposable Postgres, proving the real 111-binding dispatcher (up from 109)
 accepts both new consumers at boot.
 
+**A fifth round of 5 parallel forks built 4 real bindings, correctly dropped one as redundant, and the
+coordinator's own re-verification caught a genuine boot-crashing bug plus an architecture-boundary
+violation neither the forks' own static checks had surfaced (F-164, #248).** Targets: M17's
+`m8.encounter.orphan_recorded`, M23's `m25.taxonomy.unmapped_code_observed`, M14's 9-event "since last
+IDG" cluster, M26's `m25.remittance.claim_recouped`, and M31's 4 previously-uninvestigated pairs.
+**M17's `m8.encounter.orphan_recorded` is dropped, not built** — confirmed to have no production emitter
+anywhere in `08-encounters/` (grep-checked against all 13 real `emit(...)` call sites) and, independently,
+redundant even if it were built: the identical fact is already delivered to M17's live
+`m17.m8-encounter-signed` consumer, whose own `EncounterSignedConsumed` doc comment names the exact branch
+"M17 reconciliation, M8 D2" and whose `planVisitCompletionFromEncounter` already returns
+`{kind:"skip", reason:"no_visit_link"}` for it — a real subscription pair, once removed, drops cleanly to
+`declaredConsumers: []` with no `seamConsumers` replacement, since the relationship the name gestures at
+is already covered by `.signed`. **M23's `m25.taxonomy.unmapped_code_observed`** — the group's last
+remaining pair — is now bound: a new per-row `unmapped_taxonomy_occurrence` table (migration 0255 — one
+row per delivered occurrence, not a maintained counter, since a 30-day ROLLING window needs individual
+rows to age out, which a counter can never express), idempotent on `(organization_id, source_event_id)`,
+and a new consumer that records the occurrence then dispatches the EXISTING `WorkerAlertPort` → M36
+`AlertEmitter` seam once the org's rolling 30-day count for that CARC code exceeds 50 — no new
+alert-delivery mechanism invented, reusing exactly what M23's own cron alerts already use. **M26's
+`m25.remittance.claim_recouped`** — also the group's last remaining pair — is now bound too: the real
+blocker was three missing facts, not the two the standing finding had named (`patientId` was genuinely
+absent; `priorPaidAmountCents` was never the right field to fix, since `handleClaimReversed`'s `cents()`
+helper is a passthrough rather than a dollars→cents conversion; `service_from`/`service_to`, NOT NULL on
+`cap_beneficiary_accrual_line`, were a third gap found only by tracing the real insert path). Fixed by
+widening the payload at its one real M25 emit site (`patientId` via the already-in-scope M23
+`ClaimMatchCandidateProvider` seam, `recoupedAmountCents` computed directly from the same float dollars the
+existing `recoupedAmount` string already carries, `serviceFrom`/`serviceTo` from the 835's own optional DTM
+dates) and routing it to the SAME `record-reversal-line` action `m23.claim.replaced`/`.voided` already use
+— those two stay a documented, still-open no-op independent of this fix, since neither of THEIR payloads
+carries the fields the handler reads. **M14 built 6 of 9 "since last IDG" events on a shared per-patient
+Valkey cache** (`consumers/since-last-idg-cache.ts`, one JSON object per patient, 30-day TTL, deduped by
+the delivering outbox event's own id): M9's two write straight from the payload; M10's/M11's/M12's three
+needed a cross-module fact neither payload carries, resolved via three NEW org-explicit seam functions
+(`hopeAssessmentPatientIdForOrg`/`orderPatientAndKindForOrg`/`medicationOrderPatientAndDrugForOrg`, the
+`encounterIdsForVisitsForOrg` (M8) precedent extended to three more modules) injected as ports — **the
+build's first draft read M10/M11/M12's schemas directly instead, a real `arch:tables` boundary violation
+the coordinator's own re-verification caught and fixed** (M14's `dependsOn` is `[1, 7, 8, 36]`, no edge to
+9/10/11/12, and each fork had individually mis-attributed the other two's violations to "pre-existing,
+unrelated concurrent work" rather than recognizing its own). M11's/M12's two `.discontinued` events are a
+deliberate departure from the seam-vs-push rule this arc otherwise applies: their read-side projection
+types doc-comment themselves as seam-pull, the opposite framing from M9/M10 on the same two files — but
+the seam AS IMPLEMENTED anchors its filter on a timestamp fixed at order creation/activation and never
+revisited, so an order discontinued after the packet-build cursor is invisible to it regardless of how the
+read side joins it; the push cache is the only place that fact can come from until the seam's own filter is
+widened (a separate M11/M12-side gap, reported not fixed). **M6's `admission.activated`/`.discharged` and
+the M15 trio were investigated fresh and left exactly as-is, genuinely ambiguous rather than confidently
+resolved either way** — M14's own D9 rationale cites both a seam-pull mechanism (M5's `CaseloadProvider`)
+AND its own §4.5 table's push-cache description as consistent, when the two describe different facts (an
+inclusion cache can express a 7-day post-discharge grace window a plain "active caseload right now" seam
+cannot); M15's Lock-status one-liner about a `DisciplinePlanReader` seam consumption is a narrower claim
+(the packet's cross-discipline VIEW) than whether the same builder separately needs the three push events
+for a "since last IDG" delta, which M15's own decisive §2.4/§4.5 event table names with real payloads and
+explicit M14 consumers — a dedicated future pass is needed to read the packet builder's actual read-side
+requirements, not a snap drop on either spec fragment alone. **M31 built 2 of its last 4 unchecked pairs,
+re-typed `no-consumer-surface`→`handlers-unbound` now that a real directory exists (the F-163/M35
+precedent)**: `m16.bereavement.plan_closed_completed` (plan-level grant revocation via the T03
+`planBereavedWindowClose` pure core, unit-untested and uncalled since M31-T03) and the BROAD
+`m39.consent.revoked` cascade — a genuinely different, cleaner mechanism than M2's own already-built
+consumer for this identical event name, since M31's own `portal_access_grant.source_consent_record_id`
+column is a direct, unambiguous match key the session table M2 revokes against does not have (M2's sweep
+can only ever cover the `portal_access` scope, because two concurrently-valid `family_caregiver_access`
+grants for different caregivers share nothing else to disambiguate on). `m16.bereavement.plan_opened` stays
+blocked on a sharper wall than previously named — the flip's INSERT half needs
+`portal_access_grant.granted_by_membership_id`, NOT NULL with no nullable escape (unlike
+`revoked_by_membership_id` on the same table), the F-150 "no system-actor-membership convention" shape
+exactly, compounded by the real M39 consent this insert depends on almost never being `active` yet at the
+moment of death. `m6.admission.discharged` (a different M31 use of the event name from the one already
+blocked in the m14 group) stays blocked on two reasons per branch: the death branch is redundant with the
+already-bound `m6.bereavement.eligible`→`plan_opened` chain, and the non-death branch needs a BullMQ/cron
+tier that exists nowhere in `31-portal/` for a mechanism the spec's own §4.8 table says should be a daily
+cron, not an event-triggered job. **A standing finding surfaced investigating all four, flagged rather than
+fixed**: no production code path anywhere creates a `portal_account` or `portal_access_grant` row — both
+admin invitation routes are complete stubs that return a canned success with no database write — so
+today's builds are correct but inert end-to-end until that separate, larger gap (materializing
+accounts/grants from M2's magic-link accept flow) is built, the same shape already on record for M2/M16
+(F-097/F-105). **Independently verifying every fork's work found one more defect none of their own
+static checks caught**: the M23 taxonomy consumer's `getSeam("AlertEmitter")` call sat at module-TOP-LEVEL
+scope in the composition root, ahead of where the seam actually registers during boot — `bun run
+typecheck`/`build`/the full non-live suite all stayed green (nothing exercises the real boot sequence), and
+only a real `check:boot:platform` run crashed with `SeamError: seam 'AlertEmitter' requested before
+registration`. Fixed by moving the resolution inline into the `dispatch` closure (lazy, first-use-only —
+the RULE 4 fail-closed-thunk shape every other cross-module port in this file already follows), which is
+also where the fix was verified: a second `check:boot:platform` run passed clean. Net on #248: **122 → 111**
+pairs (11 bound — 6 M14, 2 M23/M26's last pairs, 2 M31 — 1 dropped as redundant, 0 added; 21 → 19 modules,
+M23 and M26 both fully resolved). Verified centrally: `bun run build`/`typecheck` clean, `arch:fitness`
+38/38 (`arch:outbox-bindings` confirms 111 pairs, down from 122, and 120 live bindings now covering 125
+catalogued events, up from 111/120), a clean `check:boot:platform` run against a freshly migrated,
+RLS-enforced disposable Postgres (the real proof the AlertEmitter-timing fix holds), full non-live suite
+654 files / 9603 tests green (one pinned-array assertion updated for the M17 drop), and all four new/touched
+live suites run individually against the same disposable Postgres+Valkey (`m14:since-last-idg-cache` 13/13,
+`m23:taxonomy-occurrence` 8/8, `m26:cap-consumer-store` 13/13, `m31:bereavement-consent-consumers` 9/9),
+alongside three sibling regression suites (`m23:revalidate-triggers` 6/6, `m23:late-check-resolved` 8/8,
+`m6:loc-change-signed` 7/7). Leaving #248 open — 111 pairs across 19 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

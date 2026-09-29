@@ -143,9 +143,21 @@ export const M25_OUTBOX_EVENTS: ModuleEventContribution = [
       "A CLP02=22 reversal posted (42 CFR §424.526); reverses the M23 claim PAID + the M26 cap accrual.",
     payloadSchema: Type.Object({
       claimId: id,
+      // F-163 (#248) — widened for M26's `handleClaimReversed`, which reads `patientId` and a cents
+      // amount off this payload and previously found neither. `patientId` resolves through the real M23
+      // `ClaimMatchCandidateProvider` seam at emit time (the same seam `postAdjustments`' PR-ledger seed
+      // already reads two functions up in `service-drizzle.ts`); honestly `null` when unresolvable
+      // (deny-stub default, or a genuinely orphaned match) rather than fabricated. `serviceFrom`/`serviceTo`
+      // are the 835's own DTM claim-service-period dates (`ParsedClaim835`, optional on the wire) — also
+      // honestly `null` when the payer's 835 omits them, which `cap_beneficiary_accrual_line`'s NOT NULL
+      // service-date columns make a real (if rare) refusal case for M26's consumer, not a crash.
+      patientId: Type.Union([id, Type.Null()]),
       remittanceLineId: id,
       remittanceAdviceId: id,
       recoupedAmount: money,
+      recoupedAmountCents: Type.Integer(),
+      serviceFrom: Type.Union([str, Type.Null()]),
+      serviceTo: Type.Union([str, Type.Null()]),
       postedAt: isoInstant,
     }),
     declaredConsumers: ["m23", "m26"],

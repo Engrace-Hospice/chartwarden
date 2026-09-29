@@ -13,7 +13,7 @@
 // Projection: structured columns only. No HOPE-section `data` jsonb and no
 // `clinical_context_snapshot` ever crosses (store.ts header rule).
 import { type DbClient, schema } from "@wardenx/db";
-import { withOrgContextFromRequest } from "@wardenx/tenancy";
+import { withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import type { HopeJ2051Event, HopeSubmissionStatusView, HopeTimepointStatus } from "@wardenx/types";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { HopeSeamStore } from "./store";
@@ -193,4 +193,26 @@ export function createDrizzleHopeSeamStore(db: DbClient): HopeSeamStore {
       });
     },
   };
+}
+
+/**
+ * F-164 (#248) — the org-explicit `patientId` lookup M14's "since last IDG" cache consumer needs for
+ * `m10.hope.j2051_trigger_fired`/`.sfv_created` (neither payload carries one). A relay tick is not a
+ * request, so the published per-patient `HopeJ2051Provider`/`HopeTimepointProvider` seams (which open
+ * every read under `withOrgContextFromRequest`, and are patientId-IN rather than patientId-OUT regardless)
+ * cannot answer this — the `encounterIdsForVisitsForOrg` (M8) precedent applied to this module.
+ */
+export async function hopeAssessmentPatientIdForOrg(
+  db: DbClient,
+  organizationId: string,
+  hopeAssessmentId: string,
+): Promise<string | null> {
+  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    const [row] = await tx
+      .select({ patientId: ASSESS.patientId })
+      .from(ASSESS)
+      .where(and(eq(ASSESS.organizationId, organizationId), eq(ASSESS.id, hopeAssessmentId)))
+      .limit(1);
+    return row?.patientId ?? null;
+  });
 }

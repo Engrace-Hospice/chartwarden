@@ -1,5 +1,6 @@
-// @wardenx/db — M23 Billing-Medicare schema barrel (§3.3, 17 owned tables). Re-exports the shared
-// enums/types plus all 17 table modules; the central ../index.ts re-exports this barrel.
+// @wardenx/db — M23 Billing-Medicare schema barrel (§3.3, 17 spec-owned tables + `unmapped_taxonomy_
+// occurrence`, the #248 D13 addition — see that file's own header). Re-exports the shared
+// enums/types plus all owned table modules; the central ../index.ts re-exports this barrel.
 //
 // Tenancy (ADR-0010, canonical): EVERY M23 table carries organization_id NOT NULL, so the canonical
 // app.org_id RLS predicate applies directly — EXCEPT `wage_index_factor`, which is PLATFORM-SHARED
@@ -37,3 +38,4 @@ export * from "./sequestration-policy";
 export * from "./wage-index-factor";
 export * from "./mac-submitter-credential";
 export * from "./eligibility-check";
+export * from "./unmapped-taxonomy-occurrence";

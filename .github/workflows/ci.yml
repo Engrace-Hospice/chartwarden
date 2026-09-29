@@ -227,7 +227,7 @@ jobs:
           - { name: "M11 downstream signed fan-out", scripts: "test:m11:downstream-signed:live" }
           # F-152 (#248) — the §2.7 D7 order-suggestion banner (Valkey) + the D8 one-shot auto-complete.
           - { name: "M11 M9/M21 outbox consumers", scripts: "test:m11:m9-m21-consumers:live" }
-          # F-16x (#248) — M11's hourly orders.verbal_timer fan-out + the M12 medication-order verbal
+          # F-164 (#248) — M11's hourly orders.verbal_timer fan-out + the M12 medication-order verbal
           # target-kind discrimination it drives.
           - { name: "M11 verbal-order expiry", scripts: "test:m11:verbal-order-expiry:live" }
           - { name: "M11/M12 verbal expiry handshake", scripts: "test:m11:m12-verbal-expiry:live" }
@@ -237,7 +237,7 @@ jobs:
               name: "M12 reconciliation discontinue",
               scripts: "test:m12:reconciliation-discontinue:live",
             }
-          # F-16x (#248) — the §2.6 D4 / §2.8 D10 patient-sync + MedHx-fetch job-queue tier
+          # F-164 (#248) — the §2.6 D4 / §2.8 D10 patient-sync + MedHx-fetch job-queue tier
           # (dosespot_sync_queue) draining the six m5.patient.*/m6.{admission.activated,cti.signed}
           # triggers.
           - { name: "M12 sync triggers", scripts: "test:m12:sync-triggers:live" }
@@ -254,7 +254,7 @@ jobs:
               name: "M13 admission-discharged cascade",
               scripts: "test:m13:admission-discharged-cascade:live",
             }
-          # F-16x (#248) — the §2.8 D17 reconciliation draft-order-requested handshake (a real drug
+          # F-164 (#248) — the §2.8 D17 reconciliation draft-order-requested handshake (a real drug
           # content payload, minting a real draft medication_order).
           - {
               name: "M13/M12 draft-order-requested",
@@ -503,7 +503,9 @@ jobs:
           - {
               name: "M31 Portal & Telehealth",
               scripts:
-                "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live",
+                # F-164 (#248) adds test:m31:bereavement-consent-consumers:live — the plan-closure
+                # grant revocation + the broad m39.consent.revoked grant cascade.
+                "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live test:m31:bereavement-consent-consumers:live",
             }
           - {
               name: "M36 Messaging alerts",
@@ -544,6 +546,8 @@ jobs:
             }
           - { name: "M15 plan bootstrap", scripts: "test:m15:plan-bootstrap:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
+          # F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers (M9/M10/M11/M12).
+          - { name: "M14 since-last-IDG cache", scripts: "test:m14:since-last-idg-cache:live" }
           - { name: "M16 bereavement intake", scripts: "test:m16:bereavement-intake:live" }
           - { name: "M16 consent-revoked cascade", scripts: "test:m16:consent-revoked:live" }
           # F-153 (#248) — the §4.5 death-discharge secondary verifier (redundant safety net).
@@ -559,6 +563,10 @@ jobs:
           # F-162 (#248) — the seventh revalidate trigger, m18.evv.late_check_resolved, over a new M8
           # reverse visitId→encounterId seam.
           - { name: "M23 late-check resolved", scripts: "test:m23:late-check-resolved:live" }
+          # #248 — M23's last remaining `handlers-unbound` pair, m25.taxonomy.unmapped_code_observed
+          # (D13): a new `unmapped_taxonomy_occurrence` occurrence tracker + a 30-day/50-occurrence
+          # threshold alert through the existing WorkerAlertPort — not the revalidate.consumer queue.
+          - { name: "M23 taxonomy occurrence", scripts: "test:m23:taxonomy-occurrence:live" }
           # F-162 (#248) — M35's first outbox consumer: the §4.12 org-lifecycle-handler over M2's
           # organization activate/suspend/close triggers.
           - { name: "M35 org-lifecycle consumer", scripts: "test:m35:org-lifecycle-consumer:live" }

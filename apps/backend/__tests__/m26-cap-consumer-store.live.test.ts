@@ -23,6 +23,7 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { firstElectionEffectiveDateInRangeForOrg } from "../src/modules/06-admission/seams/cap-election-context";
 import { createDrizzleCapConsumerStore } from "../src/modules/26-cap/consumers/drizzle-store";
+import { handleClaimReversed } from "../src/modules/26-cap/consumers/handlers";
 import { mbiNormalizedForPatient } from "../src/modules/05-patient/seams/mbi-reader";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -332,5 +333,74 @@ describe.skipIf(!DB_URL)("F-131 — M26 CapConsumerStore — LIVE Postgres", () 
     expect(result).toEqual({ updated: true });
     const row = await accrualRow(ORG_A, PATIENT_A);
     expect(Number(row.methodology_weight)).toBeCloseTo(0.6543, 6);
+  });
+
+  // F-163 (#248) — M26's last originally-deferred pair: `m25.remittance.claim_recouped` now carries
+  // `patientId`/`recoupedAmountCents`/`serviceFrom`/`serviceTo`, so `handleClaimReversed` (the SAME
+  // handler `m23.claim.replaced`/`.voided` already bind to) can record a real negative reversal line
+  // through the live Drizzle store end to end, not merely at the store layer.
+  describe("handleClaimReversed (F-163) — the real handler, not just the store", () => {
+    it("a claim_recouped-shaped payload posts a negative reversal line, reducing paid_cents", async () => {
+      const before = await accrualRow(ORG_A, PATIENT_A);
+      const midYear = `${window.startsOn.slice(0, 4)}-12-10`;
+      const result = await handleClaimReversed(store, {
+        organizationId: ORG_A,
+        patientId: PATIENT_A,
+        claimId: "eeeeeeee-0000-4000-8000-000000000001",
+        recoupedAmountCents: 300_000,
+        serviceFrom: `${window.startsOn.slice(0, 4)}-12-01`,
+        serviceTo: `${window.startsOn.slice(0, 4)}-12-10`,
+        postedAt: `${midYear}T00:00:00.000Z`,
+      });
+      expect(result).toEqual({ recorded: true });
+      const after = await accrualRow(ORG_A, PATIENT_A);
+      expect(Number(after.paid_cents)).toBe(Number(before.paid_cents) - 300_000);
+      expect(await accrualLineCount(ORG_A, PATIENT_A)).toBeGreaterThan(0);
+    });
+
+    it("a redelivery of the SAME claimId is an idempotent no-op — no double reversal", async () => {
+      const before = await accrualRow(ORG_A, PATIENT_A);
+      const midYear = `${window.startsOn.slice(0, 4)}-12-10`;
+      const result = await handleClaimReversed(store, {
+        organizationId: ORG_A,
+        patientId: PATIENT_A,
+        claimId: "eeeeeeee-0000-4000-8000-000000000001", // same claimId as the prior test
+        recoupedAmountCents: 300_000,
+        serviceFrom: `${window.startsOn.slice(0, 4)}-12-01`,
+        serviceTo: `${window.startsOn.slice(0, 4)}-12-10`,
+        postedAt: `${midYear}T00:00:00.000Z`,
+      });
+      expect(result).toEqual({ recorded: false });
+      const after = await accrualRow(ORG_A, PATIENT_A);
+      expect(Number(after.paid_cents)).toBe(Number(before.paid_cents)); // unchanged
+    });
+
+    it("missing serviceFrom/serviceTo refuses rather than hitting the NOT NULL date columns", async () => {
+      const before = await accrualRow(ORG_A, PATIENT_A);
+      const result = await handleClaimReversed(store, {
+        organizationId: ORG_A,
+        patientId: PATIENT_A,
+        claimId: "eeeeeeee-0000-4000-8000-000000000002",
+        recoupedAmountCents: 100_000,
+        postedAt: `${window.startsOn.slice(0, 4)}-12-11T00:00:00.000Z`,
+        // serviceFrom/serviceTo intentionally omitted — the 835's DTM claim-service-period is optional
+      });
+      expect(result).toEqual({ recorded: false });
+      const after = await accrualRow(ORG_A, PATIENT_A);
+      expect(Number(after.paid_cents)).toBe(Number(before.paid_cents)); // untouched
+    });
+
+    it("an m23.claim.replaced/.voided-shaped payload (no patientId, no amount) still no-ops — F-131 confirmed still live", async () => {
+      const before = await accrualRow(ORG_A, PATIENT_A);
+      const result = await handleClaimReversed(store, {
+        organizationId: ORG_A,
+        originalClaimId: "eeeeeeee-0000-4000-8000-000000000003",
+        replacementClaimId: "eeeeeeee-0000-4000-8000-000000000004",
+        reason: "correction",
+      });
+      expect(result).toEqual({ recorded: false });
+      const after = await accrualRow(ORG_A, PATIENT_A);
+      expect(Number(after.paid_cents)).toBe(Number(before.paid_cents)); // untouched
+    });
   });
 });

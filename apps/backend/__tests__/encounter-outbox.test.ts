@@ -85,9 +85,9 @@ describe("M8 outbox event contract (§4.4)", () => {
     expect(cosigned?.declaredConsumers).not.toContain("m24");
   });
 
-  it("`m8.encounter.orphan_recorded` routes to M17 reconciliation (D2)", () => {
+  it("`m8.encounter.orphan_recorded` is record-only (F-164, #248) — no production emitter, and the identical fact already reaches M17 via the live `.signed` no_visit_link branch", () => {
     const orphan = M8_OUTBOX_EVENTS.find((e) => e.eventName === "m8.encounter.orphan_recorded");
-    expect(orphan?.declaredConsumers).toEqual(["m17"]);
+    expect(orphan?.declaredConsumers).toEqual([]);
   });
 
   it("validates the locked `m8.encounter.signed` payload and rejects one missing a required key", () => {

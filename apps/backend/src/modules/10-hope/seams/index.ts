@@ -29,7 +29,7 @@ import {
   createHopeTimepointProvider,
 } from "./providers";
 import { type HopeSeamStore, createInMemoryHopeSeamStore } from "./store";
-export { createDrizzleHopeSeamStore } from "./drizzle-store";
+export { createDrizzleHopeSeamStore, hopeAssessmentPatientIdForOrg } from "./drizzle-store";
 
 export {
   type HopeSeamSeed,
