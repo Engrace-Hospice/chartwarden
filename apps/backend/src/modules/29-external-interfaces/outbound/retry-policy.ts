@@ -29,6 +29,12 @@ export interface RetryOutboundRow {
   readonly sourceAggregateId: string;
   /** Dispatch attempts already made and failed BEFORE this failure (0 on the first dispatch). */
   readonly retryCount: number;
+  /**
+   * F-191 — `hl7_message_outbound.attempt_id`: the outbound attempt the row belongs to. Carried onto the terminal
+   * `transmission_failed` event so M11 applies it only to the order's current attempt. Absent/null = a row from
+   * before F-191 (its event applies as it always did).
+   */
+  readonly attemptId?: string | null;
 }
 
 export interface RetryDecisionInput {
@@ -88,6 +94,7 @@ export function decidePermanentFailure(input: RetryDecisionInput): Extract<Retry
         reason: "dlq_exhausted",
         detail: input.lastError || null,
         attemptCount: attemptNumber,
+        ...(outbound.attemptId ? { attemptId: outbound.attemptId } : {}),
       },
     },
     alert: {
@@ -136,6 +143,7 @@ export function decideRetry(input: RetryDecisionInput): RetryDecision {
           reason: "dlq_exhausted",
           detail: input.lastError || null,
           attemptCount: attemptNumber,
+          ...(outbound.attemptId ? { attemptId: outbound.attemptId } : {}),
         },
       },
       alert: {

@@ -247,6 +247,14 @@ function isOrmRequestedPayload(payload: unknown): payload is OrmRequestedPayload
   );
 }
 
+/** F-191 — `hl7_message_outbound.attempt_id` is a `uuid`; every attempt id is a `randomUUID()`, but the request field is
+ *  only typed `string`, so anything else is stored as NULL (its events then apply as pre-F-191 ones) instead of
+ *  throwing at the INSERT and stranding the claim. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+function asUuidOrNull(value: string | undefined): string | null {
+  return value !== undefined && UUID_RE.test(value) ? value : null;
+}
+
 // ── The shared transmit + outcome-handling core, used by BOTH the fresh-dispatch path and the retry sweep ──
 
 interface TransmitContext {
@@ -257,6 +265,8 @@ interface TransmitContext {
   readonly messageControlId: string;
   /** Attempts already made and failed BEFORE this attempt (0 on the very first dispatch). */
   readonly retryCount: number;
+  /** F-191 — the row's `attempt_id` (the request's `attemptId`), carried onto every terminal event built from it. */
+  readonly attemptId: string | null;
   readonly host: string;
   readonly port: number;
   readonly protocol: "mllp_tls" | "mllp_plain";
@@ -325,6 +335,7 @@ async function applyPermanentFailure(
       organizationId: ctx.organizationId,
       sourceAggregateId: ctx.sourceAggregateId,
       retryCount: ctx.retryCount,
+      attemptId: ctx.attemptId,
     },
     now,
     lastError: label,
@@ -364,6 +375,7 @@ async function applyRetryDecision(
       organizationId: ctx.organizationId,
       sourceAggregateId: ctx.sourceAggregateId,
       retryCount: ctx.retryCount,
+      attemptId: ctx.attemptId,
     },
     now,
     lastError,
@@ -455,6 +467,7 @@ async function handleAckOutcome(
     sourceAggregateId: ctx.sourceAggregateId,
     // `correlateAck`'s own doc comment: "1-based once dispatched" — the CURRENT attempt, including this one.
     retryCount: ctx.retryCount + 1,
+    attemptId: ctx.attemptId,
   };
   const result = correlateAck({ ack: parsed, outbound: correlated, ackReceivedAt: now, ackPayloadSha256 });
 
@@ -810,6 +823,9 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
         // F-182 — `next_retry_at` on an `in_flight` row is its LEASE EXPIRY: the reclaim sweep only takes a
         // row back once this has passed, so a live worker mid-send is never mistaken for a crashed one.
         nextRetryAt: leaseExpiresAt,
+        // F-191 — the request's attempt, so every terminal event built from this row names it (a malformed id is
+        // stored as NULL — the event then applies as a pre-F-191 one — rather than failing the claim).
+        attemptId: asUuidOrNull(payload.attemptId),
       })
       .returning();
     const row = inserted!;
@@ -821,6 +837,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
       sourceAggregateId: row.sourceAggregateId,
       messageControlId: row.messageControlId,
       retryCount: row.retryCount,
+      attemptId: row.attemptId ?? null,
       host: feed.host,
       port: feed.port,
       protocol: feed.protocol,
@@ -918,6 +935,7 @@ async function reclaimStaleInFlight(deps: ResolvedDeps, organizationId: string, 
           organizationId,
           sourceAggregateId: row.sourceAggregateId,
           retryCount: row.retryCount,
+          attemptId: row.attemptId ?? null,
         },
         now,
         receiverDedupesControlId: dedupesByFeed.get(row.feedId) === true,
@@ -1025,6 +1043,7 @@ async function claimDueRetries(
         sourceAggregateId: row.sourceAggregateId,
         messageControlId: row.messageControlId,
         retryCount: row.retryCount,
+        attemptId: row.attemptId ?? null,
         host: feedResult.feed.host,
         port: feedResult.feed.port,
         protocol: feedResult.feed.protocol,

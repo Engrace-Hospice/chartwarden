@@ -64,6 +64,8 @@ interface TransmittedFacts {
   readonly orderId: string;
   readonly outboundMessageId: string;
   readonly ackReceivedAt: string;
+  /** F-191 — the attempt of the acked row; `null` = a row queued before F-191 (applies as it always did). */
+  readonly attemptId: string | null;
 }
 
 interface TransmissionFailedFacts {
@@ -72,6 +74,8 @@ interface TransmissionFailedFacts {
   readonly outboundMessageId: string;
   readonly reason: "application_reject" | "dlq_exhausted";
   readonly attemptCount: number;
+  /** F-191 — the attempt of the failed row; `null` = a row queued before F-191 (applies as it always did). */
+  readonly attemptId: string | null;
 }
 
 /**
@@ -101,6 +105,7 @@ function factsOf(
   const p = (payload ?? {}) as Record<string, unknown>;
   const orderId = p.orderId;
   const outboundMessageId = p.outboundMessageId;
+  const rowAttemptId = typeof p.attemptId === "string" && p.attemptId.length > 0 ? p.attemptId : null;
   if (typeof orderId !== "string" || orderId.length === 0) {
     throw new Error(`${M11_LAB_TRANSMISSION_APPLIER_CONSUMER.consumerName}: payload has no orderId`);
   }
@@ -127,7 +132,7 @@ function factsOf(
         `${M11_LAB_TRANSMISSION_APPLIER_CONSUMER.consumerName}: transmitted payload has no ackReceivedAt`,
       );
     }
-    return { kind: "transmitted", orderId, outboundMessageId, ackReceivedAt };
+    return { kind: "transmitted", orderId, outboundMessageId, ackReceivedAt, attemptId: rowAttemptId };
   }
   const reason = p.reason;
   if (reason !== "application_reject" && reason !== "dlq_exhausted") {
@@ -141,7 +146,7 @@ function factsOf(
       `${M11_LAB_TRANSMISSION_APPLIER_CONSUMER.consumerName}: transmission_failed payload has no attemptCount`,
     );
   }
-  return { kind: "transmission_failed", orderId, outboundMessageId, reason, attemptCount };
+  return { kind: "transmission_failed", orderId, outboundMessageId, reason, attemptCount, attemptId: rowAttemptId };
 }
 
 export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionApplierDeps) {
@@ -180,15 +185,13 @@ export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionAppl
         if (fromStatus === "transmitted" || fromStatus === "failed") return;
         // F-187 — a worker refusal only ever applies to an order still awaiting its first transmission.
         if (facts.kind === "dispatch_refused" && fromStatus !== "pending") return;
-        // F-188 — and only to the attempt it refused: a refusal from a PREVIOUS attempt (redelivered after the
-        // operator resent / recovered, which minted a new attempt and set the order `pending` again) is stale.
-        if (
-          facts.kind === "dispatch_refused" &&
-          facts.attemptId !== null &&
-          order.transmissionAttemptId !== facts.attemptId
-        ) {
-          return;
-        }
+        // F-188 / F-191 — and only to the attempt the event concerns: an event from a PREVIOUS attempt (redelivered, or
+        // simply late, after the operator resent / recovered — which minted a new attempt and set the order `pending`
+        // again) is stale. F-188 bound `dispatch_refused`; F-191 binds the two events that come off an outbound ROW too
+        // (`transmitted` / `transmission_failed` — the row now stores the attempt), because the terminal-state check
+        // above stops protecting the order the instant a recovery sets it `pending` again. An event with NO attempt id
+        // (a row queued before the migration, or one already in the outbox) applies exactly as it always did.
+        if (facts.attemptId !== null && order.transmissionAttemptId !== facts.attemptId) return;
 
         const toStatus = facts.kind === "transmitted" ? "transmitted" : "failed";
         // F-188 — an attested re-dispatch the worker could not honour (a row owns the order) is NOT a

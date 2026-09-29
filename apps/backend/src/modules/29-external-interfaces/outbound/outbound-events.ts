@@ -15,6 +15,12 @@ export interface LabOrderTransmittedPayload {
   /** MSH-10 of the transmitted ORM (= MSA-2 of the ack that correlated it). */
   readonly messageControlId: string;
   readonly ackReceivedAt: string;
+  /**
+   * F-191 — the outbound attempt the acked row belongs to (`hl7_message_outbound.attempt_id`, copied from the request's
+   * `attemptId`). M11's applier applies the event only to the order's CURRENT attempt. Absent for a row queued before
+   * F-191 or for a request that carried none; such an event applies as it always did.
+   */
+  readonly attemptId?: string;
 }
 
 /** Why an outbound ORM failed — an `AR` structural reject vs. transport-exhaustion DLQ vs. a pre-persist BAA
@@ -34,6 +40,12 @@ export interface LabOrderTransmissionFailedPayload {
   readonly detail: string | null;
   /** The number of dispatch attempts made before the terminal state (1 for `AR`, 5 for a DLQ exhaustion). */
   readonly attemptCount: number;
+  /**
+   * F-191 — the outbound attempt the failed row belongs to (see {@link LabOrderTransmittedPayload.attemptId}). A late or
+   * redelivered failure from an EARLIER attempt names a stale id and M11 ignores it — before this, the terminal-state
+   * check was the only guard, and it stops protecting an order the moment a recovery sets it `pending` again.
+   */
+  readonly attemptId?: string;
 }
 
 /**
