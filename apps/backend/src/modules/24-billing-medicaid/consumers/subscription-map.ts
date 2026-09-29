@@ -10,12 +10,16 @@
 // bound regardless of this map's own contents. Also added `m5.patient.address_changed` (its own
 // `events-by-m5.ts` description already says "triggers... Medicaid state recheck (M24)" — this map had
 // simply never listed it under the same `trigger-revalidate` action its sibling `m5.patient.updated`
-// carries). The `trigger-revalidate` and `resolve-medicare-primary` actions are now live —
-// `outbox-consumers/m24-revalidate-triggers.ts` / `m24-medicare-primary-ack.ts` — bound directly as
-// `OutboxConsumerBinding`s at the composition root rather than through this map + `handlers.ts` +
-// `consumers/index.ts`'s `registerM24Consumers`, which remains dead scaffolding with no caller (the
-// F-153 M23 `registerM23Consumers` precedent). `mark-claim-paid`/`mark-claim-denied` stay unbound — see
-// the m24 `handlers-unbound` group in `scripts/outbox-deferred-consumers.ts` for why.
+// carries). The `trigger-revalidate`, `resolve-medicare-primary`, `mark-claim-paid` and
+// `mark-claim-denied` actions are now ALL live — `outbox-consumers/m24-revalidate-triggers.ts` /
+// `m24-medicare-primary-ack.ts` / `m25-remittance.ts` — bound directly as `OutboxConsumerBinding`s at
+// the composition root rather than through this map + `handlers.ts` + `consumers/index.ts`'s
+// `registerM24Consumers`, which remains dead scaffolding with no caller (the F-153 M23
+// `registerM23Consumers` precedent). `mark-claim-paid`/`mark-claim-denied` (F-172, #248 m24 group)
+// needed a payer-routed auto-match adapter on the M25 side first — `postAdvice` used to match every 835
+// against M23's Medicare `claim` table regardless of the advice's own `payerKind`, so a Medicaid
+// remittance line could never resolve a `medicaid_claim` id for this consumer to act on. The m24
+// `handlers-unbound` group in `scripts/outbox-deferred-consumers.ts` is now fully resolved.
 export const M24_SUBSCRIPTION_MAP: Readonly<Record<string, string>> = {
   "m25.remittance.claim_paid": "mark-claim-paid",
   "m25.remittance.claim_denied": "mark-claim-denied",

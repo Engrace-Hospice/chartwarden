@@ -47,6 +47,9 @@ const GOOD: EnvLike = {
   INTERNAL_SERVICE_TOKEN: "w".repeat(32),
   // #105 — the platform KEK wrapping every tenant DEK: `<kekId>:<base64 32 bytes>` (ADR-0045).
   M34_TENANT_KEK: `kek-1:${Buffer.alloc(32, 5).toString("base64")}`,
+  // F-172 (#248) — the platform KEK wrapping the M35 `patient_pseudonym_key` singleton (a SEPARATE
+  // secret from M34_TENANT_KEK; same `<kekId>:<base64 32 bytes>` shape).
+  M35_PSEUDONYM_KEY_KEK: `kek-2:${Buffer.alloc(32, 6).toString("base64")}`,
 };
 
 describe("collectEnvProblems", () => {

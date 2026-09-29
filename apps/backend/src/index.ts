@@ -111,6 +111,10 @@ import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
 import { buildSoleTenantUserResolver } from "./bootstrap/sole-tenant-user-resolver";
 import { createPlatformKekAdapter, loadPlatformKekRing } from "./bootstrap/tenant-kek";
+// F-172 (#248) — the M35 `patient_pseudonym_key` platform-singleton KEK ring (distinct secret from
+// M34_TENANT_KEK — see `packages/subscription-billing/src/pseudonym/key-envelope.ts`'s own header for why
+// the two ciphers must never share a KEK even though both wrap 32 bytes under AES-256-GCM).
+import { loadPseudonymKekRing, type PseudonymKeyProvider } from "@wardenx/subscription-billing";
 
 /** The @wardenx/tenancy platform-job id M36's D9 sole-tenant membership read runs under. */
 const M36_SOLE_TENANT_JOB_ID = "m36-sole-tenant-resolver";
@@ -504,6 +508,7 @@ import {
   buildDrizzleM21WriteService,
   buildDrizzleSuppliesAbacResolver,
   buildDrizzleSuppliesSeamStore,
+  buildM21ComfortKitControlledSubstanceReemitConsumer,
   buildM21ComfortKitDeploymentAckConsumer,
   buildM21ComfortKitReplenishmentIntakeConsumer,
   buildM21ComfortKitReturnRequiredConsumer,
@@ -583,24 +588,32 @@ import {
 // are deferred follow-ups (the M26 posture — the adapter wire I/O lands later).
 import {
   M24_OUTBOX_EVENTS,
+  M24_PLATFORM_JOB_ID,
   M24_SUBMISSION_REQUEST_EVENTS,
   buildCredentialCipherPort,
+  buildDrizzleActivePeStatesLister,
   buildDrizzleCredentialResolver,
   buildDrizzleM24ReadService,
   buildDrizzleM24WriteService,
+  buildDrizzleStateChannelCredentialResolver,
   buildM24MedicarePrimaryAckConsumer,
+  buildM24RemittanceConsumer,
   buildM24RevalidateEnqueuePort,
   buildM24RevalidateTriggerConsumers,
   buildM24SubmissionQueuePort,
   buildM24SubmissionRequestConsumer,
   buildM24SubmissionWorkerDeps,
+  buildStateChannelHealthProbe,
   createDrizzleMedicaidRedactStore,
   mountM24Routes,
   registerM24AbacPredicates,
   registerM24LaunchWorkers,
   registerM24PublishedSeams,
   registerM24RevalidateWorker,
+  registerM24StateChannelHealthWorker,
   registerMedicaidErasers,
+  scheduleM24StateChannelHealthJob,
+  wireM24Tenancy,
 } from "./modules/24-billing-medicaid/index";
 // M25 (Remittance & Denials) boot surface — the §4.5 outbox catalog, the §4.7 ABAC resolvers
 // (`claim_assigned_to_actor`, `appeal_within_deadline`), and the §4.1 route mount over the Drizzle
@@ -616,6 +629,7 @@ import {
   buildDrizzleM25ReadService,
   buildDrizzleM25WriteService,
   buildM23BackedClaimMatchCandidateProvider,
+  buildM24BackedClaimMatchCandidateProvider,
   buildM25EdiReceivedConsumer,
   buildM25WorkerDeps,
   createDrizzleRemittanceEraseStore,
@@ -850,6 +864,9 @@ import {
   M35_OUTBOX_EVENTS,
   buildDrizzleM35RouteService,
   buildM35OrgLifecycleConsumer,
+  buildM35PatientActivePeriodConsumer,
+  buildM35SessionCreatedConsumer,
+  createDrizzlePseudonymKeyProvider,
   mountM35Routes,
   registerM35AbacPredicates,
 } from "./modules/35-subscription/index";
@@ -874,6 +891,7 @@ import {
   M37_PLATFORM_JOB_ID,
   buildDrizzleIpuRouteService,
   buildM37AdmissionDischargedConsumer,
+  buildM37DeathRecordedConsumer,
   buildM37WorkerDeps,
   getIpuAdmissionStatusReader,
   getIpuOrderReader,
@@ -1562,6 +1580,7 @@ export function wireModuleSeams(
   // wireM33Tenancy / wireM34Tenancy precedent.
   wireM30Tenancy();
   wireM25Tenancy(); // M25 — allowlist the cron job id so the denial-aging/appeal-deadline fan-outs may enter withPlatformContext
+  wireM24Tenancy(); // F-172 (#248, m1 group) — allowlist the cron job id so state-channel-health may enter withPlatformContext
   wireM27Tenancy(); // M27 (WX-PR-013) — allowlist the cron job id so filing-deadline-scan may enter withPlatformContext
   // TASK-040D — allowlist M7/M9/M10's cron platform job ids (same fail-closed posture as M25/M30/M33/M34).
   wireM6Tenancy();
@@ -2319,6 +2338,25 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const platformDbHandle = process.env.DATABASE_PLATFORM_URL
     ? createDbClient({ connectionString: process.env.DATABASE_PLATFORM_URL })
     : undefined;
+  // F-172 (#248) — `PseudonymKeyProvider.activeKey()`'s first real implementation. `patient_pseudonym_key`
+  // is one of the six platform-only M35 tables the comment above already names, so this rides the SAME
+  // `platformDbHandle` credential; the KEK ring is a SEPARATE secret (`M35_PSEUDONYM_KEY_KEK`) from
+  // `M34_TENANT_KEK`. Absent either half, `pseudonymKeyProvider` fails closed with a stated reason —
+  // never silently returns a zero/derived key — so the two consumers below dead-letter loudly rather than
+  // pseudonymizing under a key nobody configured.
+  const pseudonymKeyRing = loadPseudonymKekRing(process.env);
+  const pseudonymKeyProvider: PseudonymKeyProvider =
+    platformDbHandle && pseudonymKeyRing
+      ? createDrizzlePseudonymKeyProvider(platformDbHandle.db, pseudonymKeyRing)
+      : {
+          activeKey() {
+            return Promise.reject(
+              new Error(
+                "PseudonymKeyProvider unbound: requires both DATABASE_PLATFORM_URL and M35_PSEUDONYM_KEY_KEK to be configured",
+              ),
+            );
+          },
+        };
   // TASK-003 follow-up — the DESTRUCTION credential (a login role IN ROLE wardenx_destruction,
   // migration 0157: DELETE/UPDATE grants scoped to exactly what the erase stores execute, org-pinned
   // RLS policies — never BYPASSRLS). The append-only clinical/billing tables grant wardenx_app no
@@ -3493,14 +3531,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // `NO_X12_835_PORT`) unless M25_X12_WORKER_URL is configured — no Python x12-worker sidecar is
           // deployed anywhere yet, so this stays unreachable in every environment today, same as M23's own
           // `x12-837-client` transport; the CODE is real and will call out for real once ops points it at a
-          // live sidecar. `claims` binds M23's real ClaimSubmissionReader seam (degrades to "no
-          // candidates"/"no patient id" — never fabricates a match — until M23 registers it, which now
-          // happens automatically at this same boot via `registerM23PublishedSeams`).
+          // live sidecar. `claims` binds M23's real ClaimSubmissionReader seam for Medicare advices and
+          // M24's real MedicaidClaimMatchProvider seam for Medicaid advices (F-172, #248 m24 group) —
+          // routed by each advice's own `payerKind` inside `service-drizzle.ts`; each degrades to "no
+          // candidates"/"no patient id" — never fabricates or cross-routes a match — until its owning
+          // module registers it, which now happens automatically at this same boot via
+          // `registerM23PublishedSeams` / `registerM24PublishedSeams`.
           const m25IngestService = buildDrizzleM25IngestService(dbHandle.db, {
             client: createX12835Client(m25X12Port),
             outbox: m25OutboxPublisher,
             terminology: m25Terminology,
-            claims: buildM23BackedClaimMatchCandidateProvider(),
+            claims: {
+              medicare: buildM23BackedClaimMatchCandidateProvider(),
+              medicaid: buildM24BackedClaimMatchCandidateProvider(),
+            },
           });
           mountM25Routes(app, {
             readService: buildDrizzleM25ReadService(
@@ -4706,6 +4750,46 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     app.addHook("onClose", async () => {
       await m24RevalidateWorker.close();
     });
+    // F-172 (#248, m1 group) — the `state-channel-health` §4.9 cron: genuinely unbuilt before now
+    // (`M24_CRON_QUEUES.stateChannelHealth` was declared with no worker/schedule/handler anywhere — not
+    // merely unwired). Requires the §8.7 credential cipher port (to decrypt trading-partner credentials —
+    // the same RULE-4 gate the submit/poll workers use); the Oregon gateway probe itself degrades to a
+    // permanent no-op (StateChannelHealthProbePort returns null for every state) rather than throwing when
+    // `m24OregonGateway` is unconfigured, so this cron constructs whenever a queue connection + the cipher
+    // exist — it will simply observe and report nothing until Oregon's launch gateway is also configured.
+    if (m24CredentialCipher) {
+      const m24ActiveOrgs = buildActiveOrgEnumerator({
+        platformDb: dbHandle.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M24_PLATFORM_JOB_ID,
+        reason: "M24 §4.9 state-channel-health cron fan-out (active-org enumeration)",
+      });
+      const m24StateChannelHealthWorker = registerM24StateChannelHealthWorker({
+        connection: queueConnection,
+        db: dbHandle.db,
+        activeOrgs: m24ActiveOrgs,
+        listPeStates: buildDrizzleActivePeStatesLister(),
+        credentials: buildDrizzleStateChannelCredentialResolver(m24CredentialCipher),
+        probe: buildStateChannelHealthProbe(m24OregonGateway),
+        outbox: m24OutboxPublisher,
+      });
+      app.addHook("onClose", async () => {
+        await m24StateChannelHealthWorker.close();
+      });
+      try {
+        const m24StateChannelHealthQueue = await scheduleM24StateChannelHealthJob(queueConnection);
+        app.addHook("onClose", async () => {
+          await m24StateChannelHealthQueue.close();
+        });
+      } catch (err) {
+        app.log.error(err, "M24 state-channel-health cron schedule registration failed");
+      }
+      app.log.info("M24 state-channel-health cron worker constructed");
+    } else {
+      app.log.warn(
+        "M24 state-channel-health cron disabled: configure M24_CREDENTIAL_ENCRYPTION_KEY",
+      );
+    }
     // ── M25 §4.8 Remittance crons (denial-aging rebucket + appeal-deadline watch) — same worker-runner
     // shape. buildM25WorkerDeps binds only the connection + db; the M2 active-org enumerator (the per-org
     // cron fan-out source, under withPlatformContext) + the M36 alert router stay fail-closed-unbound at boot
@@ -5597,8 +5681,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           }),
           // F-158 (#248) — M37's §4.5 "If patient has open `ipu_admission` → cascade-discharge", M37's
           // first outbox consumer. Death discharges are a deliberate no-op here (see the file header) —
-          // that path is the separate, still catalog-unbindable `m6-discharge-death.ts` consumer.
+          // that path is the separate `m6-discharge-death.ts` consumer, below.
           buildM37AdmissionDischargedConsumer({ db: dbHandle.db, outbox: m37OutboxPublisher }),
+          // F-172 (#248) — the §2.2 `recordDeath` producer, previously called nowhere outside its own
+          // unit test. Drives `m6.discharge.death` → `transitionAdmission(..., {type: "recordDeath"})`
+          // → `m37.ipu_admission.death_recorded` + the auto-opened `ipu_body_release` row.
+          buildM37DeathRecordedConsumer({ db: dbHandle.db, outbox: m37OutboxPublisher }),
           // M20 §4.8 / §7.1 (F-043, #103) — the field-safety visit consumers. Six deciders and a badge
           // cache had been complete, exported and unit-tested since M20-T04 with NO factory yielding a
           // binding, so the relay deferred every m20 event and — one layer down — NOTHING in the whole
@@ -5667,6 +5755,25 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // -primary" live bindings.
           ...buildM24RevalidateTriggerConsumers({ enqueue: m24RevalidateEnqueue.port }),
           buildM24MedicarePrimaryAckConsumer({ db: dbHandle.db, outbox: m24OutboxPublisher }),
+          // F-172 (#248, m24 group) — the m24 `handlers-unbound` group's last two events:
+          // `mark-claim-paid` / `mark-claim-denied`, the Medicaid sibling of M23's own GAP-037
+          // `m25-remittance.ts` consumer above. Both `m25.remittance.claim_paid`/`.claim_denied` already
+          // declare `m24` a consumer; only the `M24ConsumerStore` implementation was missing.
+          buildM24RemittanceConsumer({
+            db: dbHandle.db,
+            outbox: m24OutboxPublisher,
+            onSkipped: (info) =>
+              app.log.warn(
+                {
+                  reason: info.reason,
+                  event: info.eventType,
+                  org: info.organizationId,
+                  claim: info.claimId,
+                  state: info.currentState,
+                },
+                "M24 remittance transition skipped",
+              ),
+          }),
           ...(m34ProvisionQueue
             ? [buildM34ProvisionStartedConsumer(m34ProvisionQueue.port)]
             : []),
@@ -6046,6 +6153,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // `consumers/m13-comfort-kit.ts` deciders. Resolves the per-line pharmacy identity and
           // delivery-address snapshot from M21's own tables (M13's payload carries neither).
           buildM21ComfortKitReplenishmentIntakeConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
+          // F-172 (#248) — §4.5.1 controlled-substance re-emit, the fourth and last of the
+          // `consumers/m13-comfort-kit.ts` deciders. Joins M13's bedside discrepancy signal to M21's
+          // dispatch/return custody chain via the `returnId` M13's payload now carries.
+          buildM21ComfortKitControlledSubstanceReemitConsumer({
+            db: dbHandle.db,
+            outbox: m21OutboxPublisher,
+          }),
           // F-108 — M27's. Unlike the five clinical ones it stamps THREE columns off one event, resolved
           // from `aggregateType`: M27 fans the ECR file, the Print Image and the supporting-doc bundle out
           // under ONE request event name, so the aggregate type is the only discriminator on the wire —
@@ -6081,13 +6195,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // `m25.edi.835_received`), so this drives the parse + transactional-post + denial-seed half of
           // the pipeline the `remittance.receive` route's `receiveAdvice` emits into. The same
           // env-gated `m25X12Port` posture as the routes-mount binding above; the terminology lookup and
-          // the M23 claim-match adapter are both reconstructed here (each resolves its seam lazily per
-          // call, so a duplicate binding across two composition-root scopes is harmless).
+          // the M23/M24 claim-match adapters are all reconstructed here (each resolves its seam lazily
+          // per call, so a duplicate binding across two composition-root scopes is harmless).
           buildM25EdiReceivedConsumer(
             buildDrizzleM25IngestService(dbHandle.db, {
               client: createX12835Client(m25X12Port),
               outbox: m25OutboxPublisher,
-              claims: buildM23BackedClaimMatchCandidateProvider(),
+              claims: {
+                medicare: buildM23BackedClaimMatchCandidateProvider(),
+                medicaid: buildM24BackedClaimMatchCandidateProvider(),
+              },
               terminology: {
                 async lookup(carcCode) {
                   const concept = await (
@@ -6250,10 +6367,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             },
           }),
           // F-162 (#248) — M35's first outbox consumer: the §4.12 org-lifecycle-handler over M2's
-          // organization activate/suspend/close triggers (D21's 3 decisive-mechanism events of its 8
-          // exhaustive inbound subscriptions; the other 3 — m2.session.created, m5.patient.deceased/
-          // .merged — stay deferred on the platform's missing PseudonymKeyProvider/KMS infrastructure).
+          // organization activate/suspend/close triggers (3 of D21's 8 exhaustive inbound subscriptions).
           buildM35OrgLifecycleConsumer({ db: dbHandle.db, outbox: m35OutboxPublisher }),
+          // F-172 (#248) — the remaining 3 of D21's 8: `m2.session.created` (user-active-period-aggregator)
+          // and `m5.patient.{deceased,merged}` (patient-active-period-aggregator), unblocked by the real
+          // `pseudonymKeyProvider` built above. Each fails closed per-delivery (dead-letters, never
+          // silently pseudonymizes under nothing) when `pseudonymKeyProvider` is the unbound stub.
+          buildM35SessionCreatedConsumer({ db: dbHandle.db, keyProvider: pseudonymKeyProvider }),
+          buildM35PatientActivePeriodConsumer({ db: dbHandle.db, keyProvider: pseudonymKeyProvider }),
           // F-165 (#248, m24 group) — M29's `m5.patient.deceased` freeze: every still-`pending` `hl7_inbound_proposal`
           // matched to the decedent is expired via the same pure `expireProposal` decider the (also
           // unbuilt) §2.2 SLA sweep would use, with its own distinct `decision_rationale`. Builds only the

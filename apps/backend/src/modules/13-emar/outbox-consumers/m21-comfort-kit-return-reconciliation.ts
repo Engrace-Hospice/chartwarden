@@ -28,13 +28,16 @@
 // line, or one predating this binding), has nothing to close and is skipped, not fabricated.
 //
 // TWO OUTBOX EMITS, BOTH CATALOGUED. `m13.comfort_kit.controlled_substance_discrepancy` (declaredConsumers
-// ["m21"] — M21's own `decideControlledSubstanceReemit` is written but explicitly NOT bound, per
-// `21-supplies/outbox-consumers/m13-comfort-kit-cascade.ts`'s own header: the catalogued
-// `m21.controlled_substance.discrepancy_detected` needs a non-nullable `returnId` + full `custodyChain`
-// this bedside-adjacent re-emit cannot supply. That is a pre-existing, separately-documented M21-side
-// blocker this pass does not touch — the event is still correctly emitted here, catalogued, and simply
-// stays `deferred` at the dispatcher until M21's side is fixed, the same posture every other
-// declared-but-unbound pair in this arc is left in.) `m13.comfort_kit.returned` (declaredConsumers: [],
+// ["m21"]) now carries `returnId` (F-172, #248) — this consumer is ITSELF the `m21.comfort_kit
+// .return_reconciliation` handler, so `payload.returnId` (the M21 return this whole transaction is
+// reconciling) is already in scope; widening was mechanical, not a new read. That is what unblocked M21's
+// own `decideControlledSubstanceReemit`, whose only prior obstacle was the catalogued
+// `m21.controlled_substance.discrepancy_detected` schema's non-nullable `returnId` + full `custodyChain`,
+// which this bedside-adjacent re-emit could not previously supply. M21's live consumer
+// (`21-supplies/outbox-consumers/m13-comfort-kit-cascade.ts`) resolves the rest — the dispatch context,
+// the REAL `comfort_kit_returned_content` row (already written by the SAME M21 `reconcileReturn`
+// transaction that triggered this one, strictly before this M13 event could ever fire), and the
+// `comfort_kit_return` row's own custody columns — by `returnId` alone. `m13.comfort_kit.returned` (declaredConsumers: [],
 // seamConsumers: ["m33"]) carries the aggregate `finalRemainingByMedication` + `disposalReconciliationStatus`
 // this consumer is the only one with the data to assemble — emitted from HERE, not from the sibling
 // `.returned` consumer, which never learns the per-line figures at all (see that file's header).
@@ -146,6 +149,8 @@ export function buildM13ComfortKitReturnReconciliationConsumer(
               payload: {
                 deploymentId,
                 medicationOrderId: orderId,
+                // F-172 (#248) — already in scope: this handler IS the return_reconciliation consumer.
+                returnId: payload.returnId,
                 deltaQuantity: result.controlledDiscrepancySignal.deltaQuantity,
                 deltaPercent: result.controlledDiscrepancySignal.deltaPercent,
               },

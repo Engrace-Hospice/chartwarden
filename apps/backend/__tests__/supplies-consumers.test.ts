@@ -527,32 +527,75 @@ describe("§2.5 — m13.comfort_kit.deployed (the ack)", () => {
 });
 
 describe("§4.5.1 — m13.comfort_kit.controlled_substance_discrepancy re-emit", () => {
+  const RETURN_ID = "17000000-0000-4000-8000-00000000000e";
+  const RETRIEVER = "18000000-0000-4000-8000-00000000000f";
+  const WITNESS = "19000000-0000-4000-8000-000000000010";
+  const RECONCILER = "1a000000-0000-4000-8000-000000000011";
+
   const payload = {
     deploymentId: DEPLOYMENT,
     medicationOrderId: MED_ORDER,
+    returnId: RETURN_ID,
     deltaQuantity: 1.25,
     deltaPercent: 12.5,
   };
-  const line = {
+  const returnedContent = {
+    returnedContentId: "1b000000-0000-4000-8000-000000000012",
+    dispatchedContentId: "1c000000-0000-4000-8000-000000000013",
+    comfortKitTemplateMedicationId: "1d000000-0000-4000-8000-000000000014",
+    medicationOrderId: MED_ORDER,
     rxnorm: "1666777",
     drugName: "morphine sulfate 20mg/mL",
+    isControlledSubstance: true,
     controlledSubstanceSchedule: "CII" as const,
     lotNumber: "LOT-77321",
+    dispatchedQuantity: "10",
+    quantityReturned: "7.5",
+    quantityDisposedAtHome: "0",
+    quantityUnaccounted: "1.25",
+    discrepancyPct: 12.5,
+    discrepancyFlagged: true,
+  };
+  const custody = {
+    retrievingMembershipId: RETRIEVER,
+    disposalWitnessMembershipId: WITNESS,
+    reconciledByMembershipId: RECONCILER,
   };
 
-  it("joins M13's delta to M21's physical-unit identity and custody head", () => {
-    const action = decideControlledSubstanceReemit(payload, dispatch, line);
+  it("joins M13's delta to M21's dispatch context and return custody chain", () => {
+    const action = decideControlledSubstanceReemit(payload, dispatch, returnedContent, custody);
     if (action.kind !== "reemit") throw new Error("expected a re-emit");
+    expect(action.returnId).toBe(RETURN_ID);
+    expect(action.dispatchId).toBe(DISPATCH);
     expect(action.detectionSource).toBe("m13_reemit");
-    expect(action.dispatchedByMembershipId).toBe(DISPATCHER);
-    expect(action.line.lotNumber).toBe("LOT-77321");
-    expect(action.line.controlledSubstanceSchedule).toBe("CII");
-    expect(action.line.deltaQuantity).toBe("1.25");
+    expect(action.discrepantMedication).toBe(returnedContent);
+    expect(action.custodyChain).toEqual({
+      dispatchedByMembershipId: DISPATCHER,
+      retrievingMembershipId: RETRIEVER,
+      disposalWitnessMembershipId: WITNESS,
+      reconciledByMembershipId: RECONCILER,
+    });
   });
 
-  it("stays silent with no dispatch context — M30/M36 already have M13's own event", () => {
-    expect(decideControlledSubstanceReemit(payload, null, line).kind).toBe("no_enrichment_context");
-    expect(decideControlledSubstanceReemit(payload, dispatch, null).kind).toBe(
+  it("tolerates a return with no retriever/witness recorded yet", () => {
+    const action = decideControlledSubstanceReemit(payload, dispatch, returnedContent, {
+      retrievingMembershipId: null,
+      disposalWitnessMembershipId: null,
+      reconciledByMembershipId: RECONCILER,
+    });
+    if (action.kind !== "reemit") throw new Error("expected a re-emit");
+    expect(action.custodyChain.retrievingMembershipId).toBeNull();
+    expect(action.custodyChain.disposalWitnessMembershipId).toBeNull();
+  });
+
+  it("stays silent with no dispatch, no returned-content row, or no return — M13's own event still reaches M36 directly", () => {
+    expect(decideControlledSubstanceReemit(payload, null, returnedContent, custody).kind).toBe(
+      "no_enrichment_context",
+    );
+    expect(decideControlledSubstanceReemit(payload, dispatch, null, custody).kind).toBe(
+      "no_enrichment_context",
+    );
+    expect(decideControlledSubstanceReemit(payload, dispatch, returnedContent, null).kind).toBe(
       "no_enrichment_context",
     );
   });

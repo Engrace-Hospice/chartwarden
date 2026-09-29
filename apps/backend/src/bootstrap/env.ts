@@ -174,6 +174,31 @@ const REQUIREMENTS: readonly Requirement[] = [
     },
   },
   {
+    // F-172 (#248) — the platform KEK that wraps M35's platform-singleton `patient_pseudonym_key`
+    // (`packages/subscription-billing/src/pseudonym/key-envelope.ts`). A SEPARATE secret from
+    // `M34_TENANT_KEK` (different key, different AAD, never interchangeable) — unset, `activeKey()`
+    // refuses per-delivery rather than silently pseudonymizing under a derived/zero key, so the D6
+    // `m2.session.created` / `m5.patient.{deceased,merged}` consumers dead-letter loudly instead of
+    // writing a wrong-key pseudonym into `patient_active_period`/`user_active_period`. Same
+    // `<kekId>:<base64 32 bytes>` shape as `M34_TENANT_KEK` for the same reason (the id travels beside
+    // the wrapped ciphertext in `patient_pseudonym_key.key_kms_ref`).
+    key: "M35_PSEUDONYM_KEY_KEK",
+    rule: (v) => {
+      const sep = v.indexOf(":");
+      if (sep <= 0) return "must be '<kekId>:<base64 32-byte key>'";
+      if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(v.slice(0, sep))) {
+        return "kekId must be 1-64 chars of [A-Za-z0-9._-]";
+      }
+      try {
+        return Buffer.from(v.slice(sep + 1), "base64").length === 32
+          ? null
+          : "key must decode to 32 base64 bytes";
+      } catch {
+        return "key must be valid base64";
+      }
+    },
+  },
+  {
     // TASK-013/ARCH-008 — the shared secret an internal (non-interactive) caller presents to
     // authenticate as a system principal (`bootstrap/plugins/authenticate.ts`), the only way
     // `requireSystemPrincipal()`-gated routes (M23 #39/#40, M15's `/internal/...` seams) become

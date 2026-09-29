@@ -542,6 +542,13 @@ export const claimReaderDenyStub: unknown = denyingSeamProxy("ClaimReader");
  *  candidates" (every line queues for manual match) rather than fabricating a match. */
 export const claimSubmissionReaderDenyStub: unknown = denyingSeamProxy("ClaimSubmissionReader");
 
+/** M24 — the Medicaid sibling of {@link claimSubmissionReaderDenyStub} (F-172, #248 m24 group): M25's
+ *  ingest pipeline resolves this one instead when the advice's `payerKind === "medicaid"`. Same degrade —
+ *  "no candidates" / "no patient id", never a fabricated or cross-payer match. */
+export const medicaidClaimMatchProviderDenyStub: unknown = denyingSeamProxy(
+  "MedicaidClaimMatchProvider",
+);
+
 /** M29 — the §4.11 DiagnosticReport result-value read M28 CONSUMES. Opaque rich-seam; M29 is a Phase-1
  *  placeholder, so this stays fail-closed and M28's DiagnosticReport projection refuses at egress until
  *  M29 registers the real reader. */

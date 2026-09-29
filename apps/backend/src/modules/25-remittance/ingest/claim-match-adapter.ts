@@ -4,6 +4,12 @@
 // (M23 boots without a db), a deny-stub throw, an RLS rejection — degrades to "no candidates" / "no
 // patient id", never a fabricated match. `getSeam` resolves lazily per call, so registration order at
 // boot does not matter.
+//
+// F-172 (#248, m24 group) adds the Medicaid sibling, `buildM24BackedClaimMatchCandidateProvider`, over
+// M24's `MedicaidClaimMatchProvider` seam — same degrade posture. `service-drizzle.ts` picks between the
+// two per advice by the advice's own `payerKind` discriminator (already on the wire at receive time),
+// never a new matching scheme: a Medicare 835 matches only against M23's `claim` table, a Medicaid 835
+// only against M24's `medicaid_claim` table.
 import { getSeam } from "../../../bootstrap/index";
 import type { MatchCandidate } from "../domain/match";
 import type { ClaimMatchCandidateProvider } from "./service";
@@ -54,6 +60,66 @@ export function buildM23BackedClaimMatchCandidateProvider(): ClaimMatchCandidate
     async patientIdForClaim(organizationId, claimId): Promise<string | null> {
       try {
         const reader = getSeam("ClaimSubmissionReader") as ClaimSubmissionReaderView;
+        return await reader.patientIdForClaim(organizationId, claimId);
+      } catch {
+        return null;
+      }
+    },
+  };
+}
+
+/** Structural view of M24's `MedicaidClaimMatchProvider` (opaque `unknown` in the M1 registry). */
+interface MedicaidClaimMatchProviderView {
+  candidatesForLine(
+    orgId: string,
+    providerEntityId: string,
+    keys: { claimControlNumber?: string },
+  ): Promise<
+    Array<{
+      claimId: string;
+      claimControlNumber: string;
+      serviceFrom: string;
+      serviceTo: string;
+    }>
+  >;
+  patientIdForClaim(orgId: string, claimId: string): Promise<string | null>;
+}
+
+/**
+ * F-172 (#248, m24 group) — build the live {@link ClaimMatchCandidateProvider} over M24's
+ * `MedicaidClaimMatchProvider` seam, the Medicaid sibling of {@link buildM23BackedClaimMatchCandidateProvider}
+ * above, routed to by `postAdvice` when the advice's `payerKind === "medicaid"`. Same fail-closed posture:
+ * a deny-stub throw (M24 not registered), an RLS rejection, or any other failure degrades to "no
+ * candidates" / "no patient id" — never a fabricated or cross-payer match.
+ *
+ * `medicaid_claim` carries no payer-assigned ICN column and NEVER stores the state Medicaid Recipient ID
+ * (D12/§3.6), so only M25's `autoMatch` STRATEGY 2 (claim-control-number exact match, CLP01) can ever
+ * bind a Medicaid line — `payerIcn`/`patientMemberId` are deliberately left `undefined` on every returned
+ * candidate rather than fabricated, which correctly leaves strategies 1 and 3 unreachable for this payer.
+ */
+export function buildM24BackedClaimMatchCandidateProvider(): ClaimMatchCandidateProvider {
+  return {
+    async candidatesForLine(args): Promise<readonly MatchCandidate[]> {
+      try {
+        const reader = getSeam("MedicaidClaimMatchProvider") as MedicaidClaimMatchProviderView;
+        const rows = await reader.candidatesForLine(args.organizationId, args.providerEntityId, {
+          claimControlNumber: args.patientControlNumber,
+        });
+        return rows.map(
+          (r): MatchCandidate => ({
+            claimId: r.claimId,
+            claimControlNumber: r.claimControlNumber,
+            serviceFrom: r.serviceFrom,
+            serviceTo: r.serviceTo,
+          }),
+        );
+      } catch {
+        return [];
+      }
+    },
+    async patientIdForClaim(organizationId, claimId): Promise<string | null> {
+      try {
+        const reader = getSeam("MedicaidClaimMatchProvider") as MedicaidClaimMatchProviderView;
         return await reader.patientIdForClaim(organizationId, claimId);
       } catch {
         return null;

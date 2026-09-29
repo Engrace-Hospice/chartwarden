@@ -339,7 +339,8 @@ jobs:
               name: "M24 Billing-Medicaid",
               scripts:
                 "test:m24:nf-facility-snapshot:live test:m24:claim-line-assembly:live
-                test:m24:revalidate-medicare-primary:live",
+                test:m24:revalidate-medicare-primary:live test:m24:remittance-feedback:live
+                test:m24:state-channel-health:live",
             }
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
@@ -469,6 +470,10 @@ jobs:
               name: "M37 admission-discharged cascade",
               scripts: "test:m37:admission-discharged-cascade:live",
             }
+          # F-172 (#248) — M37's `recordDeath` producer, previously called nowhere outside its own unit
+          # test. Own runner because it exercises the widened `m6.discharge.death` payload schema
+          # directly against the M6 catalog alongside the M37 consumer.
+          - { name: "M37 death recorded", scripts: "test:m37:death-recorded:live" }
           # AC-01: the §7.4 break-glass co-signature as a real TWO-PERSON control. `cosign` matched on
           # the event id alone, so the invoker could approve their own emergency PHI grant and a
           # co-signature could resurrect a REVOKED one. Both guards are conjuncts in the UPDATE (a
@@ -654,6 +659,9 @@ jobs:
           # F-162 (#248) — M35's first outbox consumer: the §4.12 org-lifecycle-handler over M2's
           # organization activate/suspend/close triggers.
           - { name: "M35 org-lifecycle consumer", scripts: "test:m35:org-lifecycle-consumer:live" }
+          # F-172 (#248) — the real PseudonymKeyProvider (KEK envelope over the platform-singleton
+          # patient_pseudonym_key) + the 3 remaining D21 consumers it unblocks.
+          - { name: "M35 pseudonym-key provider", scripts: "test:m35:pseudonym-key-provider:live" }
           # GAP-050: M33 scheduled-report create/update/resume over the real `cron-parser` adapter —
           # all three compute `next_run_at` through a port that was a fail-closed stub, so no tenant
           # could create a schedule at all and the §4.8 scheduled-run cron had nothing to fire.

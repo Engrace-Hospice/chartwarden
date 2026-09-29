@@ -95,8 +95,11 @@ export {
   buildM21SupplyCancellationConsumer,
 } from "./outbox-consumers/m11-order-cascade";
 // F-153 (#248) — M13's §2.5 deployment-ack link + §2.6 return-required chain-of-custody open.
+// F-172 (#248) — the §4.5.1 controlled-substance re-emit joins them.
 export {
   type M21ComfortKitCascadeDeps,
+  type M21ComfortKitReemitDeps,
+  buildM21ComfortKitControlledSubstanceReemitConsumer,
   buildM21ComfortKitDeploymentAckConsumer,
   buildM21ComfortKitReturnRequiredConsumer,
 } from "./outbox-consumers/m13-comfort-kit-cascade";

@@ -1,5 +1,5 @@
 /**
- * F-15x (#248) — LIVE Postgres proof that M21's two new comfort-kit consumer bindings write real rows
+ * F-15x/F-172 (#248) — LIVE Postgres proof that M21's three comfort-kit consumer bindings write real rows
  * under RLS:
  *
  *   - `buildM21ComfortKitDeploymentAckConsumer` (`outbox-consumers/m13-comfort-kit-cascade.ts`) — the
@@ -7,13 +7,17 @@
  *     deployment that was built off M21's own `deployed_at_patient` emission.
  *   - `buildM21ComfortKitReturnRequiredConsumer` — the §2.6 `m13.comfort_kit.return_required` cascade:
  *     opens the chain-of-custody `comfort_kit_return` obligation.
+ *   - `buildM21ComfortKitControlledSubstanceReemitConsumer` (F-172) — the §4.5.1
+ *     `m13.comfort_kit.controlled_substance_discrepancy` re-emit: joins M13's bedside delta to M21's
+ *     dispatch/return custody chain and re-publishes as `m21.controlled_substance.discrepancy_detected`
+ *     with `detectionSource: "m13_reemit"`.
  *
- * Both deciders (`decideDeploymentAck`, `decideReturnRequired`, `consumers/m13-comfort-kit.ts`) have been
- * complete, exported and unit-tested since M21-T04 and named on M21's own `M21_SUBSCRIBED_EVENT_NAMES`;
- * neither has ever had a live `OutboxConsumerBinding`. Nothing on the M13 side emits either event yet (M13
- * has no comfort-kit consumer directory at all — a separate, still-open gap), so this drives the
- * consumers directly with a synthetic `DispatchableOutboxEvent`, the same style
- * `m11-m9-m21-outbox-consumers.live.test.ts` already uses for an unbuilt producer.
+ * The first two deciders (`decideDeploymentAck`, `decideReturnRequired`, `consumers/m13-comfort-kit.ts`)
+ * have been complete, exported and unit-tested since M21-T04 and named on M21's own
+ * `M21_SUBSCRIBED_EVENT_NAMES`; none of the three had a live `OutboxConsumerBinding` before F-153/F-172.
+ * M13's own comfort-kit consumer directory exists (F-166) but this file still drives all three M21
+ * consumers directly with a synthetic `DispatchableOutboxEvent` for isolation, the same style
+ * `m11-m9-m21-outbox-consumers.live.test.ts` uses.
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m21:comfort-kit-cascade:live
  */
@@ -25,9 +29,11 @@ import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher";
 import {
+  M21_OUTBOX_EVENTS,
+  buildM21ComfortKitControlledSubstanceReemitConsumer,
   buildM21ComfortKitDeploymentAckConsumer,
   buildM21ComfortKitReturnRequiredConsumer,
-} from "../src/modules/21-supplies/outbox-consumers/m13-comfort-kit-cascade";
+} from "../src/modules/21-supplies/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -53,6 +59,7 @@ describe.skipIf(!DB_URL)(
     let templateMedControlledA: string;
     let ackConsumer: ReturnType<typeof buildM21ComfortKitDeploymentAckConsumer>;
     let returnConsumer: ReturnType<typeof buildM21ComfortKitReturnRequiredConsumer>;
+    let reemitConsumer: ReturnType<typeof buildM21ComfortKitControlledSubstanceReemitConsumer>;
 
     async function resetSchema() {
       await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -163,6 +170,129 @@ describe.skipIf(!DB_URL)(
         return_required_at: Date;
         return_due_at: Date;
       }>;
+    }
+
+    // F-172 — a fully reconciled return with a discrepant controlled-substance line, plus the
+    // `comfort_kit_return`/`comfort_kit_returned_content` rows the re-emit consumer resolves by
+    // `returnId`. Distinct retriever/witness/reconciler membership ids so the CHECK constraint
+    // (`m21_ckit_return_witness_distinct`) and the custody-chain assertion below can both be exact.
+    async function seedControlledReturn(opts: {
+      organizationId: string;
+      providerEntityId: string;
+      locationId: string;
+      patientId: string;
+      admissionId: string;
+      m13DeploymentId: string;
+      dispatchedByMembershipId: string;
+      retrievingMembershipId: string | null;
+      disposalWitnessMembershipId: string | null;
+      reconciledByMembershipId: string;
+    }): Promise<{ dispatchId: string; returnId: string; medicationOrderId: string }> {
+      const medicationOrderId = randomUUID();
+      const { rows: dispatchRows } = await admin.query(
+        `INSERT INTO comfort_kit_dispatch
+           (supply_request_id, organization_id, patient_id, admission_id, location_id,
+            provider_entity_id, comfort_kit_template_id, deployment_site, dispatch_status,
+            pharmacy_dispatch_mode, dispatch_source, kit_serial_number, dispatched_by_membership_id,
+            deployed_at_patient_at, deployed_by_membership_id, m13_deployment_id,
+            controlled_substance_handling_policy_digest, dispatched_contents_jsonb)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,$6,'home','deployed_at_patient',
+                 'supply_hub_dispatch','supply_hub',$7,$8,now(),$8,$9,'digest','[]'::jsonb)
+         RETURNING id, dispatched_at`,
+        [
+          opts.organizationId,
+          opts.patientId,
+          opts.admissionId,
+          opts.locationId,
+          opts.providerEntityId,
+          templateA,
+          `KIT-${randomUUID().slice(0, 8)}`,
+          opts.dispatchedByMembershipId,
+          opts.m13DeploymentId,
+        ],
+      );
+      const dispatchId = dispatchRows[0].id as string;
+      const dispatchedAt = dispatchRows[0].dispatched_at as Date;
+      const { rows: contentRows } = await admin.query(
+        `INSERT INTO comfort_kit_dispatched_content
+           (dispatch_id, dispatch_partition_dispatched_at, organization_id, provider_entity_id,
+            location_id, comfort_kit_template_medication_id, medication_order_id, rxnorm, drug_name,
+            strength, dosage_form, route_of_administration, is_controlled_substance,
+            controlled_substance_schedule, dispatched_quantity, dispatched_unit, lot_number,
+            expiration_date)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,'7052','Morphine Sulfate','20mg/mL','solution','sublingual',
+                 true,'CII',20,'mL','LOT-172',(CURRENT_DATE + INTERVAL '90 days'))
+         RETURNING id`,
+        [
+          dispatchId,
+          dispatchedAt,
+          opts.organizationId,
+          opts.providerEntityId,
+          opts.locationId,
+          templateMedControlledA,
+          medicationOrderId,
+        ],
+      );
+      const dispatchedContentId = contentRows[0].id as string;
+      const { rows: returnRows } = await admin.query(
+        `INSERT INTO comfort_kit_return
+           (dispatch_id, dispatch_partition_dispatched_at, m13_deployment_id, organization_id,
+            patient_id, admission_id, provider_entity_id, location_id, return_required_at,
+            return_due_at, assigned_retrieving_membership_id, disposal_method,
+            disposal_witness_membership_id, reconciled_by_membership_id, reconciled_at, state)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,now(),now() + interval '2 days',$9,
+                 'take_back_by_supply_team',$10,$11,now(),'reconciled')
+         RETURNING id`,
+        [
+          dispatchId,
+          dispatchedAt,
+          opts.m13DeploymentId,
+          opts.organizationId,
+          opts.patientId,
+          opts.admissionId,
+          opts.providerEntityId,
+          opts.locationId,
+          opts.retrievingMembershipId,
+          opts.disposalWitnessMembershipId,
+          opts.reconciledByMembershipId,
+        ],
+      );
+      const returnId = returnRows[0].id as string;
+      await admin.query(
+        `INSERT INTO comfort_kit_returned_content
+           (return_id, dispatched_content_id, organization_id, provider_entity_id, location_id,
+            quantity_returned, quantity_disposed_at_home, is_controlled_substance,
+            controlled_substance_schedule)
+         VALUES ($1,$2,$3,$4,$5,15,0,true,'CII')`,
+        [returnId, dispatchedContentId, opts.organizationId, opts.providerEntityId, opts.locationId],
+      );
+      return { dispatchId, returnId, medicationOrderId };
+    }
+
+    async function discrepancyDetectedRows(returnId: string) {
+      const { rows } = await admin.query(
+        `SELECT payload FROM outbox_event
+         WHERE event_type = 'm21.controlled_substance.discrepancy_detected' AND aggregate_id = $1
+         ORDER BY created_at`,
+        [returnId],
+      );
+      return rows as Array<{ payload: Record<string, unknown> }>;
+    }
+
+    function controlledDiscrepancyEvent(
+      organizationId: string,
+      payload: { deploymentId: string; medicationOrderId: string; returnId: string },
+    ): DispatchableOutboxEvent {
+      return {
+        id: randomUUID(),
+        organizationId,
+        eventType: "m13.comfort_kit.controlled_substance_discrepancy",
+        aggregateKind: "comfort_kit_deployment",
+        aggregateId: payload.deploymentId,
+        payload: { ...payload, deltaQuantity: 5, deltaPercent: 25 },
+        attemptCount: 1,
+        createdAt: new Date(),
+      };
     }
 
     function ackEvent(payload: {
@@ -277,6 +407,38 @@ describe.skipIf(!DB_URL)(
 
       ackConsumer = buildM21ComfortKitDeploymentAckConsumer({ db: handle.db });
       returnConsumer = buildM21ComfortKitReturnRequiredConsumer({ db: handle.db });
+
+      // F-172 — the real catalog-validating publisher, mirroring the M13 live test's own pattern: any
+      // payload the decider builds that disagrees with `M21_OUTBOX_EVENTS`' TypeBox schema is refused
+      // here exactly as it would be at the real dispatcher.
+      const m21Catalog = new Map<string, unknown>(M21_OUTBOX_EVENTS.map((e) => [e.eventName, e]));
+      const m21Outbox = {
+        async publish(
+          tx: unknown,
+          input: {
+            eventName: string;
+            organizationId: string;
+            aggregateKind: string;
+            aggregateId: string;
+            payload: Record<string, unknown>;
+          },
+        ) {
+          if (!m21Catalog.has(input.eventName)) {
+            throw new Error(`m21 test publisher: undeclared event ${input.eventName}`);
+          }
+          const { sql } = await import("drizzle-orm");
+          await (tx as typeof handle.db).execute(sql`
+            INSERT INTO outbox_event
+              (organization_id, event_type, aggregate_kind, aggregate_id, payload)
+            VALUES (${input.organizationId}, ${input.eventName}, ${input.aggregateKind},
+                    ${input.aggregateId}, ${JSON.stringify(input.payload)}::jsonb)
+          `);
+        },
+      };
+      reemitConsumer = buildM21ComfortKitControlledSubstanceReemitConsumer({
+        db: handle.db,
+        outbox: m21Outbox,
+      });
     }, 180_000);
 
     afterAll(async () => {
@@ -448,6 +610,156 @@ describe.skipIf(!DB_URL)(
             }),
           ),
         ).rejects.toThrow(/no comfort_kit_dispatch is linked to M13 deployment/);
+      });
+    });
+
+    describe("controlled-substance re-emit (§4.5.1, F-172)", () => {
+      it("re-emits with the real returned-content row and the full custody chain", async () => {
+        const patientId = randomUUID();
+        const admissionId = randomUUID();
+        const deploymentId = randomUUID();
+        const retriever = randomUUID();
+        const witness = randomUUID();
+        const reconciler = randomUUID();
+        const { returnId, medicationOrderId } = await seedControlledReturn({
+          organizationId: ORG_A,
+          providerEntityId: providerA,
+          locationId: locationA,
+          patientId,
+          admissionId,
+          m13DeploymentId: deploymentId,
+          dispatchedByMembershipId: memberA,
+          retrievingMembershipId: retriever,
+          disposalWitnessMembershipId: witness,
+          reconciledByMembershipId: reconciler,
+        });
+
+        await reemitConsumer.handle(
+          controlledDiscrepancyEvent(ORG_A, { deploymentId, medicationOrderId, returnId }),
+        );
+
+        const rows = await discrepancyDetectedRows(returnId);
+        expect(rows).toHaveLength(1);
+        const payload = rows[0]!.payload;
+        expect(payload.returnId).toBe(returnId);
+        expect(payload.detectionSource).toBe("m13_reemit");
+        expect(payload.patientId).toBe(patientId);
+        expect(payload.admissionId).toBe(admissionId);
+        const discrepantMedications = payload.discrepantMedications as Array<Record<string, unknown>>;
+        expect(discrepantMedications).toHaveLength(1);
+        expect(discrepantMedications[0]!.medicationOrderId).toBe(medicationOrderId);
+        expect(discrepantMedications[0]!.lotNumber).toBe("LOT-172");
+        expect(discrepantMedications[0]!.controlledSubstanceSchedule).toBe("CII");
+        // A real, non-empty id from `comfort_kit_returned_content` — not the empty-string placeholder
+        // `write-service-drizzle.ts`'s own `reconcileReturn` path carries (a separate, pre-existing,
+        // unrelated defect — see the file header/report).
+        expect(typeof discrepantMedications[0]!.returnedContentId).toBe("string");
+        expect((discrepantMedications[0]!.returnedContentId as string).length).toBeGreaterThan(0);
+        expect(payload.custodyChain).toEqual({
+          dispatchedByMembershipId: memberA,
+          retrievingMembershipId: retriever,
+          disposalWitnessMembershipId: witness,
+          reconciledByMembershipId: reconciler,
+        });
+      });
+
+      it("tolerates a return with no retriever/witness recorded — both stay honestly null", async () => {
+        const patientId = randomUUID();
+        const admissionId = randomUUID();
+        const deploymentId = randomUUID();
+        const reconciler = randomUUID();
+        const { returnId, medicationOrderId } = await seedControlledReturn({
+          organizationId: ORG_A,
+          providerEntityId: providerA,
+          locationId: locationA,
+          patientId,
+          admissionId,
+          m13DeploymentId: deploymentId,
+          dispatchedByMembershipId: memberA,
+          retrievingMembershipId: null,
+          disposalWitnessMembershipId: null,
+          reconciledByMembershipId: reconciler,
+        });
+
+        await reemitConsumer.handle(
+          controlledDiscrepancyEvent(ORG_A, { deploymentId, medicationOrderId, returnId }),
+        );
+
+        const rows = await discrepancyDetectedRows(returnId);
+        expect(rows).toHaveLength(1);
+        const custodyChain = rows[0]!.payload.custodyChain as Record<string, unknown>;
+        expect(custodyChain.retrievingMembershipId).toBeNull();
+        expect(custodyChain.disposalWitnessMembershipId).toBeNull();
+        expect(custodyChain.reconciledByMembershipId).toBe(reconciler);
+      });
+
+      it("is a silent no-op when the deploymentId maps to no dispatch", async () => {
+        await expect(
+          reemitConsumer.handle(
+            controlledDiscrepancyEvent(ORG_A, {
+              deploymentId: randomUUID(),
+              medicationOrderId: randomUUID(),
+              returnId: randomUUID(),
+            }),
+          ),
+        ).resolves.not.toThrow();
+      });
+
+      it("is a silent no-op when the returnId names no comfort_kit_return row (never fabricates a returnedContentId)", async () => {
+        const patientId = randomUUID();
+        const admissionId = randomUUID();
+        const deploymentId = randomUUID();
+        // A dispatch exists (so `dispatch` resolves), but the event below names a DIFFERENT (unseeded)
+        // returnId — no `comfort_kit_return`/`comfort_kit_returned_content` row for THAT id exists.
+        const { medicationOrderId } = await seedControlledReturn({
+          organizationId: ORG_A,
+          providerEntityId: providerA,
+          locationId: locationA,
+          patientId,
+          admissionId,
+          m13DeploymentId: deploymentId,
+          dispatchedByMembershipId: memberA,
+          retrievingMembershipId: null,
+          disposalWitnessMembershipId: null,
+          reconciledByMembershipId: memberA,
+        });
+        const unknownReturnId = randomUUID();
+
+        await expect(
+          reemitConsumer.handle(
+            controlledDiscrepancyEvent(ORG_A, { deploymentId, medicationOrderId, returnId: unknownReturnId }),
+          ),
+        ).resolves.not.toThrow();
+
+        const rows = await discrepancyDetectedRows(unknownReturnId);
+        expect(rows).toHaveLength(0);
+      });
+
+      it("does not resolve a return across tenants — org B's returnId is invisible to org A's RLS scope", async () => {
+        const patientId = randomUUID();
+        const admissionId = randomUUID();
+        const deploymentId = randomUUID();
+        const { returnId, medicationOrderId } = await seedControlledReturn({
+          organizationId: ORG_B,
+          providerEntityId: providerB,
+          locationId: locationB,
+          patientId,
+          admissionId,
+          m13DeploymentId: deploymentId,
+          dispatchedByMembershipId: memberA,
+          retrievingMembershipId: null,
+          disposalWitnessMembershipId: null,
+          reconciledByMembershipId: memberA,
+        });
+
+        await expect(
+          reemitConsumer.handle(
+            controlledDiscrepancyEvent(ORG_A, { deploymentId, medicationOrderId, returnId }),
+          ),
+        ).resolves.not.toThrow();
+
+        const rows = await discrepancyDetectedRows(returnId);
+        expect(rows).toHaveLength(0);
       });
     });
   },

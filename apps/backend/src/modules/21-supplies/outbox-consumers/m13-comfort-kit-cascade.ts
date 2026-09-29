@@ -1,43 +1,49 @@
 // apps/backend/src/modules/21-supplies/outbox-consumers/m13-comfort-kit-cascade.ts — M21's live binding
-// for two of the four `../consumers/m13-comfort-kit.ts` deciders (F-141/#248's m21 group, this pass).
+// for three of the four `../consumers/m13-comfort-kit.ts` deciders (F-141/#248's m21 group, this pass;
+// the controlled-substance re-emit added F-172, #248).
 //
 // `decideDeploymentAck` (§2.5) and `decideReturnRequired` (§2.6) have been complete, exported and
 // unit-tested since M21-T04, and both are named on M21's own `M21_SUBSCRIBED_EVENT_NAMES`
 // (packages/types/src/supplies.ts) — nothing has ever bound either to the dispatcher.
 //
-// THE OTHER TWO M13 DECIDERS ARE NOT BOUND HERE, for two DIFFERENT reasons, neither of which is "not
-// gotten to yet":
-//   • `decideReplenishmentIntake` (§2.1) needs the SAME shared `insertRequest` write path
-//     `write-service-drizzle.ts`'s `createDirect` seam method calls — extracting that closure to module
-//     scope (the `patchSupplyRequest` precedent, F-102) is a shared-file change belonging with the rest of
-//     this arc's centralized wiring, not an isolated new file.
-//   • `decideControlledSubstanceReemit` (§4.5.1) is genuinely payload-BLOCKED, not merely unbound: the
-//     catalogued `m21.controlled_substance.discrepancy_detected` schema (events-by-m21.ts) requires a
-//     non-nullable `returnId` plus a full `custodyChain` (retrieving/disposal-witness/reconciled
-//     membership ids) — the shape a RECONCILIATION-time discrepancy carries. M13's bedside re-emit fires
-//     at drug ADMINISTRATION time, before any `comfort_kit_return` row exists; the decider's own
-//     `ReemittedDiscrepantLine` correctly carries none of those fields. Binding it today means either
-//     inventing a `returnId` (fabricating chain-of-custody evidence on a DEA perpetual log — the exact
-//     mistake F-102's `providerEntityFor` lesson warns against) or widening the catalog schema to make
-//     `returnId`/`custodyChain` optional for this one `detectionSource`, which is a producer-side contract
-//     change affecting every consumer of this event (M30/M33/M36 via `seamConsumers`) and needs its own
-//     scoped pass, not a bind.
+// `decideReplenishmentIntake` (§2.1) is NOT bound here — it needs the SAME shared `insertRequest` write
+// path `write-service-drizzle.ts`'s `createDirect` seam method calls (the `patchSupplyRequest` precedent,
+// F-102) and lives in its own file, `m13-comfort-kit-replenishment.ts`.
 //
-// TWO SEAMS TO ONE OUTCOME. `linkM13Deployment` and the return-open both run with NO acting membership —
-// the `m11-order-cascade.ts` / F-102 `CONSUMER_USER_ID` convention — because both cascades are M13
-// telling M21 something happened, not a human acting on the row.
+// `decideControlledSubstanceReemit` (§4.5.1) IS NOW BOUND (F-172, #248). It was genuinely payload-BLOCKED,
+// not merely unbound: the catalogued `m21.controlled_substance.discrepancy_detected` schema
+// (events-by-m21.ts) requires a non-nullable `returnId` plus a full `custodyChain` — the shape a
+// RECONCILIATION-time discrepancy carries, which M13's re-emit (fired from
+// `13-emar/outbox-consumers/m21-comfort-kit-return-reconciliation.ts`, itself the
+// `m21.comfort_kit.return_reconciliation` consumer) genuinely IS, despite the file header comment this
+// replaced saying otherwise — that comment was written when M13's discrepancy re-emit fired at bedside
+// ADMINISTRATION time; it has fired at true RECONCILIATION time since F-166. `returnId` was simply never
+// added to the wire payload even though the emit site already had it in scope. Widened additively
+// (`events-by-m13.ts`), and the decider now resolves the REAL `comfort_kit_returned_content` row (already
+// written by M21's OWN `reconcileReturn` transaction, strictly before M13's re-emit can ever fire) plus
+// the `comfort_kit_return` row's own custody columns, keyed by that `returnId` — no fact is invented.
+//
+// THREE SEAMS TO ONE OUTCOME. `linkM13Deployment`, the return-open, and the controlled-substance re-emit
+// all run with NO acting membership — the `m11-order-cascade.ts` / F-102 `CONSUMER_USER_ID` convention —
+// because all three cascades are M13 telling M21 something happened, not a human acting on the row.
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { RETURN_WINDOW_HOURS_DEFAULT } from "@wardenx/supplies";
+import type { ComfortKitReturnedContentPayload } from "@wardenx/types";
 import { and, desc, eq, isNull } from "drizzle-orm";
 import type { OutboxConsumerBinding } from "../../../bootstrap/outbox-dispatcher";
 import { transitionComfortKitDispatch } from "../lifecycle/index";
+import type { WriteOutboxPort } from "../routes/write-service";
 import {
   M13_COMFORT_KIT_DEPLOYED_EVENT,
+  M13_CONTROLLED_SUBSTANCE_DISCREPANCY_EVENT,
   M13_RETURN_REQUIRED_EVENT,
   type ComfortKitDispatchContext,
+  type ControlledSubstanceCustodyChainFacts,
   type M13ComfortKitDeployedPayload,
+  type M13ControlledSubstanceDiscrepancyPayload,
   type M13ReturnRequiredPayload,
+  decideControlledSubstanceReemit,
   decideDeploymentAck,
   decideReturnRequired,
 } from "../consumers/m13-comfort-kit";
@@ -45,6 +51,7 @@ import {
 const DISPATCH = schema.comfortKitDispatch;
 const DISPATCHED = schema.comfortKitDispatchedContent;
 const RETURN = schema.comfortKitReturn;
+const RETURNED = schema.comfortKitReturnedContent;
 
 /** A consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
 const CONSUMER_USER_ID = "";
@@ -53,6 +60,14 @@ export interface M21ComfortKitCascadeDeps {
   readonly db: DbClient;
   readonly now?: () => Date;
   readonly returnWindowHours?: number;
+}
+
+/** The re-emit consumer WRITES an outbox event (the other two in this file only patch a row), so it needs
+ *  the catalog-validating publisher — a separate interface rather than widening
+ *  `M21ComfortKitCascadeDeps` itself, so the deployment-ack/return-required builders' call sites do not
+ *  need an unused `outbox` argument. */
+export interface M21ComfortKitReemitDeps extends M21ComfortKitCascadeDeps {
+  readonly outbox: WriteOutboxPort;
 }
 
 type DispatchRow = typeof DISPATCH.$inferSelect;
@@ -241,6 +256,173 @@ export function buildM21ComfortKitReturnRequiredConsumer(
           state: action.draft.state as (typeof RETURN.$inferInsert)["state"],
           createdAt: deps.now?.() ?? new Date(),
           updatedAt: deps.now?.() ?? new Date(),
+        });
+      });
+    },
+  };
+}
+
+/**
+ * M21's live `m13.comfort_kit.controlled_substance_discrepancy` re-emit binding (§4.5.1, F-172/#248).
+ *
+ * M13's bedside-administration accounting and M21's own dispatched-vs-returned accounting are two
+ * INDEPENDENT discrepancy checks over the same physical kit (see `decideControlledSubstanceReemit`'s own
+ * doc comment on why the two can legitimately disagree) — this is not redundant with M21's own
+ * `reconcileReturn` route, which separately emits `m21.controlled_substance.discrepancy_detected` with
+ * `detectionSource: "return_reconciliation"` off its OWN reconciliation math in the same transaction.
+ *
+ * Resolved by `returnId` (M13's widened payload) + the dispatch M13's `deploymentId` maps to — the
+ * `comfort_kit_returned_content` row for this exact (return, medication) already exists by the time this
+ * ever runs, because M21's own `reconcileReturn` wrote it in the SAME transaction that later (via the
+ * outbox) triggered the M13 consumer this event is re-emitted from.
+ */
+export function buildM21ComfortKitControlledSubstanceReemitConsumer(
+  deps: M21ComfortKitReemitDeps,
+): OutboxConsumerBinding {
+  return {
+    consumerName: "m21.comfort-kit-controlled-substance-reemit",
+    consumerModule: "m21",
+    eventTypes: [M13_CONTROLLED_SUBSTANCE_DISCREPANCY_EVENT],
+    async handle(event): Promise<void> {
+      const payload = (event.payload ?? {}) as M13ControlledSubstanceDiscrepancyPayload;
+      if (typeof payload.deploymentId !== "string") {
+        throw new Error(
+          "m21.comfort-kit-controlled-substance-reemit: payload has no deploymentId",
+        );
+      }
+      if (typeof payload.medicationOrderId !== "string") {
+        throw new Error(
+          "m21.comfort-kit-controlled-substance-reemit: payload has no medicationOrderId",
+        );
+      }
+      if (typeof payload.returnId !== "string") {
+        throw new Error("m21.comfort-kit-controlled-substance-reemit: payload has no returnId");
+      }
+      const organizationId = event.organizationId;
+
+      await withOrgContext(deps.db, { organizationId, userId: CONSUMER_USER_ID }, async (scoped) => {
+        const tx = scoped as unknown as DbClient;
+
+        const dispatchRows = await tx
+          .select()
+          .from(DISPATCH)
+          .where(
+            and(
+              eq(DISPATCH.organizationId, organizationId),
+              eq(DISPATCH.m13DeploymentId, payload.deploymentId),
+            ),
+          )
+          .orderBy(desc(DISPATCH.dispatchedAt))
+          .limit(1);
+        const dispatchRow = dispatchRows[0] as DispatchRow | undefined;
+
+        let dispatchContext: ComfortKitDispatchContext | null = null;
+        if (dispatchRow) {
+          const containsControlledSubstance = await dispatchContainsControlledSubstance(
+            tx,
+            dispatchRow.id,
+          );
+          dispatchContext = toDispatchContext(dispatchRow, containsControlledSubstance);
+        }
+
+        let returnedContent: ComfortKitReturnedContentPayload | null = null;
+        if (dispatchRow) {
+          const rows = await tx
+            .select({
+              returnedContentId: RETURNED.id,
+              dispatchedContentId: RETURNED.dispatchedContentId,
+              comfortKitTemplateMedicationId: DISPATCHED.comfortKitTemplateMedicationId,
+              medicationOrderId: DISPATCHED.medicationOrderId,
+              rxnorm: DISPATCHED.rxnorm,
+              drugName: DISPATCHED.drugName,
+              isControlledSubstance: RETURNED.isControlledSubstance,
+              controlledSubstanceSchedule: RETURNED.controlledSubstanceSchedule,
+              lotNumber: DISPATCHED.lotNumber,
+              dispatchedQuantity: DISPATCHED.dispatchedQuantity,
+              quantityReturned: RETURNED.quantityReturned,
+              quantityDisposedAtHome: RETURNED.quantityDisposedAtHome,
+              quantityUnaccounted: RETURNED.quantityUnaccounted,
+              discrepancyPct: RETURNED.discrepancyPct,
+              discrepancyFlagged: RETURNED.discrepancyFlagged,
+            })
+            .from(RETURNED)
+            .innerJoin(DISPATCHED, eq(RETURNED.dispatchedContentId, DISPATCHED.id))
+            .where(
+              and(
+                eq(RETURNED.returnId, payload.returnId),
+                eq(DISPATCHED.dispatchId, dispatchRow.id),
+                eq(DISPATCHED.medicationOrderId, payload.medicationOrderId),
+              ),
+            )
+            .limit(1);
+          const row = rows[0];
+          if (row) {
+            returnedContent = {
+              returnedContentId: row.returnedContentId,
+              dispatchedContentId: row.dispatchedContentId,
+              comfortKitTemplateMedicationId: row.comfortKitTemplateMedicationId,
+              medicationOrderId: row.medicationOrderId,
+              rxnorm: row.rxnorm,
+              drugName: row.drugName,
+              isControlledSubstance: row.isControlledSubstance,
+              controlledSubstanceSchedule: row.controlledSubstanceSchedule,
+              lotNumber: row.lotNumber,
+              dispatchedQuantity: row.dispatchedQuantity,
+              quantityReturned: row.quantityReturned,
+              quantityDisposedAtHome: row.quantityDisposedAtHome,
+              quantityUnaccounted: row.quantityUnaccounted,
+              discrepancyPct: Number(row.discrepancyPct),
+              discrepancyFlagged: row.discrepancyFlagged,
+            };
+          }
+        }
+
+        let custody: ControlledSubstanceCustodyChainFacts | null = null;
+        const returnRows = await tx
+          .select({
+            retrievingMembershipId: RETURN.assignedRetrievingMembershipId,
+            disposalWitnessMembershipId: RETURN.disposalWitnessMembershipId,
+            reconciledByMembershipId: RETURN.reconciledByMembershipId,
+          })
+          .from(RETURN)
+          .where(and(eq(RETURN.id, payload.returnId), eq(RETURN.organizationId, organizationId)))
+          .limit(1);
+        const returnRow = returnRows[0];
+        if (returnRow) {
+          custody = {
+            retrievingMembershipId: returnRow.retrievingMembershipId,
+            disposalWitnessMembershipId: returnRow.disposalWitnessMembershipId,
+            reconciledByMembershipId: returnRow.reconciledByMembershipId,
+          };
+        }
+
+        const action = decideControlledSubstanceReemit(
+          payload,
+          dispatchContext,
+          returnedContent,
+          custody,
+        );
+        if (action.kind !== "reemit" || !dispatchContext) return;
+
+        await deps.outbox.publish(tx, {
+          eventName: "m21.controlled_substance.discrepancy_detected",
+          organizationId,
+          aggregateKind: "comfort_kit_return",
+          aggregateId: action.returnId,
+          payload: {
+            orgId: organizationId,
+            patientId: dispatchContext.patientId,
+            admissionId: dispatchContext.admissionId,
+            providerEntityId: dispatchContext.providerEntityId,
+            locationId: dispatchContext.locationId,
+            returnId: action.returnId,
+            dispatchId: action.dispatchId,
+            m13DeploymentId: action.m13DeploymentId,
+            detectionSource: action.detectionSource,
+            discrepantMedications: [action.discrepantMedication],
+            custodyChain: action.custodyChain,
+            detectedAt: (deps.now?.() ?? new Date()).toISOString(),
+          },
         });
       });
     },

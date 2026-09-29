@@ -86,7 +86,13 @@ describe("M6 outbox event contract (§4.4)", () => {
       // optional → present without source validates; with the marker validates too.
       const base =
         name === "m6.discharge.death"
-          ? { dischargeEventId: "d1", admissionId: "a1", dischargeDate: "2026-01-01" }
+          ? {
+              dischargeEventId: "d1",
+              admissionId: "a1",
+              dischargeDate: "2026-01-01",
+              // F-172 (#248) — required: M37's `ipu_body_release.pronouncing_physician_id` (NOT NULL).
+              deathCertifierId: "phys-1",
+            }
           : name === "m6.discharge.created"
             ? {
                 dischargeEventId: "d1",

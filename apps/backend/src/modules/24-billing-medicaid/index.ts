@@ -54,7 +54,7 @@ export { mountM24Routes } from "./routes/mount";
 
 // §4.3 — the eight published reader-seam implementations (built, registration deferred — the M26 posture).
 export { type M24SeamImpls, buildM24SeamImpls } from "./seam-impls";
-export { registerM24PublishedSeams } from "./wiring";
+export { M24_PLATFORM_JOB_ID, registerM24PublishedSeams, wireM24Tenancy } from "./wiring";
 
 // §3.7 / §8.4 — the M4 destruction-registry `medicaid_billing_record` eraser (registerEraser INJECTED).
 export {
@@ -123,6 +123,14 @@ export {
   type MedicarePrimaryAckOutboxPort,
   buildM24MedicarePrimaryAckConsumer,
 } from "./outbox-consumers/m24-medicare-primary-ack";
+// F-172 (#248, m24 group) — the `mark-claim-paid` / `mark-claim-denied` live binding, the Medicaid
+// sibling of M23's own GAP-037 `m25-remittance.ts` consumer.
+export {
+  type M24RemittanceConsumerDeps,
+  type M24RemittanceOutboxPort,
+  type M24RemittanceSkipReason,
+  buildM24RemittanceConsumer,
+} from "./outbox-consumers/m25-remittance";
 export {
   type RevalidateJob,
   type RevalidateWorkerDeps,
@@ -131,3 +139,21 @@ export {
   registerM24RevalidateWorker,
   runMedicaidRevalidate,
 } from "./jobs/revalidate-jobs";
+
+// F-172 (#248, m1 group) — the `state-channel-health` §4.9 cron: genuinely unbuilt before now (declared in
+// the queue catalog, no worker/schedule/handler anywhere). Per-org, per-credential Oregon gateway probe —
+// see the file header for why this is org-scoped (opposite of M23's platform-singleton mac-portal-health).
+export {
+  type ActiveTradingPartnerPeStatesPort,
+  type StateChannelBreakerState,
+  type StateChannelCredentialResolverPort,
+  type StateChannelHealthProbePort,
+  type StateChannelHealthWorkerDeps,
+  type StateChannelOutboxPort,
+  buildDrizzleActivePeStatesLister,
+  buildDrizzleStateChannelCredentialResolver,
+  buildStateChannelHealthProbe,
+  registerM24StateChannelHealthWorker,
+  runStateChannelHealth,
+  scheduleM24StateChannelHealthJob,
+} from "./jobs/state-channel-health-jobs";

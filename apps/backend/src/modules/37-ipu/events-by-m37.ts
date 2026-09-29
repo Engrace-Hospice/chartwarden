@@ -124,7 +124,19 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // the "M2 vs M22" question F-144 flagged is also resolved — the spec is unambiguous the consumer is
     // M22's own external-collaborator surface (architecture §7.8), never M2 directly. See
     // `m37.body_release.funeral_home_identified` below for what remains genuinely unbuilt.
-    declaredConsumers: ["m30", "m16"],
+    // F-172 (#248) — `m16` REMOVED, redundant sibling (the F-100/F-117/F-134 shape): M37's own spec
+    // names M16 here three times ("bereavement onboarding"), but M16's real bereavement-intake
+    // mechanism is keyed off the M6 admission, not off M37's IPU admission — it already fires from
+    // `m6.discharge.death` (primary, `16-bereavement/outbox-consumers/m6-bereavement-eligible.ts` via
+    // the co-emitted `m6.bereavement.eligible`) and `m6.admission.discharged` reason=death (secondary
+    // verifier, `m6-admission-discharged-death.ts`) — the SAME `m6.discharge.death` transaction that
+    // now (F-172) drives `recordDeath` itself, so a third M16 path off `death_recorded` would arrive no
+    // earlier and carry no fact (patientId, admissionId) M16 doesn't already have from the M6 event.
+    // Confirmed by direct read of both M16 consumer files, not assumed from the prior finding's
+    // (F-134/F-147) own re-assertion. `m30` stays: F-149 already confirmed M30's relationship here is
+    // real and decisively cross-referenced in M37's spec (mortality-review), independently blocked on
+    // M30's own currently-unbuilt receiving mechanism, unrelated to this change.
+    declaredConsumers: ["m30"],
     isOutboxOnly: true,
   },
   {

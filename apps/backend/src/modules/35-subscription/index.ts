@@ -54,3 +54,25 @@ export {
   type OrgLifecycleConsumerDeps,
   buildM35OrgLifecycleConsumer,
 } from "./outbox-consumers/m2-organization-lifecycle";
+// F-172 (#248) — the real `PseudonymKeyProvider` (KEK envelope over the platform-singleton
+// `patient_pseudonym_key`) + the §4.12 `user-active-period-aggregator` / `patient-active-period-aggregator`
+// consumers it unblocks.
+export {
+  createDrizzlePseudonymKeyProvider,
+  rotatePseudonymKey,
+} from "./pseudonym-key-provider";
+export {
+  activePeriodRowExists,
+  createDrizzleActivePeriodStore,
+  markPatientInactiveForOrg,
+} from "./active-period-store-drizzle";
+export {
+  M35_SESSION_CREATED_CONSUMER,
+  type SessionCreatedConsumerDeps,
+  buildM35SessionCreatedConsumer,
+} from "./outbox-consumers/m2-session-created";
+export {
+  M35_PATIENT_ACTIVE_PERIOD_CONSUMER,
+  type PatientActivePeriodConsumerDeps,
+  buildM35PatientActivePeriodConsumer,
+} from "./outbox-consumers/m5-patient-active-period";

@@ -549,6 +549,11 @@ const M13_OUTBOX_ENTRIES: readonly M13OutboxEntry[] = [
     payloadSchema: Type.Object({
       deploymentId: id,
       medicationOrderId: id,
+      // F-172 (#248) — added additively: the aggregate `comfort_kit_return` this discrepancy belongs to,
+      // already in scope at the one emit site (this handler IS the `return_reconciliation` consumer) —
+      // what unblocks M21's own `m21.controlled_substance.discrepancy_detected` re-emit, whose schema
+      // requires a non-nullable `returnId`.
+      returnId: id,
       deltaQuantity: Type.Number(),
       deltaPercent: Type.Number(),
     }),

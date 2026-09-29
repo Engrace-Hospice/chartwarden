@@ -10,6 +10,7 @@ import type { DenialCategory } from "../domain";
 import type { WriteOutboxPort } from "../routes/write-service";
 import type {
   ClaimMatchCandidateProvider,
+  ClaimMatchCandidateProviderByPayer,
   M25IngestActor,
   M25IngestService,
   PostAdviceResult,
@@ -32,11 +33,24 @@ const DENIAL_CATEGORIES: ReadonlySet<string> = new Set([
 /** The real Drizzle transaction handle (has .select/.update/.insert), inferred from the db client. */
 type M25Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
+/** F-172 — widened to carry `payerKind` so `postClaim`/`postAdjustments` can route the candidate lookup. */
+type AdviceContext = {
+  id: string;
+  providerEntityId: string;
+  receivedAt: Date;
+  payerKind: ReceiveAdviceInput["payerKind"];
+};
+
 export interface M25IngestDrizzleDeps {
   readonly client: X12835WorkerClient;
   readonly outbox?: WriteOutboxPort;
   readonly terminology?: TerminologyLookupPort;
-  readonly claims?: ClaimMatchCandidateProvider;
+  /**
+   * F-172 (#248, m24 group) — keyed by the advice's OWN `payerKind` (already on `RA.payer_kind`, read at
+   * `postAdvice` time below). A payer with no entry degrades to {@link NO_CLAIM_MATCH_CANDIDATES} — never
+   * routes a Medicaid 835 against M23's claim table, or vice versa.
+   */
+  readonly claims?: ClaimMatchCandidateProviderByPayer;
 }
 
 function money(n: number): string {
@@ -56,8 +70,13 @@ export function buildDrizzleM25IngestService(
   const PR = schema.patientResponsibilityLedger;
   const outbox = deps.outbox ?? NOOP_OUTBOX;
   const terminology = deps.terminology ?? DENY_TERMINOLOGY;
-  const claimCandidates = deps.claims ?? NO_CLAIM_MATCH_CANDIDATES;
+  const claimsByPayer = deps.claims ?? {};
   const client = deps.client;
+
+  /** F-172 — the per-payer candidate provider, defaulting to the honest "no candidates" degrade. */
+  function claimCandidatesFor(payerKind: ReceiveAdviceInput["payerKind"]): ClaimMatchCandidateProvider {
+    return claimsByPayer[payerKind] ?? NO_CLAIM_MATCH_CANDIDATES;
+  }
 
   /** Mark an advice row failed (a fresh short tx) — always operator-actionable via `remittance.replay`. */
   async function markFailed(
@@ -85,9 +104,10 @@ export function buildDrizzleM25IngestService(
   async function postClaim(
     tx: M25Tx,
     actor: M25IngestActor,
-    advice: { id: string; providerEntityId: string; receivedAt: Date },
+    advice: AdviceContext,
     claim: ParsedClaim835,
   ): Promise<{ matched: boolean }> {
+    const claimCandidates = claimCandidatesFor(advice.payerKind);
     const candidates = await claimCandidates.candidatesForLine({
       organizationId: actor.organizationId,
       providerEntityId: advice.providerEntityId,
@@ -255,7 +275,7 @@ export function buildDrizzleM25IngestService(
   async function postAdjustments(
     tx: M25Tx,
     actor: M25IngestActor,
-    advice: { id: string; providerEntityId: string; receivedAt: Date },
+    advice: AdviceContext,
     args: {
       claimId: string | null;
       remittanceLineId: string;
@@ -263,14 +283,15 @@ export function buildDrizzleM25IngestService(
       adjustments: ParsedClaim835["adjustments"];
     },
   ): Promise<void> {
+    const claimCandidates = claimCandidatesFor(advice.payerKind);
     for (const adj of args.adjustments) {
       const catalogCategory = await resolveCategory(adj.reasonCode);
       const { category, taxonomyStatus } = effectiveCategory(catalogCategory);
       const routing = routeAdjustment(adj.groupCode, category, taxonomyStatus);
       // The PR ledger requires a real patient id (NOT NULL) — resolvable only for a matched claim, and
-      // only once the M23 cross-module seam is bound (same posture as the auto-match candidate lookup).
-      // Absent that, the adjustment honestly degrades to `flagged_review` rather than claiming a ledger
-      // entry was recorded when it was not.
+      // only once the M23/M24 cross-module seam (routed by payer, F-172) is bound. Absent that, the
+      // adjustment honestly degrades to `flagged_review` rather than claiming a ledger entry was
+      // recorded when it was not.
       let postAction = routing.postAction;
       let prLedgerPatientId: string | null = null;
       if (routing.seedPrLedger) {
@@ -547,6 +568,7 @@ export function buildDrizzleM25IngestService(
                   id: adviceId,
                   providerEntityId: advice.providerEntityId,
                   receivedAt: advice.receivedAt,
+                  payerKind: advice.payerKind,
                 },
                 claim,
               );

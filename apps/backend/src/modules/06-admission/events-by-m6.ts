@@ -834,12 +834,20 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     moduleOwner: "m6",
     description:
       "Discharge reason was death (route 39 / recordExternalDeath) — via " +
-      "M5's §7.8 death cascade (GAP-004), flips patient.status='deceased'.",
+      "M5's §7.8 death cascade (GAP-004), flips patient.status='deceased'; also drives M37's own " +
+      "`recordDeath` transition for an IPU-facility death (F-172/#248).",
     payloadSchema: Type.Object({
       dischargeEventId: Type.String({ minLength: 1 }),
       admissionId: Type.String({ minLength: 1 }),
       dischargeDate: Type.String({ minLength: 1 }),
       source: applierSource,
+      // F-172 (#248) — widened at the source rather than resolved through a new seam: `dischargeType
+      // === "death"` requires `deathCertifierId` be present (`checkDischargeNarrative`, enforced before
+      // `dischargeAdmissionTx` ever runs), so the fact is already in hand at the one real emit site
+      // (`admission-route-service-db.ts`'s `dischargeAdmissionTx`) — the F-099/F-100 "the artifact is
+      // already at the emit site" shape. M37's `ipu_body_release.pronouncing_physician_id` (NOT NULL)
+      // is the consumer this widening exists for.
+      deathCertifierId: Type.String({ minLength: 1 }),
     }),
     // F-134 (#248) — `m16` removed: this event is co-emitted with `m6.bereavement.eligible` from the
     // SAME `runEffects` call on the SAME death-discharge transition (`admission-route-service-db.ts`
@@ -847,7 +855,12 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // description says it IS the "post-rule check on `m6.discharge.death`" — so `discharge.death` is
     // the source and `bereavement.eligible` is the already-bound, already-correct M16 handshake.
     // M16's own `consumers/m6-eligibility.ts` reads only `bereavement.eligible`, never this event.
-    declaredConsumers: ["m5"],
+    // F-172 (#248) — `m37` ADDED: the real, previously-missing producer for `transitionAdmission(...,
+    // {type: "recordDeath"})` (`packages/inpatient`), which §2.2 documents as "driven by the M6 death
+    // consumer (system actor)". M16 is deliberately NOT added here even though it is a declared
+    // consumer of the DOWNSTREAM `m37.ipu_admission.death_recorded` event — see that event's own entry
+    // in `events-by-m37.ts` for why that declaration is being dropped as redundant in the same change.
+    declaredConsumers: ["m5", "m37"],
     isOutboxOnly: true,
   },
   {

@@ -104,6 +104,7 @@ import {
   levelOfCarePeriodReaderDenyStub,
   levelOfCareReaderDenyStub,
   mdmEntityProviderDenyStub,
+  medicaidClaimMatchProviderDenyStub,
   medicationAdministrationProviderDenyStub,
   medicationOrderProviderDenyStub,
   messagingProviderDenyStub,
@@ -463,6 +464,16 @@ export const REQUIRED_SEAMS = [
     ownerModule: 23,
     phi: true,
     denyStub: claimSubmissionReaderDenyStub,
+  },
+  // M24 → M25 — the Medicaid sibling of ClaimSubmissionReader above (F-172, #248 m24 group): claim-
+  // control-number exact-match candidates + claim->patient id resolution, for the SAME 835 auto-match
+  // pipeline, routed by the advice's own `payerKind`. PHI (patient id). Fail-closed until M24 registers
+  // the real reader — M25's adapter degrades the deny-stub throw to "no candidates" identically.
+  {
+    key: "MedicaidClaimMatchProvider",
+    ownerModule: 24,
+    phi: true,
+    denyStub: medicaidClaimMatchProviderDenyStub,
   },
   // M27 → M30 — the cost-report filing posture per FY. M27's FIRST M1 publish (it was a pure consumer
   // before). CoP 418.310 makes failure to file grounds for termination, so M30's compliance indicator needs

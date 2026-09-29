@@ -427,6 +427,9 @@ describe.skipIf(!DB_URL)(
       const discrepancies = await outboxRows(ORG_A, "m13.comfort_kit.controlled_substance_discrepancy");
       expect(discrepancies).toHaveLength(1);
       expect(discrepancies[0].payload.medicationOrderId).toBe(ORDER_CONTROLLED);
+      // F-172 (#248) — the fact was already in scope (this handler IS the return_reconciliation
+      // consumer); widening the wire payload to carry it is what unblocks M21's re-emit.
+      expect(discrepancies[0].payload.returnId).toBe("0r000000-0000-4000-8000-000000000002");
 
       const returnedAcks = await outboxRows(ORG_A, "m13.comfort_kit.returned");
       expect(returnedAcks).toHaveLength(1);

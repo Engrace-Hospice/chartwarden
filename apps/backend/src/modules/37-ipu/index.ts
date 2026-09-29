@@ -36,6 +36,14 @@ export {
   type AdmissionDischargedConsumerDeps,
 } from "./consumers/m6-admission-discharged";
 
+// F-172 (#248) — the §2.2 `recordDeath` producer: `m6.discharge.death` → `transitionAdmission(...,
+// {type: "recordDeath"})` → `m37.ipu_admission.death_recorded` + the auto-opened `ipu_body_release` row.
+export {
+  M37_DEATH_RECORDED_CONSUMER,
+  buildM37DeathRecordedConsumer,
+  type DeathRecordedConsumerDeps,
+} from "./consumers/m6-discharge-death";
+
 // §4.11 — the eight published IPU reader seams (registered over the deny-stubs by the composition root).
 export {
   buildIpuSeams,

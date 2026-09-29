@@ -1516,6 +1516,18 @@ export function createDbAdmissionRouteService(
               "m6.discharge.death": {
                 dischargeEventId: ev.dischargeEventId,
                 dischargeDate: ev.effectiveAt,
+                // F-172 (#248) — required by the catalog schema (M37's `ipu_body_release
+                // .pronouncing_physician_id`, NOT NULL). Only ever reaches this branch for
+                // `dischargeType === "death"`, and `checkDischargeNarrative` already refused the
+                // discharge request upstream if `deathCertifierId` was absent for that reason — so
+                // this is a real, already-verified fact at this point, never a guess.
+                deathCertifierId:
+                  ev.dischargeType === "death"
+                    ? (ev.deathCertifierId ??
+                      (() => {
+                        throw conflict("m6.discharge.death cannot be emitted without deathCertifierId");
+                      })())
+                    : undefined,
               },
             }
           : {}),

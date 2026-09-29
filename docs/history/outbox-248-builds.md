@@ -1471,3 +1471,156 @@ requested before registration` — that test file never registers M11's seam in 
 `verbal_order.effective_at` NOT NULL fixture gap; and `auth:live`'s two pre-existing failures (a
 Better Auth two-factor key-derivation error, and TEST-003's `ORGANIZATION_NOT_ACTIVE` 403). Leaving
 #248 open — 73 pairs across 17 modules remain.
+
+**F-172 (#248) — five parallel forks each built a specific, named infrastructure gap this arc's own
+findings had already diagnosed, rather than re-investigating pairs that were already precisely
+scoped**: M35's KMS/`PseudonymKeyProvider` seam, M24's missing `state-channel-health` cron, M37's
+missing death-recorded producer, M21's `controlled_substance_discrepancy` payload widening, and M25's
+payer-routed claim-matching path. All five landed; net **73 → 66** pairs (0 dropped as misdeclared,
+7 resolved: M35's whole group gone, M24's `m25.remittance.claim_paid`/`.claim_denied` group gone,
+M37's `death_recorded` bound, M21's `controlled_substance_discrepancy` bound), module count **17 →
+15** (m35 and the m24-consumes-m25 group both fully resolved).
+
+**M35 — the KMS/`PseudonymKeyProvider` seam, previously declined twice (F-142, F-167) as "genuinely
+new security-critical infrastructure."** On a third look this was too conservative: it is the SAME
+already-ratified ADR-0038 application-layer AES-256-GCM envelope pattern a FIFTH time, identical
+custody model to `M34_TENANT_KEK`/`TWO_FACTOR_ENCRYPTION_KEY`/`M24_CREDENTIAL_ENCRYPTION_KEY`/
+`MESSAGING_ENCRYPTION_KEY`, and the M35 module spec itself (§4.11 D15/§14.3) independently commits to
+"the standard WardenX KMS-wrapped DEK pattern." `packages/subscription-billing/src/pseudonym/
+key-envelope.ts` mirrors `tenant-kek.ts`'s format exactly, AAD-bound to `(kekId, keyEpoch)` instead of
+`(kekId, organizationId)` since there is no tenant on this platform-singleton table; mint-on-first-use
+is race-safe via `patient_pseudonym_key_one_active_uq` + `ON CONFLICT DO NOTHING` + re-select, never
+an app-level lock; a new `M35_PSEUDONYM_KEY_KEK` required-in-production env var (a SEPARATE secret
+from `M34_TENANT_KEK`) backs it, fail-closed when unset. Three previously-blocked consumers are now
+live: `m2.session.created` (resolves `userId`→`membershipId` via the M1-owned `memberships` table,
+M35's own `dependsOn: [1]`), `m5.patient.deceased` (marks the patient inactive for the current
+period), `m5.patient.merged` (marks the survivor active). **Independently adversarially reviewed**
+(a dedicated security-review pass, not the building fork's own self-report): verdict SAFE TO SHIP —
+confirmed byte-for-byte algorithm/key-size/nonce parity with `tenant-kek.ts`, confirmed the AAD
+binding genuinely defeats a ciphertext-substitution-across-epochs attack (live-tested), confirmed the
+mint-on-first-use race is genuinely closed (both winner and loser always re-read the DB-committed row,
+never use a locally-minted key directly), confirmed `patient_pseudonym_key` has RLS enabled with NO
+`wardenx_app` grant at all (the tenant role gets `permission denied`, live-tested) and the provider is
+wired off the platform pool, confirmed rotation retains retired epochs rather than deleting them.
+
+**M24 — the `state-channel-health` cron (§4.9), never built** (`registerM24CronWorkers`/
+`scheduleM24Jobs` constructed workers that discarded their own `listActiveOrgs()` result without ever
+calling the pure `runEligibilityStaleWatchdog`/`runRbDayDailySweep` handlers, and `stateChannelHealth`
+had no worker and no handler at all). **The prior F-162 org-scoping objection was reread and found
+incomplete, not wrong**: `MedicaidAdapter.healthy()` (platform-scoped, no credentials) is a
+DIFFERENT, deliberately platform-scoped method from `OregonGatewayPort.healthy(credentials)`, which
+does a real per-credential `GET {portalUrl}/health` keyed `(organizationId, providerEntityId,
+serviceState, channel)` — the catalog's non-nullable `organizationId` was correct all along, the
+opposite of M23's platform-singleton shape. New `state-channel-health-jobs.ts`: fans out over active
+orgs' active trading-partner credentials, probes each live gateway (Oregon only; the other three
+Phase-1 states report `null` — "nothing to report", never fabricated as down), and on a genuine
+transition emits `.unavailable` (debounced 3 consecutive failed probes per §7.8) or `.recovered`
+(immediate, no debounce) — a real in-flight debounce bug (every post-first-failure tick reading
+`!prev.up` as "already reported", so no streak could ever reach 3) was caught and fixed by the
+fork's own live test before landing. **Two genuine, pre-existing production defects were surfaced and
+reported, not fixed (out of this task's scope)**: `submission-jobs.ts`'s `WorkerOutboxPort` is
+narrower than the real bound publisher requires (every `runClaimSubmit`/`runClaimPoll` publish site
+omits `organizationId`/`aggregateKind`/`aggregateId`, which TypeScript's bivariant method-parameter
+checking hides, but which are all NOT NULL on `outbox_event` and would throw at the real insert), and
+`CredentialResolverPort`/`buildDrizzleCredentialResolver` captures a `db` handle at construction and
+never takes a `tx`, so `deps.credentials.resolve(...)` in those same functions runs OUTSIDE the
+`withOrgContext` transaction they otherwise thread everywhere — a likely empty-GUC or silent-empty-read
+bug. This file's own two ports were built to the CORRECT shape instead of reusing either. **This
+group's `m1`-side follow-up (the platform status-page consumer) stays exactly as unbuilt as before** —
+`SystemStatusReader` is still the in-memory, non-shared, per-process stub F-156 found; a future
+consumer can now bind to a real, live-emitting producer instead of a house that was never built, but
+building it is a separate, smaller task.
+
+**M37 — the death-recorded producer, previously a complete, pure, unit-tested transition
+(`transitionAdmission(..., {type: "recordDeath"})`) with NO caller anywhere outside its own unit
+test.** `m6.discharge.death`'s catalog entry declared only `["m5"]`; M37 was catalog-unbindable, not
+merely unwired. New `37-ipu/consumers/m6-discharge-death.ts` mirrors the sibling
+`m6-admission-discharged.ts` precedent exactly: CAS-on-version idempotency, dead-letters on illegal
+transitions rather than guessing, auto-opens `ipu_body_release` from facts already on `ipu_admission`
+(ARCH-011, no cross-module read). `deathCertifierId` (`ipu_body_release.pronouncing_physician_id`,
+NOT NULL) is carried on the widened `m6.discharge.death` payload — already a required, pre-validated
+fact at the one real emit site (`checkDischargeNarrative` refuses the discharge upstream without it
+for `dischargeType === "death"`), the F-099/F-100 "artifact already in hand at the emit site" shape,
+not a new seam. **The redundancy half of this group's own long-standing finding was checked a third
+time by direct read and confirmed right**: M16's two real M6-sourced death consumers are both keyed
+off the SAME `m6.discharge.death` transaction this new M37 consumer itself reacts to, so a third M16
+path off `death_recorded` would arrive no earlier and carry no fact M16 doesn't already have — `m16`
+is dropped from `death_recorded`'s `declaredConsumers` at the source (the F-100/F-117/F-134 redundant-
+sibling shape), not bound to a consumer that would always no-op.
+
+**M21 — `m13.comfort_kit.controlled_substance_discrepancy`, payload-BLOCKED since F-166/F-168, not
+merely unbound.** The catalogued `m21.controlled_substance.discrepancy_detected` schema requires a
+non-nullable `returnId` plus a full custody chain — the shape a RECONCILIATION-time discrepancy
+carries, and M13's re-emit has in fact fired at true reconciliation time since F-166 (the file header
+this replaced was stale, written when the re-emit fired at bedside administration time). `returnId`
+was simply never added to M13's wire payload despite already being in scope at the ONE emit site
+(`13-emar/outbox-consumers/m21-comfort-kit-return-reconciliation.ts` — that handler IS the
+`m21.comfort_kit.return_reconciliation` consumer, so the incoming event's own `returnId` is the
+outgoing M13 event's aggregate); widened additively, no cross-module read invented. `custodyChain`
+is resolved from the REAL, already-persisted `comfort_kit_returned_content` row (a new `returnId`-
+keyed join) plus the `comfort_kit_return` row's own custody columns — both rows are guaranteed to
+already exist by the time M13's re-emit can ever fire, because M21's OWN `reconcileReturn` transaction
+writes them in the SAME commit that (via the outbox) triggers the M13 consumer this event is re-emitted
+from. **Genuinely not redundant with M21's own native `detectionSource: "return_reconciliation"`
+emission of the same event**: M13's bedside administration-tracked accounting and M21's dispatched-
+vs-returned accounting are two independent discrepancy checks that can legitimately disagree. The
+other 2 of this group's 3 pairs were re-checked fresh and remain genuinely blocked, unchanged
+(`dme`/`supply` M11 order-kind contract still `contract_not_published`; `PatientAddressReader` still
+has no street-address field; DoseSpot infrastructure still a Phase-1 deny-stub).
+
+**M25 — the m24 group's last two events, `m25.remittance.claim_paid`/`.claim_denied`, blocked because
+`postAdvice`'s auto-match always matched against the single injected M23 `ClaimSubmissionReader` seam
+regardless of the advice's own `payerKind`, so a Medicaid 835 could never resolve a `medicaid_claim.id`
+even once a consumer existed.** Fixed by making the candidate lookup payer-routed — `payerKind` was
+already on the wire since `receiveAdvice`, so this is routing an existing fact, not inventing a new
+matching scheme. New `ClaimMatchCandidateProviderByPayer` map (`medicare`/`medicaid`/`commercial`);
+`postClaim`/`postAdjustments` resolve the provider via `claimCandidatesFor(advice.payerKind)`. New M24
+published seam `MedicaidClaimMatchProvider` (org+providerEntityId-scoped `candidatesForLine`/
+`patientIdForClaim`) — only claim-control-number exact match is possible (no payer ICN/Recipient ID on
+the wire per D12/§3.6), documented as a scope limit, not worked around. New M24 consumer
+(`outbox-consumers/m25-remittance.ts`), the M23 GAP-037 consumer's Medicaid sibling. **Independently
+adversarially reviewed for financial-misrouting risk**: cross-payer misrouting not found (`payerKind`
+is read from a persisted, server-set `remittance_advice` column, never client-per-call, and every
+routing map lookup either hits a real per-payer provider or a safe `NO_CLAIM_MATCH_CANDIDATES` empty
+result — no default-to-Medicare fallthrough); cross-tenant scoping correct (every M24 seam query and
+the consumer's own claim lookup filter by `organizationId` inside `withOrgContext`, RLS double-
+enforced); ambiguous matches correctly refuse rather than guess (`autoMatch` returns `UNMATCHED` on
+>1 candidate). **The review DID find one real gap, fixed centrally before verification**: the new M24
+consumer read the claim via a plain `SELECT` and wrote its state transition with no CAS/version guard
+at all — unlike its own cited M23 template (`claimRepo.transitionToState`, a genuine optimistic-
+concurrency write) — so two genuinely concurrent deliveries could both pass the idempotency check
+against the same stale read and both blindly overwrite, risking a duplicate state-history row and a
+duplicate `m24.medicaid_claim.paid`/`.denied` emission. Fixed by adding the missing `WHERE version =
+$expectedVersion` CAS predicate (a lost race now throws and retries against fresh state, the same
+pattern used throughout this codebase's other consumer writes); re-verified against a fresh, isolated
+disposable Postgres after the fix, all 7 cases of the new live suite still green.
+
+**Coordination, all found and fixed centrally, none by the building forks themselves**: a cross-fork
+F-number collision (four of five forks independently minted F-171, already used by the immediately
+prior committed round; renumbered to F-172 across every touched `.ts`/`.yml` file, including two
+stray `F-1xx` template placeholders one fork left unfilled, and one test file renamed from an `f171-`
+to an `f172-` prefix to match, verified with a repo-wide grep afterward); a genuine test-fixture gap
+(`env-validation.test.ts`'s `GOOD` fixture had no `M35_PSEUDONYM_KEY_KEK`, so 14 of its own cases
+failed the moment that var became required-in-production — added, matching the `M34_TENANT_KEK`
+fixture precedent); a near-miss on `24-billing-medicaid/wiring.ts` (two forks edited it concurrently;
+one's `Write` briefly clobbered the other's `registerSeam` call, caught via a live-test failure not a
+diff review, re-merged rather than reverted — both halves confirmed present in the final file); the
+`m1` group's own reason text for `m24.medicaid_state_channel.*` was stale after M24's build (still
+said "no cron infrastructure running at all") — updated to record the cron now exists and only the
+M1-side consumer remains unbuilt. Verified centrally, once, after all five forks' edits landed
+together plus the coordinator's own fixes: `bun run build`/`typecheck` clean (0 errors), `arch:fitness`
+38/38 (`arch:outbox-bindings` confirms 66 pairs across 15 modules, down from 73/17), full non-live
+suite 654 files / 9604 tests green, all 5 new/changed live suites green (`m21:comfort-kit-cascade`
+12/12, `m13:comfort-kit-deployment` 6/6, `m37:death-recorded` 7/7, `m35:pseudonym-key-provider` 10/10,
+`m24:remittance-feedback` 7/7 — the last re-run a second time, alone, against a completely fresh
+disposable Postgres after the CAS fix landed, to confirm the fix itself rather than trust timing),
+21 sibling regression suites green (`m37:admission-discharged-cascade` 8/8, `m5:death-cascade` 3/3,
+`m35:org-lifecycle-consumer` 10/10, `m23:claim-match-seam` 4/4, `m25:835-ingestion` 9/9,
+`m24:revalidate-medicare-primary` 6/6, `m24:claim-line-assembly` 9/9, `m24:nf-facility-snapshot` 5/5,
+`m21:order-cascade` 6/6, `m21:comfort-kit-replenishment` 8/8, `m13:write` 24/24, `m13:rn-case-manager`
+12/12, `m13:read` 5/5, `m13:reconciliation-triggers` 5/5, `m13:admission-discharged-cascade` 5/5,
+`m13:scheduled-dose-materialization` 7/7, `m13:m12-draft-order-requested` 7/7), and two clean
+`check:boot:platform` runs against freshly migrated, role-provisioned disposable Postgres instances
+(one confirming the real 283-migration boot with the new bindings, one directly confirming the M24
+state-channel-health cron worker actually constructs when `REDIS_URL` is set). Leaving #248 open —
+66 pairs across 15 modules remain.
