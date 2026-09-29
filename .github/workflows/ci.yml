@@ -234,6 +234,7 @@ jobs:
           # order_record.transmission_status and re-publish M11's own D16-decisive events.
           - { name: "M11 lab-transmission applier", scripts: "test:m11:lab-transmission-applier:live" }
           - { name: "M11 lab ORM producer (F-178)", scripts: "test:m11:orm-requested:live" }
+          - { name: "M11 lab ORM resend (F-179)", scripts: "test:m11:orm-resend:live" }
           # F-164 (#248) — M11's hourly orders.verbal_timer fan-out + the M12 medication-order verbal
           # target-kind discrimination it drives.
           - { name: "M11 verbal-order expiry", scripts: "test:m11:verbal-order-expiry:live" }

@@ -132,6 +132,7 @@
     "test:m11:supply-cancelled:live": "vitest run apps/backend/__tests__/m11-supply-cancelled.live.test.ts",
     "test:m11:lab-transmission-applier:live": "vitest run apps/backend/__tests__/m11-lab-transmission-applier.live.test.ts",
     "test:m11:orm-requested:live": "vitest run apps/backend/__tests__/m11-orm-requested.live.test.ts",
+    "test:m11:orm-resend:live": "vitest run apps/backend/__tests__/m11-orm-resend.live.test.ts",
     "test:m13:reconciliation-triggers:live": "vitest run apps/backend/__tests__/m13-reconciliation-triggers.live.test.ts",
     "test:m17:evv-sos-consumers:live": "vitest run apps/backend/__tests__/m17-evv-sos-consumers.live.test.ts",
     "test:m16:discharge-death-secondary:live": "vitest run apps/backend/__tests__/m16-discharge-death-secondary.live.test.ts",
