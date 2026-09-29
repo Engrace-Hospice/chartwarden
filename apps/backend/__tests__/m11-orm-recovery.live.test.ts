@@ -1807,28 +1807,29 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     return { id, requestId: filed.recovery!.id, done };
   };
   const ESCALATED = ["orders.transmission.cosign_escalated"];
-  const PD: Person = [memberD, USER_D];
-  const PB: Person = [memberA2, USER_B];
-  const PC: Person = [memberC, USER_C];
+  // Lazy: `memberD`/`memberA2`/`memberC` are assigned in beforeAll, AFTER this describe body is collected.
+  const PD = (): Person => [memberD, USER_D];
+  const PB = (): Person => [memberA2, USER_B];
+  const PC = (): Person => [memberC, USER_C];
   const requestOf = async (requestId: string) =>
     (await admin.query("SELECT * FROM order_recovery_request WHERE id=$1", [requestId])).rows[0] as Record<string, unknown>;
 
   it("F-200 COLLUSION BOUND (requester): after 3 executed recoveries in the window the 4th needs a `cosign_escalated` co-signer — refused 409 with NOTHING dispatched, the request stays pending; a holder executes it and it is RECORDED", async () => {
     const { now } = clockFrom("2031-03-01T00:00:00Z");
     const b = backendWith({ now, escalationThreshold: 3 });
-    for (let i = 0; i < 3; i++) expect((await executeOne(b, PD, PB)).done.outcome).toBe("redispatched");
+    for (let i = 0; i < 3; i++) expect((await executeOne(b, PD(), PB())).done.outcome).toBe("redispatched");
 
     const id = await heldOrder();
-    const filed = await fileWith(b, id, PD);
+    const filed = await fileWith(b, id, PD());
     const dispatched = await count(id, "m11.order.hl7_orm_requested");
 
     // The SAME pair is at its pair bound…
-    await expect(cosignWith(b, id, filed.recovery!.id, PB)).rejects.toMatchObject({
+    await expect(cosignWith(b, id, filed.recovery!.id, PB())).rejects.toMatchObject({
       statusCode: 409,
       message: expect.stringContaining("(escalation_required)"),
     });
     // …and a DIFFERENT co-signer is still stopped by the REQUESTER's own bound (the requester cannot shop for a friendlier second person).
-    await expect(cosignWith(b, id, filed.recovery!.id, PC)).rejects.toMatchObject({
+    await expect(cosignWith(b, id, filed.recovery!.id, PC())).rejects.toMatchObject({
       statusCode: 409,
       message: expect.stringContaining("(escalation_required)"),
     });
@@ -1839,7 +1840,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await attestations(id)).toHaveLength(0);
 
     // A holder of `orders.transmission.cosign_escalated` approves it — and that is on the record.
-    const done = await cosignWith(b, id, filed.recovery!.id, PC, ESCALATED);
+    const done = await cosignWith(b, id, filed.recovery!.id, PC(), ESCALATED);
     expect(done.outcome).toBe("redispatched");
     expect(await requestOf(filed.recovery!.id)).toMatchObject({
       status: "executed",
@@ -1855,49 +1856,49 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   it("F-200 COLLUSION BOUND (pair): a repeated PAIR is bounded either way round — swapping who files does not reset it — while a DIFFERENT pair is unaffected", async () => {
     const { now } = clockFrom("2032-03-01T00:00:00Z");
     const b = backendWith({ now, escalationThreshold: 3 });
-    for (let i = 0; i < 3; i++) expect((await executeOne(b, PC, PB)).done.outcome).toBe("redispatched");
+    for (let i = 0; i < 3; i++) expect((await executeOne(b, PC(), PB())).done.outcome).toBe("redispatched");
 
     // B files, C co-signs: B's own requester count is 0, but the (B, C) PAIR has executed 3 times.
     const id = await heldOrder();
-    const filed = await fileWith(b, id, PB);
-    await expect(cosignWith(b, id, filed.recovery!.id, PC)).rejects.toMatchObject({
+    const filed = await fileWith(b, id, PB());
+    await expect(cosignWith(b, id, filed.recovery!.id, PC())).rejects.toMatchObject({
       statusCode: 409,
       message: expect.stringContaining("this requester and co-signer have already executed 3"),
     });
     // A different second person for the same request is a different pair and a requester with no history: it executes.
-    expect((await cosignWith(b, id, filed.recovery!.id, PD)).outcome).toBe("redispatched");
+    expect((await cosignWith(b, id, filed.recovery!.id, PD())).outcome).toBe("redispatched");
     expect(await requestOf(filed.recovery!.id)).toMatchObject({ status: "executed", cosigned_escalated: false });
   });
 
   it("F-200 COLLUSION BOUND: the window slides — recoveries older than 24 h no longer count, so the same pair is un-bounded again", async () => {
     const { clk, now } = clockFrom("2033-03-01T00:00:00Z");
     const b = backendWith({ now, escalationThreshold: 3 });
-    for (let i = 0; i < 3; i++) await executeOne(b, PD, PB);
+    for (let i = 0; i < 3; i++) await executeOne(b, PD(), PB());
     // 23 h later the three still count.
     clk.t += 23 * 3_600_000;
     const stillBound = await heldOrder();
-    const f1 = await fileWith(b, stillBound, PD);
-    await expect(cosignWith(b, stillBound, f1.recovery!.id, PB)).rejects.toMatchObject({
+    const f1 = await fileWith(b, stillBound, PD());
+    await expect(cosignWith(b, stillBound, f1.recovery!.id, PB())).rejects.toMatchObject({
       message: expect.stringContaining("(escalation_required)"),
     });
     await svc.cancelLabTransmissionRecovery(ORG_A, memberA2, stillBound, f1.recovery!.id, undefined, USER_B);
     // 25 h after the first three, they have aged out.
     clk.t += 3 * 3_600_000;
-    expect((await executeOne(b, PD, PB)).done.outcome).toBe("redispatched");
+    expect((await executeOne(b, PD(), PB())).done.outcome).toBe("redispatched");
   });
 
   it("F-200 COLLUSION BOUND (race): two co-signs by the same pair on DIFFERENT orders, in flight together at the bound's edge, cannot BOTH slip under it — the second waits, recounts, and needs the escalated key", async () => {
     const { now } = clockFrom("2036-03-01T00:00:00Z");
     const b = backendWith({ now, escalationThreshold: 2 });
-    await executeOne(b, PD, PB); // 1 executed: one more is still allowed, the one after that is not
+    await executeOne(b, PD(), PB()); // 1 executed: one more is still allowed, the one after that is not
     const x = await heldOrder();
     const y = await heldOrder();
-    const fx = await fileWith(b, x, PD);
-    const fy = await fileWith(b, y, PD);
+    const fx = await fileWith(b, x, PD());
+    const fy = await fileWith(b, y, PD());
     // Different orders ⇒ different order-row locks: only the per-person advisory lock serializes them.
     const results = await Promise.allSettled([
-      cosignWith(b, x, fx.recovery!.id, PB),
-      cosignWith(b, y, fy.recovery!.id, PB),
+      cosignWith(b, x, fx.recovery!.id, PB()),
+      cosignWith(b, y, fy.recovery!.id, PB()),
     ]);
     const ok = results.filter((r) => r.status === "fulfilled");
     const refused = results.filter((r) => r.status === "rejected") as PromiseRejectedResult[];
@@ -1911,7 +1912,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     // The bound is out of reach (every execution proceeds — this case is about the SIGNAL); the org-rate threshold is 4.
     // `escalationThreshold` also sets the PAIR signal's threshold, so the pair signal stays silent here.
     const b = backendWith({ now, escalationThreshold: 100_000, orgRateThreshold: 4 });
-    for (let i = 0; i < 5; i++) await executeOne(b, PD, PB);
+    for (let i = 0; i < 5; i++) await executeOne(b, PD(), PB());
     await settle();
 
     const anomalies = alertLog.filter((a) => a.eventType === "m11.order.recovery_anomaly");
@@ -1934,9 +1935,9 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   it("F-200 COLLUSION SIGNALS: a pair at its threshold raises exactly one critical `repeat_pair` alert, symmetric under swapping requester/co-signer", async () => {
     const { now } = clockFrom("2035-03-01T00:00:00Z");
     const b = backendWith({ now, escalationThreshold: 3, orgRateThreshold: 100_000 });
-    await executeOne(b, PC, PB);
-    await executeOne(b, PC, PB);
-    await executeOne(b, PC, PB); // the pair's 3rd — at the threshold
+    await executeOne(b, PC(), PB());
+    await executeOne(b, PC(), PB());
+    await executeOne(b, PC(), PB()); // the pair's 3rd — at the threshold
     await settle();
     wires = []; // settling delivered the three real re-dispatches; the next `heldOrder()` asserts a clean wire
     const pair =alertLog.filter((a) => a.eventType === "m11.order.recovery_anomaly" && a.payload.signal === "repeat_pair");
@@ -1946,8 +1947,8 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     // The reversed pair (B files, C co-signs) is the SAME pair — bounded, so it needs the escalated key; when an escalated
     // holder co-signs, the alert it raises carries the SAME correlation id (M36 keeps one alert for the window).
     const id = await heldOrder();
-    const f = await fileWith(b, id, PB);
-    await cosignWith(b, id, f.recovery!.id, PC, ESCALATED);
+    const f = await fileWith(b, id, PB());
+    await cosignWith(b, id, f.recovery!.id, PC(), ESCALATED);
     await settle();
     const again = alertLog.filter((a) => a.eventType === "m11.order.recovery_anomaly" && a.payload.signal === "repeat_pair");
     expect(again.length).toBeGreaterThanOrEqual(2);
@@ -2168,7 +2169,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
           : (m11OutboxPort as unknown as { publish: (t: unknown, ev: unknown) => Promise<unknown> }).publish(tx, e),
     };
     const broken = createDbOrderBackend(handle.db, failingAlertOutbox as never, ormPorts, NO_BOUND as never);
-    await expect(cosignWith(broken as never, id, filed.recovery!.id, PB)).rejects.toThrow("outbox down");
+    await expect(cosignWith(broken as never, id, filed.recovery!.id, PB())).rejects.toThrow("outbox down");
 
     // Everything the co-sign did before that point is gone with it: request pending, order still failed, no ledger row,
     // no second ORM, no alert intent.

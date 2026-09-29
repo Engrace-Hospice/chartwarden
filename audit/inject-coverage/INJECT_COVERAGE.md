@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1308/1308 route defs sit behind a covered module · 1250/1308 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1309/1309 route defs sit behind a covered module · 1251/1309 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -27,7 +27,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 18-evv | 25 | ✅ | 25/25 | apps/backend/__tests__/evv-inject.test.ts |
 | 19-oncall | 39 | ✅ | 38/39 | apps/backend/__tests__/oncall-inject.test.ts |
 | 20-field-safety | 30 | ✅ | 30/30 | apps/backend/__tests__/field-safety-inject.test.ts |
-| 21-supplies | 37 | ✅ | 37/37 | apps/backend/__tests__/supplies-inject.test.ts |
+| 21-supplies | 38 | ✅ | 38/38 | apps/backend/__tests__/supplies-inject.test.ts |
 | 22-documents | 40 | ✅ | 35/40 | apps/backend/__tests__/document-doclens.test.ts, apps/backend/__tests__/document-routes.test.ts, apps/backend/__tests__/document-workflow-acceptance.test.ts |
 | 23-billing-medicare | 43 | ✅ | 43/43 | apps/backend/__tests__/billing-medicare-inject.test.ts |
 | 24-billing-medicaid | 39 | ✅ | 39/39 | apps/backend/__tests__/billing-medicaid-inject.test.ts |
