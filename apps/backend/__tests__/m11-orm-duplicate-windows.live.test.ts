@@ -334,12 +334,10 @@ describe.skipIf(!DB_URL)("F-180 — duplicate-ORM windows for one lab order, LIV
 
   // ── W4 ──────────────────────────────────────────────────────────────────────────────────────────────────
   // REAL, and reproduced here. M29's dedup key hashes the feed the resolver picks at delivery time (§2.6), so a
-  // redelivery after a relink resolves another feed, computes another key and sends a SECOND message for the same
-  // order. `it.fails`: this asserts the CORRECT behaviour and currently fails against the unpatched worker — the
-  // worker (`dispatch-worker.ts`, owned by the F-180 reclaim-policy fork) must call `ormDispatchExistsForOrder`
-  // under an order-level advisory lock at the top of its claim transaction. When it does, this flips to a plain
-  // `it` (the stacked branch `f180-m29-order-dedupe-hook` carries that hook and the flip).
-  it.fails("W4: a redelivery after the routing CHANGED (facility relinked to another feed) must NOT send a second message", async () => {
+  // redelivery after a relink resolves another feed, computes another key and sent a SECOND message for the same
+  // order. Closed by the worker calling `ormDispatchExistsForOrder` under an order-level advisory lock at the top
+  // of its claim transaction (mutation: removing that call brings the second wire back).
+  it("W4: a redelivery after the routing CHANGED (facility relinked to another feed) must NOT send a second message", async () => {
     const feedX = await seedFeed(PORT_X, FAC_ACTIVE);
     const feedY = await seedFeed(PORT_Y, null);
     const id = await draftAndRequest();
