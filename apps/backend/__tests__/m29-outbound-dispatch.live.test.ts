@@ -210,10 +210,13 @@ function ormRequestedPayload(overrides: {
   orderId: string;
   organizationId: string;
   labDestinationFacilityId?: string | null;
+  /** F-192 — the request's attempt (F-188), which the worker copies onto the outbound row. */
+  attemptId?: string;
 }) {
   return {
     orderId: overrides.orderId,
     organizationId: overrides.organizationId,
+    ...(overrides.attemptId !== undefined ? { attemptId: overrides.attemptId } : {}),
     // `hl7_message_outbound.destination_facility_id` is a real `uuid` column — a human-readable code
     // would fail the insert with `22P02 invalid input syntax for type uuid` (the correct, honest
     // behavior; M11 always publishes a real M40 facility id in production).
@@ -842,6 +845,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     server: MockMllpServer,
     organizationId = ORG_A,
     feed: { receiverDedupesControlId?: boolean; inFlightLeaseSeconds?: number | null } = {},
+    attemptId?: string,
   ) {
     registerActiveBaa();
     // F-183 — the F-182 cases below exercise the REQUEUE path, which is now the operator-declared
@@ -854,7 +858,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       dyingAfterDelivery(createNodeMllpTransport()),
     );
     await expect(
-      consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId }))),
+      consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId, ...(attemptId ? { attemptId } : {}) }))),
     ).rejects.toThrow("simulated process death");
     const [row] = await outboundRowFor(organizationId, orderId);
     return { orderId, row: row! };
@@ -1921,5 +1925,215 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     // A different port, and the same port in ANOTHER tenant, are both fine.
     await seedFeed({ organizationId: ORG_A, port: 41102 });
     await seedFeed({ organizationId: ORG_B, port: 41101 });
+  });
+
+  // ── F-192 — the outbound row stores its attempt, and every terminal event built from it names it ─────────────
+  // M11's applier applies `transmitted` / `transmission_failed` only to the order's CURRENT attempt (proven in
+  // `m11-orm-recovery.live.test.ts`); these prove the M29 half of that contract on the real worker, on every path
+  // that emits a terminal event: an AA ack, an AR reject, retry exhaustion, and both reclaim outcomes.
+
+  /** The payload of every M29 event of `eventType` published for `orderId`, read from the REAL outbox table. */
+  async function m29Events(orderId: string, eventType: string): Promise<Record<string, unknown>[]> {
+    const { rows } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE event_type=$1 AND payload->>'orderId'=$2 ORDER BY created_at, id",
+      [eventType, orderId],
+    );
+    return rows.map((r: { payload: Record<string, unknown> }) => r.payload);
+  }
+  /** A worker over the REAL catalog-validating publisher, so events land in `outbox_event` (validated, F-192 schema). */
+  function realPublisherConsumer(transport?: MllpTransport) {
+    const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M29_OUTBOX_EVENTS]));
+    const port = {
+      publish: (tx: unknown, e: never) =>
+        publisher.publish(tx as never, { ...(e as object), callerModule: "m29" } as never),
+    };
+    const alerts = fakeAlerts();
+    return {
+      port,
+      consumer: buildM29OutboundDispatchConsumer({
+        db: handle.db,
+        outbox: port as never,
+        keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
+        alerts: alerts.port,
+        ...(transport ? { transport } : {}),
+      }),
+    };
+  }
+
+  it("F-192: a normal dispatch copies the request's attempt onto the row, and the AA `transmitted` event names it (validated by the real catalog)", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const { consumer } = realPublisherConsumer();
+      const orderId = randomUUID();
+      const attemptId = randomUUID();
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, attemptId })));
+
+      const [row] = await outboundRowFor(ORG_A, orderId);
+      expect(row!.status).toBe("acked");
+      expect(row!.attemptId).toBe(attemptId);
+      const [ev] = await m29Events(orderId, "m29.lab_order.transmitted");
+      expect(ev).toMatchObject({ orderId, attemptId });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-192: an AR reject's `transmission_failed` (application_reject) names the attempt", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AR" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const { consumer } = realPublisherConsumer();
+      const orderId = randomUUID();
+      const attemptId = randomUUID();
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, attemptId })));
+
+      const [row] = await outboundRowFor(ORG_A, orderId);
+      expect(row!.status).toBe("naked");
+      expect(row!.attemptId).toBe(attemptId);
+      const [ev] = await m29Events(orderId, "m29.lab_order.transmission_failed");
+      expect(ev).toMatchObject({ orderId, reason: "application_reject", attemptId });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-192: a RETRY keeps the row's attempt (never rewritten), and the exhausted `dlq_exhausted` event names it", async () => {
+    registerActiveBaa();
+    await seedFeed({ organizationId: ORG_A, port: 1 }); // nothing listens: every attempt fails
+    const { port, consumer } = realPublisherConsumer();
+    const orderId = randomUUID();
+    const attemptId = randomUUID();
+    await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, attemptId })));
+    const [first] = await outboundRowFor(ORG_A, orderId);
+    expect(first!.status).toBe("queued");
+    expect(first!.attemptId).toBe(attemptId);
+    expect(await m29Events(orderId, "m29.lab_order.transmission_failed")).toHaveLength(0);
+
+    for (let attempt = 2; attempt <= 5; attempt += 1) {
+      await admin.query(
+        "UPDATE hl7_message_outbound SET next_retry_at = now() - interval '1 second' WHERE organization_id=$1 AND source_aggregate_id=$2",
+        [ORG_A, orderId],
+      );
+      await runOutboundRetrySweepOnce({
+        db: handle.db,
+        outbox: port as never,
+        keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
+        alerts: fakeAlerts().port,
+        activeOrgs: fakeActiveOrgs(ORG_A),
+      });
+      const [mid] = await outboundRowFor(ORG_A, orderId);
+      expect(mid!.attemptId, `attempt ${attempt}: the retry must not rewrite the row's attempt`).toBe(attemptId);
+    }
+    const [done] = await outboundRowFor(ORG_A, orderId);
+    expect(done!.status).toBe("dlq");
+    const events = await m29Events(orderId, "m29.lab_order.transmission_failed");
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ reason: "dlq_exhausted", attemptCount: 5, attemptId });
+  });
+
+  it("F-192: an F-183 reclaim REQUEUE keeps the attempt, and the re-sent row's `transmitted` names it", async () => {
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const attemptId = randomUUID();
+      const { orderId, row } = await crashedDispatch(server, ORG_A, {}, attemptId);
+      expect(row.status).toBe("in_flight");
+      expect(row.attemptId).toBe(attemptId);
+
+      const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M29_OUTBOX_EVENTS]));
+      const outboxPort = {
+        publish: (tx: unknown, e: never) =>
+          publisher.publish(tx as never, { ...(e as object), callerModule: "m29" } as never),
+      };
+      const t0 = Date.now();
+      await sweep({ now: new Date(t0 + 10 * MINUTE), outboxPort }).run(); // reclaim → queued
+      const [reclaimed] = await outboundRowFor(ORG_A, orderId);
+      expect(reclaimed!.status).toBe("queued");
+      expect(reclaimed!.attemptId).toBe(attemptId);
+      await sweep({ now: new Date(t0 + 11 * MINUTE), outboxPort }).run(); // retry pass re-sends the stored wire
+      const [done] = await outboundRowFor(ORG_A, orderId);
+      expect(done!.status).toBe("acked");
+      expect(done!.attemptId).toBe(attemptId);
+      const [ev] = await m29Events(orderId, "m29.lab_order.transmitted");
+      expect(ev).toMatchObject({ orderId, attemptId });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-192: an F-183 reclaim HOLD (feed not declared as deduping MSH-10) emits `transmission_failed` naming the attempt", async () => {
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
+    try {
+      const attemptId = randomUUID();
+      const { orderId } = await crashedDispatch(server, ORG_A, { receiverDedupesControlId: false }, attemptId);
+      const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M29_OUTBOX_EVENTS]));
+      await sweep({
+        now: new Date(Date.now() + 10 * MINUTE),
+        outboxPort: {
+          publish: (tx: unknown, e: never) =>
+            publisher.publish(tx as never, { ...(e as object), callerModule: "m29" } as never),
+        },
+      }).run();
+      const [held] = await outboundRowFor(ORG_A, orderId);
+      expect(held!.status).toBe("dlq");
+      expect(held!.attemptId).toBe(attemptId);
+      const [ev] = await m29Events(orderId, "m29.lab_order.transmission_failed");
+      expect(ev).toMatchObject({ orderId, reason: "dlq_exhausted", attemptId });
+    } finally {
+      info.mockRestore();
+      await server.close();
+    }
+  });
+
+  it("F-192: a request with NO attempt (pre-F-188) or a MALFORMED one stores NULL, the claim is not stranded, and its events carry no attempt", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const { consumer } = realPublisherConsumer();
+      const bare = randomUUID();
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId: bare, organizationId: ORG_A })));
+      const junk = randomUUID();
+      // `hl7_message_outbound.attempt_id` is a uuid; a non-uuid string must not throw at the INSERT.
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId: junk, organizationId: ORG_A, attemptId: "not-a-uuid" })),
+      );
+      for (const id of [bare, junk]) {
+        const [row] = await outboundRowFor(ORG_A, id);
+        expect(row!.status).toBe("acked");
+        expect(row!.attemptId).toBeNull();
+        const [ev] = await m29Events(id, "m29.lab_order.transmitted");
+        expect(ev).toBeDefined();
+        expect(ev).not.toHaveProperty("attemptId");
+      }
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-192 schema (0270): the column exists on the parent, the DEFAULT partition and EVERY partition — including one created later by the partition function", async () => {
+    const has = async (table: string) =>
+      (
+        await admin.query(
+          "SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name=$1 AND column_name='attempt_id' AND data_type='uuid' AND is_nullable='YES'",
+          [table],
+        )
+      ).rowCount === 1;
+    expect(await has("hl7_message_outbound")).toBe(true);
+    expect(await has("hl7_message_outbound_default")).toBe(true);
+    const { rows: parts } = await admin.query(
+      "SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid=i.inhrelid WHERE i.inhparent='public.hl7_message_outbound'::regclass",
+    );
+    expect(parts.length).toBeGreaterThan(0);
+    for (const { relname } of parts as { relname: string }[]) expect(await has(relname), `${relname} has attempt_id`).toBe(true);
+
+    // A month that does not exist yet, created by the real partition function (`CREATE TABLE … PARTITION OF`).
+    await admin.query("SELECT create_hl7_message_outbound_partition(date '2041-03-01')");
+    expect(await has("hl7_message_outbound_2041_03")).toBe(true);
   });
 });

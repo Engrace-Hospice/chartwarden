@@ -1045,4 +1045,110 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await attestations(id)).toHaveLength(2); // both attestations are on record
   });
 
+  // ── F-192 — the attempt binding for the TERMINAL events (`transmission_failed` / `transmitted`) ──────────────
+  // F-188 bound `dispatch_refused` to the attempt it refused. The two events that come off an outbound ROW carried no
+  // attempt, so a late or redelivered one from an EARLIER attempt was guarded only by the terminal-state check — which
+  // stops protecting the order the moment an operator recovery sets it `pending` again.
+
+  /** The payload of the M29 event of `eventType` published for `orderId` (M29 events are keyed on the row). */
+  async function m29Payload(orderId: string, eventType: string, nth = 0): Promise<Record<string, unknown>> {
+    const { rows } = await admin.query(
+      `SELECT payload FROM outbox_event WHERE event_type=$1 AND payload->>'orderId'=$2 ORDER BY created_at, id`,
+      [eventType, orderId],
+    );
+    expect(rows.length, `${eventType} #${nth} for the order`).toBeGreaterThan(nth);
+    return rows[nth].payload as Record<string, unknown>;
+  }
+  const statusChanges = (id: string) => count(id, "m11.order.transmission_status_changed");
+
+  it("F-192 window A (the real one): a `transmission_failed` from attempt 1, redelivered AFTER an attested recovery, does NOT flip the recovered order failed again", async () => {
+    const id = await heldOrder(); // attempt 1 → dlq_exhausted → failed
+    const a1 = (await orderRow(id)).transmission_attempt_id as string;
+    const stale = await m29Payload(id, "m29.lab_order.transmission_failed");
+    expect(stale.attemptId, "the terminal event names the attempt whose row produced it").toBe(a1);
+
+    // The operator verified with the lab and recovers: attempt 2, the order is `pending` again (its request is queued).
+    const res = await recover(id, "not_received_by_lab");
+    expect(res.outcome).toBe("redispatched");
+    const a2 = (await orderRow(id)).transmission_attempt_id as string;
+    expect(a2).not.toBe(a1);
+    expect((await orderRow(id)).transmission_status).toBe("pending");
+    const changed = await statusChanges(id);
+
+    // The relay redelivers attempt 1's failure (its consumer receipt was lost). The terminal-state check does not
+    // help: the order is `pending`. Without the attempt binding this flips the recovered order back to `failed`.
+    await applier.handle({ eventType: "m29.lab_order.transmission_failed", organizationId: ORG_A, payload: stale });
+    const row = await orderRow(id);
+    expect(row.transmission_status).toBe("pending");
+    expect(row.transmission_failure_reason).toBeNull();
+    expect(await statusChanges(id)).toBe(changed);
+
+    // Attempt 2 then goes out and is acked: THAT event names the current attempt and applies.
+    await settle();
+    expect((await orderRow(id)).transmission_status).toBe("transmitted");
+    const ack = await m29Payload(id, "m29.lab_order.transmitted");
+    expect(ack.attemptId).toBe(a2);
+  });
+
+  it("F-192 window B (defence in depth — a late `transmitted` for attempt 1 cannot be produced by M29 today, its row is a dead end): a stale `transmitted` does NOT mark a recovered order delivered", async () => {
+    const id = await heldOrder();
+    const a1 = (await orderRow(id)).transmission_attempt_id as string;
+    const failed = await m29Payload(id, "m29.lab_order.transmission_failed");
+    await recover(id, "not_received_by_lab");
+    expect((await orderRow(id)).transmission_status).toBe("pending");
+    const changed = await statusChanges(id);
+
+    await applier.handle({
+      eventType: "m29.lab_order.transmitted",
+      organizationId: ORG_A,
+      payload: {
+        orderId: id,
+        organizationId: ORG_A,
+        feedId: failed.feedId,
+        outboundMessageId: failed.outboundMessageId,
+        messageControlId: "STALE1",
+        ackReceivedAt: new Date().toISOString(),
+        attemptId: a1,
+      },
+    });
+    const row = await orderRow(id);
+    expect(row.transmission_status).toBe("pending");
+    expect(row.transmission_ack_code).toBeNull();
+    expect(await statusChanges(id)).toBe(changed);
+  });
+
+  it("F-192: the terminal event of the CURRENT attempt still applies — a recovery that is refused AGAIN ends failed, and the event names the new attempt", async () => {
+    const id = await heldOrder();
+    const a1 = (await orderRow(id)).transmission_attempt_id as string;
+    mode = "refuse";
+    await recover(id, "not_received_by_lab");
+    const a2 = (await orderRow(id)).transmission_attempt_id as string;
+    await settle(); // attempt 2 is permanently refused too → dlq_exhausted for A2
+    mode = "ack";
+    const row = await orderRow(id);
+    expect(row.transmission_status).toBe("failed");
+    expect(row.transmission_failure_reason).toBe("dlq_exhausted");
+    const second = await m29Payload(id, "m29.lab_order.transmission_failed", 1);
+    expect(second.attemptId).toBe(a2);
+    expect(second.attemptId).not.toBe(a1);
+  });
+
+  it("F-192: a terminal event with NO attempt id (a row queued before the migration, or an event already in the outbox) applies exactly as it always did", async () => {
+    const failedId = await signedLab(); // pending, attempt on the order; nothing dispatched yet
+    await applier.handle({
+      eventType: "m29.lab_order.transmission_failed",
+      organizationId: ORG_A,
+      payload: { orderId: failedId, organizationId: ORG_A, feedId: randomUUID(), outboundMessageId: randomUUID(), reason: "dlq_exhausted", detail: null, attemptCount: 5 },
+    });
+    expect((await orderRow(failedId)).transmission_status).toBe("failed");
+
+    const okId = await signedLab();
+    await applier.handle({
+      eventType: "m29.lab_order.transmitted",
+      organizationId: ORG_A,
+      payload: { orderId: okId, organizationId: ORG_A, feedId: randomUUID(), outboundMessageId: randomUUID(), messageControlId: "LEGACY1", ackReceivedAt: new Date().toISOString() },
+    });
+    expect((await orderRow(okId)).transmission_status).toBe("transmitted");
+  });
+
 });

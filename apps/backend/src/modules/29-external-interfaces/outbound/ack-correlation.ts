@@ -58,6 +58,8 @@ export interface CorrelatedOutboundRow {
   readonly sourceAggregateId: string;
   /** Dispatch attempts already made (1-based once dispatched); carried onto the failed-event payload. */
   readonly retryCount: number;
+  /** F-192 — `hl7_message_outbound.attempt_id`, carried onto BOTH terminal events (see `RetryOutboundRow.attemptId`). */
+  readonly attemptId?: string | null;
 }
 
 /** The subset of `hl7_message_outbound` columns an ACK sets. `ackPayloadCipher` is added by the worker. */
@@ -149,6 +151,7 @@ export function correlateAck(input: AckCorrelationInput): AckCorrelationResult {
             outboundMessageId: outbound.id,
             messageControlId: ack.messageControlId,
             ackReceivedAt: input.ackReceivedAt.toISOString(),
+            ...(outbound.attemptId ? { attemptId: outbound.attemptId } : {}),
           },
         },
         audit: { kind: "hl7.outbound.acked", ...baseAudit },
@@ -175,6 +178,7 @@ export function correlateAck(input: AckCorrelationInput): AckCorrelationResult {
             reason: "application_reject",
             detail: ack.text || null,
             attemptCount: outbound.retryCount,
+            ...(outbound.attemptId ? { attemptId: outbound.attemptId } : {}),
           },
         },
         alert: {

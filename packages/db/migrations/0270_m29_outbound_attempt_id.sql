@@ -1,0 +1,25 @@
+-- F-192 (#248) — M29 outbound: the attempt each outbound row belongs to.
+--
+-- F-188 gave every emission of `m11.order.hl7_orm_requested` (sign, F-182 resend, F-187 recovery) its own
+-- `attemptId`, persisted on `order_record.transmission_attempt_id`, and bound `m29.lab_order.dispatch_refused` to it so
+-- a refusal from an EARLIER attempt cannot disturb an order an operator has since recovered. The two events that come
+-- off an outbound ROW — `m29.lab_order.transmitted` and `m29.lab_order.transmission_failed` — carried no attempt,
+-- because the row did not store one: the only guard against a late or redelivered one was the terminal-state check,
+-- which stops protecting the order the instant a recovery sets it `pending` again (proven live: a redelivered
+-- attempt-1 `transmission_failed` flipped a recovered order back to `failed`).
+--
+-- The worker now copies the request's `attemptId` onto the row at claim time and every terminal event built from the
+-- row carries it, so M11's applier can apply an event only to the attempt the order is on.
+--
+-- NULLABLE, no default, no index:
+--   · NULL for every row that exists today and for a request that carried no attempt (pre-F-188) — the applier
+--     applies an event with no attempt id exactly as it always did, so nothing already in flight is stranded.
+--   · No index: nothing filters the outbound table by attempt (the applier compares the EVENT's attempt to the
+--     ORDER's), and a unique index on this partitioned table would have to include the partition key `queued_at`.
+--
+-- `hl7_message_outbound` is PARTITIONED BY RANGE (queued_at) (0146). `ALTER TABLE … ADD COLUMN` on the partitioned
+-- parent cascades to every existing partition, the DEFAULT partition included, and partitions created LATER by
+-- `create_hl7_message_outbound_partition()` are `CREATE TABLE … PARTITION OF hl7_message_outbound`, which inherits
+-- the parent's columns — so no partition ever lacks it. RLS, FORCE and the M4 audit trigger already cover the table.
+ALTER TABLE "hl7_message_outbound"
+  ADD COLUMN IF NOT EXISTS "attempt_id" uuid;
