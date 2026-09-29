@@ -630,7 +630,8 @@ export * from "./bereavement/index";
 // RLS/grants + M4 write-audit + the discrepancy and expiration-floor triggers 0106.
 export * from "./supplies/index";
 
-// M19 On-Call Triage: 10 owned tables (§3.3) in four layers — CONFIG (tenant_oncall_policy, D3/D7's
+// M19 On-Call Triage: 10 owned tables (§3.3) — +1, `on_call_roster_sync_queue`, the §4.8
+// `m19.shift-sync.debounced` debounce table F-155/#248 built (see its own header) — in four layers — CONFIG (tenant_oncall_policy, D3/D7's
 // per-(org, PE) model + tier ladder + callback SLA + the two default-OFF AI gates, now carrying the §2.7
 // D-D `emergency_contact_e164` the degraded path names; external_triage_vendor, D13/ADR-0026's BAA-gated
 // binding to a vendor whose canonical entity is M40's and for which M19 mints NO tokens), ROSTER

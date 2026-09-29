@@ -72,9 +72,11 @@ describe.skipIf(!DB_URL)(
       ).rows[0].id as string;
       planA = (
         await admin.query(
+          // `berv_plan_opened_at_required`/`berv_plan_closed_at_required` — a closed_completed row
+          // needs both non-null.
           `INSERT INTO bereavement_plan
-             (organization_id,patient_id,admission_id,provider_entity_id,status,death_date)
-           VALUES ($1,gen_random_uuid(),gen_random_uuid(),$2,'closed_completed','2026-01-01')
+             (organization_id,patient_id,admission_id,provider_entity_id,status,death_date,opened_at,closed_at)
+           VALUES ($1,gen_random_uuid(),gen_random_uuid(),$2,'closed_completed','2026-01-01',now(),now())
            RETURNING id`,
           [ORG_A, providerEntityA],
         )

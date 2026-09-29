@@ -105,3 +105,29 @@ export {
   M24_SUBMISSION_REQUEST_EVENTS,
   buildM24SubmissionRequestConsumer,
 } from "./outbox-consumers/submission-requests";
+
+// F-165 (#248, m24 group) — the m24 `handlers-unbound` deferred-consumers group's "trigger-revalidate" +
+// "resolve-medicare-primary" halves: a new `medicaid-revalidate` BullMQ queue/worker (reusing the
+// exact rule-run + transition logic `validateClaim` already performs for a manual click) and the
+// live `m23.claim.acknowledged` → COB-unblock consumer.
+export {
+  type RevalidateEnqueuePort,
+  type M24RevalidateTriggerConsumerDeps,
+  type M24RevalidateTriggerEventName,
+  M24_REVALIDATE_TRIGGER_EVENTS,
+  buildM24RevalidateTriggerConsumerFor,
+  buildM24RevalidateTriggerConsumers,
+} from "./outbox-consumers/m24-revalidate-triggers";
+export {
+  type MedicarePrimaryAckDeps,
+  type MedicarePrimaryAckOutboxPort,
+  buildM24MedicarePrimaryAckConsumer,
+} from "./outbox-consumers/m24-medicare-primary-ack";
+export {
+  type RevalidateJob,
+  type RevalidateWorkerDeps,
+  type RevalidateWorkerOutboxPort,
+  buildM24RevalidateEnqueuePort,
+  registerM24RevalidateWorker,
+  runMedicaidRevalidate,
+} from "./jobs/revalidate-jobs";

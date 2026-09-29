@@ -1,6 +1,8 @@
-// @wardenx/db — M19 On-Call Triage schema barrel (§3.3, 10 owned tables, manifest-exact). The central
-// ../index.ts re-exports this barrel; the 13 M19 pgEnums live in ../../enums.ts (M19-T01, unprefixed SQL
-// names — M19's §3.2 spells them without an `m19_` prefix, unlike M21's §3.1.1).
+// @wardenx/db — M19 On-Call Triage schema barrel (§3.3, 10 owned tables, manifest-exact, +1 —
+// `on-call-roster-sync-queue.ts`, the §4.8 `m19.shift-sync.debounced` debounce table F-155/#248 built;
+// see its own header). The central ../index.ts re-exports this barrel; the 13 M19 pgEnums live in
+// ../../enums.ts (M19-T01, unprefixed SQL names — M19's §3.2 spells them without an `m19_` prefix, unlike
+// M21's §3.1.1).
 //
 // SHAPE. Three layers:
 //   • CONFIG — `tenant_oncall_policy` (D3/D7: the model, the tier ladder, the callback SLA, the two AI
@@ -56,3 +58,4 @@ export * from "./triage-call-answers"; // triage_call_answer (append-only)
 export * from "./triage-escalations"; // triage_escalation
 export * from "./triage-call-state-history"; // triage_call_state_history (append-only)
 export * from "./triage-paper-reentry-worklist"; // triage_paper_reentry_worklist (M19-F08 BCP)
+export * from "./on-call-roster-sync-queue"; // on_call_roster_sync_queue (§4.8 debounce table, F-155/#248)

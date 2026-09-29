@@ -213,10 +213,24 @@ export function decideProposal(
   }
 }
 
-/** The SLA expire-sweep transition for one row (§2.2). Non-`pending` rows are unaffected (returns `null`). */
+/**
+ * The system-driven `pending → expired` transition for one row (§2.2). Non-`pending` rows are unaffected
+ * (returns `null` — the real race gate is the caller's atomic `WHERE proposal_status='pending'` UPDATE,
+ * this is belt-and-suspenders on a stale read).
+ *
+ * `reason` defaults to the §2.2 72h SLA sweep's own rationale; F-165 (#248) widened this with an optional
+ * override so a DIFFERENT system-driven expiry — the `m5.patient.deceased` freeze consumer
+ * (`outbox-consumers/m5-patient-deceased.ts`) — can record ITS OWN reason in `decision_rationale` rather
+ * than mislabeling a death-triggered freeze as an SLA timeout. Both still transition through the exact
+ * same enum edge and emit the exact same `m29.hl7_inbound_proposal.expired` event — `expired` is the
+ * correct terminal state for "this proposal no longer needs review" either way (§2.6 decided-is-decided;
+ * there is no dedicated "frozen" status and inventing one is a schema change this narrow fix does not
+ * need).
+ */
 export function expireProposal(
   snapshot: Pick<ProposalSnapshot, "id" | "organizationId" | "proposalStatus">,
   now: Date,
+  reason: string = "auto_expired_pending_ttl_exceeded",
 ): {
   readonly update: ProposalDecisionUpdate;
   readonly event: {
@@ -230,7 +244,7 @@ export function expireProposal(
       proposalStatus: "expired",
       decidedByMembershipId: null,
       decidedAt: now,
-      decisionRationale: "auto_expired_pending_ttl_exceeded",
+      decisionRationale: reason,
     },
     event: {
       name: "m29.hl7_inbound_proposal.expired",

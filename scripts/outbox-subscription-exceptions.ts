@@ -218,17 +218,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     events: ["m24.medicaid_claim.submit_requested"],
   },
   {
-    module: "m24",
-    kind: "no-such-event",
-    reason:
-      "None of the three names exists in its owning module's landed catalog: M6 publishes no `admission.changed` (it publishes the specific transitions — activated, discharged, on_hold, resumed), M18 publishes no `evv.compliance_changed`, and M40's catalog carries `canonical.updated` and `canonical.deactivated` alone with no rate-schedule topic. Each is a §4.4 revalidate trigger whose intent is real and whose spelling never was.",
-    events: [
-      "m6.admission.changed",
-      "m18.evv.compliance_changed",
-      "m40.reference.rate_schedule_loaded",
-    ],
-  },
-  {
     module: "m25",
     kind: "self-consumption",
     reason:

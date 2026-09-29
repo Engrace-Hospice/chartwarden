@@ -2452,6 +2452,110 @@ live suites run individually against the same disposable Postgres+Valkey (`m14:s
 alongside three sibling regression suites (`m23:revalidate-triggers` 6/6, `m23:late-check-resolved` 8/8,
 `m6:loc-change-signed` 7/7). Leaving #248 open — 111 pairs across 19 modules remain.
 
+**A sixth round of five parallel forks built 9 more bindings across five modules, fully resolved M19,
+and the coordinator's own re-verification caught a genuine `arch:tables`/`arch:boundaries` violation plus
+a three-way F-number collision none of the forks' own static checks could see (F-165, #248).** Targets:
+M29's `m5.patient.deceased`, M5's `m17.visit.assigned`/`.unassigned`, M31's `m16.bereavement.plan_opened`,
+M19's sole `handlers-unbound` pair, and M24's six-event group — dispatched per the user's explicit "5
+subagents at a time, verify to avoid mistakes" instruction, each independently re-checked against the
+actual working tree rather than trusted from its own report. **M29 built the FREEZE half of
+`m5.patient.deceased`**: every still-`pending` `hl7_inbound_proposal` matched to a decedent is expired via
+the already-written-but-never-called `expireProposal` pure decider (M29-T04), widened with an optional
+`reason` so a death-triggered freeze is distinguishable from the (also still-unbuilt) 72h SLA sweep; the
+REFUSAL half (blocking future post-death A01/A04 messages) stays unbuilt — M5's `PatientReader` seam
+carries no deceased/status field, a producer-side gap this build reports rather than works around. **M5
+built `m17.visit.assigned`/`.unassigned`**: a new per-clinician Valkey shift-assignment cache
+(`05-patient/seams/shift-caseload-cache.ts`, one Hash per (org, userId), field=visitId, read-time expiry
+off `scheduledEndedAt` + a grace window) unioned additively into `CaseloadProvider`, resolving M17's
+membership-keyed payload to a Better Auth user id via a new `membershipUserIdForOrg` seam function
+(M5 already reads `schema.memberships` directly for the identical reason at GAP-022/#124) — and,
+deliberately, the one cache in this whole arc that fails OPEN on a Redis read error rather than closed,
+because `CaseloadProvider` sits on the ABAC hot path for nine other modules and a Valkey hiccup turning
+into a platform-wide caseload-check outage would be strictly worse than a stale cache. **M19's group is
+now fully resolved and deleted**: `m17.visit.assigned` drives the §4.8 `m19.shift-sync.debounced`
+reconciler via a new two-table-free, single-table TRUE debounce (`on_call_roster_sync_queue`, migration
+0256 — `run_after` is bumped forward on every trigger via `ON CONFLICT ... DO UPDATE`, not merely
+collapsed onto a pending row, because a BullMQ `jobId` dedupe cannot express "reset the 30s quiet window",
+only "at most one pending"), with the periodic "shift cron tick" catch-up sharing the same table as a
+`cron_catchup`-reason row rather than a second competing writer to `on_call_shift`. Correctly reported,
+not forced: `reconcileOrgOnCallRoster`'s roster reader resolves `{kind:"unavailable"}` on every real call
+today, because M17's own `VisitAssignmentReader.tonightsOnCallRoster` is a PERMANENT, documented deny-stub
+("M17 owns no on-call rotation table") — the reader is an injected port specifically so the live suite can
+prove the debounce/claim/apply machinery for real without waiting on that unrelated M17-side gap.
+**M31 built `m16.bereavement.plan_opened`**, re-checking both of F-164's own named blockers rather than
+re-asserting them and finding both resolve: migration 0257 nullable-widens
+`portal_access_grant.granted_by_membership_id` (the `order_discontinuation.actor_membership_id`
+precedent — a consumer-driven cascade names no acting membership), and the "no active consent to insert
+against yet" framing was right about WHEN `plan_opened` fires (before any contact confirms) but wrong that
+the fact is unresolvable: `bereaved_contact.status = 'active'` already IS the per-contact "this exact
+consent signed" fact, and the missing piece — the consent's VERSION — resolves via M39's real
+`ConsentEvaluator.evaluate`, cross-checked that the returned governing record matches the contact's own
+rather than trusting a different contact's authority. **M24 built 4 of its 6 candidate events across two
+actions**: `trigger-revalidate` (`m5.patient.updated`/`.address_changed`, `m8.encounter.signed`) reuses
+the EXACT rule-run + transition logic the manual "revalidate" button already performs, never a new
+validation rule; `resolve-medicare-primary` (`m23.claim.acknowledged`) applies the pure machine's own
+`medicare_primary_acknowledged` edge, correctly scoped short of the full spec (no Medicare-EOB-context
+snapshot — that seam has no port anywhere on the write service) and honestly reported as CURRENTLY INERT
+in production, since no code path anywhere ever transitions a claim INTO the state this consumer would
+act on. The other 2 (`m25.remittance.claim_paid`/`.claim_denied`) stay genuinely blocked: M25's real
+835-posting pipeline matches only against M23 (Medicare) claims, and there is no Medicaid-claim matching
+path anywhere. **M30's own group was re-checked, not re-asserted, and the actor-half of its stated blocker
+turned out wrong**: `m12.medication.error_reported`'s catalogued payload already carries a REAL
+`reportedByMembershipId` (the actual clinician, not a fictional system-actor), so the "no
+system-actor-membership convention" framing never applied — the real, deeper wall is that **no producer
+anywhere in the codebase ever emits this event** (`reportMedicationError`, the function its own catalog
+description names, does not exist; exhaustively grepped across the two plausible source modules). Binding
+an M30 consumer for it would be dead code, correct and permanently unexercised — not built, the
+`m18.evv.visit_verified` shape a second time in the same group.
+**Two coordinator-caught defects, both invisible to the forks' own lightweight self-checks.** The M31
+build imported `schema.bereavedContact` directly off M16's Drizzle schema — a real `arch:tables`/
+`arch:boundaries` violation (M31's `dependsOn` carries no edge to 16) caught only by running the actual
+gates rather than trusting the fork's "not run, per instructions" disclaimer; fixed with a new org-explicit
+`bereavedContactFlipCandidatesForPlanForOrg` seam (`16-bereavement/seams/plan-provider-entity-for-org.ts`,
+the `bereavementPlanSitingForOrg`/M30 precedent one module over), injected as a port with a locally-declared
+structural type rather than an imported one — the `m16-plan-closed.ts` shape exactly, needed because
+`arch:boundaries` flags even a type-only cross-module import here. Independently, three forks (M29, M5, and
+the system-actor-membership fork building M31/M30) each claimed **F-165** for their own citations, and a
+fourth (M24) discovered the collision mid-task, picked **F-166** for itself, and — working on the same
+shared `outbox-deferred-consumers.ts` string fields concurrently — ended up being the surviving edit for
+all three other forks' own reason-text paragraphs too, each correctly re-describing the other forks' real
+work but under its own number and a misleading "(#248, m24 group)" tag. Resolved by renumbering every
+citation to the single round number (**F-165**, following F-164) and correcting the four misattributed
+group tags — a content audit rather than a blind rename, since each renumbered paragraph was independently
+re-verified against the actual files before being trusted. **The verification pass also found two
+test-fixture bugs and one genuine mirror-constant gap this round's forks introduced**: M31's live suite
+seeded an `active`-status `bereavement_plan` row with no `assigned_counselor_user_id`, violating
+`berv_plan_active_requires_counselor` (a real CHECK, not a fixture-writer's guess); M24's live suite seeded
+two provider entities with the SAME literal NPI, violating the platform-wide-unique `provider_entity_npi_idx`;
+and `packages/types/src/oncall.ts`'s `M19TableName`/`M19_TABLE_NAMES`/`M19_AUDIT_DENYLIST`/
+`M19_AUDIT_RETENTION_CLASS` — the leaf-package mirror of M19's owned-table manifest — had not been updated
+for the new `on_call_roster_sync_queue` table, caught by the full non-live suite (not `arch:fitness`, which
+only checks the `module-manifest.ts` side) failing two pinned assertions; the retention class is
+`operational` (process bookkeeping for a reconciliation pass), not `compliance` like M19's clinical-record
+tables, matching the identical distinction migration 0253's `dosespot_sync_queue` trigger already draws.
+**A pre-existing, unrelated test bug was also fixed, at the user's explicit follow-up request**:
+`m30-bereavement-plan-closed-consumer.live.test.ts` (last touched at F-162, migration 0100 — long before
+this round) seeded a `closed_completed`-status plan with neither `opened_at` nor `closed_at`, violating two
+CHECK constraints (`berv_plan_opened_at_required`/`berv_plan_closed_at_required`) that have existed since
+migration 0100; fixed in place. Net: **111 → 102** (9 bound — 1 M29, 2 M5, 1 M31, 1 M19, 4 M24 — 0 dropped;
+19 → 18 modules, M19 fully resolved). Verified centrally, once, after all five forks' edits landed together
+plus the coordinator's own fixes: `bun run build`/`typecheck` clean (0 errors), `arch:fitness` 38/38
+(`arch:outbox-bindings` confirms 102 pairs, down from 111, and 129 live bindings now covering 128
+catalogued events, up from 120/125 — one real `arch:tables`/`arch:boundaries` violation caught and fixed
+along the way), full non-live suite 654 files / 9603 tests green (two pinned-array/pinned-count assertions
+in `oncall-contracts.test.ts`/`oncall-schema.test.ts` updated for the new M19 table, after first confirming
+they were catching a real gap and not a stale pin), a clean `check:boot:platform` run against a freshly
+migrated, RLS-enforced disposable Postgres (the real 129-binding dispatcher boots clean), all five new live
+suites run individually against the same disposable Postgres+Valkey after fixing the two fixture bugs
+found along the way (`m29:patient-deceased-freeze` 8/8, `m5:visit-assignment-cache` 8/8,
+`m31:bereavement-plan-opened` 6/6, `m19:roster-sync-debounce` 12/12, `m24:revalidate-medicare-primary`
+6/6), and thirteen sibling regression suites re-run for regression on every touched shared file
+(`m30:bereavement-plan-closed-consumer` 2/2 — the pre-existing fix — `m30:upstream-consumers` 2/2,
+`m5:admission-siting` 4/4, `m5:census-scope` 7/7, `m5:death-cascade` 3/3, `m24:claim-line-assembly` 9/9,
+`m16:bereavement-intake` 8/8, `m16:consent-revoked` 5/5, `m16:consent-signed` 5/5,
+`m16:opt-out-changed` 6/6, `m16:discharge-death-secondary` 5/5, `m31:portal-telehealth-consumers` 10/10,
+`m31:bereavement-consent-consumers` 9/9). Leaving #248 open — 102 pairs across 18 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

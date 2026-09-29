@@ -396,3 +396,10 @@ export {
   runNppesSyncJob,
   scheduleNppesSyncJob,
 } from "./nppes/cron-workers";
+// F-165 (#248) — `m5.patient.deceased` → freeze every still-pending `hl7_inbound_proposal` for the
+// decedent (see the file header for what this does NOT build: the real-time post-death A01/A04 refusal).
+export {
+  M29_PATIENT_DECEASED_CONSUMER,
+  type M29PatientDeceasedConsumerDeps,
+  buildM29PatientDeceasedConsumer,
+} from "./outbox-consumers/m5-patient-deceased";

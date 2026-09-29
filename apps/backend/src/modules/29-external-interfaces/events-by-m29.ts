@@ -49,6 +49,19 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
     declaredConsumers: [],
     isOutboxOnly: true,
   },
+  {
+    eventName: "m29.hl7_inbound_proposal.expired",
+    moduleOwner: "m29",
+    description:
+      "A pending HL7 inbound proposal was auto-expired by a system-driven sweep, never a human reviewer (`decidedByMembershipId: null`) — either the §2.2 72h SLA-review-window sweep (unbuilt: no cron worker anywhere calls `expireProposal`, F-165/#248) or the `m5.patient.deceased` freeze consumer (`outbox-consumers/m5-patient-deceased.ts`, F-165/#248), distinguishable by `decision_rationale` on the row. Had NO catalog entry at all before F-165 even though `expireProposal` has produced this envelope since M29-T04 — the `.accepted`/`.rejected` task-11 gap a third sibling over. Record-only: the row IS the durable record, the same posture `.rejected` above already states.",
+    payloadSchema: Type.Object({
+      proposalId: Type.String({ minLength: 1 }),
+      organizationId: Type.String({ minLength: 1 }),
+      expiredAt: Type.String({ minLength: 1 }),
+    }),
+    declaredConsumers: [],
+    isOutboxOnly: true,
+  },
 
   // ── §4.2 / §4.10 unmatched-lab review decisions (GAP-044) ─────────────────────────────────────────
   // Both are record-only. The spec's §4.10 table lists M4 (and M11 for the bind) as consumers, but M4 is

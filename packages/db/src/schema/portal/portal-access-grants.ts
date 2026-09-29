@@ -59,7 +59,10 @@ export const portalAccessGrants = pgTable(
     sourceConsentVersion: text("source_consent_version").notNull(),
 
     grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
-    grantedByMembershipId: uuid("granted_by_membership_id").notNull(), // logical FK → M2 membership
+    // NOT NULL relaxed in mig 0257 (F-150/F-164, #248): the D6 bereaved-mode lateral flip is a system
+    // cascade off `m16.bereavement.plan_opened` (an outbox consumer, not a human actor) — the
+    // `order_discontinuation.actor_membership_id` precedent, "NULL for system-actor cascades".
+    grantedByMembershipId: uuid("granted_by_membership_id"), // logical FK → M2 membership
 
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     revokeReasonCipher: text("revoke_reason_cipher"), // §3.6 audit-denylisted (free-text)

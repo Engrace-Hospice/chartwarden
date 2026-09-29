@@ -447,6 +447,34 @@ export function createDrizzleCaseloadStore(db: DbClient): CaseloadStore {
 }
 
 /**
+ * F-165 (#248) — org+id resolution of a `membership` row to its Better Auth `userId`, the id space
+ * {@link CaseloadStore} keys on (see the doc comment on `createDrizzleCaseloadStore` above).
+ * `m17.visit.assigned`/`.unassigned` carry `assignedMembershipId`/`formerAssignedMembershipId` — a
+ * MEMBERSHIP id, not a user id — so the shift-assignment outbox consumer resolves it ONCE, at write
+ * time (never on the hot `isAssigned`/`assignedPatientIds` read path). `membership` is M1-owned; this
+ * file already reads it directly via `schema.memberships` for `findPrimaryRnMembership` above — the
+ * established precedent, not a new cross-module seam. Returns `null` for a membership id unknown to
+ * this org (stale/cross-tenant/deleted) rather than throwing — the `dosespotSyncDemographicsForOrg`
+ * "nothing to resolve, skip" precedent (`./dosespot-sync-snapshot-for-org.ts`). Deliberately no
+ * `status = 'active'` filter: an unassign for an already-revoked membership must still resolve so its
+ * shift-cache entry can be removed.
+ */
+export function membershipUserIdForOrg(
+  db: DbClient,
+  organizationId: string,
+  membershipId: string,
+): Promise<string | null> {
+  return withOrgContext(db, { organizationId, userId: SEAM_SYSTEM_USER_ID }, async (tx) => {
+    const [row] = await tx
+      .select({ userId: MB.userId })
+      .from(MB)
+      .where(and(eq(MB.organizationId, organizationId), eq(MB.id, membershipId)))
+      .limit(1);
+    return row?.userId ?? null;
+  });
+}
+
+/**
  * The real M5 CareTeamProvider store (GAP-059) — the reverse of {@link createDrizzleCaseloadStore}
  * over the same `patient_assignment` open rows: every distinct clinician on ONE patient's team,
  * instead of every patient on one clinician's caseload. M36's `syncCareTeamChannel` consumes this

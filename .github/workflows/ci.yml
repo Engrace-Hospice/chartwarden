@@ -291,6 +291,12 @@ jobs:
           # predicate over `state`, `on_call_shift_id` is NOT NULL (which is why `no_coverage` exists as an
           # outcome rather than a throw), and the visit read only resolves under the binding's own scope.
           - { name: "M19 Inbound triggers", scripts: "test:m19:inbound-triggers:live" }
+          # F-155 (#248): the m19 `handlers-unbound` group's own finding, now built — §4.5 path 1 / §4.8
+          # `m19.shift-sync.debounced` had no jobs/ tier anywhere in this module. Live because the true
+          # reset-the-delay debounce is an `ON CONFLICT ... DO UPDATE` against a partial-unique index and
+          # the `FOR UPDATE SKIP LOCKED` claim are both statements about Postgres, and cross-tenant
+          # isolation runs on the real NOBYPASSRLS `wardenx_app` role.
+          - { name: "M19 Roster-sync debounce", scripts: "test:m19:roster-sync-debounce:live" }
           - { name: "M20 Field-safety consumers", scripts: "test:m20:consumers:live" }
           # F-111 (#249): the §4.8 `m20.sos-sla-watchdog.cron` worker — decideSosWatchdog shipped with
           # M20-T03 and had no production caller anywhere. Live because the double-escalation lock is a
@@ -311,10 +317,14 @@ jobs:
             }
           - {
               name: "M24 Billing-Medicaid",
-              scripts: "test:m24:nf-facility-snapshot:live test:m24:claim-line-assembly:live",
+              scripts:
+                "test:m24:nf-facility-snapshot:live test:m24:claim-line-assembly:live
+                test:m24:revalidate-medicare-primary:live",
             }
           - { name: "M29 NPPES platform sync", scripts: "test:m29:nppes-sync:live" }
           - { name: "M29 unmatched-lab review", scripts: "test:m29:unmatched-lab-review:live" }
+          # F-165 (#248): the m5.patient.deceased proposal-freeze consumer.
+          - { name: "M29 patient-deceased freeze", scripts: "test:m29:patient-deceased-freeze:live" }
           # GAP-043: M27's approver gate over M2's real `membership_elevated_approval` designation —
           # the conjunct that was hardcoded false in the production resolver, blocking every cost-report
           # approve/submit/reopen in every tenant.
@@ -477,6 +487,12 @@ jobs:
           - { name: "M5 census caseload scope (F-096)", scripts: "test:m5:census-scope:live" }
           # F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization onto `patient`.
           - { name: "M5 admission siting", scripts: "test:m5:admission-siting:live" }
+          # F-165 (#248) — the m5 `handlers-unbound` group's `m17.visit.assigned`/`.unassigned` pair:
+          # M17's shift-assignment Valkey cache unioned additively into the real CaseloadProvider read.
+          - {
+              name: "M5 visit-assignment shift cache",
+              scripts: "test:m5:visit-assignment-cache:live",
+            }
           - {
               name: "M25 Remittance",
               scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live",
@@ -505,7 +521,9 @@ jobs:
               scripts:
                 # F-164 (#248) adds test:m31:bereavement-consent-consumers:live — the plan-closure
                 # grant revocation + the broad m39.consent.revoked grant cascade.
-                "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live test:m31:bereavement-consent-consumers:live",
+                # F-165 (#248) adds test:m31:bereavement-plan-opened:live — the D6 lateral flip's
+                # INSERT half, re-checked past F-164's BLOCKED verdict.
+                "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live test:m31:bereavement-consent-consumers:live test:m31:bereavement-plan-opened:live",
             }
           - {
               name: "M36 Messaging alerts",

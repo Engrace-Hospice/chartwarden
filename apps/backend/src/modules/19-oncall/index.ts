@@ -108,6 +108,39 @@ export {
   type VendorSessionRouteDeps,
 } from "./routes/mount";
 export { M19_OUTBOX_EVENTS } from "./events-by-m19";
+// §4.8 `m19.shift-sync.debounced` — the roster-sync debounce table's queue catalog + live BullMQ
+// construction + platform-tenancy wiring (m19 `handlers-unbound` group, #248; F-155's own finding, now
+// built). Named re-exports rather than `export * from "./jobs"`: `./jobs/index.ts` is deliberately pure
+// data with no BullMQ import (see its own header), and `./jobs/worker.ts`/`./jobs/wiring.ts` are the live
+// construction the composition root binds at boot.
+export {
+  M19_DLQ,
+  M19_JOB_SCHEDULES,
+  M19_QUEUE_PARAMS,
+  M19_QUEUES,
+  M19_ROSTER_SYNC_CATCHUP_JOB_NAME,
+  M19_ROSTER_SYNC_DEBOUNCE_WINDOW_MS,
+  M19_ROSTER_SYNC_DRAIN_JOB_NAME,
+} from "./jobs/index";
+export {
+  type M19WorkerDeps,
+  registerM19CronWorkers,
+  runOnCallRosterSyncCatchupTick,
+  runOnCallRosterSyncDrainTick,
+  scheduleM19Jobs,
+} from "./jobs/worker";
+export { M19_PLATFORM_JOB_ID, wireM19Tenancy } from "./jobs/wiring";
+export {
+  type EnsureCatchUpPendingInput,
+  type TriggerDebounceInput,
+  OnCallRosterSyncQueueRepository,
+} from "./jobs/repository";
+export {
+  type OrgReconcileResult,
+  type OrgRosterReadPort,
+  type ProviderEntityPolicyRow,
+  reconcileOrgOnCallRoster,
+} from "./jobs/reconcile";
 export {
   type InMemoryTriageEraseSeed,
   type TriageEraseCounts,

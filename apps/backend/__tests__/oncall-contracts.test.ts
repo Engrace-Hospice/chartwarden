@@ -219,10 +219,12 @@ describe("§3.3 owned tables ↔ the manifest", () => {
     expect([...M19_TABLE_NAMES].sort()).toEqual([...(m19?.ownedTables ?? [])].sort());
   });
 
-  it("owns ten tables, not the nine §12/§13 still claim", () => {
-    // §12/§13 predate the M19-F08 BCP amendment that added `triage_paper_reentry_worklist`.
-    expect(M19_TABLE_NAMES).toHaveLength(10);
+  it("owns eleven tables, not the nine §12/§13 still claim", () => {
+    // §12/§13 predate the M19-F08 BCP amendment that added `triage_paper_reentry_worklist`, and
+    // neither mentions `on_call_roster_sync_queue` (F-165, #248).
+    expect(M19_TABLE_NAMES).toHaveLength(11);
     expect(M19_TABLE_NAMES).toContain("triage_paper_reentry_worklist");
+    expect(M19_TABLE_NAMES).toContain("on_call_roster_sync_queue");
   });
 
   it("declares a denylist and a retention class for every owned table", () => {

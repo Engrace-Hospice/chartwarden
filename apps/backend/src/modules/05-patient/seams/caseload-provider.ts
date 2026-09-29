@@ -9,8 +9,12 @@ import { abacRegistry, registerPredicate } from "@wardenx/auth";
 //
 // Pure orchestration over an injected `CaseloadStore` port — the in-memory store backs the slice +
 // tests; production injects the Drizzle-backed store (reads under `withOrgContext` so RLS scopes by
-// app.org_id). M17's shift cache is a forward additive source: Phase-1 the store answers from
-// `patient_assignment` alone; the union point is the same method when M17 lands.
+// app.org_id). M17's shift cache is a forward additive source: the composition root now (F-165, #248)
+// wraps the Drizzle store with `createCaseloadStoreWithShiftCache` (`./shift-caseload-cache.ts`) when a
+// dedicated Redis/Valkey client is configured, unioning `patient_assignment` with M17's
+// `m17.visit.assigned`/`.unassigned`-fed shift cache at exactly this `CaseloadStore` seam — the union
+// point this comment always named. Without that client (slice/test boots), the store stays Phase-1:
+// `patient_assignment` alone.
 import type { CaseloadProvider } from "@wardenx/types";
 import { getSeam, registerSeam } from "../../../bootstrap/index";
 

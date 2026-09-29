@@ -68,8 +68,17 @@ export {
   createDrizzleCareTeamStore,
   createDrizzlePatientMutatorStore,
   createDrizzlePatientReaderStore,
+  membershipUserIdForOrg,
 } from "./drizzle-stores";
 export { createDbPatientIntakeResolver } from "./patient-intake-resolver";
+// F-165 (#248) — M17's shift-assignment Valkey cache, unioned additively into CaseloadStore's read.
+export {
+  createCaseloadStoreWithShiftCache,
+  readShiftAssignedPatientIds,
+  readShiftIsAssigned,
+  removeShiftAssignment,
+  writeShiftAssignment,
+} from "./shift-caseload-cache";
 
 /** Deps for M5's seam registration (slice defaults to in-memory stores). */
 export interface PatientSeamDeps {

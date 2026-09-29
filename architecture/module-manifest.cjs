@@ -611,6 +611,7 @@ exports.MODULES = [
     // eraser registry the §3.7 triage_record eraser registers into. See the .ts manifest.
     ownedTables: [
       "external_triage_vendor",
+      "on_call_roster_sync_queue", // §4.8 m19.shift-sync.debounced debounce table (F-155, #248)
       "on_call_shift",
       "tenant_oncall_policy",
       "triage_call",

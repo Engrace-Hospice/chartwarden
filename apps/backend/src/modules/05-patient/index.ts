@@ -58,6 +58,10 @@ export {
   getPatientHopeAdmissionPrefillReader,
   getPatientPrivacyFlagReader,
   registerPatientSeams,
+  membershipUserIdForOrg,
+  createCaseloadStoreWithShiftCache,
+  readShiftAssignedPatientIds,
+  readShiftIsAssigned,
 } from "./seams/index";
 
 // M5-T09 — the §4.2 route inventory behind requirePermission on the §4.7 keys + the route service.
@@ -92,6 +96,12 @@ export {
   buildM5AdmissionSitingConsumer,
   type AdmissionSitingDeps,
 } from "./outbox-consumers/m6-admission-activated";
+// F-165 (#248) — the M17 shift-assignment caseload cache write path.
+export {
+  type VisitAssignmentDeps,
+  buildM5VisitAssignedConsumer,
+  buildM5VisitUnassignedConsumer,
+} from "./outbox-consumers/m17-visit-assignment";
 export {
   M5_QUEUES,
   M5_JOB_SCHEDULES,
