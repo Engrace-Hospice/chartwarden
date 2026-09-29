@@ -428,6 +428,24 @@ export function registerOrderRoutes(
     );
   });
 
+  // F-179 (#248) — re-run the outbound lab-ORM producer for a signed lab order whose HL7 request was REFUSED at
+  // sign time (`orm_refused:*`) after someone fixed the missing fact. `orders.amend` (RN Case Manager, MD/NP/PA,
+  // Medical Director, Clinical Supervisor — the roles that can correct an order, hence fix its facts); no step-up
+  // (the order was already signed for exactly this transmission — a resend discloses nothing new). There is no
+  // body: the target is the order, the action is fixed. The audit actor is the Better Auth USER id (the M4
+  // audit trigger's `actor_user_id` FKs `user`, unlike the membership id the rest of M11 passes).
+  app.post("/api/v1/orders/:id/resend-transmission", { preHandler: [AMEND] }, async (request) => {
+    const { organizationId, userId } = actorOf(request);
+    const { id } = parse(OrderParamsSchema, request.params);
+    return service.resendLabTransmission(
+      organizationId,
+      userId,
+      id,
+      await detailActorOf(request),
+      request.context?.userId ?? "",
+    );
+  });
+
   // 18 — list standing orders.
   app.get(
     "/api/v1/standing-orders",

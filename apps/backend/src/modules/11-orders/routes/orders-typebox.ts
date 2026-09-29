@@ -16,6 +16,7 @@ import { ValidationError } from "@wardenx/types";
 import type {
   OrderDetailView as ServiceOrderDetailView,
   OrderView as ServiceOrderView,
+  ResendLabTransmissionResult as ServiceResendLabTransmissionResult,
   StandingOrderView as ServiceStandingOrderView,
   VerbalPolicyView as ServiceVerbalPolicyView,
 } from "./service";
@@ -373,6 +374,12 @@ export const SuggestionsResponseSchema = Type.Object({
   patientId: Type.String(),
   suggestions: Type.Array(Type.Object({ kind: ORDER_KIND, reason: Type.String() })),
 });
+/** F-179 — POST /orders/:id/resend-transmission. `refusalReason` is a fixed producer token, never PHI. */
+export const ResendLabTransmissionResponseSchema = Type.Object({
+  outcome: Type.Union([Type.Literal("requested"), Type.Literal("still_refused")]),
+  refusalReason: nullableString(),
+  order: OrderDetailResponseSchema,
+});
 /** Route 25 — the PRN manual-spawn result (the newly-minted order id). */
 export const SpawnResponseSchema = Type.Object({ orderId: Type.String() });
 
@@ -380,6 +387,10 @@ export const SpawnResponseSchema = Type.Object({ orderId: Type.String() });
 type Conforms<T extends V, V> = T;
 type _OrderView = Conforms<Static<typeof OrderViewResponseSchema>, ServiceOrderView>;
 type _OrderDetailView = Conforms<Static<typeof OrderDetailResponseSchema>, ServiceOrderDetailView>;
+type _ResendLabTransmission = Conforms<
+  Static<typeof ResendLabTransmissionResponseSchema>,
+  ServiceResendLabTransmissionResult
+>;
 type _StandingOrderView = Conforms<
   Static<typeof StandingOrderViewResponseSchema>,
   ServiceStandingOrderView

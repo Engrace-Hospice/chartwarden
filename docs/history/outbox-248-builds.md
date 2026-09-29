@@ -1953,3 +1953,44 @@ binds), the extended route suite and the env suite; with the three guards disabl
 layers) and the controls still pass. **Residual:** the `M29_ALLOW_MLLP_PLAIN` opt-in is one switch for both
 directions (a non-production deployment cannot allow one and not the other); `mllp_plain` inbound in non-production
 still needs the loopback/private-address hygiene of the deployment, since the listener binds `0.0.0.0`.
+
+**F-179 (#248) — RESEND of a refused lab ORM: the operator's way out of F-178's "refused, then stuck".** F-178's producer
+refuses (never fabricates) when a fact the HL7 ORM needs is unresolvable at sign time — order still `active`,
+`transmission_status='failed'`, `transmission_failure_reason='orm_refused:<reason>'`, M36 alert fired — and, the residual
+risk F-178 named, nothing ever re-attempted once someone fixed the fact. `POST /api/v1/orders/:id/resend-transmission`
+(`orders.amend`: RN Case Manager, MD/NP/PA, Medical Director, Clinical Supervisor — the roles that can correct an order,
+so no new permission key and no role-grant seed; no step-up, because the order was already signed for exactly this
+transmission and a resend discloses nothing new) re-runs the SAME producer over the SAME ports and returns
+`{outcome: 'requested' | 'still_refused', refusalReason, order}`; anything not resendable is a 409. **One transaction:**
+`SELECT … FOR UPDATE` the order row, classify (`orm-request/orm-resend.ts`, pure), resolve, then on success a
+CONDITIONAL update (`WHERE transmission_status='failed' AND reason = <the one read>`) back to `pending` + one
+`m11.order.hl7_orm_requested`, so a caller never observes `pending` without the request or the reverse. **Still
+refused:** the recorded reason is refreshed if the blocker changed, nothing is published and NO second alert is raised
+(the provider was alerted at sign). **No per-attempt idempotency key is needed:** M29's key is `(feed, 'orm', orderId)`
+and a refused order never reached M29, so it has no outbound row to collide with — which is also exactly why an M29
+terminal failure (`dlq_exhausted` / `application_reject`, written by F-177's applier) is NOT resendable: that message WAS
+built and sent, and re-emitting would create a second one. **Never resendable, on purpose:** `sud_restricted` (42 CFR
+Part 2 — a disclosure gate, so lifting it is a compliance decision, not a data fix; a resend button any RN could press
+would be a de-facto override, and clearing the M5 flag does not make it one) and the three refusals whose fact lives in
+the IMMUTABLE signed order (`lab_test_codes_missing`, `multiple_test_codes_unsupported`, `no_routing_lab` — re-running
+cannot change the answer; the remedy is `POST /orders/:id/correct`). **Audit:** the route puts the Better Auth USER id
+on the transaction (`audit_event.actor_user_id` FKs `user`, so the membership id the rest of M11 passes would violate
+it), and the M4 trigger records the `order_record` update `failed/orm_refused:x → pending` with that actor; no PHI in
+any log or message (the reason is a fixed producer token). No migration. **Proven live**
+(`m11-orm-resend.live.test.ts`, 15/15, real Postgres as `wardenx_app`, real publisher, real dispatcher, M29's real T08
+worker over a stub `MllpTransport`): refused (sex unrecorded) → the M5 row is fixed → resend → one request → wire →
+applier → `transmitted`/`AA`; a fixed feed refusal resends too; still-refused publishes nothing and alerts nobody; a
+changed blocker refreshes the reason; two CONCURRENT resends dispatch exactly one message; a delivered order, an M29
+terminal failure and a non-lab order are 409; SUD (before and after the flag is cleared) and no-routing-lab are 409;
+another tenant's order and an unknown id are 404; the audit row names the user. **Negative tests:** with BOTH
+concurrency guards removed the concurrent case fails 3 of 3; each guard ALONE holds the suite at 15/15 (they are
+independent); without the `orm_refused:` prefix check the M29-terminal case fails; without the SUD check the SUD case
+fails. 35 unit cases pin the classifier and the HTTP contract (403 without `orders.amend`, 401, 404, 422, 409).
+**Residual risks, stated not hidden:** (1) it is explicit only — there is no automatic sweep, deliberately (a retry loop
+against a non-transient refusal would re-alert); an operator has to know to press it, and nothing yet surfaces the
+`orm_refused:*` orders in a queue or the UI; (2) `allowedActions` on the order detail does not advertise `resend`, so a
+client must infer it from `transmissionStatus`; (3) the in-memory order service (unit tests / the standing workers)
+always refuses a resend, because it has no producer; (4) a resend re-reads the order's ORIGINAL `signedAt` as
+`requestedAt`, not the resend time, which is the order's request time but not when this attempt happened; (5) the
+M40 physician lookup still opens its own pooled connection while the resend tx holds one (F-178's residual pool note
+applies unchanged).

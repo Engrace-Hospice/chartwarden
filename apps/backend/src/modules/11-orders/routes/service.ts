@@ -39,7 +39,8 @@ import type {
   StandingOrderCadence,
   StandingOrderStatus,
 } from "@wardenx/types";
-import { NotFoundError, ValidationError } from "@wardenx/types";
+import { ConflictError, NotFoundError, ValidationError } from "@wardenx/types";
+import { classifyOrmResend } from "../orm-request/orm-resend";
 
 /** Minimal M40 `MdmEntityProvider` subset the order service binds (physician / DME-vendor resolution). */
 export interface OrderMdmValidator {
@@ -329,6 +330,18 @@ export interface OrderAbacFacts {
   readonly alreadyCosigned: boolean;
 }
 
+/**
+ * F-179 (#248) — the outcome of re-running a refused lab ORM. `requested`: every fact resolved this time, the
+ * `m11.order.hl7_orm_requested` was published in the same transaction and `transmission_status` is back to
+ * `pending`. `still_refused`: a fact is still missing — the order stays `failed` with the (possibly new) refusal
+ * reason and nothing was published. `refusalReason` is a fixed producer token (never PHI).
+ */
+export interface ResendLabTransmissionResult {
+  readonly outcome: "requested" | "still_refused";
+  readonly refusalReason: string | null;
+  readonly order: OrderDetailView;
+}
+
 /** The resolver the §4.7 ABAC predicates read order facts through (the slice implements it in-memory). */
 export interface OrderAbacResolver {
   loadOrder(organizationId: string, orderId: string): Promise<OrderAbacFacts | null>;
@@ -420,6 +433,18 @@ export interface OrderRouteService extends OrderAbacResolver {
     reason?: string,
     actor?: OrderDetailActor,
   ): Promise<OrderDetailView>;
+  /**
+   * F-179 (#248) — re-run the outbound lab-ORM producer for a signed lab order whose ORM request was REFUSED
+   * (`transmission_failure_reason = 'orm_refused:*'`). `auditUserId` is the Better Auth user id the M4 write-audit
+   * trigger stamps as `actor_user_id` (a membership id would violate that FK); omit for a system caller.
+   */
+  resendLabTransmission(
+    organizationId: string,
+    membershipId: string,
+    id: string,
+    actor?: OrderDetailActor,
+    auditUserId?: string,
+  ): Promise<ResendLabTransmissionResult>;
   pendingSignature(organizationId: string): Promise<{ orders: OrderView[] }>;
   verbalExpiring(organizationId: string): Promise<{ orders: OrderView[] }>;
   cosignPending(organizationId: string): Promise<{ orders: OrderView[] }>;
@@ -1069,6 +1094,23 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         `${correction.id}:corrected`,
       );
       return correction;
+    },
+
+    async resendLabTransmission(organizationId, _membershipId, id) {
+      // The in-mem slice has no outbound-ORM producer, so no order here can carry an `orm_refused:*` failure:
+      // it applies the SAME eligibility rule as the DB backend and therefore always refuses.
+      const r = find(organizationId, id);
+      const verdict = classifyOrmResend({
+        kind: r.kind,
+        status: r.status,
+        transmissionStatus: r.transmissionStatus,
+        transmissionFailureReason: null,
+      });
+      throw new ConflictError(
+        `ORM resend not allowed (${verdict.ok ? "no_orm_producer" : verdict.code}): ${
+          verdict.ok ? "the in-memory service has no outbound ORM producer" : verdict.message
+        }`,
+      );
     },
 
     async completeOrder(organizationId, userId, id, _reason, actor = EMPTY_ORDER_DETAIL_ACTOR) {

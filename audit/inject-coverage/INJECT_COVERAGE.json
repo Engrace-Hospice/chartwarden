@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1303,
-    "coveredRoutes": 1303,
-    "directRoutesReferenced": 1245
+    "routes": 1304,
+    "coveredRoutes": 1304,
+    "directRoutesReferenced": 1246
   },
   "modules": [
     {
@@ -119,12 +119,13 @@
     },
     {
       "module": "11-orders",
-      "routes": 29,
+      "routes": 30,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/orders-routes.test.ts"
+        "apps/backend/__tests__/orders-routes.test.ts",
+        "apps/backend/__tests__/orm-resend.test.ts"
       ],
-      "directRoutesReferenced": 22
+      "directRoutesReferenced": 23
     },
     {
       "module": "12-dosespot",
