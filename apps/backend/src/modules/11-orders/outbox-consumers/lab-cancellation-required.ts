@@ -1,4 +1,4 @@
-// apps/backend/src/modules/11-orders/outbox-consumers/lab-cancellation-required.ts — F-185 (#248): when a lab order
+// apps/backend/src/modules/11-orders/outbox-consumers/lab-cancellation-required.ts — F-187 (#248): when a lab order
 // is SUPERSEDED (discontinued, or replaced by a corrected order) after its ORM may already be at the laboratory,
 // tell a human, because nothing else will.
 //
@@ -7,7 +7,7 @@
 // withdrawn, the lab runs the test, and the corrected order legitimately goes out as a SECOND ORM under a new
 // placer order number.
 //
-// WHY THIS IS AN ALERT AND NOT AN HL7 CANCEL (the F-185 spec decision — do not "finish" it without a spec change):
+// WHY THIS IS AN ALERT AND NOT AN HL7 CANCEL (the F-187 spec decision — do not "finish" it without a spec change):
 //   * T-29.08 (`WARDENX_T-29.08_OUTBOUND_ORM.md`) defines ONE outbound message: `ORM^O01` with `ORC-1 = NW`
 //     (`orm-o01.ts` hardcodes it). No `CA` / `OC` / `DC` order-control flow, no cancel message type, no cancel
 //     idempotency rule and no partner-lab acknowledgement semantics are defined anywhere in the M29 spec, the

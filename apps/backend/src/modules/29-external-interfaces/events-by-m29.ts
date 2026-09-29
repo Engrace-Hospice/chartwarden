@@ -162,7 +162,7 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
     isOutboxOnly: true,
   },
   {
-    // F-185 (#248) — the worker's "wrote NO row" exits (no/ambiguous/unlinked active feed, incomplete MSH identity
+    // F-187 (#248) — the worker's "wrote NO row" exits (no/ambiguous/unlinked active feed, incomplete MSH identity
     // on the feed, lapsed BAA) used to end silently, leaving the order `pending` forever with no path to resend.
     // This is the terminal signal M11's `LabTransmissionApplier` consumes to flip such an order to `failed`
     // (`dispatch_refused:<reason>`), which F-182's resend then acts on once the operator fixes the cause. Distinct

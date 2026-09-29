@@ -118,7 +118,7 @@ export const hl7MessageOutbound = pgTable(
     statusIdx: index("idx_hmo_status").on(t.status),
     idempotencyIdx: index("idx_hmo_idempotency").on(t.idempotencyKey),
     nextRetryIdx: index("idx_hmo_next_retry").on(t.status, t.nextRetryAt),
-    /** F-185 (0265) — serves F-183's order-level dispatch dedupe (`ormDispatchExistsForOrder`): equality on all three. */
+    /** F-187 (0265) — serves F-183's order-level dispatch dedupe (`ormDispatchExistsForOrder`): equality on all three. */
     orgSourceAggregateIdx: index("idx_hmo_org_source_aggregate").on(
       t.organizationId,
       t.sourceAggregateKind,

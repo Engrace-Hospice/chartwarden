@@ -347,7 +347,7 @@ export interface ResendLabTransmissionResult {
 }
 
 /**
- * F-185 (#248) — the outcome of an operator's ATTESTED recovery of a lab order whose transmission ended in an M29
+ * F-187 (#248) — the outcome of an operator's ATTESTED recovery of a lab order whose transmission ended in an M29
  * terminal failure. `redispatched`: the operator attested the lab did NOT receive it; the producer re-ran, ONE
  * `m11.order.hl7_orm_requested` (carrying the attestation id) was published in the same transaction and
  * `transmission_status` is back to `pending`. `marked_transmitted`: the operator attested the lab DID receive it;
@@ -466,7 +466,7 @@ export interface OrderRouteService extends OrderAbacResolver {
     auditUserId?: string,
   ): Promise<ResendLabTransmissionResult>;
   /**
-   * F-185 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built
+   * F-187 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built
    * (`dlq_exhausted` incl. F-183's "held, delivery unverified", or `application_reject`). `attestation` is what the
    * operator established WITH THE LAB: `not_received_by_lab` re-dispatches once, `received_by_lab` marks the order
    * transmitted without sending. Recorded in the order's write-audit diff under `auditUserId`.

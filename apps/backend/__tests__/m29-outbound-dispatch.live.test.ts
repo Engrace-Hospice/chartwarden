@@ -422,7 +422,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("BAA-inactive: no row written, no transmission_failed emitted — but a terminal `dispatch_refused` (F-185: never a silently `pending` order)", async () => {
+  it("BAA-inactive: no row written, no transmission_failed emitted — but a terminal `dispatch_refused` (F-187: never a silently `pending` order)", async () => {
     registerSeam("BaaStatusProvider", {
       baaStatusByMdmEntity: async () => ({ isActive: false, status: "missing", expiresOn: null }),
     } as never);
@@ -446,7 +446,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       const rows = await outboundRowFor(ORG_A, orderId);
       expect(rows).toHaveLength(0);
       // `transmission_failed` needs an outbound row to cite — there is none. F-175 published nothing at all, which
-      // left the order `pending` forever; F-185 publishes the row-less terminal signal M11 consumes instead.
+      // left the order `pending` forever; F-187 publishes the row-less terminal signal M11 consumes instead.
       expect(outbox.published.filter((e) => e.eventName === "m29.lab_order.transmission_failed")).toHaveLength(0);
       const refused = outbox.published.filter((e) => e.eventName === "m29.lab_order.dispatch_refused");
       expect(refused).toHaveLength(1);
@@ -681,14 +681,14 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-181/F-185 identity: a feed with an unset MSH field is REFUSED — no row, no wire, and a PHI-free terminal `dispatch_refused` (never a silent pending, never a throw)", async () => {
+  it("F-181/F-187 identity: a feed with an unset MSH field is REFUSED — no row, no wire, and a PHI-free terminal `dispatch_refused` (never a silent pending, never a throw)", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
       const feedId = await seedFeed({ organizationId: ORG_A, port: server.port, mshReceivingFacility: null });
       const { consumer, alerts, outbox } = buildConsumer();
       const orderId = randomUUID();
-      // F-185: the worker no longer THROWS (the outbox's dead-letter left the order `pending` forever); it publishes
+      // F-187: the worker no longer THROWS (the outbox's dead-letter left the order `pending` forever); it publishes
       // the terminal signal in the claim transaction and returns.
       await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
       expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(0);
@@ -1449,10 +1449,10 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  // ── F-185 — the index behind F-183's ORDER-level dispatch dedupe ──────────────────────────────────────────
+  // ── F-187 — the index behind F-183's ORDER-level dispatch dedupe ──────────────────────────────────────────
   // `ormDispatchExistsForOrder` runs once per delivery. Migration 0265 adds `idx_hmo_org_source_aggregate`. Proven:
   //  (a) on ~40k rows across 4 partitions (incl. DEFAULT), under the real NOBYPASSRLS role (RLS qual in the plan),
-  //      every partition holding rows is read through an index attached to the F-185 parent index and NO row is
+  //      every partition holding rows is read through an index attached to the F-187 parent index and NO row is
   //      fetched-then-filtered;
   //  (b) the assertion is sensitive: with the index dropped (rolled-back txn) the planner falls back to the org's
   //      `(organization_id, feed_id)` index on the org prefix ALONE — a Bitmap Heap Scan that fetches every row of
@@ -1460,7 +1460,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
   //      more buffer work. Node TYPE is not the signal (the fallback is not a Seq Scan); WORK DONE is;
   //  (c) every existing partition, and a newly created month, carry the index; (d) answers + tenant isolation of the
   //      lookup are unchanged.
-  describe("F-185 order-lookup index (idx_hmo_org_source_aggregate)", () => {
+  describe("F-187 order-lookup index (idx_hmo_org_source_aggregate)", () => {
     const INDEX = "idx_hmo_org_source_aggregate";
     const KIND = "m11.order_record";
 
@@ -1495,7 +1495,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       return new Map(r.rows.map((x: { part: string; n: number }) => [x.part, x.n]));
     }
 
-    /** the per-partition index names attached (pg_inherits) to the parent F-185 index — the planner reports these. */
+    /** the per-partition index names attached (pg_inherits) to the parent F-187 index — the planner reports these. */
     async function childIndexNames(): Promise<Set<string>> {
       const r = await admin.query(
         `SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
@@ -1556,7 +1556,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       return planFrom(r.rows);
     }
 
-    it("the planner reads every LOADED partition through the F-185 index and fetches no row it then discards", async () => {
+    it("the planner reads every LOADED partition through the F-187 index and fetches no row it then discards", async () => {
       const feedA = await seedFeed({ organizationId: ORG_A, port: 2591 });
       const feedB = await seedFeed({ organizationId: ORG_B, port: 2592 });
       const { knownOrder, partitions } = await seedBulk(feedA, feedB);
@@ -1600,7 +1600,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       // the rollback really restored the parent index and every child
       expect((await childIndexNames()).size).toBe(withChildren.size);
 
-      // no scan in the dropped-index plan can be using an F-185 child (they did not exist)
+      // no scan in the dropped-index plan can be using an F-187 child (they did not exist)
       expect(scanNodes(without).some((n) => withChildren.has(n["Index Name"] ?? ""))).toBe(false);
       expect(rowsRemoved(withIndex)).toBe(0);
       expect(rowsRemoved(without), "org-prefix scan fetches the org's rows then filters them").toBeGreaterThan(5_000);
@@ -1659,7 +1659,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }, 180_000);
   });
 
-  // ── F-185 — the attested re-dispatch exception to the order-level guard, and the row-less refusals ─────────
+  // ── F-187 — the attested re-dispatch exception to the order-level guard, and the row-less refusals ─────────
 
   /** Dispatch an order normally (acked by the mock lab), then force its one row into `status`. */
   async function orderWithRowIn(server: { port: number }, status: string): Promise<string> {
@@ -1678,7 +1678,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     redispatchAttestationId: randomUUID(),
   });
 
-  it("F-185 guard: an ATTESTED re-dispatch is refused while ANY earlier row still owns the order (acked / queued / in_flight) — the lab may hold it", async () => {
+  it("F-187 guard: an ATTESTED re-dispatch is refused while ANY earlier row still owns the order (acked / queued / in_flight) — the lab may hold it", async () => {
     registerActiveBaa();
     for (const status of ["acked", "queued", "in_flight"]) {
       const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
@@ -1697,7 +1697,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-185: an ATTESTED re-dispatch over a DEAD-END row (dlq / naked / failed) adds ONE new row and sends once; redelivering the SAME attested event adds nothing", async () => {
+  it("F-187: an ATTESTED re-dispatch over a DEAD-END row (dlq / naked / failed) adds ONE new row and sends once; redelivering the SAME attested event adds nothing", async () => {
     registerActiveBaa();
     for (const status of ["dlq", "naked", "failed"]) {
       const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
@@ -1725,7 +1725,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-185: WITHOUT the attestation a dead-end row still blocks a redelivery — F-183's one-ORM-per-order guard is unchanged", async () => {
+  it("F-187: WITHOUT the attestation a dead-end row still blocks a redelivery — F-183's one-ORM-per-order guard is unchanged", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -1739,7 +1739,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-185: every row-less feed refusal publishes ONE `dispatch_refused` with its reason — no_active_feed, ambiguous_feed, no_feed_for_destination", async () => {
+  it("F-187: every row-less feed refusal publishes ONE `dispatch_refused` with its reason — no_active_feed, ambiguous_feed, no_feed_for_destination", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     const FAC_X = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";

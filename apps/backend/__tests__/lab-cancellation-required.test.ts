@@ -1,4 +1,4 @@
-// F-185 (#248) — the pure half of the lab-order supersession alert: the decision table, the declarations that make
+// F-187 (#248) — the pure half of the lab-order supersession alert: the decision table, the declarations that make
 // the consumer bindable, and the platform-default alert rule that decides whether a human is actually reached.
 // (The consumer's DB behaviour and tenancy are proven live in `m11-lab-cancellation.live.test.ts`.)
 import { PLATFORM_DEFAULT_ALERT_RULES, validateAlertRuleSeed } from "@wardenx/messaging";

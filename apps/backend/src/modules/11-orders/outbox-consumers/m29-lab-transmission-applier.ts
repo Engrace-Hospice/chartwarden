@@ -46,7 +46,7 @@ export const M11_LAB_TRANSMISSION_APPLIER_CONSUMER = {
   eventNames: [
     "m29.lab_order.transmitted",
     "m29.lab_order.transmission_failed",
-    // F-185 — the worker's "wrote NO row" refusals; see `DispatchRefusedFacts`.
+    // F-187 — the worker's "wrote NO row" refusals; see `DispatchRefusedFacts`.
     "m29.lab_order.dispatch_refused",
   ] as const,
   consumerName: "m11.lab-transmission-applier",
@@ -75,7 +75,7 @@ interface TransmissionFailedFacts {
 }
 
 /**
- * F-185 — `m29.lab_order.dispatch_refused`: the worker could not persist ANY outbound row for the order (no /
+ * F-187 — `m29.lab_order.dispatch_refused`: the worker could not persist ANY outbound row for the order (no /
  * ambiguous / unlinked feed, incomplete MSH identity on the feed, lapsed BAA). There is no `outboundMessageId`, so
  * the refusal's own id stands in as `sourceM29EventId`. Applied ONLY to an order still `pending` — a stale or
  * redelivered refusal never disturbs an order that has moved on.
@@ -169,7 +169,7 @@ export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionAppl
         const fromStatus = order.transmissionStatus;
         // Terminal states never regress — see the file header's "idempotent by design" note.
         if (fromStatus === "transmitted" || fromStatus === "failed") return;
-        // F-185 — a worker refusal only ever applies to an order still awaiting its first transmission.
+        // F-187 — a worker refusal only ever applies to an order still awaiting its first transmission.
         if (facts.kind === "dispatch_refused" && fromStatus !== "pending") return;
 
         const toStatus = facts.kind === "transmitted" ? "transmitted" : "failed";

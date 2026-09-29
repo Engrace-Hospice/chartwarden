@@ -201,7 +201,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
-  // F-185 (#248) — a lab order superseded (discontinued / replaced by a corrected order) after its ORM may already
+  // F-187 (#248) — a lab order superseded (discontinued / replaced by a corrected order) after its ORM may already
   // be at the laboratory. T-29.08 defines no outbound cancel, so this is the ONLY signal — the care team has to
   // cancel it with the lab. Ids only in the payload (`patientId` is the care-team resolver path).
   {

@@ -1241,7 +1241,7 @@ export function createDbOrderBackend(
     },
 
     /**
-     * F-185 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built
+     * F-187 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built
      * (`dlq_exhausted`, including F-183's "held, delivery unverified", or `application_reject`). F-182's resend refuses
      * these on purpose: the lab MAY have the order, and re-emitting would order the test twice. The one fact the
      * system cannot know is what the lab actually holds, so a human establishes it by calling the lab and ATTESTS:

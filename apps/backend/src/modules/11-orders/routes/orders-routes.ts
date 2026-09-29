@@ -447,7 +447,7 @@ export function registerOrderRoutes(
     );
   });
 
-  // F-185 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built (an M29
+  // F-187 (#248) — the operator's ATTESTED recovery of a lab order that failed AFTER a message was built (an M29
   // terminal failure: `dlq_exhausted`, incl. F-183's "held, delivery unverified", or `application_reject`) — the
   // orders F-182's resend refuses because the lab MAY already hold them. The body's `attestation` is required: the
   // operator states what the lab actually has (`not_received_by_lab` → re-dispatch once; `received_by_lab` → mark

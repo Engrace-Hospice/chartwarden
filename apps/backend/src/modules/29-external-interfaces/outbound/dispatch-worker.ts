@@ -20,7 +20,7 @@
 // come from dedicated `msh_*` columns — a feed missing a required one is REFUSED instead of borrowing its display
 // name. Read that file's header.
 //
-// F-185 — NEVER SILENTLY STUCK. Every exit that writes NO row (no/ambiguous/unlinked feed, incomplete MSH identity,
+// F-187 — NEVER SILENTLY STUCK. Every exit that writes NO row (no/ambiguous/unlinked feed, incomplete MSH identity,
 // lapsed BAA) now publishes `m29.lab_order.dispatch_refused` (see `refuseDispatch`), so M11 marks the order `failed`
 // with an actionable reason instead of leaving it `pending` forever; F-181's alert + throw for an incomplete identity
 // was replaced by that terminal signal (the outbox's dead-letter left the order `pending`). And a row that DID
@@ -623,7 +623,7 @@ async function alertUnresolvedFeed(
 }
 
 /**
- * F-185 — the worker is about to write NO row for this order (no/ambiguous/unlinked feed, incomplete MSH identity,
+ * F-187 — the worker is about to write NO row for this order (no/ambiguous/unlinked feed, incomplete MSH identity,
  * lapsed BAA). Ending silently — F-175's `return null`, or F-181's throw that the outbox eventually dead-letters —
  * left the order `pending` forever with no path to resend. Publish `m29.lab_order.dispatch_refused` IN THE SAME
  * TRANSACTION so M11's applier flips the order to `failed` with `dispatch_refused:<reason>`; F-182's resend then
@@ -678,7 +678,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
     // crashed `in_flight`, a `dlq`, a sent one) send nothing; the reclaim sweep is the only path that re-sends.
     // Checking first also means a redelivery never refuses (`dispatch_refused`) over a feed this order never used.
     //
-    // F-185 — THE ONE EXCEPTION: an operator-ATTESTED re-dispatch (`redispatchAttestationId`, minted by M11's
+    // F-187 — THE ONE EXCEPTION: an operator-ATTESTED re-dispatch (`redispatchAttestationId`, minted by M11's
     // `recoverLabTransmission` after a human attested to the lab that it did NOT receive the earlier attempt).
     // It may add a NEW row when every earlier row is a dead end (`dlq` / `naked` / `failed`); a `queued`,
     // `in_flight` or `acked` row still owns the order and blocks it exactly as before. Nothing else — no ordinary
@@ -728,7 +728,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
     // serialized with a transaction-scoped advisory lock on (org, idempotency key): two overlapping deliveries
     // queue behind one another, and the loser's SELECT (a fresh READ COMMITTED snapshot, taken after the lock is
     // granted) sees the winner's committed row. The lock is released at commit/rollback — nothing to clean up.
-    // F-185 — an attested re-dispatch hashes the attestation id into the key (the persisted `source_aggregate_id`
+    // F-187 — an attested re-dispatch hashes the attestation id into the key (the persisted `source_aggregate_id`
     // stays the bare order id), so it cannot collide with the dead attempt's key, while a REDELIVERY of the same
     // attested event still finds its own row and sends nothing.
     const idempotencyKey = outboundIdempotencyKey(
@@ -771,7 +771,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
     if (plan.kind === "baa_refused") {
       // NO row, so NO `transmission_failed` (that event needs an outbound row to cite). F-175 stopped here and the
       // order stayed `pending` forever — the planner's header assumed an M29-owned DLQ that auto-requeues on BAA
-      // restoration, which was never built (a refused plan writes no row for a requeue to find). F-185: publish
+      // restoration, which was never built (a refused plan writes no row for a requeue to find). F-187: publish
       // `dispatch_refused` so the order becomes `failed` (`dispatch_refused:baa_inactive`) and F-182's resend
       // re-runs the producer once the BAA is renewed.
       await emitAlert(deps, organizationId, plan.alert);
@@ -788,7 +788,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
       .insert(HMO)
       .values({
         ...plan.row,
-        // F-185 — the attempt's own key (the planner keyed on the bare order id): identical for an ordinary
+        // F-187 — the attempt's own key (the planner keyed on the bare order id): identical for an ordinary
         // dispatch, attestation-scoped for an attested re-dispatch.
         idempotencyKey,
         payloadCipher,

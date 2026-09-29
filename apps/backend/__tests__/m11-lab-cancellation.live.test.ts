@@ -1,5 +1,5 @@
 /**
- * F-185 (#248) — a lab order SUPERSEDED (discontinued, or replaced by a corrected order) after its ORM may already be
+ * F-187 (#248) — a lab order SUPERSEDED (discontinued, or replaced by a corrected order) after its ORM may already be
  * at the laboratory raises an operator alert — proven end to end over real Postgres.
  *
  * T-29.08 defines ONE outbound message (`ORM^O01`, `ORC-1 = NW`) and no cancel, so nothing withdraws an ORM that was
@@ -86,7 +86,7 @@ interface CapturedAlert {
   readonly correlationId: string;
 }
 
-describe.skipIf(!DB_URL)("F-185 — lab-order supersession alert, LIVE Postgres", () => {
+describe.skipIf(!DB_URL)("F-187 — lab-order supersession alert, LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbOrderBackend>;

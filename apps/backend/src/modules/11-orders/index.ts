@@ -184,7 +184,7 @@ export {
   buildM11LabTransmissionApplierConsumer,
   type LabTransmissionApplierDeps,
 } from "./outbox-consumers/m29-lab-transmission-applier";
-// F-185 (#248) — the operator alert for a lab order superseded after its ORM may already be at the lab.
+// F-187 (#248) — the operator alert for a lab order superseded after its ORM may already be at the lab.
 export {
   M11_LAB_CANCELLATION_ALERT_TYPE,
   M11_LAB_CANCELLATION_CONSUMER,
