@@ -130237,6 +130237,135 @@
         }
       }
     },
+    "/api/v1/orders/held-transmissions": {
+      "get": {
+        "operationId": "getApiV1OrdersHeldtransmissions",
+        "tags": [
+          "11-orders"
+        ],
+        "summary": "Held lab-order worklist — orders that failed AFTER their HL7 message was built (dlq_exhausted / application_reject / recovery_blocked:*) and wait for an operator to verify with the lab; oldest first, cursor-paginated, with age + escalation stage (orders.amend)",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minLength": 1,
+              "maxLength": 300,
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "orderId",
+                          "patientId",
+                          "reason",
+                          "failedAt",
+                          "ageSeconds",
+                          "stage",
+                          "feedId"
+                        ],
+                        "properties": {
+                          "orderId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "reason": {
+                            "maxLength": 120,
+                            "type": "string"
+                          },
+                          "failedAt": {
+                            "type": "string"
+                          },
+                          "ageSeconds": {
+                            "minimum": 0,
+                            "type": "integer"
+                          },
+                          "stage": {
+                            "anyOf": [
+                              {
+                                "const": "none",
+                                "type": "string"
+                              },
+                              {
+                                "const": "warn",
+                                "type": "string"
+                              },
+                              {
+                                "const": "critical",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "feedId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    },
+                    "nextCursor": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/orders/pending-signature": {
       "get": {
         "operationId": "getApiV1OrdersPendingsignature",

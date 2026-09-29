@@ -237,6 +237,7 @@ jobs:
           - { name: "M11 lab ORM producer (F-181)", scripts: "test:m11:orm-requested:live" }
           - { name: "M11 lab ORM resend (F-182)", scripts: "test:m11:orm-resend:live" }
           - { name: "M11 lab ORM attested recovery + never-pending (F-187)", scripts: "test:m11:orm-recovery:live" }
+          - { name: "M11 stuck lab-order auto-retry + held worklist/aging (F-191)", scripts: "test:m11:stuck-recovery:live" }
           - { name: "M11 lab-order supersession alert (F-187)", scripts: "test:m11:lab-cancellation:live" }
           - { name: "M29 outbound alerts reach a person (F-188)", scripts: "test:m29:alert-routing:live" }
           - { name: "M11 lab ORM duplicate windows (F-183)", scripts: "test:m11:orm-duplicate-windows:live" }

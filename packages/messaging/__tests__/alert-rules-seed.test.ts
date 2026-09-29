@@ -59,6 +59,10 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "hl7_outbound.transmission_failed",
       "external_feed.baa_expired",
       "external_feed.baa_missing",
+      // F-191 (#248) — M11's stuck lab-order recovery: a held order aging past its thresholds, and the auto-retry
+      // sweep giving up.
+      "m11.order.transmission_held_aging",
+      "m11.order.transmission_auto_retry_exhausted",
     ]);
     for (const row of toNewAlertRuleRows()) {
       expect(row.organizationId).toBeNull();

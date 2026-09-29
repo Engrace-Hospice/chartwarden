@@ -293,6 +293,7 @@ import {
 import {
   M11_OUTBOX_EVENTS,
   M11_PLATFORM_JOB_ID,
+  M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID,
   M11_VERBAL_TIMER_PLATFORM_JOB_ID,
   buildM11AssessmentSuggestionConsumer,
   buildM11DischargeCascadeConsumer,
@@ -304,18 +305,23 @@ import {
   buildM11OrmRequestedPorts,
   buildM11SupplyCancelledConsumer,
   createDbOrderBackend,
+  createStuckTransmissionRecovery,
   createDrizzleOrderEraseStore,
   createDrizzleOrderSeamStore,
   createMedicationOrderSignatureCascade,
+  heldThresholdsFromEnv,
   mountOrderRoutes,
   orderPatientAndKindForOrg,
+  registerHeldTransmissionRoutes,
   registerM11StandingSpawnWorker,
+  registerM11StuckTransmissionWorker,
   registerM11VerbalOrderExpiryWorker,
   registerOrderAbacPredicates,
   registerOrderErasers,
   registerOrderRoutes,
   registerOrderSeams,
   scheduleM11StandingSpawn,
+  scheduleM11StuckTransmission,
   scheduleM11VerbalOrderExpiry,
 } from "./modules/11-orders/index";
 import {
@@ -744,6 +750,8 @@ import {
   buildNppesManualSyncTrigger,
   createDrizzleM29PublishedSeamStore,
   ormOutboundEvidenceForOrder,
+  ormOutboundFeedsForOrders,
+  outboundBaaCleared,
   createDrizzleM29Store,
   createFeedRateLimiter as createM29OutboundRateLimiter,
   denyStubM29AbacResolver,
@@ -1609,6 +1617,7 @@ export function wireModuleSeams(
   wireM20Tenancy(); // F-111 (#249) — allowlist the cron job id so the SOS SLA watchdog may enter withPlatformContext
   registerPlatformJob(M11_PLATFORM_JOB_ID);
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
+  registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-191 — the stuck lab-order recovery tick's org enumeration
   wireM12Tenancy(); // F-164 (#248) — allowlist the cron job id so the dosespot_sync_queue drain may enter withPlatformContext
   wireM19Tenancy(); // F-155 (#248) — allowlist the cron job id so the on_call_roster_sync_queue drain + catch-up-seed workers may enter withPlatformContext
   // F-071/#174 — allowlist M37's cron job id so ipu.rn-coverage-watchdog may enter withPlatformContext.
@@ -3250,6 +3259,8 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               outboundEvidence: ormOutboundEvidenceForOrder,
             }),
           );
+          // F-191 (#248) — the held-order worklist: lab orders waiting on a human's verification with the lab.
+          registerHeldTransmissionRoutes(app, { recovery: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher) });
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
           mountEmarRoutes(app, dbHandle.db, m13OutboxPublisher); // M13 — reads + the write lifecycle over Drizzle+RLS, m13.* transactional outbox
           mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
@@ -5320,6 +5331,35 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M11 verbal-order-expiry schedule registration failed");
     }
+    // F-191 (#248) — the stuck lab-order recovery tick (every 15 minutes): auto-retry of orders refused before any
+    // outbound row existed (bounded — attempts, backoff, window) and the held-order aging escalation (warn, then
+    // critical). Fans out over active orgs like the two M11 sweeps above; each service call opens its own tenant/RLS
+    // transaction. Grep this factory: a worker that is bound but never constructed is dead code.
+    const m11StuckTransmissionActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: dbHandle.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID,
+      reason: "M11 stuck lab-order recovery (auto-retry + held-order aging) fan-out",
+    });
+    const m11StuckTransmissionWorker = registerM11StuckTransmissionWorker({
+      connection: queueConnection,
+      activeOrgs: m11StuckTransmissionActiveOrgs,
+      service: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher, (event, fields) =>
+        app.log.warn({ event, ...fields }, event),
+      ),
+    });
+    attachDlqAlertsToAll([m11StuckTransmissionWorker], "m11");
+    app.addHook("onClose", async () => {
+      await m11StuckTransmissionWorker.close();
+    });
+    try {
+      const m11StuckTransmissionQueue = await scheduleM11StuckTransmission(queueConnection);
+      app.addHook("onClose", async () => {
+        await m11StuckTransmissionQueue.close();
+      });
+    } catch (err) {
+      app.log.error(err, "M11 stuck-transmission schedule registration failed");
+    }
     // M12 §2.6 D4 / §2.8 D10 — the `dosespot_sync_queue` drain (patient-sync + MedHx-fetch). Scheduled
     // separately from the six outbox consumers that enqueue onto it (below) — the drain performs real
     // outbound vendor I/O, so it runs as its own scheduled worker (F-164, #248).
@@ -6602,6 +6642,39 @@ if ((import.meta as { main?: boolean }).main) {
   await bootWardenX(
     (process.env.PROCESS_ROLE as ProcessRole | undefined) ?? "all",
   );
+}
+
+/**
+ * F-191 (#248) — M11's stuck lab-order recovery, wired over the real ports. The composition root is the only place that
+ * may see M11, M29 and M36 together (M11 has no `dependsOn` edge to either): the re-emission is F-182's OWN
+ * `resendLabTransmission` (so a sweep and an operator's click share one row lock, one conditional update and one attempt
+ * id), the BAA pre-check is M29's own gate, and the alert goes out through the M36 `AlertEmitter` seam. `resend` passes no
+ * acting user — the M4 audit trigger records the change with a null actor and the order's auto-retry counters say it was
+ * the sweep. Called from both the route mount (the worklist reads) and the worker (the sweeps): the service is stateless.
+ */
+function buildM11StuckRecovery(
+  db: DbClient,
+  outbox: Parameters<typeof createDbOrderBackend>[1],
+  log?: (event: string, fields: Record<string, unknown>) => void,
+) {
+  const backend = createDbOrderBackend(
+    db,
+    outbox,
+    buildM11OrmRequestedPorts({
+      patient: hl7OrmDemographicsInTx,
+      feeds: buildDrizzleOutboundFeedResolver(),
+      outboundEvidence: ormOutboundEvidenceForOrder,
+    }),
+  );
+  return createStuckTransmissionRecovery({
+    db,
+    resend: (organizationId, orderId) => backend.resendLabTransmission(organizationId, "", orderId),
+    baaCleared: outboundBaaCleared,
+    alerts: getSeam("AlertEmitter") as AlertEmitter,
+    feedsForOrders: ormOutboundFeedsForOrders,
+    thresholds: heldThresholdsFromEnv(process.env),
+    ...(log ? { log } : {}),
+  });
 }
 
 /**
