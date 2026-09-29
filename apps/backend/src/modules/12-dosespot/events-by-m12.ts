@@ -229,7 +229,13 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       lastErrorClass: Type.String(),
       retryCount: Type.Integer({ minimum: 0 }),
     }),
-    declaredConsumers: ["m30"],
+    // F-184 (#248) — m30 DROPPED: this description's own "M30 survey log" is an unverified, undefined
+    // concept — M30's own locked spec's ENTIRE M12 relationship paragraph names exactly two consumed
+    // methods (`MedicationOrderProvider.getOpioidOnAdmissionStats`/`getComfortKitDeploymentTimeline`,
+    // both confirmed as `QualityMedicationOrderConsumer`'s only two real methods), neither about
+    // transmission failures. No incident kind, measure, or seam anywhere references DoseSpot
+    // transmission failures. A pure producer-side guess, the F-180 shape.
+    declaredConsumers: [],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

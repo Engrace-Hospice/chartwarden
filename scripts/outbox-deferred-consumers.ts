@@ -259,13 +259,53 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       " `GET /api/v1/compliance-windows` there is no already-live REST route serving this data; a real" +
       " build gap on both the M6 reader side and the M30 consumer side) and `m15.volunteer.ratio_recomputed`" +
       " (see the m15 group's own updated reason: the M27 `staffPatientCareMinutes` blocker is freshly" +
-      " reconfirmed current, not stale). Net this pass: declared-but-unbound 42 → 36.",
+      " reconfirmed current, not stale). Net this pass: declared-but-unbound 42 → 36." +
+      " **F-184 (#248) — a research fork checked the 5 events in this group never individually" +
+      " investigated before, found 2 more misdeclared (dropped), 1 real-and-buildable (in progress), and" +
+      " 2 genuinely blocked.** Dropped: `m12.medication_order.transmission_failed` (M30's own spec's" +
+      " entire M12 relationship paragraph names two consumed methods, neither about transmission" +
+      " failures — the description's \"M30 survey log\" is an undefined, uncorroborated concept, the" +
+      " F-180 shape); `m37.ipu_admission.death_recorded` (reverses F-149's own conclusion — never" +
+      " checked against M30's actual trigger design, only against M37's spec citation — M30's" +
+      " `createMortalityReviewDraft` is keyed EXCLUSIVELY to `m6.discharge.death`, and `death_recorded`" +
+      " fires strictly downstream of, and only because of, that same event; a consumer here would fire" +
+      " no earlier and carry no new fact, the identical redundant-sibling shape already used to drop" +
+      " `m16` from this exact event). **Real and buildable, landed**:" +
+      " `m16.bereavement.risk_score_computed` — M16 already built a dormant seam method purpose-made for" +
+      " this, `BereavementComplianceProvider.riskScreeningCompletenessCounts` (D17: excludes `minimal`" +
+      " data-completeness rows from the denominator); now a real operational measure" +
+      " (`bereavement_risk_screening_completeness_rate`), registered and wired into" +
+      " `resolveOperationalMeasureInput`, the F-178 pattern exactly (nightly-recompute pulled off the" +
+      " seam, no bespoke outbox consumer). `m30` moved from `declaredConsumers` to `seamConsumers` on" +
+      " this event (`events-by-m16.ts`) — the F-178 shape, not an outbox binding — so it drops out of" +
+      " this deferral list entirely rather than staying declared-but-unbound. **Confirmed still" +
+      " genuinely blocked, not misdeclared**:" +
+      " `m16.bereavement.plan_skipped_per_patient_opt_out` (three prior rounds — F-115/F-148/F-161 — plus" +
+      " this fresh check all reach the same conclusion: whether an opt-out skip belongs in the" +
+      " `bereavement_coverage_rate` denominator is an open product decision, not a code gap — the event" +
+      " carries no `planId`, since nothing was ever opened) and `m37.restraint.applied` (M37's spec is" +
+      " unusually decisive this is real — M30 even has a matching consumer port already stubbed," +
+      " `createIncidentDraft`. F-184 re-checked the actor-identity half of its blocker and found the" +
+      " F-150 'no system-actor-membership convention exists anywhere' framing stale: `incident_report`" +
+      " (`packages/db/src/schema/quality/incident-report.ts:77`) has no DB-level FK on" +
+      " `reported_by_membership_id` — unlike M20's structurally identical, genuinely-FK-enforced" +
+      " `safety_incident.reported_by_membership_id` — and this codebase already has four working" +
+      " precedents for a NOT NULL, non-FK, module-owned system-actor sentinel on this exact column" +
+      " shape (`M17_SYSTEM_USER_ID`, `M18_SYSTEM_USER_ID`, `M37_SYSTEM_MEMBERSHIP_ID` ×2," +
+      " `RENDER_SYSTEM_MEMBERSHIP_ID`); a fifth, `M30_SYSTEM_MEMBERSHIP_ID`, is a same-shape, no-migration" +
+      " fix. What still blocks this event is only the second, independent, additive gap:" +
+      " `m30IncidentKind` (`packages/db/src/schema/quality/incident-report.ts:35-41`) has exactly 6" +
+      " members (`fall`, `medication_error`, `complaint`, `allegation_of_abuse`, `exposure_event`," +
+      " `other_safety_event`), no `restraint_use` slot — a real enum migration plus an" +
+      " `IncidentKindData` payload variant, and deciding how a restraint event maps into that typed" +
+      " payload is a clinical-categorization call this pass does not make unilaterally. NOT" +
+      " the same blocker as `m12.medication.error_reported` in the first m30 group above — F-165" +
+      " already established that event's real gap is 'no producer anywhere', unrelated to actor" +
+      " identity; an earlier F-184 draft of this paragraph miscited it as the same gap and has been" +
+      " corrected).",
     events: [
-      "m12.medication_order.transmission_failed",
       "m15.volunteer.ratio_recomputed",
       "m16.bereavement.plan_skipped_per_patient_opt_out",
-      "m16.bereavement.risk_score_computed",
-      "m37.ipu_admission.death_recorded",
       "m37.restraint.applied",
       "m6.admission.on_hold",
       "m6.admission.resumed",

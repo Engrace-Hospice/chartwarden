@@ -247,6 +247,17 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     calculatorVersion: "0.1.0",
     description: "Bereavement coverage rate (CoP 418.64(d))",
   },
+  // F-184 (#248) — M16's `BereavementComplianceProvider.riskScreeningCompletenessCounts` (D17: excludes
+  // `minimal` data-completeness rows from the denominator), the F-178 pattern exactly (nightly-recompute
+  // pulled, no bespoke outbox consumer — see the m30-jobs.ts threshold-table comment).
+  {
+    code: "bereavement_risk_screening_completeness_rate",
+    family: "operational",
+    periodKind: ROLLING,
+    activatesFy: 2025,
+    calculatorVersion: "0.1.0",
+    description: "Bereavement risk-screening completeness rate (D17)",
+  },
   {
     code: "volunteer_compliance_gate_rate",
     family: "operational",

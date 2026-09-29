@@ -1,5 +1,6 @@
 import {
   computeBereavementCoverageRate,
+  computeBereavementRiskScreeningCompletenessRate,
   computeCarePlan15DayAdherence,
   computeEvvComplianceRate,
   computeF2fWindowOnTimeRate,
@@ -81,6 +82,9 @@ const seamsWith = (
   },
   bereavementCompliance: {
     async copOutreachCounts() {
+      return lateEntry;
+    },
+    async riskScreeningCompletenessCounts() {
       return lateEntry;
     },
   },
@@ -266,6 +270,28 @@ describe("M30 operational measure inputs — counts, not rates", () => {
       seamsWith({ numerator: 0, denominator: 0 }),
     );
     const result = computeBereavementCoverageRate(input as never);
+    expect(result.denominator).toBe(0);
+    expect(result.rate).toBeNull();
+    expect(result.bandColor).toBe("insufficient_n");
+  });
+
+  it("F-184: shapes M16's D17 screening-completeness tally into the bereavement_risk_screening_completeness_rate calculator input", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("bereavement_risk_screening_completeness_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }, undefined, { numerator: 18, denominator: 19 }),
+    );
+    expect(input).toMatchObject({ screeningsDue: 19, screeningsCompleted: 18 });
+    expect(computeBereavementRiskScreeningCompletenessRate(input as never).rate).toBeCloseTo(
+      18 / 19,
+    );
+  });
+
+  it("F-184: no bereaved contacts owed a risk screen in the window suppresses rather than scoring perfect", async () => {
+    const input = await resolveOperationalMeasureInput(
+      REQUEST("bereavement_risk_screening_completeness_rate"),
+      seamsWith({ numerator: 0, denominator: 0 }),
+    );
+    const result = computeBereavementRiskScreeningCompletenessRate(input as never);
     expect(result.denominator).toBe(0);
     expect(result.rate).toBeNull();
     expect(result.bandColor).toBe("insufficient_n");

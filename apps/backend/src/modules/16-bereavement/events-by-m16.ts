@@ -338,18 +338,23 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
       dataCompleteness: Str,
       confidenceBand: Str,
     }),
-    // F-115 (#248) — m30 stays declared, not moved to seamConsumers: `BereavementComplianceProvider.
-    // riskScreeningCompletenessCounts` exists for exactly this D17 filter, but no measure code in
-    // `apps/backend/src/modules/30-quality/jobs/m30-jobs.ts`'s registered set calls it yet — a screening-
-    // completeness measure is not among the eleven currently bound. The description's "M30's screening
-    // measure" describes a capability that exists on the seam, not one wired to a running recompute.
+    // F-184 (#248) — `BereavementComplianceProvider.riskScreeningCompletenessCounts` now backs the real
+    // `bereavement_risk_screening_completeness_rate` operational measure (`m30-jobs.ts`'s
+    // `resolveOperationalMeasureInput`, the F-178 pattern: nightly-recompute PULLED off the seam, no
+    // bespoke outbox consumer for this event — the write this event announces lands in the same
+    // `bereavement_risk_score` table the nightly pull already reads). M30 moved from `declaredConsumers`
+    // to `seamConsumers` alongside M33: it consumes this fact by SEAM PULL, not by an outbox binding
+    // subscribed to this event (the identical shape M33 already had here) — no `OutboxConsumerBinding`
+    // for `m30` names this event type, so declaring it in `declaredConsumers` would leave a permanent
+    // declared-but-unbound pair (rule 4). The prior F-115 note (declared-but-unbound, no measure code
+    // consuming the seam) no longer applies now that a real measure calls it.
     // F-142 (#248) — m32 dropped: M32's own spec is decisive the relationship runs the OPPOSITE
     // direction — "`BereavementRiskNarrativeProvider.augment(...)` consumed when M16's tenant opt-in
     // flag is on... produces the LLM-augmented risk narrative recorded on `bereavement_risk_score`
     // ALONGSIDE the deterministic score" — M16 calls INTO M32 synchronously, before this event fires;
     // M32 already knows everything this event's payload carries.
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {

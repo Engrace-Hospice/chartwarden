@@ -20,6 +20,7 @@ import { computeHvldl } from "./hvldl/index";
 // Operational (CoP / non-CMS).
 import {
   computeBereavementCoverageRate,
+  computeBereavementRiskScreeningCompletenessRate,
   computeCarePlan15DayAdherence,
   computeComfortKitDeploymentToAdminMinutes,
   computeCostReportFilingCompliance,
@@ -89,8 +90,8 @@ const compositeCalculator = computeHciScore as unknown as MeasureCalculator<Comp
 
 /**
  * Every M30 measure that has a CONCRETE pure calculator, bound to its catalog descriptor (§3.1). The HCI ten
- * indicators + composite, HVLDL, the two HOPE-derived TFP measures, and the eighteen operational measures —
- * all 32 {@link MEASURE_CATALOG} entries (the `cahps` family is a CAHPS-composite VALUE ingested from the
+ * indicators + composite, HVLDL, the two HOPE-derived TFP measures, and the nineteen operational measures —
+ * all 33 {@link MEASURE_CATALOG} entries (the `cahps` family is a CAHPS-composite VALUE ingested from the
  * vendor result-summary pipeline, not a computed measure, so it carries no catalog row + no calculator here).
  * This is the list the worker's `registrations` map is built from; an unwired measure recompute still fails
  * closed loudly.
@@ -139,6 +140,11 @@ export const M30_MEASURE_REGISTRATIONS: readonly MeasureRegistration[] = [
     "bereavement_coverage_rate",
     computeBereavementCoverageRate,
     ruleForCode("bereavement_coverage_rate"),
+  ),
+  registerMeasure(
+    "bereavement_risk_screening_completeness_rate",
+    computeBereavementRiskScreeningCompletenessRate,
+    ruleForCode("bereavement_risk_screening_completeness_rate"),
   ),
   registerMeasure(
     "volunteer_compliance_gate_rate",

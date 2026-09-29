@@ -133,10 +133,17 @@ export const M37_OUTBOX_EVENTS: ModuleEventContribution = [
     // now (F-172) drives `recordDeath` itself, so a third M16 path off `death_recorded` would arrive no
     // earlier and carry no fact (patientId, admissionId) M16 doesn't already have from the M6 event.
     // Confirmed by direct read of both M16 consumer files, not assumed from the prior finding's
-    // (F-134/F-147) own re-assertion. `m30` stays: F-149 already confirmed M30's relationship here is
-    // real and decisively cross-referenced in M37's spec (mortality-review), independently blocked on
-    // M30's own currently-unbuilt receiving mechanism, unrelated to this change.
-    declaredConsumers: ["m30"],
+    // (F-134/F-147) own re-assertion.
+    // F-184 (#248) — `m30` ALSO DROPPED, reversing F-149's own conclusion: F-149 never checked this
+    // relationship against M30's actual trigger design, only against M37's spec citation. M30's
+    // mortality-review auto-draft (`createMortalityReviewDraft`) is keyed EXCLUSIVELY to
+    // `m6.discharge.death` — and `death_recorded` (`recordDeath`) fires strictly DOWNSTREAM of, and only
+    // because of, that same `m6.discharge.death` event (M37's own consumer file: "recordDeath is driven
+    // by the M6 death consumer"). A hypothetical M30 consumer here would fire no earlier and carry no
+    // fact `m6.discharge.death` doesn't already supply — the identical redundant-sibling shape already
+    // used to drop `m16` from this exact event three lines up. The real, already-tracked gap is binding
+    // `m6.discharge.death` itself (F-150), not this downstream sibling.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
   {

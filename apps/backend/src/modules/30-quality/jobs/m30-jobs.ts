@@ -487,6 +487,15 @@ const OPERATIONAL_MEASURE_THRESHOLDS: Readonly<Record<string, ThresholdRule>> = 
     direction: "gte",
     label: "bereavement coverage rate (CoP 418.64(d); platform default)",
   },
+  // D17 — the screening-completeness measure excludes `minimal` data-completeness rows from its
+  // denominator, so this floor targets the reduced (usable-evidence) population, not the raw contact
+  // roster. No CMS-published floor for this internal documentation-quality metric, so — like
+  // `bereavement_coverage_rate` above — this is a platform default, set by symmetry with it.
+  bereavement_risk_screening_completeness_rate: {
+    value: 0.9,
+    direction: "gte",
+    label: "bereavement risk-screening completeness rate (D17; platform default)",
+  },
   // CoP 418.76(h) — the aide supervisory visit must occur at least every 14 days (the M15 clock's floor).
   supervisory_visit_on_time: {
     value: 0.95,
@@ -591,10 +600,18 @@ interface IdgCadenceCountsView {
   ): Promise<{ numerator: number; denominator: number }>;
 }
 
-/** The M16 CoP 418.64(d) outreach-compliance tally, as this resolver uses it (a scope object, not the
- *  (orgId, window) shape the other producers above take — mirrors M16's own `BereavementScope`). */
+/** The M16 CoP 418.64(d) outreach-compliance + D17 screening-completeness tallies, as this resolver uses
+ *  them (a scope object, not the (orgId, window) shape the other producers above take — mirrors M16's own
+ *  `BereavementScope`). Both methods back `BereavementComplianceProvider` (F-184, #248). */
 interface BereavementCoverageCountsView {
   copOutreachCounts(scope: {
+    orgId: string;
+    providerEntityId?: string;
+    fromIso?: string;
+    toIso?: string;
+  }): Promise<{ numerator: number; denominator: number }>;
+  /** D17 — excludes `minimal` data-completeness rows from the denominator. */
+  riskScreeningCompletenessCounts(scope: {
     orgId: string;
     providerEntityId?: string;
     fromIso?: string;
@@ -638,6 +655,7 @@ export const OPERATIONAL_BOUND_MEASURE_CODES = new Set([
   "prn_effectiveness_documented_rate",
   "idg_cadence_adherence",
   "bereavement_coverage_rate",
+  "bereavement_risk_screening_completeness_rate",
   "supervisory_visit_on_time",
   "volunteer_compliance_gate_rate",
   "f2f_window_on_time_rate",
@@ -744,6 +762,20 @@ export async function resolveOperationalMeasureInput(
         toIso: periodEnd,
       });
       return { ...base, eligibleBereaved: c.denominator, bereavedWithPlan: c.numerator, threshold };
+    }
+    case "bereavement_risk_screening_completeness_rate": {
+      const c = await seams.bereavementCompliance.riskScreeningCompletenessCounts({
+        orgId: organizationId,
+        providerEntityId,
+        fromIso: periodStart,
+        toIso: periodEnd,
+      });
+      return {
+        ...base,
+        screeningsDue: c.denominator,
+        screeningsCompleted: c.numerator,
+        threshold,
+      };
     }
     case "supervisory_visit_on_time": {
       const c = await seams.disciplineCompliance.supervisoryOnTimeCounts({

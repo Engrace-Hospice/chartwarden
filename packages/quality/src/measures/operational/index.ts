@@ -6,6 +6,7 @@ export * from "./idg_cadence_adherence";
 export * from "./care_plan_15_day_adherence";
 export * from "./supervisory_visit_on_time";
 export * from "./bereavement_coverage_rate";
+export * from "./bereavement_risk_screening_completeness_rate";
 export * from "./volunteer_compliance_gate_rate";
 export * from "./evv_compliance_rate";
 export * from "./visit_on_time_rate";

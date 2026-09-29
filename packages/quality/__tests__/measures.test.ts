@@ -31,6 +31,7 @@ import {
   type ThresholdRule,
   buildMeasureRegistry,
   // operational subset
+  computeBereavementRiskScreeningCompletenessRate,
   computeComfortKitDeploymentToAdminMinutes,
   computeEvvComplianceRate,
   computeF2fWindowOnTimeRate,
@@ -820,6 +821,38 @@ describe("operational measures (representative subset)", () => {
     expect(override.bandColor).toBe("insufficient_n");
     expect(override.rate).toBeNull();
   });
+
+  it("F-184: bereavement risk-screening completeness rate (higher-is-better) bands on the gte threshold", () => {
+    const met = computeBereavementRiskScreeningCompletenessRate({
+      ...BASE,
+      screeningsDue: 40,
+      screeningsCompleted: 39,
+      threshold: gte,
+    });
+    expect(met.rate).toBeCloseTo(0.975);
+    expect(met.thresholdMet).toBe(true); // 0.975 ≥ 0.9
+    expect((met.computationSnapshot as { measure: string }).measure).toBe(
+      "bereavement_risk_screening_completeness_rate",
+    );
+    const missed = computeBereavementRiskScreeningCompletenessRate({
+      ...BASE,
+      screeningsDue: 40,
+      screeningsCompleted: 30,
+      threshold: gte,
+    });
+    expect(missed.thresholdMet).toBe(false); // 0.75 < 0.9
+  });
+
+  it("F-184: an empty risk-screening population suppresses rather than scoring perfect", () => {
+    const empty = computeBereavementRiskScreeningCompletenessRate({
+      ...BASE,
+      screeningsDue: 0,
+      screeningsCompleted: 0,
+      threshold: gte,
+    });
+    expect(empty.bandColor).toBe("insufficient_n");
+    expect(empty.rate).toBeNull();
+  });
 });
 
 // -----------------------------------------------------------------------------
@@ -858,9 +891,9 @@ describe("measure-period math (periods.ts, D14)", () => {
 // -----------------------------------------------------------------------------
 
 describe("measure catalog + registry FY-activation gate", () => {
-  it("the catalog has 32 entries with unique codes", () => {
-    expect(MEASURE_CATALOG.length).toBe(32);
-    expect(new Set(MEASURE_CATALOG.map((e) => e.code)).size).toBe(32);
+  it("the catalog has 33 entries with unique codes", () => {
+    expect(MEASURE_CATALOG.length).toBe(33);
+    expect(new Set(MEASURE_CATALOG.map((e) => e.code)).size).toBe(33);
   });
 
   it("buildMeasureRegistry resolves a callable calculator for EVERY catalog entry", () => {
