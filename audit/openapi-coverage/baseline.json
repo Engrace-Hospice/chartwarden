@@ -2,7 +2,7 @@
   "$comment": "RATCHET FLOOR for OpenAPI enrichment coverage. `deficit` = routes with no entry in scripts/openapi/enrichments.ts; `mutatingNoBody` = POST/PUT/PATCH routes whose entry (if any) carries no `body` schema — a SHALLOW (summary-only) enrichment still counts as enriched for `deficit` but must not hide a body-less mutation, so it is ratcheted separately. Neither may ever RISE per module (new routes must ship real request contracts); when either FALLS, re-baseline with `bun run openapi:coverage --update` to lock the progress in. A module missing here has an implied floor of 0 for both.",
   "modules": {
     "02-identity": {
-      "routes": 24,
+      "routes": 25,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -17,22 +17,22 @@
       "mutatingNoBody": 0
     },
     "05-patient": {
-      "routes": 14,
+      "routes": 16,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "06-admission": {
-      "routes": 49,
+      "routes": 68,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "07-care-plan": {
-      "routes": 19,
+      "routes": 22,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "08-encounters": {
-      "routes": 36,
+      "routes": 37,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -42,12 +42,12 @@
       "mutatingNoBody": 0
     },
     "10-hope": {
-      "routes": 20,
+      "routes": 29,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "11-orders": {
-      "routes": 28,
+      "routes": 34,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -77,7 +77,7 @@
       "mutatingNoBody": 0
     },
     "17-scheduling": {
-      "routes": 32,
+      "routes": 33,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -102,7 +102,7 @@
       "mutatingNoBody": 0
     },
     "22-documents": {
-      "routes": 38,
+      "routes": 40,
       "deficit": 0,
       "mutatingNoBody": 0
     },
@@ -172,12 +172,12 @@
       "mutatingNoBody": 1
     },
     "36-messaging": {
-      "routes": 22,
+      "routes": 23,
       "deficit": 0,
       "mutatingNoBody": 0
     },
     "37-ipu": {
-      "routes": 50,
+      "routes": 51,
       "deficit": 0,
       "mutatingNoBody": 0
     },

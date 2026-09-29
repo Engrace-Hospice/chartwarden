@@ -1,9 +1,9 @@
 {
   "totals": {
-    "routes": 1317,
-    "enriched": 1312,
+    "routes": 1319,
+    "enriched": 1314,
     "deficit": 5,
-    "mutating": 746,
+    "mutating": 748,
     "mutatingNoBody": 1,
     "gets": 538,
     "getsNoResponse": 8
@@ -101,10 +101,10 @@
     },
     {
       "module": "11-orders",
-      "routes": 32,
-      "enriched": 32,
+      "routes": 34,
+      "enriched": 34,
       "deficit": 0,
-      "mutating": 21,
+      "mutating": 23,
       "mutatingNoBody": 0,
       "gets": 11,
       "getsNoResponse": 0
