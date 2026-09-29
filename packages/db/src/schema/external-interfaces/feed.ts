@@ -46,7 +46,10 @@ export const externalFeed = pgTable(
     host: text("host"),
     port: integer("port").notNull(),
     protocol: externalFeedProtocol("protocol").notNull(),
-    /** sha256(certPEM) — null only for `mllp_plain` (test only). */
+    /** Lowercase-hex sha256 of the certificate's DER encoding — the canonical convention (F-178, defined in
+     *  `apps/backend/src/modules/29-external-interfaces/feed/cert-pin.ts`; the admin routes derive it from an
+     *  uploaded PEM). NOT a hash of PEM text (not byte-stable). Null only for `mllp_plain` (test only;
+     *  refused for outbound feeds in production). */
     channelCertPin: text("channel_cert_pin"),
     /** F-178 (#248, migration 0262) — the LOGICAL M40 Facility id this OUTBOUND feed delivers to. Routing key for
      *  `OrmRequestedPayload.labDestinationFacilityId`; null for an inbound listener or an unlinked legacy feed. */

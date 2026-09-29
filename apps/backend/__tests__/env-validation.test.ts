@@ -297,3 +297,21 @@ describe("#115 — reserved placeholder hosts", () => {
     ).toEqual([]);
   });
 });
+
+// F-178 (#248) — a switch that exists only for non-production use must be ABSENT in production.
+describe("F-178 — M29_ALLOW_MLLP_PLAIN is forbidden in production", () => {
+  it("a production env carrying the cleartext-HL7 opt-in fails closed, naming the key", () => {
+    const problems = collectEnvProblems({ ...GOOD, M29_ALLOW_MLLP_PLAIN: "true" });
+    expect(problems.map((p) => p.key)).toContain("M29_ALLOW_MLLP_PLAIN");
+    expect(() => assertProductionEnv({ ...GOOD, M29_ALLOW_MLLP_PLAIN: "true" })).toThrow(
+      /M29_ALLOW_MLLP_PLAIN/,
+    );
+  });
+  it("any non-empty value trips it (not just 'true'), and absence / non-production is fine", () => {
+    expect(
+      collectEnvProblems({ ...GOOD, M29_ALLOW_MLLP_PLAIN: "false" }).map((p) => p.key),
+    ).toContain("M29_ALLOW_MLLP_PLAIN");
+    expect(collectEnvProblems(GOOD).map((p) => p.key)).not.toContain("M29_ALLOW_MLLP_PLAIN");
+    expect(collectEnvProblems({ NODE_ENV: "development", M29_ALLOW_MLLP_PLAIN: "true" })).toEqual([]);
+  });
+});

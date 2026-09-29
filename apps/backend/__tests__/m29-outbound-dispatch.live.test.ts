@@ -186,6 +186,10 @@ function startMockMllpServer(nextAction: () => MockAction): Promise<MockMllpServ
   });
 }
 
+/** F-178 — the live suite dials loopback `mllp_plain` test doubles, which the production-safe default policy
+ *  refuses; every worker here is built with this explicit non-production policy instead. */
+const TEST_POLICY = { allowPlain: true, allowLoopback: true } as const;
+
 const DEFAULT_FACILITY_ID = "33333333-3333-3333-3333-333333333333";
 
 function ormRequestedPayload(overrides: {
@@ -360,6 +364,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         db: handle.db,
         outbox: outbox.port,
         keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
         alerts: alerts.port,
       });
 
@@ -413,6 +418,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         db: handle.db,
         outbox: outbox.port,
         keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
         alerts: alerts.port,
       });
 
@@ -442,6 +448,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         db: handle.db,
         outbox: outbox.port,
         keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
         alerts: alerts.port,
       });
 
@@ -478,6 +485,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       db: handle.db,
       outbox: outbox.port,
       keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
       alerts: alerts.port,
     });
 
@@ -503,6 +511,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       db: handle.db,
       outbox: outbox.port,
       keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
       alerts: alerts.port,
     });
 
@@ -521,6 +530,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         db: handle.db,
         outbox: outbox.port,
         keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
         alerts: alerts.port,
         activeOrgs,
       });
@@ -548,6 +558,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         db: handle.db,
         outbox: outbox.port,
         keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
         alerts: alerts.port,
       });
 
@@ -722,6 +733,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         db: handle.db,
         outbox: outbox.port,
         keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
         alerts: alerts.port,
       });
 
@@ -739,6 +751,74 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     } finally {
       await serverA.close();
       await serverB.close();
+    }
+  });
+
+  // ── F-178 — the destination policy inside the real worker ───────────────────────────────────────────────
+
+  it("F-178: a mllp_plain feed under the production-safe policy is refused BEFORE any socket — terminal DLQ, one attempt, no retry", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const outbox = fakeOutbox();
+      const alerts = fakeAlerts();
+      const consumer = buildM29OutboundDispatchConsumer({
+        db: handle.db,
+        outbox: outbox.port,
+        keys: fakeKeyProvider(),
+        alerts: alerts.port,
+        destinationPolicy: { allowPlain: false, allowLoopback: false },
+      });
+      const orderId = randomUUID();
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+
+      const rows = await outboundRowFor(ORG_A, orderId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.status).toBe("dlq");
+      expect(rows[0]?.retryCount).toBe(1);
+      expect(rows[0]?.nextRetryAt).toBeNull();
+      expect(server.receivedWires).toHaveLength(0); // the receiver saw nothing — no connection was even opened
+      expect(outbox.published).toHaveLength(1);
+      expect(outbox.published[0]).toMatchObject({ eventName: "m29.lab_order.transmission_failed" });
+      expect(outbox.published[0]?.payload).toMatchObject({
+        orderId,
+        reason: "dlq_exhausted",
+        detail: "plain_protocol_refused",
+        attemptCount: 1,
+      });
+      expect(alerts.emitted.some((a) => a.eventType === "hl7_outbound.transmission_failed")).toBe(true);
+      // PHI discipline: the terminal event/alert carry a fixed label, never the wire message.
+      expect(JSON.stringify([outbox.published, alerts.emitted])).not.toContain("Doe");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-178: with plain allowed but loopback refused (production shape), the transport's destination refusal is also a terminal DLQ — no retry burn", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const outbox = fakeOutbox();
+      const alerts = fakeAlerts();
+      const consumer = buildM29OutboundDispatchConsumer({
+        db: handle.db,
+        outbox: outbox.port,
+        keys: fakeKeyProvider(),
+        alerts: alerts.port,
+        destinationPolicy: { allowPlain: true, allowLoopback: false },
+      });
+      const orderId = randomUUID();
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+
+      const rows = await outboundRowFor(ORG_A, orderId);
+      expect(rows[0]?.status).toBe("dlq");
+      expect(rows[0]?.retryCount).toBe(1);
+      expect(server.receivedWires).toHaveLength(0);
+      expect(outbox.published[0]?.payload).toMatchObject({ detail: "destination_loopback", attemptCount: 1 });
+    } finally {
+      await server.close();
     }
   });
 });

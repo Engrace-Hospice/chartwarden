@@ -745,6 +745,11 @@
                     "pattern": "^[a-f0-9]{64}$",
                     "type": "string"
                   },
+                  "channelCertPem": {
+                    "minLength": 64,
+                    "maxLength": 16384,
+                    "type": "string"
+                  },
                   "sendingFacilityAllowlist": {
                     "maxItems": 64,
                     "type": "array",
@@ -1134,6 +1139,11 @@
                   },
                   "channelCertPin": {
                     "pattern": "^[a-f0-9]{64}$",
+                    "type": "string"
+                  },
+                  "channelCertPem": {
+                    "minLength": 64,
+                    "maxLength": 16384,
                     "type": "string"
                   },
                   "sendingFacilityAllowlist": {

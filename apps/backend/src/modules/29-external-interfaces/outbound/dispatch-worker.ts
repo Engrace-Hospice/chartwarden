@@ -66,7 +66,12 @@ import {
 import type { OutboundAlert, OutboundAuditRecord } from "./outbound-events";
 import { M29_OUTBOUND_CRON_QUEUES, M29_OUTBOUND_JOB_SCHEDULES, M29_OUTBOUND_QUEUE_PARAMS, M29_OUTBOUND_RETRY_SWEEP_BATCH_SIZE } from "./queues";
 import { type FeedRateLimiter, createFeedRateLimiter } from "./rate-limiter";
-import { decideRetry } from "./retry-policy";
+import {
+  type OutboundDestinationPolicy,
+  checkProtocol,
+  resolveDestinationPolicy,
+} from "./destination-policy";
+import { decidePermanentFailure, decideRetry } from "./retry-policy";
 import { resolveOutboundBaaResult } from "./resolve-baa";
 import type { M29WriteOutboxPort } from "../routes/store-drizzle";
 
@@ -120,6 +125,10 @@ export interface OutboundDispatchWorkerDeps {
    *  load — the RULE-4-adjacent "resolve at call time" posture other M29 files already use). */
   readonly alerts?: OutboundAlertPort;
   readonly now?: () => Date;
+  /** F-178 — which protocols / destinations this deployment may dial. Defaults to
+   *  `resolveDestinationPolicy(process.env)`: `mllp_plain` refused unless NOT production AND
+   *  `M29_ALLOW_MLLP_PLAIN=true`; loopback refused in production; link-local/metadata always refused. */
+  readonly destinationPolicy?: OutboundDestinationPolicy;
 }
 
 interface ResolvedDeps {
@@ -131,6 +140,7 @@ interface ResolvedDeps {
   readonly rateLimiter: FeedRateLimiter;
   readonly alerts?: OutboundAlertPort;
   readonly now: () => Date;
+  readonly policy: OutboundDestinationPolicy;
 }
 
 function resolveDeps(deps: OutboundDispatchWorkerDeps): ResolvedDeps {
@@ -143,6 +153,7 @@ function resolveDeps(deps: OutboundDispatchWorkerDeps): ResolvedDeps {
     rateLimiter: deps.rateLimiter ?? createFeedRateLimiter(),
     alerts: deps.alerts,
     now: deps.now ?? (() => new Date()),
+    policy: deps.destinationPolicy ?? resolveDestinationPolicy(process.env),
   };
 }
 
@@ -167,7 +178,12 @@ async function emitAlert(
     });
   } catch (err) {
     // Alerting failure must never block or crash the dispatch pipeline itself.
-    console.error("m29.outbound.alert_emit_failed", err);
+    // F-178 — log only the error's class and the feed id, never the error object: an emitter/driver error can
+    // carry request context, and this path handles a PHI-adjacent outbound pipeline.
+    console.error("m29.outbound.alert_emit_failed", {
+      feedId: alert.feedId,
+      errorName: err instanceof Error ? err.name : "unknown",
+    });
   }
 }
 
@@ -209,6 +225,8 @@ function transportErrorLabel(outcome: Exclude<MllpTransportOutcome, { kind: "ack
       return `tls_error:${outcome.errorClass}`;
     case "connect_timeout":
       return "connect_timeout";
+    case "destination_refused":
+      return outcome.errorClass;
     case "ack_timeout":
       return "ack_timeout";
     case "write_error":
@@ -216,6 +234,45 @@ function transportErrorLabel(outcome: Exclude<MllpTransportOutcome, { kind: "ack
     case "malformed_response":
       return `malformed_response:${outcome.errorClass}`;
   }
+}
+
+/** F-178 — a refusal retrying cannot fix: terminal DLQ now (same persistence + event + alert as an
+ *  exhausted DLQ). `label` is a short fixed PHI-free string. */
+async function applyPermanentFailure(
+  deps: ResolvedDeps,
+  tx: DbClient,
+  ctx: TransmitContext,
+  label: string,
+  now: Date,
+): Promise<void> {
+  const decision = decidePermanentFailure({
+    outbound: {
+      id: ctx.id,
+      feedId: ctx.feedId,
+      organizationId: ctx.organizationId,
+      sourceAggregateId: ctx.sourceAggregateId,
+      retryCount: ctx.retryCount,
+    },
+    now,
+    lastError: label,
+  });
+  await tx
+    .update(HMO)
+    .set({
+      status: decision.statusUpdate.status,
+      retryCount: decision.statusUpdate.retryCount,
+      nextRetryAt: decision.statusUpdate.nextRetryAt,
+    })
+    .where(and(eq(HMO.id, ctx.id), eq(HMO.organizationId, ctx.organizationId)));
+  await deps.outbox.publish(tx, {
+    eventName: decision.event.name,
+    payload: decision.event.payload as unknown as Record<string, unknown>,
+    organizationId: ctx.organizationId,
+    aggregateKind: "hl7_message_outbound",
+    aggregateId: ctx.id,
+  });
+  await emitAlert(deps, ctx.organizationId, decision.alert);
+  logAuditIntent(decision.audit);
 }
 
 async function applyRetryDecision(
@@ -376,6 +433,15 @@ async function attemptTransmit(
   ctx: TransmitContext,
   now: Date,
 ): Promise<void> {
+  // F-178 — protocol guard BEFORE anything else (no rate-limit slot, no in_flight write, no socket): a
+  // `mllp_plain` feed is cleartext PHI on the wire and is refused unless this deployment is explicitly
+  // non-production with the opt-in. Fail closed to a terminal DLQ — never a silent downgrade to anything.
+  const protocolRefusal = checkProtocol(ctx.protocol, deps.policy);
+  if (protocolRefusal !== null) {
+    await applyPermanentFailure(deps, tx, ctx, protocolRefusal, now);
+    return;
+  }
+
   await deps.rateLimiter.acquire(ctx.feedId, ctx.rateLimitMsgPerSec);
 
   await tx
@@ -390,11 +456,16 @@ async function attemptTransmit(
     channelCertPin: ctx.channelCertPin,
     wireMessage: ctx.wirePlaintext,
     connectTimeoutMs: OUTBOUND_CONNECT_TIMEOUT_MS,
+    allowLoopback: deps.policy.allowLoopback,
     ackTimeoutMs: OUTBOUND_ACK_TIMEOUT_MS,
   });
 
   if (outcome.kind === "ack") {
     await handleAckOutcome(deps, tx, ctx, outcome.rawAckPayload, now);
+    return;
+  }
+  if (outcome.kind === "destination_refused") {
+    await applyPermanentFailure(deps, tx, ctx, outcome.errorClass, now);
     return;
   }
 
