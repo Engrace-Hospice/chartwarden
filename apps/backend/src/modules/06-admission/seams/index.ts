@@ -51,6 +51,7 @@ export {
   type ClaimRangeFaceToFace,
   type ClaimRangeLevelOfCarePeriod,
   type ActiveAdmissionSitingContext,
+  type IdgPacketInclusionCandidate,
   AdmissionSeamDataGapError,
   activeAdmissionDraftContextForPatient,
   activeAdmissionSitingForPatientForOrg,
@@ -60,6 +61,8 @@ export {
   claimAssemblyRangeContextForOrg,
   createDrizzleAdmissionReaderStore,
   createReferralReader,
+  idgCurrentLevelOfCareForOrg,
+  idgPacketInclusionForOrg,
 } from "./drizzle-store";
 export {
   type AdmissionReaderStore,

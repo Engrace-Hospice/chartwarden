@@ -99,6 +99,19 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "clinical_record",
     defaultTitle: "Medication Administration Record",
   },
+  // F-171 (#248) — the patient-facing active-medication list. `patient_medication_list` has been a real
+  // `document_aggregate_type` enum value (mig 0048) and a `@wardenx/forms` `TemplateDescriptor` since
+  // M22-T01 — but that is a SEPARATE golden-template-diff/overlay registry (`packages/forms/src/templates/
+  // registry.ts`), never consulted by this table or by render-consumer.ts's REQUEST_SHAPES; this table is
+  // the one `createDocumentRenderer`/`render()` actually resolves `templateKey` against, and it had no
+  // entry here — a first render would have thrown `UnknownTemplateError` regardless of the forms-registry
+  // row existing. `clinical_record`: the rendered list is filed on the chart, the same class as the
+  // individual `medication_order` render.
+  patient_medication_list: {
+    aggregateType: "patient_medication_list",
+    retentionClass: "clinical_record",
+    defaultTitle: "Patient Medication List",
+  },
   bereavement_letter: {
     aggregateType: "bereavement_letter",
     retentionClass: "bereavement",
@@ -349,6 +362,16 @@ export interface RenderPayloadCore {
    *  consent render, the lab-backref/statement-of-disagreement variants) leaves it unset, which the store
    *  writes as NULL, exactly its prior behaviour. */
   readonly sourceEventId?: string | null;
+  /** F-171 (#248) — a per-RENDER retention-class override, for a template whose retention depends on THIS
+   *  call's content rather than being fixed for the whole template (today: only the §7.15/§7.16 lab-results
+   *  render, which promotes to `compliance_42cfr_part2` (D23) exactly when it redacted a SUD-class value).
+   *  Before this field existed, `render()` used ONLY `descriptor.retentionClass` unconditionally — so
+   *  `planLabResultsRender`'s own `retentionClassOverride` (computed correctly by the pure decider since
+   *  M22-T09) had no channel to reach the actual `document` row, and `packages/forms/src/templates/
+   *  registry.ts`'s own comment ("the D23 SUD auto-tag promotes ... at the render layer, not here") named a
+   *  mechanism that did not exist. Every other `render()` caller leaves this unset, which falls back to
+   *  `descriptor.retentionClass` — exactly the prior behaviour. */
+  readonly retentionClassOverride?: DocumentRetentionClass;
 }
 
 /** Injectable wall clock (ISO instant). Overridable for deterministic tests; defaults to real time. */
@@ -429,7 +452,9 @@ export function createDocumentRenderer(deps: DocumentRendererDeps): DocumentRend
         aggregateType: descriptor.aggregateType,
         aggregateId: core.aggregateId,
         patientId,
-        retentionClass: descriptor.retentionClass,
+        // F-171 (#248) — a per-render override (D23's SUD auto-tag) wins over the template's static
+        // default; every caller but the lab-backref consumer leaves this unset.
+        retentionClass: core.retentionClassOverride ?? descriptor.retentionClass,
         title: core.title ?? descriptor.defaultTitle,
         objectKey,
         bucket,

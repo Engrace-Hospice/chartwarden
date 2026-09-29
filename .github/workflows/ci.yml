@@ -516,6 +516,9 @@ jobs:
           # F-167 (#248) — the m5 `handlers-unbound` group's `m39.consent.{signed,revoked,supersedes,
           # renewed}` privacy-flag-snapshot recompute (§7.6/D10).
           - { name: "M5 consent privacy-flag recompute", scripts: "test:m5:consent-privacy:live" }
+          # F-171 (#248) — the real §4.3 M5 direct patient-merge write path: POST /patients/:id/merge,
+          # field resolution, satellite-table preservation, m5.patient.merged emission.
+          - { name: "M5 patient merge", scripts: "test:m5:patient-merge:live" }
           - {
               name: "M25 Remittance",
               scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live",
@@ -585,6 +588,23 @@ jobs:
               name: "M22 F-168 document-request idempotency",
               scripts: "test:f168:document-request-idempotency:live",
             }
+          # F-171 (#248) — the medication-list render's own THIRD dedicated (non-generic) pipeline: M12's
+          # `MedicationOrderProvider.getActiveMedications` seam resolved fresh at delivery time (never
+          # from the delivered diff payload), appending a real new `document_version` per genuinely
+          # distinct `.list_changed` event.
+          - {
+              name: "M22 F-171 medication-list render",
+              scripts: "test:m22:medication-list-render:live",
+            }
+          # F-171 (#248) — the dedicated `lab-backref-consumer.ts`/`lab-backref-bindings.ts` pipeline:
+          # `m11.order.results_received` → `lab_results_pdf`, resolved live via M29's real
+          # `LabObservationReader.getByObservationId` (+ its new SUD-class flag), the D23 SUD-promotion
+          # retention override, and the F-168 per-request idempotency granularity (a new version per
+          # genuinely distinct lab result, never a duplicate on redelivery).
+          - {
+              name: "M22 F-171 lab-results back-ref",
+              scripts: "test:f171:m22-lab-backref:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
@@ -607,8 +627,13 @@ jobs:
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
           # F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers (M9/M10/M11/M12).
           - { name: "M14 since-last-IDG cache", scripts: "test:m14:since-last-idg-cache:live" }
+          # F-171 (#248) — the real §7.1/§7.2 T-24h packet-build worker (schedule-materialise + packets-cron).
+          - { name: "M14 packet build", scripts: "test:m14:packet-build:live" }
           - { name: "M16 bereavement intake", scripts: "test:m16:bereavement-intake:live" }
           - { name: "M16 consent-revoked cascade", scripts: "test:m16:consent-revoked:live" }
+          # F-171 (#248) — the consent-type-catalog seed rows that unblock the already-built M2/M16/M31
+          # m39.consent.revoked cascades end to end (portal_access, bereavement_outreach_consent).
+          - { name: "F-171 consent-type seed", scripts: "test:f171:consent-type-seed:live" }
           # F-153 (#248) — the §4.5 death-discharge secondary verifier (redundant safety net).
           - { name: "M16 discharge death secondary", scripts: "test:m16:discharge-death-secondary:live" }
           # F-159 (#248) — the §4.5 post-death-grant handler (m39.consent.signed).

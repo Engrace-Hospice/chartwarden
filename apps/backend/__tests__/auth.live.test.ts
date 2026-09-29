@@ -783,8 +783,31 @@ describe.skipIf(!DB_URL)(
       registerCaseloadSeam({
         store: createDrizzleCaseloadStore(asTenantRole(handle11.db) as never),
       });
+      // F-171 (#248) — `registerPatientRoutes` now requires a real `mergePatients` port (the §4.3
+      // direct-merge write path has no in-memory counterpart and is not part of `PatientRouteService`);
+      // wired here the same way the composition root does (`mountPatientRoutes`), over a real
+      // catalog-validating publisher so a malformed emission would fail this test rather than silently
+      // pass. Not exercised by this file's own assertions — the merge mechanism itself is proven live
+      // in `m5-patient-merge.live.test.ts`; this wiring only keeps this suite's route mount honest.
+      const { M5_OUTBOX_EVENTS, mergePatients: _mergePatients } = await import(
+        "../src/modules/05-patient/index"
+      );
+      const { buildBootOutboxCatalog, buildTxOutboxPublisher } = await import(
+        "../src/bootstrap/outbox-persister"
+      );
+      const mergeOutboxPublisher = buildTxOutboxPublisher(
+        buildBootOutboxCatalog([M5_OUTBOX_EVENTS]),
+      );
       registerPatientRoutes(app, {
         service: createDbPatientRouteService(asTenantRole(handle11.db) as never),
+        mergePatients: (input) =>
+          _mergePatients(
+            asTenantRole(handle11.db) as never,
+            {
+              publish: (tx, i) => mergeOutboxPublisher.publish(tx, { ...i, callerModule: "m5" }),
+            },
+            input,
+          ),
       });
 
       // 1. Real HTTP sign-in (not auth.api.signInEmail — the actual /api/auth/sign-in/email endpoint,

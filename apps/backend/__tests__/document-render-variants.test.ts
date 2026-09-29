@@ -312,15 +312,14 @@ describe("M22-T09 — §7.13 encounter PDF render variant", () => {
   });
 });
 
-// ── §7.15 — lab back-ref consumer (deny-stub) ───────────────────────────────────────────────────────────
+// ── §7.15 — lab back-ref consumer (F-171 — live since M29's LabObservationReader is registered) ───────────
 
-describe("M22-T09 — §7.15 lab back-ref consumer (deny-stub, M29 Wave H)", () => {
+describe("M22-T09 — §7.15 lab back-ref consumer (F-171, #248 — live)", () => {
   function reqPayload(): LabResultsRequestPayload {
     return {
       orderId: AGG,
       organizationId: ORG,
       observationId: "o1",
-      patientId: PAT,
       orderingPhysicianMdmId: "mdm1",
       signedAt: "2026-06-24T10:00:00.000Z",
       attachmentKind: "full",
@@ -351,8 +350,8 @@ describe("M22-T09 — §7.15 lab back-ref consumer (deny-stub, M29 Wave H)", () 
     };
   }
 
-  it("declares the §7.15 binding as deferred (M29 Wave H — not wired into the dispatcher yet)", () => {
-    expect(M22_LAB_RESULTS_BINDING_DEFERRED).toBe(true);
+  it("declares the §7.15 binding as LIVE (F-171 — bound with the boot dispatcher, no longer deferred)", () => {
+    expect(M22_LAB_RESULTS_BINDING_DEFERRED).toBe(false);
     expect(M22_LAB_RESULTS_BINDING.eventName).toBe(M22_LAB_RESULTS_EVENT);
     expect(M22_LAB_RESULTS_BINDING.consumerName).toBe(M22_LAB_RESULTS_CONSUMER);
     expect(M22_LAB_RESULTS_EVENT).toBe("m11.order.results_received");
@@ -382,12 +381,8 @@ describe("M22-T09 — §7.15 lab back-ref consumer (deny-stub, M29 Wave H)", () 
     }
   });
 
-  it("the M29 deny-stub resolver fail-CLOSES to null against an empty seam registry (Wave H)", async () => {
-    const out = await resolveLabResultsPayload({
-      organizationId: ORG,
-      orderId: AGG,
-      observationId: "o1",
-    });
+  it("the resolver fail-CLOSES to null against an empty seam registry (no LabObservationReader registered)", async () => {
+    const out = await resolveLabResultsPayload(reqPayload());
     expect(out).toBeNull();
   });
 });

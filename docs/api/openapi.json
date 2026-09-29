@@ -132345,6 +132345,122 @@
         }
       }
     },
+    "/api/v1/patients/{id}/merge": {
+      "post": {
+        "operationId": "postApiV1PatientsByIdMerge",
+        "tags": [
+          "05-patient"
+        ],
+        "summary": "Direct patient merge (§2.4/§4.3, step-up + caseload_or_scope on both source + target) — folds :id into targetPatientId, no destructive UPDATE on satellite tables (F-171, #248)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "mergeId",
+                    "sourcePatientId",
+                    "targetPatientId",
+                    "targetFieldsApplied"
+                  ],
+                  "properties": {
+                    "mergeId": {
+                      "type": "string"
+                    },
+                    "sourcePatientId": {
+                      "type": "string"
+                    },
+                    "targetPatientId": {
+                      "type": "string"
+                    },
+                    "targetFieldsApplied": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "targetPatientId",
+                  "reason"
+                ],
+                "properties": {
+                  "targetPatientId": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
+                  },
+                  "fieldResolutions": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {
+                        "type": "object",
+                        "required": [
+                          "keep"
+                        ],
+                        "properties": {
+                          "keep": {
+                            "anyOf": [
+                              {
+                                "const": "source",
+                                "type": "string"
+                              },
+                              {
+                                "const": "target",
+                                "type": "string"
+                              },
+                              {
+                                "const": "custom",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "customValue": {}
+                        }
+                      }
+                    }
+                  },
+                  "reason": {
+                    "minLength": 10,
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/patients/{id}/payers": {
       "get": {
         "operationId": "getApiV1PatientsByIdPayers",

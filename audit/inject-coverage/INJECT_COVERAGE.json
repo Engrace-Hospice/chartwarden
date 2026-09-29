@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1302,
-    "coveredRoutes": 1302,
-    "directRoutesReferenced": 1244
+    "routes": 1303,
+    "coveredRoutes": 1303,
+    "directRoutesReferenced": 1245
   },
   "modules": [
     {
@@ -52,7 +52,7 @@
     },
     {
       "module": "05-patient",
-      "routes": 15,
+      "routes": 16,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/auth.live.test.ts",
@@ -61,7 +61,7 @@
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
-      "directRoutesReferenced": 15
+      "directRoutesReferenced": 16
     },
     {
       "module": "06-admission",

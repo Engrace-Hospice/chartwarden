@@ -248,3 +248,97 @@ export function planLabResultsRender(args: {
     retentionClassOverride: anyRedacted ? SUD_RETENTION_CLASS : undefined,
   };
 }
+
+// ── F-171 (#248) — patient medication-list render variant (M12 `m12.medication_order.list_changed`) ──────
+
+/** One active medication, as M12's real `MedicationOrderProvider.getActiveMedications` DTO projects it
+ * (structural minimum — see the consumer for the field-by-field mapping off `MedicationOrderDto`).
+ * `isSudTreatment` flags a drug M38's `sud_treatment_medication` value set matches (M12 owns this
+ * classification, `packages/types/src/dosespot.ts`); a SUD-class row is redacted per §7.16, the identical
+ * rule {@link planLabResultsRender} applies to a lab observation row, extended here to a drug name/sig
+ * rather than a lab value — the same statute (42 CFR Part 2), the same disclosure risk. */
+export interface PatientMedicationListEntry {
+  readonly medicationOrderId: string;
+  readonly drugName: string;
+  readonly strength: string;
+  readonly doseForm: string;
+  readonly route: string;
+  readonly sigSummary: string;
+  readonly status: string;
+  readonly isControlledSubstance: boolean;
+  readonly deaSchedule: string | null;
+  readonly signedAt: string | null;
+  readonly isSudTreatment: boolean;
+}
+
+/** The patient med-list render payload the live consumer assembles from M12's `getActiveMedications` read
+ * (never from the delivered `m12.medication_order.list_changed` payload, which carries only an
+ * added/removed order-id DIFF — see the consumer's header for why the diff cannot supply this content). */
+export interface PatientMedicationListRenderPayload {
+  readonly patientId: string;
+  /** The instant the medication set was resolved (render time), not the triggering event's own timestamp —
+   *  a redelivery re-resolves the CURRENT list, which may differ from what triggered the original request. */
+  readonly asOfIso: string;
+  readonly medications: ReadonlyArray<PatientMedicationListEntry>;
+}
+
+/**
+ * F-171 (#248) — map a resolved active-medication set to the `patient_medication_list` template + content
+ * (pure). Each SUD-treatment row's `drugName`/`sigSummary` is redacted UNLESS `consentPresent` (§7.16,
+ * `planLabResultsRender`'s rule applied to a drug name instead of a lab value); a non-SUD row's real drug
+ * name/strength/sig pass through in full. If ANY row was redacted, the whole document is inserted as
+ * `compliance_42cfr_part2` with `metadata.sudRedacted=true` (D23) — the binary then contains no plaintext
+ * SUD-treatment drug name anywhere. An empty medication set is a legitimate, honestly-rendered outcome
+ * (every order discontinued) rather than a failure — the consumer only calls this once the active set has
+ * genuinely resolved (`facts.medicationsResolved`), never on a seam failure.
+ */
+export function planMedicationListRender(args: {
+  readonly payload: PatientMedicationListRenderPayload;
+  readonly consentPresent: boolean;
+}): RenderVariantResult {
+  const { payload, consentPresent } = args;
+  let anyRedacted = false;
+  const rows = payload.medications.map((m) => {
+    const { value: drugName, redacted: nameRedacted } = redactSudValue({
+      value: m.drugName,
+      isSudClass: m.isSudTreatment,
+      consentPresent,
+    });
+    const { value: sigSummary } = redactSudValue({
+      value: m.sigSummary,
+      isSudClass: m.isSudTreatment,
+      consentPresent,
+    });
+    if (nameRedacted) anyRedacted = true;
+    return {
+      medicationOrderId: m.medicationOrderId,
+      drugName,
+      // Strength/form/route are dosage-form facts, not the drug identity itself; redacting the name and
+      // sig already removes what §7.16 protects (which SUD-treatment drug, at what dose/frequency) without
+      // also hiding the non-identifying administrative fields a discontinued-order audit still needs.
+      strength: nameRedacted ? null : m.strength,
+      doseForm: nameRedacted ? null : m.doseForm,
+      route: nameRedacted ? null : m.route,
+      sigSummary,
+      status: m.status,
+      isControlledSubstance: m.isControlledSubstance,
+      deaSchedule: m.deaSchedule,
+      signedAt: m.signedAt,
+      isSudTreatment: m.isSudTreatment,
+      redacted: nameRedacted,
+    };
+  });
+  const content: Record<string, unknown> = {
+    patientId: payload.patientId,
+    asOfIso: payload.asOfIso,
+    sudBanner: anyRedacted ? SUD_REDACTION_BANNER : null,
+    medications: rows,
+  };
+  return {
+    templateKey: "patient_medication_list",
+    aggregateType: "patient_medication_list",
+    content,
+    sudRedacted: anyRedacted,
+    retentionClassOverride: anyRedacted ? SUD_RETENTION_CLASS : undefined,
+  };
+}

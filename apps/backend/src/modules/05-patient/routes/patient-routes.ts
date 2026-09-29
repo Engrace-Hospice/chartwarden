@@ -39,10 +39,28 @@
 // §7.1: admit runs the T06 matcher — a hard duplicate returns 409 with the existing id, no row
 // created; a soft match returns 201 + matchReviewIds. §7.4: an address change emits the cascade
 // event. §7.7: an amendment opens with a 60-day SLA; accept/deny decides it (deny needs a reason).
-import { type GuardRequest, hasOrgWideScope, requireAbac, requirePermission } from "@wardenx/auth";
+import {
+  type GuardRequest,
+  hasOrgWideScope,
+  requireAbac,
+  requirePermission,
+  requireStepUp,
+} from "@wardenx/auth";
 import { UnauthorizedError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
+import {
+  SelfMergeError,
+  SourceAlreadyMergedError,
+  TargetAlreadyMergedError,
+  UnknownMergeFieldError,
+  UnmergeableSourceStatusError,
+} from "../merges";
+import {
+  type MergePatientsInput,
+  type MergePatientsResult,
+  PatientNotFoundError,
+} from "../merges-db";
 import {
   AddPatientPayerBodySchema,
   AddressBodySchema,
@@ -50,6 +68,7 @@ import {
   AmendmentBodySchema,
   DenyBodySchema,
   LooseIdParamsSchema,
+  MergeBodySchema,
   PatientListQuerySchema,
   parse,
 } from "./patient-typebox";
@@ -57,8 +76,39 @@ import type { PatientRouteService } from "./service";
 
 type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void>;
 
+/** The one real caller of `merges-db.ts`'s `mergePatients` — closed over `db` + the outbox port at
+ *  the composition root (`../index.ts`'s `mountPatientRoutes`), mirroring how `deceased-db.ts`'s
+ *  `recordDeathFromDischarge` is wired outside `PatientRouteService` entirely (F-171, #248). */
+export type MergePatientsFn = (input: MergePatientsInput) => Promise<MergePatientsResult>;
+
 export interface PatientRouteDeps {
   service: PatientRouteService;
+  mergePatients: MergePatientsFn;
+}
+
+/** Map `merges.ts`/`merges-db.ts`'s typed precondition errors onto the §4.3 route contract's HTTP
+ *  shape. `SourceAlreadyMergedError` → `409 ALREADY_MERGED` is the spec's own named error code; the
+ *  rest are this route's own (the spec names no code for them). Anything else rethrows unchanged. */
+function mapMergeError(err: unknown): unknown {
+  if (err instanceof PatientNotFoundError) {
+    return new WardenXError("NOT_FOUND", `patient '${err.patientId}' not found`, 404);
+  }
+  if (err instanceof SelfMergeError) {
+    return new WardenXError("SELF_MERGE", err.message, 422);
+  }
+  if (err instanceof SourceAlreadyMergedError) {
+    return new WardenXError("ALREADY_MERGED", err.message, 409);
+  }
+  if (err instanceof TargetAlreadyMergedError) {
+    return new WardenXError("MERGE_TARGET_ALREADY_MERGED", err.message, 409);
+  }
+  if (err instanceof UnmergeableSourceStatusError) {
+    return new WardenXError("PATIENT_NOT_MERGEABLE", err.message, 409);
+  }
+  if (err instanceof UnknownMergeFieldError) {
+    return new WardenXError("UNKNOWN_MERGE_FIELD", err.message, 422);
+  }
+  return err;
 }
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -91,6 +141,25 @@ const chartScope = (action: string): PreHandler =>
 const SCOPE_READ = chartScope("patient.read");
 const SCOPE_EDIT = chartScope("patient.edit");
 const SCOPE_AMEND_RECORD = chartScope("patient.amend_request_record");
+
+// --- §4.3 merge: `patient.merge` (step-up) + `caseload_or_scope` on BOTH source (:id) and target
+// (body.targetPatientId) — the spec route table's own "on both source + target" cell. Two separate
+// `requireAbac` preHandlers compose by AND (the M16 guards.ts precedent), which is exactly what "on
+// both" means; a single combined predicate would need a two-patient target shape `caseload_or_scope`
+// does not have. `reauthToken` (the spec's TypeBox body field) is NOT part of `MergeBodySchema` — F-028
+// already retired every client-supplied "fresh" claim on this platform in favor of `requireStepUp`,
+// which resolves session freshness server-side; repeating the client-claim shape here for one route
+// would reopen exactly the hole that finding closed.
+const MERGE = requirePermission("patient.merge") as PreHandler;
+const MERGE_STEP_UP = requireStepUp("patient.merge") as PreHandler;
+const SCOPE_MERGE_SOURCE = chartScope("patient.merge");
+const mergeTargetTarget = (request: GuardRequest): Record<string, unknown> => ({
+  patientId: (request.body as { targetPatientId?: unknown } | undefined)?.targetPatientId,
+});
+const SCOPE_MERGE_TARGET = requireAbac("patient.merge", "caseload_or_scope", {
+  getTarget: mergeTargetTarget,
+  notFoundOnDeny: true,
+}) as PreHandler;
 
 /**
  * The §7.5 CENSUS narrowing (F-096): which patient ids this actor's `/api/v1/patients` may contain.
@@ -140,7 +209,7 @@ const notFound = (what: string) => new WardenXError("NOT_FOUND", `${what} not fo
 const PATIENT_READ = { resourceKind: "patient", patientIdParam: "id" } as const;
 
 export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDeps): void {
-  const { service } = deps;
+  const { service, mergePatients } = deps;
 
   // --- §4.2 census / list (cursor-paginated; org-scoped server-side) ---------------------------
   app.get(
@@ -322,6 +391,34 @@ export function registerPatientRoutes(app: FastifyInstance, deps: PatientRouteDe
       const body = parse(AddressBodySchema, request.body);
       const out = await service.addAddress(organizationId, id, body, userId);
       return reply.code(201).send(out);
+    },
+  );
+
+  // --- §4.3 direct merge (admin-initiated, outside the match-review queue) ----------------------
+  // `:id` is the SOURCE (the duplicate being folded away); `targetPatientId` (body) is the survivor.
+  // Both scoped by `caseload_or_scope` (SCOPE_MERGE_SOURCE / SCOPE_MERGE_TARGET, composed by AND) plus
+  // a fresh step-up. See `merges-db.ts` for the transactional write; `mapMergeError` for the status
+  // codes each precondition violation maps to.
+  app.post(
+    "/api/v1/patients/:id/merge",
+    { preHandler: [MERGE, MERGE_STEP_UP, SCOPE_MERGE_SOURCE, SCOPE_MERGE_TARGET] },
+    async (request, reply) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(LooseIdParamsSchema, request.params);
+      const body = parse(MergeBodySchema, request.body);
+      try {
+        const result = await mergePatients({
+          organizationId,
+          sourcePatientId: id,
+          targetPatientId: body.targetPatientId,
+          fieldResolutions: body.fieldResolutions ?? {},
+          reason: body.reason,
+          actorUserId: userId,
+        });
+        return reply.code(200).send(result);
+      } catch (err) {
+        throw mapMergeError(err);
+      }
     },
   );
 

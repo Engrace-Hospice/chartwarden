@@ -2872,6 +2872,151 @@ suites re-run individually against the same disposable Postgres+Valkey
 first attempt with the naive single-tier design, both green after the two-tier redesign). Leaving
 #248 open — 76 pairs across 17 modules remain.
 
+**A five-fork build round, dispatched per the user's explicit "fix them" instruction, bound 3 more
+pairs, seeded 2 real consent-cascade types, and left the two riskiest targets — M14's packet-build
+worker and the m39 consent-type seed's original `media_release` target — correctly BLOCKED rather
+than forced (F-171, #248).** Targets: M12's medication-list render, M14's entire §7.1/§7.2 T-24h
+packet-build worker, M11's lab-results back-ref (the group's last M11 event), M5's direct
+patient-merge write path, and the consent-type-catalog seed gap behind `media_release`. Each fork
+was instructed to refuse rather than guess on any clinical-safety or disclosure-risk ambiguity; the
+coordinator independently re-verified every claim (build, typecheck, `arch:fitness`, the full
+non-live suite, a disposable Postgres+Valkey, every new live suite run individually, and every
+touched shared file's sibling regression suites) before applying anything. **M12's
+`m12.medication_order.list_changed` is now bound**: `medication-list-consumer.ts`/
+`medication-list-bindings.ts` (the `lab-backref-consumer.ts` shape) resolve the patient's CURRENT
+active-medication set via M12's real, already-registered `MedicationOrderProvider.
+getActiveMedications` seam at DELIVERY time — never from the delivered diff payload, which cannot
+supply full-list content — wrapped in `runWithRequestContext` (the F-118/F-153 "a dispatcher tick is
+not a request" shape again) and keyed on `documentVersionForSourceEvent` (F-168's per-request
+idempotency granularity) so every genuinely new `.list_changed` event appends a real new version,
+never a silent no-op. §7.16 SUD redaction is reused, not reinvented (`MedicationOrderDto.
+isSudTreatment` is already on every row). A registry citation this pass corrected: F-168/F-170 had
+said `patient_medication_list`'s aggregate type/template "already existed" — true only of
+`@wardenx/forms`' separate golden-template-diff registry, never consulted by `render()`/
+`REQUEST_SHAPES`; the table `createDocumentRenderer` actually resolves against had no entry at all,
+now added (no migration — the enum value has existed since M22-T01). **`m11.order.results_received`
+is now bound too**, closing the group's own standing citation of what blocked it: the real registered
+`LabObservationReader` interface has always been `getById`/`listByPatient`, and
+`lab-backref-bindings.ts` called a `resolveLabResultsPayload` method that never existed — fixed by
+ADDING `getByObservationId(organizationId, observationId)` rather than renaming the call, since the
+real catalogued payload carries no `patientId` `getById` requires. A real, non-fabricated
+`isSudClass` field is now on `LabObservationSeamValue`, projecting the parent `lab_observation.
+sud_redacted_at_ingest` column (ingest redacts per MESSAGE, uniformly — never an invented per-row
+classifier). Deliberately NOT wired into the generic `REQUEST_SHAPES` pipeline: `lab_results_pdf`
+shares `order_record`'s aggregate type with the order-form render already occupying it at sign time,
+so the generic genesis-only idempotency would `idempotent_skip` every lab result forever once an
+order had ever been signed — the dedicated consumer instead reuses F-168's per-event dedup directly.
+Building it surfaced a third, independent, pre-existing defect: `createDocumentRenderer.render()` had
+no channel for a per-call retention-class override, so `planLabResultsRender`'s own D23 SUD-promotion
+override (`compliance_42cfr_part2`) had nowhere to go despite being computed correctly since M22-T09
+— fixed by adding an optional `RenderPayloadCore.retentionClassOverride` field that `render()` now
+prefers over the template default (the F-168 `sourceEventId` widening shape again); a SIBLING pipeline
+(`medication-list-bindings.ts`) hit the identical gap and explicitly matched the old behavior for
+consistency rather than fix it — this pass fixed the shared renderer instead, since leaving a
+documented 42 CFR Part 2 compliance mechanism silently inert was worse than the small, additive
+widening. `m11.order.results_received` itself still has no production emitter anywhere in the
+codebase (`LabResultsApplier`, named in its own catalog description, does not exist) — the binding is
+real and tested against the real catalogued payload, the `m17.caregiver_reminder_due`/F-161 shape.
+**M5's `m5.patient.merged` is now bound, corrected in BOTH directions at once.** The real §2.4/§4.3
+merge write path (`05-patient/merges.ts` + `merges-db.ts`, `POST /api/v1/patients/:id/merge`) had no
+execution path anywhere — matching the group's own prior finding exactly. The producer side is now
+real: `planMerge` validates every precondition against the §2.4.1 state diagram (self-merge,
+already-merged source/target, an unmergeable source status all refuse with typed errors, never
+guessed at), resolves each `fieldResolutions` entry against an explicit allowlist of `patient`'s own
+mutable demographic columns, and `mergePatients` applies it all in one `withOrgContext` transaction —
+the target absorbs chosen fields, the source flips to `merged`/`merged_into_id` with every OTHER row
+it owns left completely untouched (no destructive UPDATE on satellite tables, proven live), the full
+audit diff lands in `patient_merge`, and the event publishes for real. **The M22 side was checked
+against the actual code rather than rebuilt to the group's own prior description**: "a real
+per-document `UPDATE document SET patient_id = ...` M22 would have to perform" is false and provably
+so — `22-documents/lifecycle/merge-redirect.ts` (M22-T03) is a complete, unit-tested pure core whose
+own header states the opposite design, a SEAM PULL against live `patient.merged_into_id` at every
+fetch, the M40 `followMerge` shape applied to documents, never a push this event could drive. `m22` is
+now a `seamConsumers` entry rather than `declaredConsumers` on `m5.patient.merged` — the fix that
+actually stops it deferring forever, since no consumer build was ever the right answer for this pair.
+The read-time redirect itself stays genuinely unwired (`resolvePatientRedirect`/
+`applyPatientMergeCascade` have zero real callers anywhere in `22-documents/`) — reported, not built,
+since it touches M22's read surface broadly and needs its own review. **The consent-type-seed fork
+correctly reported its own primary target, `media_release`, BLOCKED rather than force-fitting a seed
+row**: `22-documents/` has no `m39.consent.revoked` consumer of any kind (not merely unseeded,
+unbuilt), and no schema mechanism can locate "media" documents without guessing (`document`'s
+`aggregate_type`/`source_kind` enums carry no photo/video concept distinct from an ordinary clinical
+upload; a `mime_type LIKE 'image/%'` heuristic was considered and rejected as the F-102 "guessed
+provider entity" mistake applied to PHI photos). Seeding `media_release` anyway was rejected too, per
+its own conservative instruction: it would make `cascadeKind` resolve correctly with still nothing to
+consume it — moving the blocker from "no seed row" to "seed row, still nothing consumes it," the
+"looks fixed, isn't" shape this arc exists to avoid. **Two SIBLING types were seeded instead**, each
+checked against its own real, already-bound D7 cascade consumer rather than assumed from spec prose:
+`portal_access` (M2's `buildM2ConsentRevokedConsumer`, F-142 + M31's grant-revoke consumer, both live)
+and `bereavement_outreach_consent` (M16's `buildM16ConsentRevokedConsumer`, F-151 + the same M31
+consumer) — the second row is also what makes `createBereavementOutreachDraft`'s `consent_record.
+type_key` FK satisfiable for the first time in any deployment, independent of the cascade question.
+**M14's T-24h packet-build worker is real for the first time — the largest, riskiest build in this
+arc's history — and, checked directly rather than assumed, its existence does not unblock any of the
+group's 8 standing events.** `schedule-materialise.ts` (§7.1 W-SCH-01) and `packet-build.ts` (§7.2
+W-PKT-01/§4.9.1 `tminus-24h-build`) are new: real `idg_meeting` materialization from
+`idg_recurring_policy`, and the real T-24h cron that resolves §2.3 D9 inclusion and builds each
+included patient's packet from real M5/M6/M7/M8 facts plus the F-164 cache, transitioning
+`scheduled → packets_building → packets_ready`. Two new M6 org-explicit seams
+(`idgPacketInclusionForOrg`, `idgCurrentLevelOfCareForOrg`) and one new M7 seam
+(`idgPacketCarePlanContextForOrg`) back it; per the explicit "STOP rather than guess" instruction,
+every packet-cover field with no cheap correct cross-module source stays honestly `null`/`[]`/`false`
+(HOPE context, flagged events, carry-forward action items, F2F window state) rather than fabricated,
+and any patient missing a required fact is skipped via the already-catalogued
+`m14.packets.build_failed_for_patient` event, never blocking sibling patients. **This resolves the
+group's own standing PUSH-vs-PULL ambiguity for `m6.admission.activated`/`.discharged` decisively in
+favor of PULL, and closing that ambiguity is why the pair stays unbound, not a reason to bind it**:
+D9 inclusion is answered by the new `idgPacketInclusionForOrg` seam reading `admission` directly at
+build time, never `CaseloadProvider` (confirmed, again, to have no location/date parameter) and never
+a push cache — there is nothing for either event to write into. The other 5 stay blocked, unchanged
+in substance, because building the worker deliberately never touched what each one needs: no field
+was added to `PacketFlaggedEventDigest.kind` (M19's `care_plan_change_indicated`), no medication-
+history slot was added to `SinceLastIdgInput`/`PacketSnapshot` (M12's `medication_history_pulled`), no
+"applied" state or tracking table exists M14/M15-side (the M15 trio), and no compliance-tile concept
+was invented (M39's `expiring_soon`) — each the same "do NOT invent a slot the spec doesn't describe"
+restraint this pass was explicitly held to. **A cross-fork F-number collision was reconciled
+centrally, the F-165 precedent again**: five forks independently minted F-171 (×2), F-172, F-173 and
+F-174 for their own citations; renumbered to the single round number F-171 across every touched file
+(`.ts` comments, test file names and headers, `package.json` script names, `.github/workflows/
+ci.yml`), verified by a repo-wide grep showing zero remaining F-172/173/174 occurrences. **The
+coordinator's own verification pass also found two forks had each forgotten to wire their own new
+live suite into `package.json`/CI** — `m5-patient-merge.live.test.ts` had no script or CI row at all
+(caught by the M14 fork's own `arch:live-suites` run, fixed centrally) and `f171-m22-lab-backref.live.
+test.ts` had a script but no CI matrix row (found only by re-checking `ci.yml` directly, since
+`arch:live-suites` only checks a script exists for every suite FILE, not that every script gained a
+row) — both are exactly the class of gap F-025/F-156 already named this series' own verification step
+exists to catch. Net: **76 → 73** pairs (3 bound: M12, M11, M5; 0 dropped; module count unchanged at
+17 — the m22 and m5 groups both still carry other declared events). Verified centrally, once, after
+all five forks' edits landed together plus the coordinator's own three fixes (the renumbering, the two
+missing CI wirings): `bun run build`/`typecheck` clean (0 errors), `arch:fitness` 38/38
+(`arch:outbox-bindings` confirms 73 pairs, down from 76, and 142 live bindings now covering 145
+catalogued events, up from 140/143), full non-live suite 654 files / 9603 tests green, a clean
+`check:boot:platform` run against a freshly migrated, RLS-enforced disposable Postgres (proving
+migrations 0257–0261 all apply cleanly and the real 142-binding dispatcher boots), all five new live
+suites run individually against the same disposable Postgres+Valkey (`m5:patient-merge` 11/11,
+`m22:medication-list-render` 6/6, `f171:m22-lab-backref` 7/7, `f171:consent-type-seed` 3/3,
+`m14:packet-build` 5/5), and thirty-one sibling regression suites re-run for regression on every
+touched shared file (`m5:admission-siting` 4/4, `m5:census-scope` 7/7, `m5:consent-privacy` 7/7,
+`m5:death-cascade` 3/3, `m5:visit-assignment-cache` 8/8, `m6:write` 12/12, `m6:discharge-cascade` 6/6,
+`m6:cop-documents` 6/6, `m6:loc-change-signed` 7/7, `m6:abac-scope` 2/2, `m6:read` 10/10, `m7:write`
+23/23, `m7:read` 4/4, `m7:conformance` 8/8, `m7:consent-wiring` 5/5, `m14:write` 26/26, `m14:read`
+8/8, `m14:autoclose` 8/8, `m14:since-last-idg-cache` 13/13, `m14:clinical-event-consumers` 3/3,
+`m22:render-handshake` 14/14, `m22:write` 15/15, `m22:read` 5/5, `m22:document-seam-store` 3/3,
+`f168:document-request-idempotency` 5/5, `f144:render-requests` 10/10, `f161:m7-m17-render-requests`
+4/4, `f166:render-requests` 8/8, `m29:nppes-sync` 8/8, `m29:patient-deceased-freeze` 8/8, `m29:
+unmatched-lab-review` 15/15, `m28:fhir-gateway` 9/9, `m28:outbox-catalog` 4/4, `m11:write` 11/11,
+`m11:downstream-signed` 5/5, `m11:m9-m21-consumers` 11/11, `m11:supply-cancelled` 6/6, `m11:
+m12-verbal-expiry` 4/4, `m11:verbal-order-expiry` 6/6, `m12:read` 7/7, `m12:reconciliation-
+discontinue` 6/6, `rls:live:m5` 9/9, `rls:live:m6` 17/17, `rls:live:m7` 13/13, `rls:live:m14` 14/14,
+`rls:live:m22` 21/21, `rls:live:m28` 11/11, `rls:live:m29` 15/15). **Four pre-existing, unrelated
+failures were found and each independently confirmed via `git stash` to predate this round entirely,
+identical on clean `main`**: `m12:write`'s `recordVerbal` (`SeamError: seam 'OrderSignatureProvider'
+requested before registration` — that test file never registers M11's seam in its own `beforeAll`);
+`m12:sync-triggers`'s two DoseSpot-vendor-boundary message/status-mismatch assertions; `m11:read`'s
+`verbal_order.effective_at` NOT NULL fixture gap; and `auth:live`'s two pre-existing failures (a
+Better Auth two-factor key-derivation error, and TEST-003's `ORGANIZATION_NOT_ACTIVE` 403). Leaving
+#248 open — 73 pairs across 17 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

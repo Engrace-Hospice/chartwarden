@@ -1016,3 +1016,135 @@ export function createDrizzleAdmissionReaderStore(db: DbClient): AdmissionReader
     },
   };
 }
+
+// ── M14 §2.3 D9 packet-inclusion read (F-171, #248) ─────────────────────────────────────────────────────
+//
+// M14's T-24h packet-build worker needs "the active caseload of LOCATION L at the meeting's SCHEDULED
+// START, plus a 7-day post-discharge wrap-up" (§2.3 D9) — a fact no published seam answers. D9's own prose
+// says "read via M5's CaseloadProvider", but that seam (packages/types/src/seams.ts) is clinician-keyed
+// (`isInCaseload`/`caseloadPatientIds`, both taking a `userId`) with no location or as-of-date parameter —
+// confirmed by direct read, not assumed from the prose (F-101). `AdmissionCensusReader.listActiveAdmissions`
+// is the closer candidate but is org/providerEntity-scoped only, no location column on its DTO. Neither
+// reading of D9 (a location-keyed CaseloadProvider union, or a per-location active-admission census) exists
+// anywhere in this codebase, so this is genuine new infrastructure on the OWNING module (M6, which holds
+// `admission.location_id` + `.status` + `.discharged_at`), the `claimAssemblyRangeContextForOrg` /
+// `admissionSchedulingContextForOrg` precedent, not an M14-side wrapper over a mismatched seam.
+//
+// "Active AT S" is read literally off D9's own formula rather than reconstructed from admission history:
+// `admission` is a single mutable row (never event-sourced per instant), so the only fact this platform can
+// answer is CURRENT status — honest given the T-24h cron's own build-to-meeting gap is at most ~24h (and an
+// on-demand rebuild only narrows that further), so "active now" and "active at S" agree for every practical
+// case. `on_hold` is deliberately EXCLUDED — D9 says "active", not "active or on_hold", and a held admission
+// is not receiving active hospice care for the IDG to review. The wrap-up window is evaluated on
+// `discharged_at` directly (not the current `status`), because a discharge that has since progressed to
+// `bereavement`/`closed` is still "discharged within the window" — a status-based filter would silently
+// under-include a patient the CoP wrap-up flag exists to protect.
+export interface IdgPacketInclusionCandidate {
+  readonly admissionId: string;
+  readonly patientId: string;
+  readonly providerEntityId: string;
+  readonly locationId: string;
+  /** ISO instant — the D5/§1.1 `first_idg` cursor fallback when the patient has no prior IDG. */
+  readonly activatedAtIso: string;
+  readonly inclusionReason: "active" | "post_discharge_wrap_up";
+}
+
+/**
+ * Resolve the §2.3 D9 packet-inclusion set for one location as of `asOfIso` (the meeting's
+ * `scheduled_start`): every admission at `locationId` with `status='active'`, plus every admission at
+ * `locationId` whose `discharged_at` falls in `[asOfIso - wrapUpDays, asOfIso]`. Org-explicit and
+ * worker-callable (the `admissionSchedulingContextForOrg` shape) — a T-24h cron tick is not a request, so
+ * an id/request-scoped seam read is not an option here. Skips a matching row that is genuinely unsited
+ * (`provider_entity_id`/`location_id` null) rather than fabricating a siting fact — an unsited admission
+ * cannot legally have been scheduled at this location's IDG in the first place.
+ */
+export function idgPacketInclusionForOrg(
+  db: DbClient,
+  organizationId: string,
+  locationId: string,
+  asOfIso: string,
+  wrapUpDays: number,
+): Promise<readonly IdgPacketInclusionCandidate[]> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const asOf = new Date(asOfIso);
+      const wrapUpStart = new Date(asOf.getTime() - wrapUpDays * 86_400_000);
+      const rows = await tx
+        .select({
+          id: ADM.id,
+          patientId: ADM.patientId,
+          providerEntityId: ADM.providerEntityId,
+          locationId: ADM.locationId,
+          status: ADM.status,
+          activatedAt: ADM.activatedAt,
+          admissionAt: ADM.admissionAt,
+          dischargedAt: ADM.dischargedAt,
+        })
+        .from(ADM)
+        .where(and(eq(ADM.organizationId, organizationId), eq(ADM.locationId, locationId)));
+
+      const out: IdgPacketInclusionCandidate[] = [];
+      for (const r of rows) {
+        if (r.providerEntityId === null || r.locationId === null) continue;
+        const activatedAtIso = (r.activatedAt ?? r.admissionAt)?.toISOString() ?? null;
+        if (activatedAtIso === null) continue; // never activated — cannot be on a caseload
+        if (r.status === "active") {
+          out.push({
+            admissionId: r.id,
+            patientId: r.patientId,
+            providerEntityId: r.providerEntityId,
+            locationId: r.locationId,
+            activatedAtIso,
+            inclusionReason: "active",
+          });
+          continue;
+        }
+        if (r.dischargedAt !== null && r.dischargedAt >= wrapUpStart && r.dischargedAt <= asOf) {
+          out.push({
+            admissionId: r.id,
+            patientId: r.patientId,
+            providerEntityId: r.providerEntityId,
+            locationId: r.locationId,
+            activatedAtIso,
+            inclusionReason: "post_discharge_wrap_up",
+          });
+        }
+      }
+      return out;
+    },
+  );
+}
+
+/**
+ * Resolve the current level-of-care (§2.4 patient-cover `levelOfCare`) for one admission as of `asOfIso`,
+ * org-explicit. Reuses the SAME `level_of_care_period` read `claimAssemblyRangeContextForOrg` already
+ * performs (`ne(status, 'assigning')`, ordered by `effective_at`) rather than a second implementation of
+ * the identical query — the period whose `[effective_at, ended_at)` covers `asOfIso`, or the most recent
+ * one if none is open exactly at that instant (mirrors `LevelOfCareReader.getCurrentLevelOfCare`'s own
+ * "open, else most recent" rule). `null` when the admission has no LOC period at all — the caller decides
+ * what an LOC-less admission means to it (this seam never fabricates a level of care).
+ */
+export function idgCurrentLevelOfCareForOrg(
+  db: DbClient,
+  organizationId: string,
+  admissionId: string,
+  asOfIso: string,
+): Promise<LevelOfCare | null> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const rows = await tx
+        .select({ levelOfCare: LOC.levelOfCare, effectiveAt: LOC.effectiveAt, endedAt: LOC.endedAt })
+        .from(LOC)
+        .where(and(eq(LOC.admissionId, admissionId), ne(LOC.status, "assigning")))
+        .orderBy(desc(LOC.effectiveAt));
+      if (rows.length === 0) return null;
+      const asOf = new Date(asOfIso);
+      const open = rows.find((r) => r.effectiveAt <= asOf && (r.endedAt === null || r.endedAt > asOf));
+      return (open ?? rows[0])!.levelOfCare;
+    },
+  );
+}

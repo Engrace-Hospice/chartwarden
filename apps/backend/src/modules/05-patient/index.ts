@@ -167,6 +167,34 @@ export {
   buildM5DeathCascadeConsumer,
 } from "./outbox-consumers/m6-discharge-death";
 
+// F-171 (#248) — the real §2.4/§4.3 direct patient-merge write path (`POST /patients/:id/merge`):
+// folds a duplicate into a survivor, applies field resolutions to the survivor, and emits the real
+// `m5.patient.merged` event this event's catalog entry had zero producers for.
+export {
+  MERGEABLE_PATIENT_FIELDS,
+  MERGEABLE_SOURCE_STATUSES,
+  SelfMergeError,
+  SourceAlreadyMergedError,
+  TargetAlreadyMergedError,
+  UnknownMergeFieldError,
+  UnmergeableSourceStatusError,
+  planMerge,
+  type FieldResolution,
+  type FieldResolutionKeep,
+  type FieldResolutions,
+  type MergeablePatientField,
+  type MergedFieldDiffEntry,
+  type PatientMergeSubject,
+  type PlanMergeInput,
+  type PlannedMerge,
+} from "./merges";
+export {
+  PatientNotFoundError,
+  mergePatients,
+  type MergePatientsInput,
+  type MergePatientsResult,
+} from "./merges-db";
+
 // M5-T12 — the `clinical_record` destruction eraser (§8/§10, D7/D8). Screens DEFER (no apps/web
 // codePath in the M5 manifest — the entity/admit/merge screens are tracked for the ADR-0030 UI
 // follow-up). DR Tier 1 (the patient spine is on every clinical/billing critical path) — see
@@ -185,16 +213,23 @@ export { createDbPatientRouteService } from "./patient-route-service-db";
 
 import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
+import type { M5OutboxPort } from "./deceased-db";
+import { mergePatients as _mergePatients } from "./merges-db";
 import { createDbPatientRouteService as _dbPatientService } from "./patient-route-service-db";
 import { registerPatientRoutes as _registerPatientRoutes } from "./routes/patient-routes";
 
 /**
- * Mount the M5 patient REST routes (census list, chart-resolve, admit, addresses, amendments) on a
- * server (composition root, when a DB client is present). The READS (list / getPatient) run on the real
- * Drizzle PatientRouteService over `patient` under RLS; the WRITES are still in-memory (the Drizzle
- * admission store is a follow-up). Backs the Patient List/Census + the Patient Chart banner with real
- * data.
+ * Mount the M5 patient REST routes (census list, chart-resolve, admit, addresses, amendments, the
+ * §4.3 direct merge) on a server (composition root, when a DB client is present). The READS
+ * (list / getPatient) and the writes this file mounts all run on the real Drizzle PatientRouteService
+ * / `mergePatients` over `patient` under RLS. Backs the Patient List/Census + the Patient Chart banner
+ * with real data. `outbox` is the module-scoped `m5` outbox port (F-171, #248) `mergePatients` emits
+ * `m5.patient.merged` through — required, not optional, so a caller cannot silently mount a merge
+ * route with no way to ever publish the event a survivor needs.
  */
-export function mountPatientRoutes(app: FastifyInstance, db: DbClient): void {
-  _registerPatientRoutes(app, { service: _dbPatientService(db) });
+export function mountPatientRoutes(app: FastifyInstance, db: DbClient, outbox: M5OutboxPort): void {
+  _registerPatientRoutes(app, {
+    service: _dbPatientService(db),
+    mergePatients: (input) => _mergePatients(db, outbox, input),
+  });
 }

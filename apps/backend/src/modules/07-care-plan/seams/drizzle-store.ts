@@ -23,7 +23,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { getRequestContext, withOrgContext, withOrgContextFromRequest } from "@wardenx/tenancy";
 import type { CarePlanCodeUsageRecord } from "@wardenx/types";
-import { and, asc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, lt, ne, sql } from "drizzle-orm";
 import type { PgColumn } from "drizzle-orm/pg-core";
 import { getSeam } from "../../../bootstrap/index";
 import type {
@@ -290,4 +290,129 @@ export function createDrizzleCarePlanReaderStore(db: DbClient): CarePlanReaderSt
       );
     },
   };
+}
+
+// ── M14 §2.4 `CarePlanSummaryInput` packet-cover read (F-171, #248) ─────────────────────────────────────
+//
+// M14's T-24h packet-build worker needs the active-plan summary D1's `carePlanSummary` block declares
+// (activeProblemCount / activeGoalCount / activeInterventionCount / lastSignedVersionId / lastSignedAt /
+// nextReviewDueAt / isReviewOverdue) — checked against the PUBLISHED `CarePlanReader` interface rather than
+// assumed available because the builder's own doc comment cites it: `isReviewOverdue(patientId)` answers
+// only `{planId, overdue, initialOverdue, reviewOverdue, initialDueAt, nextReviewDueAt}` (packages/types/
+// src/care-plan.ts) — no element counts, no last-signed version/date. Genuine gap, on the OWNING module
+// (M7 holds `care_plan`/`care_plan_version`/`problem`/`goal`/`intervention`), the
+// `idgPacketInclusionForOrg`/`idgCurrentLevelOfCareForOrg` (M6) precedent one module over — not an
+// M14-side wrapper over a narrower seam.
+//
+// Org-explicit and worker-callable: every id-keyed CarePlanReader method in this file opens
+// `withOrgContextFromRequest` (a T-24h cron tick is not a request), so this self-scopes via
+// `withOrgContext` with the explicit `organization_id` predicate as the second wall, the
+// `fifteenDayCycleCountsForOrg` shape immediately above.
+//
+// The terminal diagnosis + SUD flag also live here rather than in a separate read: `problem.kind='terminal'`
+// IS the primary/terminal diagnosis (`CarePlanMutation.problem_add.problemKind: 'terminal'` — §2.6 names
+// no other diagnosis source anywhere in the module), and `problem.sud_related` is a REAL, already-written
+// column (§3.3) — `patientCover.activeSudFlag` is populated from it directly rather than defaulted, unlike
+// the packet-cover facts this pass reports as genuinely unbuilt (nextRecertDueAt / f2fWindowState /
+// activeDpoa — no cheap, correct M6/M39 org-explicit source for any of the three exists yet; each stays
+// honestly `null`, never guessed, per this pass's own restraint on ambiguous clinical/regulatory timing
+// rules). `primaryDiagnosisLabel` uses the problem's stored `description` verbatim rather than an M38
+// terminology-resolved label — the spec's own comment says "resolved via M38", a real, separate
+// integration this pass does not attempt; the stored clinician-authored description is a real fact, not a
+// fabricated one.
+export interface IdgPacketCarePlanContext {
+  readonly carePlanId: string;
+  readonly activeProblemCount: number;
+  readonly activeGoalCount: number;
+  readonly activeInterventionCount: number;
+  /** `null` when the plan has never been signed — the caller (M14) treats this as a per-patient packet
+   *  build failure rather than fabricating a version/date; `PacketBuildInput.carePlanSummary` requires
+   *  both non-null. */
+  readonly lastSignedVersionId: string | null;
+  readonly lastSignedAt: string | null;
+  readonly nextReviewDueAt: string | null;
+  readonly isReviewOverdue: boolean;
+  /** `null` when no `kind='terminal'` problem is active — see {@link lastSignedVersionId}. */
+  readonly terminalDiagnosisIcd10: string | null;
+  readonly terminalDiagnosisLabel: string | null;
+  readonly sudFlag: boolean;
+}
+
+/**
+ * Resolve the §2.4 packet-cover care-plan facts for one patient, org-explicit. `null` when the patient has
+ * no `care_plan` row at all (never bootstrapped — M14 reports this as a build failure, never a fabricated
+ * empty summary).
+ */
+export function idgPacketCarePlanContextForOrg(
+  db: DbClient,
+  organizationId: string,
+  patientId: string,
+  asOfIso: string,
+): Promise<IdgPacketCarePlanContext | null> {
+  return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+    const [plan] = await tx
+      .select({ id: CP.id, nextReviewDueAt: CP.nextReviewDueAt })
+      .from(CP)
+      .where(and(eq(CP.organizationId, organizationId), eq(CP.patientId, patientId)))
+      .orderBy(desc(CP.createdAt))
+      .limit(1);
+    if (!plan) return null;
+
+    const [problemCounts] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(PROB)
+      .where(and(eq(PROB.carePlanId, plan.id), eq(PROB.status, "active")));
+    const [goalCounts] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(GOAL)
+      .where(
+        and(
+          eq(GOAL.carePlanId, plan.id),
+          inArray(GOAL.status, ["not_started", "in_progress"] as never),
+        ),
+      );
+    const [interventionCounts] = await tx
+      .select({ n: sql<number>`count(*)::int` })
+      .from(INTV)
+      .where(and(eq(INTV.carePlanId, plan.id), eq(INTV.status, "active")));
+
+    const [lastSigned] = await tx
+      .select({ id: CPV.id, signedAt: CPV.signedAt })
+      .from(CPV)
+      .where(and(eq(CPV.carePlanId, plan.id), eq(CPV.status, "signed")))
+      .orderBy(desc(CPV.signedAt))
+      .limit(1);
+
+    const [terminal] = await tx
+      .select({ icd10Code: PROB.icd10Code, description: PROB.description })
+      .from(PROB)
+      .where(
+        and(eq(PROB.carePlanId, plan.id), eq(PROB.kind, "terminal"), eq(PROB.status, "active")),
+      )
+      .orderBy(asc(PROB.createdAt))
+      .limit(1);
+
+    const [sudRow] = await tx
+      .select({ id: PROB.id })
+      .from(PROB)
+      .where(and(eq(PROB.carePlanId, plan.id), eq(PROB.status, "active"), eq(PROB.sudRelated, true)))
+      .limit(1);
+
+    const asOf = new Date(asOfIso);
+    const nextReviewDueAt = plan.nextReviewDueAt?.toISOString() ?? null;
+
+    return {
+      carePlanId: plan.id,
+      activeProblemCount: problemCounts?.n ?? 0,
+      activeGoalCount: goalCounts?.n ?? 0,
+      activeInterventionCount: interventionCounts?.n ?? 0,
+      lastSignedVersionId: lastSigned?.id ?? null,
+      lastSignedAt: lastSigned?.signedAt?.toISOString() ?? null,
+      nextReviewDueAt,
+      isReviewOverdue: nextReviewDueAt !== null && new Date(nextReviewDueAt) < asOf,
+      terminalDiagnosisIcd10: terminal?.icd10Code ?? null,
+      terminalDiagnosisLabel: terminal?.description ?? null,
+      sudFlag: !!sudRow,
+    };
+  });
 }

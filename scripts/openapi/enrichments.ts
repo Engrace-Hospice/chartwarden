@@ -603,6 +603,8 @@ import {
   AmendmentResponseSchema as M5EAmendmentResponseSchema,
   CensusMetricsResponseSchema as M5ECensusMetricsResponseSchema,
   DenyBodySchema as M5EDenyBodySchema,
+  MergeBodySchema as M5EMergeBodySchema,
+  MergeResponseSchema as M5EMergeResponseSchema,
   PatientAddressesResponseSchema as M5EPatientAddressesResponseSchema,
   PatientCareTeamResponseSchema as M5EPatientCareTeamResponseSchema,
   PatientDemographicsSchema as M5EPatientDemographicsSchema,
@@ -5643,6 +5645,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M5EAddPatientPayerBodySchema,
     response: M5EAddPatientPayerResponseSchema,
     status: 201,
+  },
+  "POST /api/v1/patients/:id/merge": {
+    summary:
+      "Direct patient merge (§2.4/§4.3, step-up + caseload_or_scope on both source + target) — folds :id into targetPatientId, no destructive UPDATE on satellite tables (F-171, #248)",
+    body: M5EMergeBodySchema,
+    response: M5EMergeResponseSchema,
   },
   "POST /api/v1/patients/:id/amendments": {
     summary: "Open a record-amendment request (§7.7, 60-day SLA)",

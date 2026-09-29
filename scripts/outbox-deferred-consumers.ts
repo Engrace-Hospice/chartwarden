@@ -215,12 +215,46 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       " same class as each other: the whole DocLens extraction/commit pipeline that would produce either is" +
       " 'BUILT-NOT-ACTIVE' (`pipeline-service.ts`'s own header) behind the `documents.doclens` flag, OFF for" +
       " every tenant, with its own outbox dispatch explicitly forward-declared pending M32 — no real event" +
-      " can fire from either side today. `m39.consent.revoked`'s `cascadeKind='media_release'` filter is" +
-      " unreachable in practice, checked against the actual cascade-kind source" +
-      " (`consent_type_catalog.revocation_cascade_kind`, resolved per `typeKey` at revoke time): the seed" +
-      " catalog (`scripts/db/seed-consent-types.ts`) publishes only 3 of the spec's 12 canonical types, all" +
-      " three `revocationCascadeKind: 'immediate'`, and no `media_release` consent type is registered" +
-      " anywhere in this codebase — the filter can never match. `m12.medication_order.list_changed` and" +
+      " can fire from either side today." +
+      " **F-171 (#248) ran this pair down fully — built two SIBLING seed rows the investigation found" +
+      " genuinely ready, and found `media_release` itself is blocked on more than a missing seed row.**" +
+      " The standing note above (\"the seed catalog publishes only 3... no `media_release` type is" +
+      " registered\") undersold the gap: `22-documents/` has NO `m39.consent.revoked` consumer file of ANY" +
+      " kind (grepped) — not merely unseeded, unbuilt — and a from-scratch build has no non-guessed way to" +
+      " satisfy the spec's own \"locate prior-rendered media artifacts for the patient\" step (§4.11)." +
+      " `document`'s `aggregate_type`/`source_kind` enums (`packages/db/src/enums.ts`) carry no photo/" +
+      " video/media concept distinct from any other upload — a wound-care photo captured via" +
+      " `DOC.Mobile.UploadPhotoToChart` is stored identically to a marketing photo — and `consent_document" +
+      " _link` (M39-owned) links a consent record only to ITS OWN rendered PDF (D15/§1.2), never to media" +
+      " released under its authority. A `document_version.mime_type LIKE 'image/%'` heuristic was" +
+      " considered and rejected: it would misclassify ordinary clinical photos as media-release content —" +
+      " the \"guessed provider entity is a mis-stated cost report\" mistake (F-102) applied to PHI photos." +
+      " Seeding `media_release` anyway (its own type data is otherwise well-specified per D2/D7/D8) was" +
+      " rejected too, per this pass's own conservative instruction: it would make `cascadeKind` resolve" +
+      " correctly with STILL no consumer to read it — moving the blocker from \"no seed row\" to \"seed row," +
+      " still nothing consumes it\", the exact \"looks fixed, isn't\" shape this arc exists to avoid. Stays" +
+      " unseeded and unbuilt; the real M22-side gap (a document→media classification mechanism) is reported" +
+      " here, not fixed. **Two SIBLING types ARE now seeded**, each checked against its OWN D7 cascade" +
+      " consumer rather than assumed from the spec's prose: `portal_access` (M2" +
+      " `buildM2ConsentRevokedConsumer`, F-142, filters exactly this `typeKey`, deletes the patient's" +
+      " `patient_portal` sessions — real and bound — + M31 `buildM31ConsentRevokedGrantCascadeConsumer`," +
+      " revokes the matching `portal_access_grant` row by `source_consent_record_id` — real and bound) and" +
+      " `bereavement_outreach_consent` (M16 `buildM16ConsentRevokedConsumer`, F-151, the §2.6 per-" +
+      " bereaved-contact opt-out cascade — real and bound — + the same M31 grant-revoke consumer). Seeding" +
+      " the second row is also what makes `createBereavementOutreachDraft`'s `consent_record.type_key` FK" +
+      " satisfiable for the first time in any deployment — the D14 post-mortem consent flow was" +
+      " unreachable before this, independent of the cascade question. Proven live end to end (real M39" +
+      " `createDraft`/`createBereavementOutreachDraft` → `signConsent` → `revokeConsent`, the real" +
+      " catalog-validating outbox publish, the ACTUAL delivered payload read back from `outbox_event` and" +
+      " handed to the real M2/M16/M31 consumers, under RLS) by" +
+      " `f171-consent-type-seed.live.test.ts` (3/3). The other 7 of the 9 previously-unseeded types" +
+      " (`dpoa_financial`, `family_caregiver_access`, `research_participation`, `telehealth_consent`," +
+      " `advance_directive_acknowledgment`, plus `media_release` above) stay unseeded — each checked and" +
+      " found to have no live-bound `m39.consent.revoked` consumer for the cascade the D7 table names it" +
+      " (`family_caregiver_access` additionally carries a REPORTED, unresolved over-termination risk on" +
+      " its M2 half per that consumer's own file header — a real correctness hazard, not merely an" +
+      " absence — so it stays out even though its M31 grant-cascade half would work) — reasons recorded in" +
+      " `scripts/db/seed-consent-types.ts`'s own header rather than restated here. `m12.medication_order.list_changed` and" +
       " `.transmitted` are both the F-162 granularity collision one module over: `.document_requested`" +
       " already renders `medication_order` for the same `orderId` at sign, so a later `.transmitted` (or any" +
       " `.list_changed` after the first) would find `alreadyRendered: true` and silently no-op — not a" +
@@ -320,7 +354,12 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       " for either `draft_created_from_extraction` event under any spelling — unchanged. `m39.consent" +
       ".revoked`'s `media_release` branch: `scripts/db/seed-consent-types.ts` still seeds exactly 3 of the" +
       " spec's 12 canonical types (`hipaa_release`, `42_cfr_part_2_release`, `dpoa_healthcare`), all three" +
-      " `revocationCascadeKind: \"immediate\"`, no `media_release` type registered anywhere — unchanged; the" +
+      " `revocationCascadeKind: \"immediate\"`, no `media_release` type registered anywhere — unchanged as" +
+      " of this round; F-171 (#248, the next round) found the gap is deeper than the seed row (no M22" +
+      " consumer file exists at all, and no schema mechanism can locate \"media\" documents without" +
+      " guessing) and left it unseeded/unbuilt for that reason — see this group's own F-171 paragraph" +
+      " above, which also seeded the two SIBLING types (`portal_access`," +
+      " `bereavement_outreach_consent`) whose own cascades ARE real. The" +
       " other three `m39.consent.*` events and M22's own consent-render pipeline still resolve" +
       " `ConsentEvaluator` fresh per signed-URL mint with no persistent grant/share table on the M22 side to" +
       " invalidate (checked `packages/db/src/schema/consent/` for a new table — none added) — unchanged." +
@@ -354,12 +393,146 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       " the lab-backref pipeline itself, not a REQUEST_SHAPES entry. Not built here — real feature scope, not" +
       " a wiring fix — but the reason is now accurate: a missing content-resolution pipeline, not a missing" +
       " aggregate type or template. **Net: 0 bound, 0 dropped, all 16 events remain, unchanged in substance" +
-      " from F-166/F-168.**",
+      " from F-166/F-168.**" +
+      " **F-171 (#248) built the THIRD dedicated render-variant pipeline F-170 scoped but did not attempt,"+
+      " and `m12.medication_order.list_changed` is now bound.** `medication-list-consumer.ts` (pure decider," +
+      " the `lab-backref-consumer.ts` shape) + `medication-list-bindings.ts` (the LIVE wiring — unlike" +
+      " `lab-backref-bindings.ts`, genuinely live: M12's `MedicationOrderProvider` seam is real and" +
+      " registered in production, M12-T07, not a Wave-H deny-stub) resolve the patient's CURRENT" +
+      " active-medication set via `getActiveMedications(orgId, patientId)` at DELIVERY time — never from" +
+      " the diff payload, which F-170 correctly identified cannot supply the content. **Checking" +
+      " `PLATFORM_TEMPLATE_TABLE` (`renderer.ts`) directly, rather than trusting F-168/F-170's own" +
+      " citation, found the 'template already exists' framing was checking the WRONG registry**: F-168's" +
+      " `packages/forms/src/templates/registry.ts` row is a separate golden-template-diff/overlay" +
+      " manifest never consulted by `render()`/`REQUEST_SHAPES`; the table `createDocumentRenderer`" +
+      " actually resolves `templateKey` against had NO `patient_medication_list` entry at all — a first" +
+      " render would have thrown `UnknownTemplateError` regardless of the forms-registry row's existence." +
+      " Added (no migration — `document_aggregate_type` already carries the value, mig 0048)." +
+      " **AMBIENT REQUEST CONTEXT REQUIRED, found writing this rather than assumed working**: the" +
+      " F-118/F-153 M17/M18 shape a further time — M12's `DoseSpotSeamStore.medicationOrdersForPatient`" +
+      " (the read behind `getActiveMedications`) opens `withOrgContextFromRequest`, which throws outside" +
+      " an active `runWithRequestContext` scope, and a dispatcher tick is not a request; fixed the same" +
+      " way (`runWithRequestContext({organizationId, userId: CONSUMER_USER_ID}, …)` wraps the seam call)." +
+      " **Idempotency reuses F-168's per-request granularity directly, outside the generic pipeline**:" +
+      " every genuinely new `.list_changed` event for a patient must produce a NEW `document_version` (the" +
+      " task's own confirmation of F-170's `appends: true`-shaped reasoning), so `alreadyRendered` is" +
+      " keyed on `documentVersionForSourceEvent(event.id)` alone, never `(aggregateType, aggregateId)`" +
+      " (which would `idempotent_skip` every delivery after the first). **§7.16 SUD redaction was added" +
+      " as a deliberate scope extension, reusing existing infrastructure rather than inventing new**:" +
+      " `MedicationOrderDto.isSudTreatment` is already on every row `getActiveMedications` returns, and a" +
+      " full active-medication list is exactly the kind of 42 CFR Part 2 disclosure risk" +
+      " `planLabResultsRender`'s existing `redactSudValue` machinery exists to guard — a SUD-treatment" +
+      " row's drug name/sig are redacted unless `resolveSudConsentPresent` (M39, already used by the" +
+      " generic pipeline) confirms an active release; the seam call is skipped entirely when no resolved" +
+      " medication needs it. **One pre-existing platform gap matched for consistency, not newly" +
+      " introduced or fixed**: `DocumentRenderer.render()` inserts every document under the TEMPLATE'S OWN" +
+      " `descriptor.retentionClass` — it takes no retention-class parameter at all, so neither this" +
+      " consumer's nor `render-consumer.ts`'s own SUD `retentionClassOverride`" +
+      " (`compliance_42cfr_part2`) is threaded into the persisted row; the row-level text redaction (the" +
+      " actual disclosure protection) is unaffected. `m22.document.rendered` is emitted for parity with" +
+      " every other render (`sourceModule: \"m12\"`, `aggregateType: \"patient_medication_list\"`) — checked" +
+      " against M12's own `m22-document-rendered.ts` back-ref consumer directly rather than assumed safe:" +
+      " it filters on `M12_AGGREGATE_TYPES = new Set([\"medication_order\"])`, so this aggregate type" +
+      " no-ops there rather than mis-stamping `medication_order.document_id`. Proven by" +
+      " `m22-medication-list-render.live.test.ts`: a real M12 medication order signed under RLS, a" +
+      " published `.list_changed` event resolving the real current active set via the real seam and" +
+      " rendering a real `patient_medication_list` document version; a redelivery of the identical outbox" +
+      " event id re-announces without a second version; a genuinely later, different `.list_changed`" +
+      " event for the same patient renders a second, distinct version; a SUD-treatment order redacts its" +
+      " drug name/sig with no active Part 2 consent and renders plaintext with one; and cross-tenant" +
+      " isolation holds (org B's seam call for org A's patient resolves nothing, never leaks org A's" +
+      " medications). Net: 16 → 15 events remain in this group." +
+      " **F-171 (#248) — `m5.patient.merged` is dropped from this group entirely, corrected in BOTH" +
+      " directions at once, not merely bound.** This pass built the real §2.4/§4.3 merge write path" +
+      " (`05-patient/merges.ts` + `merges-db.ts`, `POST /api/v1/patients/:id/merge`) — the D8 merge" +
+      " mechanism ('re-points all FK references through the `patient_resolver`... no destructive UPDATE'" +
+      " already committed for `.unmerged`) had NO execution path anywhere, matching this group's own prior" +
+      " finding exactly (\"unbuilt on BOTH sides\"). The producer side is now real: the source flips to" +
+      " `status='merged'`/`merged_into_id`, the target absorbs any chosen field resolutions, `patient_merge`" +
+      " records the audit diff, and `m5.patient.merged` publishes for real. **The M22 side was checked" +
+      " against the actual code rather than re-built to the group's own prior description** — \"a real" +
+      " per-document `UPDATE document SET patient_id = ...` M22 would have to perform\" is false, and" +
+      " provably so: `22-documents/lifecycle/merge-redirect.ts` (M22-T03) is a complete, unit-tested pure" +
+      " core whose own header states the opposite design — \"M22 does NOT mutate `document.patient_id`" +
+      " eagerly on the merge event... on every fetch it resolves the document's stored `patient_id`" +
+      " through the merge chain to the surviving patient\" — a SEAM PULL against live `patient" +
+      " .merged_into_id` state (the M40 `followMerge` shape, applied to documents), never a push this" +
+      " event could drive. `m5.patient.merged`'s catalog entry now declares `m22` as a `seamConsumers`" +
+      " entry instead of `declaredConsumers` (events-by-m5.ts), which is what actually stops it deferring" +
+      " forever — no consumer build was ever the right fix for this pair. **Not built**: the read-time" +
+      " redirect itself is still unwired (`resolvePatientRedirect`/`applyPatientMergeCascade` have zero" +
+      " real callers anywhere in `22-documents/` outside their own barrel export and unit test) — a real," +
+      " separate M22-owned gap (a DB-backed `MergeFacts` implementation reading `patient.merged_into_id`," +
+      " threaded through M22's document-fetch routes), reported rather than built here since it touches" +
+      " M22's read surface broadly and needs its own review, the `m6.discharge.cosigned` precedent two" +
+      " lines up. Proven live end to end (real Drizzle write, real RLS, real catalog-validating" +
+      " publisher): `m5-patient-merge.live.test.ts` — the target absorbs a chosen field resolution while" +
+      " every other target field is left alone, the source flips to `merged` with `merged_into_id` set" +
+      " and every OTHER row it owns is left completely untouched (the \"no destructive UPDATE on" +
+      " satellite tables\" proof), `patient_merge.merged_field_diff` records the full per-field audit," +
+      " `m5.patient.merged` publishes with `patientId`=target/`sourcePatientId`=source, a self-merge/" +
+      " already-merged-source/already-merged-target/unmergeable-status/unknown-field attempt each refuse" +
+      " with its own typed error, and cross-tenant isolation holds (org B cannot merge org A's patients," +
+      " in either direction — both resolve 404 under RLS). Net: 15 → 14 events remain in this group." +
+      " **F-171 (#248) built the DEDICATED `lab-backref-consumer.ts`/`lab-backref-bindings.ts` pipeline" +
+      " this group's own text had named as the reason `m11.order.results_received` could not use the" +
+      " generic REQUEST_SHAPES pipeline, and it is now bound — the group's last M11 event.** Two real" +
+      " defects, checked against the code rather than re-asserted from the prior framing. (1) The name" +
+      " mismatch: the real registered `LabObservationReader` (`29-external-interfaces/seams/published.ts`)" +
+      " has always been exactly `getById`/`listByPatient`; `lab-backref-bindings.ts` called a" +
+      " `resolveLabResultsPayload` method that interface never had, so the deny-stub fired even once M29's" +
+      " seam registered at boot. Fixed by ADDING a method rather than renaming the call to `getById`:" +
+      " `getById` REQUIRES a `patientId`, and the real catalogued `m11.order.results_received` payload" +
+      " (`events-by-m11.ts`) carries NO `patientId` at all (checked directly, not assumed — M11 owns the" +
+      " order, not the patient binding a lab result resolves to), so no rename could have worked regardless." +
+      " A new `getByObservationId(organizationId, observationId)` (additive; `getById` untouched for the" +
+      " M28 FHIR caller that already has a patientId in hand) is the real fix. (2) The SUD-class flag:" +
+      " `LabObservationSeamValue` carried none, and it is now a REAL, non-fabricated per-value field —" +
+      " `isSudClass` projects the parent `lab_observation.sud_redacted_at_ingest` column onto every value" +
+      " row of that observation, matching how ingest actually redacts (`lab-attach-planner.ts`'s" +
+      " `buildValueRows` applies ONE boolean per MESSAGE, uniformly across every OBX row — never an" +
+      " invented per-row classifier); `loincDisplayText` was added alongside it (present on the real row," +
+      " simply never projected). **Deliberately NOT wired into the generic `render-consumer.ts`" +
+      " `REQUEST_SHAPES` table**, confirming the group's own prior citation: `lab_results_pdf` publishes" +
+      " the SAME `aggregateType` (`order_record`) the order-FORM render already occupies at sign time, and" +
+      " that pipeline's idempotency is genesis-only (`renderedDocumentForAggregate`) — it would read \"this" +
+      " order already has a document\" the instant an order was signed and silently `idempotent_skip` the" +
+      " lab result forever. The dedicated consumer instead reuses the F-168 per-delivered-event dedup" +
+      " (`document_version.source_event_id`) directly, so a genuinely new lab result always renders as a" +
+      " NEW VERSION of the order's `order_record` document trail — exactly what M11's own, already-bound" +
+      " `buildM11DocumentBackrefConsumer` expects (it stamps `order_record.document_id` by matching" +
+      " `aggregateId === order.id`, agnostic to which artifact produced the version). **Building it" +
+      " surfaced a THIRD, independent, pre-existing production defect**: `createDocumentRenderer`'s" +
+      " `render()` always inserted a document under the TEMPLATE's static `descriptor.retentionClass`," +
+      " with no channel for a per-call override — so `planLabResultsRender`'s own `retentionClassOverride`" +
+      " (the D23 SUD-redaction retention promotion, computed correctly by the pure decider since M22-T09)" +
+      " had nowhere to go, and `packages/forms/src/templates/registry.ts`'s own comment (\"the D23 SUD" +
+      " auto-tag promotes ... at the render layer, not here\") named a mechanism that did not exist" +
+      " anywhere in the codebase. Fixed the same way F-168 widened the identical seam for `sourceEventId`:" +
+      " `RenderPayloadCore` gained an optional `retentionClassOverride` field (`renderer.ts`) that `render()`" +
+      " now prefers over the template default; every other caller leaves it unset and is unaffected. **This" +
+      " is the same defect a SIBLING dedicated pipeline (`medication-list-bindings.ts`, F-171, two" +
+      " paragraphs up) had already found and explicitly left unfixed** (\"one pre-existing platform gap" +
+      " matched for consistency, not newly introduced or fixed\") — this pass fixed it instead of matching" +
+      " it, since leaving a documented compliance mechanism (42 CFR Part 2 retention) silently inert was" +
+      " worse than the small, additive widening. `m11.order.results_received` itself has NO production" +
+      " emitter anywhere in this codebase (`LabResultsApplier`, named in the event's own catalog" +
+      " description, does not exist — exhaustively grepped), the `m17.caregiver_reminder_due` (F-161)" +
+      " shape; likewise M29's own ingest worker (`planLabAttach`) has no production caller, so" +
+      " `lab_observation`/`lab_observation_value` rows are seeded directly in the live proof, simulating" +
+      " \"M29 has already matched and stored this result\" — the real state this consumer reads regardless" +
+      " of how the row got there. Proven by `f171-m22-lab-backref.live.test.ts`: a non-SUD result renders" +
+      " and stamps `order_record.document_id`; a SUD-class result with no M39 consent redacts and forces" +
+      " `compliance_42cfr_part2` retention (now for real, per the renderer fix above); the same SUD-class" +
+      " result WITH an active M39 consent does not force that retention; a lab result for an order whose" +
+      " FORM had already rendered appends a genuinely new document_version onto the SAME document rather" +
+      " than colliding or idempotent-skipping forever; a redelivery of the identical outbox event never" +
+      " produces a second version; an observation M29 has not yet resolved defers (retries, never renders)" +
+      " rather than dead-lettering on the first miss; and cross-tenant isolation holds. Net: 14 → 13 events" +
+      " remain in this group.",
     events: [
       "m11.order.draft_created",
-      "m11.order.results_received",
       "m12.medication_order.draft_created_from_extraction",
-      "m12.medication_order.list_changed",
       "m12.medication_order.signature_requested",
       "m19.triage.summary_requested",
       "m21.supply_request.delivered",
@@ -368,7 +541,6 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "m39.consent.recipient_removed",
       "m39.consent.revoked",
       "m5.patient.draft_created_from_extraction",
-      "m5.patient.merged",
       "m6.discharge.cosigned",
       "m6.transfer.created",
       "m9.assessment.summary_requested",
@@ -388,7 +560,8 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       "**F-164 (#248) built the six real 'since last IDG' events on a shared per-patient Valkey cache** (`consumers/since-last-idg-cache.ts`, one JSON object per patient, `wardenx:m14:idg:since-last-idg:<patientId>`, 30-day TTL, deduped by the delivering outbox event's own id). M9's two write straight from the payload (`patientId` is present on the wire despite the declared schema omitting it on `.significant_change` — confirmed against the real emit site, not the schema). M10's/M11's/M12's three needed a cross-module fact neither payload carries (`patientId`, plus `orderKind`/`drugName` for the latter two) — resolved via three NEW org-explicit seam functions (`hopeAssessmentPatientIdForOrg`/`orderPatientAndKindForOrg`/`medicationOrderPatientAndDrugForOrg`, the `encounterIdsForVisitsForOrg` (M8) precedent applied to three more modules), injected as ports rather than read off each owning module's schema directly — M14's `dependsOn` is `[1, 7, 8, 36]`, no edge to 9/10/11/12, so a direct Drizzle import would (and, in the build's first draft, briefly did) fail `arch:tables`. **M11's/M12's two `.discontinued` events are a deliberate departure from the seam-vs-push rule this arc otherwise applies**: `PacketOrderChangeDigest`/`PacketMedicationChangeDigest` doc-comment themselves as seam-pull projections (`OrderProvider.getOrdersSince`/`MedicationOrderProvider.getMedicationsSince`), the opposite framing from M9/M10's push-cache comments on the same two files — but the seam AS IMPLEMENTED anchors its filter on a timestamp fixed at order creation/activation and never revisited, so an order created before the packet-build cursor and discontinued after it is invisible to the seam pull regardless of how the read side joins it; the push cache is the only place that fact can come from until the seam's own filter is widened (a separate M11/M12-side gap, reported not fixed). " +
       "**M6's `admission.activated`/`.discharged` and the M15 trio (`idg_decision.applied`/`plan.bootstrapped`/`plan.version_signed`) were investigated fresh and found genuinely AMBIGUOUS, not confidently misdeclared or confidently genuine — left exactly as-is rather than guessed on.** For M6: D9's own rationale table says inclusion is 'computed at build time … via M5's `CaseloadProvider`' (a seam pull) and in the same breath cites '§4.5 (`m6-admission-discharged`)' as consistent with that — but §4.5's own table describes a PUSH mechanism ('mark patient with `discharge_grace_until` … in the inclusion cache') for the identical two events, tracking the 7-day post-discharge wrap-up window `CaseloadProvider`'s 'active caseload right now' answer cannot express on its own (a discharged patient is, by definition, off the active caseload). Two internally-consistent readings of the same module's own spec, not a case where one side is decisively right. For M15: the Lock-status section's one-line 'M14 IDG-packet integration consumes `DisciplinePlanReader` when M14 locks' describes the packet builder's CROSS-DISCIPLINE VIEW mechanism (§1's own text: 'cross-discipline view via `DisciplinePlanReader` for M14 IDG packet') — a different, narrower claim than whether the SAME builder also needs these three push events for a 'since last IDG' delta, which M15's own decisive §2.4/§4.5 event-catalog table names by event with real payloads (`{planId, versionId, idgDecisionId, mutationsApplied}` etc.) and explicit M14 consumers. Both need a dedicated future pass that reads the packet builder's actual read-side requirements rather than either spec fragment in isolation, not a snap drop on the strength of one ambiguous citation. " +
       "**F-167 (#248) ran that dedicated future pass on all 8 remaining events, found none buildable, and resolved the standing AMBIGUITY by finding both of its readings share one root blocker.** Confirmed first that F-164's `consumers/since-last-idg-cache.ts` is the one and only 'since last IDG' cache mechanism in this module — no second, competing cache exists or was built here; every finding below is about whether a REAL READER exists for a write into it, or into any other M14 surface, not about which cache to use. **`m6.admission.activated`/`.discharged` (inclusion cache): confirmed blocked, the ambiguity resolved rather than left open.** Checked whether the M14 packet-BUILD worker D9's 'computed at build time' language depends on actually exists in production: it does not. `apps/backend/src/modules/14-idg/jobs/index.ts`'s own header states M14 ships exactly ONE cron (`idg.review-clock-sweep`) and explicitly documents the T-24h packet-build cron as absent; `idg-route-service-db.ts`'s own header says `idg_patient_packet` 'is built by the §2.4 packet WORKER, not the route lifecycle' and its `buildPackets` handler (read directly) only flips the meeting's status and counts pre-existing packet rows — it builds nothing; a repo-wide grep for `.insert(PKT)`/`.insert(schema.idgPatientPacket)` under `14-idg/` returns zero hits outside test fixtures. So EITHER reading of D9/§4.5 needs the same nonexistent foundation: the PUSH reading (an inclusion cache) has no worker to ever read it, and the PULL reading (a build-time seam call) has no seam to call either — `CaseloadProvider` (`packages/types/src/seams.ts`, checked directly) is `isInCaseload`/`caseloadPatientIds`, both keyed on a CLINICIAN's `userId` and answering only 'right now,' with no location or as-of-date parameter D9's 'active caseload of the meeting's location at scheduled date' needs. Building either a cache-write consumer or a new location/date-scoped seam here would be inventing infrastructure for a worker that has never been written — a whole-module build (the GAP-092 packet-worker gap this same directory's `jobs/index.ts` already documents), not a two-event wiring task, and out of scope. **`m12.medication_history_pulled`: confirmed blocked.** M12's own catalog description (`12-dosespot/events-by-m12.ts`) is 'M14 refreshes the IDG packet' — an invalidation/rebuild trigger shape, not a content-append fact, and there is no packet-build mechanism anywhere to trigger. Checked `SinceLastIdgInput`/`PacketSnapshot` (`packages/idg/src/packet/builder.ts`, `packages/types/src/idg.ts`) directly for a matching slot: none exists — medication HISTORY (an external DoseSpot pull, pre-reconciliation) is a distinct fact from medication ORDER changes (`medicationsChanged`/`PacketMedicationChangeDigest`, already fed by `.discontinued` via F-164's cache and by seam pull for `.signed`/`.active`), and the payload itself (`rowsCreated` count + `sourceJobId`, no drug-level detail) doesn't fit that digest shape regardless. **The M15 trio: confirmed blocked, on a THIRD, sharper reason beyond the push/pull ambiguity.** Checked `idg_decision`'s real schema (`packages/db/src/schema/idg/idg-decisions.ts`) directly: `status` runs `open → emitted → superseded` only — no 'applied'/downstream-application column or table exists anywhere on the M14 side. By contrast M7, M11 and M12 each own THEIR OWN `*_idg_decision_applications` tracking table (`care-plan/idg-decision-applications.ts`, `orders/order-idg-decision-applications.ts`, `dosespot/medication-order-idg-decision-applications.ts`) — M14 has no equivalent, and no M15-owned one exists either (checked `packages/db/src/schema/discipline-plans/`, confirmed absent). None of the sibling M7/M11/M12 'applied' acknowledgment events (e.g. `m7.care_plan.idg_decision_applied`) are consumed by M14 anywhere either — F-145's own 'M7 precedent' citation was evidence the RELATIONSHIP SHAPE is real (a genuine inbound ack, not an echo of M14's own outbound event), not evidence that an M14-side consumption mechanism already exists to extend; no such mechanism exists for any of the four candidate source modules. `plan.bootstrapped`/`.version_signed` were checked against both readings this group's own text left open (a D9-style push cache, or a `DisciplinePlanReader` seam-pull at packet-build time) and both need the same nonexistent packet-build worker the M6 finding above establishes; no PacketSnapshot/SinceLastIdgInput field exists for any discipline-plan fact either (checked `packages/types/src/idg.ts` in full — no M15 field anywhere). The push-vs-pull ambiguity this group's text left open for the M15 trio is therefore moot: neither mechanism exists today, independent of which one D9/M15's spec actually intends. **`m19.triage_call.care_plan_change_indicated`: confirmed blocked**, matching a finding F-164 had already reached but only recorded in a code comment rather than in this registry — `since-last-idg-cache.ts`'s own header names this exact event as 'the exact no builder input slot gap' it declined to invent a fix for. Verified directly: M19's own catalog (`19-oncall/events-by-m19.ts`) describes the consumer as 'M14's IDG packet builder so the next IDG agenda includes it,' and the one structurally similar existing slot, `PacketFlaggedEventDigest.kind`, is a closed union (`'hospitalisation'|'er_visit'|'missed_dose'|'fall'|'infection'`) that does not admit the event's free-form `changeKind` — writing it in would mean widening a shared packet-contract type, a builder-contract design change out of scope for a consumer bind. **`m39.consent.expiring_soon`: confirmed blocked**, and unlike the F-131 'kept, not dropped' asymmetry this group has otherwise relied on, here there is no code-level target of ANY kind on the consuming side to bind to. M39's own outbox table names M14 as '(compliance tile)', but M14's own spec — grepped in full for 'consent', 'expir' and 'compliance tile' — never once mentions a compliance tile, consent-expiry tracking, or any UI/data concept it would populate, and no such column, table, cache key or frontend screen exists anywhere in the built M14 surface (checked `packages/db/src/schema/idg/` and the design corpus). A bare aspirational table-cell citation with nothing on the receiving side to extend is not enough to build against without inventing a new feature. **Net: 0 bound, 0 dropped — all 8 events remain, unchanged, with their blockers now precise rather than ambiguous.** The residual set collapses to two shared root causes: (1) the M14 §2.4 T-24h packet-build worker has never been written in production (only the pure `builder.ts` contract + F-164's cache-WRITING consumers exist; nothing ever reads the cache, resolves inclusion, or calls the pure builder) — a whole-module build, correctly out of scope here; and (2) for the facts that would not fit even once a worker exists (M19's free-form `changeKind`, M12's history-pull metadata, M39's undefined 'compliance tile'), no typed packet-contract slot exists, and this pass declines to invent one unilaterally — the same restraint F-164 itself already exercised for `m9.assessment.recorded`'s own borderline case. " +
-      "**F-169 (#248) re-checked all five underlying facts fresh (2026-09-29), one round later, nothing shifted.** `jobs/index.ts` still ships exactly the one `idg.review-clock-sweep` cron; `buildPackets` still only flips meeting status and counts pre-existing packet rows, no INSERT into `idg_patient_packet` anywhere under `14-idg/` outside test fixtures; `CaseloadProvider` (`packages/types/src/seams.ts`) is still `isInCaseload`/`caseloadPatientIds`, clinician-keyed, no location/as-of-date parameter. `packages/types/src/idg.ts` still has no medication-history slot (`PacketMedicationChangeDigest` unchanged) and no M15 field of any kind. `idg_decision.status` (`packages/db/src/schema/idg/idg-decisions.ts`) is still `open → emitted → superseded`, no 'applied' state; `packages/db/src/schema/discipline-plans/` still has no `*_idg_decision_applications` table (M7/M11/M12 each still own theirs, M14/M15 still own neither). `PacketFlaggedEventDigest.kind` (`packages/types/src/idg.ts`) is still the same closed 5-member union, no `changeKind` slot. M14's own spec still has zero hits for 'compliance tile'/'consent'/'expir'. The one commit to land in this module since F-167 (F-168, `a5290539`) touched `idg-route-service-db.ts` and `events-by-m14.ts` only to widen M14's OWN `minutes.amended` render-request payload (M14 as document-request PRODUCER for M22) — unrelated to M14 as CONSUMER of these 8 events; no packet-build worker, no packet-contract slot, no schema change touched any of the five facts above. Net: 0 bound, 0 dropped, all 8 events remain exactly as F-167 left them.",
+      "**F-169 (#248) re-checked all five underlying facts fresh (2026-09-29), one round later, nothing shifted.** `jobs/index.ts` still ships exactly the one `idg.review-clock-sweep` cron; `buildPackets` still only flips meeting status and counts pre-existing packet rows, no INSERT into `idg_patient_packet` anywhere under `14-idg/` outside test fixtures; `CaseloadProvider` (`packages/types/src/seams.ts`) is still `isInCaseload`/`caseloadPatientIds`, clinician-keyed, no location/as-of-date parameter. `packages/types/src/idg.ts` still has no medication-history slot (`PacketMedicationChangeDigest` unchanged) and no M15 field of any kind. `idg_decision.status` (`packages/db/src/schema/idg/idg-decisions.ts`) is still `open → emitted → superseded`, no 'applied' state; `packages/db/src/schema/discipline-plans/` still has no `*_idg_decision_applications` table (M7/M11/M12 each still own theirs, M14/M15 still own neither). `PacketFlaggedEventDigest.kind` (`packages/types/src/idg.ts`) is still the same closed 5-member union, no `changeKind` slot. M14's own spec still has zero hits for 'compliance tile'/'consent'/'expir'. The one commit to land in this module since F-167 (F-168, `a5290539`) touched `idg-route-service-db.ts` and `events-by-m14.ts` only to widen M14's OWN `minutes.amended` render-request payload (M14 as document-request PRODUCER for M22) — unrelated to M14 as CONSUMER of these 8 events; no packet-build worker, no packet-contract slot, no schema change touched any of the five facts above. Net: 0 bound, 0 dropped, all 8 events remain exactly as F-167 left them. " +
+      "**F-171 (#248) built the T-24h packet-build worker for real, and — checked directly, not assumed — its existence does not unblock any of the 8, for two different (and now precisely dated) reasons.** `apps/backend/src/modules/14-idg/jobs/{schedule-materialise,packet-build}.ts` are new: `runScheduleMaterialiseCron` (§7.1 W-SCH-01) materializes real `idg_meeting` rows from `idg_recurring_policy` (idempotent re-run), and `runPacketBuildCron` (§7.2 W-PKT-01 / §4.9.1 `tminus-24h-build`) finds every meeting due within the T-24h lookahead, resolves the §2.3 D9 inclusion set, and INSERTs a real `idg_patient_packet` row per included patient from real M5 (patient identity)/M6 (siting + current LOC)/M7 (care-plan summary + terminal diagnosis + SUD flag)/M8 (signed encounters since cursor) facts plus the F-164 cache, transitioning the meeting `scheduled → packets_building → packets_ready` and emitting `m14.packets.build_started`/`.packet.render_requested`/`.packets.ready` — proven end to end against a real, RLS-enforced Postgres (`m14-packet-build.live.test.ts`, 5/5: real materialization, a real built packet with real cover facts, the §2.3 D9 wrap-up-window boundary, per-patient failure isolation via `m14.packets.build_failed_for_patient`, and cross-tenant isolation). **This resolves F-167's own standing ambiguity for `m6.admission.activated`/`.discharged` decisively, in favor of PULL — and closing that ambiguity is why the pair stays unbound, not a reason to bind it.** D9 inclusion is answered by a NEW M6 org-explicit seam (`idgPacketInclusionForOrg`, `06-admission/seams/drizzle-store.ts`) that reads `admission.location_id`/`.status`/`.discharged_at` directly at build time — never `CaseloadProvider` (confirmed, again, to have no location/date parameter) and never a push cache. The worker needs no per-admission-lifecycle cache to invalidate, so there is nothing for these two events to write into; F-167's 'either reading needs infrastructure that doesn't exist' is now half resolved (the PULL half, built) and half moot (the PUSH half, never needed). **The other 5 stay blocked, unchanged in substance, because building the worker deliberately never touched the one thing each of them needs**: no field was added to `PacketFlaggedEventDigest.kind` (`m19.triage_call.care_plan_change_indicated`), no medication-history slot was added to `SinceLastIdgInput`/`PacketSnapshot` (`m12.medication_history_pulled`), no 'applied' state or tracking table was added anywhere M14/M15-side (`m15.idg_decision.applied`/`.plan.bootstrapped`/`.plan.version_signed`), and no compliance-tile concept was invented (`m39.consent.expiring_soon`) — each is exactly the 'do NOT invent a slot the spec doesn't describe' restraint this pass was explicitly held to, re-confirmed by re-reading `packages/types/src/idg.ts` and `packages/db/src/schema/idg/idg-decisions.ts` after the build landed: byte-identical to F-169's own citations. Net: 0 bound, 0 dropped — all 8 events remain, but the group's reason is now a closed case on the worker question (it exists, it does not help) rather than an open one.",
     events: [
       "m12.medication_history_pulled",
       "m15.idg_decision.applied",

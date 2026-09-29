@@ -54,11 +54,17 @@ export function createDrizzleM29PublishedSeamStore(db: DbClient): M29PublishedSe
       values: values.map((v) => ({
         obxSetId: v.obxSetId,
         loincCode: v.loincCode,
+        loincDisplayText: v.loincDisplayText,
         valueType: v.valueType,
         numericValue: num(v.numericValue),
         stringValue: v.stringValue,
         units: v.units,
         abnormalFlag: v.abnormalFlag,
+        // F-171 (#248) — SUD redaction is applied uniformly across every OBX row of ONE observation at
+        // ingest (D15/W-XI-14: the consent check is per-MESSAGE, not per-row — see `lab-attach-planner.ts`
+        // `buildValueRows`), so the per-value flag is honestly the parent observation's own
+        // `sud_redacted_at_ingest` column, never an invented per-row classifier.
+        isSudClass: row.sudRedactedAtIngest,
       })),
     };
   };
@@ -92,6 +98,20 @@ export function createDrizzleM29PublishedSeamStore(db: DbClient): M29PublishedSe
               eq(OBS.patientId, patientId),
             ),
           )
+          .limit(1);
+        return row ? await obsDto(tx, organizationId, row) : null;
+      });
+    },
+    async labObservationByObservationId(organizationId, observationId) {
+      // F-171 (#248) — the patientId-free lookup `LabObservationReader.getByObservationId` delegates to.
+      // `lab_observation.id` is the app-generated PK; scoping on `(id, organizationId)` alone is already
+      // unique — no `patientId` predicate is needed to disambiguate the row, only to satisfy `getById`'s
+      // extra defense-in-depth for the caller (M28) that already has one in hand.
+      return withOrgContext(db, ctx(organizationId), async (tx) => {
+        const [row] = await tx
+          .select()
+          .from(OBS)
+          .where(and(eq(OBS.id, observationId), eq(OBS.organizationId, organizationId)))
           .limit(1);
         return row ? await obsDto(tx, organizationId, row) : null;
       });

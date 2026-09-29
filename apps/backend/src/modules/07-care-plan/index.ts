@@ -90,6 +90,8 @@ export {
   createDrizzleCarePlanReaderStore,
   createInMemoryCarePlanReaderStore,
   getCarePlanReader,
+  type IdgPacketCarePlanContext,
+  idgPacketCarePlanContextForOrg,
   registerCarePlanSeams,
 } from "./seams/index";
 

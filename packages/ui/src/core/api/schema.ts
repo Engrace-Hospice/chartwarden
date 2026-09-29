@@ -12503,6 +12503,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/patients/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Direct patient merge (§2.4/§4.3, step-up + caseload_or_scope on both source + target) — folds :id into targetPatientId, no destructive UPDATE on satellite tables (F-171, #248) */
+        post: operations["postApiV1PatientsByIdMerge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/patients/{id}/payers": {
         parameters: {
             query?: never;
@@ -53959,6 +53976,48 @@ export interface operations {
                             effectiveFrom: string;
                             effectiveTo: string | null;
                         }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1PatientsByIdMerge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    targetPatientId: string;
+                    fieldResolutions?: {
+                        [key: string]: {
+                            keep: "source" | "target" | "custom";
+                            customValue?: unknown;
+                        };
+                    };
+                    reason: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        mergeId: string;
+                        sourcePatientId: string;
+                        targetPatientId: string;
+                        targetFieldsApplied: string[];
                     };
                 };
             };

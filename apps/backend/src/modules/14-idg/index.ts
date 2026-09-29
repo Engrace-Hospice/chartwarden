@@ -160,4 +160,21 @@ export {
   runReviewClockSweepCron,
   scheduleM14Jobs,
 } from "./jobs/cron-workers";
+// F-171 (#248) — the LIVE §7.1 `idg.schedule-materialise` + §4.9.1 `idg.packets-cron` (`tminus-24h-build`)
+// T-24h packet-build worker: the real "does the worker exist" answer to the m14 `handlers-unbound`
+// group's standing F-129/F-164/F-167/F-169 finding.
+export {
+  type Idg1LocationTimezonePort,
+  type MaterialisePolicyRow,
+  computeOccurrenceDays,
+  runScheduleMaterialiseCron,
+} from "./jobs/schedule-materialise";
+export {
+  type Idg6PacketInclusionCandidate,
+  type Idg6PacketPort,
+  type Idg7PacketCarePlanContext,
+  type Idg7PacketPort,
+  type PacketBuildWorkerDeps,
+  runPacketBuildCron,
+} from "./jobs/packet-build";
 export { M14_PLATFORM_JOB_ID, wireM14Tenancy } from "./wiring";

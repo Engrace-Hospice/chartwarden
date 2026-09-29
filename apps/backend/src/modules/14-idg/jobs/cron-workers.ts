@@ -7,27 +7,41 @@
 import type { DbClient } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, type Job, Queue, Worker } from "bullmq";
+import type Redis from "ioredis";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";
 import { reviewClockPatientsForOrg } from "./cron-store";
-import { M14_JOB_SCHEDULES, M14_QUEUES, M14_QUEUE_PARAMS, planReviewClockSweep } from "./index";
+import type { ActiveOrgListPort } from "./index";
+import {
+  M14_JOB_SCHEDULES,
+  M14_QUEUES,
+  M14_QUEUE_PARAMS,
+  M14_WORKER_SYSTEM_USER_ID,
+  planReviewClockSweep,
+} from "./index";
+import type { Idg6PacketPort, Idg7PacketPort } from "./packet-build";
+import { runPacketBuildCron } from "./packet-build";
+import type { Idg1LocationTimezonePort } from "./schedule-materialise";
+import { runScheduleMaterialiseCron } from "./schedule-materialise";
 
-/** The system actor id the cron stamps on its per-org `withOrgContext` tx (audit attribution). Grepped the
- * repo for every `00000000-0000-0000-0000-0000000000xx` constant first: M7 uses `...07`, M9 uses `...09`,
- * M25 uses `...e5`, M26 uses `...e6` — `...14` (M14's own module number) is unused. */
-const M14_WORKER_SYSTEM_USER_ID = "00000000-0000-0000-0000-000000000014";
+export type { ActiveOrgListPort } from "./index";
+export { M14_WORKER_SYSTEM_USER_ID } from "./index";
 
-/** The M2 active-org enumerator the cron fan-out reads (runs under withPlatformContext when bound). */
-export interface ActiveOrgListPort {
-  listActiveOrgs(): Promise<readonly { readonly organizationId: string }[]>;
-}
-
-/** The dep bag the composition root injects. `outbox` is REQUIRED; `activeOrgs` defaults fail-closed
- * (the M9/M10 convention — only `activeOrgs` gets the lazy fail-closed thunk). */
+/** The dep bag the composition root injects. `outbox` is REQUIRED; every fan-out/cross-module port
+ * defaults fail-closed (the M9/M10 convention — only these get the lazy fail-closed thunk, F-171 extends
+ * it from `activeOrgs` alone to the `redis`/`m6`/`m7` ports `packet-build.ts` needs). */
 export interface M14WorkerDeps {
   readonly connection: ConnectionOptions;
   readonly db: DbClient;
   readonly outbox: IdgWriteOutboxPort;
   readonly activeOrgs?: ActiveOrgListPort;
+  /** F-171 — the Valkey client `packet-build.ts`'s F-164 "since last IDG" cache read needs. */
+  readonly redis?: Redis;
+  /** F-171 — the M6 §2.3 D9 inclusion + current-LOC org-explicit port (`packet-build.ts`). */
+  readonly m6?: Idg6PacketPort;
+  /** F-171 — the M7 §2.4 care-plan-summary org-explicit port (`packet-build.ts`). */
+  readonly m7?: Idg7PacketPort;
+  /** F-171 — the M1 `FoundationSiteReader.locationTimezone` org-explicit port (`schedule-materialise.ts`). */
+  readonly locationTimezone?: Idg1LocationTimezonePort;
   now?: () => Date;
 }
 
@@ -48,18 +62,66 @@ function activeOrgsOf(deps: M14WorkerDeps): ActiveOrgListPort {
   );
 }
 
+function m6Of(deps: M14WorkerDeps): Idg6PacketPort {
+  return (
+    deps.m6 ?? {
+      inclusionForOrg: () =>
+        unbound("m6.inclusionForOrg", "bind idgPacketInclusionForOrg at the composition root"),
+      currentLevelOfCareForOrg: () =>
+        unbound("m6.currentLevelOfCareForOrg", "bind idgCurrentLevelOfCareForOrg at the composition root"),
+    }
+  );
+}
+
+function m7Of(deps: M14WorkerDeps): Idg7PacketPort {
+  return (
+    deps.m7 ?? {
+      carePlanContextForOrg: () =>
+        unbound("m7.carePlanContextForOrg", "bind idgPacketCarePlanContextForOrg at the composition root"),
+    }
+  );
+}
+
+function locationTimezoneOf(deps: M14WorkerDeps): Idg1LocationTimezonePort {
+  return (
+    deps.locationTimezone ?? {
+      locationTimezone: () =>
+        unbound(
+          "locationTimezone.locationTimezone",
+          "bind M1's FoundationSiteReader.locationTimezone at the composition root",
+        ),
+    }
+  );
+}
+
+function redisOf(deps: M14WorkerDeps): Redis {
+  if (deps.redis) return deps.redis;
+  const err = (): never => {
+    throw new Error("M14_WORKER_PORT_UNBOUND: redis — bind the Valkey client at the composition root");
+  };
+  return new Proxy({}, { get: () => err }) as Redis;
+}
+
 /** Build the {@link M14WorkerDeps} from the composition-root primitives (the M25/M9 `buildMxWorkerDeps` shape). */
 export function buildM14WorkerDeps(deps: {
   connection: ConnectionOptions;
   db: DbClient;
   outbox: IdgWriteOutboxPort;
   activeOrgs?: ActiveOrgListPort;
+  redis?: Redis;
+  m6?: Idg6PacketPort;
+  m7?: Idg7PacketPort;
+  locationTimezone?: Idg1LocationTimezonePort;
 }): M14WorkerDeps {
   return {
     connection: deps.connection,
     db: deps.db,
     outbox: deps.outbox,
     activeOrgs: deps.activeOrgs,
+    redis: deps.redis,
+    m6: deps.m6,
+    m7: deps.m7,
+    locationTimezone: deps.locationTimezone,
     now: () => new Date(),
   };
 }
@@ -207,7 +269,11 @@ function bullmqCheckpoint(job: Job): ReviewClockSweepCheckpoint {
   };
 }
 
-/** Construct the `idg.review-clock-sweep` cron `Worker` (the caller owns lifecycle — `close()` on shutdown). */
+/** Construct all THREE M14 crons (the caller owns lifecycle — `close()` on shutdown): the pre-existing
+ * `idg.review-clock-sweep`, plus F-171's `idg.schedule-materialise` (§7.1) and `idg.packets-cron` (§4.9.1
+ * `tminus-24h-build`) — the real T-24h packet-build worker. `m6`/`m7`/`redis` resolve through the same
+ * fail-closed-thunk pattern `activeOrgs` already uses, so an unwired port throws loudly on first USE
+ * rather than at construction. */
 export function registerM14CronWorkers(deps: M14WorkerDeps): Worker[] {
   const { connection } = deps;
   return [
@@ -219,26 +285,77 @@ export function registerM14CronWorkers(deps: M14WorkerDeps): Worker[] {
         concurrency: M14_QUEUE_PARAMS.reviewClockSweep.concurrency,
       },
     ),
+    new Worker(
+      M14_QUEUES.scheduleMaterialise,
+      async () =>
+        runScheduleMaterialiseCron({
+          db: deps.db,
+          outbox: deps.outbox,
+          activeOrgs: activeOrgsOf(deps),
+          locationTimezone: locationTimezoneOf(deps),
+          now: deps.now,
+        }),
+      { connection, concurrency: M14_QUEUE_PARAMS.scheduleMaterialise.concurrency },
+    ),
+    new Worker(
+      M14_QUEUES.packetsBuild,
+      async () =>
+        runPacketBuildCron({
+          db: deps.db,
+          outbox: deps.outbox,
+          activeOrgs: activeOrgsOf(deps),
+          redis: redisOf(deps),
+          m6: m6Of(deps),
+          m7: m7Of(deps),
+          now: deps.now,
+        }),
+      { connection, concurrency: M14_QUEUE_PARAMS.packetsBuild.concurrency },
+    ),
   ];
 }
 
-/** Register the §4.8 repeatable cron schedule, threading the parsed backoff + `attempts` from
- * `M14_QUEUE_PARAMS`. `removeOnFail: false` keeps the queue's own failed-jobs set as the de facto DLQ (the
- * M9/M10/M25 convention — no separate literal `Queue` for `M14_DLQ`). Returns the `Queue` to `close()`. */
+/** Register the §4.8 repeatable cron schedules for all three M14 queues, threading the parsed backoff +
+ * `attempts` from `M14_QUEUE_PARAMS`. `removeOnFail: false` keeps each queue's own failed-jobs set as the
+ * de facto DLQ (the M9/M10/M25 convention — no separate literal `Queue` for `M14_DLQ`). Returns the
+ * `Queue`s to `close()`. */
 export async function scheduleM14Jobs(connection: ConnectionOptions): Promise<Queue[]> {
-  const queue = new Queue(M14_QUEUES.reviewClockSweep, { connection });
-  const p = M14_QUEUE_PARAMS.reviewClockSweep;
-  await queue.add(
-    "scheduled",
-    {},
+  const specs: ReadonlyArray<{
+    readonly queue: (typeof M14_QUEUES)[keyof typeof M14_QUEUES];
+    readonly pattern: string;
+    readonly params: (typeof M14_QUEUE_PARAMS)[keyof typeof M14_QUEUE_PARAMS];
+  }> = [
     {
-      repeat: { pattern: M14_JOB_SCHEDULES.reviewClockSweep },
-      priority: p.priority,
-      attempts: p.attempts,
-      backoff: parseBackoff(p.backoff),
-      removeOnComplete: true,
-      removeOnFail: false,
+      queue: M14_QUEUES.reviewClockSweep,
+      pattern: M14_JOB_SCHEDULES.reviewClockSweep,
+      params: M14_QUEUE_PARAMS.reviewClockSweep,
     },
-  );
-  return [queue];
+    {
+      queue: M14_QUEUES.scheduleMaterialise,
+      pattern: M14_JOB_SCHEDULES.scheduleMaterialise,
+      params: M14_QUEUE_PARAMS.scheduleMaterialise,
+    },
+    {
+      queue: M14_QUEUES.packetsBuild,
+      pattern: M14_JOB_SCHEDULES.packetsBuild,
+      params: M14_QUEUE_PARAMS.packetsBuild,
+    },
+  ];
+  const queues: Queue[] = [];
+  for (const spec of specs) {
+    const queue = new Queue(spec.queue, { connection });
+    await queue.add(
+      "scheduled",
+      {},
+      {
+        repeat: { pattern: spec.pattern },
+        priority: spec.params.priority,
+        attempts: spec.params.attempts,
+        backoff: parseBackoff(spec.params.backoff),
+        removeOnComplete: true,
+        removeOnFail: false,
+      },
+    );
+    queues.push(queue);
+  }
+  return queues;
 }

@@ -194,6 +194,8 @@ import {
   activeAdmissionSitingForPatientForOrg,
   admissionIsActiveForOrg,
   admissionSchedulingContextForOrg,
+  idgCurrentLevelOfCareForOrg,
+  idgPacketInclusionForOrg,
   buildM6DocumentBackrefConsumer,
   buildM6LevelOfCareChangeSignedConsumer,
   buildM6ProposalAcceptedConsumer,
@@ -221,6 +223,7 @@ import {
   createDbCarePlanAbacResolver,
   createDrizzleCarePlanEraseStore,
   createDrizzleCarePlanReaderStore,
+  idgPacketCarePlanContextForOrg,
   mountCarePlanRoutes,
   registerCarePlanAbacPredicates,
   registerCarePlanErasers,
@@ -518,6 +521,8 @@ import {
   M22_DOCUMENT_RENDERED_EVENT,
   M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
+  buildM22LabBackrefConsumer,
+  buildM22MedicationListConsumer,
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
   createDrizzleDocumentSeamStore,
@@ -3127,7 +3132,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // had no UPDATE anywhere in the codebase before this.
           mountOrganizationLifecycleRoutes(app, dbHandle.db, m2OutboxPublisher);
           mountAuditRoutes(app, dbHandle.db, { outbox: m4OutboxPublisher }); // M4 — audit-log search + GAP-003 compliance surface
-          mountPatientRoutes(app, dbHandle.db); // M5 — patient census/chart READS on the real patient table
+          mountPatientRoutes(app, dbHandle.db, m5OutboxPublisher); // M5 — patient census/chart reads + §4.3 direct merge (F-171, #248)
           registerProviderEntityLookupRoutes(app, dbHandle.db); // M1 — provider-entity selector lookup for UX surfaces
           registerLocationLookupRoutes(app, dbHandle.db); // M1 (#50) — location selector for the admission activation ceremony
           mountAdmissionRoutes(
@@ -5048,19 +5053,41 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       "M10 §4.8 BullMQ HOPE crons constructed (watchdogs; iQIES submission is the manual package flow)",
     );
 
-    // ── M14 §4.8 `idg.review-clock-sweep` cron (GAP-092 — the M9/M10/M25 worker-runner shape) ────────────
+    // ── M14 §4.8 crons: `idg.review-clock-sweep` (GAP-092), `idg.schedule-materialise` (§7.1) and
+    // `idg.packets-cron` (§4.9.1 `tminus-24h-build`, F-171 — the real T-24h packet-build worker) — the
+    // M9/M10/M25 worker-runner shape. `m6`/`m7` are the org-explicit ports `packet-build.ts` needs
+    // (`idgPacketInclusionForOrg`/`idgCurrentLevelOfCareForOrg` on M6, `idgPacketCarePlanContextForOrg` on
+    // M7), wired here rather than imported by M14 directly — a locally-declared structural port type on
+    // the M14 side, the `arch:boundaries` type-only-import rule (F-165's `m16-plan-closed.ts` precedent).
     const m14ActiveOrgs = buildActiveOrgEnumerator({
       platformDb: dbHandle.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M14_PLATFORM_JOB_ID,
       reason:
-        "M14 §4.8 idg.review-clock-sweep cron fan-out (active-org enumeration)",
+        "M14 §4.8 idg.review-clock-sweep / idg.schedule-materialise / idg.packets-cron fan-out (active-org enumeration)",
     });
     const m14WorkerDeps = buildM14WorkerDeps({
       connection: queueConnection,
       db: dbHandle.db,
       outbox: m14OutboxPublisher,
       activeOrgs: m14ActiveOrgs,
+      redis: m14SinceLastIdgRedisClient ?? undefined,
+      m6: {
+        inclusionForOrg: (organizationId, locationId, asOfIso, wrapUpDays) =>
+          idgPacketInclusionForOrg(dbHandle.db, organizationId, locationId, asOfIso, wrapUpDays),
+        currentLevelOfCareForOrg: (organizationId, admissionId, asOfIso) =>
+          idgCurrentLevelOfCareForOrg(dbHandle.db, organizationId, admissionId, asOfIso),
+      },
+      m7: {
+        carePlanContextForOrg: (organizationId, patientId, asOfIso) =>
+          idgPacketCarePlanContextForOrg(dbHandle.db, organizationId, patientId, asOfIso),
+      },
+      locationTimezone: {
+        locationTimezone: (organizationId, locationId) =>
+          withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
+            buildFoundationSiteReader().locationTimezone(tx as unknown as DbClient, locationId),
+          ),
+      },
     });
     const m14Workers = registerM14CronWorkers(m14WorkerDeps);
     attachDlqAlertsToAll(m14Workers, "m14");
@@ -5711,6 +5738,60 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // The §7.2 DOWNSTREAM half. The render and this emit are two transactions (the renderer opens
             // its own), which is why the consumer re-announces on an idempotent re-delivery: a crash
             // between them is precisely what gets redelivered.
+            emitRendered: ({ organizationId, ...payload }) =>
+              withOrgContext(
+                dbHandle.db,
+                { organizationId, userId: "" },
+                (tx) =>
+                  m22OutboxPublisher.publish(tx as never, {
+                    eventName: M22_DOCUMENT_RENDERED_EVENT,
+                    payload,
+                    organizationId,
+                    aggregateKind: "document",
+                    aggregateId: payload.documentId,
+                  }),
+              ),
+          }),
+          // F-171 (#248) — the LIVE `m12.medication_order.list_changed` → `patient_medication_list`
+          // render. NOT part of the generic REQUEST_SHAPES pipeline above: the diff payload
+          // (`{patientId, addedOrderIds, removedOrderIds}`) carries no renderable content, so this
+          // consumer resolves the CURRENT active-medication set fresh, at delivery time, via M12's real
+          // `MedicationOrderProvider` seam instead (see medication-list-bindings.ts's own header for why
+          // and for the ambient-request-context wrap the underlying seam read needs).
+          buildM22MedicationListConsumer({
+            store: createDrizzleDocumentSeamStore(dbHandle.db),
+            onRefusal: (r) =>
+              app.log.warn(
+                { event: r.eventType, org: r.organizationId, patient: r.patientId, detail: r.detail },
+                `M22 medication-list render refused: ${r.detail}`,
+              ),
+            emitRendered: ({ organizationId, ...payload }) =>
+              withOrgContext(
+                dbHandle.db,
+                { organizationId, userId: "" },
+                (tx) =>
+                  m22OutboxPublisher.publish(tx as never, {
+                    eventName: M22_DOCUMENT_RENDERED_EVENT,
+                    payload,
+                    organizationId,
+                    aggregateKind: "document",
+                    aggregateId: payload.documentId,
+                  }),
+              ),
+          }),
+          // F-171 (#248) — the LIVE `m11.order.results_received` → `lab_results_pdf` render. NOT part of
+          // the generic REQUEST_SHAPES pipeline above (deliberately — see lab-backref-consumer.ts's own
+          // header for why: `lab_results_pdf` shares its aggregateType with the order-FORM render, so
+          // aggregate-level idempotency would silently skip it forever once an order's form had rendered).
+          // `store:` is a THIRD `createDrizzleDocumentSeamStore` instance, the same one-per-consumer
+          // pattern the two consumers above use.
+          buildM22LabBackrefConsumer({
+            store: createDrizzleDocumentSeamStore(dbHandle.db),
+            onDeferred: (d) =>
+              app.log.warn(
+                { org: d.organizationId, order: d.orderId, observation: d.observationId },
+                "M22 lab-results render deferred: M29 observation not yet resolved",
+              ),
             emitRendered: ({ organizationId, ...payload }) =>
               withOrgContext(
                 dbHandle.db,

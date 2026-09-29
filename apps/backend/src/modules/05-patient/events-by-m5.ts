@@ -146,12 +146,25 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m5.patient.merged",
     moduleOwner: "m5",
     description:
-      "Two charts merged; document re-attach (M22) + FHIR Patient.link projection (M28, F-115/#248: at request time, not via this event).",
+      "Two charts merged (`patientId` = the SURVIVOR/target, `sourcePatientId` = the duplicate folded away); FHIR Patient.link projection (M28, F-115/#248: at request time, not via this event). Real producer: `merges-db.ts`'s `mergePatients` (F-171, #248) — the §4.3 direct-merge route.",
     payloadSchema: Type.Object({ ...corePatient, sourcePatientId: Type.String() }),
     // F-142 (#248) — m35 added: M35's own D21 (locked) names this event explicitly, with its own
     // rejected-alternative text spelling out why: "skipping `m5.patient.merged` — leaves pseudonym
     // aggregates wrong post-merge."
-    declaredConsumers: ["m22", "m35"],
+    // F-171 (#248) — m22 MOVED to seamConsumers, not dropped: `22-documents/lifecycle/merge-redirect.ts`
+    // (`resolvePatientRedirect`/`applyPatientMergeCascade`, M22-T03) is a complete, unit-tested pure core
+    // whose OWN header states the real design — "M22 does NOT mutate `document.patient_id` eagerly on
+    // the merge event in the read path — on every fetch it resolves the document's stored `patient_id`
+    // through the merge chain to the surviving patient" — a SEAM PULL against live `patient.merged_into_id`
+    // state, never a push. The `outbox-deferred-consumers.ts` m22 group's prior framing ("a real per-
+    // document `UPDATE document SET patient_id = ...` M22 would have to perform") was checked against
+    // this file directly and found wrong: no such write exists or is designed, and this pure core has
+    // zero real callers anywhere in `22-documents/` (grepped outside its own barrel export + unit test) —
+    // the read-time redirect is itself still unwired (a real, separate M22-owned gap: a DB-backed
+    // `MergeFacts` + threading it through M22's document-fetch routes), reported here rather than built,
+    // since it touches M22's read surface broadly and is not an outbox-consumer build.
+    declaredConsumers: ["m35"],
+    seamConsumers: ["m22"],
     isOutboxOnly: true,
   },
   {
