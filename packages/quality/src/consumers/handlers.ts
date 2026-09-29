@@ -268,6 +268,22 @@ export async function handleMedicationErrorReported(
   return { eventName: "m12.medication.error_reported", effects: ["incident_draft"] };
 }
 
+/**
+ * `m37.restraint.applied` → auto-file a `restraint_use` incident draft (F-185, #248, D8). Exact mirror of
+ * {@link handleMedicationErrorReported}: the consumer binding injects the resolved `occurredAt`, the M30
+ * service `reportedByMembershipId`, and the `triggeringEventOutboxId`, plus a `providerEntityId` resolved
+ * off M37's `ipu_admission` (the payload carries no `providerEntityId` — see the consumer binding's own
+ * doc comment); this handler reuses the pure {@link buildIncidentDraftFromEvent} and persists the draft.
+ */
+export async function handleRestraintApplied(
+  event: Extract<IncidentTriggerEvent, { type: "m37.restraint.applied" }>,
+  ports: M30ConsumerPorts,
+): Promise<UpstreamConsumeReport> {
+  const row = buildIncidentDraftFromEvent(event);
+  await ports.createIncidentDraft(row);
+  return { eventName: "m37.restraint.applied", effects: ["incident_draft"] };
+}
+
 /** The minimal `m18.evv.visit_verified` payload M30 reads (§4.10). */
 export interface EvvVisitVerifiedEvent {
   readonly eventId: string;

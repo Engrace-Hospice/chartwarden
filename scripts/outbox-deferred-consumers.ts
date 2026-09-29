@@ -302,11 +302,16 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       " the same blocker as `m12.medication.error_reported` in the first m30 group above — F-165" +
       " already established that event's real gap is 'no producer anywhere', unrelated to actor" +
       " identity; an earlier F-184 draft of this paragraph miscited it as the same gap and has been" +
-      " corrected).",
+      " corrected). **F-185 (#248) — built and bound.** The additive enum migration landed" +
+      " (`0264_m30_incident_kind_restraint_use.sql`, `restraint_use` widened onto `m30_incident_kind`)," +
+      " M30's `createIncidentDraft` port is real (`M30_SYSTEM_MEMBERSHIP_ID`, the same fifth-precedent" +
+      " sentinel this paragraph already named), and `providerEntityId` resolves via a new org-explicit" +
+      " `restraintAdmissionSitingForOrg` M37 seam (the `bereavementPlanSitingForOrg` shape, injected as a" +
+      " port into `buildM30RestraintAppliedConsumer`). `m37.restraint.applied` drops out of this" +
+      " deferral list.",
     events: [
       "m15.volunteer.ratio_recomputed",
       "m16.bereavement.plan_skipped_per_patient_opt_out",
-      "m37.restraint.applied",
       "m6.admission.on_hold",
       "m6.admission.resumed",
     ],

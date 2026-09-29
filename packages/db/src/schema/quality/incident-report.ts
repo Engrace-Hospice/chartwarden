@@ -39,6 +39,10 @@ export const m30IncidentKind = pgEnum("m30_incident_kind", [
   "allegation_of_abuse",
   "exposure_event",
   "other_safety_event",
+  // F-185 (#248) — M37 `m37.restraint.applied` auto-files a `restraint_use` draft (thin-pointer payload:
+  // restraintEventId + restraintKind + an auto-generated narrativeText; see `../../../quality/src/
+  // incidents/auto_creator.ts`).
+  "restraint_use",
 ]);
 
 export const m30IncidentSeverity = pgEnum("m30_incident_severity", [

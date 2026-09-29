@@ -764,6 +764,7 @@ import {
   buildM30ClaimAdjudicatedConsumer,
   buildM30HopeSubmissionAcceptedConsumer,
   buildM30RecomputeEnqueue,
+  buildM30RestraintAppliedConsumer,
   buildM30WorkerDeps,
   createDrizzleQualityEraseStore,
   mountM30Routes,
@@ -918,6 +919,9 @@ import {
   validateIpuAIBlock,
   wireM37Tenancy,
 } from "./modules/37-ipu/index";
+// F-185 (#248) — M37's org-explicit restraint-admission-siting seam, injected as a port into M30's
+// restraint-applied consumer (M30's manifest `dependsOn` excludes 37, the F-160 `CapConsumerStore` shape).
+import { restraintAdmissionSitingForOrg } from "./modules/37-ipu/seams/restraint-admission-siting-for-org";
 import {
   createDbTerminologyStore,
   createDrizzleTerminologyEraseStore,
@@ -5749,6 +5753,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM30BereavementPlanClosedConsumer({
             db: dbHandle.db,
             bereavementPlanSitingForOrg,
+          }),
+          // F-185 (#248) — the M37 restraint-application consumer. Auto-files a `restraint_use` incident
+          // draft (D8, thin-pointer payload). `restraintAdmissionSitingForOrg` is M37's seam, injected as
+          // a port — M30's manifest `dependsOn` excludes 37 (the same F-160 `CapConsumerStore` shape).
+          buildM30RestraintAppliedConsumer({
+            db: dbHandle.db,
+            restraintAdmissionSitingForOrg,
           }),
           // F-158 (#248) — M37's §4.5 "If patient has open `ipu_admission` → cascade-discharge", M37's
           // first outbox consumer. Death discharges are a deliberate no-op here (see the file header) —

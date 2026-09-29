@@ -35,7 +35,8 @@ export type IncidentKind =
   | "complaint"
   | "allegation_of_abuse"
   | "exposure_event"
-  | "other_safety_event";
+  | "other_safety_event"
+  | "restraint_use";
 
 /** Incident severity band — mirrors `m30_incident_severity` (`incident-report.ts`). */
 export type IncidentSeverity = "minor" | "moderate" | "severe" | "critical";
