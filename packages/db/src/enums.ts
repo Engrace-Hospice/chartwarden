@@ -2046,6 +2046,15 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   "patient_amendment_statement_of_disagreement",
   "consent_record",
   "intake_source",
+  // F-144 (#248, mig 0251) — the six document kinds behind `m23.billing.document_render_requested`,
+  // `m24.medicaid_billing.document_render_requested`, and `m25.denial_resolution_letter
+  // .render_requested`, all three catalogued and none ever emitted (see packages/types/src/documents.ts).
+  "noe_confirmation_receipt",
+  "notr_confirmation_receipt",
+  "claim_acknowledgment_letter",
+  "denial_appeal_cover_letter",
+  "medicaid_claim_acknowledgment_letter",
+  "denial_resolution_letter",
   "other",
 ]);
 

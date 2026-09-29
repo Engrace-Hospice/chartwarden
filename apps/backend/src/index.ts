@@ -570,6 +570,18 @@ import {
   registerM26PublishedSeams,
   scheduleM26Jobs,
 } from "./modules/26-cap/index";
+// F-160 (#248) — the CapConsumerStore build: a real Drizzle-backed store for M26's `handlers-unbound`
+// group, fed by two new org-explicit seam reads (M5's MBI, M6's first-election-in-range) injected as
+// ports since M26's manifest dependsOn is [1, 23, 36] — it cannot import M5 or M6 directly.
+import { mbiNormalizedForPatient } from "./modules/05-patient/seams/mbi-reader";
+import { firstElectionEffectiveDateInRangeForOrg } from "./modules/06-admission/seams/cap-election-context";
+import { createDrizzleCapConsumerStore } from "./modules/26-cap/consumers/drizzle-store";
+import { buildM26UpstreamConsumer } from "./modules/26-cap/consumers/outbox-binding";
+// F-160 (#248) — M31's first outbox consumers: the telehealth force-end/re-mint/reconcile trio over
+// `telehealth_visit`, M31's own owned table.
+import { buildM31VisitCancelledTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m17-visit-cancelled-telehealth";
+import { buildM31VisitRescheduledTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m17-visit-rescheduled-telehealth";
+import { buildM31EncounterSignedTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m8-encounter-signed-telehealth";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
 // (the M30 precedent). WX-PR-013 bound the recompute-enqueue producer + the outbox/alerts/active-org worker
@@ -5157,6 +5169,30 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             db: dbHandle.db,
             outbox: m16OutboxPublisher,
           }),
+          // F-160 (#248) — M26's CapConsumerStore, 8 of 9 `handlers-unbound` events now live-bound.
+          buildM26UpstreamConsumer(
+            createDrizzleCapConsumerStore(dbHandle.db, {
+              mbi: {
+                mbiNormalizedForPatient: (organizationId, patientId) =>
+                  mbiNormalizedForPatient(dbHandle.db, organizationId, patientId),
+              },
+              firstElection: {
+                firstElectionEffectiveDateInRange: (organizationId, patientId, from, to) =>
+                  firstElectionEffectiveDateInRangeForOrg(
+                    dbHandle.db,
+                    organizationId,
+                    patientId,
+                    from,
+                    to,
+                  ),
+              },
+            }),
+          ),
+          // F-160 (#248) — M31's telehealth trio: force-end on M17 visit cancel/reschedule, reconcile
+          // on the M8 encounter that closed out the call.
+          buildM31VisitCancelledTelehealthConsumer({ db: dbHandle.db }),
+          buildM31VisitRescheduledTelehealthConsumer({ db: dbHandle.db }),
+          buildM31EncounterSignedTelehealthConsumer({ db: dbHandle.db }),
           buildM8VisitPublishedConsumer({
             db: dbHandle.db,
             outbox: m8OutboxPublisher,

@@ -24,6 +24,7 @@ import {
   normalizeDocumentRequest,
 } from "../src/modules/22-documents/index";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
@@ -529,6 +530,14 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       "m6.nor.acknowledged",
       "m6.revocation.created",
       "m6.discharge.created",
+      // F-144 (#248) — four render requests catalogued, spec-named by their producing module's own
+      // document-request table, and never emitted anywhere (the producer-side gap, not a declaration
+      // gap): the M13 machine's effect list was never read, and M23/M24/M25 had every typed builder and
+      // no caller.
+      "m13.administration_record.document_requested",
+      "m23.billing.document_render_requested",
+      "m24.medicaid_billing.document_render_requested",
+      "m25.denial_resolution_letter.render_requested",
     ]);
   });
 
@@ -554,6 +563,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
         ...M20_OUTBOX_EVENTS,
         ...M21_OUTBOX_EVENTS,
         ...M23_OUTBOX_EVENTS,
+        ...M24_OUTBOX_EVENTS,
         ...M25_OUTBOX_EVENTS,
         ...M27_OUTBOX_EVENTS,
         ...M33_OUTBOX_EVENTS,

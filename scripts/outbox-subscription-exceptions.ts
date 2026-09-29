@@ -243,20 +243,6 @@ export const SUBSCRIPTION_EXCEPTIONS: readonly SubscriptionExceptionGroup[] = [
     events: ["m22.document.rendered"],
   },
   {
-    module: "m26",
-    kind: "handler-unbound",
-    reason:
-      "`consumers/handlers.ts` implements the patient-death cap effect and nothing binds it; the event is already deferred by other unbound consumers.",
-    events: ["m5.patient.deceased"],
-  },
-  {
-    module: "m26",
-    kind: "no-handler",
-    reason:
-      "M36 now catalogues this event (events-by-m36.ts, #205 follow-up; M19 and M20 are bound to it). M26's own `consumers/subscription-map.ts` names a handler (`surface-stuck-alert`) but it is a no-op stub (`dispatchM26UpstreamEvent`'s own comment: 'operational surfacing only; no ledger effect'), and M26's ENTIRE consumer relay is unbound — `consumers/index.ts`'s own header: 'NO live inbound relay loop exists yet … the composition root calls this with NO registrar', deferred pending the M5/M6 reader dependencies `CapConsumerStore` needs. Binding just this one topic would mean standing up the relay for a stub; the real producer (the out-of-band dispatch pipeline, events-by-m36.ts's header) doesn't exist yet either.",
-    events: ["m36.notification.delivery_failed"],
-  },
-  {
     module: "m27",
     kind: "handler-unbound",
     reason:

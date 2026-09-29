@@ -211,6 +211,54 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     aggregateIdFields: ["dischargeEventId"],
     templateKey: "discharge_summary",
   },
+  // ── F-144 (#248) — four render requests M22's own §4.11 sweep found catalogued, spec-named, and never
+  // emitted (the producer-side gap, not a declaration gap). All emit `patientId` inside the content blob
+  // (the M11/M12/M16 shape), never on the envelope.
+  //
+  // M13 — `formTemplate` is M13's OWN form name (`administration_record_v1`), the `m13.reconciliation
+  // .document_requested` shape one row up: the M22 published key is fixed here, not read off the payload.
+  "m13.administration_record.document_requested": {
+    aggregateIdFields: ["administrationRecordId"],
+    templateKey: "medication_administration_record",
+    contentField: "renderPayload",
+  },
+  // M23 — ONE wire event, FOUR artifacts, discriminated by `kind` (the M27/M33 `templateKeyByField`
+  // shape). `aggregateId` rides the payload body (the `document-render.ts` builders' own field name),
+  // not the envelope: all four kinds share the ONE event name, so the envelope's own aggregate would be
+  // whatever the LAST emit in the same transaction happened to carry.
+  "m23.billing.document_render_requested": {
+    aggregateIdFields: ["aggregateId"],
+    templateKeyByField: {
+      field: "kind",
+      map: {
+        noe_confirmation_receipt: "noe_confirmation_receipt",
+        notr_confirmation_receipt: "notr_confirmation_receipt",
+        claim_acknowledgment_letter: "claim_acknowledgment_letter",
+        denial_appeal_cover_letter: "denial_appeal_cover_letter",
+      },
+    },
+    contentField: "payload",
+  },
+  // M24 — the identical shape one module over. Only `claim_acknowledgment_letter` has a live producer
+  // today (ACK_ACCEPTED, `jobs/submission-jobs.ts`); the other three kinds the M24 spec names have no
+  // emit site, so they carry no map entry — a `kind` this map does not recognize is a malformed request
+  // (retry-then-DLQ), never a guess.
+  "m24.medicaid_billing.document_render_requested": {
+    aggregateIdFields: ["aggregateId"],
+    templateKeyByField: {
+      field: "kind",
+      map: { claim_acknowledgment_letter: "medicaid_claim_acknowledgment_letter" },
+    },
+    contentField: "payload",
+  },
+  // M25 — the manual (no-appeal) denial-resolution letter. One artifact, so the key is fixed; the
+  // aggregate is the `denial_case`, matching `denial_case.claim_id`'s own nullability (a denial may
+  // resolve with no claim yet attached — `patientId` in the content blob is honestly null then, F-099).
+  "m25.denial_resolution_letter.render_requested": {
+    aggregateIdFields: ["denialCaseId"],
+    templateKey: "denial_resolution_letter",
+    contentField: "payload",
+  },
 };
 
 /** Raised when a delivered render request cannot be read into M22's canonical shape (unknown event name,

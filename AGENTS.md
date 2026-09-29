@@ -2135,6 +2135,95 @@ regression on the touched shared files (`m16:bereavement-intake` 8/8, `m16:conse
 `m16:discharge-death-secondary` 5/5, `m6:cop-documents` 6/6, `m6:discharge-cascade` 6/6). Leaving #248
 open — 156 pairs across 22 modules remain.
 
+**A sixth round of parallel forks targeted five groups never before investigated for BUILD (only
+catalog-triaged) — M26, M31, M27, M30's `no-consumer-surface` M6 cluster, and 4 producer-side gaps
+inside M22 — and built the largest single haul of new bindings in this arc so far: 15 pairs across
+three modules, plus 2 more catalog corrections discovered and bound in the same pass (F-160, #248).**
+**M26's `CapConsumerStore` is real for the first time.** `cap_beneficiary_accrual.mbi_normalized`/
+`.first_election_in_period` (both NOT NULL) had no writer anywhere — M26's `handlers-unbound` group's
+own F-131 reason already named this as the blocker behind all 5 of its confirmed-genuine subscriptions.
+Fixed with two new org-explicit seam reads injected as PORTS rather than imported — M26's real manifest
+`dependsOn` is `[1, 23, 36]`, not the spec's unapplied proposed-patch list, so it cannot import M5 or M6
+directly: `mbiNormalizedForPatient` (M5, reading the already-CHECK-constrained `patient_identifier`
+kind='mbi' row nothing had ever read) and `firstElectionEffectiveDateInRangeForOrg` (M6, the F-121
+range-reader shape a third module over — `ElectionPeriodReader` only ever answered single-date lookups).
+`cap_period` is matched by `(organizationId, capYear)` alone rather than by CCN, deliberately mirroring
+`seam-impls.ts`'s own existing simplification — `openPeriod` still writes every `cap_period.ccn` as the
+literal `"000000"` sentinel pending the M40 bind, so a real per-patient CCN would never match it anyway.
+Building it surfaced two MORE pairs with real routing in `M26_SUBSCRIPTION_MAP` that the catalog had
+simply never declared: `m5.patient.deceased` (the identical `freeze-patient` action as the already-bound
+`m6.revocation.created`) and `m36.notification.delivery_failed` (a documented no-op, `surface-stuck-alert`
+— binding it still corrects the catalog/binding disagreement even though nothing observable happens on
+delivery yet, and the event still has no real producer). Both declared and bound in the same pass —
+**8 of M26's 9 candidates now live**; only `m25.remittance.claim_recouped` stays deferred, on a
+confirmed-still-live, pre-existing defect in `handleClaimReversed` (reads `patientId`/`priorPaidAmountCents`
+off a payload — `{originalClaimId, replacementClaimId|voidClaimId, reason}` — that carries neither).
+**M31 got its first outbox consumers ever** — no `31-portal/outbox-consumers/` directory existed before
+this pass. Built 3 of the 6 events F-139 had confirmed genuine: `m17.visit.cancelled`/`.rescheduled`
+force-end/re-mint a `telehealth_visit` room by driving the existing pure `canTransitionTelehealth`
+machine directly, and `m8.encounter.signed` reconciles an already-ended room once the encounter closes
+it out. The vendor-side `TelehealthProvider.endRoom` force-close call is deliberately NOT attempted —
+`telehealth_visit.vendor_room_id_cipher` has no decrypt path anywhere in this codebase, confirmed against
+the one production route with the identical need (`routes/telehealth.routes.ts`'s staff `/end` route
+never calls it either) — the DB-side transition is the real enforcement point regardless, since
+`foldParticipantJoin` refuses any join once the room is in an ended state. No `m31.telehealth.visit_ended`
+is emitted by any of the three: M31 currently emits ZERO `m31.*` outbox events anywhere in production, and
+inventing the platform's first one from a pure consumer would repeat the exact "declared relationship
+nobody decided" shape this arc exists to correct in the other direction. **2 of the remaining 3 stay
+blocked on the identical root cause, independently confirmed via two different code paths**: both
+`m39.consent.delegated_access.*` events and `m16.bereavement.contact_active` each need a
+`sourceConsentRecordId`/portal-account resolution no schema path in this codebase currently provides
+(`portal_caregiver_link`, the spec's own promised bridge table, doesn't exist — grepped, zero hits).
+**M22 built the 4 events F-144 had flagged as unbuilt on the PRODUCER side too** — every builder existed,
+nothing ever called one. `m13.administration_record.document_requested`: the pure `@wardenx/emar` machine
+had declared this effect since M13-T03, but the production write service reimplements `commit` inline and
+never read it — fixed by checking `administration_policy.emar_per_administration_pdf_enabled` directly.
+`m23.billing.document_render_requested` (all 4 of M23's typed builders), `m24.medicaid_billing
+.document_render_requested` (1 of M24's 4 spec-named kinds — the other 3 have no producer transition
+anywhere and stay honestly unbuilt), and `m25.denial_resolution_letter.render_requested` are each
+co-emitted in the same transaction as the underlying fact (the F-099/F-100/F-117 precedent). **Building
+the M24 half surfaced an independent, pre-existing production bug**: `terminalizeSubmissionAndTransition`
+passed the `withOrgContext` `""` GUC sentinel as `actorMembershipId` — a nullable UUID column, not a GUC —
+so every worker-driven Medicaid claim-state transition threw Postgres `22P02` on its first tick, in every
+environment, forever; `runClaimSubmit`/`runClaimPoll` had no test coverage anywhere in the repo before
+this pass. Fixed to the honest `null`. Six new `document_aggregate_type` enum values were needed
+(migration 0251, the F-099/migration-0239 additive-only precedent), one per artifact kind rather than a
+shared bucket, so two kinds' renders can never collide under the same idempotency key.
+**M27 and M30 stayed fully blocked, both freshly re-investigated with sharpened, more precise reasons
+rather than merely re-asserted.** M27's 2 remaining M21 invoice-accrual events hit three concrete blockers
+checked against the real schema: M27's `suppliesCents` is GL-account-aggregate (Worksheet A's own
+`tiesToTrialBalanceWithinDollar` cross-check against the Xero-derived trial balance), so landing a
+per-transaction M21 accrual would likely double-count against the same expense already flowing through
+the GL-mapping pipeline, with no shared invoice id to dedupe against; the one per-transaction precedent in
+M27's schema, `bad_debt_record`, is `cost_report_id NOT NULL` (scoped to one already-created report) while
+M21's payloads carry no `cost_report_id`/fiscal-year field at all. M30's 15-event compliance-window/
+survey-readiness cluster (M6 ×9, M15 ×4, M23 ×2) is blocked at THREE levels simultaneously, not merely
+"decisively cross-referenced" as the prior reason implied: none of the 15 map to any of the 28 currently
+registered measure codes; the seam method M30's own code CLAIMS to consume for the M6 cluster doesn't
+exist either — `m6-admission.ts`'s header comment says M30 consumes M6's `ComplianceWindowReader`, but the
+real `QualityAdmissionConsumer` interface has exactly three methods and none of them touch compliance
+windows, confirmed by direct read rather than trusting the comment (`bound is not computing`, F-042, one
+level deeper than usual — the seam itself was never built); and no alternate consumer table exists either
+(`cop_compliance_status` is human-checklist-only, `risk_register_entry`'s four source kinds don't include
+compliance windows or NOE/NOTR breaches). Building any of the 15 needs a new measure or a new
+non-recompute consumer table — real feature design, not a wiring gap. Net: **156 → 143** (15 bound via 3
+new consumer surfaces, 2 more catalog corrections bound in the same pass, 0 dropped as misdeclared; module
+count unchanged at 22 — none of the four partially-built groups emptied). Verified centrally, once, after
+all five forks' edits landed together plus one immediate follow-up fix for the 2 M26 catalog gaps:
+`bun run build`/`typecheck` clean (0 errors), full non-live suite 654 files / 9593 tests green with no
+regressions, `arch:fitness` 38/38 (`arch:outbox-bindings` confirms 143 pairs, down from 156, and 91 live
+bindings now covering 103 catalogued events, up from 87/95), a clean `check:boot:platform` run against a
+freshly migrated, RLS-enforced disposable Postgres (proving migration 0251 applies cleanly and the full
+91-binding dispatcher boots), all three new live suites run individually (`m26:cap-consumer-store` 9/9,
+`m31:portal-telehealth-consumers` 10/10, `f144:render-requests` 10/10), and seventeen sibling live suites
+re-run for regression on every touched shared file (`m13:emar-write` 24/24, `m13:emar-read-service` 5/5,
+`gap-022:m13-rn-case-manager` 12/12, `m23:claim-submit-worker` 3/3, `m23:noe-draft` 8/8, `m23:notr-draft`
+8/8, `m23:revalidate-triggers` 6/6, `m24:claim-line-assembly` 9/9, `m25:denial-seed-consumers` 9/9,
+`gap-023-024-038:render-handshake` 14/14, `gap-051:m33-export-render` 5/5, `m27:ecr-backref` 7/7,
+`m6:cop-document-renders` 6/6, `gap-004:death-cascade` 3/3, `m5:admission-siting` 4/4,
+`m6:loc-change-signed` 7/7, `m6:discharge-cascade` 6/6). Leaving #248 open — 143 pairs across 22 modules
+remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

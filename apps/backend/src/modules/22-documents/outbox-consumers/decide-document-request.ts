@@ -69,6 +69,28 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   "m6.nor.acknowledged", // nor
   "m6.revocation.created", // revocation
   "m6.discharge.created", // discharge_summary
+  // ── F-144 (#248) — four render requests M22's own §4.11 sweep confirmed were catalogued, named by
+  // their producing module's own document-request table, and STILL never emitted (the producer-side
+  // half of the gap, distinct from every event above this line, which was a catalog-declaration
+  // problem). Each is now genuinely emitted, in the SAME transaction as the fact it announces:
+  // `m13.administration_record.document_requested` — the pure `@wardenx/emar` machine has declared this
+  // as a `commit`-time effect on `perAdministrationPdfRequired` since M13-T03; the DB write service
+  // never read the effect list (it reimplements `commit` inline rather than calling
+  // `transitionAdministration`) and now checks the same tenant policy flag directly.
+  // `m23.billing.document_render_requested` — M23's own §4.10 table names this as the SOLE M22
+  // handshake for all four of its document kinds; co-emitted at NOE/NOTR `submit` and at claim
+  // `ack_277ca_accepted`/`ack_277ca_rejected`/`ack_999_rejected` (`services/claim-state-service.ts` +
+  // `services/noe-notr-state-service.ts`).
+  // `m24.medicaid_billing.document_render_requested` — the identical shape one module over; co-emitted
+  // at the Medicaid claim's `ACK_ACCEPTED` transition (`jobs/submission-jobs.ts`), the one trigger
+  // M24's own transition table names as document-relevant today (R&B activation / remittance posting
+  // are real, still-unbuilt M24 triggers for the OTHER three kinds the spec names — not built here).
+  // `m25.denial_resolution_letter.render_requested` — co-emitted at `resolveDenial` (the manual,
+  // no-appeal resolution transition; `routes/write-service-drizzle.ts`).
+  "m13.administration_record.document_requested", // medication_administration_record
+  "m23.billing.document_render_requested", // noe_confirmation_receipt | notr_confirmation_receipt | claim_acknowledgment_letter | denial_appeal_cover_letter
+  "m24.medicaid_billing.document_render_requested", // medicaid_claim_acknowledgment_letter
+  "m25.denial_resolution_letter.render_requested", // denial_resolution_letter
 ] as const;
 
 /** §4.11 render-request events the SPEC anticipates but no module's event catalog declares yet. Listed —
@@ -91,11 +113,9 @@ export const M22_ANTICIPATED_DOCUMENT_REQUEST_EVENTS = [
   // already uses. Inventing a seventh spelling would have been a new event on the platform's busiest
   // clinical module to say what six existing events already say.
   "m9.assessment.document_requested", // assessment record PDF
-  // CATALOGUED (`events-by-m13.ts`) and NOT emitted: the M13 machine pushes the outbox effect on
-  // `perAdministrationPdfRequired`, and the backend service that interprets M13's effects has no `outbox`
-  // arm at all — so the pure decider's request never becomes a row. Producer-side; kept here rather than
-  // subscribed, because a consumer bound to a name nothing emits is indistinguishable from working.
-  "m13.administration_record.document_requested", // eMAR record PDF (GAP-025)
+  // `m13.administration_record.document_requested` used to sit here (GAP-025: catalogued and not
+  // emitted, the effect-interpreter gap). It is now consumed (F-144, #248) — the DB write service reads
+  // the tenant PDF-policy flag and emits it at `commit`, the fix the old note here anticipated.
   "m14.packet.document_requested", // idg_patient_packet / idg_minutes
   "m16.bereavement.document_requested", // bereavement_letter (letterKind discriminator)
 ] as const;

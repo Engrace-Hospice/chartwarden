@@ -74,7 +74,13 @@ export const M36_OUTBOX_EVENTS: ModuleEventContribution = [
        *  `alertEventType`'s `mN.` prefix; meaningless to any other consumer. */
       sourceAggregateId: nullableId,
     }),
-    declaredConsumers: ["m19", "m20"],
+    // F-160 (#248) — m26 ADDED: M26's own `M26_SUBSCRIPTION_MAP` routes this topic to
+    // `surface-stuck-alert` (`dispatchM26UpstreamEvent`'s real switch arm, now live-bound in
+    // `26-cap/consumers/outbox-binding.ts`'s `BOUND_TOPICS`). The handler is a documented no-op today
+    // (operational surfacing only, no ledger effect) and this event still has no real producer (see
+    // this file's header) — binding it does not make a delivery observable yet, it only makes the
+    // catalog/binding agreement true instead of false.
+    declaredConsumers: ["m19", "m20", "m26"],
     isOutboxOnly: true,
   },
 ];

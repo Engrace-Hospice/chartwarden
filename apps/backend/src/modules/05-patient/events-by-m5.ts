@@ -133,7 +133,12 @@ export const M5_OUTBOX_EVENTS: ModuleEventContribution = [
     // inbound subscriptions ("skipping `m5.patient.merged` — leaves pseudonym aggregates wrong
     // post-merge" is D21's own rejected-alternative text for the sibling below, and `deceased` is a
     // peer in the same D21 list).
-    declaredConsumers: ["m23", "m29", "m35"],
+    // F-160 (#248) — m26 ADDED: M26's own `consumers/subscription-map.ts` (`M26_SUBSCRIPTION_MAP`)
+    // routes this topic to `freeze-patient` — the identical action, over the identical handler
+    // (`handleFreeze`), as the already-bound `m6.revocation.created` — to freeze the per-patient
+    // extrapolation denominator at death. Real routing logic, now live-bound in
+    // `26-cap/consumers/outbox-binding.ts`'s `BOUND_TOPICS`.
+    declaredConsumers: ["m23", "m26", "m29", "m35"],
     seamConsumers: ["m36"],
     isOutboxOnly: false,
   },

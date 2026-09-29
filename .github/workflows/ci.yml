@@ -465,7 +465,12 @@ jobs:
               name: "M25 denial-worklist seed consumers",
               scripts: "test:m25:denial-seed-consumers:live",
             }
-          - { name: "M26 Cap Management", scripts: "test:m26:cost-report-cap-seam:live" }
+          # F-160 (#248) — the CapConsumerStore build: real MBI/first-election org-explicit seam reads
+          # feeding a real Drizzle-backed store for 8 of M26's 9 `handlers-unbound` events.
+          - {
+              name: "M26 Cap Management",
+              scripts: "test:m26:cost-report-cap-seam:live test:m26:cap-consumer-store:live",
+            }
           - {
               name: "M30 HQRP & Quality",
               scripts:
@@ -473,7 +478,8 @@ jobs:
             }
           - {
               name: "M31 Portal & Telehealth",
-              scripts: "test:m31:portal-eraser:live test:m31:care-team-sync:live",
+              scripts:
+                "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live",
             }
           - {
               name: "M36 Messaging alerts",
@@ -484,6 +490,10 @@ jobs:
           # through the real outbox dispatcher into real `document`/`document_version` rows. Nothing in
           # this chain was executed before: the consumer did not exist and neither emitter fired.
           - { name: "M22 render handshake", scripts: "test:m22:render-handshake:live" }
+          # F-160 (#248) — 4 more M22 render-request producer/consumer pairs (M13 eMAR PDF request, M23
+          # billing NOE/NOTR/claim/denial letters, M24 Medicaid claim ack letter, M25 denial resolution
+          # letter): each producer had every builder and no caller.
+          - { name: "M22 F-144 render requests", scripts: "test:f144:render-requests:live" }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.

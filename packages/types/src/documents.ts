@@ -112,6 +112,18 @@ export type DocumentAggregateType =
   | "patient_amendment_statement_of_disagreement"
   | "consent_record"
   | "intake_source"
+  // F-144 (#248, mig 0251) — the four M23 §4.10 document kinds behind
+  // `m23.billing.document_render_requested`, the M24 §4.10 equivalent behind
+  // `m24.medicaid_billing.document_render_requested`, and M25's `m25.denial_resolution_letter
+  // .render_requested`. All six were catalogued render-request events with a published-in-spec
+  // template and no producer emit site anywhere — a producer-side gap distinct from (and found by the
+  // same sweep as) the catalog-declaration gaps F-099/F-100 fixed.
+  | "noe_confirmation_receipt"
+  | "notr_confirmation_receipt"
+  | "claim_acknowledgment_letter"
+  | "denial_appeal_cover_letter"
+  | "medicaid_claim_acknowledgment_letter"
+  | "denial_resolution_letter"
   | "other";
 
 /** §3.2 / §2.2.1 — the document lifecycle (mirrors `document_status`). */

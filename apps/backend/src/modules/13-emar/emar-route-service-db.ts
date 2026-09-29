@@ -1044,6 +1044,46 @@ export function createDbEmarBackend(
               recommendedReassessmentScale: "esas_r",
             },
           );
+
+        // §2.2 — the pure `@wardenx/emar` machine (`administration-record.ts`'s `commit` case) has
+        // declared `{kind: "request_document"} + {kind: "outbox", event: "m13.administration_record
+        // .document_requested"}` on `perAdministrationPdfRequired` since M13-T03; nothing in this
+        // service ever read that effect list (this route reimplements the commit inline rather than
+        // calling `transitionAdministration`, the M11/M12 convention note at the top of the file), so
+        // the request was computed and thrown away (F-144, #248). The tenant policy this mirrors is
+        // `administration_policy.emar_per_administration_pdf_enabled` — read here rather than through
+        // `getPolicy()` (a separate read op) because the commit needs the flag INSIDE this transaction
+        // to decide the emit; default OFF (no row) matches `DEFAULT_POLICY.emarPdfOnCommit`.
+        const [policyRow] = await tx
+          .select({ pdf: POL.emarPerAdministrationPdfEnabled })
+          .from(POL)
+          .limit(1);
+        if (policyRow?.pdf)
+          await emit(
+            tx,
+            orgId,
+            "m13.administration_record.document_requested",
+            "administration_record",
+            inserted.id,
+            {
+              administrationRecordId: inserted.id,
+              formTemplate: "administration_record_v1",
+              // F-099 — the chart-target patient rides inside `renderPayload` (`Type.Unknown()` on the
+              // catalog, the M11/M12 shape M22's normalizer already reads as its `content.patientId`
+              // fallback), never fabricated: `patientId` here is the same resolved identity the
+              // administration row itself was just filed under.
+              renderPayload: {
+                patientId,
+                admissionId,
+                medicationOrderId: args.medicationOrderId,
+                mode: args.mode,
+                administeredAt: args.administeredAt,
+                drugNameSnapshot: identity?.drugName ?? "",
+                doseAmountSnapshot: args.doseAmount ?? null,
+                doseUnitSnapshot: args.doseUnit ?? null,
+              },
+            },
+          );
         return toAdminView(inserted, barcodeMatchResult);
       });
     },

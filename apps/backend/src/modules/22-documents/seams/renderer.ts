@@ -172,6 +172,47 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "compliance",
     defaultTitle: "Appeal Packet",
   },
+  // M25 — the manual (no-appeal) denial-resolution letter, filed against `denial_case`. F-144 (#248):
+  // catalogued (`m25.denial_resolution_letter.render_requested`) and never emitted before this pass.
+  denial_resolution_letter: {
+    aggregateType: "denial_resolution_letter",
+    retentionClass: "compliance",
+    defaultTitle: "Denial Resolution Letter",
+  },
+  // M23's four §4.10 document kinds behind ONE wire event (`m23.billing.document_render_requested`,
+  // discriminated by `kind`) — F-144 (#248): `consumers/document-render.ts`'s four typed builders had
+  // every payload shape and no caller. All `compliance`: each is CMS-filing-adjacent correspondence, the
+  // same class `abn`/`nor`/`cti` already carry, not a clinical record.
+  noe_confirmation_receipt: {
+    aggregateType: "noe_confirmation_receipt",
+    retentionClass: "compliance",
+    defaultTitle: "Notice of Election Confirmation Receipt",
+  },
+  notr_confirmation_receipt: {
+    aggregateType: "notr_confirmation_receipt",
+    retentionClass: "compliance",
+    defaultTitle: "Notice of Termination/Revocation Confirmation Receipt",
+  },
+  claim_acknowledgment_letter: {
+    aggregateType: "claim_acknowledgment_letter",
+    retentionClass: "compliance",
+    defaultTitle: "Claim Acknowledgment Letter",
+  },
+  denial_appeal_cover_letter: {
+    aggregateType: "denial_appeal_cover_letter",
+    retentionClass: "compliance",
+    defaultTitle: "Denial Appeal Cover Letter",
+  },
+  // M24's §4.10 equivalent of `claim_acknowledgment_letter` above, behind its own wire event
+  // (`m24.medicaid_billing.document_render_requested`) — F-144 (#248). The other three kinds the M24
+  // spec names (R&B contract summary / remittance summary / denial-appeal cover letter) have no
+  // producer transition yet and deliberately get no descriptor here (an unpublished template is a
+  // visible retry-then-DLQ; publishing one for a render nobody requests would manufacture coverage).
+  medicaid_claim_acknowledgment_letter: {
+    aggregateType: "medicaid_claim_acknowledgment_letter",
+    retentionClass: "compliance",
+    defaultTitle: "Medicaid Claim Acknowledgment Letter",
+  },
   // M27's three, keyed by the `artifactKind` discriminator. The event's own payload schema pins
   // `retentionClass: "compliance"` for all three, which is what these carry.
   cost_report_ecr: {

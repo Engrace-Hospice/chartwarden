@@ -60,6 +60,7 @@ import {
   createInMemoryObjectStore,
 } from "../src/modules/22-documents/index";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import {
@@ -240,6 +241,9 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       M25_OUTBOX_EVENTS,
       M27_OUTBOX_EVENTS,
       M37_OUTBOX_EVENTS,
+      // F-144 (#248) — M22's render consumer now also subscribes to
+      // `m24.medicaid_billing.document_render_requested`; same reason as every entry above it.
+      M24_OUTBOX_EVENTS,
     ]);
     const txPublisher = buildTxOutboxPublisher(catalog);
     publisher = txPublisher;
