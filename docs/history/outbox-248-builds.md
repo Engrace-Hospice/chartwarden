@@ -1952,3 +1952,164 @@ the M6 reader side and the M30 consumer side) and `m15.volunteer.ratio_recompute
 seam anywhere). Verified: `build`/`typecheck` clean, `arch:fitness` 38/38 (declared-but-unbound: 42 → 36), full
 non-live suite green (655 files / 9622 tests, 0 failed) — another pure catalog/comment correction with no runtime
 behavior change. Leaving #248 open — 36 pairs across 13 modules remain.
+
+disposable Postgres, `check:boot:platform` clean with a double-checked platform credential URL. Leaving #248 open
+— 48 pairs across 13 modules remain.
+
+**F-178 (#248) — M29 outbound schema follow-ups: a feed→destination link, dedicated MSH identity columns, and the
+concurrent-redelivery race (fork B of the F-175 follow-ups).** F-175's resolver documented two schema gaps it had
+to work around and one race it could not close. **Routing:** `external_feed` had no column linking a feed to the
+lab it delivers to, so `OrmRequestedPayload.labDestinationFacilityId` was ignored and dispatch required exactly one
+active `orm_outbound` feed per org. Migration 0262 adds `lab_destination_facility_id` (a LOGICAL M40 facility id, no
+FK across the module edge; partial index on `(organization_id, lab_destination_facility_id)`), and the resolver's
+pure `selectOutboundFeed` now routes by it. The single-feed fallback survives ONLY for exactly one candidate whose
+link is genuinely NULL (a pre-F-178 tenant); a sole feed linked to a different facility never receives another
+destination's order (`no_feed_for_destination`), two feeds linked to one facility are `ambiguous_feed`. The retry
+sweep now resolves each queued row's OWN feed (`resolveById`) instead of demanding a sole feed, so adding a second
+feed no longer stalls rows already bound to the first. **Identity:** `msh_sending_application`/`_sending_facility`/
+`_receiving_application`/`_receiving_facility` replace the `displayName`-for-three-fields fallback; each is
+CHECK-constrained (1–180 chars, no `| ^ ~ \ &` and no control characters, so a value cannot break segment framing).
+MSH-3 alone defaults to the fixed platform identity `WARDENX` (a constant, not a guess). A feed missing a required
+field is REFUSED: the worker alerts and throws `OutboundFeedIdentityIncompleteError` (feed id + FIELD NAMES only), so
+the outbox dispatcher retries and dead-letters for redrive rather than silently dropping the order the way the
+`no_active_feed`/`ambiguous_feed` refusals do — it is an operator-fixable gap on the right destination. The admin
+create/update/detail routes, OpenAPI enrichment and typed client carry all five fields. **Idempotency, and a
+deliberate deviation from "add a unique index":** `hl7_message_outbound` is PARTITIONED BY RANGE (`queued_at`), and
+Postgres requires any unique index on a partitioned table to include the partition key — a `UNIQUE (organization_id,
+idempotency_key)` cannot exist, and one that included `queued_at` would never collide (each attempt stamps its own
+time). The race is closed instead with a transaction-scoped advisory lock on `(org, idempotency key)` taken before
+the existing SELECT: a concurrent redelivery queues behind the first and its SELECT (a fresh READ COMMITTED
+snapshot after the lock is granted) sees the committed row. The new live case FAILS without the lock (two rows, 3
+of 3 runs) and passes with it. If a database-level guarantee is ever wanted (a non-worker writer), the honest
+options are a tiny non-partitioned `(organization_id, idempotency_key)` guard table or a non-partitioned outbound
+table — both new-table work, not attempted here. **Residual, unchanged:** the DER-vs-PEM `channel_cert_pin`
+convention is still an assumption nothing mints, `mllp_plain` still has no production guard, and the M11
+`hl7_orm_requested` emitter is still unbuilt (fork C). Verified: `build`/`typecheck` clean, `arch:fitness` 38/38,
+`m29-outbound-dispatch.live` 13/13 (7 existing + 6 new: facility routing, no-fallback refusal, configured MSH
+identity on the wire, identity refusal, concurrent redelivery, MSH CHECK + cross-tenant RLS on the new columns), the
+new `m29-feed-resolver` unit suite, and `check:boot:platform` clean on a fresh migrated database.
+
+**F-178 (#248) — the PRODUCER of `m11.order.hl7_orm_requested`: the middle of the lab-order pipeline F-175 (M29's
+T08 worker) and F-177 (M11's `LabTransmissionApplier`) built either end of, and that nothing had ever fed.** A
+signed lab order never became an HL7 ORM and `transmission_status` never left `pending`: F-120 had left `lab`
+unbound because `OrmRequestedPayload` needs patient demographics, a resolved M40 physician and a destination
+facility, none of which M11's own tables hold. Built in one branch (`f178-m11-orm-emitter`): on SIGN of a lab
+order, in the SAME transaction, `emitOrmRequested` (`orders-route-service-db.ts`) gathers the facts through THREE
+injected ports (`orm-request/orm-requested.ts` — pure decision core + port shapes; `orm-request/ports.ts` — the
+default binding) and publishes through the real catalog-validating publisher. **The ports:** `patient(tx, org,
+patientId)` is a NEW M5-owned seam function `hl7OrmDemographicsInTx` (M11 has no `dependsOn` edge to 5, so it is
+injected, never imported; it runs on the caller's tx rather than opening its own `withOrgContext`, because a
+second pooled connection beside the sign tx risks pool exhaustion); `physician(org, mdmId)` reads M40's
+`MdmEntityProvider.resolvePhysician` and returns an NPI only for an NPI-anchored canonical with a well-formed
+10-digit value; `destination(tx, org, {routingLabId})` requires an ACTIVE M40 facility (the order's own optional
+`data.routingLabId`) — `labDestinationFacilityId` must be a facility because M29's D16 BAA gate runs on exactly that
+id — AND, until fork B's feed↔facility link lands, exactly one active `orm_outbound` feed (the only routing M29
+supports), refusing `no_active_feed`/`ambiguous_feed` at sign time rather than emit an event M29 would only alert
+on and drop. Only that last half changes when B lands; the port shape does not. **REFUSE, NEVER FABRICATE.** Any
+unresolvable fact leaves the order signed, sets `transmission_status='failed'` with `orm_refused:<reason>` in the
+existing `transmission_failure_reason` column (no migration), and fires `m11.order.transmission_terminal_failed`
+(`transmittedAttempts: 0`) so M36 alerts the ordering provider; NOTHING partial is ever published. The reasons:
+`sud_restricted` (42 CFR Part 2 — F-035 D3 makes SUD redaction default-ON at every egress; the M5 flag is
+FAIL-CLOSED including an invalidated/stale snapshot, and the gate runs before any demographics are copied into a
+payload), `patient_not_found` (also another tenant's patient — the read is org-scoped), `patient_merged`,
+`patient_mrn_missing`/`patient_name_missing`/`patient_dob_missing`, `patient_sex_unrecorded` (M5's default `UNK`
+means "nobody asked" and is NOT turned into HL7 `U`; an explicit `U` passes) / `patient_sex_unmappable`,
+`physician_unresolved`/`physician_not_active` (deactivated)/`physician_npi_unconfirmed` (provisional, or no
+NPI)/`physician_name_missing`, `lab_test_codes_missing`/`multiple_test_codes_unsupported` (the payload carries ONE
+`observationIdentifier`, so a multi-test order would silently lose tests — refused instead),
+`no_routing_lab`/`lab_facility_unresolved`/`no_active_feed`/`ambiguous_feed`, `payload_invalid` (the assembled
+payload is `Value.Check`ed against the catalogued schema BEFORE publishing, so a schema defect refuses the ORM
+instead of throwing out of — and blocking — the sign), and `dependency_unavailable` (a port threw; a lab-routing
+hiccup must never fail the sign). **Minimum necessary:** the ORM carries `collectionInstructions` and a
+"FASTING REQUIRED" note as NTE lines (a specimen cannot be collected without them) and deliberately NOT
+`clinicalJustification` or `notes` (free text that routinely holds diagnoses). `internalMrnAuthority` is
+`WARDENX-<organizationId>` — M5 stores no issuer for the internal MRN and the MRN is unique per organization, so
+the tenant IS the assigning namespace (a label, not a demographic fact; flagged as an assumption). Priority maps
+`stat→S`, `asap→A`, else HL7's own default `R` (null is "unspecified", not a clinical fact). **Composition root:**
+`mountOrderRoutes(app, db, outbox, buildM11OrmRequestedPorts({ patient: hl7OrmDemographicsInTx, feeds:
+buildDrizzleOutboundFeedResolver() }))` — `arch:boundaries` caught the first draft, which put this binding in
+`bootstrap/` (module 1 may import no feature module), so M5 and M29 arrive as injected deps and only M40 (which M11
+may import) is bound in M11's own directory. Without the ports (unit tests, the standing/verbal workers) a signed
+lab emits nothing, exactly as before. **Proven live** (`m11-orm-requested.live.test.ts`, 17/17, real Postgres as
+`wardenx_app`): the whole chain — real M11 sign → real publisher → real dispatcher → M29's real T08 worker with a
+stub `MllpTransport` (the only fake) → `m29.lab_order.transmitted` → F-177's applier — ends with the order
+`transmitted`/`AA` and a wire containing the MRN, name, NPI and LOINC code; twelve refusal scenarios (every one
+asserts the order is still `active`, `failed` with the typed reason, the alert fired, and ZERO wires sent); a
+non-lab order emitting nothing; the no-ports default; and cross-tenant isolation through org B's own connection. **14
+of the 17 fail with the producer disabled** (the 3 that pass are the control cases), and 31 unit cases pin the pure
+core. **Residual risks, stated not hidden:** (1) `resolvePhysician` opens its own pooled connection while the sign
+tx holds one, so pool saturation under many concurrent signs could stall — the M5 read avoids this by running on
+the caller's tx, M40's seam cannot; (2) a refused order has no resend route — the alert tells a human, but nothing
+re-attempts the ORM after the missing fact is fixed; (3) `mllp_plain` is unguarded outside tests (F-175's note
+stands); (4) the `channelCertPin` DER-sha256 convention is still an unconfirmed assumption; (5) SUD detection is the
+patient-level M5 flag only — there is no classifier for a SUD-class ORDER (e.g. a drug-screen LOINC), so a
+non-restricted patient's SUD test order is transmitted; consent-aware release for a restricted patient is a
+follow-up, today it is a flat refusal; (6) `routingLabId` is optional on the lab kind, so every lab order without one
+is refused until the feed↔facility link makes a default destination derivable.
+
+**F-179 (#248) — inbound `mllp_plain` refused in production (the twin of F-178's outbound guard).** F-178 fork A
+refused cleartext `mllp_plain` for the OUTBOUND worker only and left inbound feeds untouched, but an inbound plain
+listener is the same PHI-on-the-wire exposure (a partner ADT/ORU feed over a plain socket). The rule is now one
+decision, shared: production is never allowed (the `M29_ALLOW_MLLP_PLAIN` opt-in is ignored there, and boot already
+refuses to start with it set); non-production needs the explicit opt-in; every caller defaults to the
+environment-derived answer, so a supervisor or registry built without the option FAILS CLOSED. Three layers:
+(1) **admin routes** — `assertProtocolAcceptable` no longer keys on `kind === 'orm_outbound'`: in production a create
+or an activate of ANY `mllp_plain` feed is a 422 `PLAIN_MLLP_REFUSED` (protocol is immutable after create, so a feed
+made before the deployment became production is caught at activate); (2) **supervisor** — `startFeedListener` refuses
+a plain feed before the BAA gate is even consulted, logs `hl7.listener.plain_refuse` and raises a critical compliance
+alert whose text carries the feed/org ids only (no host, port or sending-facility allowlist), outcome reason
+`plain_protocol_refused`; (3) **the bind point** — `createTlsListenerRegistry.start` throws `PlainListenerRefusedError`
+before `net.createServer`, so a caller that bypassed the supervisor still binds nothing and never loads a credential.
+New `listener/protocol-policy.ts` reuses F-178's `resolveDestinationPolicy`/`checkProtocol` (no second copy of the
+production test). No migration, no API shape change (openapi/client untouched). Note: this tree does not yet compose
+the inbound listener process from `apps/backend/src/index.ts` (the supervisor's real `main()` is still deferred per the
+`listener/index.ts` header), so the guard sits at the two points any such composition must pass through.
+Verified: 105 unit tests across the new `m29-inbound-plain-guard.test.ts` (policy, supervisor gate, a REAL-socket
+registry that must refuse and leave the port closed, plus a control that an opted-in non-production listener still
+binds), the extended route suite and the env suite; with the three guards disabled 7 of the new cases fail (all three
+layers) and the controls still pass. **Residual:** the `M29_ALLOW_MLLP_PLAIN` opt-in is one switch for both
+directions (a non-production deployment cannot allow one and not the other); `mllp_plain` inbound in non-production
+still needs the loopback/private-address hygiene of the deployment, since the listener binds `0.0.0.0`.
+
+**F-179 (#248) — RESEND of a refused lab ORM: the operator's way out of F-178's "refused, then stuck".** F-178's producer
+refuses (never fabricates) when a fact the HL7 ORM needs is unresolvable at sign time — order still `active`,
+`transmission_status='failed'`, `transmission_failure_reason='orm_refused:<reason>'`, M36 alert fired — and, the residual
+risk F-178 named, nothing ever re-attempted once someone fixed the fact. `POST /api/v1/orders/:id/resend-transmission`
+(`orders.amend`: RN Case Manager, MD/NP/PA, Medical Director, Clinical Supervisor — the roles that can correct an order,
+so no new permission key and no role-grant seed; no step-up, because the order was already signed for exactly this
+transmission and a resend discloses nothing new) re-runs the SAME producer over the SAME ports and returns
+`{outcome: 'requested' | 'still_refused', refusalReason, order}`; anything not resendable is a 409. **One transaction:**
+`SELECT … FOR UPDATE` the order row, classify (`orm-request/orm-resend.ts`, pure), resolve, then on success a
+CONDITIONAL update (`WHERE transmission_status='failed' AND reason = <the one read>`) back to `pending` + one
+`m11.order.hl7_orm_requested`, so a caller never observes `pending` without the request or the reverse. **Still
+refused:** the recorded reason is refreshed if the blocker changed, nothing is published and NO second alert is raised
+(the provider was alerted at sign). **No per-attempt idempotency key is needed:** M29's key is `(feed, 'orm', orderId)`
+and a refused order never reached M29, so it has no outbound row to collide with — which is also exactly why an M29
+terminal failure (`dlq_exhausted` / `application_reject`, written by F-177's applier) is NOT resendable: that message WAS
+built and sent, and re-emitting would create a second one. **Never resendable, on purpose:** `sud_restricted` (42 CFR
+Part 2 — a disclosure gate, so lifting it is a compliance decision, not a data fix; a resend button any RN could press
+would be a de-facto override, and clearing the M5 flag does not make it one) and the three refusals whose fact lives in
+the IMMUTABLE signed order (`lab_test_codes_missing`, `multiple_test_codes_unsupported`, `no_routing_lab` — re-running
+cannot change the answer; the remedy is `POST /orders/:id/correct`). **Audit:** the route puts the Better Auth USER id
+on the transaction (`audit_event.actor_user_id` FKs `user`, so the membership id the rest of M11 passes would violate
+it), and the M4 trigger records the `order_record` update `failed/orm_refused:x → pending` with that actor; no PHI in
+any log or message (the reason is a fixed producer token). No migration. **Proven live**
+(`m11-orm-resend.live.test.ts`, 15/15, real Postgres as `wardenx_app`, real publisher, real dispatcher, M29's real T08
+worker over a stub `MllpTransport`): refused (sex unrecorded) → the M5 row is fixed → resend → one request → wire →
+applier → `transmitted`/`AA`; a fixed feed refusal resends too; still-refused publishes nothing and alerts nobody; a
+changed blocker refreshes the reason; two CONCURRENT resends dispatch exactly one message; a delivered order, an M29
+terminal failure and a non-lab order are 409; SUD (before and after the flag is cleared) and no-routing-lab are 409;
+another tenant's order and an unknown id are 404; the audit row names the user. **Negative tests:** with BOTH
+concurrency guards removed the concurrent case fails 3 of 3; each guard ALONE holds the suite at 15/15 (they are
+independent); without the `orm_refused:` prefix check the M29-terminal case fails; without the SUD check the SUD case
+fails. 35 unit cases pin the classifier and the HTTP contract (403 without `orders.amend`, 401, 404, 422, 409).
+**Residual risks, stated not hidden:** (1) it is explicit only — there is no automatic sweep, deliberately (a retry loop
+against a non-transient refusal would re-alert); an operator has to know to press it, and nothing yet surfaces the
+`orm_refused:*` orders in a queue or the UI; (2) `allowedActions` on the order detail does not advertise `resend`, so a
+client must infer it from `transmissionStatus`; (3) the in-memory order service (unit tests / the standing workers)
+always refuses a resend, because it has no producer; (4) a resend re-reads the order's ORIGINAL `signedAt` as
+`requestedAt`, not the resend time, which is the order's request time but not when this attempt happened; (5) the
+M40 physician lookup still opens its own pooled connection while the resend tx holds one (F-178's residual pool note
+applies unchanged).
+
+**F-179 (#248) — M29 outbound: the `in_flight` lease and reclaim sweep.** The premise this fork was given ("a worker that dies mid-send leaves the row stuck `in_flight`") was FALSE for the code as F-175 shipped it, and finding that was the point: `handleOrmRequested` ran the insert, the `in_flight` write, the socket send and the outcome write inside ONE `withOrgContext` transaction, so a crash mid-send rolled the whole row back — there was no committed `in_flight` row to sweep, and the outbox redelivery inserted a FRESH row with a NEW MSH-10 (a possible second order at the lab, the worst outcome). The only committed `in_flight` rows F-175 could produce were the ones the ack-correlation "log + discard" branch left behind when an ack came back for a different MSH-10 — stranded forever. A reclaim sweep over that alone would have been near-dead code, so the worker was restructured to **claim → send → finalize**: the `in_flight` claim commits (with `next_retry_at` as a LEASE expiry, default `OUTBOUND_IN_FLIGHT_LEASE_MS` = 5 min, >7x the 10s connect + 30s ack worst case) BEFORE the socket, the send holds no transaction, and the outcome lands in a second transaction whose writes carry a **claim guard** (`status='in_flight' AND retry_count = <at claim>`), so a slow worker that lost its lease writes nothing and publishes nothing. **The duplicate-send decision:** a reclaim is a pure STATE TRANSITION, never a send — `queued` again with `retry_count + 1` and the shared backoff (`decideInFlightReclaim` reuses `decideRetry`), so the existing retry pass re-sends the STORED wire, i.e. the SAME MSH-10, and a receiver that already processed the crashed attempt can dedupe on it (at-least-once on the wire, one order at the lab); every reclaim draws on the shared 5-attempt budget and the last one goes terminal `dlq` with `m29.lab_order.transmission_failed` so M11 (F-177) marks the order failed and a human verifies with the lab — an outcome that stays unknown is never re-sent forever; every reclaim raises an operator alert. Reclaim and the retry claim both use `FOR UPDATE SKIP LOCKED` plus a conditional UPDATE, which also fixes a latent F-175 defect: two overlapping retry sweeps both read a row `queued` and both transmitted it. No migration (the lease reuses `next_retry_at` and the existing `(status, next_retry_at)` index) and no new wiring (the reclaim runs inside the already-wired per-minute retry-sweep tick). **Proven live** (`m29-outbound-dispatch.live.test.ts`, real Postgres as `wardenx_app`, real TCP MLLP receiver): a send that died after delivery leaves a committed `in_flight` row that is reclaimed and re-sent with the same MSH-10 (two wires, ONE control id, one `transmitted` event); a live lease is untouched; three concurrent sweepers reclaim once; two overlapping retry sweeps send once; a stalled worker finalizing after its reclaim is a no-op; budget exhaustion goes terminal through the REAL catalog-validating publisher; the mismatched-MSH-10 ack no longer strands the row; cross-tenant sweeps stay in their org. **Each guard was mutation-tested** — staleness, the finalizer claim guard, and the lock + conditional write on BOTH reclaim and claim each fail their case when removed (the first concurrent-sweepers test passed with its protections removed because the sweeps never overlapped; it now widens the window with a slow in-transaction alert emit, and fails as it should). **Residual risks, stated not hidden:** (1) a crash between the wire landing at the receiver and the finalize still yields a second wire on reclaim — safe only if the receiver dedupes on MSH-10, which HL7 v2 receivers conventionally do but which is a contract with each lab that nothing here verifies; (2) the lease is a single global default (`inFlightLeaseMs` is injectable, not yet per-feed or env-tunable) and a worker stalled longer than the lease WILL be reclaimed — the claim guard keeps the data consistent but the receiver sees a second wire; (3) the rate-limiter wait now counts against the lease, harmless at the default but a reason not to shrink it; (4) a crash AFTER the claim commit but BEFORE the send makes the reclaimed attempt the first real send, indistinguishable from a lost one — harmless, alerts the same; (5) the `hl7.outbound.dispatched` audit kind is reused for a reclaim requeue (no new audit kind was invented).

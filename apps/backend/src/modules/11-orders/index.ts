@@ -4,9 +4,19 @@ import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerOrderAbacPredicates as _registerM11Abac } from "./abac-predicates";
 import { type OrderWriteOutboxPort, createDbOrderBackend } from "./orders-route-service-db";
+import type { OrmRequestedPorts } from "./orm-request/orm-requested";
 import { registerOrderRoutes as _registerM11Routes } from "./routes/orders-routes";
 
+export { buildM11OrmRequestedPorts } from "./orm-request/ports";
 export type { OrderWriteOutboxPort } from "./orders-route-service-db";
+export type {
+  OrmDestinationPort,
+  OrmDestinationResult,
+  OrmPatientFacts,
+  OrmPhysicianFacts,
+  OrmRefusalReason,
+  OrmRequestedPorts,
+} from "./orm-request/orm-requested";
 export { createDbOrderBackend } from "./orders-route-service-db";
 export {
   M11_PLATFORM_JOB_ID,
@@ -34,8 +44,10 @@ export function mountOrderRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: OrderWriteOutboxPort,
+  /** F-178 (#248) — the lab-ORM producer's ports (M5 demographics, M40 physician, M29-aware destination). */
+  orm?: OrmRequestedPorts,
 ): void {
-  const backend = createDbOrderBackend(db, outbox);
+  const backend = createDbOrderBackend(db, outbox, orm);
   _registerM11Abac({ resolver: backend });
   _registerM11Routes(app, { service: backend });
 }

@@ -32,10 +32,12 @@
 // outbound HL7 ORM, a signed dme/supply/comfort_kit order never asked M21 to fulfill it, and a signed
 // level-of-care-change/recertification order never told M6. `emitDownstreamSignedEvent` below builds the
 // real catalogued payload per kind from `order_record.data` (already validated at draft time against the
-// exact TypeBox `packages/orders/src/kinds.ts` uses); `hl7_orm_requested`'s full `OrmRequestedPayload`
-// needs patient demographics + a resolved M40 provider identity M11 does not hold, so lab stays unbound —
-// M29's outbound ORM worker is still Wave H (see events-by-m11.ts). The returned object IS BOTH the
-// OrderRouteService AND the §4.7 AbacResolver.
+// exact TypeBox `packages/orders/src/kinds.ts` uses). `hl7_orm_requested`'s full `OrmRequestedPayload` needs
+// patient demographics + a resolved M40 provider identity + a destination M11 does not hold in its own tables:
+// F-178 (#248) binds it through INJECTED ports (`./orm-request/orm-requested.ts` — read its header for the
+// refuse-never-fabricate contract). Without `orm` ports (unit tests, the standing/verbal workers) a signed lab
+// order emits nothing, exactly as before. The returned object IS BOTH the OrderRouteService AND the §4.7
+// AbacResolver.
 import { type DbClient, schema } from "@wardenx/db";
 import {
   DEFAULT_COSIGN_POLICY,
@@ -60,6 +62,7 @@ import {
 } from "@wardenx/orders";
 import { withOrgContext } from "@wardenx/tenancy";
 import {
+  ConflictError,
   NotFoundError,
   type OrderDiscontinuationReason,
   type OrderKind,
@@ -70,6 +73,8 @@ import {
 } from "@wardenx/types";
 import { ValidationError } from "@wardenx/types";
 import { type SQL, and, desc, eq, lte } from "drizzle-orm";
+import { type OrmRequestedPorts, resolveOrmRequested } from "./orm-request/orm-requested";
+import { ORM_REFUSAL_PREFIX, classifyOrmResend } from "./orm-request/orm-resend";
 import { EMPTY_ORDER_DETAIL_ACTOR, buildOrderWorkflowProjection } from "./routes/service";
 import type {
   CreateOrderArgs,
@@ -78,6 +83,7 @@ import type {
   OrderDetailView,
   OrderRouteService,
   OrderView,
+  ResendLabTransmissionResult,
   StandingOrderView,
   VerbalPolicyView,
 } from "./routes/service";
@@ -91,6 +97,14 @@ const VP = schema.orderVerbalPolicies;
 const OD = schema.orderDiscontinuations;
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
+
+/** The order-side facts `signInternal` already holds that the F-178 lab-ORM producer needs. */
+interface LabSignContext {
+  readonly patientId: string;
+  readonly orderingPhysicianMdmId: string;
+  readonly priority: string | null;
+  readonly signedAt: Date;
+}
 
 /** The transactional-outbox port (§4.4): the bound publisher validates every emit against the boot catalog
  * and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests commit
@@ -250,6 +264,8 @@ const toStandingView = (r: {
 export function createDbOrderBackend(
   db: DbClient,
   outbox: OrderWriteOutboxPort = NOOP_OUTBOX,
+  /** F-178 (#248) — the ports the outbound lab-ORM producer reads through. Omitted ⇒ a signed lab emits no ORM. */
+  orm?: OrmRequestedPorts,
 ): OrderRouteService {
   /** Emit one `m11.order.*` event on the caller's tx (validated + persisted by the bound publisher). */
   async function emit(
@@ -480,8 +496,8 @@ export function createDbOrderBackend(
    * `downstreamSignedEvents` effect on every sign, built here from `order_record.data` (already validated
    * at draft time against the exact per-kind TypeBox `packages/orders/src/kinds.ts` uses, so every field
    * this reads is guaranteed present). Only the three kinds whose full catalogued payload is derivable
-   * from data M11 already holds are wired: `lab` stays unbound (`OrmRequestedPayload` needs patient
-   * demographics + a resolved M40 provider identity M11 does not have — M29's Wave H outbound worker).
+   * from data M11 already holds are wired here; `lab` goes through {@link emitOrmRequested} (F-178) because its
+   * payload needs facts from M5/M40 that arrive via injected ports.
    */
   async function emitDownstreamSignedEvent(
     tx: DbClient,
@@ -490,9 +506,12 @@ export function createDbOrderBackend(
     kind: OrderKind,
     admissionId: string,
     data: unknown,
+    lab: LabSignContext,
   ): Promise<void> {
     const d = (data ?? {}) as Record<string, unknown>;
-    if (kind === "level_of_care_change") {
+    if (kind === "lab") {
+      await emitOrmRequested(tx, organizationId, orderId, data, lab);
+    } else if (kind === "level_of_care_change") {
       await emit(tx, organizationId, "m11.order.level_of_care_change_signed", orderId, {
         orderId,
         fromLevel: d.fromLevel,
@@ -520,6 +539,54 @@ export function createDbOrderBackend(
           kind === "comfort_kit" && typeof d.deploymentSite === "string" ? d.deploymentSite : null,
       });
     }
+  }
+
+  /**
+   * F-178 (#248) — a signed lab order requests the outbound HL7 ORM^O01 IN THE SIGN TRANSACTION. The facts come
+   * through the injected ports; if ANY is unresolvable the order stays signed, `transmission_status` becomes
+   * `failed` (`orm_refused:<reason>` in `transmission_failure_reason` — existing columns, no migration) and
+   * `m11.order.transmission_terminal_failed` raises the ordering-provider alert with `transmittedAttempts: 0`.
+   * Nothing partial is ever published. No ports ⇒ no-op (the pre-F-178 behavior).
+   */
+  async function emitOrmRequested(
+    tx: DbClient,
+    organizationId: string,
+    orderId: string,
+    data: unknown,
+    lab: LabSignContext,
+  ): Promise<void> {
+    if (!orm) return;
+    const outcome = await resolveOrmRequested(orm, tx, {
+      orderId,
+      organizationId,
+      patientId: lab.patientId,
+      orderingPhysicianMdmId: lab.orderingPhysicianMdmId,
+      priority: lab.priority,
+      signedAt: lab.signedAt,
+      data,
+    });
+    if (outcome.kind === "ok") {
+      await emit(tx, organizationId, "m11.order.hl7_orm_requested", orderId, {
+        ...outcome.payload,
+      } as unknown as Record<string, unknown>);
+      return;
+    }
+    await tx
+      .update(OR)
+      .set({
+        transmissionStatus: "failed",
+        transmissionFailureReason: `orm_refused:${outcome.reason}`,
+        updatedAt: lab.signedAt,
+      })
+      .where(and(eq(OR.organizationId, organizationId), eq(OR.id, orderId), eq(OR.kind, "lab")));
+    await emit(tx, organizationId, "m11.order.transmission_terminal_failed", orderId, {
+      orderId,
+      organizationId,
+      failureReason: `orm_refused:${outcome.reason}`,
+      transmittedAttempts: 0,
+      lastAttemptAt: lab.signedAt.toISOString(),
+      orderingPhysicianMdmId: lab.orderingPhysicianMdmId,
+    });
   }
 
   /** Shared sign path (§2.2 sign from pending_signature or verbal_pending). Inserts the primary signature
@@ -607,6 +674,12 @@ export function createDbOrderBackend(
       r.kind as OrderKind,
       r.admissionId,
       r.data,
+      {
+        patientId: r.patientId,
+        orderingPhysicianMdmId: r.orderingPhysicianMdmId,
+        priority: r.priority,
+        signedAt: at,
+      },
     );
     if (fromVerbal) {
       const [v] = (await tx
@@ -1069,6 +1142,93 @@ export function createDbOrderBackend(
           drafterMembershipId: userId,
         });
         return readOrder(t, newId, actor);
+      });
+    },
+
+    /**
+     * F-179 (#248) — re-run F-178's producer for a lab order whose ORM request was refused. Everything below is ONE
+     * transaction, so a caller never observes `pending` without the published request or the reverse:
+     *   1. `SELECT … FOR UPDATE` the order row — two resends (a double-click, two tabs) serialize here; the second
+     *      then reads the first's committed `pending` and is refused as `not_failed`.
+     *   2. {@link classifyOrmResend} — only an `orm_refused:*` failure is resendable (see its header for what is
+     *      not, and why).
+     *   3. {@link resolveOrmRequested} — the SAME producer the sign path runs, over the SAME ports.
+     *   4. success: a CONDITIONAL update (`WHERE transmission_status='failed' AND reason = <the one we read>`) back to
+     *      `pending` + one `m11.order.hl7_orm_requested`. The conditional update is the second, independent guard —
+     *      it holds even if the row lock were ever dropped. Refusal: the reason is refreshed if it changed, and NO
+     *      alert is raised (the provider was alerted at sign; a repeat would be spam).
+     * M29's idempotency key is `(feed, 'orm', orderId)`. A refused order never reached M29, so it has no outbound
+     * row for that key to collide with — the resend therefore needs no per-attempt key and can never double-send.
+     * `auditUserId` is set on the transaction so the M4 write-audit trigger records WHO pressed resend on the
+     * `order_record` update (before: failed/orm_refused:x → after: pending); the module's other writes pass "".
+     */
+    async resendLabTransmission(
+      organizationId,
+      _membershipId,
+      id,
+      actor = EMPTY_ORDER_DETAIL_ACTOR,
+      auditUserId = "",
+    ): Promise<ResendLabTransmissionResult> {
+      if (!orm) {
+        throw new ConflictError("ORM resend not allowed (not_configured): outbound lab requests are not configured");
+      }
+      return withOrgContext(db, { organizationId, userId: auditUserId }, async (tx) => {
+        const t = tx as unknown as DbClient;
+        const [r] = (await t
+          .select()
+          .from(OR)
+          .where(and(eq(OR.organizationId, organizationId), eq(OR.id, id)))
+          .limit(1)
+          .for("update")) as (typeof OR.$inferSelect)[];
+        if (!r) throw new NotFoundError(`order ${id} not found`);
+        const verdict = classifyOrmResend({
+          kind: r.kind,
+          status: r.status,
+          transmissionStatus: r.transmissionStatus,
+          transmissionFailureReason: r.transmissionFailureReason,
+        });
+        if (!verdict.ok) {
+          throw new ConflictError(`ORM resend not allowed (${verdict.code}): ${verdict.message}`);
+        }
+        const at = new Date();
+        const outcome = await resolveOrmRequested(orm, t, {
+          orderId: id,
+          organizationId,
+          patientId: r.patientId,
+          orderingPhysicianMdmId: r.orderingPhysicianMdmId,
+          priority: r.priority,
+          signedAt: r.signedAt ?? at,
+          data: r.data,
+        });
+        const stillFailed = and(
+          eq(OR.organizationId, organizationId),
+          eq(OR.id, id),
+          eq(OR.kind, "lab"),
+          eq(OR.transmissionStatus, "failed"),
+          eq(OR.transmissionFailureReason, verdict.priorReason),
+        );
+        if (outcome.kind === "ok") {
+          const claimed = await t
+            .update(OR)
+            .set({ transmissionStatus: "pending", transmissionFailureReason: null, updatedAt: at })
+            .where(stillFailed)
+            .returning({ id: OR.id });
+          if (claimed.length === 0) {
+            throw new ConflictError("ORM resend not allowed (not_failed): the order was resent concurrently");
+          }
+          await emit(t, organizationId, "m11.order.hl7_orm_requested", id, {
+            ...outcome.payload,
+          } as unknown as Record<string, unknown>);
+          return { outcome: "requested", refusalReason: null, order: await readOrder(t, id, actor) };
+        }
+        const refusal = `${ORM_REFUSAL_PREFIX}${outcome.reason}`;
+        if (refusal !== verdict.priorReason) {
+          await t
+            .update(OR)
+            .set({ transmissionFailureReason: refusal, updatedAt: at })
+            .where(stillFailed);
+        }
+        return { outcome: "still_refused", refusalReason: outcome.reason, order: await readOrder(t, id, actor) };
       });
     },
 

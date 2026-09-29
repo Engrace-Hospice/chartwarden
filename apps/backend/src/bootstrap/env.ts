@@ -279,12 +279,29 @@ export function reservedPlaceholderProblem(value: string): string | null {
 }
 
 /**
+ * F-178 — switches that exist ONLY for non-production use and must be ABSENT in production. A production
+ * deployment that carries one is misconfigured in the dangerous direction, so the boot refuses rather than
+ * trusting the runtime guard alone (the M29 outbound worker and inbound listener also ignore `M29_ALLOW_MLLP_PLAIN` in
+ * production — this makes the mistake loud instead of silently inert).
+ */
+const FORBIDDEN_IN_PRODUCTION: readonly { readonly key: string; readonly problem: string }[] = [
+  {
+    key: "M29_ALLOW_MLLP_PLAIN",
+    problem:
+      "must not be set in production — it opts an HL7 feed (outbound sender or inbound listener) into cleartext `mllp_plain` (PHI on the wire) and is honoured only in non-production environments",
+  },
+];
+
+/**
  * Collect every unmet production requirement (empty array = OK). Pure, so the rules are unit-testable
  * without mutating the process environment. Returns [] for any non-production `NODE_ENV`.
  */
 export function collectEnvProblems(env: EnvLike): EnvProblem[] {
   if (env.NODE_ENV !== "production") return [];
   const problems: EnvProblem[] = [];
+  for (const { key, problem } of FORBIDDEN_IN_PRODUCTION) {
+    if (env[key]?.trim()) problems.push({ key, problem });
+  }
   for (const { key, rule } of REQUIREMENTS) {
     const value = env[key]?.trim();
     if (!value) {

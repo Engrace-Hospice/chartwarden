@@ -12,6 +12,9 @@
 // tick fanning out over active orgs, not N per-row jobs. The cost is up to one sweep-interval of added
 // latency versus a precise per-row delayed job; acceptable against a 30s-minimum backoff (`retry-policy.ts`
 // `OUTBOUND_BACKOFF_MS[0]`).
+//
+// F-179: the SAME tick also reclaims `in_flight` rows whose lease (`next_retry_at`, `OUTBOUND_IN_FLIGHT_LEASE_MS`)
+// expired — no separate cron: a crashed attempt is recovered on the very next minute after its lease runs out.
 export const M29_OUTBOUND_CRON_QUEUES = {
   retrySweep: "m29-outbound-retry-sweep",
 } as const;

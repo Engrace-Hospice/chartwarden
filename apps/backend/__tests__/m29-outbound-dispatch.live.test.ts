@@ -20,10 +20,18 @@ import { and, eq } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
+import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/events-by-m29";
+import { buildDrizzleOutboundFeedResolver } from "../src/modules/29-external-interfaces/outbound/feed-resolver";
+import {
+  type MllpTransport,
+  createNodeMllpTransport,
+} from "../src/modules/29-external-interfaces/outbound/mllp-transport";
 import type { OutboundTenantKeyProvider } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
 import { createOutboundPayloadCipher } from "../src/modules/29-external-interfaces/outbound/dispatch-crypto";
 import {
+  OutboundFeedIdentityIncompleteError,
   type OutboundAlertPort,
   buildM29OutboundDispatchConsumer,
   runOutboundRetrySweepOnce,
@@ -80,6 +88,7 @@ function fakeAlerts() {
     eventType: string;
     severity: string;
     correlationId: string;
+    payload: unknown;
   }> = [];
   const port: OutboundAlertPort = {
     async emit(organizationId, input) {
@@ -88,6 +97,7 @@ function fakeAlerts() {
         eventType: input.eventType,
         severity: input.severity,
         correlationId: input.correlationId,
+        payload: input.payload,
       });
     },
   };
@@ -183,6 +193,10 @@ function startMockMllpServer(nextAction: () => MockAction): Promise<MockMllpServ
   });
 }
 
+/** F-178 — the live suite dials loopback `mllp_plain` test doubles, which the production-safe default policy
+ *  refuses; every worker here is built with this explicit non-production policy instead. */
+const TEST_POLICY = { allowPlain: true, allowLoopback: true } as const;
+
 const DEFAULT_FACILITY_ID = "33333333-3333-3333-3333-333333333333";
 
 function ormRequestedPayload(overrides: {
@@ -261,20 +275,37 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     );
   }
 
-  /** Seed one ACTIVE `orm_outbound` feed pointed at the mock server, org-scoped. */
+  /** Seed one ACTIVE `orm_outbound` feed pointed at the mock server, org-scoped. F-178: the MSH identity
+   *  columns default to a COMPLETE set (pass `null` to leave one unset) and the destination link to NULL. */
   async function seedFeed(args: {
     readonly organizationId: string;
     readonly port: number;
     readonly rateLimitMsgPerSec?: number;
+    readonly labDestinationFacilityId?: string | null;
+    readonly mshSendingFacility?: string | null;
+    readonly mshReceivingApplication?: string | null;
+    readonly mshReceivingFacility?: string | null;
   }): Promise<string> {
     const id = randomUUID();
+    const pick = <T>(v: T | null | undefined, dflt: T): T | null => (v === undefined ? dflt : v);
     await admin.query(
       `INSERT INTO external_feed
          (id, organization_id, kind, display_name, host, port, protocol, channel_cert_pin,
-          status, proposed_by_membership_id, rate_limit_msg_per_sec)
+          status, proposed_by_membership_id, rate_limit_msg_per_sec,
+          lab_destination_facility_id, msh_sending_facility, msh_receiving_application, msh_receiving_facility)
        VALUES ($1,$2,'orm_outbound','Mock Reference Lab','127.0.0.1',$3,'mllp_plain',NULL,
-               'active',$4,$5)`,
-      [id, args.organizationId, args.port, randomUUID(), args.rateLimitMsgPerSec ?? 1000],
+               'active',$4,$5,$6,$7,$8,$9)`,
+      [
+        id,
+        args.organizationId,
+        args.port,
+        randomUUID(),
+        args.rateLimitMsgPerSec ?? 1000,
+        args.labDestinationFacilityId ?? null,
+        pick(args.mshSendingFacility, "ENGRACE-HOSPICE"),
+        pick(args.mshReceivingApplication, "REFLAB-LIS"),
+        pick(args.mshReceivingFacility, "REFLAB-MAIN"),
+      ],
     );
     return id;
   }
@@ -340,6 +371,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         db: handle.db,
         outbox: outbox.port,
         keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
         alerts: alerts.port,
       });
 
@@ -393,6 +425,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         db: handle.db,
         outbox: outbox.port,
         keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
         alerts: alerts.port,
       });
 
@@ -422,6 +455,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         db: handle.db,
         outbox: outbox.port,
         keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
         alerts: alerts.port,
       });
 
@@ -458,6 +492,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       db: handle.db,
       outbox: outbox.port,
       keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
       alerts: alerts.port,
     });
 
@@ -483,6 +518,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       db: handle.db,
       outbox: outbox.port,
       keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
       alerts: alerts.port,
     });
 
@@ -501,6 +537,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         db: handle.db,
         outbox: outbox.port,
         keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
         alerts: alerts.port,
         activeOrgs,
       });
@@ -528,6 +565,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         db: handle.db,
         outbox: outbox.port,
         keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
         alerts: alerts.port,
       });
 
@@ -546,6 +584,151 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
+  // ── F-178 (#248, migration 0262): routing link, MSH identity, concurrent-redelivery race ────────────────────
+
+  const FACILITY_X = "44444444-4444-4444-4444-444444444444";
+  const FACILITY_Y = "55555555-5555-5555-5555-555555555555";
+
+  function buildConsumer(outbox = fakeOutbox(), alerts = fakeAlerts(), transport?: MllpTransport) {
+    return {
+      outbox,
+      alerts,
+      consumer: buildM29OutboundDispatchConsumer({
+        db: handle.db,
+        outbox: outbox.port,
+        keys: fakeKeyProvider(),
+        alerts: alerts.port,
+        destinationPolicy: TEST_POLICY,
+        ...(transport ? { transport } : {}),
+      }),
+    };
+  }
+
+  it("F-178 routing: an order rides the feed LINKED to its lab destination, never the sibling feed", async () => {
+    registerActiveBaa();
+    const serverX = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    const serverY = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const feedX = await seedFeed({ organizationId: ORG_A, port: serverX.port, labDestinationFacilityId: FACILITY_X });
+      await seedFeed({ organizationId: ORG_A, port: serverY.port, labDestinationFacilityId: FACILITY_Y });
+      const { consumer } = buildConsumer();
+      const orderId = randomUUID();
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, labDestinationFacilityId: FACILITY_X })),
+      );
+      expect(serverX.receivedWires).toHaveLength(1);
+      expect(serverY.receivedWires).toHaveLength(0);
+      const rows = await outboundRowFor(ORG_A, orderId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.feedId).toBe(feedX);
+      expect(rows[0]!.destinationFacilityId).toBe(FACILITY_X);
+    } finally {
+      await serverX.close();
+      await serverY.close();
+    }
+  });
+
+  it("F-178 routing: a SINGLE feed linked to a DIFFERENT facility is refused (no fallback), alerted, nothing sent", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port, labDestinationFacilityId: FACILITY_Y });
+      const { consumer, alerts } = buildConsumer();
+      const orderId = randomUUID();
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A, labDestinationFacilityId: FACILITY_X })),
+      );
+      expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(0);
+      expect(server.receivedWires).toHaveLength(0);
+      expect(JSON.stringify(alerts.emitted)).toContain("no_feed_for_destination");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-178 identity: the wire carries the feed's configured MSH-3/4/5/6, not its display name", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const { consumer } = buildConsumer();
+      await consumer.handle(
+        dispatchEvent(ormRequestedPayload({ orderId: randomUUID(), organizationId: ORG_A })),
+      );
+      const env = parseMshEnvelope(server.receivedWires[0]!);
+      expect(env.sendingApplication).toBe("WARDENX");
+      expect(env.sendingFacility).toBe("ENGRACE-HOSPICE");
+      expect(env.receivingApplication).toBe("REFLAB-LIS");
+      expect(env.receivingFacility).toBe("REFLAB-MAIN");
+      expect(server.receivedWires[0]).not.toContain("Mock Reference Lab");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-178 identity: a feed with an unset MSH field is REFUSED with a typed PHI-free error — no row, no wire", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const feedId = await seedFeed({ organizationId: ORG_A, port: server.port, mshReceivingFacility: null });
+      const { consumer, alerts } = buildConsumer();
+      const orderId = randomUUID();
+      const err = await consumer
+        .handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })))
+        .then(() => null, (e: unknown) => e);
+      expect(err).toBeInstanceOf(OutboundFeedIdentityIncompleteError);
+      expect((err as OutboundFeedIdentityIncompleteError).code).toBe("M29_OUTBOUND_FEED_IDENTITY_INCOMPLETE");
+      expect((err as OutboundFeedIdentityIncompleteError).feedId).toBe(feedId);
+      expect((err as OutboundFeedIdentityIncompleteError).missingFields).toEqual(["mshReceivingFacility"]);
+      // Field names only — never the order, a patient or any value.
+      expect((err as Error).message).not.toMatch(/Doe|John|MRN/);
+      expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(0);
+      expect(server.receivedWires).toHaveLength(0);
+      expect(JSON.stringify(alerts.emitted)).toContain("feed_identity_incomplete");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-178 idempotency: two CONCURRENT deliveries of the same event dispatch exactly once", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const a = buildConsumer();
+      const b = buildConsumer();
+      const orderId = randomUUID();
+      const event = dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A }));
+      await Promise.all([a.consumer.handle(event), b.consumer.handle(event)]);
+      expect(await outboundRowFor(ORG_A, orderId)).toHaveLength(1);
+      expect(server.receivedWires).toHaveLength(1);
+      const transmitted = [...a.outbox.published, ...b.outbox.published].filter(
+        (e) => e.eventName === "m29.lab_order.transmitted",
+      );
+      expect(transmitted).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-178 schema: the MSH CHECK refuses a value that would break HL7 framing; RLS hides org A's feed link from org B", async () => {
+    const feedId = await seedFeed({ organizationId: ORG_A, port: 6100, labDestinationFacilityId: FACILITY_X });
+    await expect(
+      admin.query("UPDATE external_feed SET msh_receiving_facility = 'A|B' WHERE id = $1", [feedId]),
+    ).rejects.toThrow(/external_feed_msh_identity_chk/);
+    await expect(
+      admin.query("UPDATE external_feed SET msh_sending_facility = E'A\\rB' WHERE id = $1", [feedId]),
+    ).rejects.toThrow(/external_feed_msh_identity_chk/);
+    const asB = await withOrgContext(handle.db, { organizationId: ORG_B, userId: "" }, (tx) =>
+      tx.select().from(schema.externalFeed).where(eq(schema.externalFeed.id, feedId)),
+    );
+    expect(asB).toHaveLength(0);
+    const asA = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+      tx.select().from(schema.externalFeed).where(eq(schema.externalFeed.id, feedId)),
+    );
+    expect(asA[0]!.labDestinationFacilityId).toBe(FACILITY_X);
+  });
+
   it("cross-tenant isolation: org A's dispatch never touches org B's feed or rows", async () => {
     registerActiveBaa();
     const serverA = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
@@ -559,6 +742,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
         db: handle.db,
         outbox: outbox.port,
         keys: fakeKeyProvider(),
+        destinationPolicy: TEST_POLICY,
         alerts: alerts.port,
       });
 
@@ -576,6 +760,380 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     } finally {
       await serverA.close();
       await serverB.close();
+    }
+  });
+
+  // ── F-178 — the destination policy inside the real worker ───────────────────────────────────────────────
+
+  // ── F-179 — the `in_flight` lease + reclaim sweep ────────────────────────────────────────────────────────
+  // The worker now commits the `in_flight` claim BEFORE the socket send and finalizes in a second transaction.
+  // Before F-179 the whole send ran in ONE transaction: a crash mid-send rolled the row back (no committed
+  // `in_flight` row to find) and the outbox redelivery inserted a NEW row with a NEW MSH-10.
+
+  const MINUTE = 60_000;
+
+  /** Simulates the process dying AFTER the receiver got the message but BEFORE the outcome was written. */
+  function dyingAfterDelivery(real: MllpTransport): MllpTransport {
+    return {
+      async send(req) {
+        await real.send(req);
+        throw new Error("simulated process death before finalize");
+      },
+    };
+  }
+
+  function sweep(args: {
+    readonly now: Date;
+    readonly outbox?: ReturnType<typeof fakeOutbox>;
+    readonly alerts?: ReturnType<typeof fakeAlerts>;
+    readonly orgs?: readonly string[];
+    readonly outboxPort?: { publish(tx: unknown, e: never): Promise<unknown> };
+    /** Delay each per-row feed lookup INSIDE the claim transaction so overlapping sweeps genuinely race. */
+    readonly slowClaimMs?: number;
+  }) {
+    const realResolver = buildDrizzleOutboundFeedResolver();
+    const feedResolver = args.slowClaimMs
+      ? {
+          ...realResolver,
+          async resolveById(...a: Parameters<typeof realResolver.resolveById>) {
+            await new Promise((r) => setTimeout(r, args.slowClaimMs));
+            return realResolver.resolveById(...a);
+          },
+        }
+      : realResolver;
+    const outbox = args.outbox ?? fakeOutbox();
+    const alerts = args.alerts ?? fakeAlerts();
+    return {
+      outbox,
+      alerts,
+      run: () =>
+        runOutboundRetrySweepOnce({
+          db: handle.db,
+          outbox: (args.outboxPort ?? outbox.port) as never,
+          keys: fakeKeyProvider(),
+          alerts: alerts.port,
+          destinationPolicy: TEST_POLICY,
+          activeOrgs: fakeActiveOrgs(...(args.orgs ?? [ORG_A])),
+          now: () => args.now,
+          feedResolver,
+        }),
+    };
+  }
+
+  /** Crash a fresh dispatch after the wire was delivered; returns the stuck row. */
+  async function crashedDispatch(server: MockMllpServer, organizationId = ORG_A) {
+    registerActiveBaa();
+    await seedFeed({ organizationId, port: server.port });
+    const orderId = randomUUID();
+    const { consumer } = buildConsumer(
+      fakeOutbox(),
+      fakeAlerts(),
+      dyingAfterDelivery(createNodeMllpTransport()),
+    );
+    await expect(
+      consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId }))),
+    ).rejects.toThrow("simulated process death");
+    const [row] = await outboundRowFor(organizationId, orderId);
+    return { orderId, row: row! };
+  }
+
+  const controlIdsOf = (wires: readonly string[]) =>
+    new Set(wires.map((w) => parseMshEnvelope(w).messageControlId));
+
+  it("F-179 crash recovery: a send that died after delivery leaves a COMMITTED in_flight row, which is reclaimed and re-sent with the SAME MSH-10 — one order from the receiver's view", async () => {
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const { orderId, row } = await crashedDispatch(server);
+      // The row survived the crash (pre-F-179 the whole transaction rolled back and this array was EMPTY).
+      expect(row.status).toBe("in_flight");
+      expect(row.retryCount).toBe(0);
+      expect(row.nextRetryAt).not.toBeNull(); // the lease expiry
+      expect(server.receivedWires).toHaveLength(1);
+
+      const t0 = Date.now();
+      // Tick 1, lease expired: RECLAIM only — a state transition, no socket.
+      const s1 = sweep({ now: new Date(t0 + 10 * MINUTE) });
+      await s1.run();
+      const [reclaimed] = await outboundRowFor(ORG_A, orderId);
+      expect(reclaimed!.status).toBe("queued");
+      expect(reclaimed!.retryCount).toBe(1);
+      expect(server.receivedWires).toHaveLength(1);
+      expect(s1.alerts.emitted).toHaveLength(1);
+      expect(s1.alerts.emitted[0]!.eventType).toBe("hl7_outbound.transmission_failed");
+      expect(s1.alerts.emitted[0]!.severity).toBe("NORMAL");
+
+      // Tick 2, backoff elapsed: the existing retry path re-sends the STORED wire.
+      const s2 = sweep({ now: new Date(t0 + 11 * MINUTE) });
+      await s2.run();
+      const [done] = await outboundRowFor(ORG_A, orderId);
+      expect(done!.status).toBe("acked");
+      expect(server.receivedWires).toHaveLength(2); // at-least-once on the wire…
+      expect(controlIdsOf(server.receivedWires).size).toBe(1); // …but ONE MSH-10, so the receiver dedupes.
+      expect(controlIdsOf(server.receivedWires).has(done!.messageControlId)).toBe(true);
+      expect(s2.outbox.published.map((e) => e.eventName)).toEqual(["m29.lab_order.transmitted"]);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-179 lease: an in_flight row whose lease has NOT expired (a live worker) is never touched", async () => {
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const { orderId } = await crashedDispatch(server);
+      const s = sweep({ now: new Date(Date.now() + MINUTE) }); // one minute into a five-minute lease
+      await s.run();
+      const [row] = await outboundRowFor(ORG_A, orderId);
+      expect(row!.status).toBe("in_flight");
+      expect(row!.retryCount).toBe(0);
+      expect(s.alerts.emitted).toHaveLength(0);
+      expect(server.receivedWires).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-179 race: two CONCURRENT sweepers reclaim a stale row exactly once (one attempt counted, one alert)", async () => {
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const { orderId } = await crashedDispatch(server);
+      const inner = fakeAlerts();
+      // The alert emit runs INSIDE the reclaim transaction, so a slow emitter holds the first sweeper's row
+      // lock open long enough for the others to genuinely overlap it (without this the three sweeps finish
+      // back-to-back and the race never happens — the guards below would look untested).
+      const alerts = {
+        emitted: inner.emitted,
+        port: {
+          async emit(...args: Parameters<typeof inner.port.emit>) {
+            await new Promise((r) => setTimeout(r, 200));
+            return inner.port.emit(...args);
+          },
+        },
+      } as ReturnType<typeof fakeAlerts>;
+      const now = new Date(Date.now() + 10 * MINUTE);
+      await Promise.all([
+        sweep({ now, alerts }).run(),
+        sweep({ now, alerts }).run(),
+        sweep({ now, alerts }).run(),
+      ]);
+      const [row] = await outboundRowFor(ORG_A, orderId);
+      expect(row!.status).toBe("queued");
+      expect(row!.retryCount).toBe(1);
+      expect(alerts.emitted).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-179 claim: two OVERLAPPING sweeps send a due retry once — the claim is committed before the send (pre-F-179 both read it `queued` and both transmitted)", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const orderId = randomUUID();
+      // A first attempt that fails at connect leaves a `queued` retry row (retry_count 1, +30s backoff).
+      const failing: MllpTransport = {
+        async send() {
+          return { kind: "connect_error", errorClass: "econnrefused" } as never;
+        },
+      };
+      const { consumer } = buildConsumer(fakeOutbox(), fakeAlerts(), failing);
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+      expect((await outboundRowFor(ORG_A, orderId))[0]!.status).toBe("queued");
+
+      const now = new Date(Date.now() + 10 * MINUTE);
+      await Promise.all([
+        sweep({ now, slowClaimMs: 200 }).run(),
+        sweep({ now, slowClaimMs: 200 }).run(),
+      ]);
+      expect(server.receivedWires).toHaveLength(1);
+      expect((await outboundRowFor(ORG_A, orderId))[0]!.status).toBe("acked");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-179 race: a SLOW worker that lost its lease finalizes into nothing — no second event, the reclaimer's attempt stands", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const orderId = randomUUID();
+      let release!: () => void;
+      let entered!: () => void;
+      const gate = new Promise<void>((r) => (release = r));
+      const inSend = new Promise<void>((r) => (entered = r));
+      const slow: MllpTransport = {
+        async send(req) {
+          entered();
+          await gate; // the worker is "alive" but stalled past its lease
+          const env = parseMshEnvelope(req.wireMessage);
+          return { kind: "ack", rawAckPayload: buildAckWire(env, "AA") };
+        },
+      };
+      const outbox = fakeOutbox();
+      const { consumer } = buildConsumer(outbox, fakeAlerts(), slow);
+      const done = consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+      await inSend;
+
+      // Lease expires while the slow worker is still mid-send: the sweeper takes the row back.
+      await sweep({ now: new Date(Date.now() + 10 * MINUTE) }).run();
+      const [reclaimed] = await outboundRowFor(ORG_A, orderId);
+      expect(reclaimed!.status).toBe("queued");
+      expect(reclaimed!.retryCount).toBe(1);
+
+      release();
+      await done; // the stalled worker now tries to write its ACK…
+      const [after] = await outboundRowFor(ORG_A, orderId);
+      expect(after!.status).toBe("queued"); // …and the claim guard makes that a no-op
+      expect(after!.retryCount).toBe(1);
+      expect(outbox.published).toHaveLength(0); // no `transmitted` for an attempt that lost its claim
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-179 budget: reclaims draw on the shared attempt budget — the last one goes terminal DLQ through the REAL catalog-validating publisher, never a loop", async () => {
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const { orderId, row } = await crashedDispatch(server);
+      await admin.query("UPDATE hl7_message_outbound SET retry_count=4 WHERE id=$1", [row.id]);
+      const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M29_OUTBOX_EVENTS]));
+      const s = sweep({
+        now: new Date(Date.now() + 10 * MINUTE),
+        outboxPort: {
+          publish: (tx: unknown, e: never) =>
+            publisher.publish(tx as never, { ...(e as object), callerModule: "m29" } as never),
+        },
+      });
+      await s.run();
+      const [dlq] = await outboundRowFor(ORG_A, orderId);
+      expect(dlq!.status).toBe("dlq");
+      expect(dlq!.retryCount).toBe(5);
+      expect(dlq!.nextRetryAt).toBeNull();
+      const { rows } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m29.lab_order.transmission_failed'",
+        [row.id],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].payload).toMatchObject({ orderId, reason: "dlq_exhausted", attemptCount: 5 });
+      expect(s.alerts.emitted).toHaveLength(1);
+      expect(s.alerts.emitted[0]!.severity).toBe("HIGH");
+      // Terminal means terminal: another sweep sends nothing further.
+      await sweep({ now: new Date(Date.now() + 30 * MINUTE) }).run();
+      expect(server.receivedWires).toHaveLength(1);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-179: an ack correlating to a DIFFERENT MSH-10 used to strand the row in_flight forever — it now sits on its lease and is reclaimed", async () => {
+    registerActiveBaa();
+    await seedFeed({ organizationId: ORG_A, port: 2575 });
+    const orderId = randomUUID();
+    const wrongAck: MllpTransport = {
+      async send(req) {
+        const env = parseMshEnvelope(req.wireMessage);
+        return { kind: "ack", rawAckPayload: buildAckWire({ ...env, messageControlId: "SOMEONE-ELSES" }, "AA") };
+      },
+    };
+    const { consumer } = buildConsumer(fakeOutbox(), fakeAlerts(), wrongAck);
+    await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+    const [stuck] = await outboundRowFor(ORG_A, orderId);
+    expect(stuck!.status).toBe("in_flight");
+    const s = sweep({ now: new Date(Date.now() + 10 * MINUTE) });
+    await s.run();
+    const [reclaimed] = await outboundRowFor(ORG_A, orderId);
+    expect(reclaimed!.status).toBe("queued");
+    expect(reclaimed!.retryCount).toBe(1);
+  });
+
+  it("F-179 isolation: a sweep scoped to org A reclaims only org A's stale rows; org B's stay put until B is swept, and each alert goes to its own org", async () => {
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    const serverB = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      const a = await crashedDispatch(server, ORG_A);
+      const b = await crashedDispatch(serverB, ORG_B);
+      const now = new Date(Date.now() + 10 * MINUTE);
+
+      const sA = sweep({ now, orgs: [ORG_A] });
+      await sA.run();
+      expect((await outboundRowFor(ORG_A, a.orderId))[0]!.status).toBe("queued");
+      expect((await outboundRowFor(ORG_B, b.orderId))[0]!.status).toBe("in_flight");
+      expect(sA.alerts.emitted.map((e) => e.organizationId)).toEqual([ORG_A]);
+
+      const sB = sweep({ now, orgs: [ORG_B] });
+      await sB.run();
+      expect((await outboundRowFor(ORG_B, b.orderId))[0]!.status).toBe("queued");
+      expect(sB.alerts.emitted.map((e) => e.organizationId)).toEqual([ORG_B]);
+    } finally {
+      await server.close();
+      await serverB.close();
+    }
+  });
+
+  it("F-178: a mllp_plain feed under the production-safe policy is refused BEFORE any socket — terminal DLQ, one attempt, no retry", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const outbox = fakeOutbox();
+      const alerts = fakeAlerts();
+      const consumer = buildM29OutboundDispatchConsumer({
+        db: handle.db,
+        outbox: outbox.port,
+        keys: fakeKeyProvider(),
+        alerts: alerts.port,
+        destinationPolicy: { allowPlain: false, allowLoopback: false },
+      });
+      const orderId = randomUUID();
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+
+      const rows = await outboundRowFor(ORG_A, orderId);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]?.status).toBe("dlq");
+      expect(rows[0]?.retryCount).toBe(1);
+      expect(rows[0]?.nextRetryAt).toBeNull();
+      expect(server.receivedWires).toHaveLength(0); // the receiver saw nothing — no connection was even opened
+      expect(outbox.published).toHaveLength(1);
+      expect(outbox.published[0]).toMatchObject({ eventName: "m29.lab_order.transmission_failed" });
+      expect(outbox.published[0]?.payload).toMatchObject({
+        orderId,
+        reason: "dlq_exhausted",
+        detail: "plain_protocol_refused",
+        attemptCount: 1,
+      });
+      expect(alerts.emitted.some((a) => a.eventType === "hl7_outbound.transmission_failed")).toBe(true);
+      // PHI discipline: the terminal event/alert carry a fixed label, never the wire message.
+      expect(JSON.stringify([outbox.published, alerts.emitted])).not.toContain("Doe");
+    } finally {
+      await server.close();
+    }
+  });
+
+  it("F-178: with plain allowed but loopback refused (production shape), the transport's destination refusal is also a terminal DLQ — no retry burn", async () => {
+    registerActiveBaa();
+    const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
+    try {
+      await seedFeed({ organizationId: ORG_A, port: server.port });
+      const outbox = fakeOutbox();
+      const alerts = fakeAlerts();
+      const consumer = buildM29OutboundDispatchConsumer({
+        db: handle.db,
+        outbox: outbox.port,
+        keys: fakeKeyProvider(),
+        alerts: alerts.port,
+        destinationPolicy: { allowPlain: true, allowLoopback: false },
+      });
+      const orderId = randomUUID();
+      await consumer.handle(dispatchEvent(ormRequestedPayload({ orderId, organizationId: ORG_A })));
+
+      const rows = await outboundRowFor(ORG_A, orderId);
+      expect(rows[0]?.status).toBe("dlq");
+      expect(rows[0]?.retryCount).toBe(1);
+      expect(server.receivedWires).toHaveLength(0);
+      expect(outbox.published[0]?.payload).toMatchObject({ detail: "destination_loopback", attemptCount: 1 });
+    } finally {
+      await server.close();
     }
   });
 });

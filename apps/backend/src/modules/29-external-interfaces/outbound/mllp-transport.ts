@@ -29,22 +29,17 @@
 // optional `clientCertPem`/`clientKeyPem` fields is additive and would not break this contract — flagged
 // for the coordinator to reconcile against the parallel fork, not decided unilaterally here.
 //
-// CERT-PIN CONVENTION — FLAGGED ASSUMPTION. The schema doc comment reads `channelCertPin: sha256
-// (certPEM)`, but nowhere in the repo is that value actually COMPUTED: every call site (`routes/
-// store.ts`, `routes/store-drizzle.ts`, `routes/m29-typebox.ts`) treats it as an opaque admin-supplied
-// string, validated only by a `^[a-f0-9]{64}$` TypeBox pattern (grepped `channelCertPin`, `certPEM`,
-// `checkServerIdentity`, `getPeerCertificate` repo-wide — no minting site found). Per the coordinator's
-// explicit fallback instruction for this exact situation, this file assumes the standard convention —
-// **sha256 hex digest of the peer certificate's DER encoding**, i.e.
-// `crypto.createHash("sha256").update(cert.raw).digest("hex")` — NOT a hash of a re-serialized PEM
-// string. PEM re-encoding is not byte-stable across tools (line-wrap width, trailing newline, CRLF vs
-// LF, header/footer whitespace all vary), which would make a PEM-string hash useless as a pin; the DER
-// bytes Node's TLS layer hands back on `getPeerCertificate().raw` (and on the `cert` argument to
-// `checkServerIdentity`) are the one canonical, tool-independent encoding. **Flagging clearly: if the
-// admin UI or another part of the system mints `channelCertPin` as sha256 of a PEM string instead, pins
-// minted there will NOT match what this file computes, and every `mllp_tls` send will hard-fail as a
-// pin mismatch.** This needs reconciling — either the pin-minting path adopts the DER convention, or
-// this file is updated to match whatever the minting path actually does — before this ships live.
+// CERT-PIN CONVENTION — CANONICAL (F-178). `channelCertPin` is lowercase-hex sha256 of the peer
+// certificate's DER encoding (`getPeerCertificate().raw`), defined once in `../feed/cert-pin.ts`. F-175 had
+// to ASSUME this because nothing minted the value; the admin routes now accept either the 64-hex pin or the
+// certificate PEM and derive the pin server-side with the same helper, so an operator can no longer enter
+// a hash of PEM text (which is not byte-stable across tools) that could never match.
+//
+// DESTINATION POLICY (F-178). The host is admin-supplied. Before any socket is opened the host is resolved,
+// EVERY resulting address is checked against `./destination-policy.ts` (link-local / metadata always
+// refused; loopback / unspecified refused when `allowLoopback` is false, i.e. in production), and the socket
+// is then opened to the exact address that was checked. A refusal is the typed `destination_refused`
+// outcome — never a thrown error, never a socket.
 //
 // TLS POSTURE. `minVersion: "TLSv1.3"` per architecture §8.7's MLLP TLS posture (TLS 1.3 minimum, no
 // 1.2 fallback) — the same floor the inbound listener's mTLS posture cites. `rejectUnauthorized: false`:
@@ -79,10 +74,17 @@
 // this file itself defines (e.g. `"cert_pin_mismatch"`). Nothing here ever reads or forwards
 // `wireMessage` or the raw ACK bytes into an error path — `rawAckPayload` is returned ONLY on the `ack`
 // outcome, where it is up to the caller (never this file) to decide what of it is safe to log.
-import { createHash } from "node:crypto";
+import { lookup as dnsLookup } from "node:dns/promises";
 import { type Socket, connect as netConnect, isIP } from "node:net";
 import { type PeerCertificate, type TLSSocket, connect as tlsConnect } from "node:tls";
+import { certPinFromDer } from "../feed/cert-pin";
 import { MllpFrameBuffer, MllpFramingError, encodeMllpFrame } from "../listener/mllp-framing";
+import {
+  type DestinationRefusal,
+  type OutboundDestinationPolicy,
+  classifyAddress,
+  classifyHostname,
+} from "./destination-policy";
 
 /** Input to a single outbound MLLP send-and-await-ack attempt. One call == one TCP/TLS connection,
  *  one framed write, one framed read, then the socket is always closed — no connection pooling/reuse
@@ -103,6 +105,11 @@ export interface MllpTransportSendInput {
    *  both time out as `connect_timeout`, matching a receiver that "accepts the TCP connection but never
    *  completes it"). */
   readonly connectTimeoutMs: number;
+  /** F-178 — REQUIRED (no default: every caller must decide). Loopback / unspecified destinations may be
+   *  dialled only when true (never in production). Link-local and metadata destinations are refused
+   *  regardless — see `./destination-policy.ts`. The check runs on the RESOLVED address and the socket is
+   *  then opened to that exact address, so a DNS answer cannot change between check and connect. */
+  readonly allowLoopback: boolean;
   /** Timeout for receiving a COMPLETE framed ACK after the message write succeeds. A distinct budget
    *  from `connectTimeoutMs` — a socket can connect (and TLS-handshake) fine and then the peer simply
    *  never sends anything back. */
@@ -117,6 +124,8 @@ export type MllpTransportOutcome =
   /** Includes TLS handshake failure AND a cert-pin mismatch/missing-pin refusal. */
   | { readonly kind: "tls_error"; readonly errorClass: string }
   | { readonly kind: "connect_timeout" }
+  /** F-178 — the configured host (or any address it resolves to) is on the deny list. No socket was opened. */
+  | { readonly kind: "destination_refused"; readonly errorClass: DestinationRefusal }
   | { readonly kind: "ack_timeout" }
   | { readonly kind: "write_error"; readonly errorClass: string }
   /** A response that never forms a complete, in-sync MLLP frame — includes the peer closing the
@@ -152,11 +161,36 @@ function classifyError(err: NodeJS.ErrnoException | Error): string {
   return message.length > 100 ? `${message.slice(0, 100)}…` : message;
 }
 
-/** sha256(DER cert) hex — see the CERT-PIN CONVENTION header note for why DER, not a re-serialized PEM
- *  string. */
+/** sha256(DER cert) hex — the canonical convention in `../feed/cert-pin.ts` (F-178): DER, never a
+ *  re-serialized PEM string. */
 function derSha256Hex(cert: PeerCertificate): string | null {
   if (!cert || !cert.raw || cert.raw.length === 0) return null;
-  return createHash("sha256").update(cert.raw).digest("hex");
+  return certPinFromDer(cert.raw);
+}
+
+/** Resolve `host` to ONE address and enforce the destination deny list on EVERY address it resolves to
+ *  (a name with one public and one link-local answer is refused, not "mostly fine"). Returns the address to
+ *  dial, or a refusal, or the resolver's own error (kept as a connect-stage failure by the caller). */
+async function resolveDestination(
+  host: string,
+  policy: OutboundDestinationPolicy,
+): Promise<{ address: string } | { refused: DestinationRefusal } | { error: Error }> {
+  const byName = classifyHostname(host, policy);
+  if (byName) return { refused: byName };
+  if (isIP(host) !== 0) return { address: host };
+  try {
+    const answers = await dnsLookup(host, { all: true, verbatim: true });
+    if (answers.length === 0) {
+      return { error: Object.assign(new Error("ENOTFOUND"), { code: "ENOTFOUND" }) };
+    }
+    for (const a of answers) {
+      const refusal = classifyAddress(a.address, policy);
+      if (refusal) return { refused: refusal };
+    }
+    return { address: answers[0]!.address };
+  } catch (err) {
+    return { error: err as Error };
+  }
 }
 
 /** The manual, synchronous post-`secureConnect` pin check — see the CERT-PIN ENFORCEMENT POINT header
@@ -279,28 +313,42 @@ function sendOverMllp(input: MllpTransportSendInput): Promise<MllpTransportOutco
       settle({ kind: "malformed_response", errorClass: classifyError(err) });
     };
 
-    if (input.protocol === "mllp_plain") {
-      socket = netConnect({ host: input.host, port: input.port });
-      socket.once("connect", onReadyToWrite);
-    } else {
-      const tlsSocket = tlsConnect({
-        host: input.host,
-        port: input.port,
-        // SNI `servername` must be a hostname, never a literal IP (Node throws otherwise) — omit it
-        // when `host` is an IP literal. This only affects which cert a multi-tenant/SNI-routing receiver
-        // presents, never our trust decision (that's `checkCertPin`, run from `onReadyToWrite`).
-        ...(isIP(input.host) === 0 ? { servername: input.host } : {}),
-        minVersion: "TLSv1.3",
-        // Node's default CA-chain/hostname verification is the wrong check for a pinned channel (partner
-        // certs are frequently self-signed) — trust is decided entirely by `checkCertPin` post-connect.
-        rejectUnauthorized: false,
-      });
-      socket = tlsSocket;
-      tlsSocket.once("secureConnect", onReadyToWrite);
-    }
-    socket.on("data", onData);
-    socket.once("close", onClose);
-    socket.once("error", onError);
+    const policy: OutboundDestinationPolicy = { allowPlain: true, allowLoopback: input.allowLoopback };
+    void resolveDestination(input.host, policy).then((resolved) => {
+      if (settled) return;
+      if ("refused" in resolved) {
+        settle({ kind: "destination_refused", errorClass: resolved.refused });
+        return;
+      }
+      if ("error" in resolved) {
+        settle({ kind: "connect_error", errorClass: classifyError(resolved.error) });
+        return;
+      }
+      // Dial the ADDRESS that was checked (never re-resolve the name).
+      const dialHost = resolved.address;
+      if (input.protocol === "mllp_plain") {
+        socket = netConnect({ host: dialHost, port: input.port });
+        socket.once("connect", onReadyToWrite);
+      } else {
+        const tlsSocket = tlsConnect({
+          host: dialHost,
+          port: input.port,
+          // SNI `servername` must be a hostname, never a literal IP (Node throws otherwise) — omit it
+          // when the configured host is an IP literal. This only affects which cert a multi-tenant/SNI
+          // receiver presents, never our trust decision (that's `checkCertPin`, run from `onReadyToWrite`).
+          ...(isIP(input.host) === 0 ? { servername: input.host } : {}),
+          minVersion: "TLSv1.3",
+          // Node's default CA-chain/hostname verification is the wrong check for a pinned channel (partner
+          // certs are frequently self-signed) — trust is decided entirely by `checkCertPin` post-connect.
+          rejectUnauthorized: false,
+        });
+        socket = tlsSocket;
+        tlsSocket.once("secureConnect", onReadyToWrite);
+      }
+      socket.on("data", onData);
+      socket.once("close", onClose);
+      socket.once("error", onError);
+    });
   });
 }
 

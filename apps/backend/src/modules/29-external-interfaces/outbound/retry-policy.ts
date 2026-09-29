@@ -66,6 +66,48 @@ export type RetryDecision =
     };
 
 /**
+ * F-178 — a failure retrying can never fix (a destination/protocol the deployment REFUSES to dial): go
+ * straight to the terminal DLQ decision instead of burning five backoff attempts against a target the policy
+ * will refuse every time. Same event / alert / audit shape as an exhausted DLQ so M11 (F-177) and M36 treat
+ * it as any other terminal failure; `detail` carries the short PHI-free refusal label and `attemptCount` is
+ * the true number of attempts (this one).
+ */
+export function decidePermanentFailure(input: RetryDecisionInput): Extract<RetryDecision, { kind: "dlq" }> {
+  const { outbound } = input;
+  const attemptNumber = outbound.retryCount + 1;
+  return {
+    kind: "dlq",
+    statusUpdate: { status: "dlq", retryCount: attemptNumber, nextRetryAt: null },
+    event: {
+      name: "m29.lab_order.transmission_failed",
+      payload: {
+        orderId: outbound.sourceAggregateId,
+        organizationId: outbound.organizationId,
+        feedId: outbound.feedId,
+        outboundMessageId: outbound.id,
+        reason: "dlq_exhausted",
+        detail: input.lastError || null,
+        attemptCount: attemptNumber,
+      },
+    },
+    alert: {
+      kind: "hl7_outbound.transmission_failed",
+      severity: "HIGH",
+      channel: "operator-on-call",
+      feedId: outbound.feedId,
+      detail: `outbound ORM refused by destination policy (${input.lastError || "refused"}) — fix the feed configuration, then resend`,
+    },
+    audit: {
+      kind: "hl7.outbound.dlq",
+      feedId: outbound.feedId,
+      orderRecordId: outbound.sourceAggregateId,
+      outboundMessageId: outbound.id,
+      messageControlId: null,
+    },
+  };
+}
+
+/**
  * Decide the fate of a failed outbound dispatch attempt (D9). `attemptNumber` is the 1-based count including
  * this failure (`retryCount + 1`). When it reaches `OUTBOUND_MAX_ATTEMPTS` the row DLQs; otherwise it
  * re-queues with the exponential backoff delay for that attempt.
@@ -115,5 +157,61 @@ export function decideRetry(input: RetryDecisionInput): RetryDecision {
     kind: "retry",
     statusUpdate: { status: "queued", retryCount: attemptNumber, nextRetryAt },
     audit: { kind: "hl7.outbound.dispatched", ...baseAudit },
+  };
+}
+
+// ── F-179: the `in_flight` lease + reclaim decision ──────────────────────────────────────────────────────────
+//
+// A row is claimed `in_flight` in its OWN committed transaction BEFORE the socket send, with `next_retry_at` set
+// to a LEASE EXPIRY (`now + OUTBOUND_IN_FLIGHT_LEASE_MS`); the outcome is written in a second transaction. If the
+// process dies between the two, the committed `in_flight` row is what a reclaim sweep finds once the lease
+// expires. Reclaiming is a STATE TRANSITION only — it never touches a socket:
+//   • the row goes back to `queued` (attempt counted, exponential backoff) and the existing retry sweep resends
+//     the STORED wire, i.e. the SAME MSH-10 message control id, so a receiver that already processed the crashed
+//     attempt can dedupe (HL7 v2 receivers dedupe on MSH-10; a resend with a NEW id would be a second order);
+//   • the reclaim is an attempt, so it draws on the SAME `OUTBOUND_MAX_ATTEMPTS` budget: an outcome that stays
+//     unknown across the whole budget goes terminal (`dlq`) for human verification with the lab, never a loop.
+
+/** How long a claimed `in_flight` row is presumed to have a live worker behind it. Must sit well above the
+ *  worst-case attempt (10s connect + 30s ack wait + rate-limiter wait + DB round trips): reclaiming a row whose
+ *  worker is merely slow would make a live send look like a duplicate. 5 minutes is >7x that worst case. */
+export const OUTBOUND_IN_FLIGHT_LEASE_MS = 5 * 60_000;
+
+/** The fixed, PHI-free `lastError` label a reclaim records. */
+export const IN_FLIGHT_RECLAIM_LABEL = "in_flight_lease_expired";
+
+export type InFlightReclaimDecision =
+  | (Extract<RetryDecision, { kind: "retry" }> & { readonly alert: OutboundAlert })
+  | Extract<RetryDecision, { kind: "dlq" }>;
+
+/**
+ * Decide the fate of an `in_flight` row whose lease expired. Reuses `decideRetry` (one budget, one backoff
+ * ladder, one DLQ event shape — M11's F-177 applier and M36 treat it like any other terminal failure) and adds
+ * the operator alert a reclaim always raises: a crashed/lost attempt is never silent.
+ */
+export function decideInFlightReclaim(input: {
+  readonly outbound: RetryOutboundRow;
+  readonly now: Date;
+}): InFlightReclaimDecision {
+  const decision = decideRetry({ ...input, lastError: IN_FLIGHT_RECLAIM_LABEL });
+  const attemptNumber = input.outbound.retryCount + 1;
+  if (decision.kind === "dlq") {
+    return {
+      ...decision,
+      alert: {
+        ...decision.alert,
+        detail: `outbound ORM in_flight lease expired ${attemptNumber} times with delivery unknown — verify with the lab whether it arrived, then resend`,
+      },
+    };
+  }
+  return {
+    ...decision,
+    alert: {
+      kind: "hl7_outbound.transmission_failed",
+      severity: "NORMAL",
+      channel: "operator-on-call",
+      feedId: input.outbound.feedId,
+      detail: `outbound ORM in_flight lease expired (attempt ${attemptNumber} of ${OUTBOUND_MAX_ATTEMPTS}) — requeued with the same message control id`,
+    },
   };
 }

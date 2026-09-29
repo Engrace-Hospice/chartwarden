@@ -14,6 +14,7 @@ import { join } from "node:path";
 import * as tls from "node:tls";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
+import { certPinFromPem } from "../feed/cert-pin";
 import { createNodeMllpTransport, type MllpTransportSendInput } from "../outbound/mllp-transport";
 import { MllpFrameBuffer, encodeMllpFrame } from "../listener/mllp-framing";
 
@@ -32,6 +33,8 @@ function baseInput(overrides: Partial<MllpTransportSendInput>): MllpTransportSen
     wireMessage: ORM_WIRE,
     connectTimeoutMs: 1_000,
     ackTimeoutMs: 1_000,
+    // The suite dials loopback test doubles; the F-178 refusal tests below override this to false.
+    allowLoopback: true,
     ...overrides,
   };
 }
@@ -374,5 +377,128 @@ describe("PHI discipline", () => {
       expect(errorClass.toLowerCase()).not.toContain("doe");
       expect(errorClass).not.toContain("999-88-7777");
     }
+  });
+});
+
+// ── F-178 — canonical pin (PEM → DER sha256) through the REAL transport ────────────────────────────────────
+
+describe("F-178 channelCertPin canonical convention through the real transport", () => {
+  function tlsAckServer(): tls.Server {
+    const server = tls.createServer({ key: tlsKeyPem, cert: tlsCertPem, minVersion: "TLSv1.3" }, (socket) => {
+      const buf = new MllpFrameBuffer();
+      socket.on("data", (chunk) => {
+        buf.append(chunk);
+        for (const _ of buf.drain()) socket.write(encodeMllpFrame(ACK_WIRE));
+      });
+      socket.on("error", () => undefined);
+    });
+    trackConnections(server);
+    return server;
+  }
+
+  it("a pin derived from the PEM by the admin helper is the pin the transport accepts", async () => {
+    const server = tlsAckServer();
+    currentServer = server;
+    const port = await listen(server);
+    const outcome = await createNodeMllpTransport().send(
+      baseInput({ protocol: "mllp_tls", channelCertPin: certPinFromPem(tlsCertPem), port }),
+    );
+    expect(outcome.kind).toBe("ack");
+  });
+
+  it("the same certificate re-wrapped (CRLF, 76-col, blank lines) yields the identical pin — a PEM-text hash would not", async () => {
+    const der = new X509Certificate(tlsCertPem).raw.toString("base64");
+    const rewrapped = `\r\n-----BEGIN CERTIFICATE-----\r\n${der.match(/.{1,76}/g)!.join("\r\n")}\r\n\r\n-----END CERTIFICATE-----\r\n`;
+    expect(certPinFromPem(rewrapped)).toBe(correctPinHex);
+    // and a hash of the PEM TEXT differs between the two spellings, which is why it can never be the pin:
+    const textHash = (t: string) => createHash("sha256").update(t).digest("hex");
+    expect(textHash(rewrapped)).not.toBe(textHash(tlsCertPem));
+    const server = tlsAckServer();
+    currentServer = server;
+    const port = await listen(server);
+    const outcome = await createNodeMllpTransport().send(
+      baseInput({ protocol: "mllp_tls", channelCertPin: certPinFromPem(rewrapped), port }),
+    );
+    expect(outcome.kind).toBe("ack");
+  });
+
+  it("a pin of the PEM TEXT (the old schema-comment convention) is refused as a mismatch and sends zero bytes", async () => {
+    let bytesReceived = 0;
+    const server = tls.createServer({ key: tlsKeyPem, cert: tlsCertPem, minVersion: "TLSv1.3" }, (socket) => {
+      socket.on("data", (c) => {
+        bytesReceived += c.length;
+      });
+      socket.on("error", () => undefined);
+    });
+    trackConnections(server);
+    currentServer = server;
+    const port = await listen(server);
+    const pemTextPin = createHash("sha256").update(tlsCertPem).digest("hex");
+    const outcome = await createNodeMllpTransport().send(
+      baseInput({ protocol: "mllp_tls", channelCertPin: pemTextPin, port }),
+    );
+    expect(outcome).toEqual({ kind: "tls_error", errorClass: "cert_pin_mismatch" });
+    expect(bytesReceived).toBe(0);
+  });
+});
+
+// ── F-178 — destination policy: no socket to a refused destination ─────────────────────────────────────────
+
+describe("F-178 destination policy in the transport", () => {
+  it("refuses a link-local (cloud metadata) IP literal even when loopback is allowed — and opens no socket", async () => {
+    const outcome = await createNodeMllpTransport().send(
+      baseInput({ host: "169.254.169.254", port: 80, allowLoopback: true }),
+    );
+    expect(outcome).toEqual({ kind: "destination_refused", errorClass: "destination_link_local" });
+  });
+
+  it("refuses the well-known metadata hostnames", async () => {
+    const outcome = await createNodeMllpTransport().send(
+      baseInput({ host: "metadata.google.internal", port: 80, allowLoopback: true }),
+    );
+    expect(outcome).toEqual({ kind: "destination_refused", errorClass: "destination_metadata_host" });
+  });
+
+  it("refuses an IPv4-mapped IPv6 spelling of a link-local address", async () => {
+    const outcome = await createNodeMllpTransport().send(
+      baseInput({ host: "::ffff:169.254.169.254", port: 80, allowLoopback: true }),
+    );
+    expect(outcome.kind).toBe("destination_refused");
+  });
+
+  it("refuses loopback when allowLoopback is false (production) — the listening test double sees NO connection", async () => {
+    let connections = 0;
+    const server = net.createServer((socket) => {
+      connections++;
+      socket.destroy();
+    });
+    currentServer = server;
+    const port = await listen(server);
+    const outcome = await createNodeMllpTransport().send(baseInput({ port, allowLoopback: false }));
+    expect(outcome).toEqual({ kind: "destination_refused", errorClass: "destination_loopback" });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(connections).toBe(0);
+  });
+
+  it("refuses a hostname that RESOLVES to loopback when loopback is not allowed (localhost)", async () => {
+    const outcome = await createNodeMllpTransport().send(
+      baseInput({ host: "localhost", port: 1, allowLoopback: false }),
+    );
+    expect(outcome.kind).toBe("destination_refused");
+  });
+
+  it("still dials a private (RFC1918-style) or loopback receiver when policy allows — the refusal is targeted, not blanket", async () => {
+    const server = net.createServer((socket) => {
+      const buf = new MllpFrameBuffer();
+      socket.on("data", (chunk) => {
+        buf.append(chunk);
+        for (const _ of buf.drain()) socket.write(encodeMllpFrame(ACK_WIRE));
+      });
+    });
+    trackConnections(server);
+    currentServer = server;
+    const port = await listen(server);
+    const outcome = await createNodeMllpTransport().send(baseInput({ port, allowLoopback: true }));
+    expect(outcome.kind).toBe("ack");
   });
 });

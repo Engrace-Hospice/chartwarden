@@ -1302,6 +1302,7 @@ import {
   RecordVerbalRequest as M11RecordVerbalRequest,
   RegenerateVerbalTimerRequest as M11RegenerateVerbalTimerRequest,
   RequestSignatureRequest as M11RequestSignatureRequest,
+  ResendLabTransmissionResponseSchema as M11ResendLabTransmissionResponseSchema,
   SignOnBehalfRequest as M11SignOnBehalfRequest,
   SignOrderRequest as M11SignOrderRequest,
   SpawnResponseSchema as M11SpawnResponseSchema,
@@ -4309,6 +4310,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Manual completion (incl. lab Mark-reviewed)",
     body: M11CompleteOrderRequest,
     response: M11OrderViewResponseSchema,
+  },
+  "POST /api/v1/orders/:id/resend-transmission": {
+    summary:
+      "Re-run the outbound lab HL7 request for a signed lab order whose request was refused (orm_refused:*) — 409 when not resendable",
+    response: M11ResendLabTransmissionResponseSchema,
   },
   "GET /api/v1/standing-orders": {
     summary: "Standing-order templates — cadence, next-spawn, spawn count (§4.1 / §5.2 D5)",
@@ -9620,6 +9626,11 @@ const M29FeedDetailSchema = Type.Object({
   channelCertPin: Type.Union([Type.String(), Type.Null()]),
   sendingFacilityAllowlist: Type.Array(Type.String()),
   rateLimitMsgPerSec: Type.Integer(),
+  labDestinationFacilityId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+  mshSendingApplication: Type.Union([Type.String(), Type.Null()]),
+  mshSendingFacility: Type.Union([Type.String(), Type.Null()]),
+  mshReceivingApplication: Type.Union([Type.String(), Type.Null()]),
+  mshReceivingFacility: Type.Union([Type.String(), Type.Null()]),
   proposedByMembershipId: Type.String(),
   approvedByOpId: Type.Union([Type.String(), Type.Null()]),
   approvedByComplId: Type.Union([Type.String(), Type.Null()]),

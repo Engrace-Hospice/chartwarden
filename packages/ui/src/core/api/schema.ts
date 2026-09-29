@@ -12124,6 +12124,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/orders/{id}/resend-transmission": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Re-run the outbound lab HL7 request for a signed lab order whose request was refused (orm_refused:*) — 409 when not resendable */
+        post: operations["postApiV1OrdersByIdResendtransmission"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/orders/{id}/sign": {
         parameters: {
             query?: never;
@@ -19777,11 +19794,18 @@ export interface operations {
                     port: number;
                     protocol: "mllp_tls" | "mllp_plain";
                     channelCertPin?: string;
+                    channelCertPem?: string;
                     sendingFacilityAllowlist?: string[];
                     baaContractRef?: string;
                     /** Format: date-time */
                     baaExpiresOn?: string;
                     rateLimitMsgPerSec?: number;
+                    /** Format: uuid */
+                    labDestinationFacilityId?: string;
+                    mshSendingApplication?: string;
+                    mshSendingFacility?: string;
+                    mshReceivingApplication?: string;
+                    mshReceivingFacility?: string;
                 };
             };
         };
@@ -19831,6 +19855,11 @@ export interface operations {
                             channelCertPin: string | null;
                             sendingFacilityAllowlist: string[];
                             rateLimitMsgPerSec: number;
+                            labDestinationFacilityId: string | null;
+                            mshSendingApplication: string | null;
+                            mshSendingFacility: string | null;
+                            mshReceivingApplication: string | null;
+                            mshReceivingFacility: string | null;
                             proposedByMembershipId: string;
                             approvedByOpId: string | null;
                             approvedByComplId: string | null;
@@ -19859,11 +19888,18 @@ export interface operations {
                     displayName?: string;
                     host?: string;
                     channelCertPin?: string;
+                    channelCertPem?: string;
                     sendingFacilityAllowlist?: string[];
                     baaContractRef?: string;
                     /** Format: date-time */
                     baaExpiresOn?: string;
                     rateLimitMsgPerSec?: number;
+                    /** Format: uuid */
+                    labDestinationFacilityId?: string;
+                    mshSendingApplication?: string;
+                    mshSendingFacility?: string;
+                    mshReceivingApplication?: string;
+                    mshReceivingFacility?: string;
                 };
             };
         };
@@ -19913,6 +19949,11 @@ export interface operations {
                             channelCertPin: string | null;
                             sendingFacilityAllowlist: string[];
                             rateLimitMsgPerSec: number;
+                            labDestinationFacilityId: string | null;
+                            mshSendingApplication: string | null;
+                            mshSendingFacility: string | null;
+                            mshReceivingApplication: string | null;
+                            mshReceivingFacility: string | null;
                             proposedByMembershipId: string;
                             approvedByOpId: string | null;
                             approvedByComplId: string | null;
@@ -52836,6 +52877,86 @@ export interface operations {
                         signedBy: string | null;
                         completedAt: string | null;
                         createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1OrdersByIdResendtransmission: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        outcome: "requested" | "still_refused";
+                        refusalReason: string | null;
+                        order: {
+                            id: string;
+                            patientId: string;
+                            admissionId: string;
+                            kind: "lab" | "dme" | "level_of_care_change" | "recertification" | "comfort_kit" | "supply" | "ancillary_service" | "idg_requested";
+                            status: "draft" | "pending_signature" | "verbal_pending" | "active" | "completed" | "discontinued" | "expired_unsigned";
+                            priority: "routine" | "stat" | "asap";
+                            version: number;
+                            drafterMembershipId: string;
+                            drafterDiscipline: string;
+                            orderingPhysicianMdmId: string;
+                            cosignRequired: boolean;
+                            cosignStatus: "pending" | "attached" | null;
+                            transmissionStatus: string;
+                            resultsStatus: string;
+                            verbalDeadlineAt: string | null;
+                            discontinuationReason: ("clinical_judgement" | "patient_request" | "adverse_event" | "replaced_by_corrected_order" | "admission_discharged" | "level_of_care_change" | "standing_order_discontinued" | "corrected_replacement" | "expired_verbal") | null;
+                            replacesOrderId: string | null;
+                            triggeringAssessmentId: string | null;
+                            triggeringHopeAssessmentId: string | null;
+                            signedAt: string | null;
+                            signedBy: string | null;
+                            completedAt: string | null;
+                            createdAt: string;
+                        } & {
+                            kindVersion: string;
+                            data: unknown;
+                            verbalOrder: {
+                                status: string;
+                                receivedAt: string;
+                                effectiveAt: string;
+                                deadlineAt: string;
+                                signedAt: string | null;
+                                readBackVerified: boolean;
+                                attestation: string;
+                            } | null;
+                            requirements: {
+                                code: "clinical_details" | "rn_cosignature" | "physician_signature" | "verbal_signature";
+                                label: string;
+                                status: "not_required" | "pending" | "satisfied";
+                                deadlineAt?: string;
+                            }[];
+                            allowedActions: {
+                                edit: boolean;
+                                request_signature: boolean;
+                                record_verbal: boolean;
+                                sign: boolean;
+                                cosign: boolean;
+                                complete: boolean;
+                                discontinue: boolean;
+                                correct: boolean;
+                            };
+                        };
                     };
                 };
             };

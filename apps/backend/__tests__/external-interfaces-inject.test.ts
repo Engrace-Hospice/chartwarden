@@ -48,9 +48,14 @@ import {
   resetAuthorizationContract,
   resetRbacEngine,
 } from "@wardenx/auth";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { FastifyRequest } from "fastify";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
+import { certPinFromPem } from "../src/modules/29-external-interfaces/feed/cert-pin";
 import {
   type M29AbacResolver,
   type M29Store,
@@ -157,7 +162,12 @@ function buildM29TestAbacResolver(
   };
 }
 
-function makeServer(opts: { nppesSyncTrigger?: NppesSyncTriggerPort } = {}) {
+function makeServer(
+  opts: {
+    nppesSyncTrigger?: NppesSyncTriggerPort;
+    env?: Readonly<Record<string, string | undefined>>;
+  } = {},
+) {
   const store = createInMemoryM29Store({
     now: () => NOW,
     // The M5 `PatientReader` slice the manual unmatched-lab bind resolves its target through — the agency
@@ -253,6 +263,7 @@ function makeServer(opts: { nppesSyncTrigger?: NppesSyncTriggerPort } = {}) {
   mountM29Routes(app, {
     store,
     ...(opts.nppesSyncTrigger ? { nppesSyncTrigger: opts.nppesSyncTrigger } : {}),
+    ...(opts.env ? { env: opts.env } : {}),
   });
   return { app, store };
 }
@@ -838,6 +849,157 @@ describe("M29-external-interfaces-inject — §4.2 clinician lab surface (routes
       observationId: OBS_ABNORMAL,
       acknowledgedBy: MEMBER_SUPER,
     });
+    await app.close();
+  });
+});
+
+// ── F-178 — feed input policy: canonical cert pin, production `mllp_plain` refusal, destination deny ─────────
+describe("M29-external-interfaces-inject — F-178 feed input policy", () => {
+  const FEEDS = "/api/admin/external-interfaces/feeds";
+  let certPem = "";
+  beforeEach(() => {
+    if (certPem) return;
+    const dir = mkdtempSync(join(tmpdir(), "m29-feed-input-"));
+    try {
+      execFileSync("openssl", [
+        "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+        "-keyout", join(dir, "k.pem"), "-out", join(dir, "c.pem"),
+        "-days", "1", "-subj", "/CN=f178-lab-receiver",
+      ]);
+      certPem = readFileSync(join(dir, "c.pem"), "utf8");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  const outbound = (over: Record<string, unknown> = {}) => ({
+    kind: "orm_outbound",
+    displayName: "Quest ORM",
+    host: "lab.example.org",
+    port: 6200,
+    protocol: "mllp_tls",
+    ...over,
+  });
+
+  it("a PEM on create is converted to the canonical DER-sha256 pin server-side", async () => {
+    const { app } = makeServer({ env: { NODE_ENV: "production" } });
+    const res = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ channelCertPem: certPem }) });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().feed.channelCertPin).toBe(certPinFromPem(certPem));
+    await app.close();
+  });
+
+  it("a raw 64-hex pin is still accepted unchanged", async () => {
+    const { app } = makeServer({ env: { NODE_ENV: "production" } });
+    const pin = "ab".repeat(32);
+    const res = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ channelCertPin: pin }) });
+    expect(res.statusCode).toBe(201);
+    expect(res.json().feed.channelCertPin).toBe(pin);
+    await app.close();
+  });
+
+  it("a PEM together with a DIFFERENT pin is refused (422 CERT_PIN_MISMATCH); garbage PEM is refused (422 CERT_PEM_INVALID)", async () => {
+    const { app } = makeServer({ env: { NODE_ENV: "production" } });
+    const mismatch = await app.inject({
+      method: "POST", url: FEEDS, headers: SUPER,
+      payload: outbound({ channelCertPem: certPem, channelCertPin: "cd".repeat(32) }),
+    });
+    expect(mismatch.statusCode).toBe(422);
+    expect(JSON.stringify(mismatch.json())).toContain("CERT_PIN_MISMATCH");
+    const garbage = await app.inject({
+      method: "POST", url: FEEDS, headers: SUPER,
+      payload: outbound({ channelCertPem: "-----BEGIN CERTIFICATE-----\nnot-a-cert\n-----END CERTIFICATE-----".padEnd(80, " ") }),
+    });
+    expect(garbage.statusCode).toBe(422);
+    expect(JSON.stringify(garbage.json())).toContain("CERT_PEM_INVALID");
+    await app.close();
+  });
+
+  it("production: creating an OUTBOUND mllp_plain feed is refused (422 PLAIN_MLLP_REFUSED); mllp_tls and non-production plain are fine", async () => {
+    const prod = makeServer({ env: { NODE_ENV: "production" } });
+    const refused = await prod.app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ protocol: "mllp_plain" }) });
+    expect(refused.statusCode).toBe(422);
+    expect(JSON.stringify(refused.json())).toContain("PLAIN_MLLP_REFUSED");
+    const tlsOk = await prod.app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound() });
+    expect(tlsOk.statusCode).toBe(201);
+    await prod.app.close();
+
+    const dev = makeServer({ env: { NODE_ENV: "development" } });
+    const devPlain = await dev.app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ protocol: "mllp_plain" }) });
+    expect(devPlain.statusCode).toBe(201);
+    await dev.app.close();
+  });
+
+  it("a plain outbound feed created before the deployment became production cannot be ACTIVATED in production", async () => {
+    const env: Record<string, string | undefined> = { NODE_ENV: "development" };
+    const { app } = makeServer({ env });
+    const created = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ protocol: "mllp_plain" }) });
+    expect(created.statusCode).toBe(201);
+    const feedId = created.json().feed.id as string;
+    env.NODE_ENV = "production";
+    const activate = await app.inject({ method: "POST", url: `${FEEDS}/${feedId}/activate`, headers: SUPER2 });
+    expect(activate.statusCode).toBe(422);
+    expect(JSON.stringify(activate.json())).toContain("PLAIN_MLLP_REFUSED");
+    await app.close();
+  });
+
+  it("a link-local / metadata destination is refused on create and on update (422 DESTINATION_REFUSED)", async () => {
+    const { app } = makeServer({ env: { NODE_ENV: "development" } });
+    const bad = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound({ host: "169.254.169.254" }) });
+    expect(bad.statusCode).toBe(422);
+    expect(JSON.stringify(bad.json())).toContain("DESTINATION_REFUSED");
+    const created = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: outbound() });
+    const feedId = created.json().feed.id as string;
+    const upd = await app.inject({ method: "PATCH", url: `${FEEDS}/${feedId}`, headers: SUPER, payload: { host: "metadata.google.internal" } });
+    expect(upd.statusCode).toBe(422);
+    expect(JSON.stringify(upd.json())).toContain("DESTINATION_REFUSED");
+    await app.close();
+  });
+});
+
+// ── F-179 — the production `mllp_plain` refusal covers INBOUND feeds too ────────────────────────────────────
+describe("M29-external-interfaces-inject — F-179 inbound mllp_plain", () => {
+  const FEEDS = "/api/admin/external-interfaces/feeds";
+  const inbound = (over: Record<string, unknown> = {}) => ({
+    kind: "adt_inbound",
+    displayName: "Partner ADT",
+    port: 6300,
+    protocol: "mllp_tls",
+    ...over,
+  });
+
+  it("production: creating an INBOUND mllp_plain feed is refused (422 PLAIN_MLLP_REFUSED, says inbound); inbound mllp_tls is fine", async () => {
+    const prod = makeServer({ env: { NODE_ENV: "production" } });
+    for (const kind of ["adt_inbound", "lab_inbound"]) {
+      const refused = await prod.app.inject({
+        method: "POST", url: FEEDS, headers: SUPER, payload: inbound({ kind, protocol: "mllp_plain" }),
+      });
+      expect(refused.statusCode).toBe(422);
+      expect(JSON.stringify(refused.json())).toContain("PLAIN_MLLP_REFUSED");
+      expect(JSON.stringify(refused.json())).toContain("inbound");
+    }
+    const tlsOk = await prod.app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: inbound() });
+    expect(tlsOk.statusCode).toBe(201);
+    await prod.app.close();
+  });
+
+  it("non-production: an inbound mllp_plain feed can still be created (the listener enforces the opt-in at bind time)", async () => {
+    const dev = makeServer({ env: { NODE_ENV: "development" } });
+    const res = await dev.app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: inbound({ protocol: "mllp_plain" }) });
+    expect(res.statusCode).toBe(201);
+    await dev.app.close();
+  });
+
+  it("a plain INBOUND feed created before the deployment became production cannot be ACTIVATED in production", async () => {
+    const env: Record<string, string | undefined> = { NODE_ENV: "development" };
+    const { app } = makeServer({ env });
+    const created = await app.inject({ method: "POST", url: FEEDS, headers: SUPER, payload: inbound({ protocol: "mllp_plain" }) });
+    expect(created.statusCode).toBe(201);
+    const feedId = created.json().feed.id as string;
+    env.NODE_ENV = "production";
+    const activate = await app.inject({ method: "POST", url: `${FEEDS}/${feedId}/activate`, headers: SUPER2 });
+    expect(activate.statusCode).toBe(422);
+    expect(JSON.stringify(activate.json())).toContain("PLAIN_MLLP_REFUSED");
     await app.close();
   });
 });
