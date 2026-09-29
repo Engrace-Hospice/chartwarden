@@ -2066,6 +2066,75 @@ re-run for regression on the touched shared files (`m17:evv-sos-consumers` 4/4, 
 12/12, `m37:privacy-gates` 16/16, `m37:coverage` 9/9, `m39:consent-lifecycle` 4/4). Leaving #248 open —
 159 pairs across 22 modules remain.
 
+**A fifth round of parallel forks built 3 more bindings and, verifying them, surfaced a real, pre-existing
+production scoring defect that predates every fork in this series (F-159, #248).** Five forks re-investigated
+M23's 2 remaining events, M6's 2, M16's 4, M13's 6, and M1's 4 — all previously scoped as blocked by
+F-153/F-155/F-156. **M6 built the first of its two**: `m11.order.level_of_care_change_signed` is now a live
+consumer (migration 0250 adds `level_of_care_period.source_order_id` + a plain unique constraint, the
+migration-0249 NULLS-DISTINCT precedent), calling the same pure `transitionLevelOfCare` machine `changeLoc`
+calls directly rather than the route-shaped function itself. It honestly refuses IRC/GIP-directed orders
+(the catalogued payload carries no `facilityId`/`clinicalJustification`, both required by the machine's own
+guard) rather than fabricating either fact — RHC/CHC, which need neither, succeed. `m11.order
+.recertification_signed` stays blocked, and the fork found the real reason is deeper than "needs an
+idempotency column": M11's own locked spec requires M6 to validate F2F-window and CTI-narrative adequacy
+before sequencing the next benefit period, and no callable function anywhere performs either check —
+wiring straight to `createElectionPeriod` would bypass the exact CoP-compliance gate D10 exists to enforce.
+**M16 built 2 of its 4**: `m39.consent.signed` (the §4.5 post-death-grant handler, confirming proposed
+contacts) and `m5.patient.bereavement_opt_out_changed` (the §2.6/D9 patient-level cascade) are both live;
+`m37.ipu_admission.death_recorded` and `m6.discharge.cosigned` stay blocked, the first because it has NO
+PRODUCER anywhere in the codebase (`transitionAdmission(..., {type:"recordDeath"})` is called nowhere
+outside its own unit test — and would be redundant even if built, since M16 already receives every IPU
+death through two already-bound M6 paths), the second because the real catalogued payload is a completely
+different event (M6's route-40 for-cause discharge cosign) from what the decider needs.
+**Independently re-verifying the M16 build — not trusting the fork's own report — found a real, pre-existing
+production bug it had faithfully copied rather than introduced**: `BereavementRosterEvidence`'s real fields
+are `isPrimaryCaregiver`/`enrolledSurvivorCount`, and both the new consumer AND the already-shipped private
+`appendScore` (`routes/write-service-drizzle.ts`, the function being reimplemented) were constructing
+`{activeContactCount, relationshipCode}` under an `as never` cast — so `deriveRiskFactors` read `undefined`
+for both fields on every score ever appended through the real HTTP route, always resolving
+`primaryCaregiverRole` as a definite non-caregiver (never falling back to the MSW-derived value its own
+`!== null` check exists to permit) and always resolving the roster half of `socialIsolation` as `false`
+(`undefined < number` is always false in JS). Fixed in both places: `enrolledSurvivorCount` is the same
+already-computed roster count under its correct name, `isPrimaryCaregiver` is honestly `null` (no bound seam
+resolves M5's `patient_caregiver.is_primary`, the extract.ts header's own "KNOWN GAP" pattern) rather than
+guessed, and the `as never` cast is gone — the object now genuinely satisfies the real interface.
+**Running the new live suite for the first time found a second bug, this one inside the new consumer
+itself, not inherited**: `skipPerPatientOptOut` (the D9 pre-death opt-out) transitions a plan straight from
+`eligible`/`initiating` to `closed_completed` without ever running `seedRosterAndSchedule` — the only
+transition that sets `opened_at` — while migration 0100's `berv_plan_opened_at_required` CHECK requires a
+non-null `opened_at` for `closed_completed` among other statuses. The pure machine's own `skip` case had
+simply never declared the effect (never exercised against a real database before this pass, since the
+consumer that would call it has been unbound its whole life); fixed by adding a `set_timestamp` effect for
+`opened_at` at the same instant as `closed_at` — honest, not fabricated, since a plan that never opened and
+was immediately closed genuinely has a zero-day lifetime. A second, independent bug compounded it: the
+consumer's own `closePlan` helper called `runEffects` and discarded its returned column patch entirely,
+so even a correctly-declared effect would never have reached the database — fixed by capturing and
+applying the patch in the final UPDATE. **M23, M13, and M1 stay exactly as blocked as before, each
+re-verified fresh rather than re-asserted, with several findings sharpened**: M23's `m18.evv
+.late_check_resolved` needs one new M8-owned seam function (`visitId → encounterId`) outside an isolated
+M23 build; `m25.taxonomy.unmapped_code_observed` — now a real, live-published event since F-158 — needs
+genuinely new schema (a 30-day occurrence/threshold-tracking table per M25's own D13) rather than the
+already-wired `revalidate.consumer` path the other 6 M23 events reuse. M13's `m21.comfort_kit
+.deployed_at_patient`/`.replenished` nullability is now CONFIRMED DELIBERATE (a real IPU floor-stock-kit
+business state), not an oversight a migration should tighten, and `.returned`'s M21 producer-side
+double-emit defect is now pinpointed to exact line numbers for a future scoped fix. M1's `m23.mac_portal.*`
+re-confirmed a second, independent live bug beyond the missing outbox emit: `deps.alerts` is still never
+wired into `buildM23WorkerDeps` at the composition root, so every real MAC-portal state-transition throws
+in production today. Net: **159 → 156** (3 bound, 0 dropped; module count unchanged at 22 — none of the
+four partially-built groups emptied). Verified: `bun run build`/`typecheck` clean (0 errors), full non-live
+suite 654 files / 9593 tests green (including the bereavement-lifecycle unit suite, re-run to confirm the
+new `opened_at` effect doesn't regress `skipPerPatientOptOut`'s pinned assertions), `arch:fitness` 38/38
+(`arch:outbox-bindings` confirms 156 pairs, down from 159, and 87 live bindings now covering 95 catalogued
+events), a clean `check:boot:platform` run against a freshly migrated, RLS-enforced disposable Postgres
+(proving migration 0250 applies cleanly), all three new live suites run individually after fixing five
+test-fixture bugs found along the way — two CHECK-constraint-blind INSERT fixtures in each of the two new
+M16 suites (`assigned_counselor_user_id`/`opened_at`/`closed_at` per status; a missing `bereaved_contact_id`
+on a seeded outreach row) plus two message-vs-code assertion mismatches in the M6 suite (`m6:loc-change
+-signed` 7/7, `m16:consent-signed` 5/5, `m16:opt-out-changed` 6/6) — and five sibling live suites re-run for
+regression on the touched shared files (`m16:bereavement-intake` 8/8, `m16:consent-revoked` 5/5,
+`m16:discharge-death-secondary` 5/5, `m6:cop-documents` 6/6, `m6:discharge-cascade` 6/6). Leaving #248
+open — 156 pairs across 22 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

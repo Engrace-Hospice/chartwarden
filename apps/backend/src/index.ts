@@ -185,6 +185,7 @@ import {
   admissionIsActiveForOrg,
   admissionSchedulingContextForOrg,
   buildM6DocumentBackrefConsumer,
+  buildM6LevelOfCareChangeSignedConsumer,
   buildM6ProposalAcceptedConsumer,
   buildM6WorkerDeps,
   claimAssemblyRangeContextForOrg,
@@ -351,8 +352,10 @@ import {
   buildDrizzleM16WriteService,
   buildM16BereavementIntakeConsumer,
   buildM16ConsentRevokedConsumer,
+  buildM16ConsentSignedConsumer,
   buildM16DischargeDeathSecondaryConsumer,
   buildM16IdgDecisionConsumer,
+  buildM16PatientOptOutChangedConsumer,
   createDrizzleBereavementEraseStore,
   createDrizzleBereavementSeamStore,
   denyStubBereavementAbacResolver,
@@ -5142,6 +5145,18 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             resolveAdmission: async (organizationId, admissionId) =>
               admissionSchedulingContextForOrg(dbHandle.db, organizationId, admissionId),
           }),
+          // F-159 (#248) — the §4.5 post-death-grant handler: confirms a proposed bereaved contact onto
+          // the roster once M39 signs the exact bereavement-outreach consent requested for them.
+          buildM16ConsentSignedConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+          }),
+          // F-159 (#248) — the §2.6/D9 patient-level opt-out cascade: honoring a directive the patient
+          // already gave (cosign-exempt, unlike the five D7 clinical-judgment closure reasons).
+          buildM16PatientOptOutChangedConsumer({
+            db: dbHandle.db,
+            outbox: m16OutboxPublisher,
+          }),
           buildM8VisitPublishedConsumer({
             db: dbHandle.db,
             outbox: m8OutboxPublisher,
@@ -5348,6 +5363,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // statement, the face-to-face, the notice of rights, the revocation and the discharge summary,
           // all six commented "M22 document" since M6's schema landed and all six NULL in every database.
           buildM6DocumentBackrefConsumer({ db: dbHandle.db }),
+          // F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
+          // Migration 0250 adds the `source_order_id` idempotency key a genuine redelivery needs.
+          buildM6LevelOfCareChangeSignedConsumer({
+            db: dbHandle.db,
+            outbox: m6OutboxPublisher,
+          }),
           buildM11DocumentBackrefConsumer({ db: dbHandle.db }),
           buildM12DocumentBackrefConsumer({ db: dbHandle.db }),
           // F-152 (#248) — the §2.7 D7 order-suggestion banner. Needs `orderSuggestionRedisClient`

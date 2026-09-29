@@ -489,6 +489,8 @@ jobs:
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
           - { name: "M6 CoP documents", scripts: "test:m6:cop-documents:live" }
           - { name: "M6 discharge cascade", scripts: "test:m6:discharge-cascade:live" }
+          # F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
+          - { name: "M6 LOC change signed", scripts: "test:m6:loc-change-signed:live" }
           # F-120 — M21's other two bound M11 cascade deciders (§7.7 cancellation, the DME rental
           # close-out), both already live-emitted by the M6/M11 discharge cascade above.
           - { name: "M21 order cascade", scripts: "test:m21:order-cascade:live" }
@@ -500,6 +502,10 @@ jobs:
           - { name: "M16 consent-revoked cascade", scripts: "test:m16:consent-revoked:live" }
           # F-153 (#248) — the §4.5 death-discharge secondary verifier (redundant safety net).
           - { name: "M16 discharge death secondary", scripts: "test:m16:discharge-death-secondary:live" }
+          # F-159 (#248) — the §4.5 post-death-grant handler (m39.consent.signed).
+          - { name: "M16 consent-signed", scripts: "test:m16:consent-signed:live" }
+          # F-159 (#248) — the §2.6/D9 patient-level opt-out cascade.
+          - { name: "M16 patient opt-out changed", scripts: "test:m16:opt-out-changed:live" }
           - { name: "M23 NOE draft", scripts: "test:m23:noe-draft:live" }
           - { name: "M23 NOTR draft", scripts: "test:m23:notr-draft:live" }
           # F-153 (#248) — the §4.8 revalidate.consumer producer side, six M6/M8 trigger events.

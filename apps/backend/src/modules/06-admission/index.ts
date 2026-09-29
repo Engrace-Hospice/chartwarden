@@ -244,6 +244,11 @@ export {
   M6_BACKREF_AGGREGATE_TYPES,
   buildM6DocumentBackrefConsumer,
 } from "./outbox-consumers/m22-document-rendered";
+// F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
+export {
+  M6_LEVEL_OF_CARE_CHANGE_SIGNED_CONSUMER,
+  buildM6LevelOfCareChangeSignedConsumer,
+} from "./outbox-consumers/m11-level-of-care-change-signed";
 export {
   M6_QUEUES,
   M6_JOB_SCHEDULES,

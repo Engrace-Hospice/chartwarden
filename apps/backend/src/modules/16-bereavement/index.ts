@@ -44,6 +44,18 @@ export {
   M16_DISCHARGE_DEATH_SECONDARY_CONSUMER,
   buildM16DischargeDeathSecondaryConsumer,
 } from "./outbox-consumers/m6-admission-discharged-death";
+// F-159 (#248) — the §4.5 post-death-grant handler (`m39.consent.signed`) and the §2.6/D9 patient-level
+// opt-out cascade (`m5.patient.bereavement_opt_out_changed`).
+export {
+  type ConsentSignedDeps,
+  M16_CONSENT_SIGNED_CONSUMER,
+  buildM16ConsentSignedConsumer,
+} from "./outbox-consumers/m39-consent-signed";
+export {
+  type PatientOptOutChangedDeps,
+  M16_PATIENT_OPT_OUT_CHANGED_CONSUMER,
+  buildM16PatientOptOutChangedConsumer,
+} from "./outbox-consumers/m5-patient-opt-out-changed";
 
 // §4.7 — the twenty-nine permission keys M16 contributes to M3's catalog.
 export {

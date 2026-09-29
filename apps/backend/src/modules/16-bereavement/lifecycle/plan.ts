@@ -217,7 +217,16 @@ export function transitionBereavementPlan(
       // D9 — the patient (or their DPOA) declined the program before death. The closure row records it as
       // `patient_opt_out_pre_death` and NO M36 channel opens; §2.2 is explicit that this is a completed
       // program, not a declined one — the family never refused anything.
+      //
+      // F-159 (#248): a plan reaching `skip` from `eligible`/`initiating` never ran `seedRosterAndSchedule`
+      // (the only transition that sets `opened_at`) — yet `closed_completed` is one of the statuses
+      // `berv_plan_active_requires_counselor`'s sibling constraint `berv_plan_opened_at_required`
+      // (migration 0100) requires a non-null `opened_at` for. Stamping it to the SAME instant as
+      // `closed_at` is honest, not fabricated: it records that this program's whole lifetime — from never
+      // opening to being closed — was zero, which is exactly what happened, and lets a "days open" report
+      // compute 0 rather than choke on a NULL.
       return result(from, event.type, "closed_completed", [
+        { kind: "set_timestamp", field: "opened_at", at: event.at },
         { kind: "set_timestamp", field: "closed_at", at: event.at },
         {
           kind: "insert_closure",
