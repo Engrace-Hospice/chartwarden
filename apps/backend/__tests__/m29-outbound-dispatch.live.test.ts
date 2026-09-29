@@ -16,7 +16,7 @@ import { type Socket, createServer } from "node:net";
 import { join } from "node:path";
 import { createDbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -24,6 +24,10 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import { M29_OUTBOX_EVENTS } from "../src/modules/29-external-interfaces/events-by-m29";
 import { buildDrizzleOutboundFeedResolver } from "../src/modules/29-external-interfaces/outbound/feed-resolver";
+import {
+  ormDispatchExistsForOrder,
+  ormDispatchLookupQuery,
+} from "../src/modules/29-external-interfaces/outbound/order-dispatch-dedupe";
 import {
   type MllpTransport,
   createNodeMllpTransport,
@@ -1440,5 +1444,215 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     } finally {
       await server.close();
     }
+  });
+
+  // ── F-184 — the index behind F-183's ORDER-level dispatch dedupe ──────────────────────────────────────────
+  // `ormDispatchExistsForOrder` runs once per delivery. Migration 0264 adds `idx_hmo_org_source_aggregate`. Proven:
+  //  (a) on ~40k rows across 4 partitions (incl. DEFAULT), under the real NOBYPASSRLS role (RLS qual in the plan),
+  //      every partition holding rows is read through an index attached to the F-184 parent index and NO row is
+  //      fetched-then-filtered;
+  //  (b) the assertion is sensitive: with the index dropped (rolled-back txn) the planner falls back to the org's
+  //      `(organization_id, feed_id)` index on the org prefix ALONE — a Bitmap Heap Scan that fetches every row of
+  //      the org and filters them — so the same query does thousands of rows of filtering and an order of magnitude
+  //      more buffer work. Node TYPE is not the signal (the fallback is not a Seq Scan); WORK DONE is;
+  //  (c) every existing partition, and a newly created month, carry the index; (d) answers + tenant isolation of the
+  //      lookup are unchanged.
+  describe("F-184 order-lookup index (idx_hmo_org_source_aggregate)", () => {
+    const INDEX = "idx_hmo_org_source_aggregate";
+    const KIND = "m11.order_record";
+
+    type PlanNode = {
+      "Node Type": string;
+      "Relation Name"?: string;
+      "Index Name"?: string;
+      "Rows Removed by Filter"?: number;
+      "Shared Hit Blocks"?: number;
+      "Shared Read Blocks"?: number;
+      Plans?: PlanNode[];
+    };
+
+    function scanNodes(node: PlanNode, out: PlanNode[] = []): PlanNode[] {
+      if (node["Relation Name"] !== undefined || node["Index Name"] !== undefined) out.push(node);
+      for (const child of node.Plans ?? []) scanNodes(child, out);
+      return out;
+    }
+    function rowsRemoved(node: PlanNode): number {
+      return (node["Rows Removed by Filter"] ?? 0) + (node.Plans ?? []).reduce((a, c) => a + rowsRemoved(c), 0);
+    }
+    /** buffer blocks touched by the whole statement (the root node's counters include its children). */
+    function buffers(root: PlanNode): number {
+      return (root["Shared Hit Blocks"] ?? 0) + (root["Shared Read Blocks"] ?? 0);
+    }
+
+    /** rows loaded per partition, by partition name (the plan's scan nodes carry the leaf partition name). */
+    async function loadedPartitions(): Promise<Map<string, number>> {
+      const r = await admin.query(
+        "SELECT tableoid::regclass::text AS part, count(*)::int AS n FROM hl7_message_outbound GROUP BY 1",
+      );
+      return new Map(r.rows.map((x: { part: string; n: number }) => [x.part, x.n]));
+    }
+
+    /** the per-partition index names attached (pg_inherits) to the parent F-184 index — the planner reports these. */
+    async function childIndexNames(): Promise<Set<string>> {
+      const r = await admin.query(
+        `SELECT c.relname FROM pg_inherits i JOIN pg_class c ON c.oid = i.inhrelid
+           JOIN pg_class p ON p.oid = i.inhparent WHERE p.relname = $1`,
+        [INDEX],
+      );
+      return new Set(r.rows.map((x: { relname: string }) => x.relname));
+    }
+
+    async function seedBulk(feedA: string, feedB: string): Promise<{ knownOrder: string; partitions: number }> {
+      // 4 partitions: this month, +1, +2 (all pre-created by 0146) and 2 years back (the DEFAULT partition).
+      const spans = ["now()", "now() + interval '1 month'", "now() + interval '2 months'", "now() - interval '2 years'"];
+      for (const [org, feed] of [[ORG_A, feedA], [ORG_B, feedB]] as const) {
+        for (const at of spans) {
+          await admin.query(
+            `INSERT INTO hl7_message_outbound
+               (id, organization_id, feed_id, message_type, message_control_id, payload_cipher, payload_sha256,
+                segments_summary, source_aggregate_kind, source_aggregate_id, queued_at, idempotency_key)
+             SELECT gen_random_uuid(), $1, $2, 'ORM^O01', md5(random()::text || g::text), 'x', 'x', '{}'::jsonb,
+                    $3, gen_random_uuid(), ${at}, md5(random()::text || g::text) || $4::text
+               FROM generate_series(1, 5000) g`,
+            [org, feed, KIND, org],
+          );
+        }
+      }
+      const knownOrder = randomUUID();
+      await admin.query(
+        `INSERT INTO hl7_message_outbound
+           (organization_id, feed_id, message_type, message_control_id, payload_cipher, payload_sha256,
+            segments_summary, source_aggregate_kind, source_aggregate_id, queued_at, idempotency_key)
+         VALUES ($1, $2, 'ORM^O01', 'ctl-known', 'x', 'x', '{}'::jsonb, $3, $4, now() + interval '1 month', 'known-key')`,
+        [ORG_A, feedA, KIND, knownOrder],
+      );
+      await admin.query("ANALYZE hl7_message_outbound");
+      return { knownOrder, partitions: (await loadedPartitions()).size };
+    }
+
+    function planFrom(rows: Array<Record<string, unknown>>): PlanNode {
+      const plan = (rows[0]?.["QUERY PLAN"] ?? Object.values(rows[0] ?? {})[0]) as Array<{ Plan: PlanNode }>;
+      return plan[0]!.Plan;
+    }
+
+    /** EXPLAIN (ANALYZE, BUFFERS) exactly the seam's statement under the real app role + RLS (`withOrgContext`). */
+    async function explainAsApp(orgId: string, orderId: string): Promise<PlanNode> {
+      return withOrgContext(handle.db, { organizationId: orgId, userId: "" }, async (tx) => {
+        const q = ormDispatchLookupQuery(tx as never, orgId, orderId);
+        const res = (await tx.execute(sql`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${q.getSQL()}`)) as unknown as
+          | Array<Record<string, unknown>>
+          | { rows: Array<Record<string, unknown>> };
+        return planFrom(Array.isArray(res) ? res : res.rows);
+      });
+    }
+
+    /** the same statement on the superuser connection (used for the drop-the-index control only). */
+    async function explainAsAdmin(orgId: string, orderId: string): Promise<PlanNode> {
+      const q = ormDispatchLookupQuery(handle.db as never, orgId, orderId).toSQL();
+      const r = await admin.query(`EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${q.sql}`, q.params as unknown[]);
+      return planFrom(r.rows);
+    }
+
+    it("the planner reads every LOADED partition through the F-184 index and fetches no row it then discards", async () => {
+      const feedA = await seedFeed({ organizationId: ORG_A, port: 2591 });
+      const feedB = await seedFeed({ organizationId: ORG_B, port: 2592 });
+      const { knownOrder, partitions } = await seedBulk(feedA, feedB);
+      expect(partitions).toBeGreaterThanOrEqual(4); // the load really spans >= 2 partitions (incl. DEFAULT)
+
+      const loaded = await loadedPartitions();
+      expect([...loaded.values()].reduce((a, b) => a + b, 0)).toBeGreaterThan(40_000);
+      const children = await childIndexNames();
+      expect(children.size).toBeGreaterThanOrEqual(14); // 13 monthly partitions + DEFAULT each carry a child index
+
+      // A known order (lives in the +1 month partition) AND an absent one (no partition can short-circuit LIMIT 1).
+      for (const orderId of [knownOrder, randomUUID()]) {
+        const plan = await explainAsApp(ORG_A, orderId);
+        const onLoaded = scanNodes(plan).filter((n) => n["Relation Name"] !== undefined && loaded.has(n["Relation Name"]!));
+        expect(onLoaded.length).toBeGreaterThanOrEqual(1);
+        for (const n of onLoaded) {
+          expect(n["Node Type"], `${n["Relation Name"]}`).not.toBe("Seq Scan");
+          expect(children.has(n["Index Name"] ?? ""), `${n["Relation Name"]} must use a child of ${INDEX}`).toBe(true);
+        }
+        expect(rowsRemoved(plan), "an exact-match index scan discards nothing").toBe(0);
+      }
+    }, 180_000);
+
+    it("control: with the index dropped (rolled-back txn) the same statement does thousands of rows of filtering and ~10x the buffer work", async () => {
+      const feedA = await seedFeed({ organizationId: ORG_A, port: 2591 });
+      const feedB = await seedFeed({ organizationId: ORG_B, port: 2592 });
+      await seedBulk(feedA, feedB);
+      const absent = randomUUID(); // absent => every partition of the org must be exhausted, no early exit
+
+      const withIndex = await explainAsAdmin(ORG_A, absent);
+      const withChildren = await childIndexNames();
+
+      await admin.query("BEGIN");
+      let without: PlanNode;
+      try {
+        await admin.query(`DROP INDEX ${INDEX}`);
+        without = await explainAsAdmin(ORG_A, absent);
+      } finally {
+        await admin.query("ROLLBACK");
+      }
+      // the rollback really restored the parent index and every child
+      expect((await childIndexNames()).size).toBe(withChildren.size);
+
+      // no scan in the dropped-index plan can be using an F-184 child (they did not exist)
+      expect(scanNodes(without).some((n) => withChildren.has(n["Index Name"] ?? ""))).toBe(false);
+      expect(rowsRemoved(withIndex)).toBe(0);
+      expect(rowsRemoved(without), "org-prefix scan fetches the org's rows then filters them").toBeGreaterThan(5_000);
+      expect(buffers(without)).toBeGreaterThan(buffers(withIndex) * 10);
+    }, 180_000);
+
+    it("every existing partition (incl. DEFAULT) carries the index, and a NEWLY created month inherits it", async () => {
+      const parts = await admin.query(
+        `SELECT count(*)::int AS n FROM pg_inherits i JOIN pg_class p ON p.oid = i.inhparent
+          WHERE p.relname = 'hl7_message_outbound'`,
+      );
+      expect((await childIndexNames()).size).toBe(parts.rows[0].n); // one child index per partition, none missing
+
+      const part = "hl7_message_outbound_2031_01";
+      await admin.query("SELECT create_hl7_message_outbound_partition('2031-01-01')");
+      try {
+        const idx = await admin.query(
+          `SELECT pi.indexrelid::regclass::text AS idx
+             FROM pg_index pi JOIN pg_class c ON c.oid = pi.indrelid
+             JOIN pg_inherits inh ON inh.inhrelid = pi.indexrelid
+             JOIN pg_class parent ON parent.oid = inh.inhparent
+            WHERE c.relname = $1 AND parent.relname = $2`,
+          [part, INDEX],
+        );
+        expect(idx.rowCount).toBe(1); // the new partition's index is attached to the parent index
+      } finally {
+        await admin.query(`DROP TABLE IF EXISTS ${part}`);
+      }
+    });
+
+    it("the lookup's answers and tenant isolation are unchanged: known order true, unknown false, other tenant's order invisible", async () => {
+      const feedA = await seedFeed({ organizationId: ORG_A, port: 2591 });
+      const feedB = await seedFeed({ organizationId: ORG_B, port: 2592 });
+      const { knownOrder } = await seedBulk(feedA, feedB);
+      const otherTenantOrder = (
+        await admin.query(
+          "SELECT source_aggregate_id AS id FROM hl7_message_outbound WHERE organization_id = $1 LIMIT 1",
+          [ORG_B],
+        )
+      ).rows[0].id as string;
+
+      const exists = (org: string, order: string) =>
+        withOrgContext(handle.db, { organizationId: org, userId: "" }, (tx) =>
+          ormDispatchExistsForOrder(tx as never, org, order),
+        );
+      expect(await exists(ORG_A, knownOrder)).toBe(true);
+      expect(await exists(ORG_A, randomUUID())).toBe(false);
+      // ORG_B's order asked for as ORG_A: false both by the explicit org predicate and by RLS
+      expect(await exists(ORG_A, otherTenantOrder)).toBe(false);
+      expect(await exists(ORG_B, otherTenantOrder)).toBe(true);
+      // RLS alone: ORG_A's context asking with ORG_B's org id + order id still sees nothing
+      const smuggled = await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
+        ormDispatchExistsForOrder(tx as never, ORG_B, otherTenantOrder),
+      );
+      expect(smuggled).toBe(false);
+    }, 180_000);
   });
 });

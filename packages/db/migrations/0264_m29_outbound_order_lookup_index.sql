@@ -1,0 +1,26 @@
+-- F-184 (#248) — M29 outbound: the index F-183's ORDER-level dispatch dedupe lookup was missing.
+--
+-- `ormDispatchExistsForOrder` (outbound/order-dispatch-dedupe.ts) runs once per `m11.order.hl7_orm_requested`
+-- delivery, before feed resolution:
+--   SELECT id FROM hl7_message_outbound
+--    WHERE organization_id = $1 AND source_aggregate_kind = $2 AND source_aggregate_id = $3 LIMIT 1
+-- `hl7_message_outbound` had no index on the source aggregate (0146 indexes: (organization_id, feed_id), (status),
+-- (idempotency_key), and the partial (status, next_retry_at)), so the planner could only Seq Scan every monthly
+-- partition of the org's outbound history on every delivery.
+--
+-- SHAPE. A plain, NON-UNIQUE btree over exactly the three equality columns, in predicate order. It is deliberately
+-- not UNIQUE: a unique index on a partitioned table must contain the partition key (`queued_at`), and one order may
+-- legitimately own more than one row over its life (a reclaim requeue, F-182 / F-183), so uniqueness is not the
+-- invariant — the advisory-lock serialization in the worker is. No other query in the tree filters this table by
+-- source aggregate (retry/reclaim use `idx_hmo_next_retry` and the primary key), so this index is scoped to the one
+-- lookup and adds no partial condition.
+--
+-- PARTITIONS. `CREATE INDEX` on the partitioned parent creates the matching index on every existing partition
+-- (including the DEFAULT partition), and `create_hl7_message_outbound_partition()` (0146) makes new months with
+-- `CREATE TABLE … PARTITION OF hl7_message_outbound`, which inherits every parent index — no change to that
+-- function is needed. (CONCURRENTLY is not available on a partitioned parent, and this runs in the migration
+-- transaction: it takes a brief SHARE lock on the table. Outbound ORM history is lab-order volume, so that is short.)
+--
+-- Additive-only: no column, constraint, RLS or trigger changes; existing rows and inserts are unaffected.
+CREATE INDEX IF NOT EXISTS "idx_hmo_org_source_aggregate"
+  ON "hl7_message_outbound" ("organization_id", "source_aggregate_kind", "source_aggregate_id");

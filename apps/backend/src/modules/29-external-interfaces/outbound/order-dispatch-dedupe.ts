@@ -20,13 +20,13 @@ import { ORM_SOURCE_KIND } from "./dispatch-planner";
 
 const HMO = schema.hl7MessageOutbound;
 
-/** True when ANY outbound ORM row already exists for this order, whatever feed or status it has. */
-export async function ormDispatchExistsForOrder(
-  tx: DbClient,
-  organizationId: string,
-  orderId: string,
-): Promise<boolean> {
-  const rows = await tx
+/**
+ * The lookup itself, as an un-run query builder. Exported so the F-184 plan test can `EXPLAIN` EXACTLY this
+ * statement (not a hand-copied one that could drift). Served by `idx_hmo_org_source_aggregate` (migration 0264):
+ * equality on all three columns, in index order.
+ */
+export function ormDispatchLookupQuery(tx: DbClient, organizationId: string, orderId: string) {
+  return tx
     .select({ id: HMO.id })
     .from(HMO)
     .where(
@@ -37,6 +37,15 @@ export async function ormDispatchExistsForOrder(
       ),
     )
     .limit(1);
+}
+
+/** True when ANY outbound ORM row already exists for this order, whatever feed or status it has. */
+export async function ormDispatchExistsForOrder(
+  tx: DbClient,
+  organizationId: string,
+  orderId: string,
+): Promise<boolean> {
+  const rows = await ormDispatchLookupQuery(tx, organizationId, orderId);
   return rows.length > 0;
 }
 
