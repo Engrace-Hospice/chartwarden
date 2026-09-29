@@ -76,8 +76,12 @@ export interface LabObservationAbacFacts {
  * by timing refusals.
  */
 export interface M29AbacResolver {
-  /** The org a `external_feed` row belongs to, or null when absent/unreadable. */
-  feedOrgId(feedId: string): Promise<string | null>;
+  /**
+   * The org that owns `feedId`, resolved UNDER `contextOrgId`'s RLS scope: `null` when the feed does not exist OR belongs
+   * to another tenant (RLS hides it, so the two are indistinguishable — the §8.2 unenumerable registry). It cannot be
+   * resolved on a bare connection: `external_feed` is FORCE RLS, so `wardenx_app` with no `app.org_id` sees no rows.
+   */
+  feedOrgId(feedId: string, contextOrgId: string): Promise<string | null>;
   /** The proposal's org + owner module, or null when absent/cross-tenant/unreadable. */
   proposalFacts(orgId: string, proposalId: string): Promise<Hl7ProposalAbacFacts | null>;
   /** The observation's org + matched patient, or null when absent/cross-tenant/unreadable. */
@@ -169,7 +173,7 @@ export function buildM29AbacPredicates(
       if (!context.organizationId) return false;
       const feedId = targetStr(target, "feedId", "id");
       if (feedId === null) return false;
-      const org = await resolver.feedOrgId(feedId).catch(() => null);
+      const org = await resolver.feedOrgId(feedId, context.organizationId).catch(() => null);
       if (org === null) return false;
       return org === context.organizationId;
     },

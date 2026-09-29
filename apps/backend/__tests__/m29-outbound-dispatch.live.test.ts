@@ -10,11 +10,13 @@
  *
  * Gated on a live DB: WARDENX_TEST_DATABASE_URL=postgres://... bunx vitest run <this file>
  */
+import { buildDrizzleM29AbacResolver } from "../src/modules/29-external-interfaces/abac-resolver-drizzle";
+import { buildM29AbacPredicates } from "../src/modules/29-external-interfaces/abac-predicates";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { type Socket, createServer } from "node:net";
 import { join } from "node:path";
-import { createDbClient, schema } from "@wardenx/db";
+import { classifyDatabaseError, createDbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, sql } from "drizzle-orm";
 import { Client } from "pg";
@@ -1880,5 +1882,44 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     } finally {
       await server.close();
     }
+  });
+
+  // ── F-189 — the per-feed admin routes' ABAC feed-org resolver, on the REAL NOBYPASSRLS role ─────────────────
+  // `feedOrgId` used to query `external_feed` on the BARE pool: `wardenx_app` with no `app.org_id` sees ZERO rows under
+  // FORCE RLS, so it answered `null`, `external_feed_organization_scope` denied, and every per-feed admin route (detail,
+  // update, activate, suspend, revoke, credentials, health) answered 404 — for every feed, always, in production. The
+  // unit tests bind a stub resolver and no live suite ever built the Drizzle one, so nothing saw it.
+  it("F-189: the feed-org resolver resolves a feed's org under RLS, hides another tenant's feed, and the predicate follows", async () => {
+    const feedA = await seedFeed({ organizationId: ORG_A, port: 41001 });
+    const feedB = await seedFeed({ organizationId: ORG_B, port: 41002 });
+    const resolver = buildDrizzleM29AbacResolver({ db: handle.db });
+    expect(await resolver.feedOrgId(feedA, ORG_A)).toBe(ORG_A);
+    // ORG_A's context asking for ORG_B's feed: RLS hides the row, so it is indistinguishable from "no such feed".
+    expect(await resolver.feedOrgId(feedB, ORG_A)).toBeNull();
+    expect(await resolver.feedOrgId(randomUUID(), ORG_A)).toBeNull();
+
+    const preds = buildM29AbacPredicates({ resolver });
+    const scope = preds.external_feed_organization_scope;
+    expect(await scope({ organizationId: ORG_A } as never, { feedId: feedA } as never)).toBe(true);
+    expect(await scope({ organizationId: ORG_A } as never, { feedId: feedB } as never)).toBe(false);
+    expect(await scope({ organizationId: ORG_B } as never, { feedId: feedB } as never)).toBe(true);
+  });
+
+  // ── F-189 — a duplicate (org, port, kind) feed is a 409 with a meaning, not a bare 500 ───────────────────────
+  it("F-189: a second feed of the same kind on the same port trips uq_external_feed_org_port_kind, which is a REGISTERED business rule (409, not 500)", async () => {
+    await seedFeed({ organizationId: ORG_A, port: 41101 });
+    let caught: unknown;
+    try {
+      await seedFeed({ organizationId: ORG_A, port: 41101 });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught, "the second insert must violate the unique index").toBeDefined();
+    const rule = classifyDatabaseError(caught);
+    expect(rule?.constraint).toBe("uq_external_feed_org_port_kind");
+    expect(rule?.meaning).toContain("already has a feed of this kind on that port");
+    // A different port, and the same port in ANOTHER tenant, are both fine.
+    await seedFeed({ organizationId: ORG_A, port: 41102 });
+    await seedFeed({ organizationId: ORG_B, port: 41101 });
   });
 });

@@ -24,6 +24,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import { businessRule } from "../../business-rules";
 import { organizations } from "../organizations";
 import {
   externalFeedCredentialKind,
@@ -32,6 +33,17 @@ import {
   externalFeedProtocol,
   externalFeedStatus,
 } from "./enums";
+
+/**
+ * One feed per (organization, port, kind) — the rule `uq_external_feed_org_port_kind` enforces, with what violating it
+ * means to the caller. Registered so a `23505` answers 409 with this sentence instead of a bare 500 (F-189): the admin
+ * create route surfaced a duplicate as `500 INTERNAL_ERROR`. Declared here, not inside the `pgTable` callback, because
+ * Drizzle invokes that callback lazily and a registration that has not run is a rule the error handler cannot see.
+ */
+const FEED_ORG_PORT_KIND_UQ = businessRule(
+  "uq_external_feed_org_port_kind",
+  "This organization already has a feed of this kind on that port. Choose a different port, or update the existing feed instead of creating another.",
+);
 
 export const externalFeed = pgTable(
   "external_feed",
@@ -94,7 +106,7 @@ export const externalFeed = pgTable(
   },
   (t) => ({
     orgKindIdx: index("idx_external_feed_org_kind").on(t.organizationId, t.kind),
-    uniqOrgPortKind: uniqueIndex("uq_external_feed_org_port_kind").on(
+    uniqOrgPortKind: uniqueIndex(FEED_ORG_PORT_KIND_UQ).on(
       t.organizationId,
       t.port,
       t.kind,
