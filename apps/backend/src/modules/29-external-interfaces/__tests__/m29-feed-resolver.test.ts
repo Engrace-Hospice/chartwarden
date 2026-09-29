@@ -20,6 +20,7 @@ function feed(id: string, over: Partial<OutboundFeedCandidateRow> = {}): Outboun
     protocol: "mllp_tls",
     channelCertPin: "a".repeat(64),
     rateLimitMsgPerSec: 50,
+    inFlightLeaseSeconds: null,
     activeFrom: null,
     activeThrough: null,
     labDestinationFacilityId: null,

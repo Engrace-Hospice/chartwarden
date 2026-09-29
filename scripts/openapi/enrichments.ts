@@ -9631,6 +9631,8 @@ const M29FeedDetailSchema = Type.Object({
   mshSendingFacility: Type.Union([Type.String(), Type.Null()]),
   mshReceivingApplication: Type.Union([Type.String(), Type.Null()]),
   mshReceivingFacility: Type.Union([Type.String(), Type.Null()]),
+  receiverDedupesControlId: Type.Boolean(),
+  inFlightLeaseSeconds: Type.Union([Type.Integer(), Type.Null()]),
   proposedByMembershipId: Type.String(),
   approvedByOpId: Type.Union([Type.String(), Type.Null()]),
   approvedByComplId: Type.Union([Type.String(), Type.Null()]),

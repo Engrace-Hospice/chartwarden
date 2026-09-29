@@ -19800,12 +19800,14 @@ export interface operations {
                     /** Format: date-time */
                     baaExpiresOn?: string;
                     rateLimitMsgPerSec?: number;
+                    inFlightLeaseSeconds?: number;
                     /** Format: uuid */
                     labDestinationFacilityId?: string;
                     mshSendingApplication?: string;
                     mshSendingFacility?: string;
                     mshReceivingApplication?: string;
                     mshReceivingFacility?: string;
+                    receiverDedupesControlId?: boolean;
                 };
             };
         };
@@ -19860,6 +19862,8 @@ export interface operations {
                             mshSendingFacility: string | null;
                             mshReceivingApplication: string | null;
                             mshReceivingFacility: string | null;
+                            receiverDedupesControlId: boolean;
+                            inFlightLeaseSeconds: number | null;
                             proposedByMembershipId: string;
                             approvedByOpId: string | null;
                             approvedByComplId: string | null;
@@ -19894,12 +19898,14 @@ export interface operations {
                     /** Format: date-time */
                     baaExpiresOn?: string;
                     rateLimitMsgPerSec?: number;
+                    inFlightLeaseSeconds?: number | null;
                     /** Format: uuid */
                     labDestinationFacilityId?: string;
                     mshSendingApplication?: string;
                     mshSendingFacility?: string;
                     mshReceivingApplication?: string;
                     mshReceivingFacility?: string;
+                    receiverDedupesControlId?: boolean;
                 };
             };
         };
@@ -19954,6 +19960,8 @@ export interface operations {
                             mshSendingFacility: string | null;
                             mshReceivingApplication: string | null;
                             mshReceivingFacility: string | null;
+                            receiverDedupesControlId: boolean;
+                            inFlightLeaseSeconds: number | null;
                             proposedByMembershipId: string;
                             approvedByOpId: string | null;
                             approvedByComplId: string | null;

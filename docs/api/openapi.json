@@ -773,6 +773,11 @@
                     "maximum": 5000,
                     "type": "integer"
                   },
+                  "inFlightLeaseSeconds": {
+                    "minimum": 60,
+                    "maximum": 3600,
+                    "type": "integer"
+                  },
                   "labDestinationFacilityId": {
                     "format": "uuid",
                     "type": "string"
@@ -792,6 +797,9 @@
                   "mshReceivingFacility": {
                     "pattern": "^[^|^~\\\\&\\u0000-\\u001f\\u007f]{1,180}$",
                     "type": "string"
+                  },
+                  "receiverDedupesControlId": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -850,6 +858,8 @@
                         "mshSendingFacility",
                         "mshReceivingApplication",
                         "mshReceivingFacility",
+                        "receiverDedupesControlId",
+                        "inFlightLeaseSeconds",
                         "proposedByMembershipId",
                         "approvedByOpId",
                         "approvedByComplId",
@@ -1030,6 +1040,19 @@
                           "anyOf": [
                             {
                               "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "receiverDedupesControlId": {
+                          "type": "boolean"
+                        },
+                        "inFlightLeaseSeconds": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
                             },
                             {
                               "type": "null"
@@ -1169,6 +1192,18 @@
                     "maximum": 5000,
                     "type": "integer"
                   },
+                  "inFlightLeaseSeconds": {
+                    "anyOf": [
+                      {
+                        "minimum": 60,
+                        "maximum": 3600,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "labDestinationFacilityId": {
                     "format": "uuid",
                     "type": "string"
@@ -1188,6 +1223,9 @@
                   "mshReceivingFacility": {
                     "pattern": "^[^|^~\\\\&\\u0000-\\u001f\\u007f]{1,180}$",
                     "type": "string"
+                  },
+                  "receiverDedupesControlId": {
+                    "type": "boolean"
                   }
                 }
               }
@@ -1246,6 +1284,8 @@
                         "mshSendingFacility",
                         "mshReceivingApplication",
                         "mshReceivingFacility",
+                        "receiverDedupesControlId",
+                        "inFlightLeaseSeconds",
                         "proposedByMembershipId",
                         "approvedByOpId",
                         "approvedByComplId",
@@ -1426,6 +1466,19 @@
                           "anyOf": [
                             {
                               "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "receiverDedupesControlId": {
+                          "type": "boolean"
+                        },
+                        "inFlightLeaseSeconds": {
+                          "anyOf": [
+                            {
+                              "type": "integer"
                             },
                             {
                               "type": "null"
