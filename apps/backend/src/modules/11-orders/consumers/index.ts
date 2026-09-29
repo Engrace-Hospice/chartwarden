@@ -72,4 +72,8 @@ export const M11_OUTBOX_SUBSCRIPTIONS = [
   // F-184 (#248) — the worker's "wrote NO row" refusals (no/unlinked feed, incomplete MSH identity, lapsed BAA):
   // the order becomes `failed` (`dispatch_refused:<reason>`) instead of sitting `pending` forever.
   { eventName: "m29.lab_order.dispatch_refused", consumerName: "m11.lab-transmission-applier" },
+  // F-184 (#248) — SELF-consumption: a lab order superseded after its ORM may be at the laboratory raises an
+  // operator alert (T-29.08 defines no outbound cancel). `outbox-consumers/lab-cancellation-required.ts`.
+  { eventName: "m11.order.discontinued", consumerName: "m11.lab-cancellation-required" },
+  { eventName: "m11.order.corrected", consumerName: "m11.lab-cancellation-required" },
 ] as const;

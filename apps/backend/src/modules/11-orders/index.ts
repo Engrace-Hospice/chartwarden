@@ -184,6 +184,17 @@ export {
   buildM11LabTransmissionApplierConsumer,
   type LabTransmissionApplierDeps,
 } from "./outbox-consumers/m29-lab-transmission-applier";
+// F-184 (#248) — the operator alert for a lab order superseded after its ORM may already be at the lab.
+export {
+  M11_LAB_CANCELLATION_ALERT_TYPE,
+  M11_LAB_CANCELLATION_CONSUMER,
+  type LabCancellationAlertPort,
+  type LabCancellationDeps,
+  type LabCancellationFacts,
+  type LabCancellationState,
+  buildM11LabCancellationConsumer,
+  decideLabCancellation,
+} from "./outbox-consumers/lab-cancellation-required";
 // F-166 (#248) — the m21 `handlers-unbound` group's other real event: a staff-initiated
 // `m21.supply_request.cancelled` releases the still-in-flight M11 order it never touched.
 export {
