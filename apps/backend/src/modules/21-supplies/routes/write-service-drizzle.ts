@@ -55,11 +55,14 @@ import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
   SupplyStateError,
   applyParStockMovement,
+  assertCaregiverSignatureCaptureAllowed,
   assertParThresholdsOrdered,
   assertTemplateEffective,
   authorTenantTemplate,
+  caregiverSignatureEvidenceJsonbOf,
   prepareDispatch,
   reconcileReturn,
+  requireCaregiverSignatureEvidence,
   supersedeTemplate,
   transitionComfortKitDispatch,
   transitionComfortKitReturn,
@@ -74,6 +77,7 @@ import type {
   AssignRetrieverInput,
   AssignVendorInput,
   CancelRequestInput,
+  CaptureCaregiverSignatureInput,
   ConfirmReceivedInput,
   CreateDispatchInput,
   CreateReturnInput,
@@ -724,6 +728,47 @@ export function buildDrizzleM21WriteService(
           };
         },
       );
+    },
+
+    // F-193 (#248) — M21's own caregiver-signature capture. NOT `runRequestTransition`: the row's status
+    // does not move (this is evidence about an already-`delivered` row, not a §2.2 edge), and there is no
+    // outbox emission (the capture is synchronous within M21 — nothing else needs to react to it). The
+    // guard order matches `../lifecycle/caregiver-signature.ts`'s own doc: freshness first (§7.2, the same
+    // lost-update protection every other mutation gets), then "has this row even been delivered yet",
+    // then "was this already captured", then the per-method evidence floor — each one a distinct,
+    // separately-testable refusal rather than one combined boolean.
+    async captureCaregiverSignature(actor, supplyRequestId, input: CaptureCaregiverSignatureInput) {
+      const at = now();
+      await scoped(actor, async (tx) => {
+        const row = await loadRequest(tx, supplyRequestId);
+        assertFresh(row, input.expectedUpdatedAt);
+        assertCaregiverSignatureCaptureAllowed({
+          deliveredAt: row.deliveredAt ? iso(row.deliveredAt) : null,
+          existing: {
+            capturedAt: row.caregiverSignatureCapturedAt ? iso(row.caregiverSignatureCapturedAt) : null,
+          },
+        });
+        requireCaregiverSignatureEvidence(input.captureMethod, input);
+        // Only the witnessed method's evidence document rides onto the row — a stray id sent alongside a
+        // typed or declined capture is not this method's evidence and must not be persisted as if it were.
+        const evidenceDocumentId =
+          input.captureMethod === "witnessed_verbal_documented" ? (input.evidenceDocumentId ?? null) : null;
+        await tx
+          .update(REQUEST)
+          .set({
+            caregiverSignatureCaptureMethod:
+              input.captureMethod as typeof REQUEST.$inferInsert.caregiverSignatureCaptureMethod,
+            caregiverSignatureCapturedAt: at,
+            // Stamped from the SESSION, never the body — the same D7 rule `deliveredByMembershipId`
+            // follows (routes/actor.ts).
+            caregiverSignatureCapturedByMembershipId: actor.membershipId,
+            caregiverSignatureEvidenceDocumentId: evidenceDocumentId,
+            caregiverSignatureEvidenceJsonb: caregiverSignatureEvidenceJsonbOf(input.captureMethod, input),
+            updatedAt: at,
+          })
+          .where(eq(REQUEST.id, row.id));
+      });
+      return readService.getSupplyRequest(actor, supplyRequestId);
     },
 
     async confirmReceived(actor, supplyRequestId, input: ConfirmReceivedInput) {

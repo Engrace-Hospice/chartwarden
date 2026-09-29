@@ -190257,7 +190257,12 @@
                     "invoiceAccruedAt",
                     "invoiceReconciledAt",
                     "invoiceVarianceCents",
-                    "dispatchId"
+                    "dispatchId",
+                    "caregiverSignatureCaptureMethod",
+                    "caregiverSignatureCapturedAt",
+                    "caregiverSignatureCapturedByMembershipId",
+                    "caregiverSignatureEvidenceDocumentId",
+                    "caregiverSignatureEvidence"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -190805,6 +190810,83 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCaptureMethod": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "typed_signature_in_app",
+                              "type": "string"
+                            },
+                            {
+                              "const": "witnessed_verbal_documented",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidenceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "typedSignatureName": {
+                              "type": "string"
+                            },
+                            "witnessName": {
+                              "type": "string"
+                            },
+                            "witnessAttestationText": {
+                              "type": "string"
+                            },
+                            "declinedReason": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -190887,7 +190969,12 @@
                     "invoiceAccruedAt",
                     "invoiceReconciledAt",
                     "invoiceVarianceCents",
-                    "dispatchId"
+                    "dispatchId",
+                    "caregiverSignatureCaptureMethod",
+                    "caregiverSignatureCapturedAt",
+                    "caregiverSignatureCapturedByMembershipId",
+                    "caregiverSignatureEvidenceDocumentId",
+                    "caregiverSignatureEvidence"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -191435,6 +191522,83 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCaptureMethod": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "typed_signature_in_app",
+                              "type": "string"
+                            },
+                            {
+                              "const": "witnessed_verbal_documented",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidenceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "typedSignatureName": {
+                              "type": "string"
+                            },
+                            "witnessName": {
+                              "type": "string"
+                            },
+                            "witnessAttestationText": {
+                              "type": "string"
+                            },
+                            "declinedReason": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -191585,7 +191749,12 @@
                     "invoiceAccruedAt",
                     "invoiceReconciledAt",
                     "invoiceVarianceCents",
-                    "dispatchId"
+                    "dispatchId",
+                    "caregiverSignatureCaptureMethod",
+                    "caregiverSignatureCapturedAt",
+                    "caregiverSignatureCapturedByMembershipId",
+                    "caregiverSignatureEvidenceDocumentId",
+                    "caregiverSignatureEvidence"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -192138,6 +192307,83 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "caregiverSignatureCaptureMethod": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "typed_signature_in_app",
+                              "type": "string"
+                            },
+                            {
+                              "const": "witnessed_verbal_documented",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidenceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "typedSignatureName": {
+                              "type": "string"
+                            },
+                            "witnessName": {
+                              "type": "string"
+                            },
+                            "witnessAttestationText": {
+                              "type": "string"
+                            },
+                            "declinedReason": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -192162,6 +192408,773 @@
                 ],
                 "properties": {
                   "reason": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/supplies/supply-requests/{supplyRequestId}/caregiver-signature": {
+      "post": {
+        "operationId": "postApiV1SuppliesSupplyrequestsBySupplyRequestIdCaregiversignature",
+        "tags": [
+          "21-supplies"
+        ],
+        "summary": "M21's own caregiver-signature capture (F-193, #248) — not a status transition, no outbox emission, refuses a second capture (If-Match)",
+        "parameters": [
+          {
+            "name": "supplyRequestId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "supplyRequestId",
+                    "patientId",
+                    "locationId",
+                    "kind",
+                    "status",
+                    "assignedVendorId",
+                    "vendorOrderReference",
+                    "trackingNumber",
+                    "carrier",
+                    "orderedAt",
+                    "deliveredAt",
+                    "createdAt",
+                    "updatedAt",
+                    "admissionId",
+                    "providerEntityId",
+                    "sourceOrderId",
+                    "sourceReplenishmentEventId",
+                    "requestedByMembershipId",
+                    "data",
+                    "routingRuleResolved",
+                    "pharmacyPartnerId",
+                    "documentId",
+                    "deliveryInstructions",
+                    "deliveryMethod",
+                    "deliveredByMembershipId",
+                    "deliveryEvidenceDocumentId",
+                    "receivedConfirmedAt",
+                    "receivedConfirmedActor",
+                    "completedAt",
+                    "cancelledAt",
+                    "cancellationPendingAt",
+                    "cancellationReason",
+                    "shippedAt",
+                    "invoiceTotalCents",
+                    "invoiceAccruedAt",
+                    "invoiceReconciledAt",
+                    "invoiceVarianceCents",
+                    "dispatchId",
+                    "caregiverSignatureCaptureMethod",
+                    "caregiverSignatureCapturedAt",
+                    "caregiverSignatureCapturedByMembershipId",
+                    "caregiverSignatureEvidenceDocumentId",
+                    "caregiverSignatureEvidence"
+                  ],
+                  "properties": {
+                    "supplyRequestId": {
+                      "type": "string"
+                    },
+                    "patientId": {
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "anyOf": [
+                        {
+                          "const": "dme",
+                          "type": "string"
+                        },
+                        {
+                          "const": "supply",
+                          "type": "string"
+                        },
+                        {
+                          "const": "comfort_kit_deploy",
+                          "type": "string"
+                        },
+                        {
+                          "const": "comfort_kit_replenish",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "requested",
+                          "type": "string"
+                        },
+                        {
+                          "const": "vendor_assigned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "ordered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "in_transit",
+                          "type": "string"
+                        },
+                        {
+                          "const": "delivered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "received_confirmed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "completed",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancellation_pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "returned",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "assignedVendorId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "vendorOrderReference": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "trackingNumber": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "carrier": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "orderedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveredAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "admissionId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "sourceOrderId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "sourceReplenishmentEventId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "data": {},
+                    "routingRuleResolved": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "resolverVersion",
+                            "resolvedAt",
+                            "precedenceLevelUsed",
+                            "matchedRuleId",
+                            "assignedVendorId",
+                            "assignedFulfillmentMode",
+                            "defaultPharmacyDispatchMode",
+                            "candidatesEvaluated",
+                            "routingPolicyDigest"
+                          ],
+                          "properties": {
+                            "resolverVersion": {
+                              "type": "string"
+                            },
+                            "resolvedAt": {
+                              "type": "string"
+                            },
+                            "precedenceLevelUsed": {
+                              "anyOf": [
+                                {
+                                  "const": "sku",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "location",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "tenant",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "matchedRuleId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "assignedVendorId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "assignedFulfillmentMode": {
+                              "anyOf": [
+                                {
+                                  "const": "vendor",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "internal_supply_hub",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "partner_pharmacy",
+                                  "type": "string"
+                                },
+                                {
+                                  "const": "dosespot_to_partner_pharmacy",
+                                  "type": "string"
+                                }
+                              ]
+                            },
+                            "defaultPharmacyDispatchMode": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "const": "supply_hub_dispatch",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "partner_pharmacy_dispatch",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "dosespot_to_partner_pharmacy",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "candidatesEvaluated": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "precedenceLevel",
+                                  "ruleId",
+                                  "matched",
+                                  "reason"
+                                ],
+                                "properties": {
+                                  "precedenceLevel": {
+                                    "anyOf": [
+                                      {
+                                        "const": "sku",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "location",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "tenant",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "ruleId": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  },
+                                  "matched": {
+                                    "type": "boolean"
+                                  },
+                                  "reason": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "routingPolicyDigest": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "pharmacyPartnerId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "documentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveryInstructions": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveryMethod": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "agency_courier",
+                              "type": "string"
+                            },
+                            {
+                              "const": "vendor_direct_ship",
+                              "type": "string"
+                            },
+                            {
+                              "const": "pharmacy_partner_courier",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient_pickup",
+                              "type": "string"
+                            },
+                            {
+                              "const": "in_facility_internal",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveredByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "deliveryEvidenceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "receivedConfirmedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "receivedConfirmedActor": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "caregiver",
+                              "type": "string"
+                            },
+                            {
+                              "const": "patient",
+                              "type": "string"
+                            },
+                            {
+                              "const": "supply_team",
+                              "type": "string"
+                            },
+                            {
+                              "const": "system_auto_confirm",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "completedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancelledAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationPendingAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "cancellationReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "shippedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "invoiceTotalCents": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "invoiceAccruedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "invoiceReconciledAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "invoiceVarianceCents": {
+                      "anyOf": [
+                        {
+                          "type": "number"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "dispatchId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCaptureMethod": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "typed_signature_in_app",
+                              "type": "string"
+                            },
+                            {
+                              "const": "witnessed_verbal_documented",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidenceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "typedSignatureName": {
+                              "type": "string"
+                            },
+                            "witnessName": {
+                              "type": "string"
+                            },
+                            "witnessAttestationText": {
+                              "type": "string"
+                            },
+                            "declinedReason": {
+                              "type": "string"
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "captureMethod"
+                ],
+                "properties": {
+                  "captureMethod": {
+                    "anyOf": [
+                      {
+                        "const": "typed_signature_in_app",
+                        "type": "string"
+                      },
+                      {
+                        "const": "witnessed_verbal_documented",
+                        "type": "string"
+                      },
+                      {
+                        "const": "declined",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "typedSignatureName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "witnessName": {
+                    "minLength": 1,
+                    "maxLength": 200,
+                    "type": "string"
+                  },
+                  "witnessAttestationText": {
+                    "minLength": 1,
+                    "maxLength": 1000,
+                    "type": "string"
+                  },
+                  "evidenceDocumentId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "declinedReason": {
                     "minLength": 1,
                     "maxLength": 500,
                     "type": "string"
@@ -192235,7 +193248,12 @@
                     "invoiceAccruedAt",
                     "invoiceReconciledAt",
                     "invoiceVarianceCents",
-                    "dispatchId"
+                    "dispatchId",
+                    "caregiverSignatureCaptureMethod",
+                    "caregiverSignatureCapturedAt",
+                    "caregiverSignatureCapturedByMembershipId",
+                    "caregiverSignatureEvidenceDocumentId",
+                    "caregiverSignatureEvidence"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -192783,6 +193801,83 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCaptureMethod": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "typed_signature_in_app",
+                              "type": "string"
+                            },
+                            {
+                              "const": "witnessed_verbal_documented",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidenceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "typedSignatureName": {
+                              "type": "string"
+                            },
+                            "witnessName": {
+                              "type": "string"
+                            },
+                            "witnessAttestationText": {
+                              "type": "string"
+                            },
+                            "declinedReason": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -192901,7 +193996,12 @@
                     "invoiceAccruedAt",
                     "invoiceReconciledAt",
                     "invoiceVarianceCents",
-                    "dispatchId"
+                    "dispatchId",
+                    "caregiverSignatureCaptureMethod",
+                    "caregiverSignatureCapturedAt",
+                    "caregiverSignatureCapturedByMembershipId",
+                    "caregiverSignatureEvidenceDocumentId",
+                    "caregiverSignatureEvidence"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -193449,6 +194549,83 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCaptureMethod": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "typed_signature_in_app",
+                              "type": "string"
+                            },
+                            {
+                              "const": "witnessed_verbal_documented",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidenceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "typedSignatureName": {
+                              "type": "string"
+                            },
+                            "witnessName": {
+                              "type": "string"
+                            },
+                            "witnessAttestationText": {
+                              "type": "string"
+                            },
+                            "declinedReason": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -193579,7 +194756,12 @@
                     "invoiceAccruedAt",
                     "invoiceReconciledAt",
                     "invoiceVarianceCents",
-                    "dispatchId"
+                    "dispatchId",
+                    "caregiverSignatureCaptureMethod",
+                    "caregiverSignatureCapturedAt",
+                    "caregiverSignatureCapturedByMembershipId",
+                    "caregiverSignatureEvidenceDocumentId",
+                    "caregiverSignatureEvidence"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -194127,6 +195309,83 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCaptureMethod": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "typed_signature_in_app",
+                              "type": "string"
+                            },
+                            {
+                              "const": "witnessed_verbal_documented",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidenceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "typedSignatureName": {
+                              "type": "string"
+                            },
+                            "witnessName": {
+                              "type": "string"
+                            },
+                            "witnessAttestationText": {
+                              "type": "string"
+                            },
+                            "declinedReason": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -194235,7 +195494,12 @@
                     "invoiceAccruedAt",
                     "invoiceReconciledAt",
                     "invoiceVarianceCents",
-                    "dispatchId"
+                    "dispatchId",
+                    "caregiverSignatureCaptureMethod",
+                    "caregiverSignatureCapturedAt",
+                    "caregiverSignatureCapturedByMembershipId",
+                    "caregiverSignatureEvidenceDocumentId",
+                    "caregiverSignatureEvidence"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -194783,6 +196047,83 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCaptureMethod": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "typed_signature_in_app",
+                              "type": "string"
+                            },
+                            {
+                              "const": "witnessed_verbal_documented",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidenceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "typedSignatureName": {
+                              "type": "string"
+                            },
+                            "witnessName": {
+                              "type": "string"
+                            },
+                            "witnessAttestationText": {
+                              "type": "string"
+                            },
+                            "declinedReason": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -194885,7 +196226,12 @@
                     "invoiceAccruedAt",
                     "invoiceReconciledAt",
                     "invoiceVarianceCents",
-                    "dispatchId"
+                    "dispatchId",
+                    "caregiverSignatureCaptureMethod",
+                    "caregiverSignatureCapturedAt",
+                    "caregiverSignatureCapturedByMembershipId",
+                    "caregiverSignatureEvidenceDocumentId",
+                    "caregiverSignatureEvidence"
                   ],
                   "properties": {
                     "supplyRequestId": {
@@ -195433,6 +196779,83 @@
                       "anyOf": [
                         {
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCaptureMethod": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "const": "typed_signature_in_app",
+                              "type": "string"
+                            },
+                            {
+                              "const": "witnessed_verbal_documented",
+                              "type": "string"
+                            },
+                            {
+                              "const": "declined",
+                              "type": "string"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureCapturedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidenceDocumentId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "caregiverSignatureEvidence": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "typedSignatureName": {
+                              "type": "string"
+                            },
+                            "witnessName": {
+                              "type": "string"
+                            },
+                            "witnessAttestationText": {
+                              "type": "string"
+                            },
+                            "declinedReason": {
+                              "type": "string"
+                            }
+                          }
                         },
                         {
                           "type": "null"

@@ -26,6 +26,7 @@ import type {
   MembershipId,
   PharmacyDispatchMode,
   RoutingRuleResolved,
+  SupplyCaregiverSignatureCaptureMethod,
   SupplyDeliveryMethod,
   SupplyFulfillmentMode,
   SupplyReceivedConfirmedActor,
@@ -113,6 +114,24 @@ export interface MarkDeliveredInput extends Versioned {
   readonly deliveredAt: IsoInstant;
   readonly deliveryMethod: SupplyDeliveryMethod;
   readonly evidenceDocumentId?: string;
+}
+
+/**
+ * F-193 (#248) — the M21-owned caregiver-signature capture. Flat, like every other M21 command (the
+ * `MarkDeliveredInput` precedent): `captureMethod` picks the branch, and only the fields that method
+ * actually uses are read (`../lifecycle/caregiver-signature.ts`'s `caregiverSignatureEvidenceJsonbOf`
+ * projects out the rest). NOT `Versioned`/`If-Match` gated at the type level the way a §2.2 transition is
+ * — the route still reads `If-Match` (routes/supply-requests.routes.ts), but the guard this command runs
+ * is "not yet captured", not "the row changed since I read it", so a stale-but-uncaptured read is not
+ * itself a conflict the way a stale status transition is.
+ */
+export interface CaptureCaregiverSignatureInput extends Versioned {
+  readonly captureMethod: SupplyCaregiverSignatureCaptureMethod;
+  readonly typedSignatureName?: string;
+  readonly witnessName?: string;
+  readonly witnessAttestationText?: string;
+  readonly evidenceDocumentId?: string;
+  readonly declinedReason?: string;
 }
 
 export interface ConfirmReceivedInput extends Versioned {
@@ -308,6 +327,17 @@ export interface M21WriteService {
     actor: M21WriteActor,
     supplyRequestId: string,
     input: MarkDeliveredInput,
+  ): Promise<SupplyRequestDetail>;
+  /**
+   * F-193 (#248) — M21's own caregiver-signature capture. NOT a §2.2 transition: the row's `status` does
+   * not move, and no outbox event is emitted (the capture is synchronous within M21 — nothing else in the
+   * system needs to react to it). Requires the row to already be `delivered`; refuses a second capture
+   * rather than overwriting or appending (see `../lifecycle/caregiver-signature.ts`).
+   */
+  captureCaregiverSignature(
+    actor: M21WriteActor,
+    supplyRequestId: string,
+    input: CaptureCaregiverSignatureInput,
   ): Promise<SupplyRequestDetail>;
   confirmReceived(
     actor: M21WriteActor,

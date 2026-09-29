@@ -127,6 +127,10 @@ export type DocumentAggregateType =
   // F-161 (#248, mig 0252) — the M7 care-plan PDF behind `m7.care_plan.version_signed`, whose own
   // catalog comment ("drives the M8 encounter gate + M22 PDF") was decisive and had no template at all.
   | "care_plan"
+  // F-192 (#248, mig 0267) — the M6 transfer document behind `m6.transfer.created`, the M22 spec's own
+  // "discharge_summary (transfer variant)" — a distinct type from `discharge_summary`, never a second
+  // version of it.
+  | "discharge_summary_transfer"
   | "other";
 
 /** §3.2 / §2.2.1 — the document lifecycle (mirrors `document_status`). */

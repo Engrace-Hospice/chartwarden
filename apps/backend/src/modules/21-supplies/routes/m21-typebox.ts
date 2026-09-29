@@ -122,6 +122,15 @@ export const SupplyDeliveryMethod = Type.Union([
   Type.Literal("in_facility_internal"),
 ]);
 
+/** `m21_caregiver_signature_capture_method` (F-193, #248). Mirrors the SHAPE (not the type) of M39's
+ *  `ConsentCaptureEvidence.captureMethod`, narrowed to what is plausible for a courier-delivery caregiver
+ *  signature. */
+export const SupplyCaregiverSignatureCaptureMethod = Type.Union([
+  Type.Literal("typed_signature_in_app"),
+  Type.Literal("witnessed_verbal_documented"),
+  Type.Literal("declined"),
+]);
+
 /** `m21_supply_received_confirmed_actor` (§2.2). `system_auto_confirm` is NOT client-settable — it is the
  *  72h fallback the worker writes, and letting a caller claim it would erase the distinction the screen
  *  renders. The body union below therefore omits it. */
@@ -337,6 +346,21 @@ export const MarkDeliveredBody = Type.Object({
   evidenceDocumentId: UuidN,
 });
 
+/** F-193 (#248) — M21's own caregiver-signature capture. `capturedByMembershipId` is NOT here — the
+ *  server stamps the acting membership (routes/actor.ts), the same D7 rule `MarkDeliveredBody` follows.
+ *  The per-method evidence floor is enforced by the pure validator
+ *  (`../lifecycle/caregiver-signature.ts`'s `requireCaregiverSignatureEvidence`), not by this shape —
+ *  every field here is optional at the wire level because which ones are REQUIRED depends on
+ *  `captureMethod`. */
+export const CaptureCaregiverSignatureBody = Type.Object({
+  captureMethod: SupplyCaregiverSignatureCaptureMethod,
+  typedSignatureName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  witnessName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),
+  witnessAttestationText: Type.Optional(FreeText(1000)),
+  evidenceDocumentId: UuidN,
+  declinedReason: Type.Optional(FreeText(500)),
+});
+
 export const ConfirmReceivedBody = Type.Object({
   actor: SupplyReceivedConfirmedActor,
   confirmedAt: Instant,
@@ -543,6 +567,7 @@ export type AssignVendorBody = Static<typeof AssignVendorBody>;
 export type MarkOrderedBody = Static<typeof MarkOrderedBody>;
 export type MarkInTransitBody = Static<typeof MarkInTransitBody>;
 export type MarkDeliveredBody = Static<typeof MarkDeliveredBody>;
+export type CaptureCaregiverSignatureBody = Static<typeof CaptureCaregiverSignatureBody>;
 export type ConfirmReceivedBody = Static<typeof ConfirmReceivedBody>;
 export type CancelRequestBody = Static<typeof CancelRequestBody>;
 export type ReturnRequestBody = Static<typeof ReturnRequestBody>;
@@ -657,6 +682,19 @@ export const SupplyRequestDetailSchema = Type.Object({
   invoiceReconciledAt: NStr,
   invoiceVarianceCents: Nullable(Num),
   dispatchId: NStr,
+  // F-193 (#248) — M21's own caregiver-signature capture. `null` until captured; always optional.
+  caregiverSignatureCaptureMethod: Nullable(SupplyCaregiverSignatureCaptureMethod),
+  caregiverSignatureCapturedAt: NStr,
+  caregiverSignatureCapturedByMembershipId: NStr,
+  caregiverSignatureEvidenceDocumentId: NStr,
+  caregiverSignatureEvidence: Nullable(
+    Type.Object({
+      typedSignatureName: Type.Optional(Str),
+      witnessName: Type.Optional(Str),
+      witnessAttestationText: Type.Optional(Str),
+      declinedReason: Type.Optional(Str),
+    }),
+  ),
 });
 
 /** §4.2.1's create response — the created request plus the D4 resolution the router froze onto it. */

@@ -1,6 +1,6 @@
 // apps/backend/src/modules/21-supplies/permission-keys.ts — M21-T05 (§4.3).
 //
-// The twenty-eight permission keys Module 21 registers into Module 3's catalog. The canonical map is
+// The twenty-nine permission keys Module 21 registers into Module 3's catalog. The canonical map is
 // `M21_CONTRIBUTED_PERMISSIONS` in @wardenx/auth (merged into the platform mirror via
 // `allPermissionMirrorRows`); this module-local surface re-exports it + the ordered key list so the §4.1
 // routes gate on `requirePermission(key)` without re-declaring the map (the M15/M16/M24/M26 posture —

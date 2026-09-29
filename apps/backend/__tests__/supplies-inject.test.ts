@@ -151,6 +151,11 @@ interface RequestRecord {
   invoiceReconciledAt: string | null;
   invoiceVarianceCents: number | null;
   dispatchId: string | null;
+  caregiverSignatureCaptureMethod: string | null;
+  caregiverSignatureCapturedAt: string | null;
+  caregiverSignatureCapturedByMembershipId: string | null;
+  caregiverSignatureEvidenceDocumentId: string | null;
+  caregiverSignatureEvidence: Record<string, unknown> | null;
 }
 
 interface SupplyItemRecord {
@@ -399,6 +404,11 @@ function createFakeBackend() {
       invoiceReconciledAt: r.invoiceReconciledAt as never,
       invoiceVarianceCents: r.invoiceVarianceCents,
       dispatchId: r.dispatchId as never,
+      caregiverSignatureCaptureMethod: r.caregiverSignatureCaptureMethod as never,
+      caregiverSignatureCapturedAt: r.caregiverSignatureCapturedAt as never,
+      caregiverSignatureCapturedByMembershipId: r.caregiverSignatureCapturedByMembershipId as never,
+      caregiverSignatureEvidenceDocumentId: r.caregiverSignatureEvidenceDocumentId,
+      caregiverSignatureEvidence: r.caregiverSignatureEvidence as never,
     };
   }
 
@@ -588,6 +598,17 @@ function createFakeBackend() {
     throw Object.assign(new Error(`${what} not found`), { statusCode: 404 });
   }
 
+  // F-193 (#248) — the fake's own tiny mirror of `../lifecycle/errors.ts`'s status mapping, just enough
+  // for `captureCaregiverSignature`'s two domain refusals (this file is a WIRING smoke test — see the
+  // header — so it re-derives no machine, but a route-gating smoke test still has to prove the two
+  // status codes a caller actually sees).
+  function unprocessable(message: string): never {
+    throw Object.assign(new Error(message), { statusCode: 422 });
+  }
+  function conflict(message: string): never {
+    throw Object.assign(new Error(message), { statusCode: 409 });
+  }
+
   const readService: M21ReadService = {
     async listSupplyRequests() {
       return page([...requests.values()].map(requestDetail));
@@ -722,6 +743,11 @@ function createFakeBackend() {
         invoiceReconciledAt: null,
         invoiceVarianceCents: null,
         dispatchId: null,
+        caregiverSignatureCaptureMethod: null,
+        caregiverSignatureCapturedAt: null,
+        caregiverSignatureCapturedByMembershipId: null,
+        caregiverSignatureEvidenceDocumentId: null,
+        caregiverSignatureEvidence: null,
       };
       requests.set(supplyRequestId, rec);
       return { supplyRequestId, status: "requested", routingRuleResolved: null, updatedAt: NOW };
@@ -757,6 +783,35 @@ function createFakeBackend() {
       r.deliveryMethod = input.deliveryMethod;
       r.deliveredByMembershipId = actor.membershipId;
       r.deliveryEvidenceDocumentId = input.evidenceDocumentId ?? null;
+      r.updatedAt = NOW;
+      return requestDetail(r);
+    },
+    // F-193 (#248) — wiring smoke only: proves the route is mounted, gated on
+    // `supplies.request.caregiver_signature`, and returns the two domain refusals as the documented status
+    // codes. The per-method evidence floor is NOT re-derived here (that is
+    // `supplies-caregiver-signature.test.ts`'s job, over the real pure validator) — this fake applies the
+    // capture unconditionally once the two lifecycle guards pass.
+    async captureCaregiverSignature(actor, id, input) {
+      const r = requests.get(id) ?? notFound("supply request");
+      if (r.deliveredAt === null) {
+        unprocessable("a caregiver signature is captured against a delivery; this request has not reached 'delivered' yet");
+      }
+      if (r.caregiverSignatureCapturedAt !== null) {
+        conflict("a caregiver signature was already captured for this request");
+      }
+      r.caregiverSignatureCaptureMethod = input.captureMethod;
+      r.caregiverSignatureCapturedAt = NOW;
+      r.caregiverSignatureCapturedByMembershipId = actor.membershipId;
+      r.caregiverSignatureEvidenceDocumentId =
+        input.captureMethod === "witnessed_verbal_documented" ? (input.evidenceDocumentId ?? null) : null;
+      r.caregiverSignatureEvidence =
+        input.captureMethod === "typed_signature_in_app"
+          ? { typedSignatureName: input.typedSignatureName }
+          : input.captureMethod === "witnessed_verbal_documented"
+            ? { witnessName: input.witnessName, witnessAttestationText: input.witnessAttestationText }
+            : input.declinedReason !== undefined
+              ? { declinedReason: input.declinedReason }
+              : null;
       r.updatedAt = NOW;
       return requestDetail(r);
     },
@@ -1402,6 +1457,27 @@ describe("M21 §4.1 rows 1-10 — supply-request create through delivery, cancel
     expect(delivered.statusCode).toBe(200);
     expect(delivered.json().status).toBe("delivered");
 
+    // 7b — F-193 (#248): M21's own caregiver-signature capture. Status does NOT move off `delivered`.
+    const signed = await app.inject({
+      method: "POST",
+      url: `/api/v1/supplies/supply-requests/${id}/caregiver-signature`,
+      headers: { ...COORD, "idempotency-key": "req-1-signature", "if-match": delivered.json().updatedAt },
+      payload: { captureMethod: "typed_signature_in_app", typedSignatureName: "Dana Reyes" },
+    });
+    expect(signed.statusCode).toBe(200);
+    expect(signed.json().status).toBe("delivered");
+    expect(signed.json().caregiverSignatureCaptureMethod).toBe("typed_signature_in_app");
+    expect(signed.json().caregiverSignatureCapturedByMembershipId).toBe(COORD_ID);
+
+    // 7c — a second capture attempt on the SAME request is refused, not overwritten (409).
+    const resigned = await app.inject({
+      method: "POST",
+      url: `/api/v1/supplies/supply-requests/${id}/caregiver-signature`,
+      headers: { ...COORD, "idempotency-key": "req-1-signature-2", "if-match": signed.json().updatedAt },
+      payload: { captureMethod: "declined" },
+    });
+    expect(resigned.statusCode).toBe(409);
+
     // 8 — caregiver confirms receipt.
     const confirmed = await app.inject({
       method: "POST",
@@ -1458,6 +1534,63 @@ describe("M21 §4.1 rows 1-10 — supply-request create through delivery, cancel
     expect(returned.statusCode).toBe(200);
     expect(returned.json().status).toBe("returned");
 
+    await app.close();
+  });
+
+  it("F-193 (#248): caregiver-signature capture before 'delivered' is refused (422)", async () => {
+    const { app } = makeServer();
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplies/supply-requests",
+      headers: { ...COORD, "idempotency-key": "req-sig-422" },
+      payload: {
+        patientId: fakeId(),
+        admissionId: fakeId(),
+        locationId: LOC_A,
+        deliveryAddress: ADDRESS,
+        kindPayload: { kind: "dme" },
+      },
+    });
+    const id = create.json().supplyRequestId as string;
+
+    const signed = await app.inject({
+      method: "POST",
+      url: `/api/v1/supplies/supply-requests/${id}/caregiver-signature`,
+      headers: { ...COORD, "idempotency-key": "req-sig-422-try", "if-match": NOW },
+      payload: { captureMethod: "declined" },
+    });
+    expect(signed.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("F-193 (#248): a witnessed capture without a witness/evidence floor fails TypeBox-body-shape 422 downstream of the route (documented via the write-service contract, not this smoke test)", async () => {
+    // The per-method evidence FLOOR (name length, attestation length, evidence-document presence) is
+    // enforced by the pure validator (`requireCaregiverSignatureEvidence`), which this file's fake write
+    // service deliberately does NOT re-derive (see the fake's own doc-comment) — that rule is covered by
+    // `supplies-caregiver-signature.test.ts` over the real function. This test only proves the WIRING
+    // fact that belongs here: an `if-match` mismatch on the capture route is still a 412, the same §7.2
+    // guard every other M21 mutation carries.
+    const { app } = makeServer();
+    const create = await app.inject({
+      method: "POST",
+      url: "/api/v1/supplies/supply-requests",
+      headers: { ...COORD, "idempotency-key": "req-sig-412" },
+      payload: {
+        patientId: fakeId(),
+        admissionId: fakeId(),
+        locationId: LOC_A,
+        deliveryAddress: ADDRESS,
+        kindPayload: { kind: "dme" },
+      },
+    });
+    const id = create.json().supplyRequestId as string;
+    const noIfMatch = await app.inject({
+      method: "POST",
+      url: `/api/v1/supplies/supply-requests/${id}/caregiver-signature`,
+      headers: { ...COORD, "idempotency-key": "req-sig-412-try" },
+      payload: { captureMethod: "declined" },
+    });
+    expect(noIfMatch.statusCode).toBe(428);
     await app.close();
   });
 

@@ -2065,6 +2065,10 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   // F-161 (#248, mig 0252) — the M7 care-plan PDF. `m7.care_plan.version_signed`'s own catalog comment
   // ("drives the M8 encounter gate + M22 PDF") was decisive and no template existed for it at all.
   "care_plan",
+  // F-192 (#248, mig 0267) — the M6 transfer document. `m6.transfer.created`'s own render request is the
+  // M22 spec's own "discharge_summary (transfer variant)" — a distinct type, not a second version of
+  // `discharge_summary`, since a transfer is not a discharge for cause/death/routine.
+  "discharge_summary_transfer",
   "other",
 ]);
 
@@ -2710,6 +2714,20 @@ export const comfortKitDispatchStatus = pgEnum("m21_comfort_kit_dispatch_status"
   "reconciled",
   "reconciled_with_discrepancy",
 ]);
+
+/** `m21_caregiver_signature_capture_method` — F-193 (#248). D7's spec line ("caregiver signature is
+ *  optional via M22's signature flow, triggered when policy or tenant config requires it") named a
+ *  capture mechanism M22 was never going to build (M22's own spec disclaims signature capture; F-191
+ *  dropped the misdeclared `m22` consumer off `m21.supply_request.delivered`). This is M21's OWN capture,
+ *  synchronous and always optional — mirrors the SHAPE (not the type; M21's manifest `dependsOn` has no
+ *  edge to M39) of `@wardenx/consent`'s proven `ConsentCaptureEvidence.captureMethod`, narrowed to what is
+ *  plausible for a courier-delivery caregiver signature: no portal session, no uploaded PDF, no notary —
+ *  just typed-in-app, a witnessed verbal account, or an explicit decline (still evidence: "asked, refused"
+ *  is worth recording even though nothing downstream gates on it). */
+export const supplyCaregiverSignatureCaptureMethod = pgEnum(
+  "m21_caregiver_signature_capture_method",
+  ["typed_signature_in_app", "witnessed_verbal_documented", "declined"],
+);
 
 // ── Module 19 — On-Call Triage (§3.2 Phase A, M19-T01) ───────────────────────────────────────────────
 //

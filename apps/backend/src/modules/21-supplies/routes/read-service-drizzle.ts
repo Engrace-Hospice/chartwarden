@@ -388,6 +388,14 @@ export function buildDrizzleM21ReadService(db: DbClient, deps: M21ReadDeps = {})
           invoiceReconciledAt: isoN(row.invoiceReconciledAt),
           invoiceVarianceCents: row.invoiceVarianceCents ?? null,
           dispatchId: dispatch?.id ?? null,
+          caregiverSignatureCaptureMethod: (row.caregiverSignatureCaptureMethod ??
+            null) as SupplyRequestDetail["caregiverSignatureCaptureMethod"],
+          caregiverSignatureCapturedAt: isoN(row.caregiverSignatureCapturedAt),
+          caregiverSignatureCapturedByMembershipId: (row.caregiverSignatureCapturedByMembershipId ??
+            null) as SupplyRequestDetail["caregiverSignatureCapturedByMembershipId"],
+          caregiverSignatureEvidenceDocumentId: row.caregiverSignatureEvidenceDocumentId ?? null,
+          caregiverSignatureEvidence: (row.caregiverSignatureEvidenceJsonb ??
+            null) as SupplyRequestDetail["caregiverSignatureEvidence"],
         };
       });
     },

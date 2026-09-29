@@ -7,10 +7,12 @@
  * cores since M13-T06/T08, and `M13_OUTBOX_SUBSCRIPTIONS` has named all four M6 events with a real
  * consumer since the list was written — nothing ever bound them, and no worksheet has ever existed in
  * any deployment. This proves the real binding: two of the four trigger shapes (`m6.cti.signed`, whose
- * payload carries `patientId` directly, and `m6.transfer.created`, whose payload carries NEITHER
- * `patientId` NOR a due-date field named the same as the others — proving the injected `resolveAdmission`
- * seam is actually load-bearing), idempotency on redelivery (the `recon_ws_admission_trigger_uk` unique),
- * the documented throw when an admission has no location assigned, and cross-tenant isolation.
+ * payload carries `patientId` directly, and `m6.transfer.created`, whose payload carries no
+ * `providerEntityId`/`locationId`/due-date field named the same as the others — F-192 (#248) widened it
+ * with a `patientId` for M22's own render handshake, but this consumer still needs the injected
+ * `resolveAdmission` seam for the siting facts, proving the seam is actually load-bearing), idempotency
+ * on redelivery (the `recon_ws_admission_trigger_uk` unique), the documented throw when an admission has
+ * no location assigned, and cross-tenant isolation.
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m13:reconciliation-triggers:live
  */
@@ -208,7 +210,7 @@ describe.skipIf(!DB_URL)(
       });
     });
 
-    it("resolves patientId via the injected seam for m6.transfer.created, which carries none in its own payload", async () => {
+    it("resolves patientId via the injected seam for m6.transfer.created, not the payload's own patientId", async () => {
       const eventId = "cccccccc-0000-4000-8000-000000000002";
       await consumer.handle({
         eventType: "m6.transfer.created",
@@ -219,6 +221,11 @@ describe.skipIf(!DB_URL)(
           admissionId: ADMISSION_A,
           direction: "in",
           effectiveAt: "2026-06-05T00:00:00.000Z",
+          // F-192 (#248) widened this payload with `patientId` for M22's OWN render handshake, but this
+          // M13 consumer still needs `providerEntityId`/`locationId` the payload never carries — deliberately
+          // a DIFFERENT patient here than `resolveAdmission`'s fixture returns, proving this consumer still
+          // resolves the seam fact rather than trusting the payload's own (M22-scoped) field.
+          patientId: "00000000-0000-4000-8000-0000000000ff",
         },
       });
 

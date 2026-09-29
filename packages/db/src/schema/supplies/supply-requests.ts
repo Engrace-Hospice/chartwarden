@@ -32,7 +32,12 @@
 // LOGICAL uuid, validated at the write boundary.
 import { sql } from "drizzle-orm";
 import { bigint, check, index, jsonb, pgTable, text, timestamp, uuid } from "drizzle-orm/pg-core";
-import { supplyDeliveryMethod, supplyRequestKind, supplyRequestStatus } from "../../enums";
+import {
+  supplyCaregiverSignatureCaptureMethod,
+  supplyDeliveryMethod,
+  supplyRequestKind,
+  supplyRequestStatus,
+} from "../../enums";
 import { locations } from "../locations";
 import { organizations } from "../organizations";
 import { providerEntities } from "../provider-entities";
@@ -87,6 +92,30 @@ export const supplyRequest = pgTable(
     receivedConfirmedAt: timestamp("received_confirmed_at", { withTimezone: true }),
     /** `SupplyReceivedConfirmedActor` — who said it arrived (CHECK-constrained below). */
     receivedConfirmedActor: text("received_confirmed_actor"),
+
+    // F-193 (#248) — M21's OWN caregiver-signature capture (see the enum doc-comment). Columns, not a
+    // child table: mirrors the D7 courier-attestation shape immediately above (discrete facts +
+    // membership attribution + an optional M22 document reference), the pattern M21 already uses for a
+    // delivery-adjacent evidentiary act on THIS row rather than a `comfort_kit_dispatch`-style sub-entity.
+    // ALWAYS OPTIONAL and never read by any gate — see `m21_caregiver_signature_paired` below for the
+    // only invariant this migration adds.
+    caregiverSignatureCaptureMethod: supplyCaregiverSignatureCaptureMethod(
+      "caregiver_signature_capture_method",
+    ),
+    caregiverSignatureCapturedAt: timestamp("caregiver_signature_captured_at", {
+      withTimezone: true,
+    }),
+    /** Stamped from the SESSION, never the body — the same D7 rule `deliveredByMembershipId` follows
+     *  (routes/actor.ts): a staff member who could name someone else has attested to nothing. */
+    caregiverSignatureCapturedByMembershipId: uuid("caregiver_signature_captured_by_membership_id"),
+    /** The `witnessed_verbal_documented` method's M22 reference — an already-rendered document, exactly
+     *  the way `deliveryEvidenceDocumentId` above references one. Logical FK (M22), validated at the
+     *  write boundary. */
+    caregiverSignatureEvidenceDocumentId: uuid("caregiver_signature_evidence_document_id"),
+    /** The method-specific text evidence (`typedSignatureName` / `witnessName` /
+     *  `witnessAttestationText` / `declinedReason`) — free text, so it is on the M4 write-audit denylist
+     *  (migration 0106, extended by 0268) the same way `delivery_instructions` is. */
+    caregiverSignatureEvidenceJsonb: jsonb("caregiver_signature_evidence_jsonb"),
 
     completedAt: timestamp("completed_at", { withTimezone: true }),
     cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
@@ -167,6 +196,21 @@ export const supplyRequest = pgTable(
       "m21_supply_request_received_actor",
       sql`received_confirmed_actor IS NULL
           OR received_confirmed_actor IN ('caregiver','patient','supply_team','system_auto_confirm')`,
+    ),
+    // F-193 (#248) — the three capture facts move together, both ways: a method with no timestamp/actor
+    // is an incomplete write the service layer should never produce, and a timestamp with no method is
+    // meaningless. The METHOD-SPECIFIC evidence shape (a typed name, a witness name+text, an evidence
+    // document id) is deliberately NOT a DB CHECK — jsonb sub-key validation belongs to the pure
+    // validator (`lifecycle/caregiver-signature.ts`), mirroring how M39's `consent_record` splits the
+    // same two concerns (`captureMethod` is DB-enumerated; `captureEvidenceJsonb`'s shape is app-validated).
+    caregiverSignaturePaired: check(
+      "m21_caregiver_signature_paired",
+      sql`(caregiver_signature_capture_method IS NULL
+             AND caregiver_signature_captured_at IS NULL
+             AND caregiver_signature_captured_by_membership_id IS NULL)
+          OR (caregiver_signature_capture_method IS NOT NULL
+             AND caregiver_signature_captured_at IS NOT NULL
+             AND caregiver_signature_captured_by_membership_id IS NOT NULL)`,
     ),
   }),
 );

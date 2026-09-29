@@ -219,10 +219,6 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     aggregateIdFields: ["revocationEventId"],
     templateKey: "revocation",
   },
-  // `m6.transfer.created` is deliberately NOT here: it wants what the M22 spec calls "discharge_summary
-  // (transfer variant)", and no variant exists;
-  // rendering the base template would file a document titled Discharge Summary for a patient who was
-  // transferred, not discharged — unrelated to the granularity fix, still genuinely unbuilt.
   "m6.discharge.created": {
     aggregateIdFields: ["dischargeEventId"],
     templateKey: "discharge_summary",
@@ -317,6 +313,18 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   "m7.care_plan.version_signed": {
     aggregateIdFields: ["versionId"],
     templateKey: "care_plan",
+  },
+  // F-192 (#248) — M6 §2.3.6/§7.7 — the transfer summary. One artifact per `transferEventId`, GENESIS
+  // only (a benefit period allows at most one transfer-out per period, R-XFR-01; a transfer-in mints a
+  // brand-new `transfer_event` row on the new admission, never a re-render of the sending hospice's).
+  // Fires from BOTH `transferOut` and `transferIn` under the SAME event name/template — the payload's own
+  // `direction` field (widened onto the wire alongside `patientId`, at the two real emit sites) carries
+  // which. No `contentField`: the whole payload — `direction`/`effectiveAt`/`otherHospiceCcn` — is what
+  // the transfer summary renders, the F-100 M6-CoP-documents shape exactly (an admission id also rides
+  // the payload but is not the render aggregate — the transfer event itself is).
+  "m6.transfer.created": {
+    aggregateIdFields: ["transferEventId"],
+    templateKey: "discharge_summary_transfer",
   },
   // ── F-166 (#248) — five GENESIS-only source-event renders M22's own survey-then-build pass on the
   // `handlers-unbound` group found buildable (see decide-document-request.ts's own comment on each).

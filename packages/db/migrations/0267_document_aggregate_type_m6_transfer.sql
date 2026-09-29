@@ -1,0 +1,14 @@
+-- M22 `document_aggregate_type` — one new artifact type behind the M6 transfer render handshake
+-- (F-192, #248; the 0239 F-099 / 0251 F-144 / 0252 F-161 additive-enum precedent, a fourth time).
+--
+-- `m6.transfer.created` (routes 37/38) has been declared in M22's own `handlers-unbound` group since
+-- the register existed, and every prior pass that checked it (F-161/F-162/F-166/F-176) found the same
+-- wall: the M22 spec itself calls the wanted artifact "discharge_summary (transfer variant)"
+-- (render-consumer.ts's own header comment on `m6.discharge.created`), and no such variant existed —
+-- rendering the base `discharge_summary` template would file a document titled "Discharge Summary"
+-- for a patient who was TRANSFERRED, not discharged for cause/death/routine. `transfer_event` has
+-- carried its own `document_id` column ("(M22) transfer summary") since M6's schema landed, unread.
+--
+-- Additive only (no removal, no existing row affected). Own migration: PG forbids using a value added
+-- earlier in the same transaction, so this stands alone ahead of any migration that reads or writes it.
+ALTER TYPE "public"."document_aggregate_type" ADD VALUE IF NOT EXISTS 'discharge_summary_transfer';

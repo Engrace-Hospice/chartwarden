@@ -32,6 +32,8 @@ import type {
   PatientId,
   PharmacyDispatchMode,
   RoutingRuleResolved,
+  SupplyCaregiverSignatureCaptureMethod,
+  SupplyCaregiverSignatureEvidence,
   SupplyDeliveryMethod,
   SupplyFulfillmentMode,
   SupplyItemId,
@@ -92,6 +94,12 @@ export interface SupplyRequestDetail extends SupplyRequestListItem {
   readonly invoiceVarianceCents: number | null;
   /** The dispatch this request produced, when it is a kit kind (§2.5). */
   readonly dispatchId: ComfortKitDispatchId | null;
+  /** F-193 (#248) — M21's own caregiver-signature capture. `null` until captured; always optional. */
+  readonly caregiverSignatureCaptureMethod: SupplyCaregiverSignatureCaptureMethod | null;
+  readonly caregiverSignatureCapturedAt: IsoInstant | null;
+  readonly caregiverSignatureCapturedByMembershipId: MembershipId | null;
+  readonly caregiverSignatureEvidenceDocumentId: string | null;
+  readonly caregiverSignatureEvidence: SupplyCaregiverSignatureEvidence | null;
 }
 
 /** §4.1 rows 11 / 13 — a catalog SKU. Platform rows have no org; the overlay rows are tenant-scoped. */

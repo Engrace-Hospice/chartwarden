@@ -634,6 +634,13 @@ jobs:
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
           - { name: "M6 CoP documents", scripts: "test:m6:cop-documents:live" }
+          # F-192 (#248) — M6's seventh artifact, the transfer summary (`discharge_summary_transfer`,
+          # migration 0267): `m6.transfer.created` (both directions) through the identical F-100 chain,
+          # into `transfer_event.document_id`, the column M6 built for it and nothing ever wrote.
+          - {
+              name: "F-192 M6 transfer render request",
+              scripts: "test:f192:m6-transfer-render:live",
+            }
           - { name: "M6 discharge cascade", scripts: "test:m6:discharge-cascade:live" }
           # F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           - { name: "M6 LOC change signed", scripts: "test:m6:loc-change-signed:live" }
@@ -647,6 +654,13 @@ jobs:
           - {
               name: "M21 comfort-kit replenishment",
               scripts: "test:m21:comfort-kit-replenishment:live",
+            }
+          # F-193 (#248) — M21's own caregiver-signature capture (D7's "optional via M22's signature
+          # flow" named a mechanism M22 was never going to build; F-191 dropped the misdeclared `m22`
+          # consumer, this is the real replacement capability).
+          - {
+              name: "M21 caregiver-signature capture",
+              scripts: "test:m21:caregiver-signature:live",
             }
           - { name: "M15 plan bootstrap", scripts: "test:m15:plan-bootstrap:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }

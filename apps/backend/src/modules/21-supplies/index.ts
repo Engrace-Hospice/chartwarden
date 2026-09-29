@@ -18,7 +18,8 @@
 //   • `seams/`             — the §4.8 / D14 PUBLISHED seams (`SupplyFulfillmentProvider` ·
 //                            `ComfortKitDispatchProvider` · `SupplyCostProvider`) over one Drizzle store,
 //                            registered into the M1 registry before `validateSeams()`
-//   • `permission-keys.ts` — the twenty-eight §4.3 keys M21 contributes to M3's catalog
+//   • `permission-keys.ts` — the twenty-nine §4.3 keys M21 contributes to M3's catalog (F-193/#248 added
+//                            `supplies.request.caregiver_signature` beside `mark_delivered`)
 //   • `abac-predicates.ts` — the two §4.4 named predicates (`controlled_substance_dispatcher_eligible` ·
 //                            `comfort_kit_return_reconciler_eligible`), fail-CLOSED, with the Drizzle
 //                            subject-fact resolver beside them

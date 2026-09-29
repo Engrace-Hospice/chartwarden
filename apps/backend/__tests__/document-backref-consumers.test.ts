@@ -153,6 +153,8 @@ describe("M6's back-ref map covers exactly what M22 renders for M6", () => {
     "m6.discharge.created": "discharge_summary",
     // F-176 (#248) — a for-cause cosign appends a new version of the same discharge_summary document.
     "m6.discharge.cosigned": "discharge_summary",
+    // F-192 (#248) — the transfer summary, the M22 spec's own "discharge_summary (transfer variant)".
+    "m6.transfer.created": "discharge_summary_transfer",
   };
 
   it("every m6 event M22 subscribes to resolves to a published template", () => {
