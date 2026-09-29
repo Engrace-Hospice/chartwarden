@@ -1,5 +1,5 @@
 /**
- * F-184 (#248) — RECOVERY of lab orders that can never reach the lab, proven end to end over real Postgres.
+ * F-185 (#248) — RECOVERY of lab orders that can never reach the lab, proven end to end over real Postgres.
  *
  * Two gaps left a signed lab order stuck with no way out:
  *
@@ -73,7 +73,7 @@ const keys: OutboundTenantKeyProvider = {
 const LOINC = [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }];
 const LAB_DATA = { testCodes: LOINC, fastingRequired: false, routingLabId: FAC_ACTIVE };
 
-describe.skipIf(!DB_URL)("F-184 — recovery of lab orders that cannot reach the lab, LIVE Postgres", () => {
+describe.skipIf(!DB_URL)("F-185 — recovery of lab orders that cannot reach the lab, LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbOrderBackend>;

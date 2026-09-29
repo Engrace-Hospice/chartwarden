@@ -173,7 +173,7 @@ export const CompleteOrderRequest = Type.Object({
 });
 
 /**
- * F-184 — POST /orders/:id/recover-transmission. The `attestation` is REQUIRED and has no default: it is the
+ * F-185 — POST /orders/:id/recover-transmission. The `attestation` is REQUIRED and has no default: it is the
  * operator's statement of what the lab actually holds, which the system cannot know. A free-text note is
  * deliberately not accepted (nothing PHI-shaped enters the audit diff).
  */
@@ -391,7 +391,7 @@ export const ResendLabTransmissionResponseSchema = Type.Object({
   refusalReason: nullableString(),
   order: OrderDetailResponseSchema,
 });
-/** F-184 — POST /orders/:id/recover-transmission. `refusalReason` is a fixed producer token, never PHI. */
+/** F-185 — POST /orders/:id/recover-transmission. `refusalReason` is a fixed producer token, never PHI. */
 export const RecoverLabTransmissionResponseSchema = Type.Object({
   outcome: Type.Union([
     Type.Literal("redispatched"),

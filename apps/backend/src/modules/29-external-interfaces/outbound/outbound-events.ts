@@ -37,7 +37,7 @@ export interface LabOrderTransmissionFailedPayload {
 }
 
 /**
- * F-184 — why the worker could not even PERSIST a dispatch row for an order. Every one is an operator-fixable
+ * F-185 — why the worker could not even PERSIST a dispatch row for an order. Every one is an operator-fixable
  * configuration state (activate / link / complete a feed, renew the BAA), so the order must not sit `pending`
  * forever: M11's applier flips it to `failed` with `dispatch_refused:<reason>`, and F-182's resend re-runs the
  * producer once the operator has fixed it. NO outbound row exists for any of these, so a resend cannot duplicate.
@@ -49,7 +49,7 @@ export type LabOrderDispatchRefusalReason =
   | "feed_identity_incomplete"
   | "baa_inactive";
 
-/** `m29.lab_order.dispatch_refused` — the worker wrote NO row for this order; M11 consumes (F-184). */
+/** `m29.lab_order.dispatch_refused` — the worker wrote NO row for this order; M11 consumes (F-185). */
 export interface LabOrderDispatchRefusedPayload {
   readonly orderId: string;
   readonly organizationId: string;

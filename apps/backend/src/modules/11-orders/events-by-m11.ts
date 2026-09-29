@@ -53,7 +53,7 @@ export const ormRequestedPayloadSchema = Type.Object({
   labDestinationFacilityId: id,
   priority: hl7Priority,
   requestedAt: isoInstant,
-  // F-184 — present only on an operator-attested re-dispatch (see `OrmRequestedPayload.redispatchAttestationId`).
+  // F-185 — present only on an operator-attested re-dispatch (see `OrmRequestedPayload.redispatchAttestationId`).
   redispatchAttestationId: Type.Optional(id),
   labOrderPayload: Type.Object({
     orderId: id,
@@ -288,7 +288,7 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     // only this event) — unsupported by any M22-side evidence.
     // F-149 (#248) — m30 MOVED to seamConsumers (the `.signed` finding above — M30 never subscribes to
     // an M11 outbox event; this fact would arrive, if ever bound, via the unbuilt order-completion seam).
-    // F-184 (#248) — m11 added (SELF-consumption): `lab-cancellation-required.ts` raises an operator alert when a
+    // F-185 (#248) — m11 added (SELF-consumption): `lab-cancellation-required.ts` raises an operator alert when a
     // lab order that may already be at the laboratory is discontinued. T-29.08 defines no outbound cancel, so
     // this is the only signal the lab-side discrepancy ever produces.
     declaredConsumers: ["m11", "m14", "m21"],
@@ -329,7 +329,7 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     }),
     // F-144 (#248) — m22 REMOVED: not in M22's own §4.11 consumer table; `correctOrder`
     // (`orders-route-service-db.ts`) emits only this event, no `document_requested` sibling.
-    // F-184 (#248) — m11 added (SELF-consumption): the supersede trigger discontinues the ORIGINAL without a
+    // F-185 (#248) — m11 added (SELF-consumption): the supersede trigger discontinues the ORIGINAL without a
     // `m11.order.discontinued`, so this is the only event that says a possibly-transmitted lab order was replaced.
     declaredConsumers: ["m11"],
     seamConsumers: ["m33"],

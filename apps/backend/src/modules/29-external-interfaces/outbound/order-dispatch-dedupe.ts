@@ -21,7 +21,7 @@ import { ORM_SOURCE_KIND } from "./dispatch-planner";
 const HMO = schema.hl7MessageOutbound;
 
 /**
- * The lookup itself, as an un-run query builder. Exported so the F-184 plan test can `EXPLAIN` EXACTLY this
+ * The lookup itself, as an un-run query builder. Exported so the F-185 plan test can `EXPLAIN` EXACTLY this
  * statement (not a hand-copied one that could drift). Served by `idx_hmo_org_source_aggregate` (migration 0265):
  * equality on all three columns, in index order.
  */
@@ -43,7 +43,7 @@ export function ormDispatchLookupQuery(tx: DbClient, organizationId: string, ord
 const ROW_STILL_OWNS_ORDER = ["queued", "in_flight", "acked"] as const;
 
 /**
- * F-184 — the ONE sanctioned exception to "one ORM per order", for an operator-ATTESTED re-dispatch. True when the
+ * F-185 — the ONE sanctioned exception to "one ORM per order", for an operator-ATTESTED re-dispatch. True when the
  * order has an outbound row that is `queued` or `in_flight` (a send still owns the order) or `acked` (the lab has
  * it). Only when every prior row is a dead end — `dlq` (exhausted, or held for delivery verification), `naked`
  * (an `AR` structural reject) or `failed` — may an attested attempt add a new row, and only because a human has

@@ -349,7 +349,7 @@ export interface OrmRequestedPayload {
   readonly requestedAt: string; // signed_at as ISO
   readonly labOrderPayload: OrderHl7LabOrderPayload;
   /**
-   * F-184 — set ONLY by the operator's attested re-dispatch (`recoverLabTransmission`, outcome
+   * F-185 — set ONLY by the operator's attested re-dispatch (`recoverLabTransmission`, outcome
    * `not_received_by_lab`): an id minted per attestation. It is the one sanctioned exception to M29's
    * one-ORM-per-order guard (F-183) — see `dispatch-worker.ts`. Absent on every ordinary request.
    */

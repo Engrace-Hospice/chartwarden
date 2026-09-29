@@ -1,4 +1,4 @@
-// apps/backend/__tests__/orm-recovery.test.ts — F-184 (#248): the ATTESTED recovery of a lab order that failed after
+// apps/backend/__tests__/orm-recovery.test.ts — F-185 (#248): the ATTESTED recovery of a lab order that failed after
 // its HL7 message was built, and the resendability of an order the M29 worker refused to persist. The PURE decisions
 // (`classifyTransmissionRecovery`, `classifyOrmResend` over `dispatch_refused:*`), the request contract, and the HTTP
 // contract of `POST /api/v1/orders/:id/recover-transmission` through the full M1 middleware chain (Fastify `inject`,
@@ -41,7 +41,7 @@ const failed = (reason: string | null, over: Partial<OrmResendCandidate> = {}): 
   ...over,
 });
 
-describe("F-184 — classifyTransmissionRecovery: which failures an attestation may act on", () => {
+describe("F-185 — classifyTransmissionRecovery: which failures an attestation may act on", () => {
   it("the recoverable set is exactly the two M29 terminal reasons", () => {
     expect([...RECOVERABLE_M29_FAILURE_REASONS].sort()).toEqual(["application_reject", "dlq_exhausted"]);
     expect([...RECOVERY_ATTESTATIONS]).toEqual(["not_received_by_lab", "received_by_lab"]);
@@ -98,7 +98,7 @@ describe("F-184 — classifyTransmissionRecovery: which failures an attestation 
   });
 });
 
-describe("F-184 — classifyOrmResend over a worker refusal (dispatch_refused:*)", () => {
+describe("F-185 — classifyOrmResend over a worker refusal (dispatch_refused:*)", () => {
   it.each(["no_active_feed", "ambiguous_feed", "no_feed_for_destination", "feed_identity_incomplete", "baa_inactive"])(
     "a dispatch_refused:%s order is resendable — no outbound row exists, so a resend cannot duplicate",
     (reason) => {
@@ -123,7 +123,7 @@ describe("F-184 — classifyOrmResend over a worker refusal (dispatch_refused:*)
   });
 });
 
-describe("F-184 — RecoverLabTransmissionRequest: the attestation is required, closed, and note-free", () => {
+describe("F-185 — RecoverLabTransmissionRequest: the attestation is required, closed, and note-free", () => {
   it.each(["not_received_by_lab", "received_by_lab"])("accepts attestation %s", (attestation) => {
     expect(Value.Check(RecoverLabTransmissionRequest, { attestation })).toBe(true);
   });
@@ -210,7 +210,7 @@ afterEach(() => {
   resetAbacRegistry();
 });
 
-describe("F-184 — POST /api/v1/orders/:id/recover-transmission", () => {
+describe("F-185 — POST /api/v1/orders/:id/recover-transmission", () => {
   async function draft(app: ReturnType<typeof makeServer>["app"]): Promise<string> {
     const res = await app.inject({ method: "POST", url: "/api/v1/orders", headers: RN, payload: labBody });
     expect(res.statusCode).toBe(201);

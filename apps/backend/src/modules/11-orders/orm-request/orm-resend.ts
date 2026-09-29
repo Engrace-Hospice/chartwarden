@@ -36,7 +36,7 @@
 export const ORM_REFUSAL_PREFIX = "orm_refused:";
 
 /**
- * F-184 — the prefix the `LabTransmissionApplier` writes when the M29 worker REFUSED to persist any outbound row
+ * F-185 — the prefix the `LabTransmissionApplier` writes when the M29 worker REFUSED to persist any outbound row
  * (`m29.lab_order.dispatch_refused`: no/ambiguous/unlinked feed, incomplete MSH identity, lapsed BAA). Like an
  * emit-time refusal, NOTHING was ever sent and NO outbound row exists for the order, so F-182's resend — which
  * re-runs the producer and lets M29's guard see an order with no row — cannot duplicate it. Resendable.
@@ -89,7 +89,7 @@ export function classifyOrmResend(order: OrmResendCandidate): OrmResendVerdict {
     };
   }
   const reason = order.transmissionFailureReason;
-  // F-184 — a worker refusal (`dispatch_refused:*`) wrote no outbound row either: resendable, and the cause
+  // F-185 — a worker refusal (`dispatch_refused:*`) wrote no outbound row either: resendable, and the cause
   // (an inactive/unlinked feed, an incomplete MSH identity, a lapsed BAA) lives outside the order, so there is
   // no SUD / immutable-order carve-out to apply — the producer re-runs its own gates on the resend.
   if (reason !== null && reason.startsWith(DISPATCH_REFUSED_PREFIX)) {
@@ -122,7 +122,7 @@ export function classifyOrmResend(order: OrmResendCandidate): OrmResendVerdict {
   return { ok: true, priorReason: reason };
 }
 
-// ── F-184 — ATTESTED RECOVERY of an M29-terminal order ──────────────────────────────────────────────────────────
+// ── F-185 — ATTESTED RECOVERY of an M29-terminal order ──────────────────────────────────────────────────────────
 //
 // F-182's resend deliberately refuses an order that failed AFTER a message was built (`dlq_exhausted`,
 // `application_reject`, including F-183's "held, delivery unverified" reclaim, which surfaces as `dlq_exhausted`): the
