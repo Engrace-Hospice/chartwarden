@@ -93,7 +93,9 @@ export type OrderDiscontinuationReason =
   | "level_of_care_change"
   | "standing_order_discontinued"
   | "corrected_replacement"
-  | "expired_verbal";
+  | "expired_verbal"
+  // F-166 (#248) — a staff-initiated `m21.supply_request.cancelled` (never M11's own discharge cascade).
+  | "supply_request_cancelled";
 
 /** The §2.2 / §4.10 orthogonal lab-wire dispatch state (mirrors `order_transmission_status`). */
 export type OrderTransmissionStatus =

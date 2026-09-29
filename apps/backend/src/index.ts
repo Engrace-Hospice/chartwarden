@@ -104,6 +104,8 @@ import {
   buildProviderEntityLocationLister,
   buildProviderEntityOrgCheck,
 } from "./bootstrap/provider-entity-resolver";
+// F-166 (#248) — M13's `m12.medication_order.active` materializer needs the order's location timezone.
+import { buildFoundationSiteReader } from "./bootstrap/foundation-site-reader";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
@@ -188,6 +190,7 @@ import {
   M6_OUTBOX_EVENTS,
   M6_PLATFORM_JOB_ID,
   activeAdmissionDraftContextForPatient,
+  activeAdmissionSitingForPatientForOrg,
   admissionIsActiveForOrg,
   admissionSchedulingContextForOrg,
   buildM6DocumentBackrefConsumer,
@@ -286,6 +289,7 @@ import {
   buildM11DocumentBackrefConsumer,
   buildM11FulfillmentStatusConsumer,
   buildM11IdgDecisionConsumer,
+  buildM11SupplyCancelledConsumer,
   createDbOrderBackend,
   createDrizzleOrderEraseStore,
   createDrizzleOrderSeamStore,
@@ -322,6 +326,7 @@ import {
   createDrizzleMedicationOrderEraseStore,
   createDrizzlePatientSyncEnqueuePort,
   medicationOrderPatientAndDrugForOrg,
+  medicationOrderScheduleContextForOrg,
   mountDoseSpotRoutes,
   registerDoseSpotAbacPredicates,
   registerDoseSpotErasers,
@@ -334,7 +339,13 @@ import {
 import {
   M13_OUTBOX_EVENTS,
   buildM13AdmissionDischargedCascadeConsumer,
+  buildM13CancelFutureScheduleConsumer,
+  buildM13ComfortKitDeployedConsumer,
+  buildM13ComfortKitReplenishedConsumer,
+  buildM13ComfortKitReturnedConsumer,
+  buildM13ComfortKitReturnReconciliationConsumer,
   buildM13DocumentBackrefConsumer,
+  buildM13MaterializeScheduleConsumer,
   buildM13ReconciliationTriggerConsumer,
   createDrizzleEmarEraseStore,
   createDrizzleEmarSeamStore,
@@ -415,6 +426,8 @@ import {
   buildM17EvvCheckOutConsumer,
   buildM17EvvEventCorrectedConsumer,
   buildM17SosVisitCancellationConsumer,
+  buildM17TriageVisitNeededConsumer,
+  buildM17VolunteerAssignmentInactivatedConsumer,
   buildM17WorkerDeps,
   createDrizzleCredentialStore,
   createDrizzleSchedulingSeamStore,
@@ -5492,6 +5505,18 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             db: dbHandle.db,
             outbox: m17OutboxPublisher,
           }),
+          // F-166 (#248) — the §7.5 volunteer-gate scheduler warning (M15's own catalog entry: "so M17
+          // must drop the volunteer from the schedule") and the §2.2.4 D5 after-hours triage proposal
+          // (M19's own worked example names this as the D5 proposal-worker trigger).
+          buildM17VolunteerAssignmentInactivatedConsumer({
+            db: dbHandle.db,
+            outbox: m17OutboxPublisher,
+          }),
+          buildM17TriageVisitNeededConsumer({
+            db: dbHandle.db,
+            outbox: m17OutboxPublisher,
+            admissionSitingForPatient: activeAdmissionSitingForPatientForOrg,
+          }),
           buildM36ClinicalAlertConsumer(
             getSeam("AlertEmitter") as AlertEmitter,
           ),
@@ -5716,6 +5741,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-152 — the D8 one-shot (`supply`/`comfort_kit`) auto-complete on M21 delivery. `dme`
           // stays open — it completes on receipt via a separate monthly-rental close-out.
           buildM11FulfillmentStatusConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
+          // F-166 (#248) — a staff-initiated `m21.supply_request.cancelled` (never through M11's own
+          // discharge cascade above, which already discontinues the order before asking M21) releases
+          // the still-in-flight source order M11 never touched. Safe for the cascade-reply producer too
+          // (a true no-op — the order is already `discontinued` by then).
+          buildM11SupplyCancelledConsumer({ db: dbHandle.db, outbox: m11OutboxPublisher }),
           // F-102 — the M6 discharge cascade, both halves. Each decider has been complete, exported and
           // unit-tested since M11-T07 / M12-T08 with no caller but its own test, and neither COULD be
           // bound: `m6.admission.discharged` did not declare m11 or m12, and
@@ -5858,6 +5888,45 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               return ctx ? { patientId: ctx.patientId } : null;
             },
           }),
+          // F-166 (#248) — the §2.3 D2 scheduled-dose materializer. Order siting comes from the same
+          // org-explicit M6 seam as the two consumers just above; the order's own facts come from a new
+          // M12 org-explicit seam (`medicationOrderScheduleContextForOrg`, the F-164
+          // `medicationOrderPatientAndDrugForOrg` precedent widened); the order's location timezone
+          // resolves through M1's `FoundationSiteReader` (the sanctioned direct-import path for a module
+          // that already depends on module 1).
+          buildM13MaterializeScheduleConsumer({
+            db: dbHandle.db,
+            outbox: m13OutboxPublisher,
+            orderContext: (organizationId, orderId) =>
+              medicationOrderScheduleContextForOrg(dbHandle.db, organizationId, orderId),
+            resolveAdmission: async (organizationId, admissionId) => {
+              const ctx = await admissionSchedulingContextForOrg(
+                dbHandle.db,
+                organizationId,
+                admissionId,
+              );
+              return ctx ? { providerEntityId: ctx.providerEntityId, locationId: ctx.locationId } : null;
+            },
+            locationTimezone: (organizationId, locationId) =>
+              withOrgContext(dbHandle.db, { organizationId, userId: "" }, (tx) =>
+                buildFoundationSiteReader().locationTimezone(tx as unknown as DbClient, locationId),
+              ),
+          }),
+          // F-166 (#248) — the order-level scheduled-dose cancellation cascade. Reads only M13's own
+          // `scheduled_dose` table (the catalogued payload already carries `effectiveAt`); no cross-module
+          // seam needed.
+          buildM13CancelFutureScheduleConsumer({ db: dbHandle.db, outbox: m13OutboxPublisher }),
+          // F-166 (#248) — M13's §2.5/§2.7 D5 comfort-kit deployment/replenishment/return chain, bound
+          // live for the first time. `m21.comfort_kit.deployed_at_patient`'s producer-side defect (a
+          // premature/wrong `.returned` emission at return-REQUEST time, not reconcile time) is fixed at
+          // its source in `21-supplies/routes/write-service-drizzle.ts`'s `createReturn`, in the same
+          // change. See each consumer file's own header for what stayed blocked (a nullable
+          // `medicationOrderId` for IPU-floor-stock lines — a real, documented M21 business concept M13
+          // has no schema representation for anywhere) and how it was scoped.
+          buildM13ComfortKitDeployedConsumer({ db: dbHandle.db, outbox: m13OutboxPublisher }),
+          buildM13ComfortKitReplenishedConsumer({ db: dbHandle.db }),
+          buildM13ComfortKitReturnedConsumer({ db: dbHandle.db }),
+          buildM13ComfortKitReturnReconciliationConsumer({ db: dbHandle.db, outbox: m13OutboxPublisher }),
           buildM21DocumentBackrefConsumer({ db: dbHandle.db }),
           // F-120 (#248) — the OTHER two of the three M11 cascade deciders `consumers/m11-orders.ts` has
           // carried since M21-T04 ("the live outbox binding … land with the §4.6 workers alongside the

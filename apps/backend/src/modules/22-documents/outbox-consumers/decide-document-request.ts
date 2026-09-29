@@ -100,6 +100,44 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   // why each of those five stays unconsumed.
   "m17.caregiver_reminder_due", // visit_confirmation — M17's own catalog: "M22 renders the reminder"
   "m7.care_plan.version_signed", // care_plan — M7's own catalog: "drives … M22 PDF"
+  // ── F-166 (#248) — M22's own `handlers-unbound` group's survey-then-build pass: five SOURCE-event
+  // GENESIS renders (a first document per aggregate, never a re-render of one that already exists —
+  // the exact distinction that keeps `m6.discharge.cosigned`/`m8.encounter.addendum_signed`/
+  // `m14.minutes.amended`/`m12.medication_order.{transmitted,list_changed}` NOT here: each of those
+  // asks for a SECOND document against an aggregate id M22 has already rendered, which
+  // `decideDocumentRequest`'s idempotency (keyed `(aggregateType, aggregateId)` only, never
+  // `(sourceEvent, aggregateId)`) answers `idempotent_skip` for, silently, forever).
+  //
+  // M8 §2 — the signed encounter note. `documentRenderPayload: {final, addenda}` has been ON THE LOCKED
+  // PAYLOAD since the event existed — the content M22 renders was always in hand, unconsumed.
+  // `aggregateType: "encounter"` has published a descriptor since the platform-floor template table;
+  // nothing else renders under it, so this is the aggregate's FIRST document, not a collision with
+  // `.addendum_signed`'s later append (which correctly stays unbound, two paragraphs up).
+  "m8.encounter.signed", // encounter
+  // M18 §4.11 D11 — the EVV verification PDF. `m18.evv.verification_pdf_requested` is the request-
+  // shaped SIBLING this event's own description claims to duplicate ("triggers the M22
+  // verification-PDF render (D11)") — checked and confirmed VAPOR: no emit site anywhere in
+  // `18-evv/` (only `aggregator_accepted`'s pure decider ever actually publishes), so `aggregator_accepted`
+  // is the real trigger, the F-100 "event NAME is the template" shape M6's six CoP documents already use.
+  // `evv_verification` has published a descriptor since the platform-floor table with no producer wired
+  // to it until now. `patientId` is honestly left unresolved (null): the payload carries only
+  // `{submissionId, visitId, stateCode, aggregatorTransactionId, acceptedAt}`, no patient anywhere, and
+  // resolving one would need a NEW M18/M17 visit→patient cross-module read out of this pass's scope —
+  // reported, not guessed (`retentionClass: "operational"`, so the artifact is still reachable via
+  // `document.(aggregate_type, aggregate_id)` without a chart link, same posture `m21.*` operational
+  // artifacts already carry).
+  "m18.evv.aggregator_accepted", // evv_verification
+  // M14 §2.4/§4.4 — the two IDG render requests the group's own F-162 finding traced precisely:
+  // `idg_patient_packet`/`idg_minutes` have been real `document_aggregate_type` enum values since the
+  // platform-floor table (migration 0048) with NO published TemplateDescriptor and NO catalog
+  // subscription — "even a first-ever render would hit `unknown_template` today" (F-162). Both are
+  // GENESIS-only requests (one packet per `packetId`, one minutes doc per `minutesId`) — never the
+  // `.amended` re-render, which stays correctly unbound above for the granularity reason.
+  "m14.packet.render_requested", // idg_patient_packet
+  "m14.minutes.signed", // idg_minutes — patientId is honestly null: minutes cover the whole IDG meeting,
+  // not one patient (the payload carries none), matching `DocumentRequestPayload.patientId`'s documented
+  // "or null for patient-independent renders" case.
+  "m15.plan.version_signed", // aide_poc | msw_plan | spiritual_plan | volunteer_plan, by `kind`
 ] as const;
 
 /** §4.11 render-request events the SPEC anticipates but no module's event catalog declares yet. Listed —

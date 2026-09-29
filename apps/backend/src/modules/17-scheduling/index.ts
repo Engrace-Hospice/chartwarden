@@ -102,6 +102,19 @@ export {
   buildM17EvvEventCorrectedConsumer,
   type EvvEventCorrectedDeps,
 } from "./outbox-consumers/m18-evv-event-corrected";
+// F-166 (#248) — the §7.5 volunteer-gate scheduler warning + the §2.2.4 D5 after-hours triage proposal.
+export {
+  M17_VOLUNTEER_ASSIGNMENT_INACTIVATED_CONSUMER,
+  buildM17VolunteerAssignmentInactivatedConsumer,
+  type VolunteerAssignmentInactivatedConsumerDeps,
+} from "./outbox-consumers/m15-volunteer-assignment-inactivated";
+export {
+  M17_TRIAGE_VISIT_NEEDED_CONSUMER,
+  buildM17TriageVisitNeededConsumer,
+  type TriageVisitNeededConsumerDeps,
+  type TriageVisitAdmissionSiting,
+  type TriageVisitAdmissionSitingReader,
+} from "./outbox-consumers/m19-triage-visit-needed";
 // M17-T07 — the four §4.7 pre-schedule ABAC predicate resolvers M17 owns + registers into M3.
 export {
   type SchedulingAbacDeps,

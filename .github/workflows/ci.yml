@@ -227,6 +227,9 @@ jobs:
           - { name: "M11 downstream signed fan-out", scripts: "test:m11:downstream-signed:live" }
           # F-152 (#248) — the §2.7 D7 order-suggestion banner (Valkey) + the D8 one-shot auto-complete.
           - { name: "M11 M9/M21 outbox consumers", scripts: "test:m11:m9-m21-consumers:live" }
+          # F-166 (#248) — `m21.supply_request.cancelled`: releases the still-in-flight M11 order on the
+          # staff-initiated M21 cancel route; a true no-op on the M11-cascade-reply producer.
+          - { name: "M11 supply-cancelled consumer", scripts: "test:m11:supply-cancelled:live" }
           # F-164 (#248) — M11's hourly orders.verbal_timer fan-out + the M12 medication-order verbal
           # target-kind discrimination it drives.
           - { name: "M11 verbal-order expiry", scripts: "test:m11:verbal-order-expiry:live" }
@@ -260,6 +263,18 @@ jobs:
               name: "M13/M12 draft-order-requested",
               scripts: "test:m13:m12-draft-order-requested:live",
             }
+          # F-166 (#248) — the §2.3 D2 scheduled-dose materializer + order-discontinue cascade
+          # (m12.medication_order.active/.discontinued).
+          - {
+              name: "M13 scheduled-dose materialization",
+              scripts: "test:m13:scheduled-dose-materialization:live",
+            }
+          # F-166 (#248) — the §2.5/§2.7 D5 comfort-kit deployment/replenishment/return chain
+          # (m21.comfort_kit.deployed_at_patient/.replenished/.returned/.return_reconciliation).
+          - {
+              name: "M13 comfort-kit deployment",
+              scripts: "test:m13:comfort-kit-deployment:live",
+            }
           - {
               name: "M14 IDG",
               scripts:
@@ -275,6 +290,11 @@ jobs:
           - { name: "M17 EVV/SOS outbox consumers", scripts: "test:m17:evv-sos-consumers:live" }
           # F-158 (#248) — the §3.3 EVV checkout/correction provenance-pointer consumers.
           - { name: "M17 EVV checkout/corrected consumers", scripts: "test:m17:evv-checkout-corrected:live" }
+          # F-166 (#248) — the §7.5 volunteer-gate scheduler warning + the §2.2.4 D5 after-hours triage proposal.
+          - {
+              name: "M17 volunteer/triage consumers",
+              scripts: "test:m17:volunteer-triage-consumers:live",
+            }
           - { name: "M18 EVV", scripts: "test:m18:read:live test:m18:write:live" }
           # F-153 (#248) — the D14 `m17.visit.cancelled` bracket close + the D6/§2.2.4
           # `m8.encounter.signed` missing-EVV auto-resolution.
@@ -543,6 +563,13 @@ jobs:
           - {
               name: "M22 F-161 render requests",
               scripts: "test:f161:m7-m17-render-requests:live",
+            }
+          # F-166 (#248) — 5 more M22 render-request producer/consumer pairs, all GENESIS-only (never a
+          # re-render/append against an already-rendered aggregate): M8 encounter-signed note, M18 EVV
+          # verification PDF, M14 IDG packet + minutes, M15's four discipline plans by `kind`.
+          - {
+              name: "M22 F-166 render requests",
+              scripts: "test:f166:render-requests:live",
             }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`

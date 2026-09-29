@@ -53,10 +53,16 @@ import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
+import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
+import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
+import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
+import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
+import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
@@ -199,13 +205,26 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
     // producing module — the dispatcher refuses to CONSTRUCT when a bound consumer names an event its
     // own catalog does not carry (`assertBindableAgainstCatalog`), so all of them must be present here
     // even though this suite only drives the M13/M23/M24/M25 producers (the gap-023 precedent).
+    // F-166 (#248) — widened to add M7/M8/M14/M15/M17/M18: the shared M22 render consumer's
+    // `eventTypes` spans every producing module in the whole `M22_DOCUMENT_REQUEST_EVENTS` list, and
+    // `assertBindableAgainstCatalog` validates that FULL list against the catalog at dispatcher
+    // CONSTRUCTION time — every module the list has ever grown to reference must be present or the
+    // dispatcher refuses to build, regardless of which events this suite actually publishes. This
+    // suite predates F-161's/F-166's additions and was never backfilled (the same pre-existing gap
+    // fixed in f161-m7-m17-render-requests.live.test.ts's own catalog list).
     const catalog = buildBootOutboxCatalog([
       M6_OUTBOX_EVENTS,
+      M7_OUTBOX_EVENTS,
+      M8_OUTBOX_EVENTS,
       M10_OUTBOX_EVENTS,
       M11_OUTBOX_EVENTS,
       M12_OUTBOX_EVENTS,
       M13_OUTBOX_EVENTS,
+      M14_OUTBOX_EVENTS,
+      M15_OUTBOX_EVENTS,
       M16_OUTBOX_EVENTS,
+      M17_OUTBOX_EVENTS,
+      M18_OUTBOX_EVENTS,
       M20_OUTBOX_EVENTS,
       M21_OUTBOX_EVENTS,
       M22_OUTBOX_EVENTS,

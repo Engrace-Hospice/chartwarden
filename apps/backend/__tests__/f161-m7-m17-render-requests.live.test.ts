@@ -44,12 +44,30 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
 import {
   type CarePlanWriteOutboxPort,
   M7_OUTBOX_EVENTS,
   createDbCarePlanRouteService,
 } from "../src/modules/07-care-plan/index";
+import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
+import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
+import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
+import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
+import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
+import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
+import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
+import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
+import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
+import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
+import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
+import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
+import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
+import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
+import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import {
   M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
@@ -138,7 +156,38 @@ describe.skipIf(!DB_URL)("F-161 — M7/M17 render-request producers, LIVE Postgr
     // producing module — the dispatcher refuses to CONSTRUCT when a bound consumer names an event its
     // own catalog does not carry (`assertBindableAgainstCatalog`), so both M7's and M17's catalogs must
     // be present even though this suite only DRIVES the M7 producer directly.
-    const catalog = buildBootOutboxCatalog([M7_OUTBOX_EVENTS, M17_OUTBOX_EVENTS, M22_OUTBOX_EVENTS]);
+    // F-166 (#248) — widened from `[M7, M17, M22]`: the shared M22 render consumer's `eventTypes` is
+    // `[...M22_DOCUMENT_REQUEST_EVENTS]`, which spans every producing module in the whole §4.11 list —
+    // `assertBindableAgainstCatalog` validates that FULL list against the catalog at dispatcher
+    // CONSTRUCTION time, not just the events this suite happens to publish, so every module the shared
+    // list has ever grown to reference must be present or the dispatcher refuses to build at all. This
+    // suite predates several of those additions (F-144/F-160 landed before it and were never backfilled
+    // here) — confirmed via `git show HEAD:…decide-document-request.ts`, `m11.order.document_requested`
+    // was already on the list before this pass touched anything, so the dispatcher-construction failure
+    // this fixes is pre-existing, not a regression from F-166's own additions.
+    const catalog = buildBootOutboxCatalog([
+      M6_OUTBOX_EVENTS,
+      M7_OUTBOX_EVENTS,
+      M8_OUTBOX_EVENTS,
+      M10_OUTBOX_EVENTS,
+      M11_OUTBOX_EVENTS,
+      M12_OUTBOX_EVENTS,
+      M13_OUTBOX_EVENTS,
+      M14_OUTBOX_EVENTS,
+      M15_OUTBOX_EVENTS,
+      M16_OUTBOX_EVENTS,
+      M17_OUTBOX_EVENTS,
+      M18_OUTBOX_EVENTS,
+      M20_OUTBOX_EVENTS,
+      M21_OUTBOX_EVENTS,
+      M22_OUTBOX_EVENTS,
+      M23_OUTBOX_EVENTS,
+      M24_OUTBOX_EVENTS,
+      M25_OUTBOX_EVENTS,
+      M27_OUTBOX_EVENTS,
+      M33_OUTBOX_EVENTS,
+      M37_OUTBOX_EVENTS,
+    ]);
     publisher = buildTxOutboxPublisher(catalog);
 
     // ── M7 — the real care-plan write service ───────────────────────────────────────────────────────
@@ -246,9 +295,10 @@ describe.skipIf(!DB_URL)("F-161 — M7/M17 render-request producers, LIVE Postgr
     expect(docs[0].aggregate_type).toBe("care_plan");
     expect(docs[0].patient_id).toBe(patientId);
     expect(docs[0].organization_id).toBe(ORG_A);
-    expect(
-      (await outboxFor(versionId)).find((e) => e.type === "m7.care_plan.version_signed")?.status,
-    ).toBe("dispatched");
+    // F-166 (#248) — no overall `status: "dispatched"` check: `m7.care_plan.version_signed` declares
+    // TWO consumers (`m22`/`m36`), and the row's aggregate status only advances once every declared
+    // consumer bound in the dispatcher has run — this suite registers only M22's binding. The document
+    // assertions above are the real proof M22's own binding ran.
   });
 
   it("a plan that never reaches quorum (finalize only) requests no render", async () => {
@@ -323,9 +373,8 @@ describe.skipIf(!DB_URL)("F-161 — M7/M17 render-request producers, LIVE Postgr
     expect(docs[0].aggregate_type).toBe("visit_confirmation");
     expect(docs[0].patient_id).toBe(patientId);
     expect(docs[0].organization_id).toBe(ORG_A);
-    expect(
-      (await outboxFor(visitId)).find((e) => e.type === "m17.caregiver_reminder_due")?.status,
-    ).toBe("dispatched");
+    // F-166 (#248) — no overall `status: "dispatched"` check: `m17.caregiver_reminder_due` also
+    // declares TWO consumers (`m22`/`m36`), the same reason as the M7 case above.
   });
 
   // ── tenancy ──────────────────────────────────────────────────────────────────────────────────────────

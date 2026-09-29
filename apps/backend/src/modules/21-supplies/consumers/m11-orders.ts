@@ -113,6 +113,15 @@ export interface SupplyAdmissionContext {
   readonly status: AdmissionStatusValue;
   readonly dischargedAt: LocalDate | null;
   /**
+   * §7.1 — the Location the agency fills this patient's supplies from (`supply_request.location_id`,
+   * NOT NULL). F-166 (#248): this is `AdmissionSummary.locationId` (task-11's M6 activation-siting
+   * anchor — the same fact `m6-admission-activated.ts` denormalizes onto `patient.location_id`),
+   * already returned by the `getAdmissionSummary` call this context is projected from. `null` when the
+   * admission has not yet been sited (draft, or activated with no location port bound) — the decider
+   * dead-letters on that, not this reader.
+   */
+  readonly locationId: LocationId | null;
+  /**
    * Whether M6's census shows this admission as a DEATH discharge. `null` = could not be determined, which
    * only degrades the cancellation reason (see the file header). Resolved by a narrow window read, because
    * `AdmissionSummary.status` says `discharged` for a death and a live discharge alike.

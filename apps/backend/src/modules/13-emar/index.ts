@@ -186,3 +186,40 @@ export {
   M13_ADMISSION_DISCHARGED_CASCADE_CONSUMER,
   buildM13AdmissionDischargedCascadeConsumer,
 } from "./outbox-consumers/m6-admission-discharged-cascade";
+// F-166 (#248) — the §2.3 D2 scheduled-dose materializer + order-discontinue cascade, bound live for the
+// first time.
+export {
+  type MaterializeScheduleAdmissionAnchor,
+  type MaterializeScheduleConsumerDeps,
+  type MaterializeScheduleOrderContext,
+  M13_MATERIALIZE_SCHEDULE_CONSUMER,
+  buildM13MaterializeScheduleConsumer,
+} from "./outbox-consumers/m12-medication-order-active";
+export {
+  type CancelFutureScheduleConsumerDeps,
+  M13_CANCEL_FUTURE_SCHEDULE_CONSUMER,
+  buildM13CancelFutureScheduleConsumer,
+} from "./outbox-consumers/m12-medication-order-discontinued";
+// F-166 (#248) — the §2.5/§2.7 D5 comfort-kit deployment/replenishment/return chain, bound live for the
+// first time. See each file's own header for what was blocked (nullable `medicationOrderId` for
+// IPU-floor-stock lines) and how it was scoped.
+export {
+  type ComfortKitDeployedIntakeDeps,
+  M13_COMFORT_KIT_DEPLOYED_INTAKE_CONSUMER,
+  buildM13ComfortKitDeployedConsumer,
+} from "./outbox-consumers/m21-comfort-kit-deployed";
+export {
+  type ComfortKitReplenishedConsumerDeps,
+  M13_COMFORT_KIT_REPLENISHED_CONSUMER,
+  buildM13ComfortKitReplenishedConsumer,
+} from "./outbox-consumers/m21-comfort-kit-replenished";
+export {
+  type ComfortKitReturnedConsumerDeps,
+  M13_COMFORT_KIT_RETURNED_CONSUMER,
+  buildM13ComfortKitReturnedConsumer,
+} from "./outbox-consumers/m21-comfort-kit-returned";
+export {
+  type ComfortKitReturnReconciliationConsumerDeps,
+  M13_COMFORT_KIT_RETURN_RECONCILIATION_CONSUMER,
+  buildM13ComfortKitReturnReconciliationConsumer,
+} from "./outbox-consumers/m21-comfort-kit-return-reconciliation";

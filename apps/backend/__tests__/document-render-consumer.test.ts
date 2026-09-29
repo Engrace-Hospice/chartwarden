@@ -8,12 +8,16 @@ import type { DispatchableOutboxEvent } from "../src/bootstrap/outbox-dispatcher
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
 import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
+import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
+import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
+import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import {
@@ -545,6 +549,13 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       // M17's side) and M7's care-plan-signed PDF (new `care_plan` aggregate type, migration 0252).
       "m17.caregiver_reminder_due",
       "m7.care_plan.version_signed",
+      // F-166 (#248) — five GENESIS-only render requests, all real `document_aggregate_type` enum
+      // values since migration 0048 that had never gotten a TemplateDescriptor or a subscription.
+      "m8.encounter.signed",
+      "m18.evv.aggregator_accepted",
+      "m14.packet.render_requested",
+      "m14.minutes.signed",
+      "m15.plan.version_signed",
     ]);
   });
 
@@ -563,12 +574,16 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       [
         ...M6_OUTBOX_EVENTS,
         ...M7_OUTBOX_EVENTS,
+        ...M8_OUTBOX_EVENTS,
         ...M10_OUTBOX_EVENTS,
         ...M11_OUTBOX_EVENTS,
         ...M12_OUTBOX_EVENTS,
         ...M13_OUTBOX_EVENTS,
+        ...M14_OUTBOX_EVENTS,
+        ...M15_OUTBOX_EVENTS,
         ...M16_OUTBOX_EVENTS,
         ...M17_OUTBOX_EVENTS,
+        ...M18_OUTBOX_EVENTS,
         ...M20_OUTBOX_EVENTS,
         ...M21_OUTBOX_EVENTS,
         ...M23_OUTBOX_EVENTS,

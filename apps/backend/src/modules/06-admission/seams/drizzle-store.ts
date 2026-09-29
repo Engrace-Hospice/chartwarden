@@ -560,6 +560,55 @@ export function activeAdmissionDraftContextForPatient(
   );
 }
 
+/** M6-owned siting-only facts for a patient's active admission — the {@link activeAdmissionDraftContextForPatient}
+ *  sibling, deliberately WITHOUT its physician requirement (F-166, #248). That function throws
+ *  {@link AdmissionSeamDataGapError} when no attending/admitting physician is on file, correct for its one
+ *  caller (an M11/M12 clinical-order draft, which needs an ordering physician to be legally valid) but
+ *  wrong for a scheduling consumer that needs only WHERE the visit belongs, not WHO orders it — reusing the
+ *  physician-requiring function here would make a triage-driven visit proposal fail on a fact it never
+ *  reads. Returns `null` (never throws) when there is no active admission OR the active admission is
+ *  genuinely unsited — the caller decides what an unsited admission means to it, the
+ *  `admissionSchedulingContextForOrg` convention. */
+export interface ActiveAdmissionSitingContext {
+  readonly admissionId: string;
+  readonly providerEntityId: string;
+  readonly locationId: string;
+}
+
+export function activeAdmissionSitingForPatientForOrg(
+  db: DbClient,
+  organizationId: string,
+  patientId: string,
+): Promise<ActiveAdmissionSitingContext | null> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const [row] = await tx
+        .select({
+          admissionId: ADM.id,
+          providerEntityId: ADM.providerEntityId,
+          locationId: ADM.locationId,
+        })
+        .from(ADM)
+        .where(
+          and(
+            eq(ADM.organizationId, organizationId),
+            eq(ADM.patientId, patientId),
+            eq(ADM.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (!row || row.providerEntityId === null || row.locationId === null) return null;
+      return {
+        admissionId: row.admissionId,
+        providerEntityId: row.providerEntityId,
+        locationId: row.locationId,
+      };
+    },
+  );
+}
+
 /** M6-owned, RLS-backed referral visibility probe for referral-bound document artifacts. */
 export function createReferralReader(db: DbClient): import("@wardenx/types").ReferralReader {
   return {

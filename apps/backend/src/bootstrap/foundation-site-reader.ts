@@ -47,6 +47,14 @@ export interface FoundationSiteReader {
     organizationId: string,
     providerEntityId: string,
   ): Promise<{ readonly iqiesFacilityId: string | null; readonly stateCode: string | null } | null>;
+  /**
+   * F-166 (#248) — the location's IANA timezone, for M13's §2.3 D2 scheduled-dose materializer (DST-exact
+   * administration-instant resolution). `location.timezone` is NOT NULL when the row exists; null here
+   * means the id does not resolve (unknown / deleted), never "no timezone set" — the caller falls back
+   * to the platform's own documented default zone for that case (`@wardenx/emar`'s
+   * `DEFAULT_ORDER_TIME_ZONE`, the same fallback M10's `m6-admission-workflow.ts` consumer already uses).
+   */
+  locationTimezone(tx: DbClient, locationId: string): Promise<string | null>;
 }
 
 export function buildFoundationSiteReader(): FoundationSiteReader {
@@ -98,6 +106,15 @@ export function buildFoundationSiteReader(): FoundationSiteReader {
         iqiesFacilityId: provider.iqiesFacilityId,
         stateCode: typeof state === "string" ? state.trim() : null,
       };
+    },
+
+    async locationTimezone(tx, locationId) {
+      const [location] = await tx
+        .select({ timezone: LOCATION.timezone })
+        .from(LOCATION)
+        .where(eq(LOCATION.id, locationId))
+        .limit(1);
+      return location?.timezone ?? null;
     },
   };
 }

@@ -33,11 +33,17 @@ import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
+import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
+import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
+import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
+import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
+import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import {
@@ -201,11 +207,17 @@ describe.skipIf(!DB_URL)("F-108 — M27 ECR/PI back-reference handshake, LIVE Po
     // consumed request event has to contribute here even though this suite only exercises M27's.
     const catalog = buildBootOutboxCatalog([
       M6_OUTBOX_EVENTS,
+      M7_OUTBOX_EVENTS,
+      M8_OUTBOX_EVENTS,
       M10_OUTBOX_EVENTS,
       M11_OUTBOX_EVENTS,
       M12_OUTBOX_EVENTS,
       M13_OUTBOX_EVENTS,
+      M14_OUTBOX_EVENTS,
+      M15_OUTBOX_EVENTS,
       M16_OUTBOX_EVENTS,
+      M17_OUTBOX_EVENTS,
+      M18_OUTBOX_EVENTS,
       M20_OUTBOX_EVENTS,
       M21_OUTBOX_EVENTS,
       M22_OUTBOX_EVENTS,

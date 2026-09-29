@@ -191,7 +191,7 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m21.supply_request.cancel_no_op",
     moduleOwner: "m21",
     description:
-      "§7.7 — an `m11.order.supply_cancellation_requested` cascade reached an already-terminal request. Emitted so M11 learns the cascade ARRIVED: silence would be indistinguishable from a lost event, and M11 would hold the order open forever. Carries no tenancy block beyond `orgId` because nothing was mutated.",
+      "§7.7 — an `m11.order.supply_cancellation_requested` cascade reached an already-terminal request. Carries no tenancy block beyond `orgId` because nothing was mutated.",
     payloadSchema: Type.Object({
       orgId: Id,
       supplyRequestId: Id,
@@ -199,7 +199,19 @@ export const M21_OUTBOX_EVENTS: ModuleEventContribution = [
       terminalStatus: Str,
       occurredAt: Iso,
     }),
-    declaredConsumers: ["m11"],
+    // F-166 (#248) — m11 REMOVED: checked against the code rather than the old description's "M11 would
+    // hold the order open forever" fear. This event has exactly one producer
+    // (`outbox-consumers/m11-order-cascade.ts`'s reply to M11's OWN `m11.order.supply_cancellation_
+    // requested`), and by the time M21 emits it M11's order is ALREADY `discontinued` — the discharge
+    // cascade (`11-orders/consumers/bindings.ts`, F-102) discontinues its order SYNCHRONOUSLY before it
+    // ever asks M21. There is no second producer the way `.cancelled` has one (see the m11 group's F-166
+    // paragraph), so a bound consumer here would always find a terminal order and always no-op — the
+    // "hold the order open forever" scenario the old description named cannot occur given the real
+    // cascade sequencing. Record-only — `seamConsumers: ["m33"]` matches every other record-only m21
+    // event in this file (reporting reads the outbox stream regardless of whether a live consumer acts
+    // on it).
+    declaredConsumers: [],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {

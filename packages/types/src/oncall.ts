@@ -549,13 +549,16 @@ export interface M19TriageCallDocumentedPayload extends M19TriageCallEventBase {
 }
 
 /** `m19.triage_call.visit_needed` → M17's proposal queue. `requestedArrivalBy` is set for
- *  `visit_dispatched_now`; `proposedForDate` for `visit_scheduled_first_light`. */
+ *  `visit_dispatched_now`; `proposedForDate` for `visit_scheduled_first_light`. `visitKind` (F-166,
+ *  #248) is the discriminator the M17 consumer needs: `visit_dispatched_now` and `pronouncement_scheduled`
+ *  are otherwise indistinguishable from the payload's own non-null fields alone. */
 export interface M19TriageCallVisitNeededPayload extends M19TriageCallEventBase {
   readonly patientId: PatientId;
   readonly requestedDiscipline: string;
   readonly requestedArrivalBy: IsoInstant | null;
   readonly proposedForDate: IsoDate | null;
   readonly reason: string;
+  readonly visitKind: "dispatch_now" | "first_light" | "pronouncement";
 }
 
 /** `m19.triage_call.gip_admission_proposed` → M37 when M37 locks. */

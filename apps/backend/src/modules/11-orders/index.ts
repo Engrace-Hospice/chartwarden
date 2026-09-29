@@ -164,3 +164,10 @@ export {
   buildM11FulfillmentStatusConsumer,
   type FulfillmentStatusDeps,
 } from "./outbox-consumers/m21-fulfillment-status";
+// F-166 (#248) — the m21 `handlers-unbound` group's other real event: a staff-initiated
+// `m21.supply_request.cancelled` releases the still-in-flight M11 order it never touched.
+export {
+  M11_SUPPLY_CANCELLED_CONSUMER,
+  buildM11SupplyCancelledConsumer,
+  type SupplyCancelledDeps,
+} from "./outbox-consumers/m21-supply-cancelled";

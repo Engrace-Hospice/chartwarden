@@ -11,14 +11,19 @@
 // standing — the reciprocal of F-102's own finding, one module downstream of the fix it landed.
 //
 // THE THIRD DECIDER, `decideSupplyFulfillmentIntake` (§7.1 — `m11.order.supply_fulfillment_requested`), IS
-// NOT BOUND HERE. Its own IO resolver (`../consumers/order-context.ts`) says why: "NO PLATFORM SEAM
-// ANSWERS `resolveServingLocation`, and that is a real gap rather than an oversight" — `supply_request.
-// location_id` is NOT NULL and no fact (M2 Locations, M5 patient, M6 admission) says which Location serves
-// a given patient. Binding the intake consumer today would mean either dead-lettering every delivery
-// (`M21_SERVING_LOCATION_UNRESOLVED`, so nothing looks fixed) or inventing a Location-resolution heuristic
-// the module's own author explicitly declined to guess at — the `providerEntityFor` lesson one file over
-// ("a guessed provider entity is a mis-stated cost report") applied to Location instead. Reported, not
-// fixed; tracked as its own remaining `handlers-unbound` pair.
+// STILL NOT BOUND HERE (F-166, #248 re-checked, not fixed). The "no platform seam answers the serving
+// Location" framing that used to sit here was checked again rather than trusted and found STALE —
+// `AdmissionSummary.locationId` was already on the `getAdmissionStatusReader` projection
+// `../consumers/order-context.ts` calls for `admission`, unread; `../consumers/order-context.ts` and
+// `../consumers/m11-orders.ts` now read it and the dead `resolveServingLocation` port is gone. Fixing that
+// surfaced a DEEPER blocker underneath it: M21's D1 per-kind schemas (`@wardenx/supplies`) require fields
+// — an M21 `supply_item` uuid + HCPCS code for `dme`, a full street-address snapshot for `dme`/`supply`, a
+// per-medication `contents` array + `pharmacyDispatchMode` for `comfort_kit` — that M11's own order-data
+// contract cannot supply for ANY of the three sub-kinds (`dme`/`supply` are `contract_not_published`
+// unconstrained blobs; `comfort_kit`'s canonical M11 shape is `{kitSku, deploymentSite,
+// preferredDeliveryWindow?, notes?}`, none of which are those fields), and no published M5 seam exposes a
+// full street address either. A bound consumer would `ValidationError`-refuse essentially every real
+// delivery — see `scripts/outbox-deferred-consumers.ts`'s m21 group for the full finding.
 //
 // WHY NOT `cancelSupplyRequest` / `M21WriteActor`. `routes/actor.ts`'s own doc comment is explicit: "the
 // §4.5.1 inbound cascades reach M21 through the outbox consumers, not through a route, and they attribute

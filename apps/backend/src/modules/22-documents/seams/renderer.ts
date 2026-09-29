@@ -291,6 +291,49 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "clinical_record",
     defaultTitle: "Plan of Care",
   },
+  // F-166 (#248) — M14's two IDG render requests. Both `document_aggregate_type` values have existed
+  // since migration 0048 with no descriptor and no subscription — F-162's own precise finding
+  // ("even a first-ever render would hit `unknown_template` today"). `clinical_record`: both are the
+  // signed record of an IDG meeting (the packet and the minutes), not correspondence.
+  idg_patient_packet: {
+    aggregateType: "idg_patient_packet",
+    retentionClass: "clinical_record",
+    defaultTitle: "IDG Patient Packet",
+  },
+  idg_minutes: {
+    aggregateType: "idg_minutes",
+    retentionClass: "clinical_record",
+    defaultTitle: "IDG Meeting Minutes",
+  },
+  // F-166 (#248) — M15's four discipline plans, one `m15.plan.version_signed` event discriminated by
+  // `kind`, one descriptor per kind (never a shared type — the F-160/M23 "a shared type would make one
+  // kind's render read as an idempotent redelivery of a different kind's under the same
+  // (aggregateType, aggregateId) key" reasoning, and here the four kinds share nothing else either: a
+  // signed Aide POC and a signed MSW plan are different `discipline_care_plan.id` rows to begin with, so
+  // this is belt-and-suspenders rather than load-bearing). All four `document_aggregate_type` values have
+  // existed since the platform-floor enum's base definition (migration 0048) with no descriptor and no
+  // producer request wired to any of them until now — the `visit_confirmation`/`care_plan` shape a third
+  // time. `clinical_record`: each is a signed, in-force plan of care the surveyor expects on the chart.
+  aide_poc: {
+    aggregateType: "aide_poc",
+    retentionClass: "clinical_record",
+    defaultTitle: "Aide Plan of Care",
+  },
+  msw_plan: {
+    aggregateType: "msw_plan",
+    retentionClass: "clinical_record",
+    defaultTitle: "Medical Social Work Plan",
+  },
+  spiritual_plan: {
+    aggregateType: "spiritual_plan",
+    retentionClass: "clinical_record",
+    defaultTitle: "Spiritual Care Plan",
+  },
+  volunteer_plan: {
+    aggregateType: "volunteer_plan",
+    retentionClass: "clinical_record",
+    defaultTitle: "Volunteer Plan",
+  },
 } as const;
 
 /** The shape every W2 caller's typed payload carries (a structural minimum; the full payload is template-

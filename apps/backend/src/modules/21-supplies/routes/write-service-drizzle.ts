@@ -1263,22 +1263,22 @@ export function buildDrizzleM21WriteService(
           })
           .returning();
         if (!row) throw new ConflictError("comfort_kit_return insert produced no row");
-        await outbox.publish(tx, {
-          eventName: "m21.comfort_kit.returned",
-          payload: {
-            ...anchorOf(row),
-            returnId: row.id,
-            dispatchId: dispatch.id,
-            m13DeploymentId: dispatch.m13DeploymentId,
-            disposalMethod: "",
-            reconciledByMembershipId: "",
-            disposalWitnessMembershipId: null,
-            reconciledAt: iso(at),
-          },
-          organizationId: actor.organizationId,
-          aggregateKind: "comfort_kit_return",
-          aggregateId: row.id,
-        });
+        // F-166 (#248) — this used to ALSO publish `m21.comfort_kit.returned` here, at the moment the
+        // return is merely REQUESTED (state stays "requested"), with `disposalMethod`/
+        // `reconciledByMembershipId` as placeholder empty strings — nothing has happened yet. M21's own
+        // spec (WARDENX_MODULE_21_SUPPLIES_DME_COMFORT_KITS_SPEC_v0_2.md:48) is unambiguous that
+        // `.returned` fires only once reconciliation "captures per-medication quantity_returned +
+        // quantity_disposed_at_home + disposal_method + disposal_witness_membership_id, and emits
+        // `m21.comfort_kit.returned` + `m21.comfort_kit.return_reconciliation`" — i.e. from
+        // `reconcileReturn`'s own `{ kind: "outbox", event: "m21.comfort_kit.returned" }` effect
+        // (`../lifecycle/return.ts`), which fires below in `reconcileReturn` off the REAL disposal facts.
+        // Emitting the SAME event name twice, once with garbage placeholders, meant a consumer bound to
+        // `.returned` (M13, which flips `comfort_kit_deployment.disposal_status='returned'` on it) would
+        // have flipped a kit to "returned" the instant a return was merely opened — before anyone
+        // retrieved or reconciled anything. No consumer anywhere needs a "return was requested" signal
+        // (`comfort_kit_deployment.disposal_status` has no state between `return_required` and `returned`
+        // to carry one, and M21's own spec names no such event under any spelling), so this emission is
+        // deleted outright rather than renamed to a new `return_requested` event nothing would consume.
         return row.id;
       });
       return readService.getReturn(actor, returnId);

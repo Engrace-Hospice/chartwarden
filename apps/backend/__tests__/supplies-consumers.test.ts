@@ -71,6 +71,7 @@ function admissionAt(
 ): SupplyAdmissionContext {
   return {
     providerEntityId: PROVIDER_ENTITY,
+    locationId: LOCATION,
     status,
     dischargedAt: status === "active" ? null : "2026-07-01",
     deathDischarge: null,
@@ -137,7 +138,9 @@ describe("§4.5.2 — the m21.* outbox catalog", () => {
     expect(consumersOf("m21.comfort_kit.deployed_at_patient")).toContain("m13");
     expect(consumersOf("m21.comfort_kit.replenished")).toContain("m13");
     expect(consumersOf("m21.supply_request.cancelled")).toContain("m11");
-    expect(consumersOf("m21.supply_request.cancel_no_op")).toContain("m11");
+    // F-166 (#248) — `cancel_no_op` has exactly one producer (M11's OWN cascade reply, on an order it
+    // already discontinued itself), so a bound m11 consumer would always no-op; dropped, record-only.
+    expect(consumersOf("m21.supply_request.cancel_no_op")).not.toContain("m11");
     expect(consumersOf("m21.supply_request.status_changed")).toContain("m11");
   });
 

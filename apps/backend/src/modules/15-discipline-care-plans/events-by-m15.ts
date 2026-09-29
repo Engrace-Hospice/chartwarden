@@ -53,6 +53,11 @@ export const M15_OUTBOX_EVENTS: ModuleEventContribution = [
     payloadSchema: Type.Object({
       planId: Id,
       versionId: Id,
+      // F-166 (#248) — widened to carry the chart target: the M22 render-request `DocumentRequestPayload`
+      // resolves `patientId` off the payload (top-level or the content blob), and `plan.patientId` was
+      // already in scope at the one emit site — the F-099 "widen the payload, the fact is already in
+      // hand" precedent, not a new cross-module read.
+      patientId: Id,
       kind: Str,
       versionKind: Str,
       snapshot: Type.Unknown(),

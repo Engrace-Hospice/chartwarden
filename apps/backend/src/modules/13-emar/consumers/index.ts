@@ -6,8 +6,10 @@
 // back-ref / PRN quality signal).
 //
 // The M12 medication-order producers (active / discontinued) and the M6 admission/discharge/CTI producers
-// exist in Wave D/E — these bindings are LIVE-eligible. The M21 comfort-kit producers ship against a
-// recorded-fixture envelope today (D5; M21 is Wave F); M22's document.rendered + M9's
+// exist in Wave D/E — these bindings are LIVE-eligible. The M21 comfort-kit producers are ALSO now bound
+// live (F-166, #248) — `.deployed_at_patient` / `.replenished` / `.returned` / `.return_reconciliation`
+// under `../outbox-consumers/m21-comfort-kit-*.ts`; this list previously named only two of the four (the
+// other two were simply missing, corrected below). M22's document.rendered + M9's
 // prn_reassessment_overdue are forward/cross producers. Every consumed event name is a STRING literal (no
 // cross-module schema import): M13 reads other modules solely through the foundation outbox, so this task
 // adds NO new edge to M13's manifest dependsOn (§1.1: outbox is the only cross-module communication).
@@ -55,7 +57,12 @@ export const M13_OUTBOX_SUBSCRIPTIONS = [
   { eventName: "m6.admission.discharged", consumerName: "m13.admission-discharged-cascade" },
   { eventName: "m6.cti.signed", consumerName: "m13.reconciliation-recertification-signed" },
   { eventName: "m21.comfort_kit.deployed_at_patient", consumerName: "m13.comfort-kit-deployed" },
+  { eventName: "m21.comfort_kit.replenished", consumerName: "m13.comfort-kit-replenished" },
   { eventName: "m21.comfort_kit.returned", consumerName: "m13.comfort-kit-returned" },
+  {
+    eventName: "m21.comfort_kit.return_reconciliation",
+    consumerName: "m13.comfort-kit-return-reconciliation",
+  },
   { eventName: "m22.document.rendered", consumerName: "m13.pdf-rendered-backref" },
   { eventName: "m9.prn_reassessment_overdue", consumerName: "m13.prn-reassessment-overdue" },
 ] as const;

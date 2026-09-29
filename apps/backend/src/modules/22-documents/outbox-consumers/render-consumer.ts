@@ -293,6 +293,51 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     aggregateIdFields: ["versionId"],
     templateKey: "care_plan",
   },
+  // ── F-166 (#248) — five GENESIS-only source-event renders M22's own survey-then-build pass on the
+  // `handlers-unbound` group found buildable (see decide-document-request.ts's own comment on each).
+  //
+  // M8 §2 — the signed encounter note. `documentRenderPayload` (`{final, addenda}`) has carried the
+  // renderable content on the LOCKED payload since the event existed; `patientId` rides the top level.
+  "m8.encounter.signed": {
+    aggregateIdFields: ["encounterId"],
+    templateKey: "encounter",
+    contentField: "documentRenderPayload",
+  },
+  // M18 §4.11 D11 — the real (only-ever-emitted) EVV verification-PDF trigger; its declared
+  // `verification_pdf_requested` sibling is vapor (no emit site anywhere in `18-evv/`). No `patientId`
+  // on this payload — honestly null (see decide-document-request.ts's comment on this event).
+  "m18.evv.aggregator_accepted": {
+    aggregateIdFields: ["submissionId"],
+    templateKey: "evv_verification",
+  },
+  // M14 — both request-shaped, `renderPayload: Type.Unknown()` (the M11/M12 shape): the M22 template
+  // key is fixed per event, not read off the payload.
+  "m14.packet.render_requested": {
+    aggregateIdFields: ["packetId"],
+    templateKey: "idg_patient_packet",
+    contentField: "renderPayload",
+  },
+  "m14.minutes.signed": {
+    aggregateIdFields: ["minutesId"],
+    templateKey: "idg_minutes",
+    contentField: "renderPayload",
+  },
+  // M15 §2.4/D12 — ONE event, FOUR artifacts, discriminated by `kind` (the M23/M27/M33
+  // `templateKeyByField` shape). `versionId` is the aggregate — a genuinely new `discipline_care_plan_
+  // version` row per signature, never a collision with a prior kind's render.
+  "m15.plan.version_signed": {
+    aggregateIdFields: ["versionId"],
+    templateKeyByField: {
+      field: "kind",
+      map: {
+        aide_poc: "aide_poc",
+        msw_plan: "msw_plan",
+        spiritual_plan: "spiritual_plan",
+        volunteer_plan: "volunteer_plan",
+      },
+    },
+    contentField: "snapshot",
+  },
 };
 
 /** Raised when a delivered render request cannot be read into M22's canonical shape (unknown event name,

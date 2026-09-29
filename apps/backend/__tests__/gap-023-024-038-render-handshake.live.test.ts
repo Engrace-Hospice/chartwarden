@@ -30,8 +30,14 @@ import type { ActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator
 import { createOutboxDispatcher } from "../src/bootstrap/outbox-dispatcher";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
+import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
+import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS, buildM11DocumentBackrefConsumer } from "../src/modules/11-orders/index";
+import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
+import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
+import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
 import {
   type OrderWriteOutboxPort,
   createDbOrderBackend,
@@ -244,6 +250,14 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       // F-144 (#248) — M22's render consumer now also subscribes to
       // `m24.medicaid_billing.document_render_requested`; same reason as every entry above it.
       M24_OUTBOX_EVENTS,
+      // F-161/F-166 (#248) — M7/M17's, and M8/M14/M15/M18's, GENESIS-only render requests; the same
+      // "the dispatcher refuses to construct otherwise" reason as every entry above.
+      M7_OUTBOX_EVENTS,
+      M8_OUTBOX_EVENTS,
+      M14_OUTBOX_EVENTS,
+      M15_OUTBOX_EVENTS,
+      M17_OUTBOX_EVENTS,
+      M18_OUTBOX_EVENTS,
     ]);
     const txPublisher = buildTxOutboxPublisher(catalog);
     publisher = txPublisher;

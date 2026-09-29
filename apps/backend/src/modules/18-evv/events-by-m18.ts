@@ -357,7 +357,13 @@ export const M18_OUTBOX_EVENTS: ModuleEventContribution = [
       requestedByMembershipId: id,
       format: id,
     }),
-    declaredConsumers: ["m22"],
+    // F-166 (#248) — m22 removed: this event's own description duplicates `aggregator_accepted`'s
+    // ("triggers the M22 verification-PDF render (D11)") for the SAME D11 artifact, and checked against
+    // the real code rather than either description — this one is VAPOR. No file under `18-evv/` publishes
+    // it (grepped every non-catalog/non-test source); `aggregator-submission.ts`'s pure decider is the
+    // only real emit site and it only ever publishes `aggregator_accepted`. That event is now the live
+    // M22 trigger (the F-100 "event NAME is the template" shape). Record-only.
+    declaredConsumers: [],
     isOutboxOnly: true,
   },
 ];

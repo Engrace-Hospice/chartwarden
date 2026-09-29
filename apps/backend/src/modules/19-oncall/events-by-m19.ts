@@ -137,6 +137,15 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
       requestedArrivalBy: nullableId,
       proposedForDate: nullableId,
       reason: nullableStr,
+      // F-166 (#248) — the M17 consumer needs to tell `visit_dispatched_now` apart from
+      // `pronouncement_scheduled` (both set `requestedArrivalBy` and leave `proposedForDate` null; the
+      // payload alone is otherwise ambiguous between them) so it can pick the right `visit_purpose`
+      // (`prn` vs `pronouncement`) rather than guess from `reason`'s free text.
+      visitKind: Type.Union([
+        Type.Literal("dispatch_now"),
+        Type.Literal("first_light"),
+        Type.Literal("pronouncement"),
+      ]),
     }),
     declaredConsumers: ["m17"],
     isOutboxOnly: true,

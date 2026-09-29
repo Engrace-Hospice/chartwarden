@@ -471,6 +471,8 @@ export function buildDrizzleM15WriteService(
             payload: {
               planId,
               versionId,
+              // F-166 (#248) — the M22 render-request chart target; already in scope on `plan`.
+              patientId: plan.patientId,
               kind: plan.kind,
               versionKind: updated.kind,
               snapshot: updated.stateSnapshot,

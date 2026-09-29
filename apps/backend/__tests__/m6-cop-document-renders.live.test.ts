@@ -34,6 +34,8 @@ import {
   M6_OUTBOX_EVENTS,
   buildM6DocumentBackrefConsumer,
 } from "../src/modules/06-admission/index";
+import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
+import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS, buildM11DocumentBackrefConsumer } from "../src/modules/11-orders/index";
 import {
@@ -41,7 +43,11 @@ import {
   buildM12DocumentBackrefConsumer,
 } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS, buildM13DocumentBackrefConsumer } from "../src/modules/13-emar/index";
+import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
+import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
+import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import {
   M21_OUTBOX_EVENTS,
@@ -244,11 +250,19 @@ describe.skipIf(!DB_URL)("F-100 — M6's six CoP documents render + back-ref, LI
     // consumer, and this suite would prove M6's path against a dispatcher production never builds.
     const catalog = buildBootOutboxCatalog([
       M6_OUTBOX_EVENTS,
+      // F-166 (#248) — M7/M8/M14/M15/M17/M18's GENESIS-only render requests; same reason every
+      // sibling entry here is (the dispatcher refuses to construct on an unrepresented event).
+      M7_OUTBOX_EVENTS,
+      M8_OUTBOX_EVENTS,
       M10_OUTBOX_EVENTS,
       M11_OUTBOX_EVENTS,
       M12_OUTBOX_EVENTS,
       M13_OUTBOX_EVENTS,
+      M14_OUTBOX_EVENTS,
+      M15_OUTBOX_EVENTS,
       M16_OUTBOX_EVENTS,
+      M17_OUTBOX_EVENTS,
+      M18_OUTBOX_EVENTS,
       M20_OUTBOX_EVENTS,
       M21_OUTBOX_EVENTS,
       M22_OUTBOX_EVENTS,

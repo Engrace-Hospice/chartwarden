@@ -161,6 +161,11 @@ describe("M11 outbox subscriptions (§4.5)", () => {
         eventName: "m21.supply_request.status_changed",
         consumerName: "m11.m21-fulfillment-status",
       },
+      // F-166 (#248) — releases the still-in-flight source order on a staff-initiated M21 cancel.
+      {
+        eventName: "m21.supply_request.cancelled",
+        consumerName: "m11.m21-supply-cancelled",
+      },
     ]);
   });
 

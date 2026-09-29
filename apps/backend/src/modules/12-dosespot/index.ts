@@ -46,7 +46,9 @@ export {
   getDoseSpotTerminologyValidator,
   getMedicationOrderProvider,
   getRefillInboxProvider,
+  type MedicationOrderScheduleContext,
   medicationOrderPatientAndDrugForOrg,
+  medicationOrderScheduleContextForOrg,
   registerDoseSpotSeams,
 } from "./seams/index";
 // M12-T08 — the §4.7 ABAC predicates M12 owns (`prescriber_eligible` / `dea_schedule_authorized` /

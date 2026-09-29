@@ -62,4 +62,7 @@ export const M11_OUTBOX_SUBSCRIPTIONS = [
   { eventName: "m22.document.rendered", consumerName: "m11.document-backref" },
   // F-152 (#248) — the D8 one-shot (`supply`/`comfort_kit`) auto-complete on M21 delivery.
   { eventName: "m21.supply_request.status_changed", consumerName: "m11.m21-fulfillment-status" },
+  // F-166 (#248) — releases the still-in-flight source order on a staff-initiated M21 cancel (never
+  // through M11's own discharge cascade above, which already discontinues the order before asking M21).
+  { eventName: "m21.supply_request.cancelled", consumerName: "m11.m21-supply-cancelled" },
 ] as const;

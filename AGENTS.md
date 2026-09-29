@@ -2556,6 +2556,121 @@ found along the way (`m29:patient-deceased-freeze` 8/8, `m5:visit-assignment-cac
 `m16:opt-out-changed` 6/6, `m16:discharge-death-secondary` 5/5, `m31:portal-telehealth-consumers` 10/10,
 `m31:bereavement-consent-consumers` 9/9). Leaving #248 open — 102 pairs across 18 modules remain.
 
+**A seventh round of five parallel forks (M11, M13, M17, M21, M22), plus a sixth follow-up agent
+dispatched specifically to fix the M21-side producer defects the M13 fork found blocking its own
+group, built 14 more bindings and fully resolved M13 — and the coordinator's own re-verification
+caught a real build-breaking enum-mirror gap and an `arch:outbox-bindings` rule-6 miss neither fork's
+own static checks surfaced (F-166, #248).** **M11 — 1 bound, 1 dropped.**
+`m21.supply_request.cancelled` is now live (`outbox-consumers/m21-supply-cancelled.ts`): F-137 had
+read this pair as always-a-no-op (the M11 order already discontinued by M11's own discharge cascade
+before M21 ever replies), which is true of ONE of its two real producers and false of the other — a
+real staff route, `cancelSupplyRequest`, emits the identical event with the M11 order still in
+flight, and this pass's re-check caught the second producer F-137's reading had missed. Needed a new
+`order_discontinuation_reason` enum value (migration 0258, `supply_request_cancelled` — none of the
+nine existing values honestly describe "cancelled out from under this order by someone at M21" as
+distinct from a clinical decision or an M11-originated cascade). `.cancel_no_op`, by contrast, is
+confirmed to have exactly ONE producer — always the case F-137 described — and is dropped as
+genuinely misdeclared, record-only now. **M17 — 2 bound.** `m15.volunteer.assignment_inactivated` is
+built, but not the literal reading M15's own catalog description implies (`visit
+.assigned_membership_id` is NOT NULL — there is no "unassigned but still scheduled" state, only a
+full cancel or a reassign to a specific new membership, and no auto-reassignment algorithm exists to
+guess one honestly); what's built is the platform's own already-designed answer — M17's catalogued,
+alert-wired `m17.reassignment_needed` event had zero producers anywhere, including the PTO-approval
+path meant to trigger it, and the new consumer is its first real one, warning a human scheduler per
+affected visit rather than guessing a replacement. `m19.triage_call.visit_needed` is built too,
+resolving all three of F-133's named infrastructure gaps for real: migration 0260 adds
+`triage_dispatch_m19` to `visit_proposal_source` (additive-only); a new, narrow M6 seam
+(`activeAdmissionSitingForPatientForOrg`) resolves patientId → admission siting without the existing
+`activeAdmissionDraftContextForPatient`'s physician-required throw (irrelevant to a scheduling
+proposal); and "M17's manifest excludes 6" was never a real blocker — the established org-explicit
+`...ForOrg` port-injection pattern needs no `dependsOn` edge. Building it surfaced and fixed a real
+payload gap: the event's non-null fields couldn't distinguish `visit_dispatched_now` from
+`pronouncement_scheduled`, so a new `visitKind` discriminator now carries the fact M19 already has at
+the emit site. **M13 — 6 bound, group fully resolved and deleted.** The M13 fork itself bound 2:
+`m12.medication_order.active` (the §2.3 D2 scheduled-dose materializer, pure and complete since
+M13-T03 with zero callers — resolved via a new M12 org-explicit seam plus a new
+`FoundationSiteReader.locationTimezone` method, M13's own direct-import pattern for a module that
+already `dependsOn`s module 1) and `.discontinued` (a new pure `planOrderDiscontinueCascade` core,
+the `planDischargeCascade` future-pending-only shape scoped to one order). The other 4 — all M21
+comfort-kit events — were confirmed genuinely blocked on real M21-side producer defects, which the
+follow-up agent then fixed and bound: `deployed_at_patient`/`.replenished` were scoped honestly
+rather than guessed at (M13 has zero precedent anywhere for an order-less drawdown, so the new
+consumers track every order-linked line for real and visibly skip floor-stock lines via a reported
+`skippedFloorStockLineCount`, never silently); `.returned` had a real double-emission bug — M21 fired
+the SAME event name at return-REQUEST time (placeholder facts) and at return-RECONCILE time (real
+facts) — fixed by deleting the premature emission at its source rather than inventing an unconsumed
+new event name; `.return_reconciliation` is genuinely distinct (the physical-count-vs-tracked-quantity
+cross-check), not redundant with `.returned`. Binding `.deployed_at_patient` also completed a
+previously-dead handshake: M21's own `buildM21ComfortKitDeploymentAckConsumer` (F-153) had sat live
+and bound since that pass, waiting for an event nothing had ever published. **M22 — 5 bound, 1
+dropped.** A survey-then-build pass over the group's remaining ~25 events found `m8.encounter.signed`
+(template `encounter`, published with no producer wired — the LOCKED payload's renderable content had
+sat unconsumed since the event existed), `m18.evv.aggregator_accepted` (template `evv_verification`),
+`m14.packet.render_requested`/`m14.minutes.signed` (templates `idg_patient_packet`/`idg_minutes`, both
+real `document_aggregate_type` values since migration 0048 with no descriptor — exactly the wall
+F-162 found and stopped short of), and `m15.plan.version_signed` (4 new template descriptors by
+`kind`, payload widened with `patientId` at the source). No migration was needed for any of the
+five — only the missing TemplateDescriptor + REQUEST_SHAPES/event-list entries. Dropped
+`m18.evv.verification_pdf_requested` as the vapor duplicate of `aggregator_accepted`'s real trigger
+(no emit site anywhere publishes it). The rest were investigated and sharpened rather than rebuilt on
+guesswork: `m11.order.results_received` looked buildable until the dedicated (non-generic)
+`lab-backref-consumer.ts` pipeline was checked and found to need a port-name fix PLUS an SUD-class flag
+the real M29 seam DTO doesn't carry — the same Part-2-disclosure risk F-035 already refused for a
+different DTO pair; several more (`m12.medication_order.list_changed`/`.transmitted`,
+`m8.encounter.addendum_signed`, `m9.assessment.summary_requested`) are the same F-162 idempotency-key
+GRANULARITY collision the shared `decideDocumentRequest` core has for `.amended` — a first render for
+an aggregate id succeeds and every later request for the same id silently no-ops, which is backwards
+for anything needing a second version. **M21's own group — 0 bound directly, but a real stale claim
+corrected.** The re-check found F-137's "no platform seam answers which Location serves this patient"
+claim for `m11.order.supply_fulfillment_requested` was stale — `AdmissionSummary.locationId` had been
+on the seam's return type the whole time, unread — and fixed it for real
+(`consumers/order-context.ts`'s `resolveServingLocation` port is now gone outright, not merely
+patched). But checking whether a consumer could actually bind on top of that fix found the payload
+assembly blocked a level deeper, for all three M11 sub-kinds: `dme`/`supply` require fields
+(`skuId`, `hcpcs`, a full `deliveryAddress`) M11's own order-data contract for those kinds is
+`contract_not_published` and cannot supply, and `comfort_kit`'s M11 canonical shape carries none of
+the fields M21's schema requires either — no published M5 seam closes the address gap. A bound
+consumer would `ValidationError`-refuse essentially every real delivery, the F-150 "wiring a line to a
+house that was never built" shape restated at the schema level; the location fix is kept as real,
+independently-correct progress, but the pair stays deferred. **Three coordinator-caught defects, none
+visible to any individual fork's own scoped checks.** Two forks independently minted migration `0258`
+for unrelated purposes (M11's `order_discontinuation_reason` value, M17's `visit_proposal_source`
+value); resolved by renumbering M17's to migration 0260 (0259 was already claimed by the follow-up
+agent's comfort-kit-idempotency migration) — a content audit, not a blind rename, since both files
+were independently correct. The M17 fork's migration added `triage_dispatch_m19` to the DATABASE enum
+but missed BOTH code-side mirrors — `packages/db/src/enums.ts`'s Drizzle `pgEnum` and
+`packages/types/src/scheduling.ts`'s `VisitProposalSource` union — a real, build-breaking gap
+(`bun run build` failed with a TS2769 Drizzle insert-type mismatch) invisible to every fork's own
+narrower `tsc --noEmit` pass, since none of them ran the full project build after all five forks'
+edits landed together. And `arch:fitness` caught a genuine `arch:outbox-bindings` rule-6
+disagreement: the M17 fork bound both its new consumers live and declared `m17` on both catalog
+entries, but never added either to `M17_OUTBOX_SUBSCRIPTIONS` — the module's own hand-maintained
+mirror, checked bidirectionally against the catalog by rule 6 — so the gate that exists specifically
+to catch "declared and bound but the module's own source of truth disagrees" caught it immediately.
+Four pinned-array test assertions also needed updating for real changes across all five groups — one
+of them (`document-render-consumer.test.ts`'s "every subscribed event is declared by its producer"
+check) needed FOUR new module-catalog imports (M8/M14/M15/M18) added to its own explicitly-enumerated
+`declared` map, per that test file's own documented convention that a new producer module must be
+added to the import list by hand or the check is silently incomplete. Net: **102 → 86** (14 bound, 2
+dropped as misdeclared; 18 → 17 modules, M13 fully resolved and deleted). Verified centrally, once,
+after all six agents' edits landed together plus the coordinator's own three fixes: `bun run
+build`/`typecheck` clean (0 errors), full non-live suite 654 files / 9603 tests green (four
+pinned-array assertions updated after confirming each was catching a real change, not a stale pin),
+`arch:fitness` 38/38 (`arch:outbox-bindings` confirms 86 pairs, down from 102, and 138 live bindings
+now covering 139 catalogued events, up from 129/128 — one real rule-6 disagreement caught and fixed
+along the way), a clean `check:boot:platform` run against a freshly migrated, RLS-enforced disposable
+Postgres (proving migrations 0258/0259/0260 all apply cleanly and the real 138-binding dispatcher
+boots), all five new live suites run individually against the same disposable Postgres+Valkey
+(`m11:supply-cancelled` 6/6, `m17:volunteer-triage-consumers` 6/6,
+`m13:scheduled-dose-materialization` 7/7, `m13:comfort-kit-deployment` 6/6, `f166:render-requests`
+8/8), and fifteen sibling regression suites re-run for regression on every touched shared file
+(`f144:render-requests` 10/10, `f161:m7-m17-render-requests` 4/4, `m22:render-handshake` 14/14,
+`m6:cop-documents` 6/6, `m33:export-render` 5/5, `m27:ecr-backref` 7/7, `m11:m9-m21-consumers` 11/11,
+`m11:write` 11/11, `m21:order-cascade` 6/6, `m21:comfort-kit-cascade` 7/7,
+`m21:comfort-kit-replenishment` 8/8, `m13:admission-discharged-cascade` 5/5,
+`m13:reconciliation-triggers` 5/5, `m17:evv-sos-consumers` 4/4, `m17:evv-checkout-corrected` 5/5).
+Leaving #248 open — 86 pairs across 17 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit
