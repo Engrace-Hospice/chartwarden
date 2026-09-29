@@ -1,4 +1,4 @@
-// apps/backend/__tests__/stuck-recovery.test.ts — F-193 (#248): the PURE rules for getting a stuck lab order out of that
+// apps/backend/__tests__/stuck-recovery.test.ts — F-198 (#248): the PURE rules for getting a stuck lab order out of that
 // state without waiting for a human to notice (`orm-request/stuck-recovery.ts`), the seeded-rule guard for the two alert
 // kinds the sweeps emit, and the HTTP contract of `GET /api/v1/orders/held-transmissions` through the full M1 middleware
 // chain (Fastify `inject`, the real Authorization Contract). The DB behaviour — the sweeps, the bound, the worklist, RLS,
@@ -56,7 +56,7 @@ const failed = (reason: string | null, over: Partial<AutoRetryCandidate> = {}): 
   ...over,
 });
 
-describe("F-193 — classifyAutoRetry: what the sweep may re-emit, and when", () => {
+describe("F-198 — classifyAutoRetry: what the sweep may re-emit, and when", () => {
   it.each([
     "dispatch_refused:baa_inactive",
     "dispatch_refused:no_active_feed",
@@ -163,7 +163,7 @@ describe("F-193 — classifyAutoRetry: what the sweep may re-emit, and when", ()
   });
 });
 
-describe("F-193 — held orders: which failures need a human, and how they age", () => {
+describe("F-198 — held orders: which failures need a human, and how they age", () => {
   it("held = M29-terminal failures and recovery_blocked:* — everything a message may already be at the lab for", () => {
     for (const r of ["dlq_exhausted", "application_reject", "recovery_blocked:row_owns_order"]) {
       expect(isHeldReason(r)).toBe(true);
@@ -230,7 +230,7 @@ describe("F-193 — held orders: which failures need a human, and how they age",
   });
 });
 
-describe("F-193 — alert identity and the seeded rules", () => {
+describe("F-198 — alert identity and the seeded rules", () => {
   it("a held-aging alert id is stable within (order, hold episode, stage) and NEW for the next stage, order or episode", () => {
     const a = heldAgingCorrelationId("o1", "att1", "warn");
     expect(heldAgingCorrelationId("o1", "att1", "warn")).toBe(a);
@@ -277,7 +277,7 @@ const PERMISSION_SEED = [
     userId: "rn_1",
     permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend", "orders.transmission.view_held"],
   },
-  // F-195 — `orders.amend` (and even the recovery authority) does NOT open the worklist; `view_held` is its own grant.
+  // F-200 — `orders.amend` (and even the recovery authority) does NOT open the worklist; `view_held` is its own grant.
   {
     userId: "amend_only",
     permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend", "orders.transmission.recover"],
@@ -317,7 +317,7 @@ afterEach(() => {
   resetAbacRegistry();
 });
 
-describe("F-193 — GET /api/v1/orders/held-transmissions", () => {
+describe("F-198 — GET /api/v1/orders/held-transmissions", () => {
   it("no session is 401 and reads nothing", async () => {
     const { app, listHeld } = makeServer();
     const res = await app.inject({ method: "GET", url: URL });
@@ -325,7 +325,7 @@ describe("F-193 — GET /api/v1/orders/held-transmissions", () => {
     expect(listHeld).not.toHaveBeenCalled();
   });
 
-  it("`orders.read` alone is 403, and so is `orders.amend` + `orders.transmission.recover` — the worklist is its own grant (`orders.transmission.view_held`, F-195)", async () => {
+  it("`orders.read` alone is 403, and so is `orders.amend` + `orders.transmission.recover` — the worklist is its own grant (`orders.transmission.view_held`, F-200)", async () => {
     const { app, listHeld } = makeServer();
     for (const headers of [VIEWER, AMEND_ONLY]) {
       const res = await app.inject({ method: "GET", url: URL, headers });
@@ -375,7 +375,7 @@ describe("F-193 — GET /api/v1/orders/held-transmissions", () => {
 
 // ── the worker fan-out ─────────────────────────────────────────────────────────────────────────────────────────────
 
-describe("F-193 — runStuckTransmissionFanout: one tick, every active org, failures surfaced not swallowed", () => {
+describe("F-198 — runStuckTransmissionFanout: one tick, every active org, failures surfaced not swallowed", () => {
   const orgs = (...ids: string[]) => ({ listActiveOrgs: async () => ids.map((organizationId) => ({ organizationId })) });
 
   it("runs BOTH sweeps for every active org, in order", async () => {

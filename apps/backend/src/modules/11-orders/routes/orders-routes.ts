@@ -93,7 +93,7 @@ const VERBAL = P("orders.verbal.record");
 const COSIGN = P("orders.cosign");
 const DISCONTINUE = P("orders.discontinue");
 const AMEND = P("orders.amend");
-// F-195 — the lab-transmission recovery authority, SPLIT OUT of `orders.amend` (which nearly every clinical role holds):
+// F-200 — the lab-transmission recovery authority, SPLIT OUT of `orders.amend` (which nearly every clinical role holds):
 // resend, file/cancel a recovery and co-sign need `orders.transmission.recover`. A co-signature is also accepted from a
 // holder of `orders.transmission.cosign_escalated` (the high-trust co-signer the recovery bound requires — see the
 // service), so that guard is an any-of.
@@ -490,7 +490,7 @@ export function registerOrderRoutes(
     );
   });
 
-  // F-194 — the SECOND person of the two-person control on `not_received_by_lab`. The first call above only FILED a
+  // F-199 — the SECOND person of the two-person control on `not_received_by_lab`. The first call above only FILED a
   // request (`outcome: "pending_cosign"`); THIS executes the re-dispatch, and only for a DIFFERENT user than the one who
   // filed it (409 `self_cosign`; a DB CHECK backs the rule), before the request lapses (24 h → 409 `expired`). Same
   // `orders.amend` and the same fresh step-up as the request: a co-signature is a second person accepting the
@@ -513,7 +513,7 @@ export function registerOrderRoutes(
     },
   );
 
-  // F-194 — cancel a pending recovery: either person (the requester who thinks better of it, or a colleague who finds
+  // F-199 — cancel a pending recovery: either person (the requester who thinks better of it, or a colleague who finds
   // the lab DID have the order). `orders.amend` alone — cancelling sends nothing and can only prevent a re-dispatch.
   app.post(
     "/api/v1/orders/:id/recover-transmission/:requestId/cancel",

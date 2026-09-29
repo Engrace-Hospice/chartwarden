@@ -1,4 +1,4 @@
--- F-192 (#248) — M29 outbound: the attempt each outbound row belongs to.
+-- F-197 (#248) — M29 outbound: the attempt each outbound row belongs to.
 --
 -- F-188 gave every emission of `m11.order.hl7_orm_requested` (sign, F-182 resend, F-187 recovery) its own
 -- `attemptId`, persisted on `order_record.transmission_attempt_id`, and bound `m29.lab_order.dispatch_refused` to it so

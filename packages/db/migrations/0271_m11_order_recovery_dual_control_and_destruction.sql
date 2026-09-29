@@ -1,4 +1,4 @@
--- F-194 (#248) — M11: DUAL CONTROL for the attested lab-transmission recovery, and the destruction-role grants the
+-- F-199 (#248) — M11: DUAL CONTROL for the attested lab-transmission recovery, and the destruction-role grants the
 -- attestation table never got.
 --
 -- WHY. F-187/F-188's `POST /api/v1/orders/:id/recover-transmission` let ONE person attest `not_received_by_lab` — the

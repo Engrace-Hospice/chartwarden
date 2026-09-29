@@ -362,7 +362,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
-  // F-191 — the ESCALATION for a failure storm: raised once per (feed, window) when the count of failures crosses the
+  // F-196 — the ESCALATION for a failure storm: raised once per (feed, window) when the count of failures crosses the
   // threshold. Same audience as the failure it escalates, floor `critical`; a separate kind because the failure alert
   // of that window has already paged and M36 (rightly) never re-pages a deduped alert.
   {
@@ -395,10 +395,10 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
-  // ── M11 stuck lab-order recovery (F-193, #248) ─────────────────────────────────────────────────────────────────────
+  // ── M11 stuck lab-order recovery (F-198, #248) ─────────────────────────────────────────────────────────────────────
   // A lab order that failed AFTER its HL7 message was built (`dlq_exhausted`, F-183's "held, delivery unverified",
   // `application_reject`, `recovery_blocked:*`) may already be at the laboratory, so it is never retried automatically: a
-  // person verifies with the lab and attests (F-188). Before F-193 nothing said one was waiting. The audience is the people
+  // person verifies with the lab and attests (F-188). Before F-198 nothing said one was waiting. The audience is the people
   // who can act — a tenant's operator (`org_admin`) and the clinical leads who own lab orders (the §5.3 "operator, M11
   // owners" pairing F-188 used for the outbound-failure alert). Warn at 4 h, critical at 24 h (the emit severity carries the
   // stage; ids + a fixed reason token only in the payload).
@@ -424,7 +424,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
-  // F-194 (#248) — the two-person control on the attested lab-transmission recovery. Every EXECUTED
+  // F-199 (#248) — the two-person control on the attested lab-transmission recovery. Every EXECUTED
   // `not_received_by_lab` recovery (a re-dispatch that orders the test twice if the attestation was wrong) and every
   // lapsed / cancelled pending request goes to compliance, with `org_admin` as the backstop for a tenant that has no
   // compliance-officer role assigned. The emitter routes at max(input, floor): an executed recovery warns, and the
@@ -459,7 +459,7 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
-  // F-195 (#248) — the collusion / rate signal on the two-person lab-recovery control: a requester/co-signer pair that keeps
+  // F-200 (#248) — the collusion / rate signal on the two-person lab-recovery control: a requester/co-signer pair that keeps
   // executing `not_received_by_lab` recoveries, or a high org-wide rate. Always critical (the floor), deduplicated per
   // window by the emit's correlation id, ids and counts only. Same audience as the other recovery alerts.
   {

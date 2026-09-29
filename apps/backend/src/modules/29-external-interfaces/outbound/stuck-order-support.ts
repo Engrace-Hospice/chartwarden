@@ -1,5 +1,5 @@
 // apps/backend/src/modules/29-external-interfaces/outbound/stuck-order-support.ts — the two M29 facts M11's stuck-order
-// recovery needs and cannot read itself (M11 has no `dependsOn` edge to M29; the composition root injects these). F-193.
+// recovery needs and cannot read itself (M11 has no `dependsOn` edge to M29; the composition root injects these). F-198.
 //
 //   • `outboundBaaCleared`  — is the destination facility's BAA in force NOW? The producer does not check the BAA (this
 //     module's worker does, at dispatch), so an automatic retry of a `dispatch_refused:baa_inactive` order must ask the

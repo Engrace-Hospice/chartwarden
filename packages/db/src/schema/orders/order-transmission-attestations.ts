@@ -41,13 +41,13 @@ export const orderTransmissionAttestations = pgTable(
     /** The Better Auth USER id the write-audit trigger also records as the actor. */
     attestedByUserId: uuid("attested_by_user_id"),
     /**
-     * F-194 — the SECOND person who co-signed a `not_received_by_lab` recovery (logical M1 refs, no FK). NULL only for
+     * F-199 — the SECOND person who co-signed a `not_received_by_lab` recovery (logical M1 refs, no FK). NULL only for
      * `received_by_lab` (single-person) and for rows written before dual control. A NOT VALID CHECK in the database
      * requires it, distinct from the attester, on every new `not_received_by_lab` row.
      */
     cosignedByMembershipId: uuid("cosigned_by_membership_id"),
     cosignedByUserId: uuid("cosigned_by_user_id"),
-    /** F-194 — the `order_recovery_request` this attestation executed (NULL for `received_by_lab` / pre-F-194 rows). */
+    /** F-199 — the `order_recovery_request` this attestation executed (NULL for `received_by_lab` / pre-F-194 rows). */
     recoveryRequestId: uuid("recovery_request_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

@@ -58,7 +58,7 @@ export interface CorrelatedOutboundRow {
   readonly sourceAggregateId: string;
   /** Dispatch attempts already made (1-based once dispatched); carried onto the failed-event payload. */
   readonly retryCount: number;
-  /** F-192 — `hl7_message_outbound.attempt_id`, carried onto BOTH terminal events (see `RetryOutboundRow.attemptId`). */
+  /** F-197 — `hl7_message_outbound.attempt_id`, carried onto BOTH terminal events (see `RetryOutboundRow.attemptId`). */
   readonly attemptId?: string | null;
 }
 

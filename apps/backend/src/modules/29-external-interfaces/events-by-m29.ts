@@ -140,8 +140,8 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
       outboundMessageId: Type.String({ minLength: 1 }),
       messageControlId: Type.String({ minLength: 1 }),
       ackReceivedAt: Type.String({ minLength: 1 }),
-      // F-192 — the outbound attempt the acked row belongs to; M11 applies it only to the order's current attempt.
-      // Optional: a row queued before F-192 (or a request that carried no attempt) has none and applies as before.
+      // F-197 — the outbound attempt the acked row belongs to; M11 applies it only to the order's current attempt.
+      // Optional: a row queued before F-197 (or a request that carried no attempt) has none and applies as before.
       attemptId: Type.Optional(Type.String({ minLength: 1 })),
     }),
     declaredConsumers: ["m11"],
@@ -160,7 +160,7 @@ export const M29_OUTBOX_EVENTS: ModuleEventContribution = [
       reason: Type.Union([Type.Literal("application_reject"), Type.Literal("dlq_exhausted")]),
       detail: Type.Union([Type.String(), Type.Null()]),
       attemptCount: Type.Integer({ minimum: 0 }),
-      // F-192 — the outbound attempt the failed row belongs to (see `m29.lab_order.transmitted`).
+      // F-197 — the outbound attempt the failed row belongs to (see `m29.lab_order.transmitted`).
       attemptId: Type.Optional(Type.String({ minLength: 1 })),
     }),
     declaredConsumers: ["m11"],

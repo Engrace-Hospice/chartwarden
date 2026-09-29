@@ -313,9 +313,9 @@ export const OrderViewResponseSchema = Type.Object({
 
 /** Single-order detail only. List and work-queue reads deliberately omit clinical JSON payloads. */
 /**
- * F-194 — the attested-recovery ledger row and the two-person request, as the order detail shows them. "Who" is a
+ * F-199 — the attested-recovery ledger row and the two-person request, as the order detail shows them. "Who" is a
  * membership id, like every other actor on the view. The lab contact's NAME and the lab's reference are a third
- * party's personal data: `null` unless the reader holds `orders.transmission.recover` (F-195; the recovery authority, no
+ * party's personal data: `null` unless the reader holds `orders.transmission.recover` (F-200; the recovery authority, no
  * longer the broad `orders.amend`) or `orders.transmission.cosign_escalated`.
  */
 export const TransmissionAttestationViewSchema = Type.Object({
@@ -340,7 +340,7 @@ export const RecoveryRequestViewSchema = Type.Object({
     Type.Literal("expired"),
     Type.Literal("superseded"),
   ]),
-  /** F-195 — why a `superseded` request can no longer execute (a fixed token, e.g. `order_discontinued`); else `null`. */
+  /** F-200 — why a `superseded` request can no longer execute (a fixed token, e.g. `order_discontinued`); else `null`. */
   supersededReason: nullableString(),
   requestedByMembershipId: nullableString(),
   requestedAt: Type.String(),
@@ -444,7 +444,7 @@ export const ResendLabTransmissionResponseSchema = Type.Object({
 });
 /** F-187 — POST /orders/:id/recover-transmission. `refusalReason` is a fixed producer token, never PHI. */
 export const RecoverLabTransmissionResponseSchema = Type.Object({
-  /** F-194 — `pending_cosign`: a `not_received_by_lab` attestation FILED a request a different person must co-sign. */
+  /** F-199 — `pending_cosign`: a `not_received_by_lab` attestation FILED a request a different person must co-sign. */
   outcome: Type.Union([
     Type.Literal("redispatched"),
     Type.Literal("marked_transmitted"),
@@ -455,12 +455,12 @@ export const RecoverLabTransmissionResponseSchema = Type.Object({
   order: OrderDetailResponseSchema,
   recovery: Type.Union([RecoveryRequestViewSchema, Type.Null()]),
 });
-/** F-194 — cancel a pending recovery. */
+/** F-199 — cancel a pending recovery. */
 export const CancelLabTransmissionRecoveryResponseSchema = Type.Object({
   recovery: RecoveryRequestViewSchema,
   order: OrderDetailResponseSchema,
 });
-/** F-194 — the co-sign / cancel path params. */
+/** F-199 — the co-sign / cancel path params. */
 export const RecoveryRequestParamsSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   requestId: Type.String({ format: "uuid" }),

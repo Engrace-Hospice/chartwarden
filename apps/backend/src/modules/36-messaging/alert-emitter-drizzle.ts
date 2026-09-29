@@ -210,7 +210,7 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
 
     async persist(record: PersistedAlert): Promise<{ alertId: string; occurrences?: number }> {
       return withOrgContext(db, { organizationId: record.orgId, userId: "" }, async (tx: Tx) => {
-        // F-191 — count an absorbed repeat. ONE atomic `UPDATE … RETURNING`: concurrent repeats serialize on the
+        // F-196 — count an absorbed repeat. ONE atomic `UPDATE … RETURNING`: concurrent repeats serialize on the
         // row lock and each RETURNS a distinct count, so exactly one caller ever sees any given value (the escalation
         // in M29 keys on "count == threshold"). A repeat pages NOBODY — no delivery rows are written for it.
         const bump = async (alertId: string): Promise<{ alertId: string; occurrences: number }> => {
@@ -248,7 +248,7 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
             organizationId: record.orgId,
             eventType: record.eventType,
             severity: record.severity,
-            // F-191 — a counted alert is born with `occurrences: 1`; `bump` increments it from there.
+            // F-196 — a counted alert is born with `occurrences: 1`; `bump` increments it from there.
             payload: record.countRepeats ? { ...record.payload, occurrences: 1 } : record.payload,
             correlationId: record.correlationId,
             outcome,

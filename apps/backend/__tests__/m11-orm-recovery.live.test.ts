@@ -62,7 +62,7 @@ const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
 const USER = "33333333-3333-3333-3333-333333333333";
 const USER_B = "44444444-4444-4444-4444-444444444444";
-/** F-194 — two more ORG_A people: `USER_C` (a second co-signer / the alert test's requester), `USER_D` (the repeat-attester). */
+/** F-199 — two more ORG_A people: `USER_C` (a second co-signer / the alert test's requester), `USER_D` (the repeat-attester). */
 const USER_C = "66666666-6666-6666-6666-666666666666";
 const USER_D = "77777777-7777-7777-7777-777777777777";
 const ADMISSION = "55555555-5555-5555-5555-555555555555";
@@ -80,7 +80,7 @@ const keys: OutboundTenantKeyProvider = {
   },
 };
 
-/** F-195 — the shared backend's collusion bound and org-rate alert are out of reach (see where `svc` is built). */
+/** F-200 — the shared backend's collusion bound and org-rate alert are out of reach (see where `svc` is built). */
 const NO_BOUND = { escalationThreshold: 100_000, orgRateThreshold: 100_000 };
 
 const LOINC = [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }];
@@ -96,18 +96,18 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   let m11OutboxPort: NonNullable<Parameters<typeof createDbOrderBackend>[1]>;
   let member: string;
   let memberB: string;
-  /** F-194 — a SECOND person in ORG_A (`USER_B`): the co-signer of the two-person recovery control. */
+  /** F-199 — a SECOND person in ORG_A (`USER_B`): the co-signer of the two-person recovery control. */
   let memberA2: string;
   let memberC: string;
   let memberD: string;
   /** The ORM ports, kept so a case can build a second backend (a 1 ms TTL, a low anomaly threshold) over the same facts. */
   let ormPorts: ReturnType<typeof buildM11OrmRequestedPorts>;
   let recoveryAlerts: { emit: (org: string, input: Record<string, unknown>) => Promise<void> };
-  /** F-194 — every compliance alert the recovery control raised (the real `AlertEmitter` port shape, captured). */
+  /** F-199 — every compliance alert the recovery control raised (the real `AlertEmitter` port shape, captured). */
   let alertLog: { org: string; eventType: string; severity: string; correlationId: string; payload: Record<string, unknown> }[] = [];
-  /** F-195 — while true the alert port throws (an emitter outage); the relay must redeliver, not lose, the alert. */
+  /** F-200 — while true the alert port throws (an emitter outage); the relay must redeliver, not lose, the alert. */
   let alertFailure = false;
-  /** F-195 — the REAL M36 emitter (the `alert` table, the seeded rules), set only inside the durable-delivery case. */
+  /** F-200 — the REAL M36 emitter (the `alert` table, the seeded rules), set only inside the durable-delivery case. */
   let realEmitter: ReturnType<typeof createDrizzleAlertEmitter> | null = null;
   let wires: string[] = [];
   /** `refuse` → a permanent destination refusal (a real `dlq_exhausted` through the real worker); `ack` → AA. */
@@ -240,7 +240,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   /** F-188 — the STRUCTURED evidence every attestation now carries (who at the lab + the lab's own reference). */
   const EVIDENCE = { contactName: "Dana Reyes", labReference: "REF-2026-0041" };
   /**
-   * F-194 — FILE a recovery. `not_received_by_lab` no longer executes: it returns `pending_cosign` and a request a
+   * F-199 — FILE a recovery. `not_received_by_lab` no longer executes: it returns `pending_cosign` and a request a
    * DIFFERENT person must co-sign. `received_by_lab` is still single-person and executes here.
    */
   const file = (
@@ -251,7 +251,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     user = USER,
     evidence: { contactName: string; labReference: string } = EVIDENCE,
   ) => svc.recoverLabTransmission(org, membership, id, attestation, evidence, undefined, user);
-  /** F-194 — the SECOND person (`USER_B`, `memberA2`) co-signs the request, which executes the re-dispatch. */
+  /** F-199 — the SECOND person (`USER_B`, `memberA2`) co-signs the request, which executes the re-dispatch. */
   const cosign = (id: string, requestId: string, org = ORG_A, membership = memberA2, user = USER_B) =>
     svc.cosignLabTransmissionRecovery(org, membership, id, requestId, undefined, user);
   /**
@@ -373,16 +373,16 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     });
     recoveryAlerts = {
       emit: async (org, input) => {
-        // F-195 — an injectable emitter outage, and (for the durable-delivery case) the REAL M36 emitter behind the capture.
+        // F-200 — an injectable emitter outage, and (for the durable-delivery case) the REAL M36 emitter behind the capture.
         if (alertFailure) throw new Error("emitter down (injected)");
         alertLog.push({ org, ...input } as (typeof alertLog)[number]);
         if (realEmitter) await realEmitter.emit(org, input as never);
       },
     };
-    // F-195 — the recovery control's alerts are DURABLE: the service publishes an outbox event in the recovery's own
+    // F-200 — the recovery control's alerts are DURABLE: the service publishes an outbox event in the recovery's own
     // transaction and `buildM11RecoveryAlertConsumer` (bound below, on the real dispatcher) hands it to this port.
     //
-    // F-195 — the collusion BOUND is set out of reach for this shared backend: these cases all use ONE requester/co-signer
+    // F-200 — the collusion BOUND is set out of reach for this shared backend: these cases all use ONE requester/co-signer
     // pair and the attestation ledger is append-only (it cannot be cleared between cases), so the default bound of 3 would
     // trip on the fourth case for reasons unrelated to what it proves. The bound has its own cases (below) that build a
     // backend with the real threshold on a private clock, so their windows share no rows with anything else.
@@ -477,7 +477,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
       prior_failure_reason: "dlq_exhausted",
       attested_by_membership_id: member,
       attested_by_user_id: USER,
-      // F-194 — the SECOND person, and the request this ledger row executed.
+      // F-199 — the SECOND person, and the request this ledger row executed.
       cosigned_by_membership_id: memberA2,
       cosigned_by_user_id: USER_B,
     });
@@ -501,7 +501,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
       [id],
     );
     expect(rows).toHaveLength(1);
-    // F-194 — the EXECUTION is the co-signer's act (the order moved in the second person's transaction); the requester is
+    // F-199 — the EXECUTION is the co-signer's act (the order moved in the second person's transaction); the requester is
     // on the ledger row (`attested_by_*`) and on the request's own INSERT audit below.
     expect(rows[0].actor_user_id).toBe(USER_B);
     expect(rows[0].br).toBe("dlq_exhausted");
@@ -516,7 +516,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(aud[0].actor_user_id).toBe(USER_B);
     expect(JSON.stringify(aud[0].after)).not.toContain("Dana Reyes");
     expect(aud[0].after.lab_reference).toBe("REF-2026-0041");
-    // F-194 — the request row is audited too: filed by the requester, resolved by the co-signer, NAME scrubbed both times.
+    // F-199 — the request row is audited too: filed by the requester, resolved by the co-signer, NAME scrubbed both times.
     const { rows: reqAud } = await admin.query(
       `SELECT event_type, actor_user_id, after FROM audit_event
         WHERE resource_kind='order_recovery_request' AND resource_id=$1 ORDER BY created_at, id`,
@@ -1163,7 +1163,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await attestations(id)).toHaveLength(2); // both attestations are on record
   });
 
-  // ── F-192 — the attempt binding for the TERMINAL events (`transmission_failed` / `transmitted`) ──────────────
+  // ── F-197 — the attempt binding for the TERMINAL events (`transmission_failed` / `transmitted`) ──────────────
   // F-188 bound `dispatch_refused` to the attempt it refused. The two events that come off an outbound ROW carried no
   // attempt, so a late or redelivered one from an EARLIER attempt was guarded only by the terminal-state check — which
   // stops protecting the order the moment an operator recovery sets it `pending` again.
@@ -1179,7 +1179,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   }
   const statusChanges = (id: string) => count(id, "m11.order.transmission_status_changed");
 
-  it("F-192 window A (the real one): a `transmission_failed` from attempt 1, redelivered AFTER an attested recovery, does NOT flip the recovered order failed again", async () => {
+  it("F-197 window A (the real one): a `transmission_failed` from attempt 1, redelivered AFTER an attested recovery, does NOT flip the recovered order failed again", async () => {
     const id = await heldOrder(); // attempt 1 → dlq_exhausted → failed
     const a1 = (await orderRow(id)).transmission_attempt_id as string;
     const stale = await m29Payload(id, "m29.lab_order.transmission_failed");
@@ -1208,7 +1208,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(ack.attemptId).toBe(a2);
   });
 
-  it("F-192 window B (defence in depth — a late `transmitted` for attempt 1 cannot be produced by M29 today, its row is a dead end): a stale `transmitted` does NOT mark a recovered order delivered", async () => {
+  it("F-197 window B (defence in depth — a late `transmitted` for attempt 1 cannot be produced by M29 today, its row is a dead end): a stale `transmitted` does NOT mark a recovered order delivered", async () => {
     const id = await heldOrder();
     const a1 = (await orderRow(id)).transmission_attempt_id as string;
     const failed = await m29Payload(id, "m29.lab_order.transmission_failed");
@@ -1235,7 +1235,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await statusChanges(id)).toBe(changed);
   });
 
-  it("F-192: the terminal event of the CURRENT attempt still applies — a recovery that is refused AGAIN ends failed, and the event names the new attempt", async () => {
+  it("F-197: the terminal event of the CURRENT attempt still applies — a recovery that is refused AGAIN ends failed, and the event names the new attempt", async () => {
     const id = await heldOrder();
     const a1 = (await orderRow(id)).transmission_attempt_id as string;
     mode = "refuse";
@@ -1251,7 +1251,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(second.attemptId).not.toBe(a1);
   });
 
-  it("F-192: a terminal event with NO attempt id (a row queued before the migration, or an event already in the outbox) applies exactly as it always did", async () => {
+  it("F-197: a terminal event with NO attempt id (a row queued before the migration, or an event already in the outbox) applies exactly as it always did", async () => {
     const failedId = await signedLab(); // pending, attempt on the order; nothing dispatched yet
     await applier.handle({
       eventType: "m29.lab_order.transmission_failed",
@@ -1269,7 +1269,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect((await orderRow(okId)).transmission_status).toBe("transmitted");
   });
 
-  // ── F-194 — the TWO-PERSON control on `not_received_by_lab` ─────────────────────────────────────────────────────
+  // ── F-199 — the TWO-PERSON control on `not_received_by_lab` ─────────────────────────────────────────────────────
   //
   // `not_received_by_lab` is the duplicate-risk attestation (a wrong one orders the test twice). It now FILES a
   // `pending_cosign` request that a DIFFERENT authorized person must co-sign; M3 break-glass's shape (a status, a
@@ -1287,7 +1287,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   const backendWith = (controls: Record<string, unknown>) =>
     createDbOrderBackend(handle.db, m11OutboxPort, ormPorts, { ...NO_BOUND, ...controls } as never);
 
-  it("F-194: FILING a `not_received_by_lab` recovery re-dispatches NOTHING — a pending request (24 h), the order untouched", async () => {
+  it("F-199: FILING a `not_received_by_lab` recovery re-dispatches NOTHING — a pending request (24 h), the order untouched", async () => {
     const id = await heldOrder();
     const before = await count(id, "m11.order.hl7_orm_requested");
 
@@ -1313,7 +1313,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await requests(id)).toHaveLength(1);
   });
 
-  it("F-194: a DIFFERENT person's co-signature executes it ONCE — the request `executed`, the ledger carries BOTH people, one message goes out", async () => {
+  it("F-199: a DIFFERENT person's co-signature executes it ONCE — the request `executed`, the ledger carries BOTH people, one message goes out", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
 
@@ -1346,7 +1346,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await count(id, "m11.order.hl7_orm_requested")).toBe(2); // the original + ONE attested
   });
 
-  it("F-194: the REQUESTER cannot co-sign their own request — 409 `self_cosign`, nothing dispatched, and the database refuses it too (CHECK)", async () => {
+  it("F-199: the REQUESTER cannot co-sign their own request — 409 `self_cosign`, nothing dispatched, and the database refuses it too (CHECK)", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
 
@@ -1372,7 +1372,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     ).rejects.toThrow(/cosigner_distinct/);
   });
 
-  it("F-194: two DIFFERENT co-signers racing on one request dispatch ONE message — the loser is refused 409", async () => {
+  it("F-199: two DIFFERENT co-signers racing on one request dispatch ONE message — the loser is refused 409", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
     const results = await Promise.allSettled([
@@ -1393,7 +1393,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await attestations(id)).toHaveLength(1);
   });
 
-  it("F-194: at most ONE pending recovery per order — the service says so (409 `already_pending`) and a partial unique index backs it", async () => {
+  it("F-199: at most ONE pending recovery per order — the service says so (409 `already_pending`) and a partial unique index backs it", async () => {
     const id = await heldOrder();
     await file(id, "not_received_by_lab");
     await expect(file(id, "not_received_by_lab", ORG_A, memberC, USER_C)).rejects.toMatchObject({
@@ -1412,7 +1412,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await requests(id)).toHaveLength(1);
   });
 
-  it("F-194: a request that lapses (TTL) can no longer be co-signed (409 `expired`); the sweep marks it `expired`, alerts, and a NEW one may be filed", async () => {
+  it("F-199: a request that lapses (TTL) can no longer be co-signed (409 `expired`); the sweep marks it `expired`, alerts, and a NEW one may be filed", async () => {
     const short = backendWith({ ttlMs: 1 });
     const id = await heldOrder();
     const filed = await short.recoverLabTransmission(ORG_A, member, id, "not_received_by_lab", EVIDENCE, undefined, USER);
@@ -1434,7 +1434,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     const [req] = await requests(id);
     expect(req).toMatchObject({ status: "expired", cosigned_by_user_id: null, attestation_id: null });
     expect(req!.resolved_at).not.toBeNull();
-    await settle(); // F-195 — alerts are outbox events; the dispatcher delivers them to the (captured) emitter
+    await settle(); // F-200 — alerts are outbox events; the dispatcher delivers them to the (captured) emitter
     const lapsed = alertLog.filter((a) => a.eventType === "m11.order.recovery_expired");
     expect(lapsed).toHaveLength(1);
     expect(lapsed[0]).toMatchObject({ org: ORG_A, severity: "warn" });
@@ -1446,7 +1446,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect((await cosign(id, again.recovery!.id)).outcome).toBe("redispatched");
   });
 
-  it("F-194: either person can CANCEL a pending request — a cancelled one cannot be co-signed, and a settled one cannot be cancelled again", async () => {
+  it("F-199: either person can CANCEL a pending request — a cancelled one cannot be co-signed, and a settled one cannot be cancelled again", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
 
@@ -1476,7 +1476,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect((await cosign(id, again.recovery!.id)).outcome).toBe("redispatched");
   });
 
-  it("F-194: `received_by_lab` stays SINGLE-person — it executes on the first call and files no request", async () => {
+  it("F-199: `received_by_lab` stays SINGLE-person — it executes on the first call and files no request", async () => {
     const id = await heldOrder();
     const res = await file(id, "received_by_lab");
     expect(res.outcome).toBe("marked_transmitted");
@@ -1486,7 +1486,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect((await attestations(id))[0]).toMatchObject({ cosigned_by_user_id: null, recovery_request_id: null });
   });
 
-  it("F-194: the co-sign RE-CHECKS the evidence — a lab result that arrived after the request was filed refuses it (409), and it stays pending", async () => {
+  it("F-199: the co-sign RE-CHECKS the evidence — a lab result that arrived after the request was filed refuses it (409), and it stays pending", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
     await labObservationFor(id); // the lab answered in the meantime
@@ -1499,7 +1499,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(wires).toHaveLength(0);
   });
 
-  it("F-194: the ledger itself refuses a single-person `not_received_by_lab` row (NOT VALID CHECK), and a co-signer equal to the attester", async () => {
+  it("F-199: the ledger itself refuses a single-person `not_received_by_lab` row (NOT VALID CHECK), and a co-signer equal to the attester", async () => {
     const id = await heldOrder();
     const insert = (cols: string, vals: unknown[]) =>
       admin.query(
@@ -1541,7 +1541,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await attestations(id)).toHaveLength(1);
   });
 
-  it("F-194: a request is FROZEN once resolved and its evidence is immutable while pending; the app role can never delete one", async () => {
+  it("F-199: a request is FROZEN once resolved and its evidence is immutable while pending; the app role can never delete one", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
     await expect(
@@ -1565,7 +1565,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     );
   });
 
-  it("F-194: cross-tenant — another org's context sees NO request and cannot co-sign or cancel this org's (RLS, as the real app role)", async () => {
+  it("F-199: cross-tenant — another org's context sees NO request and cannot co-sign or cancel this org's (RLS, as the real app role)", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
     const visibleTo = async (organizationId: string): Promise<number> => {
@@ -1583,7 +1583,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect((await requests(id))[0]!.status).toBe("pending_cosign");
   });
 
-  it("F-194: compliance ALERTS — executed warns, cancelled is info, lapsed warns; ids and counts ONLY (no lab contact, no reference, no patient); each correlation id distinct", async () => {
+  it("F-199: compliance ALERTS — executed warns, cancelled is info, lapsed warns; ids and counts ONLY (no lab contact, no reference, no patient); each correlation id distinct", async () => {
     // A requester (`USER_C`) no other test uses, so the repeat-attester count is exactly this test's own.
     const a = await heldOrder();
     const fa = await file(a, "not_received_by_lab", ORG_A, memberC, USER_C);
@@ -1629,7 +1629,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     void fc;
   });
 
-  it("F-194: a REPEAT attester is flagged — the same requester's Nth request inside the window turns the executed alert `critical` (threshold injectable, default 3)", async () => {
+  it("F-199: a REPEAT attester is flagged — the same requester's Nth request inside the window turns the executed alert `critical` (threshold injectable, default 3)", async () => {
     const strict = backendWith({ anomalyThreshold: 2 });
     const run = async () => {
       const id = await heldOrder();
@@ -1648,7 +1648,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(executed[1]!.payload).toMatchObject({ orderId: second, repeatAttester: true, requesterRequestsInWindow: 2, repeatAttesterThreshold: 2 });
   });
 
-  it("F-194: the order DETAIL shows the attestation history and the pending request — the lab contact's name and reference only with the recovery authority (F-195: `orders.transmission.recover`, NOT `orders.amend`)", async () => {
+  it("F-199: the order DETAIL shows the attestation history and the pending request — the lab contact's name and reference only with the recovery authority (F-200: `orders.transmission.recover`, NOT `orders.amend`)", async () => {
     const id = await heldOrder();
     const amender = {
       membershipId: member,
@@ -1656,7 +1656,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
       disciplines: [],
       permissions: new Set(["orders.transmission.recover"]),
     };
-    // F-195 — `orders.amend` (every clinician has it) no longer opens the third party's name and lab reference.
+    // F-200 — `orders.amend` (every clinician has it) no longer opens the third party's name and lab reference.
     const clinician = { membershipId: member, roles: [], disciplines: [], permissions: new Set(["orders.read", "orders.amend"]) };
     const escalated = {
       membershipId: member,
@@ -1682,7 +1682,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
       labContactName: null,
       labReference: null,
     });
-    // F-195 — a clinician with `orders.amend` (nearly every one) is a "reader" here; the high-trust co-signer, who must
+    // F-200 — a clinician with `orders.amend` (nearly every one) is a "reader" here; the high-trust co-signer, who must
     // judge the evidence before approving, is not.
     expect((await svc.getOrder(ORG_A, id, clinician)).pendingRecovery).toMatchObject({
       labContactName: null,
@@ -1718,7 +1718,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     await expect(svc.getOrder(ORG_B, id, amender)).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it("F-194: DESTRUCTION — a member of the destruction role erases an order's attestation ledger and recovery requests; the app role cannot, a superuser still cannot, another tenant's run reaches nothing", async () => {
+  it("F-199: DESTRUCTION — a member of the destruction role erases an order's attestation ledger and recovery requests; the app role cannot, a superuser still cannot, another tenant's run reaches nothing", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
     await cosign(id, filed.recovery!.id);
@@ -1774,7 +1774,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   });
 
 
-  // ══ F-195 — the residual risks of the two-person control, mitigated (all as the NOBYPASSRLS `wardenx_app` role) ═══════════
+  // ══ F-200 — the residual risks of the two-person control, mitigated (all as the NOBYPASSRLS `wardenx_app` role) ═══════════
   //
   // These cases build their OWN backend with the real collusion bound on a PRIVATE clock in a distinct year, so their
   // windows share no rows with any other case (the attestation ledger is append-only and cannot be cleared between cases).
@@ -1813,7 +1813,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   const requestOf = async (requestId: string) =>
     (await admin.query("SELECT * FROM order_recovery_request WHERE id=$1", [requestId])).rows[0] as Record<string, unknown>;
 
-  it("F-195 COLLUSION BOUND (requester): after 3 executed recoveries in the window the 4th needs a `cosign_escalated` co-signer — refused 409 with NOTHING dispatched, the request stays pending; a holder executes it and it is RECORDED", async () => {
+  it("F-200 COLLUSION BOUND (requester): after 3 executed recoveries in the window the 4th needs a `cosign_escalated` co-signer — refused 409 with NOTHING dispatched, the request stays pending; a holder executes it and it is RECORDED", async () => {
     const { now } = clockFrom("2031-03-01T00:00:00Z");
     const b = backendWith({ now, escalationThreshold: 3 });
     for (let i = 0; i < 3; i++) expect((await executeOne(b, PD, PB)).done.outcome).toBe("redispatched");
@@ -1852,7 +1852,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(executed.payload).toMatchObject({ escalatedCosign: true });
   });
 
-  it("F-195 COLLUSION BOUND (pair): a repeated PAIR is bounded either way round — swapping who files does not reset it — while a DIFFERENT pair is unaffected", async () => {
+  it("F-200 COLLUSION BOUND (pair): a repeated PAIR is bounded either way round — swapping who files does not reset it — while a DIFFERENT pair is unaffected", async () => {
     const { now } = clockFrom("2032-03-01T00:00:00Z");
     const b = backendWith({ now, escalationThreshold: 3 });
     for (let i = 0; i < 3; i++) expect((await executeOne(b, PC, PB)).done.outcome).toBe("redispatched");
@@ -1869,7 +1869,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await requestOf(filed.recovery!.id)).toMatchObject({ status: "executed", cosigned_escalated: false });
   });
 
-  it("F-195 COLLUSION BOUND: the window slides — recoveries older than 24 h no longer count, so the same pair is un-bounded again", async () => {
+  it("F-200 COLLUSION BOUND: the window slides — recoveries older than 24 h no longer count, so the same pair is un-bounded again", async () => {
     const { clk, now } = clockFrom("2033-03-01T00:00:00Z");
     const b = backendWith({ now, escalationThreshold: 3 });
     for (let i = 0; i < 3; i++) await executeOne(b, PD, PB);
@@ -1886,7 +1886,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect((await executeOne(b, PD, PB)).done.outcome).toBe("redispatched");
   });
 
-  it("F-195 COLLUSION BOUND (race): two co-signs by the same pair on DIFFERENT orders, in flight together at the bound's edge, cannot BOTH slip under it — the second waits, recounts, and needs the escalated key", async () => {
+  it("F-200 COLLUSION BOUND (race): two co-signs by the same pair on DIFFERENT orders, in flight together at the bound's edge, cannot BOTH slip under it — the second waits, recounts, and needs the escalated key", async () => {
     const { now } = clockFrom("2036-03-01T00:00:00Z");
     const b = backendWith({ now, escalationThreshold: 2 });
     await executeOne(b, PD, PB); // 1 executed: one more is still allowed, the one after that is not
@@ -1906,7 +1906,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(String(refused[0]!.reason.message)).toContain("(escalation_required)");
   });
 
-  it("F-195 COLLUSION SIGNALS: a high ORG-WIDE rate raises a critical `org_rate` alert from the threshold on, all under ONE window-scoped correlation id; ids and counts only", async () => {
+  it("F-200 COLLUSION SIGNALS: a high ORG-WIDE rate raises a critical `org_rate` alert from the threshold on, all under ONE window-scoped correlation id; ids and counts only", async () => {
     const { now } = clockFrom("2034-03-01T00:00:00Z");
     // The bound is out of reach (every execution proceeds — this case is about the SIGNAL); the org-rate threshold is 4.
     // `escalationThreshold` also sets the PAIR signal's threshold, so the pair signal stays silent here.
@@ -1931,7 +1931,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     }
   });
 
-  it("F-195 COLLUSION SIGNALS: a pair at its threshold raises exactly one critical `repeat_pair` alert, symmetric under swapping requester/co-signer", async () => {
+  it("F-200 COLLUSION SIGNALS: a pair at its threshold raises exactly one critical `repeat_pair` alert, symmetric under swapping requester/co-signer", async () => {
     const { now } = clockFrom("2035-03-01T00:00:00Z");
     const b = backendWith({ now, escalationThreshold: 3, orgRateThreshold: 100_000 });
     await executeOne(b, PC, PB);
@@ -1955,7 +1955,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   });
 
   // ── stranded requests ───────────────────────────────────────────────────────────────────────────────────────────
-  it("F-195 STRANDED: a pending request is SUPERSEDED (not left to lapse) when its order is discontinued — the co-sign and cancel answer 409 `superseded` with the reason, and nothing is dispatched", async () => {
+  it("F-200 STRANDED: a pending request is SUPERSEDED (not left to lapse) when its order is discontinued — the co-sign and cancel answer 409 `superseded` with the reason, and nothing is dispatched", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
     const before = await count(id, "m11.order.hl7_orm_requested");
@@ -1979,7 +1979,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await attestations(id)).toHaveLength(0);
   });
 
-  it("F-195 STRANDED: another person's `received_by_lab` attestation (the order becomes `transmitted`) supersedes the pending duplicate-risk request", async () => {
+  it("F-200 STRANDED: another person's `received_by_lab` attestation (the order becomes `transmitted`) supersedes the pending duplicate-risk request", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
     const received = await svc.recoverLabTransmission(ORG_A, memberC, id, "received_by_lab", EVIDENCE, undefined, USER_C);
@@ -1993,7 +1993,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect((await attestations(id)).map((a) => a.attestation)).toEqual(["received_by_lab"]);
   });
 
-  it("F-195 STRANDED: the order's failure reason changing under a pending request supersedes it too (any UPDATE by any path — the trigger, not a service call)", async () => {
+  it("F-200 STRANDED: the order's failure reason changing under a pending request supersedes it too (any UPDATE by any path — the trigger, not a service call)", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
     await withOrgContext(handle.db, { organizationId: ORG_A, userId: "" }, (tx) =>
@@ -2005,7 +2005,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     });
   });
 
-  it("F-195 STRANDED: an EXECUTED request is never touched by the order's later transitions, and an unrelated tenant's order changes nothing", async () => {
+  it("F-200 STRANDED: an EXECUTED request is never touched by the order's later transitions, and an unrelated tenant's order changes nothing", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
     await cosign(id, filed.recovery!.id);
@@ -2014,7 +2014,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await requestOf(filed.recovery!.id)).toMatchObject({ status: "executed", superseded_reason: null });
   });
 
-  it("F-195 STRANDED RACE: a co-sign that arrives while the order is being moved by another transaction waits for it, then sees `superseded` — it can NEVER execute a superseded request", async () => {
+  it("F-200 STRANDED RACE: a co-sign that arrives while the order is being moved by another transaction waits for it, then sees `superseded` — it can NEVER execute a superseded request", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
     const before = await count(id, "m11.order.hl7_orm_requested");
@@ -2054,7 +2054,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     expect(await attestations(id)).toHaveLength(0);
   });
 
-  it("F-195 STRANDED BACKSTOP: the hourly sweep supersedes a pending request whose order the trigger never saw (replica-role write), and reports the count", async () => {
+  it("F-200 STRANDED BACKSTOP: the hourly sweep supersedes a pending request whose order the trigger never saw (replica-role write), and reports the count", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
     // A superuser rewrite with triggers suppressed — exactly what the row-level trigger cannot see.
@@ -2079,7 +2079,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   });
 
   // ── durable alerts ──────────────────────────────────────────────────────────────────────────────────────────────
-  it("F-195 DURABLE ALERTS: the alert INTENT commits with the recovery; an emitter outage after commit does not lose it — the relay redelivers, M36 records ONE alert, and a duplicate delivery adds none", async () => {
+  it("F-200 DURABLE ALERTS: the alert INTENT commits with the recovery; an emitter outage after commit does not lose it — the relay redelivers, M36 records ONE alert, and a duplicate delivery adds none", async () => {
     // The real M36 emitter over the real seeded rules, with a compliance officer and an org admin to page.
     const addRoleMember = async (tag: string, roleKey: string, category: string) => {
       const roleId = (
@@ -2156,7 +2156,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
     }
   });
 
-  it("F-195 DURABLE ALERTS: the alert intent and the recovery are ONE transaction — if publishing the intent fails, the WHOLE recovery rolls back (nothing executes without its alert, no alert without its recovery)", async () => {
+  it("F-200 DURABLE ALERTS: the alert intent and the recovery are ONE transaction — if publishing the intent fails, the WHOLE recovery rolls back (nothing executes without its alert, no alert without its recovery)", async () => {
     const id = await heldOrder();
     const filed = await file(id, "not_received_by_lab");
     const before = await count(id, "m11.order.hl7_orm_requested");
@@ -2183,7 +2183,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
   });
 
   // ── permission catalog: the migration ───────────────────────────────────────────────────────────────────────────
-  it("F-195 PERMISSIONS: migration 0272 mirrors the three keys and grants them to org_admin + administrator ONLY (idempotently) — never to a clinical role", async () => {
+  it("F-200 PERMISSIONS: migration 0272 mirrors the three keys and grants them to org_admin + administrator ONLY (idempotently) — never to a clinical role", async () => {
     const { rows: perms } = await admin.query(
       "SELECT key, resource, action, category FROM permission WHERE key LIKE 'orders.transmission.%' ORDER BY key",
     );

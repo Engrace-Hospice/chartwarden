@@ -57,19 +57,19 @@ describe("M36-T05 platform-default alert rule seed (§3.10)", () => {
       "system.backup_failure",
       // F-188 (#248) — M29's outbound operator alerts (spec §5.3); previously rule-less, so they reached nobody.
       "hl7_outbound.transmission_failed",
-      // F-191 — the failure-storm escalation.
+      // F-196 — the failure-storm escalation.
       "hl7_outbound.transmission_storm",
       "external_feed.baa_expired",
       "external_feed.baa_missing",
-      // F-193 (#248) — M11's stuck lab-order recovery: a held order aging past its thresholds, and the auto-retry
+      // F-198 (#248) — M11's stuck lab-order recovery: a held order aging past its thresholds, and the auto-retry
       // sweep giving up.
       "m11.order.transmission_held_aging",
       "m11.order.transmission_auto_retry_exhausted",
-      // F-194 (#248) — the two-person lab-recovery control's compliance alerts.
+      // F-199 (#248) — the two-person lab-recovery control's compliance alerts.
       "m11.order.recovery_executed",
       "m11.order.recovery_expired",
       "m11.order.recovery_cancelled",
-      // F-195 (#248) — the collusion / rate signal on that control (critical, deduplicated per window).
+      // F-200 (#248) — the collusion / rate signal on that control (critical, deduplicated per window).
       "m11.order.recovery_anomaly",
     ]);
     for (const row of toNewAlertRuleRows()) {

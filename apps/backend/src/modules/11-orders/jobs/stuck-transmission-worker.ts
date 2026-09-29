@@ -1,5 +1,5 @@
 // apps/backend/src/modules/11-orders/jobs/stuck-transmission-worker.ts — the `orders.stuck_transmission` BullMQ fan-out
-// for M11's stuck-lab-order recovery (F-193, #248). A THIN per-org fan-out, the `verbal-order-expiry-worker.ts` shape
+// for M11's stuck-lab-order recovery (F-198, #248). A THIN per-org fan-out, the `verbal-order-expiry-worker.ts` shape
 // verbatim: the decision and write logic is `StuckTransmissionRecovery` (`../stuck-transmission-recovery.ts`), this file
 // only decides WHEN and for WHICH orgs. Building a second set of queries here would duplicate the guard-before-write
 // discipline the service already gets right.

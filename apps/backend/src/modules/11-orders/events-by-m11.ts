@@ -466,7 +466,7 @@ export const M11_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m11.order.recovery_alert_requested",
     moduleOwner: "m11",
     description:
-      "F-195 — the two-person lab-recovery control's compliance alert INTENT (executed / cancelled / expired / repeated-pair / org-rate), published in the recovery's OWN transaction so a failure after commit cannot lose it; M11's own consumer hands it to M36's AlertEmitter and the alert's correlation id makes the redelivery idempotent.",
+      "F-200 — the two-person lab-recovery control's compliance alert INTENT (executed / cancelled / expired / repeated-pair / org-rate), published in the recovery's OWN transaction so a failure after commit cannot lose it; M11's own consumer hands it to M36's AlertEmitter and the alert's correlation id makes the redelivery idempotent.",
     // IDS, COUNTS AND FLAGS ONLY — never the lab contact's name, the lab reference or a patient id.
     payloadSchema: Type.Object({
       alertType: id,

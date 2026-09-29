@@ -113,7 +113,7 @@ export const hl7MessageOutbound = pgTable(
     /** hash(feed_id, source_aggregate_kind, source_aggregate_id) — the §2.6 dispatch dedup key. */
     idempotencyKey: text("idempotency_key").notNull(),
     /**
-     * F-192 (0270) — the outbound attempt this row belongs to: `OrmRequestedPayload.attemptId` (F-188), copied at claim
+     * F-197 (0270) — the outbound attempt this row belongs to: `OrmRequestedPayload.attemptId` (F-188), copied at claim
      * time. Every terminal event built from the row (`transmitted` / `transmission_failed`) carries it, so M11's
      * applier applies an event only to the attempt the order is on. NULL = a row from before the migration, or a request
      * that carried none — its events apply as they always did. Deliberately unindexed (nothing filters by it).

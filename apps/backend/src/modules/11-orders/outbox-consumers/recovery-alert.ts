@@ -1,7 +1,7 @@
-// apps/backend/src/modules/11-orders/outbox-consumers/recovery-alert.ts — F-195 (#248): DURABLE delivery of the
+// apps/backend/src/modules/11-orders/outbox-consumers/recovery-alert.ts — F-200 (#248): DURABLE delivery of the
 // two-person lab-recovery control's compliance alerts.
 //
-// THE GAP. F-194 raised its alerts (`recovery_executed` / `_cancelled` / `_expired`) from the service AFTER the recovery's
+// THE GAP. F-199 raised its alerts (`recovery_executed` / `_cancelled` / `_expired`) from the service AFTER the recovery's
 // transaction committed, through `AlertEmitter.emit()` — which runs in its OWN transaction — and swallowed a failure with a
 // log line. The recovery row and the append-only ledger were the durable record, but a compliance officer's notification
 // was best-effort: an emitter outage at the wrong moment meant an executed duplicate-risk recovery raised NO alert, and

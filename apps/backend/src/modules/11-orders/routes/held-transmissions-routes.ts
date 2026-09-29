@@ -1,4 +1,4 @@
-// apps/backend/src/modules/11-orders/routes/held-transmissions-routes.ts — the held-order worklist (F-193, #248).
+// apps/backend/src/modules/11-orders/routes/held-transmissions-routes.ts — the held-order worklist (F-198, #248).
 //
 //   GET /api/v1/orders/held-transmissions
 //
@@ -7,7 +7,7 @@
 // automatically — F-188's attested recovery (`POST /orders/:id/recover-transmission`) is the way out, and it needs a human
 // to call the lab. Before this route nothing told anyone they were waiting.
 //
-// AUTHORIZATION: `orders.transmission.view_held` (F-195; was `orders.amend`, which nearly every clinical role holds — the
+// AUTHORIZATION: `orders.transmission.view_held` (F-200; was `orders.amend`, which nearly every clinical role holds — the
 // list carries patient ids for orders in a compliance-sensitive state, so it is a deliberate grant). Seeing the list does
 // not let anyone act on it: `resend-transmission` / `recover-transmission` need `orders.transmission.recover`. The org comes from the
 // authenticated request context, never a parameter, and the read runs under `withOrgContext`, so RLS backstops it.

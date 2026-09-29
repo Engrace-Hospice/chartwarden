@@ -1321,7 +1321,7 @@ export const M11_CONTRIBUTED_PERMISSIONS = {
     category: "clinical",
     abac: "caseload_or_scope",
   },
-  // F-195 (#248) — the lab-transmission recovery authority, split OUT of `orders.amend`. `orders.amend` (correct an
+  // F-200 (#248) — the lab-transmission recovery authority, split OUT of `orders.amend`. `orders.amend` (correct an
   // order) is granted to nearly every prescribing/nursing role; the actions below re-disclose a signed order to a lab,
   // attest to a fact about a third party, and can order a test TWICE, so they are a NARROW grant a tenant makes on
   // purpose (org_admin / administrator by default; a DON or clinical lead when the tenant chooses).

@@ -1,5 +1,5 @@
 /**
- * F-193 (#248) — STUCK LAB ORDERS stop waiting on a human to notice, proven end to end over real Postgres.
+ * F-198 (#248) — STUCK LAB ORDERS stop waiting on a human to notice, proven end to end over real Postgres.
  *
  * Two kinds of stuck, with opposite answers (see `orm-request/stuck-recovery.ts`):
  *
@@ -81,7 +81,7 @@ const keys: OutboundTenantKeyProvider = {
 const LOINC = [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }];
 const LAB_DATA = { testCodes: LOINC, fastingRequired: false, routingLabId: FAC_ACTIVE };
 
-describe.skipIf(!DB_URL)("F-193 — stuck lab-order recovery, LIVE Postgres", () => {
+describe.skipIf(!DB_URL)("F-198 — stuck lab-order recovery, LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbOrderBackend>;

@@ -210,7 +210,7 @@ function ormRequestedPayload(overrides: {
   orderId: string;
   organizationId: string;
   labDestinationFacilityId?: string | null;
-  /** F-192 — the request's attempt (F-188), which the worker copies onto the outbound row. */
+  /** F-197 — the request's attempt (F-188), which the worker copies onto the outbound row. */
   attemptId?: string;
 }) {
   return {
@@ -1927,7 +1927,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     await seedFeed({ organizationId: ORG_B, port: 41101 });
   });
 
-  // ── F-192 — the outbound row stores its attempt, and every terminal event built from it names it ─────────────
+  // ── F-197 — the outbound row stores its attempt, and every terminal event built from it names it ─────────────
   // M11's applier applies `transmitted` / `transmission_failed` only to the order's CURRENT attempt (proven in
   // `m11-orm-recovery.live.test.ts`); these prove the M29 half of that contract on the real worker, on every path
   // that emits a terminal event: an AA ack, an AR reject, retry exhaustion, and both reclaim outcomes.
@@ -1940,7 +1940,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     );
     return rows.map((r: { payload: Record<string, unknown> }) => r.payload);
   }
-  /** A worker over the REAL catalog-validating publisher, so events land in `outbox_event` (validated, F-192 schema). */
+  /** A worker over the REAL catalog-validating publisher, so events land in `outbox_event` (validated, F-197 schema). */
   function realPublisherConsumer(transport?: MllpTransport) {
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M29_OUTBOX_EVENTS]));
     const port = {
@@ -1961,7 +1961,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     };
   }
 
-  it("F-192: a normal dispatch copies the request's attempt onto the row, and the AA `transmitted` event names it (validated by the real catalog)", async () => {
+  it("F-197: a normal dispatch copies the request's attempt onto the row, and the AA `transmitted` event names it (validated by the real catalog)", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -1981,7 +1981,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-192: an AR reject's `transmission_failed` (application_reject) names the attempt", async () => {
+  it("F-197: an AR reject's `transmission_failed` (application_reject) names the attempt", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AR" }));
     try {
@@ -2001,7 +2001,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-192: a RETRY keeps the row's attempt (never rewritten), and the exhausted `dlq_exhausted` event names it", async () => {
+  it("F-197: a RETRY keeps the row's attempt (never rewritten), and the exhausted `dlq_exhausted` event names it", async () => {
     registerActiveBaa();
     await seedFeed({ organizationId: ORG_A, port: 1 }); // nothing listens: every attempt fails
     const { port, consumer } = realPublisherConsumer();
@@ -2036,7 +2036,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     expect(events[0]).toMatchObject({ reason: "dlq_exhausted", attemptCount: 5, attemptId });
   });
 
-  it("F-192: an F-183 reclaim REQUEUE keeps the attempt, and the re-sent row's `transmitted` names it", async () => {
+  it("F-197: an F-183 reclaim REQUEUE keeps the attempt, and the re-sent row's `transmitted` names it", async () => {
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
       const attemptId = randomUUID();
@@ -2065,7 +2065,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-192: an F-183 reclaim HOLD (feed not declared as deduping MSH-10) emits `transmission_failed` naming the attempt", async () => {
+  it("F-197: an F-183 reclaim HOLD (feed not declared as deduping MSH-10) emits `transmission_failed` naming the attempt", async () => {
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     try {
@@ -2090,7 +2090,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-192: a request with NO attempt (pre-F-188) or a MALFORMED one stores NULL, the claim is not stranded, and its events carry no attempt", async () => {
+  it("F-197: a request with NO attempt (pre-F-188) or a MALFORMED one stores NULL, the claim is not stranded, and its events carry no attempt", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -2116,7 +2116,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-192 schema (0270): the column exists on the parent, the DEFAULT partition and EVERY partition — including one created later by the partition function", async () => {
+  it("F-197 schema (0270): the column exists on the parent, the DEFAULT partition and EVERY partition — including one created later by the partition function", async () => {
     const has = async (table: string) =>
       (
         await admin.query(

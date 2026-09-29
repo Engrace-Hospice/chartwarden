@@ -1,4 +1,4 @@
--- F-195 (#248) — M11: mitigations for the residual risks of the two-person lab-recovery control (F-194).
+-- F-200 (#248) — M11: mitigations for the residual risks of the two-person lab-recovery control (F-199).
 --
 -- (1) PERMISSION BREADTH. `orders.amend` guarded resend, recover, co-sign and the held-transmission worklist, and the
 --     seed grants it to nearly every clinical role. Three dedicated keys now guard them:

@@ -1,4 +1,4 @@
--- F-193 (#248) — M11: bounded AUTO-RETRY state for lab orders whose ORM never reached M29, and the index the
+-- F-198 (#248) — M11: bounded AUTO-RETRY state for lab orders whose ORM never reached M29, and the index the
 -- stuck-order sweeps and the held-order worklist read through.
 --
 -- WHY STATE ON THE ORDER. F-182's resend, F-187's `dispatch_refused:*` and F-188's recovery all end the same way for an

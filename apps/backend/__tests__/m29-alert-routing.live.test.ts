@@ -207,8 +207,8 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     expect(Object.keys(rows[0].payload as object).sort()).toEqual(["detail", "feedId"]);
   });
 
-  // ── F-191 — STORMS: what an operator sees during an outage, on the REAL emitter as the real NOBYPASSRLS role ──────
-  // BEFORE F-191 (proved below as the un-counted case): a repeat inside the window is absorbed and changes NOTHING on
+  // ── F-196 — STORMS: what an operator sees during an outage, on the REAL emitter as the real NOBYPASSRLS role ──────
+  // BEFORE F-196 (proved below as the un-counted case): a repeat inside the window is absorbed and changes NOTHING on
   // the alert — the 2nd..200th failure is invisible, so "one flaky message" and "the lab is down" look identical.
   const KIND = "hl7_outbound.transmission_failed" as const;
   const STORM_KIND = "hl7_outbound.transmission_storm";
@@ -234,7 +234,7 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
   const deliveriesOf = async (alertId: string) =>
     (await admin.query("SELECT count(*)::int n FROM notification_delivery WHERE alert_id=$1", [alertId])).rows[0].n as number;
 
-  it("F-191 baseline: WITHOUT countRepeats a repeat is silently absorbed — the alert never changes (unchanged for every other producer)", async () => {
+  it("F-196 baseline: WITHOUT countRepeats a repeat is silently absorbed — the alert never changes (unchanged for every other producer)", async () => {
     const feed = feedIn(1);
     const at = new Date("2026-08-01T03:00:00Z");
     const a = await emitter.emit(ORG_A, buildOutboundAlertEmit({ ...intent(KIND), feedId: feed }, at));
@@ -246,7 +246,7 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     expect(await deliveriesOf(a.alertId)).toBe(2);
   });
 
-  it("F-191: the first failure pages immediately and exactly the intended people; the count starts at 1", async () => {
+  it("F-196: the first failure pages immediately and exactly the intended people; the count starts at 1", async () => {
     const feed = feedIn(2);
     await storm(ORG_A, feed, new Date("2026-08-02T03:00:00Z"), 1);
     const [row, ...rest] = await alertsOf(ORG_A, KIND, feed);
@@ -256,7 +256,7 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     expect(await alertsOf(ORG_A, STORM_KIND, feed)).toHaveLength(0); // no escalation for one failure
   });
 
-  it("F-191: a storm of 25 pages ONCE, counts all 25, and escalates EXACTLY ONCE (critical, org_admin + clinical_lead)", async () => {
+  it("F-196: a storm of 25 pages ONCE, counts all 25, and escalates EXACTLY ONCE (critical, org_admin + clinical_lead)", async () => {
     const feed = feedIn(3);
     await storm(ORG_A, feed, new Date("2026-08-03T03:00:00Z"), 25);
     const failures = await alertsOf(ORG_A, KIND, feed);
@@ -271,21 +271,21 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     expect(await recipientsOf(escalations[0]!.id)).toEqual([user.orgAdmin, user.clinicalLead].sort());
   });
 
-  it("F-191: below the threshold there is a count but no escalation", async () => {
+  it("F-196: below the threshold there is a count but no escalation", async () => {
     const feed = feedIn(4);
     await storm(ORG_A, feed, new Date("2026-08-04T03:00:00Z"), 9);
     expect((await alertsOf(ORG_A, KIND, feed))[0]!.payload.occurrences).toBe(9);
     expect(await alertsOf(ORG_A, STORM_KIND, feed)).toHaveLength(0);
   });
 
-  it("F-191: CONCURRENT repeats are counted exactly (no lost update) and still escalate exactly once", async () => {
+  it("F-196: CONCURRENT repeats are counted exactly (no lost update) and still escalate exactly once", async () => {
     const feed = feedIn(5);
     await stormAllAtOnce(ORG_A, feed, new Date("2026-08-05T03:00:00Z"), 60); // all 60 in flight from a cold start
     expect((await alertsOf(ORG_A, KIND, feed))[0]!.payload.occurrences).toBe(60);
     expect(await alertsOf(ORG_A, STORM_KIND, feed)).toHaveLength(1);
   });
 
-  it("F-191: the next window pages AGAIN with a fresh count, and can escalate again", async () => {
+  it("F-196: the next window pages AGAIN with a fresh count, and can escalate again", async () => {
     const feed = feedIn(6);
     const w1 = new Date("2026-08-06T03:00:00Z");
     const w2 = new Date(w1.getTime() + OUTBOUND_ALERT_WINDOW_MS[KIND]);
@@ -297,7 +297,7 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     expect(await deliveriesOf(failures[1]!.id)).toBe(2);
   });
 
-  it("F-191: another feed and another tenant count independently (neither inflates nor triggers the other's escalation)", async () => {
+  it("F-196: another feed and another tenant count independently (neither inflates nor triggers the other's escalation)", async () => {
     const feed = feedIn(7);
     const at = new Date("2026-08-07T03:00:00Z");
     await storm(ORG_A, feed, at, 6);
@@ -311,7 +311,7 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     expect(await recipientsOf((await alertsOf(ORG_B, KIND, feed))[0]!.id)).toEqual([user.otherTenantAdmin]);
   });
 
-  it("F-191: BAA alerts are counted but never escalated", async () => {
+  it("F-196: BAA alerts are counted but never escalated", async () => {
     const at = new Date("2026-08-08T03:00:00Z");
     const feed = feedIn(9);
     for (let i = 0; i < 30; i++)
@@ -322,7 +322,7 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     expect(await alertsOf(ORG_A, STORM_KIND, feed)).toHaveLength(0);
   });
 
-  it("F-191: neither alert carries PHI — ids, integers and fixed sentences only", async () => {
+  it("F-196: neither alert carries PHI — ids, integers and fixed sentences only", async () => {
     const feed = feedIn(3); // the 25-failure storm above
     const [fail] = await alertsOf(ORG_A, KIND, feed);
     const [esc] = await alertsOf(ORG_A, STORM_KIND, feed);
@@ -331,7 +331,7 @@ describe.skipIf(!DB_URL)("F-188 — M29 outbound alerts reach a person, LIVE Pos
     expect(JSON.stringify([fail!.payload, esc!.payload])).not.toMatch(/MRN|DOB|PID\||patient/i);
   });
 
-  it("F-191: the seeded rule for the escalation reaches org_admin + clinical_lead and no bystander", async () => {
+  it("F-196: the seeded rule for the escalation reaches org_admin + clinical_lead and no bystander", async () => {
     const { rows } = await admin.query(
       "SELECT recipient_resolver, severity_floor, resolver_args FROM alert_rule WHERE organization_id IS NULL AND event_type=$1 AND enabled",
       [STORM_KIND],

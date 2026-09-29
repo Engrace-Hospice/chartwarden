@@ -142,7 +142,7 @@ const PERMISSION_SEED = [
   },
   // Holds everything a clinician does EXCEPT the amend key.
   { userId: "rn_no_amend", permissions: ["orders.read", "orders.draft", "orders.sign"] },
-  // F-195 — holds `orders.amend` (the key the resend USED to be gated on) but NOT the recovery authority the resend is now gated on.
+  // F-200 — holds `orders.amend` (the key the resend USED to be gated on) but NOT the recovery authority the resend is now gated on.
   { userId: "amend_only", permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend"] },
   { userId: "viewer_1", permissions: ["orders.read"] },
 ];
@@ -204,7 +204,7 @@ describe("F-182 — POST /api/v1/orders/:id/resend-transmission", () => {
     return res.json().id as string;
   }
 
-  it("is gated on orders.transmission.recover: read-only, clinician-without-amend and a holder of `orders.amend` ALONE are 403 (F-195)", async () => {
+  it("is gated on orders.transmission.recover: read-only, clinician-without-amend and a holder of `orders.amend` ALONE are 403 (F-200)", async () => {
     const { app } = makeServer();
     const id = await draft(app);
     for (const headers of [VIEWER, RN_NO_AMEND, AMEND_ONLY]) {

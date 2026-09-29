@@ -117,37 +117,37 @@ export interface OrderDetailView extends OrderView {
   readonly requirements: readonly OrderRequirement[];
   readonly allowedActions: OrderAllowedActions;
   /**
-   * F-194 — the order's attested-recovery HISTORY (append-only ledger rows, oldest first). Empty for a non-lab order
+   * F-199 — the order's attested-recovery HISTORY (append-only ledger rows, oldest first). Empty for a non-lab order
    * and for a lab order that was never recovered. The lab contact's NAME and the lab's reference are a third party's
-   * personal data: they are `null` unless the reader holds `orders.transmission.recover` (F-195) or `orders.transmission.cosign_escalated`.
+   * personal data: they are `null` unless the reader holds `orders.transmission.recover` (F-200) or `orders.transmission.cosign_escalated`.
    */
   readonly transmissionAttestations: readonly TransmissionAttestationView[];
-  /** F-194 — the recovery awaiting its co-signature, if any (at most one per order); `null` otherwise. */
+  /** F-199 — the recovery awaiting its co-signature, if any (at most one per order); `null` otherwise. */
   readonly pendingRecovery: RecoveryRequestView | null;
 }
 
-/** F-194 — one attested recovery, as the order detail shows it. Ids only for "who", per the rest of the view. */
+/** F-199 — one attested recovery, as the order detail shows it. Ids only for "who", per the rest of the view. */
 export interface TransmissionAttestationView {
   readonly id: string;
   readonly attestation: "not_received_by_lab" | "received_by_lab";
   readonly outcome: "redispatched" | "marked_transmitted";
   readonly priorFailureReason: string;
   readonly attestedByMembershipId: string | null;
-  /** The second person (dual control) — `null` for `received_by_lab` and for rows recorded before F-194. */
+  /** The second person (dual control) — `null` for `received_by_lab` and for rows recorded before F-199. */
   readonly cosignedByMembershipId: string | null;
   readonly attemptId: string | null;
   readonly createdAt: string;
-  /** Redacted (`null`) for a reader without `orders.transmission.recover` / `.cosign_escalated` (F-195). */
+  /** Redacted (`null`) for a reader without `orders.transmission.recover` / `.cosign_escalated` (F-200). */
   readonly labContactName: string | null;
   readonly labReference: string | null;
 }
 
-/** F-194 — a two-person recovery request. `labContactName` / `labReference` are redacted like the ledger's. */
+/** F-199 — a two-person recovery request. `labContactName` / `labReference` are redacted like the ledger's. */
 export interface RecoveryRequestView {
   readonly id: string;
   readonly orderId: string;
   readonly status: "pending_cosign" | "executed" | "cancelled" | "expired" | "superseded";
-  /** F-195 — why a `superseded` request can no longer execute (a fixed token); `null` otherwise. */
+  /** F-200 — why a `superseded` request can no longer execute (a fixed token); `null` otherwise. */
   readonly supersededReason: string | null;
   readonly requestedByMembershipId: string | null;
   readonly requestedAt: string;
@@ -399,14 +399,14 @@ export interface ResendLabTransmissionResult {
  */
 export interface RecoverLabTransmissionResult {
   /**
-   * F-194 — `pending_cosign`: a `not_received_by_lab` attestation no longer executes on its own. It FILED a recovery
+   * F-199 — `pending_cosign`: a `not_received_by_lab` attestation no longer executes on its own. It FILED a recovery
    * request (see `recovery`) that a DIFFERENT authorized person must co-sign before anything is re-dispatched; the order
    * is unchanged. `redispatched` is now the result of the CO-SIGN, never of the first call.
    */
   readonly outcome: "redispatched" | "marked_transmitted" | "still_refused" | "pending_cosign";
   readonly refusalReason: string | null;
   readonly order: OrderDetailView;
-  /** F-194 — the request this call filed (`pending_cosign`) or executed (`redispatched`); `null` otherwise. */
+  /** F-199 — the request this call filed (`pending_cosign`) or executed (`redispatched`); `null` otherwise. */
   readonly recovery: RecoveryRequestView | null;
 }
 
@@ -531,7 +531,7 @@ export interface OrderRouteService extends OrderAbacResolver {
     auditUserId?: string,
   ): Promise<RecoverLabTransmissionResult>;
   /**
-   * F-194 — CO-SIGN a pending `not_received_by_lab` recovery (the second person of the two-person control). Refused —
+   * F-199 — CO-SIGN a pending `not_received_by_lab` recovery (the second person of the two-person control). Refused —
    * 409, in this order — when the request is not pending, has lapsed, or was filed by the SAME user; otherwise it
    * executes the re-dispatch exactly as the single-person path did, in one transaction, and raises the compliance alert.
    * `auditUserId` is the Better Auth USER id (the distinctness rule compares it, not the membership id).
@@ -544,7 +544,7 @@ export interface OrderRouteService extends OrderAbacResolver {
     actor?: OrderDetailActor,
     auditUserId?: string,
   ): Promise<RecoverLabTransmissionResult>;
-  /** F-194 — CANCEL a pending recovery (either person). Raises the (info) compliance alert; a settled request is a 409. */
+  /** F-199 — CANCEL a pending recovery (either person). Raises the (info) compliance alert; a settled request is a 409. */
   cancelLabTransmissionRecovery(
     organizationId: string,
     membershipId: string,
@@ -554,7 +554,7 @@ export interface OrderRouteService extends OrderAbacResolver {
     auditUserId?: string,
   ): Promise<{ readonly recovery: RecoveryRequestView; readonly order: OrderDetailView }>;
   /**
-   * F-194 — the sweep: every pending recovery past its `expires_at` becomes `expired` and raises the compliance alert.
+   * F-199 — the sweep: every pending recovery past its `expires_at` becomes `expired` and raises the compliance alert.
    * Runs from the hourly M11 timer (system actor, per org). Returns how many lapsed.
    */
   expireStaleLabRecoveryRequests(

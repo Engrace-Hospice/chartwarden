@@ -37,7 +37,7 @@ export const OUTBOUND_ALERT_WINDOW_MS: Readonly<Record<OutboundAlert["kind"], nu
   "hl7_outbound.transmission_failed": HOUR_MS,
   "external_feed.baa_expired": DAY_MS,
   "external_feed.baa_missing": DAY_MS,
-  // F-191 — same window as the failures it escalates, so the escalation is once per (feed, window) too.
+  // F-196 — same window as the failures it escalates, so the escalation is once per (feed, window) too.
   "hl7_outbound.transmission_storm": HOUR_MS,
 };
 
@@ -65,7 +65,7 @@ export function buildOutboundAlertEmit(
   };
 }
 
-// ── F-191 — STORMS: count the repeats the window absorbs, and escalate once when a feed is clearly down ─────────
+// ── F-196 — STORMS: count the repeats the window absorbs, and escalate once when a feed is clearly down ─────────
 //
 // F-188's window means a retry storm pages ONCE — the right thing for a pager, but it made the storm invisible: the
 // 2nd..200th failing order changed nothing on the alert, so an operator could not tell "one flaky message" from "the

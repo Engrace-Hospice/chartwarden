@@ -44,7 +44,7 @@ export {
   registerM11VerbalOrderExpiryWorker,
   runVerbalOrderExpiryFanout,
   scheduleM11VerbalOrderExpiry,
-  // F-193 (#248) — the stuck lab-order recovery tick (auto-retry of row-less refusals + held-order aging).
+  // F-198 (#248) — the stuck lab-order recovery tick (auto-retry of row-less refusals + held-order aging).
   M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID,
   M11_STUCK_TRANSMISSION_QUEUE,
   M11_STUCK_TRANSMISSION_SCHEDULE,
@@ -52,7 +52,7 @@ export {
   runStuckTransmissionFanout,
   scheduleM11StuckTransmission,
 } from "./jobs";
-// F-193 (#248) — auto-retry of orders refused before any outbound row existed, and the held-order worklist + escalation.
+// F-198 (#248) — auto-retry of orders refused before any outbound row existed, and the held-order worklist + escalation.
 export {
   type HeldAgingSweepSummary,
   type HeldTransmissionItem,
@@ -87,7 +87,7 @@ export function mountOrderRoutes(
   outbox?: OrderWriteOutboxPort,
   /** F-181 (#248) — the lab-ORM producer's ports (M5 demographics, M40 physician, M29-aware destination). */
   orm?: OrmRequestedPorts,
-  /** F-194 (#248) — the two-person recovery control's alert port / TTL / repeat-attester knobs. */
+  /** F-199 (#248) — the two-person recovery control's alert port / TTL / repeat-attester knobs. */
   recovery?: RecoveryControls,
 ): void {
   const backend = createDbOrderBackend(db, outbox, orm, recovery);
@@ -238,7 +238,7 @@ export {
   buildM11LabCancellationConsumer,
   decideLabCancellation,
 } from "./outbox-consumers/lab-cancellation-required";
-// F-195 (#248) — durable delivery of the two-person lab-recovery control's compliance alerts.
+// F-200 (#248) — durable delivery of the two-person lab-recovery control's compliance alerts.
 export {
   M11_RECOVERY_ALERT_CONSUMER,
   M11_RECOVERY_ALERT_TYPES,
