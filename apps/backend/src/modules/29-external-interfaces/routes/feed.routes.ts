@@ -25,14 +25,18 @@ import {
   parse,
   parseQuery,
 } from "./m29-typebox";
+import { assertHostAcceptable, assertProtocolAcceptable, resolveCertPin } from "./feed-input";
 import type { M29Store } from "./store";
 
 export interface FeedRouteDeps {
   readonly store: M29Store;
+  /** Environment the F-178 production policy reads (defaults to `process.env`; injectable for tests). */
+  readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
 export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): void {
   const { store } = deps;
+  const envOf = (): Readonly<Record<string, string | undefined>> => deps.env ?? process.env;
 
   // GET /feeds — list the org's feeds.
   app.get(
@@ -85,7 +89,11 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
     },
     async (request, reply) => {
       const actor = writeActorOf(request);
-      const body = parse(CreateFeedBody, request.body);
+      const { channelCertPem, ...parsed } = parse(CreateFeedBody, request.body);
+      const channelCertPin = resolveCertPin({ channelCertPin: parsed.channelCertPin, channelCertPem });
+      assertProtocolAcceptable(parsed, envOf());
+      assertHostAcceptable(parsed.host, envOf());
+      const body = channelCertPin === undefined ? parsed : { ...parsed, channelCertPin };
       const feed = await store.createFeed(actor.organizationId, actor.membershipId, body);
       return reply.code(201).send({ feed });
     },
@@ -104,7 +112,10 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
     async (request) => {
       const actor = writeActorOf(request);
       const { feedId } = request.params as { feedId: string };
-      const body = parse(UpdateFeedBody, request.body);
+      const { channelCertPem, ...parsed } = parse(UpdateFeedBody, request.body);
+      const channelCertPin = resolveCertPin({ channelCertPin: parsed.channelCertPin, channelCertPem });
+      assertHostAcceptable(parsed.host, envOf());
+      const body = channelCertPin === undefined ? parsed : { ...parsed, channelCertPin };
       const feed = await store.updateFeed(actor.organizationId, actor.membershipId, feedId, body);
       return { feed };
     },
@@ -124,6 +135,12 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
     async (request) => {
       const actor = writeActorOf(request);
       const { feedId } = request.params as { feedId: string };
+      // F-178 — a feed created before this deployment became production must not be activatable as cleartext.
+      const existing = await store.getFeed(actor.organizationId, feedId);
+      if (existing) {
+        assertProtocolAcceptable(existing, envOf());
+        assertHostAcceptable(existing.host ?? undefined, envOf());
+      }
       const feed = await store.activateFeed(actor.organizationId, actor.membershipId, feedId);
       return { feed };
     },

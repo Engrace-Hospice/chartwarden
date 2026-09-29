@@ -19777,6 +19777,7 @@ export interface operations {
                     port: number;
                     protocol: "mllp_tls" | "mllp_plain";
                     channelCertPin?: string;
+                    channelCertPem?: string;
                     sendingFacilityAllowlist?: string[];
                     baaContractRef?: string;
                     /** Format: date-time */
@@ -19859,6 +19860,7 @@ export interface operations {
                     displayName?: string;
                     host?: string;
                     channelCertPin?: string;
+                    channelCertPem?: string;
                     sendingFacilityAllowlist?: string[];
                     baaContractRef?: string;
                     /** Format: date-time */

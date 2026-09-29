@@ -105,7 +105,11 @@ export const CreateFeedBody = Type.Object({
   host: Type.Optional(Type.String({ maxLength: 255 })),
   port: Type.Integer({ minimum: 1, maximum: 65535 }),
   protocol: FeedProtocolSchema,
+  /** Canonical form: lowercase-hex sha256 of the certificate's DER encoding (F-178). */
   channelCertPin: Type.Optional(Type.String({ pattern: "^[a-f0-9]{64}$" })),
+  /** F-178 — the feed's server certificate in PEM form; the server derives the canonical `channelCertPin`
+   *  (sha256 of the DER) from it. Send this OR `channelCertPin` (or both, if they agree). */
+  channelCertPem: Type.Optional(Type.String({ minLength: 64, maxLength: 16384 })),
   sendingFacilityAllowlist: Type.Optional(
     Type.Array(Type.String({ minLength: 1, maxLength: 80 }), { maxItems: 64 }),
   ),
@@ -118,7 +122,11 @@ export type CreateFeedInput = Static<typeof CreateFeedBody>;
 export const UpdateFeedBody = Type.Object({
   displayName: Type.Optional(Type.String({ minLength: 3, maxLength: 120 })),
   host: Type.Optional(Type.String({ maxLength: 255 })),
+  /** Canonical form: lowercase-hex sha256 of the certificate's DER encoding (F-178). */
   channelCertPin: Type.Optional(Type.String({ pattern: "^[a-f0-9]{64}$" })),
+  /** F-178 — the feed's server certificate in PEM form; the server derives the canonical `channelCertPin`
+   *  (sha256 of the DER) from it. Send this OR `channelCertPin` (or both, if they agree). */
+  channelCertPem: Type.Optional(Type.String({ minLength: 64, maxLength: 16384 })),
   sendingFacilityAllowlist: Type.Optional(
     Type.Array(Type.String({ minLength: 1, maxLength: 80 }), { maxItems: 64 }),
   ),

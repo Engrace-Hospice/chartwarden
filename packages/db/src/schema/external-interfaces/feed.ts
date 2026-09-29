@@ -45,7 +45,10 @@ export const externalFeed = pgTable(
     host: text("host"),
     port: integer("port").notNull(),
     protocol: externalFeedProtocol("protocol").notNull(),
-    /** sha256(certPEM) — null only for `mllp_plain` (test only). */
+    /** Lowercase-hex sha256 of the certificate's DER encoding — the canonical convention (F-178, defined in
+     *  `apps/backend/src/modules/29-external-interfaces/feed/cert-pin.ts`; the admin routes derive it from an
+     *  uploaded PEM). NOT a hash of PEM text (not byte-stable). Null only for `mllp_plain` (test only;
+     *  refused for outbound feeds in production). */
     channelCertPin: text("channel_cert_pin"),
     /** string[] of M40 Facility ids — the per-feed MSH-4 sender allowlist (§4.11.2). */
     sendingFacilityAllowlist: jsonb("sending_facility_allowlist")

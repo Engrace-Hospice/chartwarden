@@ -66,6 +66,48 @@ export type RetryDecision =
     };
 
 /**
+ * F-178 — a failure retrying can never fix (a destination/protocol the deployment REFUSES to dial): go
+ * straight to the terminal DLQ decision instead of burning five backoff attempts against a target the policy
+ * will refuse every time. Same event / alert / audit shape as an exhausted DLQ so M11 (F-177) and M36 treat
+ * it as any other terminal failure; `detail` carries the short PHI-free refusal label and `attemptCount` is
+ * the true number of attempts (this one).
+ */
+export function decidePermanentFailure(input: RetryDecisionInput): Extract<RetryDecision, { kind: "dlq" }> {
+  const { outbound } = input;
+  const attemptNumber = outbound.retryCount + 1;
+  return {
+    kind: "dlq",
+    statusUpdate: { status: "dlq", retryCount: attemptNumber, nextRetryAt: null },
+    event: {
+      name: "m29.lab_order.transmission_failed",
+      payload: {
+        orderId: outbound.sourceAggregateId,
+        organizationId: outbound.organizationId,
+        feedId: outbound.feedId,
+        outboundMessageId: outbound.id,
+        reason: "dlq_exhausted",
+        detail: input.lastError || null,
+        attemptCount: attemptNumber,
+      },
+    },
+    alert: {
+      kind: "hl7_outbound.transmission_failed",
+      severity: "HIGH",
+      channel: "operator-on-call",
+      feedId: outbound.feedId,
+      detail: `outbound ORM refused by destination policy (${input.lastError || "refused"}) — fix the feed configuration, then resend`,
+    },
+    audit: {
+      kind: "hl7.outbound.dlq",
+      feedId: outbound.feedId,
+      orderRecordId: outbound.sourceAggregateId,
+      outboundMessageId: outbound.id,
+      messageControlId: null,
+    },
+  };
+}
+
+/**
  * Decide the fate of a failed outbound dispatch attempt (D9). `attemptNumber` is the 1-based count including
  * this failure (`retryCount + 1`). When it reaches `OUTBOUND_MAX_ATTEMPTS` the row DLQs; otherwise it
  * re-queues with the exponential backoff delay for that attempt.
