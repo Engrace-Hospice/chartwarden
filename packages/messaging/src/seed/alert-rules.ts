@@ -346,6 +346,42 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: true,
     enabled: true,
   },
+  // ── M29 outbound lab-order transmission (F-186, #248; spec §5.3) ────────────────────────────────────────
+  // Until F-186 none of these three kinds had a rule: the worker's alerts (also mis-typed, see
+  // `29-external-interfaces/outbound/alert-routing.ts`) reached nobody. Audiences follow the §5.3 table: a failed
+  // outbound ORM → "operator-on-call, M11 owners" (a tenant's operator is its `org_admin`; M11's owners are the
+  // clinical leads who own lab orders); a BAA refusal on outbound → "compliance officer", with `org_admin` as the
+  // backstop for a tenant that has no compliance-officer role assigned (a lapse blocks EVERY lab send for the feed).
+  {
+    eventType: "hl7_outbound.transmission_failed",
+    category: "operational",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["org_admin", "clinical_lead"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "external_feed.baa_expired",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
+  {
+    eventType: "external_feed.baa_missing",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "org_admin"] },
+    channelsOverride: null,
+    systemLocked: false,
+    enabled: true,
+  },
 ];
 
 /** The event types of the three `system_locked` platform rules (§7.4) — the always-on floor a

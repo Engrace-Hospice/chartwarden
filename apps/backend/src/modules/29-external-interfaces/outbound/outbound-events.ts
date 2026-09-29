@@ -72,12 +72,20 @@ export type OutboundOutboxEvent =
       readonly payload: LabOrderDispatchRefusedPayload;
     };
 
+/**
+ * Every M36 alert `eventType` the outbound worker can emit. A runtime list (not just a type) so F-186's guard can
+ * assert each one has a seeded platform-default `alert_rule` — an alert kind with no rule persists an `alert` row
+ * with zero recipients, i.e. reaches nobody.
+ */
+export const OUTBOUND_ALERT_KINDS = [
+  "hl7_outbound.transmission_failed",
+  "external_feed.baa_expired",
+  "external_feed.baa_missing",
+] as const;
+
 /** An M36 typed-alert intent (§4.9). M29 owns no delivery code — the T08 worker hands this to M36's engine. */
 export interface OutboundAlert {
-  readonly kind:
-    | "hl7_outbound.transmission_failed"
-    | "external_feed.baa_expired"
-    | "external_feed.baa_missing";
+  readonly kind: (typeof OUTBOUND_ALERT_KINDS)[number];
   readonly severity: "HIGH" | "NORMAL";
   readonly channel: "operator-on-call" | "compliance";
   readonly feedId: string;
