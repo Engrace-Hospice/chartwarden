@@ -190,7 +190,13 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       removedAt: Type.String(),
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
-    declaredConsumers: ["m22", "m5"],
+    // F-167 (#248) — m5 removed: the fact is for M22/M28's per-signed-URL disclosure-subsetter cache
+    // (this event's own description), not M5's categorical, patient-level `patient_privacy_flag_
+    // snapshot` (no recipient dimension exists in that schema at all — `packages/db/src/schema/
+    // patient/patient-privacy-flag-snapshots.ts`), and the payload doesn't even carry `typeKey`.
+    // M22's own `outbox-consumers/render-consumer.ts` (F-161) independently reached the identical
+    // "no persistent state to invalidate" conclusion for this exact event.
+    declaredConsumers: ["m22"],
     isOutboxOnly: true,
   },
   {

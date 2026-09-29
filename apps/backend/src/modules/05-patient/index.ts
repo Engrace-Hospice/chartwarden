@@ -102,6 +102,12 @@ export {
   buildM5VisitAssignedConsumer,
   buildM5VisitUnassignedConsumer,
 } from "./outbox-consumers/m17-visit-assignment";
+// F-167 (#248) — the §7.6/D10 privacy-flag-snapshot recompute off M39's signed/revoked/supersedes/
+// renewed consent lifecycle.
+export {
+  M5_CONSENT_PRIVACY_CONSUMER,
+  buildM5ConsentPrivacyConsumer,
+} from "./outbox-consumers/m39-consent-privacy";
 export {
   M5_QUEUES,
   M5_JOB_SCHEDULES,
@@ -118,6 +124,7 @@ export {
   SudConsentRequiredError,
   M39_CONSENT_CONSUMER_DEFERRED,
   recomputePrivacyFlags,
+  mergeConsentSignal,
   isSudReadAllowed,
   assertSudReadAllowed,
   applyConsentChanged,

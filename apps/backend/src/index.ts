@@ -167,6 +167,7 @@ import { createM34DestructionWorkflow } from "./modules/04-audit/m34-destruction
 import {
   M5_OUTBOX_EVENTS,
   buildM5AdmissionSitingConsumer,
+  buildM5ConsentPrivacyConsumer,
   buildM5DeathCascadeConsumer,
   buildM5VisitAssignedConsumer,
   buildM5VisitUnassignedConsumer,
@@ -413,6 +414,7 @@ import {
 // F-161 (#248) — M16's org-explicit bereavement-plan-siting seam, injected as a port into M30's
 // plan-closure consumer (M30's manifest `dependsOn` excludes 16, the F-160 `CapConsumerStore` shape).
 import {
+  bereavedContactFlipCandidateForOrg,
   bereavedContactFlipCandidatesForPlanForOrg,
   bereavementPlanSitingForOrg,
 } from "./modules/16-bereavement/seams/plan-provider-entity-for-org";
@@ -651,6 +653,9 @@ import { buildM31VisitRescheduledTelehealthConsumer } from "./modules/31-portal/
 import { buildM31EncounterSignedTelehealthConsumer } from "./modules/31-portal/outbox-consumers/m8-encounter-signed-telehealth";
 import { buildM31BereavementPlanClosedConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-plan-closed";
 import { buildM31BereavementPlanOpenedConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-plan-opened";
+// F-167 (#248) — the per-contact-exact D6 lateral-flip trigger `plan_opened`'s own sibling names as "the
+// real primary trigger." Fed by M16's new single-contact seam read (`bereavedContactFlipCandidateForOrg`).
+import { buildM31BereavementContactActiveConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-contact-active";
 import { buildM31ConsentRevokedGrantCascadeConsumer } from "./modules/31-portal/outbox-consumers/m39-consent-revoked";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
@@ -5464,6 +5469,15 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             db: dbHandle.db,
             bereavedContactFlipCandidatesForPlan: bereavedContactFlipCandidatesForPlanForOrg,
           }),
+          // F-167 (#248) — the per-contact-exact D6 lateral-flip trigger: `contact_active` fires once per
+          // CONTACT at the moment its own bereavement_outreach_consent is verified, the real primary
+          // trigger `plan_opened`'s own header names (that one fires per-PLAN, before any contact
+          // confirms, so its own per-contact loop almost always no-ops). The candidate read goes through
+          // M16's new single-contact org-explicit seam (`bereavedContactFlipCandidateForOrg`).
+          buildM31BereavementContactActiveConsumer({
+            db: dbHandle.db,
+            bereavedContactFlipCandidateForContact: bereavedContactFlipCandidateForOrg,
+          }),
           buildM8VisitPublishedConsumer({
             db: dbHandle.db,
             outbox: m8OutboxPublisher,
@@ -5658,6 +5672,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
                 }),
               ]
             : []),
+          // F-167 (#248, m5 group) — the §7.6/D10 privacy-flag-snapshot recompute off M39's
+          // signed/revoked/supersedes/renewed consent lifecycle (the one real relationship: M39's own
+          // spec §4.3.1 names `42_cfr_part_2_release` → `sud` and no other type).
+          buildM5ConsentPrivacyConsumer({ db: dbHandle.db, outbox: m5OutboxPublisher }),
           // M10 §2.2.1 (#48): the HOPE timepoint-schedule write path is `buildM10AdmissionWorkflowConsumer`
           // above. The lost-history `buildM10AdmissionSchedulingConsumer` handled the same two events and
           // wrote the same rows; only one may be bound (restored 2026-09-25, see the force-push recovery audit).

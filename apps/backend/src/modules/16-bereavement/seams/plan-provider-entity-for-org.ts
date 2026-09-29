@@ -106,3 +106,55 @@ export function bereavedContactFlipCandidatesForPlanForOrg(
     },
   );
 }
+
+// F-167 (#248) — the `m16.bereavement.contact_active` M31 consumer's read. Single-contact sibling of
+// `bereavedContactFlipCandidatesForPlanForOrg` above (same null-on-miss / status='active' filter, same
+// RLS-plus-explicit-predicate shape), keyed by `contactId` instead of scanning a whole plan — the event
+// fires per-contact and this is the fact it needs, re-read fresh (never trusted off the payload) so a
+// contact that has since left `active` (opted out, deceased) between publish and delivery is honestly a
+// no-op rather than acting on stale payload state.
+
+/** One already-confirmed bereaved contact, as the `contact_active` consumer needs it — widens the plan
+ *  candidate shape with `planId` since this read is keyed by contact rather than scoped to one plan. */
+export interface BereavedContactFlipCandidateByContact extends BereavedContactFlipCandidate {
+  readonly planId: string;
+}
+
+/**
+ * The current state of ONE `bereaved_contact`, org-explicit and worker-callable — `null` when the id is
+ * unknown in `organizationId`, not currently `active`, or missing a linked portal account / consent
+ * record (the exact candidacy `planBereavedFlip` needs).
+ */
+export function bereavedContactFlipCandidateForOrg(
+  db: DbClient,
+  organizationId: string,
+  contactId: string,
+): Promise<BereavedContactFlipCandidateByContact | null> {
+  return withOrgContext(
+    db,
+    { organizationId, userId: PLAN_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const [row] = await tx
+        .select({
+          planId: CONTACT.planId,
+          portalAccountId: CONTACT.portalAccountId,
+          consentRecordId: CONTACT.consentRecordId,
+        })
+        .from(CONTACT)
+        .where(
+          and(
+            eq(CONTACT.organizationId, organizationId),
+            eq(CONTACT.id, contactId),
+            eq(CONTACT.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (!row || row.portalAccountId === null || row.consentRecordId === null) return null;
+      return {
+        planId: row.planId,
+        portalAccountId: row.portalAccountId,
+        consentRecordId: row.consentRecordId,
+      };
+    },
+  );
+}

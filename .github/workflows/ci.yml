@@ -513,6 +513,9 @@ jobs:
               name: "M5 visit-assignment shift cache",
               scripts: "test:m5:visit-assignment-cache:live",
             }
+          # F-167 (#248) — the m5 `handlers-unbound` group's `m39.consent.{signed,revoked,supersedes,
+          # renewed}` privacy-flag-snapshot recompute (§7.6/D10).
+          - { name: "M5 consent privacy-flag recompute", scripts: "test:m5:consent-privacy:live" }
           - {
               name: "M25 Remittance",
               scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live",
@@ -543,7 +546,9 @@ jobs:
                 # grant revocation + the broad m39.consent.revoked grant cascade.
                 # F-165 (#248) adds test:m31:bereavement-plan-opened:live — the D6 lateral flip's
                 # INSERT half, re-checked past F-164's BLOCKED verdict.
-                "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live test:m31:bereavement-consent-consumers:live test:m31:bereavement-plan-opened:live",
+                # F-167 (#248) adds test:m31:bereavement-contact-active:live — the per-contact-exact
+                # trigger `plan_opened`'s own header names as the real primary mechanism.
+                "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live test:m31:bereavement-consent-consumers:live test:m31:bereavement-plan-opened:live test:m31:bereavement-contact-active:live",
             }
           - {
               name: "M36 Messaging alerts",

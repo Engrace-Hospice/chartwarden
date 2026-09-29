@@ -2671,6 +2671,115 @@ boots), all five new live suites run individually against the same disposable Po
 `m13:reconciliation-triggers` 5/5, `m17:evv-sos-consumers` 4/4, `m17:evv-checkout-corrected` 5/5).
 Leaving #248 open — 86 pairs across 17 modules remain.
 
+**An eighth round of five parallel forks yielded the smallest build-to-investigation ratio of the
+series so far — 2 of 5 groups built real bindings, 3 of 5 found nothing buildable and instead
+strengthened their groups' standing reasons with fresh, re-verified findings (F-167, #248).** Per
+the same "5 forks, verify before applying" discipline, each fork investigated one (or a bundle of
+small) `handlers-unbound`/`no-consumer-surface` group and reported BUILT or BLOCKED; the
+coordinator independently re-verified every claim — reading the actual seam signatures, schema
+columns, and catalog declarations — before applying anything. **M31 — 1 of 6 built.**
+`m16.bereavement.contact_active` is now live: the per-contact-exact D6 lateral-flip trigger the
+already-bound `plan_opened` consumer's own header (F-165) names as "the real primary trigger" —
+`plan_opened` fires once per PLAN, before any contact has confirmed, so its own per-contact loop
+almost always finds nothing, while `contact_active` fires exactly once per CONTACT at the moment
+that contact's own `bereavement_outreach_consent` is verified. A new M16 org-explicit seam
+(`bereavedContactFlipCandidateForOrg`, the single-contact sibling of the existing plan-wide read,
+re-resolved fresh by contact id rather than trusted off the payload so a contact that has since
+left `active` is an honest no-op) feeds a new M31 consumer that resolves the decedent patient via
+`BereavementPlanProvider.planById` and the governing consent version via M39's
+`ConsentEvaluator.evaluate`, cross-checked against the contact's own `consent_record_id` — a
+mismatch skips rather than attributes the flip to the wrong record. The other 5 M31 candidates were
+re-verified and stay genuinely blocked, unchanged from F-163/F-164: `m17.visit.published` (a
+missing telehealth data-model fact, a hardcoded crypto AAD, and no job tier — three independent
+gaps), `m22.document.rendered` (the seam-vs-push trap — the dashboard already live-pulls this fact
+per request), both `m39.consent.delegated_access.*` events (no schema bridge from an M5 caregiver
+row to a portal userId exists anywhere), and `m6.admission.discharged` (redundant with the already-
+bound death chain on the death branch; needs a still-nonexistent cron tier on the grace-timer
+branch). **M5 — 4 of 6 built, 1 dropped as misdeclared, 1 stays blocked.** `m39.consent.signed`,
+`.revoked`, `.supersedes` and `.renewed` are now bound to a single new consumer
+(`buildM5ConsentPrivacyConsumer`) that recomputes `patient_privacy_flag_snapshot`'s `sud` flag off
+M39's `42_cfr_part_2_release` consent type — the ONE real relationship M39's own spec §4.3.1 names,
+and the mapping for it (`TYPE_TO_PRIVACY_FLAG`) already existed, unused, in M39's own
+`consumers.ts` since M39-T08/T09. **F-138's original "no mapping exists anywhere in the codebase"
+verdict was simply checked against the wrong file and found false** — the fix here is building the
+missing CALLER, not the missing fact. `supersedes`/`renewed` are treated identically to `signed`
+(both write the new record `status: "active"` in the same transaction that emits the event,
+verified directly against `consent-store-db.ts`), the same three-event grouping M22's own
+`render-consumer.ts` (F-161) already uses for its own render trigger. A new pure
+`mergeConsentSignal` helper (`privacy/index.ts`) merges the ONE touched category into whatever the
+persisted snapshot's other flags currently hold rather than overwriting the whole snapshot from a
+single-category signal — protects the still-unbuilt HIV/mental_health/genetic "M5-delegated" flags
+(§4.3.1) from being silently clobbered once a future producer sets them. `m39.consent
+.recipient_removed` is dropped from `declaredConsumers` at the source (`events-by-m39.ts`, was
+`["m22","m5"]`, now `["m22"]`) rather than left a permanent unactionable deferral: its own catalog
+description names it for M22/M28's per-signed-URL disclosure-subsetter cache, M5's categorical
+`patient_privacy_flag_snapshot` schema has no recipient dimension at all, and the payload does not
+even carry `typeKey` — M22's own F-161 finding independently reached the identical "no persistent
+state to invalidate" conclusion for this exact event, corroborating evidence from the other
+consuming module. `m39.consent.expired` stays genuinely blocked: no production code path emits it
+anywhere — the whole M39 §4.9 cron tier (expiration ticks, reminder ticks, renewal-cycle close) is
+unwired, confirmed by a zero-hit grep for `M39_QUEUES`/cron registration in the composition root —
+and binding a consumer to a name nothing publishes would be dead code, the standing F-150
+`m18.evv.visit_verified` shape. **The other three forks found zero buildable pairs across their
+combined 22 events, and each re-verified rather than re-asserted its group's standing reasons
+against current code.** M1's `m24.medicaid_state_channel.{unavailable,recovered}` re-confirmed M24
+still has no cron tier registered at all (unlike M23's own, itself broken, equivalent) plus the
+same unresolved per-org-vs-platform-scoping contradiction. M6's `m11.order.recertification_signed`
+re-confirmed no F2F/CTI adequacy-check function exists anywhere under `06-admission/` — a genuine
+clinical-compliance design decision, not a wiring gap. M29's `m11.order.hl7_orm_requested` found
+newer infrastructure than previously scoped (`29-external-interfaces/outbound/` now holds a pure
+wire builder, dispatch planner, retry policy and ACK-correlation core) but confirmed every file is
+still uncalled by anything — the gap is a full outbound MLLP transport worker, not a wiring line.
+M35's three `handlers-unbound` events (`m2.session.created`, `m5.patient.{deceased,merged}`) swept
+the WHOLE repository, not just M35, for any KMS/envelope-DEK provider built since F-163 and found
+none — `PseudonymKeyProvider.activeKey()` still has zero production implementations anywhere, and
+`patient_pseudonym_key` is confirmed structurally different from M34's per-tenant DEK-wrap
+mechanism (platform-wide vs. per-org), so that precedent does not transfer. M37's
+`m19.triage_call.gip_admission_proposed` re-read M37's own §4.5 "Outbox Subscriptions" table
+directly and confirmed the event still appears in no row of it (only in narrative prose), while
+`ipu_admission`'s `admissionId`/`levelOfCarePeriodId`/`providerEntityId` are all still
+`.notNull()` — no schema exists to write a proposal to before those three facts exist. M16's two
+events (`m37.ipu_admission.death_recorded`, redundant with the already-bound death chain and still
+producer-less on the M37 side; `m6.discharge.cosigned`, a genuinely different payload shape from
+what the D18 decider needs) stay blocked unchanged. M24's two events
+(`m25.remittance.claim_paid`/`.claim_denied`) stay blocked, but the re-check surfaced a genuinely
+new fact: `ReceiveAdviceInput` already carries a `payerKind` discriminator at the 835 receive step
+that `postAdvice`'s auto-match entirely ignores, routing every advice through the M23-only matcher
+regardless — a real cross-module matching-scheme design decision (how to route by payer), not a
+wiring gap, and reported rather than guessed at. M27's two events
+(`m21.supply_request.invoice_{accrued,reconciled}`) re-confirmed all three previously-named
+blockers unchanged (the Worksheet A GL-tie-out conflict, `bad_debt_record.cost_report_id`'s
+NOT NULL single-report scoping, no shared vendor+amount+date matching key). M14's remaining 8
+events (the M6 inclusion-cache pair, `m12.medication_history_pulled`, the M15 trio, M19's
+`care_plan_change_indicated`, M39's `expiring_soon`) resolved to ONE root cause stated once rather
+than eight times: the M14 §2.4 T-24h packet-build worker has never been written in production — only
+the pure `builder.ts` contract and F-164's cache-*writing* consumers exist; nothing anywhere reads
+the cache, resolves inclusion, or calls the pure builder — and for the handful of facts that would
+not fit even once a worker exists (M19's free-form `changeKind`, M12's pull-metadata, M39's
+undefined "compliance tile"), no typed packet-contract slot exists in `packages/types/src/idg.ts`,
+and this pass declined to invent one unilaterally, matching F-164's own restraint on
+`m9.assessment.recorded`. **A recurring coordination hazard surfaced again this round and was
+caught by the same discipline that has caught it every time before**: all five forks minted F-numbers
+independently and collided three ways (F-167 used by two research-only groups, F-168 by M31's build,
+F-169 by M14's research-only citation, F-170 by M5's build) — reconciled by renumbering every
+citation to the single round number, F-167, across every touched file (`.ts`, the two new consumer
+files, the two new live-test files, `ci.yml`), verified by a repo-wide grep showing zero remaining
+F-168/F-169/F-170 occurrences after the sweep. Net: **86 → 80** (5 bound — 4 M39 events via one M5
+consumer, 1 M16→M31 event — 1 dropped as misdeclared, 0 added; module count unchanged at 17, no
+group fully emptied this round). Verified centrally, once, after all five forks' edits landed
+together: `bun run build`/`typecheck` clean (0 errors), `arch:fitness` 38/38
+(`arch:outbox-bindings` confirms 80 pairs, down from 86, and 140 live bindings now covering 140
+catalogued events, up from 138/139), full non-live suite 654 files / 9603 tests green with no
+pinned-array assertions to update this round, a clean `check:boot:platform` run against a freshly
+migrated, RLS-enforced disposable Postgres (no new migrations this round — neither build needed a
+schema change), both new live suites run individually against the same disposable Postgres+Valkey
+(`m31:bereavement-contact-active` 7/7, `m5:consent-privacy` 7/7), and seven sibling regression
+suites re-run for regression on every touched shared file (`m31:portal-telehealth-consumers` 10/10,
+`m31:bereavement-consent-consumers` 9/9, `m31:bereavement-plan-opened` 6/6,
+`m30:bereavement-plan-closed-consumer` 2/2, `m5:admission-siting` 4/4,
+`m5:visit-assignment-cache` 8/8, `m5:death-cascade` 3/3). Leaving #248 open — 80 pairs across 17
+modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit
