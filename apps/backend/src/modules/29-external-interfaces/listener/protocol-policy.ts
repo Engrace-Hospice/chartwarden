@@ -1,7 +1,7 @@
 // apps/backend/src/modules/29-external-interfaces/listener/protocol-policy.ts — may an INBOUND listener bind
-// cleartext `mllp_plain`? (F-179, #248).
+// cleartext `mllp_plain`? (F-182, #248).
 //
-// F-178 refused `mllp_plain` for the OUTBOUND worker; an inbound `mllp_plain` listener is the same cleartext PHI
+// F-181 refused `mllp_plain` for the OUTBOUND worker; an inbound `mllp_plain` listener is the same cleartext PHI
 // on the wire (a partner sends ADT/ORU over a plain socket), so it gets the same rule and the SAME decision
 // function — never a second copy of the production test:
 //

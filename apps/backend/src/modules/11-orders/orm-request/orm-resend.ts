@@ -1,6 +1,6 @@
-// apps/backend/src/modules/11-orders/orm-request/orm-resend.ts — the RESEND of a refused lab ORM (F-179, #248).
+// apps/backend/src/modules/11-orders/orm-request/orm-resend.ts — the RESEND of a refused lab ORM (F-182, #248).
 //
-// WHAT WAS MISSING. F-178's producer refuses (never fabricates) when a fact the HL7 ORM needs is not resolvable at
+// WHAT WAS MISSING. F-181's producer refuses (never fabricates) when a fact the HL7 ORM needs is not resolvable at
 // sign time: the order stays signed, `transmission_status='failed'`, `transmission_failure_reason=
 // 'orm_refused:<reason>'`, and M36 alerts the ordering provider. The ordering provider (or the office) then FIXES
 // the fact — confirms the physician's NPI, completes the patient's DOB, links the lab feed to its facility — and
@@ -32,7 +32,7 @@
 // no_feed_for_destination, feed_identity_incomplete, payload_invalid, dependency_unavailable) depends on facts held
 // OUTSIDE the order and is resendable.
 
-/** The prefix F-178's producer writes into `transmission_failure_reason`. */
+/** The prefix F-181's producer writes into `transmission_failure_reason`. */
 export const ORM_REFUSAL_PREFIX = "orm_refused:";
 
 /** Refusals whose fact lives in the immutable signed order — a resend cannot change them; correct the order. */

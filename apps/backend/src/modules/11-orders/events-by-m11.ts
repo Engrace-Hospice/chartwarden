@@ -45,7 +45,7 @@ const orderSignatureTargetKind = Type.Union([
 // The §4.4 pinned `m11.order.hl7_orm_requested` payload (M11 produces, M29 consumes). Mirrors the
 // `OrmRequestedPayload` interface in @wardenx/types — the contract shared with the T-29.08 ORM builder.
 // Demographics are INTENTIONALLY MINIMAL (no SSN / NK1 / IN1 / GT1 per the T-29.08 §3.6 PHI denylist).
-// F-178 (#248) — exported so the M11 producer can `Value.Check` its payload BEFORE publishing: a payload the
+// F-181 (#248) — exported so the M11 producer can `Value.Check` its payload BEFORE publishing: a payload the
 // catalog refuses would otherwise throw out of the sign transaction and block signing the order itself.
 export const ormRequestedPayloadSchema = Type.Object({
   orderId: id,

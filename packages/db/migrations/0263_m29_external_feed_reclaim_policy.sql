@@ -1,11 +1,11 @@
--- F-180 (#248) — M29 outbound: the two per-feed knobs F-179's `in_flight` reclaim sweep left global.
+-- F-183 (#248) — M29 outbound: the two per-feed knobs F-182's `in_flight` reclaim sweep left global.
 --
--- (1) RECEIVER DEDUPE. F-179 reclaims a row whose lease expired by requeueing it with the SAME MSH-10, which is
+-- (1) RECEIVER DEDUPE. F-182 reclaims a row whose lease expired by requeueing it with the SAME MSH-10, which is
 --     only safe if the receiver dedupes on MSH-10 — a contract with each lab that nothing recorded or verified.
 --     `receiver_dedupes_control_id` is that contract, an explicit operator decision per feed. DEFAULT false is the
 --     deliberate SAFE default: a stale `in_flight` row (delivery unknown) on a feed not marked as deduping is
 --     HELD for human verification with the lab instead of being automatically re-sent (a possible second order).
---     BEHAVIOUR CHANGE vs F-179 for every existing feed until an operator sets it true.
+--     BEHAVIOUR CHANGE vs F-182 for every existing feed until an operator sets it true.
 -- (2) LEASE. `in_flight_lease_seconds` is the per-feed `in_flight` lease; NULL = the platform default
 --     (`OUTBOUND_IN_FLIGHT_LEASE_MS`, 5 min). The range floors at 60 s — above the transport's 10 s connect + 30 s
 --     ack worst case, so a lease can never be configured shorter than a live send — and caps at 1 h so a stuck

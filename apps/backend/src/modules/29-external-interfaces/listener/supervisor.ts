@@ -71,7 +71,7 @@ export interface SupervisorDeps {
   drainInflight(deadlineMs: number): Promise<void>;
   /** Emit the per-feed shutdown audit marker (§4.11.4 step 3). */
   emitShutdownAudit(feedId: string): Promise<void>;
-  /** F-179 — may an inbound `mllp_plain` listener bind? Omitted ⇒ derived from the process environment
+  /** F-182 — may an inbound `mllp_plain` listener bind? Omitted ⇒ derived from the process environment
    *  (`inboundPlainAllowed`: never in production, opt-in elsewhere) — FAIL CLOSED, never a silent default-allow. */
   allowPlainProtocol?: boolean;
   /** The clock, INJECTED (the BAA gate's `asOf`). */
@@ -135,7 +135,7 @@ export async function startFeedListener(
   if (!feedBindsInboundListener(feed.kind)) {
     return { feedId: feed.id, started: false, reason: "not_inbound" };
   }
-  // F-179 — cleartext PHI: refuse a plain listener the deployment forbids BEFORE the BAA gate and before any
+  // F-182 — cleartext PHI: refuse a plain listener the deployment forbids BEFORE the BAA gate and before any
   // socket exists. A fixed label only (no host/port/partner detail) reaches the alert.
   const allowPlain = deps.allowPlainProtocol ?? inboundPlainAllowed(process.env);
   if (listenerProtocolRefusal(feed.protocol, allowPlain) !== null) {

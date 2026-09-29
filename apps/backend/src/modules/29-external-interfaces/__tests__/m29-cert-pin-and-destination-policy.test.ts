@@ -1,4 +1,4 @@
-// F-178 (#248) — the canonical channelCertPin convention and the outbound destination policy, as pure units.
+// F-181 (#248) — the canonical channelCertPin convention and the outbound destination policy, as pure units.
 // Real certificates come from the system `openssl` (the F-175 transport suite's precedent — no new dependency).
 import { execFileSync } from "node:child_process";
 import { X509Certificate, createHash } from "node:crypto";

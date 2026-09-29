@@ -30,7 +30,7 @@ import type { M29Store } from "./store";
 
 export interface FeedRouteDeps {
   readonly store: M29Store;
-  /** Environment the F-178 production policy reads (defaults to `process.env`; injectable for tests). */
+  /** Environment the F-181 production policy reads (defaults to `process.env`; injectable for tests). */
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
 
@@ -135,7 +135,7 @@ export function registerFeedRoutes(app: FastifyInstance, deps: FeedRouteDeps): v
     async (request) => {
       const actor = writeActorOf(request);
       const { feedId } = request.params as { feedId: string };
-      // F-178 — a feed created before this deployment became production must not be activatable as cleartext.
+      // F-181 — a feed created before this deployment became production must not be activatable as cleartext.
       const existing = await store.getFeed(actor.organizationId, feedId);
       if (existing) {
         assertProtocolAcceptable(existing, envOf());

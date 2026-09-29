@@ -46,25 +46,25 @@ export const externalFeed = pgTable(
     host: text("host"),
     port: integer("port").notNull(),
     protocol: externalFeedProtocol("protocol").notNull(),
-    /** Lowercase-hex sha256 of the certificate's DER encoding — the canonical convention (F-178, defined in
+    /** Lowercase-hex sha256 of the certificate's DER encoding — the canonical convention (F-181, defined in
      *  `apps/backend/src/modules/29-external-interfaces/feed/cert-pin.ts`; the admin routes derive it from an
      *  uploaded PEM). NOT a hash of PEM text (not byte-stable). Null only for `mllp_plain` (test only;
      *  refused for outbound feeds in production). */
     channelCertPin: text("channel_cert_pin"),
-    /** F-178 (#248, migration 0262) — the LOGICAL M40 Facility id this OUTBOUND feed delivers to. Routing key for
+    /** F-181 (#248, migration 0262) — the LOGICAL M40 Facility id this OUTBOUND feed delivers to. Routing key for
      *  `OrmRequestedPayload.labDestinationFacilityId`; null for an inbound listener or an unlinked legacy feed. */
     labDestinationFacilityId: uuid("lab_destination_facility_id"),
-    /** F-178 — outbound MSH-3/4/5/6 identity (HL7-safe, ≤180 chars, CHECK-enforced). Null ⇒ the worker refuses a
+    /** F-181 — outbound MSH-3/4/5/6 identity (HL7-safe, ≤180 chars, CHECK-enforced). Null ⇒ the worker refuses a
      *  real send rather than fabricating one (MSH-3 alone falls back to the fixed platform identity). */
     mshSendingApplication: text("msh_sending_application"),
     mshSendingFacility: text("msh_sending_facility"),
     mshReceivingApplication: text("msh_receiving_application"),
     mshReceivingFacility: text("msh_receiving_facility"),
-    /** F-180 (#248, migration 0263) — the operator's explicit statement that this OUTBOUND feed's receiver dedupes on
+    /** F-183 (#248, migration 0263) — the operator's explicit statement that this OUTBOUND feed's receiver dedupes on
      *  MSH-10. Only then may the `in_flight` reclaim sweep requeue a stale row (same wire, same MSH-10); otherwise the
      *  row is HELD for human verification with the lab. Default false = never auto-resend an unknown-delivery ORM. */
     receiverDedupesControlId: boolean("receiver_dedupes_control_id").notNull().default(false),
-    /** F-180 — per-feed `in_flight` lease in seconds (CHECK 60..3600); null = the platform default. */
+    /** F-183 — per-feed `in_flight` lease in seconds (CHECK 60..3600); null = the platform default. */
     inFlightLeaseSeconds: integer("in_flight_lease_seconds"),
     /** string[] of M40 Facility ids — the per-feed MSH-4 sender allowlist (§4.11.2). */
     sendingFacilityAllowlist: jsonb("sending_facility_allowlist")

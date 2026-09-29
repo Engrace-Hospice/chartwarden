@@ -1,4 +1,4 @@
--- F-178 (#248) — M29 outbound: the two schema gaps F-175's `feed-resolver.ts` documented.
+-- F-181 (#248) — M29 outbound: the two schema gaps F-175's `feed-resolver.ts` documented.
 --
 -- (1) ROUTING. `external_feed` had no column linking a feed to the lab destination it delivers to, so the
 --     outbound resolver could only ask "is there exactly one active orm_outbound feed for this org" and had

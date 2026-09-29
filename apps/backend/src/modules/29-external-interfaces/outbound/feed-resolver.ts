@@ -1,20 +1,20 @@
 // apps/backend/src/modules/29-external-interfaces/outbound/feed-resolver.ts — resolves the outbound
 // `external_feed` a `m11.order.hl7_orm_requested` dispatches over (M29-T08, F-175/#248; routing + identity
-// columns F-178/#248, migration 0262).
+// columns F-181/#248, migration 0262).
 //
-// ROUTING (F-178). `external_feed.lab_destination_facility_id` — a LOGICAL M40 Facility id — links an outbound
+// ROUTING (F-181). `external_feed.lab_destination_facility_id` — a LOGICAL M40 Facility id — links an outbound
 // feed to the lab it delivers to, and the resolver routes `OrmRequestedPayload.labDestinationFacilityId` through
 // it. Rules, in order (see `selectOutboundFeed`, pure and unit-tested):
 //   1. Candidates = the org's `active` `orm_outbound` feeds inside their operational window that have a host.
 //   2. Request names a facility AND exactly one candidate is linked to it → that feed. More than one → refuse
 //      `ambiguous_feed` (never silently pick).
-//   3. Otherwise the SINGLE-FEED FALLBACK, which exists only so a pre-F-178 tenant with one unlinked feed keeps
+//   3. Otherwise the SINGLE-FEED FALLBACK, which exists only so a pre-F-181 tenant with one unlinked feed keeps
 //      working: it applies ONLY when exactly one candidate exists AND that candidate's link is genuinely absent
 //      (null). A single feed that IS linked to a different facility never receives another destination's order
 //      (`no_feed_for_destination`), and a request with no facility never rides a feed that is linked elsewhere.
 //   4. Zero candidates → `no_active_feed`; several with no match → `ambiguous_feed`.
 //
-// MSH IDENTITY (F-178). MSH-3/4/5/6 come from `msh_sending_application` / `msh_sending_facility` /
+// MSH IDENTITY (F-181). MSH-3/4/5/6 come from `msh_sending_application` / `msh_sending_facility` /
 // `msh_receiving_application` / `msh_receiving_facility`. The old `displayName` fallback is gone: an operator
 // label is not a validated HL7 identifier and reusing one string for three fields is fabrication. MSH-3 alone
 // defaults to the fixed platform identity (`OUTBOUND_SENDING_APPLICATION` — WardenX's own name never varies per
@@ -41,7 +41,7 @@ export interface ResolvedFeedTransport {
   readonly protocol: "mllp_tls" | "mllp_plain";
   readonly channelCertPin: string | null;
   readonly rateLimitMsgPerSec: number;
-  /** F-180 — the feed's own `in_flight` lease in seconds; null = the platform default. */
+  /** F-183 — the feed's own `in_flight` lease in seconds; null = the platform default. */
   readonly inFlightLeaseSeconds: number | null;
 }
 

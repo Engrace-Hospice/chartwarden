@@ -1,4 +1,4 @@
-// apps/backend/__tests__/orm-resend.test.ts — F-179 (#248): the RESEND of a refused lab ORM. The PURE eligibility
+// apps/backend/__tests__/orm-resend.test.ts — F-182 (#248): the RESEND of a refused lab ORM. The PURE eligibility
 // decision (`classifyOrmResend`) plus the HTTP contract of `POST /api/v1/orders/:id/resend-transmission` through the
 // full M1 middleware chain (Fastify `inject`, real Authorization Contract, in-memory order backend). The DB behaviour
 // — row lock, conditional update, publish + state in one transaction, audit actor, RLS — is `m11-orm-resend.live`.
@@ -33,7 +33,7 @@ const refused = (reason: string, over: Partial<OrmResendCandidate> = {}): OrmRes
   ...over,
 });
 
-describe("F-179 — classifyOrmResend: which failures a resend may act on", () => {
+describe("F-182 — classifyOrmResend: which failures a resend may act on", () => {
   it.each([
     "patient_not_found",
     "patient_merged",
@@ -194,7 +194,7 @@ afterEach(() => {
   resetAbacRegistry();
 });
 
-describe("F-179 — POST /api/v1/orders/:id/resend-transmission", () => {
+describe("F-182 — POST /api/v1/orders/:id/resend-transmission", () => {
   async function draft(app: ReturnType<typeof makeServer>["app"]): Promise<string> {
     const res = await app.inject({ method: "POST", url: "/api/v1/orders", headers: RN, payload: labBody });
     expect(res.statusCode).toBe(201);

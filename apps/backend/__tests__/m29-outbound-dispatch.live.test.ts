@@ -194,7 +194,7 @@ function startMockMllpServer(nextAction: () => MockAction): Promise<MockMllpServ
   });
 }
 
-/** F-178 — the live suite dials loopback `mllp_plain` test doubles, which the production-safe default policy
+/** F-181 — the live suite dials loopback `mllp_plain` test doubles, which the production-safe default policy
  *  refuses; every worker here is built with this explicit non-production policy instead. */
 const TEST_POLICY = { allowPlain: true, allowLoopback: true } as const;
 
@@ -276,7 +276,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     );
   }
 
-  /** Seed one ACTIVE `orm_outbound` feed pointed at the mock server, org-scoped. F-178: the MSH identity
+  /** Seed one ACTIVE `orm_outbound` feed pointed at the mock server, org-scoped. F-181: the MSH identity
    *  columns default to a COMPLETE set (pass `null` to leave one unset) and the destination link to NULL. */
   async function seedFeed(args: {
     readonly organizationId: string;
@@ -286,7 +286,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     readonly mshSendingFacility?: string | null;
     readonly mshReceivingApplication?: string | null;
     readonly mshReceivingFacility?: string | null;
-    /** F-180 — the operator's dedupe declaration (default false, the schema default) and per-feed lease. */
+    /** F-183 — the operator's dedupe declaration (default false, the schema default) and per-feed lease. */
     readonly receiverDedupesControlId?: boolean;
     readonly inFlightLeaseSeconds?: number | null;
   }): Promise<string> {
@@ -591,7 +591,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  // ── F-178 (#248, migration 0262): routing link, MSH identity, concurrent-redelivery race ────────────────────
+  // ── F-181 (#248, migration 0262): routing link, MSH identity, concurrent-redelivery race ────────────────────
 
   const FACILITY_X = "44444444-4444-4444-4444-444444444444";
   const FACILITY_Y = "55555555-5555-5555-5555-555555555555";
@@ -611,7 +611,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     };
   }
 
-  it("F-178 routing: an order rides the feed LINKED to its lab destination, never the sibling feed", async () => {
+  it("F-181 routing: an order rides the feed LINKED to its lab destination, never the sibling feed", async () => {
     registerActiveBaa();
     const serverX = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     const serverY = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
@@ -635,7 +635,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-178 routing: a SINGLE feed linked to a DIFFERENT facility is refused (no fallback), alerted, nothing sent", async () => {
+  it("F-181 routing: a SINGLE feed linked to a DIFFERENT facility is refused (no fallback), alerted, nothing sent", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -653,7 +653,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-178 identity: the wire carries the feed's configured MSH-3/4/5/6, not its display name", async () => {
+  it("F-181 identity: the wire carries the feed's configured MSH-3/4/5/6, not its display name", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -673,7 +673,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-178 identity: a feed with an unset MSH field is REFUSED with a typed PHI-free error — no row, no wire", async () => {
+  it("F-181 identity: a feed with an unset MSH field is REFUSED with a typed PHI-free error — no row, no wire", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -697,7 +697,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-178 idempotency: two CONCURRENT deliveries of the same event dispatch exactly once", async () => {
+  it("F-181 idempotency: two CONCURRENT deliveries of the same event dispatch exactly once", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -718,7 +718,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-178 schema: the MSH CHECK refuses a value that would break HL7 framing; RLS hides org A's feed link from org B", async () => {
+  it("F-181 schema: the MSH CHECK refuses a value that would break HL7 framing; RLS hides org A's feed link from org B", async () => {
     const feedId = await seedFeed({ organizationId: ORG_A, port: 6100, labDestinationFacilityId: FACILITY_X });
     await expect(
       admin.query("UPDATE external_feed SET msh_receiving_facility = 'A|B' WHERE id = $1", [feedId]),
@@ -770,11 +770,11 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  // ── F-178 — the destination policy inside the real worker ───────────────────────────────────────────────
+  // ── F-181 — the destination policy inside the real worker ───────────────────────────────────────────────
 
-  // ── F-179 — the `in_flight` lease + reclaim sweep ────────────────────────────────────────────────────────
+  // ── F-182 — the `in_flight` lease + reclaim sweep ────────────────────────────────────────────────────────
   // The worker now commits the `in_flight` claim BEFORE the socket send and finalizes in a second transaction.
-  // Before F-179 the whole send ran in ONE transaction: a crash mid-send rolled the row back (no committed
+  // Before F-182 the whole send ran in ONE transaction: a crash mid-send rolled the row back (no committed
   // `in_flight` row to find) and the outbox redelivery inserted a NEW row with a NEW MSH-10.
 
   const MINUTE = 60_000;
@@ -834,7 +834,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     feed: { receiverDedupesControlId?: boolean; inFlightLeaseSeconds?: number | null } = {},
   ) {
     registerActiveBaa();
-    // F-180 — the F-179 cases below exercise the REQUEUE path, which is now the operator-declared
+    // F-183 — the F-182 cases below exercise the REQUEUE path, which is now the operator-declared
     // `receiver_dedupes_control_id = true` behaviour; the held (false) path has its own cases.
     await seedFeed({ organizationId, port: server.port, receiverDedupesControlId: true, ...feed });
     const orderId = randomUUID();
@@ -853,11 +853,11 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
   const controlIdsOf = (wires: readonly string[]) =>
     new Set(wires.map((w) => parseMshEnvelope(w).messageControlId));
 
-  it("F-179 crash recovery: a send that died after delivery leaves a COMMITTED in_flight row, which is reclaimed and re-sent with the SAME MSH-10 — one order from the receiver's view", async () => {
+  it("F-182 crash recovery: a send that died after delivery leaves a COMMITTED in_flight row, which is reclaimed and re-sent with the SAME MSH-10 — one order from the receiver's view", async () => {
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
       const { orderId, row } = await crashedDispatch(server);
-      // The row survived the crash (pre-F-179 the whole transaction rolled back and this array was EMPTY).
+      // The row survived the crash (pre-F-182 the whole transaction rolled back and this array was EMPTY).
       expect(row.status).toBe("in_flight");
       expect(row.retryCount).toBe(0);
       expect(row.nextRetryAt).not.toBeNull(); // the lease expiry
@@ -889,7 +889,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-179 lease: an in_flight row whose lease has NOT expired (a live worker) is never touched", async () => {
+  it("F-182 lease: an in_flight row whose lease has NOT expired (a live worker) is never touched", async () => {
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
       const { orderId } = await crashedDispatch(server);
@@ -905,7 +905,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-179 race: two CONCURRENT sweepers reclaim a stale row exactly once (one attempt counted, one alert)", async () => {
+  it("F-182 race: two CONCURRENT sweepers reclaim a stale row exactly once (one attempt counted, one alert)", async () => {
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
       const { orderId } = await crashedDispatch(server);
@@ -937,7 +937,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-179 claim: two OVERLAPPING sweeps send a due retry once — the claim is committed before the send (pre-F-179 both read it `queued` and both transmitted)", async () => {
+  it("F-182 claim: two OVERLAPPING sweeps send a due retry once — the claim is committed before the send (pre-F-182 both read it `queued` and both transmitted)", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -965,7 +965,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-179 race: a SLOW worker that lost its lease finalizes into nothing — no second event, the reclaimer's attempt stands", async () => {
+  it("F-182 race: a SLOW worker that lost its lease finalizes into nothing — no second event, the reclaimer's attempt stands", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -1005,7 +1005,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-179 budget: reclaims draw on the shared attempt budget — the last one goes terminal DLQ through the REAL catalog-validating publisher, never a loop", async () => {
+  it("F-182 budget: reclaims draw on the shared attempt budget — the last one goes terminal DLQ through the REAL catalog-validating publisher, never a loop", async () => {
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
       const { orderId, row } = await crashedDispatch(server);
@@ -1039,7 +1039,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-179: an ack correlating to a DIFFERENT MSH-10 used to strand the row in_flight forever — it now sits on its lease and is reclaimed", async () => {
+  it("F-182: an ack correlating to a DIFFERENT MSH-10 used to strand the row in_flight forever — it now sits on its lease and is reclaimed", async () => {
     registerActiveBaa();
     await seedFeed({ organizationId: ORG_A, port: 2575, receiverDedupesControlId: true });
     const orderId = randomUUID();
@@ -1060,7 +1060,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     expect(reclaimed!.retryCount).toBe(1);
   });
 
-  it("F-179 isolation: a sweep scoped to org A reclaims only org A's stale rows; org B's stay put until B is swept, and each alert goes to its own org", async () => {
+  it("F-182 isolation: a sweep scoped to org A reclaims only org A's stale rows; org B's stay put until B is swept, and each alert goes to its own org", async () => {
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     const serverB = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -1084,7 +1084,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  // ── F-180 — the per-feed reclaim policy: receiver-dedupe flag, per-feed lease, lease re-arm, audit kinds ─────
+  // ── F-183 — the per-feed reclaim policy: receiver-dedupe flag, per-feed lease, lease re-arm, audit kinds ─────
 
   /** Every `m29.outbound.audit_intent` record the worker logged (the audit kinds with no M4 write-API). */
   type AuditIntent = { kind: string; outboundMessageId: string | null; feedId: string | null };
@@ -1094,7 +1094,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
       .map((c) => c[1] as AuditIntent);
   }
 
-  it("F-180 held: on a feed NOT marked as deduping MSH-10 a stale in_flight row is HELD — terminal dlq through the REAL publisher, HIGH alert, audit kind `held`, and it is NEVER re-sent", async () => {
+  it("F-183 held: on a feed NOT marked as deduping MSH-10 a stale in_flight row is HELD — terminal dlq through the REAL publisher, HIGH alert, audit kind `held`, and it is NEVER re-sent", async () => {
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
     try {
@@ -1144,7 +1144,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-180 per-feed decision: in ONE sweep the deduping feed's row is requeued (audit `reclaimed`) and the non-deduping feed's row is held (audit `held`), each in its own org", async () => {
+  it("F-183 per-feed decision: in ONE sweep the deduping feed's row is requeued (audit `reclaimed`) and the non-deduping feed's row is held (audit `held`), each in its own org", async () => {
     const serverA = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     const serverB = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
@@ -1171,7 +1171,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-180 lease: a feed's OWN shorter lease is what its claim commits and what the reclaim honours — a 60s feed is reclaimed at +2min while a default-lease feed is untouched", async () => {
+  it("F-183 lease: a feed's OWN shorter lease is what its claim commits and what the reclaim honours — a 60s feed is reclaimed at +2min while a default-lease feed is untouched", async () => {
     const serverA = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     const serverB = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -1190,7 +1190,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-180 lease: a feed's OWN longer lease protects a slow receiver — a 30min feed is untouched at +10min while a default-lease feed is reclaimed", async () => {
+  it("F-183 lease: a feed's OWN longer lease protects a slow receiver — a 30min feed is untouched at +10min while a default-lease feed is reclaimed", async () => {
     const serverA = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     const serverB = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -1207,7 +1207,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-180 lease: the RETRY sweep's claim (queued → in_flight) also takes the feed's own lease, not the platform default", async () => {
+  it("F-183 lease: the RETRY sweep's claim (queued → in_flight) also takes the feed's own lease, not the platform default", async () => {
     registerActiveBaa();
     await seedFeed({ organizationId: ORG_A, port: 2575, receiverDedupesControlId: true, inFlightLeaseSeconds: 90 });
     const orderId = randomUUID();
@@ -1256,7 +1256,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     return { clock, startedAt, rateLimiter };
   }
 
-  it("F-180 limiter: a long rate-limiter wait cannot get a LIVE sender reclaimed — the lease is re-armed when the send BEGINS", async () => {
+  it("F-183 limiter: a long rate-limiter wait cannot get a LIVE sender reclaimed — the lease is re-armed when the send BEGINS", async () => {
     registerActiveBaa();
     await seedFeed({ organizationId: ORG_A, port: 2575, receiverDedupesControlId: true, inFlightLeaseSeconds: 60 });
     const orderId = randomUUID();
@@ -1296,7 +1296,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     expect(alerts.emitted).toHaveLength(0);
   });
 
-  it("F-180 limiter: if a reclaimer takes the row DURING the limiter wait, the worker sends NOTHING (the reclaimer's attempt stands) and logs the lost claim", async () => {
+  it("F-183 limiter: if a reclaimer takes the row DURING the limiter wait, the worker sends NOTHING (the reclaimer's attempt stands) and logs the lost claim", async () => {
     registerActiveBaa();
     await seedFeed({ organizationId: ORG_A, port: 2575, receiverDedupesControlId: true, inFlightLeaseSeconds: 60 });
     const orderId = randomUUID();
@@ -1340,7 +1340,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-180 schema: safe defaults, the 60..3600 CHECK, and RLS on the new columns", async () => {
+  it("F-183 schema: safe defaults, the 60..3600 CHECK, and RLS on the new columns", async () => {
     const feedA = randomUUID();
     await admin.query(
       `INSERT INTO external_feed (id, organization_id, kind, display_name, host, port, protocol,
@@ -1376,7 +1376,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     expect(asB).toHaveLength(0);
   });
 
-  it("F-178: a mllp_plain feed under the production-safe policy is refused BEFORE any socket — terminal DLQ, one attempt, no retry", async () => {
+  it("F-181: a mllp_plain feed under the production-safe policy is refused BEFORE any socket — terminal DLQ, one attempt, no retry", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {
@@ -1415,7 +1415,7 @@ describe.skipIf(!DB_URL)("M29 outbound MLLP dispatch worker — LIVE Postgres (F
     }
   });
 
-  it("F-178: with plain allowed but loopback refused (production shape), the transport's destination refusal is also a terminal DLQ — no retry burn", async () => {
+  it("F-181: with plain allowed but loopback refused (production shape), the transport's destination refusal is also a terminal DLQ — no retry burn", async () => {
     registerActiveBaa();
     const server = await startMockMllpServer(() => ({ kind: "ack", ackCode: "AA" }));
     try {

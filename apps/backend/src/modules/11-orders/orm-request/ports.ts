@@ -1,5 +1,5 @@
 // apps/backend/src/modules/11-orders/orm-request/ports.ts — the default binding of the ports M11's outbound
-// lab-ORM producer reads through (F-178, #248). It joins THREE modules: M40 (physician + facility — M11's
+// lab-ORM producer reads through (F-181, #248). It joins THREE modules: M40 (physician + facility — M11's
 // manifest `dependsOn` includes 40, so this file imports its seam directly), and M5 (patient facts) + M29 (the
 // outbound feed resolver), neither of which M11 may import — those two arrive as INJECTED deps that the
 // composition root (apps/backend/src/index.ts, the only place allowed to see all three) supplies.
@@ -50,7 +50,7 @@ export interface OrmFeedResolverLike {
     tx: DbClient,
     organizationId: string,
     asOf: Date,
-    /** F-178 — the resolved M40 lab facility; M29 routes to the feed linked to it. */
+    /** F-181 — the resolved M40 lab facility; M29 routes to the feed linked to it. */
     labDestinationFacilityId?: string | null,
   ): Promise<
     | { readonly kind: "resolved" }

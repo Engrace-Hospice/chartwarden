@@ -1,4 +1,4 @@
-// apps/backend/src/modules/29-external-interfaces/routes/feed-input.ts — admin feed input policy (F-178, #248).
+// apps/backend/src/modules/29-external-interfaces/routes/feed-input.ts — admin feed input policy (F-181, #248).
 //
 // Three server-side rules the create/update/activate routes apply BEFORE the store is touched:
 //   1. `channelCertPin` has ONE canonical form (`../feed/cert-pin.ts`: sha256 of the certificate DER, lowercase
@@ -7,7 +7,7 @@
 //   2. A configured host on the destination deny list (link-local / cloud-metadata; loopback in production) is
 //      refused at configuration time as well as at send time, so the mistake surfaces to the operator rather
 //      than as a DLQ'd order later.
-//   3. In production NO feed — outbound sender (F-178) or inbound listener (F-179) — may be `mllp_plain`
+//   3. In production NO feed — outbound sender (F-181) or inbound listener (F-182) — may be `mllp_plain`
 //      (cleartext PHI): refused on create AND on activate (a feed created before a deployment became production
 //      must not be activatable). The inbound listener repeats the check at bind time (`listener/protocol-policy`).
 import { ValidationError } from "@wardenx/types";

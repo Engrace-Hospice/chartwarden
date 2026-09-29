@@ -1,5 +1,5 @@
 /**
- * F-178 (#248) — M11's PRODUCER of `m11.order.hl7_orm_requested`, proven end to end over real Postgres.
+ * F-181 (#248) — M11's PRODUCER of `m11.order.hl7_orm_requested`, proven end to end over real Postgres.
  *
  * F-175 built M29's outbound T08 worker and F-177 built M11's `LabTransmissionApplier`, and NOTHING published the
  * event between them: a signed lab order never became an HL7 ORM and `transmission_status` never left `pending`.
@@ -78,7 +78,7 @@ const keys: OutboundTenantKeyProvider = {
 
 const LOINC = [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }];
 
-describe.skipIf(!DB_URL)("F-178 — M11 lab-order ORM producer → M29 worker → F-177 applier, LIVE Postgres", () => {
+describe.skipIf(!DB_URL)("F-181 — M11 lab-order ORM producer → M29 worker → F-177 applier, LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbOrderBackend>;
@@ -292,7 +292,7 @@ describe.skipIf(!DB_URL)("F-178 — M11 lab-order ORM producer → M29 worker �
           keys,
           transport,
           alerts: { emit: async () => undefined } as never,
-          // F-178 — the seeded feed is `mllp_plain` on loopback; the stub transport never dials, but the
+          // F-181 — the seeded feed is `mllp_plain` on loopback; the stub transport never dials, but the
           // worker's production-safe default policy refuses plain MLLP before it reaches the transport.
           destinationPolicy: { allowPlain: true, allowLoopback: true },
         }),
@@ -382,7 +382,7 @@ describe.skipIf(!DB_URL)("F-178 — M11 lab-order ORM producer → M29 worker �
     expect(wires).toHaveLength(0);
   });
 
-  it("without the ORM ports (the default) a signed lab emits nothing — the pre-F-178 behavior is preserved", async () => {
+  it("without the ORM ports (the default) a signed lab emits nothing — the pre-F-181 behavior is preserved", async () => {
     const publisher = buildTxOutboxPublisher(buildBootOutboxCatalog([M11_OUTBOX_EVENTS]));
     const bare = createDbOrderBackend(handle.db, {
       publish: (tx, e) => publisher.publish(tx as never, { ...e, callerModule: "m11" }),

@@ -1,6 +1,6 @@
-// apps/backend/src/modules/29-external-interfaces/__tests__ — F-179/F-180 (#248): the PURE `in_flight` lease-reclaim
+// apps/backend/src/modules/29-external-interfaces/__tests__ — F-182/F-183 (#248): the PURE `in_flight` lease-reclaim
 // decision. Whether the lab already got the message is unknown, so a reclaim is a state transition (never a send)
-// and what it does depends on the feed's operator-declared `receiver_dedupes_control_id` (F-180):
+// and what it does depends on the feed's operator-declared `receiver_dedupes_control_id` (F-183):
 //   true  → back to `queued` with the shared backoff (same wire, same MSH-10), or terminal `dlq` once the shared
 //           attempt budget is spent;
 //   false → HELD: terminal `dlq` immediately (never an automatic re-send), for human verification with the lab.
@@ -28,7 +28,7 @@ const outbound = (retryCount: number) => ({
   retryCount,
 });
 
-describe("F-179 decideInFlightReclaim — receiver dedupes MSH-10 (requeue)", () => {
+describe("F-182 decideInFlightReclaim — receiver dedupes MSH-10 (requeue)", () => {
   const dedupes = { receiverDedupesControlId: true } as const;
 
   it("the default lease sits far above the worst-case attempt (10s connect + 30s ack wait)", () => {
@@ -51,7 +51,7 @@ describe("F-179 decideInFlightReclaim — receiver dedupes MSH-10 (requeue)", ()
     });
     expect(d.alert.detail).toContain("same message control id");
     expect(d.alert.detail).not.toMatch(/order-1|org-1/);
-    // F-180 — a reclaim requeue has its OWN audit kind; it is no longer disguised as an ordinary dispatch.
+    // F-183 — a reclaim requeue has its OWN audit kind; it is no longer disguised as an ordinary dispatch.
     expect(d.audit.kind).toBe("hl7.outbound.reclaimed");
   });
 
@@ -85,7 +85,7 @@ describe("F-179 decideInFlightReclaim — receiver dedupes MSH-10 (requeue)", ()
   });
 });
 
-describe("F-180 decideInFlightReclaim — receiver NOT marked as deduping (HELD)", () => {
+describe("F-183 decideInFlightReclaim — receiver NOT marked as deduping (HELD)", () => {
   const held = { receiverDedupesControlId: false } as const;
 
   it("HOLDS on the very first lost attempt: terminal dlq, no next_retry_at, never re-queued", () => {
@@ -139,7 +139,7 @@ describe("F-180 decideInFlightReclaim — receiver NOT marked as deduping (HELD)
   });
 });
 
-describe("F-180 inFlightLeaseMsFor — the per-feed lease", () => {
+describe("F-183 inFlightLeaseMsFor — the per-feed lease", () => {
   it("uses the feed's own seconds, else the injected platform default", () => {
     expect(inFlightLeaseMsFor(120, 300_000)).toBe(120_000);
     expect(inFlightLeaseMsFor(null, 300_000)).toBe(300_000);
@@ -152,7 +152,7 @@ describe("F-180 inFlightLeaseMsFor — the per-feed lease", () => {
   });
 });
 
-describe("F-179 inFlightLeaseMs configuration", () => {
+describe("F-182 inFlightLeaseMs configuration", () => {
   const base = { db: {} as never, outbox: {} as never, keys: {} as never };
 
   it("defaults when unset and accepts a positive number", () => {

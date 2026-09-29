@@ -1,5 +1,5 @@
 // apps/backend/src/modules/29-external-interfaces/feed/cert-pin.ts — the ONE canonical `channelCertPin`
-// convention (F-178, #248).
+// convention (F-181, #248).
 //
 // `external_feed.channel_cert_pin` used to be documented as "sha256(certPEM)" while the F-175 outbound
 // transport computed sha256 of the peer certificate's DER bytes, and NOTHING minted the value — the admin

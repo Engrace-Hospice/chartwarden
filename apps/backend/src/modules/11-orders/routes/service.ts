@@ -331,7 +331,7 @@ export interface OrderAbacFacts {
 }
 
 /**
- * F-179 (#248) — the outcome of re-running a refused lab ORM. `requested`: every fact resolved this time, the
+ * F-182 (#248) — the outcome of re-running a refused lab ORM. `requested`: every fact resolved this time, the
  * `m11.order.hl7_orm_requested` was published in the same transaction and `transmission_status` is back to
  * `pending`. `still_refused`: a fact is still missing — the order stays `failed` with the (possibly new) refusal
  * reason and nothing was published. `refusalReason` is a fixed producer token (never PHI).
@@ -434,7 +434,7 @@ export interface OrderRouteService extends OrderAbacResolver {
     actor?: OrderDetailActor,
   ): Promise<OrderDetailView>;
   /**
-   * F-179 (#248) — re-run the outbound lab-ORM producer for a signed lab order whose ORM request was REFUSED
+   * F-182 (#248) — re-run the outbound lab-ORM producer for a signed lab order whose ORM request was REFUSED
    * (`transmission_failure_reason = 'orm_refused:*'`). `auditUserId` is the Better Auth user id the M4 write-audit
    * trigger stamps as `actor_user_id` (a membership id would violate that FK); omit for a system caller.
    */

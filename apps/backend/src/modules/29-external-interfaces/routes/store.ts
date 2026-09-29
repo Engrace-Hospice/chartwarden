@@ -66,13 +66,13 @@ export interface FeedDetail extends FeedSummary {
   readonly channelCertPin: string | null;
   readonly sendingFacilityAllowlist: readonly string[];
   readonly rateLimitMsgPerSec: number;
-  /** F-178 — outbound routing + MSH identity (null when unset). */
+  /** F-181 — outbound routing + MSH identity (null when unset). */
   readonly labDestinationFacilityId: string | null;
   readonly mshSendingApplication: string | null;
   readonly mshSendingFacility: string | null;
   readonly mshReceivingApplication: string | null;
   readonly mshReceivingFacility: string | null;
-  /** F-180 — the operator's statement that the receiver dedupes on MSH-10 (default false: a lost send is HELD,
+  /** F-183 — the operator's statement that the receiver dedupes on MSH-10 (default false: a lost send is HELD,
    *  never auto-re-sent), and the feed's own `in_flight` lease in seconds (null = the platform default). */
   readonly receiverDedupesControlId: boolean;
   readonly inFlightLeaseSeconds: number | null;

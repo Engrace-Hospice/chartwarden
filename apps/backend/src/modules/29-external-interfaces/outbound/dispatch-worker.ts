@@ -8,14 +8,14 @@
 // RETRY MECHANISM: a poll-based sweep over `idx_hmo_next_retry`, not per-row BullMQ delayed jobs — the
 // decision and its reasoning live in `./queues.ts`'s header.
 //
-// F-179 — CLAIM → SEND → FINALIZE, and the `in_flight` RECLAIM. Every attempt (fresh or retry) commits its
+// F-182 — CLAIM → SEND → FINALIZE, and the `in_flight` RECLAIM. Every attempt (fresh or retry) commits its
 // `in_flight` claim (with `next_retry_at` as a LEASE expiry) in its own transaction, sends with NO transaction
 // held across the socket, then writes the outcome in a second, claim-guarded transaction. The same tick first
 // reclaims expired leases (`reclaimStaleInFlight`): a state transition back to `queued` that the retry pass then
 // re-sends with the SAME stored wire (same MSH-10 → the receiver can dedupe), bounded by the shared attempt
-// budget, alerting every time. Read `./retry-policy.ts`'s F-179 block for the duplicate-send reasoning.
+// budget, alerting every time. Read `./retry-policy.ts`'s F-182 block for the duplicate-send reasoning.
 //
-// F-178 CLOSED THE TWO PHASE-1 GAPS this file used to inherit from `./feed-resolver.ts`: feeds now route by
+// F-181 CLOSED THE TWO PHASE-1 GAPS this file used to inherit from `./feed-resolver.ts`: feeds now route by
 // `external_feed.lab_destination_facility_id` (single-feed fallback only for an unlinked sole feed), and MSH-3/4/5/6
 // come from dedicated `msh_*` columns — a feed missing a required one is REFUSED (`OutboundFeedIdentityIncompleteError`,
 // alert + throw so the outbox dispatcher retries/DLQs) instead of borrowing its display name. Read that file's header.
@@ -92,7 +92,7 @@ import type { M29WriteOutboxPort } from "../routes/store-drizzle";
 const HMO = schema.hl7MessageOutbound;
 const FEED = schema.externalFeed;
 
-/** F-180 — re-arm the `in_flight` lease right before the socket send only when at least this long has passed
+/** F-183 — re-arm the `in_flight` lease right before the socket send only when at least this long has passed
  *  since the claim (a rate-limiter wait, or earlier sends in the same sweep batch). Below it the claim's own
  *  lease still covers the whole send, so the extra write (and its audit row) is skipped. */
 const LEASE_REARM_AFTER_MS = 1_000;
@@ -145,11 +145,11 @@ export interface OutboundDispatchWorkerDeps {
    *  load — the RULE-4-adjacent "resolve at call time" posture other M29 files already use). */
   readonly alerts?: OutboundAlertPort;
   readonly now?: () => Date;
-  /** F-178 — which protocols / destinations this deployment may dial. Defaults to
+  /** F-181 — which protocols / destinations this deployment may dial. Defaults to
    *  `resolveDestinationPolicy(process.env)`: `mllp_plain` refused unless NOT production AND
    *  `M29_ALLOW_MLLP_PLAIN=true`; loopback refused in production; link-local/metadata always refused. */
   readonly destinationPolicy?: OutboundDestinationPolicy;
-  /** F-179 — how long a claimed `in_flight` row is presumed to have a live worker behind it before the
+  /** F-182 — how long a claimed `in_flight` row is presumed to have a live worker behind it before the
    *  reclaim sweep may take it back. Defaults to `OUTBOUND_IN_FLIGHT_LEASE_MS`; keep it well above the
    *  transport's connect + ack timeouts (a reclaim of a merely-slow worker looks like a duplicate send). */
   readonly inFlightLeaseMs?: number;
@@ -211,7 +211,7 @@ async function emitAlert(
     });
   } catch (err) {
     // Alerting failure must never block or crash the dispatch pipeline itself.
-    // F-178 — log only the error's class and the feed id, never the error object: an emitter/driver error can
+    // F-181 — log only the error's class and the feed id, never the error object: an emitter/driver error can
     // carry request context, and this path handles a PHI-adjacent outbound pipeline.
     console.error("m29.outbound.alert_emit_failed", {
       feedId: alert.feedId,
@@ -248,14 +248,14 @@ interface TransmitContext {
   readonly channelCertPin: string | null;
   readonly rateLimitMsgPerSec: number;
   readonly wirePlaintext: string;
-  /** F-180 — this attempt's lease length (the feed's own, else the platform default) and the expiry the claim
+  /** F-183 — this attempt's lease length (the feed's own, else the platform default) and the expiry the claim
    *  committed, so `transmitClaimed` can re-arm the lease when the send begins late. */
   readonly leaseMs: number;
   readonly leaseExpiresAt: Date;
 }
 
 /**
- * F-179 — the CLAIM GUARD every outcome write carries. A row is claimed `in_flight` (committed, with a lease)
+ * F-182 — the CLAIM GUARD every outcome write carries. A row is claimed `in_flight` (committed, with a lease)
  * before the socket send and finalized in a separate transaction; between the two, a reclaim sweep may have
  * taken the row back (`status → queued|dlq`, `retry_count + 1`). The finalizer therefore only writes while the
  * row is STILL `in_flight` at the `retry_count` it was claimed at — a slow worker that lost its lease affects
@@ -294,7 +294,7 @@ function transportErrorLabel(outcome: Exclude<MllpTransportOutcome, { kind: "ack
   }
 }
 
-/** F-178 — a refusal retrying cannot fix: terminal DLQ now (same persistence + event + alert as an
+/** F-181 — a refusal retrying cannot fix: terminal DLQ now (same persistence + event + alert as an
  *  exhausted DLQ). `label` is a short fixed PHI-free string. */
 async function applyPermanentFailure(
   deps: ResolvedDeps,
@@ -423,7 +423,7 @@ async function handleAckOutcome(
 
   if (parsed.messageControlId !== ctx.messageControlId) {
     // An ack whose MSA-2 does not correlate to the request we just sent on THIS connection. Per the
-    // brief: log + discard, no state change. F-179: the row is left `in_flight` on its lease, so the reclaim
+    // brief: log + discard, no state change. F-182: the row is left `in_flight` on its lease, so the reclaim
     // sweep picks it up once the lease expires (attempt counted, same wire/MSH-10, alert raised) instead of
     // the row sitting `in_flight` forever as it did before the lease existed.
     const orphan = correlateAck({ ack: parsed, outbound: null, ackReceivedAt: now, ackPayloadSha256 });
@@ -494,7 +494,7 @@ async function handleAckOutcome(
 }
 
 /**
- * F-179 — the CLAIM → SEND → FINALIZE split. Before F-179 this ran insert, the `in_flight` write, the socket
+ * F-182 — the CLAIM → SEND → FINALIZE split. Before F-182 this ran insert, the `in_flight` write, the socket
  * send and the outcome write inside ONE database transaction, so a crash mid-send rolled the row back with the
  * send's outcome unknown: no committed `in_flight` row existed to reclaim, and the outbox redelivery inserted a
  * FRESH row with a NEW MSH-10 (a possible second order at the lab). Now:
@@ -508,7 +508,7 @@ async function transmitClaimed(
   ctx: TransmitContext,
 ): Promise<MllpTransportOutcome | null> {
   await deps.rateLimiter.acquire(ctx.feedId, ctx.rateLimitMsgPerSec);
-  // F-180 — the lease must cover the SEND, not the queueing before it. A rate-limiter wait (or earlier sends in the
+  // F-183 — the lease must cover the SEND, not the queueing before it. A rate-limiter wait (or earlier sends in the
   // same sweep batch) has been eating the lease since the claim committed; re-arm it now, under the claim guard, so
   // a live sender is never mistaken for a crashed one. If the guard matches nothing the reclaimer already took the
   // row: send NOTHING (the reclaimer's attempt stands) and tell the caller the claim is gone.
@@ -528,7 +528,7 @@ async function transmitClaimed(
   });
 }
 
-/** F-180 — push the claimed row's lease out to `now + leaseMs`, guarded by the claim (`status='in_flight' AND
+/** F-183 — push the claimed row's lease out to `now + leaseMs`, guarded by the claim (`status='in_flight' AND
  *  retry_count` unchanged). Returns false when the claim is gone (a reclaimer took the row). */
 async function rearmLease(deps: ResolvedDeps, ctx: TransmitContext, now: Date): Promise<boolean> {
   return withOrgContext(
@@ -607,7 +607,7 @@ async function alertUnresolvedFeed(
 }
 
 /**
- * F-178 — thrown when the resolved feed lacks a REQUIRED MSH identity field. Unlike `no_active_feed` /
+ * F-181 — thrown when the resolved feed lacks a REQUIRED MSH identity field. Unlike `no_active_feed` /
  * `ambiguous_feed` (alert + return), an incomplete identity is an OPERATOR-FIXABLE configuration gap on a feed
  * that IS the right destination, so the order must not be silently dropped: the throw lets the outbox
  * dispatcher retry and, if the operator has not completed the feed by `maxAttempts`, dead-letter the event
@@ -635,13 +635,13 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
   }
   const payload = event.payload;
 
-  // F-179 — CLAIM transaction: everything up to and including the committed `in_flight` row. The socket send
+  // F-182 — CLAIM transaction: everything up to and including the committed `in_flight` row. The socket send
   // happens AFTER this commits (see `transmitClaimed`), so a crash mid-send leaves a reclaimable row.
   const claimed = await withOrgContext(deps.db, { organizationId, userId: SYSTEM_USER_ID }, async (scoped): Promise<TransmitContext | null> => {
     const tx = scoped as unknown as DbClient;
     const now = deps.now();
 
-    // F-180 — ORDER-level dedupe, BEFORE feed resolution. The §2.6 key below hashes the feed the resolver picks
+    // F-183 — ORDER-level dedupe, BEFORE feed resolution. The §2.6 key below hashes the feed the resolver picks
     // NOW, so a redelivery after the routing changed (a relink, a swapped/suspended feed) resolves another feed,
     // computes another key and would send the same order to a second endpoint. One ORM per ORDER: serialize every
     // delivery for this order across ALL feeds, and if any outbound row exists for it (any feed, any status — a
@@ -669,7 +669,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
     const feed = feedResult.feed;
 
     // Idempotency (D14/§2.6): a redelivered `m11.order.hl7_orm_requested` for the same (feed, order) must
-    // never double-dispatch — including under a TRUE CONCURRENT redelivery (F-178). `hl7_message_outbound` is
+    // never double-dispatch — including under a TRUE CONCURRENT redelivery (F-181). `hl7_message_outbound` is
     // PARTITIONED BY RANGE (queued_at), and Postgres requires every unique index on a partitioned table to
     // contain the partition key, so a `UNIQUE (organization_id, idempotency_key)` cannot exist (a key that
     // included `queued_at` would never collide, since each attempt stamps its own). The dedupe is instead
@@ -686,7 +686,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
       .where(and(eq(HMO.organizationId, organizationId), eq(HMO.idempotencyKey, idempotencyKey)))
       .limit(1);
     // A redelivery that finds a row — including one a crashed worker left `in_flight` — sends nothing: the
-    // row already owns its MSH-10 and the reclaim sweep (F-179) is the only path that may re-send it.
+    // row already owns its MSH-10 and the reclaim sweep (F-182) is the only path that may re-send it.
     if (existing.length > 0) return null;
 
     const baaResult = await resolveOutboundBaaResult({
@@ -718,7 +718,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
     }
 
     const payloadCipher = await deps.cipher.encrypt(organizationId, "payload", plan.wire);
-    // F-180 — the lease is the FEED's own (`in_flight_lease_seconds`), else the platform default.
+    // F-183 — the lease is the FEED's own (`in_flight_lease_seconds`), else the platform default.
     const leaseMs = inFlightLeaseMsFor(feed.inFlightLeaseSeconds, deps.leaseMs);
     const leaseExpiresAt = leaseExpiry(leaseMs, now);
     const [inserted] = await tx
@@ -727,7 +727,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
         ...plan.row,
         payloadCipher,
         status: "in_flight",
-        // F-179 — `next_retry_at` on an `in_flight` row is its LEASE EXPIRY: the reclaim sweep only takes a
+        // F-182 — `next_retry_at` on an `in_flight` row is its LEASE EXPIRY: the reclaim sweep only takes a
         // row back once this has passed, so a live worker mid-send is never mistaken for a crashed one.
         nextRetryAt: leaseExpiresAt,
       })
@@ -751,7 +751,7 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
       leaseExpiresAt,
     };
 
-    // F-178 — protocol guard BEFORE any socket: a `mllp_plain` feed is cleartext PHI on the wire and is refused
+    // F-181 — protocol guard BEFORE any socket: a `mllp_plain` feed is cleartext PHI on the wire and is refused
     // unless this deployment is explicitly non-production with the opt-in. Fail closed to a terminal DLQ.
     const protocolRefusal = checkProtocol(ctx.protocol, deps.policy);
     if (protocolRefusal !== null) {
@@ -790,7 +790,7 @@ export interface OutboundRetrySweepDeps extends OutboundDispatchWorkerDeps {
 }
 
 /**
- * F-179 — RECLAIM `in_flight` rows whose lease expired (a worker died between the committed claim and the
+ * F-182 — RECLAIM `in_flight` rows whose lease expired (a worker died between the committed claim and the
  * finalize, or an ack came back for a different MSH-10). A pure STATE TRANSITION, never a send:
  *   • `queued` again, `retry_count + 1`, backoff — the retry pass below resends the STORED wire, so the resend
  *     carries the SAME MSH-10 and a receiver that already processed the lost attempt can dedupe it;
@@ -817,7 +817,7 @@ async function reclaimStaleInFlight(deps: ResolvedDeps, organizationId: string, 
       .limit(M29_OUTBOUND_RETRY_SWEEP_BATCH_SIZE)
       .for("update", { skipLocked: true });
 
-    // F-180 — the operator's per-feed statement that the receiver dedupes on MSH-10. Read straight from the feed
+    // F-183 — the operator's per-feed statement that the receiver dedupes on MSH-10. Read straight from the feed
     // row (any status: a suspended feed's stranded row still needs its policy). FAIL CLOSED: a missing feed row
     // is `false`, i.e. HELD for human verification, never an automatic re-send.
     const dedupesByFeed = new Map<string, boolean>();
@@ -876,9 +876,9 @@ async function reclaimStaleInFlight(deps: ResolvedDeps, organizationId: string, 
 }
 
 /**
- * F-179 — CLAIM the due `queued` retries: `queued → in_flight` with a fresh lease, COMMITTED, before any send.
+ * F-182 — CLAIM the due `queued` retries: `queued → in_flight` with a fresh lease, COMMITTED, before any send.
  * `FOR UPDATE SKIP LOCKED` means two overlapping sweeps never claim (hence never send) the same row — before
- * F-179 both would have read it `queued` and both transmitted.
+ * F-182 both would have read it `queued` and both transmitted.
  */
 async function claimDueRetries(
   deps: ResolvedDeps,
@@ -903,7 +903,7 @@ async function claimDueRetries(
 
     const claims: TransmitContext[] = [];
     for (const row of due) {
-      // F-178 — resolve the row's OWN feed. The wire was built (and its destination decided) at queue time,
+      // F-181 — resolve the row's OWN feed. The wire was built (and its destination decided) at queue time,
       // so a second feed appearing later must not stall it; if the row's feed was suspended/revoked/expired
       // since, defer rather than transmit through a feed no longer authorised — the next tick re-checks.
       const feedResult = await deps.feedResolver.resolveById(tx, organizationId, row.feedId, now);
@@ -921,7 +921,7 @@ async function claimDueRetries(
         continue;
       }
 
-      // F-180 — the feed's own lease, else the platform default.
+      // F-183 — the feed's own lease, else the platform default.
       const leaseMs = inFlightLeaseMsFor(feedResult.feed.inFlightLeaseSeconds, deps.leaseMs);
       const leaseExpiresAt = leaseExpiry(leaseMs, now);
       const claimedRow = await tx
@@ -966,7 +966,7 @@ async function claimDueRetries(
 }
 
 /** Runs one sweep tick, driven directly (the `runStateChannelHealth` precedent — testable without BullMQ).
- *  Per org: (1) reclaim expired `in_flight` leases (F-179), (2) claim the due retries, (3) send + finalize each
+ *  Per org: (1) reclaim expired `in_flight` leases (F-182), (2) claim the due retries, (3) send + finalize each
  *  claim with no transaction held across the socket. */
 export async function runOutboundRetrySweepOnce(deps: OutboundRetrySweepDeps): Promise<void> {
   const resolved = resolveDeps(deps);

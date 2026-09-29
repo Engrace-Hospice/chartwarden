@@ -853,8 +853,8 @@ describe("M29-external-interfaces-inject — §4.2 clinician lab surface (routes
   });
 });
 
-// ── F-178 — feed input policy: canonical cert pin, production `mllp_plain` refusal, destination deny ─────────
-describe("M29-external-interfaces-inject — F-178 feed input policy", () => {
+// ── F-181 — feed input policy: canonical cert pin, production `mllp_plain` refusal, destination deny ─────────
+describe("M29-external-interfaces-inject — F-181 feed input policy", () => {
   const FEEDS = "/api/admin/external-interfaces/feeds";
   let certPem = "";
   beforeEach(() => {
@@ -957,8 +957,8 @@ describe("M29-external-interfaces-inject — F-178 feed input policy", () => {
   });
 });
 
-// ── F-179 — the production `mllp_plain` refusal covers INBOUND feeds too ────────────────────────────────────
-describe("M29-external-interfaces-inject — F-179 inbound mllp_plain", () => {
+// ── F-182 — the production `mllp_plain` refusal covers INBOUND feeds too ────────────────────────────────────
+describe("M29-external-interfaces-inject — F-182 inbound mllp_plain", () => {
   const FEEDS = "/api/admin/external-interfaces/feeds";
   const inbound = (over: Record<string, unknown> = {}) => ({
     kind: "adt_inbound",
@@ -1004,8 +1004,8 @@ describe("M29-external-interfaces-inject — F-179 inbound mllp_plain", () => {
   });
 });
 
-// ── F-180 — per-feed reclaim policy: receiver-dedupe flag + in_flight lease ──────────────────────────────────
-describe("M29-external-interfaces-inject — F-180 feed reclaim policy", () => {
+// ── F-183 — per-feed reclaim policy: receiver-dedupe flag + in_flight lease ──────────────────────────────────
+describe("M29-external-interfaces-inject — F-183 feed reclaim policy", () => {
   const FEEDS = "/api/admin/external-interfaces/feeds";
   const outbound = (over: Record<string, unknown> = {}) => ({
     kind: "orm_outbound",

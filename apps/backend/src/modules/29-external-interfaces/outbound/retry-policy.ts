@@ -66,7 +66,7 @@ export type RetryDecision =
     };
 
 /**
- * F-178 — a failure retrying can never fix (a destination/protocol the deployment REFUSES to dial): go
+ * F-181 — a failure retrying can never fix (a destination/protocol the deployment REFUSES to dial): go
  * straight to the terminal DLQ decision instead of burning five backoff attempts against a target the policy
  * will refuse every time. Same event / alert / audit shape as an exhausted DLQ so M11 (F-177) and M36 treat
  * it as any other terminal failure; `detail` carries the short PHI-free refusal label and `attemptCount` is
@@ -160,7 +160,7 @@ export function decideRetry(input: RetryDecisionInput): RetryDecision {
   };
 }
 
-// ── F-179: the `in_flight` lease + reclaim decision ──────────────────────────────────────────────────────────
+// ── F-182: the `in_flight` lease + reclaim decision ──────────────────────────────────────────────────────────
 //
 // A row is claimed `in_flight` in its OWN committed transaction BEFORE the socket send, with `next_retry_at` set
 // to a LEASE EXPIRY (`now + OUTBOUND_IN_FLIGHT_LEASE_MS`); the outcome is written in a second transaction. If the
@@ -171,7 +171,7 @@ export function decideRetry(input: RetryDecisionInput): RetryDecision {
 //     attempt can dedupe (HL7 v2 receivers dedupe on MSH-10; a resend with a NEW id would be a second order);
 //   • the reclaim is an attempt, so it draws on the SAME `OUTBOUND_MAX_ATTEMPTS` budget: an outcome that stays
 //     unknown across the whole budget goes terminal (`dlq`) for human verification with the lab, never a loop.
-//   • F-180: the requeue above is only taken when the OPERATOR has declared the feed's receiver dedupes on MSH-10
+//   • F-183: the requeue above is only taken when the OPERATOR has declared the feed's receiver dedupes on MSH-10
 //     (`external_feed.receiver_dedupes_control_id`, default false). Otherwise the row is HELD — terminal, never
 //     automatically re-sent — because the platform cannot verify a lab's dedupe behaviour on its own.
 
@@ -183,11 +183,11 @@ export const OUTBOUND_IN_FLIGHT_LEASE_MS = 5 * 60_000;
 /** The fixed, PHI-free `lastError` label a reclaim records. */
 export const IN_FLIGHT_RECLAIM_LABEL = "in_flight_lease_expired";
 
-/** F-180 — the fixed, PHI-free `detail` a HELD row records (the terminal event's `reason` stays the catalogued
+/** F-183 — the fixed, PHI-free `detail` a HELD row records (the terminal event's `reason` stays the catalogued
  *  `dlq_exhausted`; extending that union would need an M11 applier + catalog change, which this round avoids). */
 export const IN_FLIGHT_HELD_LABEL = "in_flight_lease_expired_delivery_unverified";
 
-/** F-180 — the per-feed lease bounds, mirroring the migration-0263 CHECK (60 s..1 h): the floor sits above the
+/** F-183 — the per-feed lease bounds, mirroring the migration-0263 CHECK (60 s..1 h): the floor sits above the
  *  transport's 10 s connect + 30 s ack worst case so a lease can never be shorter than a live send. */
 export const IN_FLIGHT_LEASE_MIN_SECONDS = 60;
 export const IN_FLIGHT_LEASE_MAX_SECONDS = 3600;
@@ -205,11 +205,11 @@ export type InFlightReclaimDecision =
 /**
  * Decide the fate of an `in_flight` row whose lease expired. Whether the lab already got the message is UNKNOWN,
  * and re-sending is only safe if the receiver dedupes on MSH-10 — an operator's per-feed statement
- * (`external_feed.receiver_dedupes_control_id`, F-180), default false:
+ * (`external_feed.receiver_dedupes_control_id`, F-183), default false:
  *   • `receiverDedupesControlId = false` — HELD: terminal (`dlq`, no automatic re-send ever), the same
  *     `m29.lab_order.transmission_failed` M11's F-177 applier already applies, a HIGH alert telling a human to
  *     verify with the lab, audit kind `hl7.outbound.held`;
- *   • `true` — F-179's requeue (same wire, same MSH-10, shared attempt budget, audit kind `hl7.outbound.reclaimed`),
+ *   • `true` — F-182's requeue (same wire, same MSH-10, shared attempt budget, audit kind `hl7.outbound.reclaimed`),
  *     going terminal `dlq` once the budget is spent.
  * Both raise an operator alert: a lost attempt is never silent.
  */

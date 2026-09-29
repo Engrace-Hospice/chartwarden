@@ -29,13 +29,13 @@
 // optional `clientCertPem`/`clientKeyPem` fields is additive and would not break this contract — flagged
 // for the coordinator to reconcile against the parallel fork, not decided unilaterally here.
 //
-// CERT-PIN CONVENTION — CANONICAL (F-178). `channelCertPin` is lowercase-hex sha256 of the peer
+// CERT-PIN CONVENTION — CANONICAL (F-181). `channelCertPin` is lowercase-hex sha256 of the peer
 // certificate's DER encoding (`getPeerCertificate().raw`), defined once in `../feed/cert-pin.ts`. F-175 had
 // to ASSUME this because nothing minted the value; the admin routes now accept either the 64-hex pin or the
 // certificate PEM and derive the pin server-side with the same helper, so an operator can no longer enter
 // a hash of PEM text (which is not byte-stable across tools) that could never match.
 //
-// DESTINATION POLICY (F-178). The host is admin-supplied. Before any socket is opened the host is resolved,
+// DESTINATION POLICY (F-181). The host is admin-supplied. Before any socket is opened the host is resolved,
 // EVERY resulting address is checked against `./destination-policy.ts` (link-local / metadata always
 // refused; loopback / unspecified refused when `allowLoopback` is false, i.e. in production), and the socket
 // is then opened to the exact address that was checked. A refusal is the typed `destination_refused`
@@ -105,7 +105,7 @@ export interface MllpTransportSendInput {
    *  both time out as `connect_timeout`, matching a receiver that "accepts the TCP connection but never
    *  completes it"). */
   readonly connectTimeoutMs: number;
-  /** F-178 — REQUIRED (no default: every caller must decide). Loopback / unspecified destinations may be
+  /** F-181 — REQUIRED (no default: every caller must decide). Loopback / unspecified destinations may be
    *  dialled only when true (never in production). Link-local and metadata destinations are refused
    *  regardless — see `./destination-policy.ts`. The check runs on the RESOLVED address and the socket is
    *  then opened to that exact address, so a DNS answer cannot change between check and connect. */
@@ -124,7 +124,7 @@ export type MllpTransportOutcome =
   /** Includes TLS handshake failure AND a cert-pin mismatch/missing-pin refusal. */
   | { readonly kind: "tls_error"; readonly errorClass: string }
   | { readonly kind: "connect_timeout" }
-  /** F-178 — the configured host (or any address it resolves to) is on the deny list. No socket was opened. */
+  /** F-181 — the configured host (or any address it resolves to) is on the deny list. No socket was opened. */
   | { readonly kind: "destination_refused"; readonly errorClass: DestinationRefusal }
   | { readonly kind: "ack_timeout" }
   | { readonly kind: "write_error"; readonly errorClass: string }
@@ -161,7 +161,7 @@ function classifyError(err: NodeJS.ErrnoException | Error): string {
   return message.length > 100 ? `${message.slice(0, 100)}…` : message;
 }
 
-/** sha256(DER cert) hex — the canonical convention in `../feed/cert-pin.ts` (F-178): DER, never a
+/** sha256(DER cert) hex — the canonical convention in `../feed/cert-pin.ts` (F-181): DER, never a
  *  re-serialized PEM string. */
 function derSha256Hex(cert: PeerCertificate): string | null {
   if (!cert || !cert.raw || cert.raw.length === 0) return null;

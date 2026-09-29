@@ -1,5 +1,5 @@
 // apps/backend/src/modules/11-orders/orm-request/orm-requested.ts — the PRODUCER side of
-// `m11.order.hl7_orm_requested` (F-178, #248).
+// `m11.order.hl7_orm_requested` (F-181, #248).
 //
 // WHAT WAS MISSING. M29's outbound T08 worker (F-175) and M11's `LabTransmissionApplier` (F-177) are both real,
 // and nothing published the event between them: F-120 left `lab` unbound because `OrmRequestedPayload` needs
@@ -95,7 +95,7 @@ export type OrmDestinationResult =
  * the lab kind schema). The binding MUST return an M40 FACILITY id that is `active`, because M29's D16 BAA gate
  * (`resolveOutboundBaaResult` → `BaaStatusProvider.baaStatusByMdmEntity({kind:'facility', id})`) runs on it and
  * `hl7_message_outbound.destination_facility_id` is a `uuid`. The composition-root binding then asks M29 to
- * resolve the active `orm_outbound` feed LINKED to that facility (F-178: `external_feed.lab_destination_facility_id`)
+ * resolve the active `orm_outbound` feed LINKED to that facility (F-181: `external_feed.lab_destination_facility_id`)
  * and refuses (`no_active_feed` / `ambiguous_feed` / `no_feed_for_destination` / `feed_identity_incomplete`) rather
  * than emit an event M29 would only alert on and drop. Runs on the sign transaction (`tx`) so feed reads are RLS-scoped.
  */

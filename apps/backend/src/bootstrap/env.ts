@@ -279,7 +279,7 @@ export function reservedPlaceholderProblem(value: string): string | null {
 }
 
 /**
- * F-178 — switches that exist ONLY for non-production use and must be ABSENT in production. A production
+ * F-181 — switches that exist ONLY for non-production use and must be ABSENT in production. A production
  * deployment that carries one is misconfigured in the dangerous direction, so the boot refuses rather than
  * trusting the runtime guard alone (the M29 outbound worker and inbound listener also ignore `M29_ALLOW_MLLP_PLAIN` in
  * production — this makes the mistake loud instead of silently inert).

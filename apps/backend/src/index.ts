@@ -3230,7 +3230,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           );
           mountAssessmentRoutes(app, dbHandle.db, m9OutboxPublisher); // M9 — reads + the §10 write pipeline over Drizzle+RLS, m9.* transactional outbox
           mountHopeRoutes(app, dbHandle.db, m10OutboxPublisher); // M10 — reads + the write lifecycle over Drizzle+RLS, m10.hope.* transactional outbox
-          // M11 — reads + the write lifecycle over Drizzle+RLS, m11.order.* transactional outbox. F-178 (#248): the
+          // M11 — reads + the write lifecycle over Drizzle+RLS, m11.order.* transactional outbox. F-181 (#248): the
           // fourth argument is what lets a signed lab order request its outbound HL7 ORM (M5 demographics, M40
           // physician + facility, M29's single active `orm_outbound` feed) — refused-not-fabricated when unresolvable.
           mountOrderRoutes(

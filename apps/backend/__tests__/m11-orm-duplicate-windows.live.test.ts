@@ -1,6 +1,6 @@
 /**
- * F-180 (#248) — every window in which ONE lab order could become TWO outbound ORM messages, reproduced on the
- * real path over real Postgres. F-179's in_flight-sweep fork flagged "the M11 emitter's crash-after-send window"
+ * F-183 (#248) — every window in which ONE lab order could become TWO outbound ORM messages, reproduced on the
+ * real path over real Postgres. F-182's in_flight-sweep fork flagged "the M11 emitter's crash-after-send window"
  * as a separate duplicate hazard; this suite is the proof of which windows are real and which are already shut.
  *
  * The emitter itself never touches a socket — it publishes `m11.order.hl7_orm_requested` into the outbox INSIDE the
@@ -9,9 +9,9 @@
  *
  *   W1  two CONCURRENT signs of one order          → CLOSED  `order_signature_target_signature_uq` (DB unique index)
  *   W2  sign transaction fails after the emitter   → CLOSED  one transaction: no signature, no event, retry = one
- *   W3  redelivery, receipt lost, routing unchanged → CLOSED  M29 idempotency key + advisory lock (F-178)
+ *   W3  redelivery, receipt lost, routing unchanged → CLOSED  M29 idempotency key + advisory lock (F-181)
  *   W4  redelivery, receipt lost, ROUTING CHANGED   → REAL    the key hashes the feed the resolver picked NOW
- *   W5  resend racing the applier / a request already at M29 → UNREACHABLE  see the F-179 resend suite + the pin below
+ *   W5  resend racing the applier / a request already at M29 → UNREACHABLE  see the F-182 resend suite + the pin below
  *
  *   WARDENX_TEST_DATABASE_URL=postgres://… bun run test:m11:orm-duplicate-windows:live
  */
@@ -68,7 +68,7 @@ const keys: OutboundTenantKeyProvider = {
 };
 const LOINC = [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }];
 
-describe.skipIf(!DB_URL)("F-180 — duplicate-ORM windows for one lab order, LIVE Postgres", () => {
+describe.skipIf(!DB_URL)("F-183 — duplicate-ORM windows for one lab order, LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbOrderBackend>;

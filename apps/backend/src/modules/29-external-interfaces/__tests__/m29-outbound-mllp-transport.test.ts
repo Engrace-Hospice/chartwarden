@@ -33,7 +33,7 @@ function baseInput(overrides: Partial<MllpTransportSendInput>): MllpTransportSen
     wireMessage: ORM_WIRE,
     connectTimeoutMs: 1_000,
     ackTimeoutMs: 1_000,
-    // The suite dials loopback test doubles; the F-178 refusal tests below override this to false.
+    // The suite dials loopback test doubles; the F-181 refusal tests below override this to false.
     allowLoopback: true,
     ...overrides,
   };
@@ -380,9 +380,9 @@ describe("PHI discipline", () => {
   });
 });
 
-// ── F-178 — canonical pin (PEM → DER sha256) through the REAL transport ────────────────────────────────────
+// ── F-181 — canonical pin (PEM → DER sha256) through the REAL transport ────────────────────────────────────
 
-describe("F-178 channelCertPin canonical convention through the real transport", () => {
+describe("F-181 channelCertPin canonical convention through the real transport", () => {
   function tlsAckServer(): tls.Server {
     const server = tls.createServer({ key: tlsKeyPem, cert: tlsCertPem, minVersion: "TLSv1.3" }, (socket) => {
       const buf = new MllpFrameBuffer();
@@ -442,9 +442,9 @@ describe("F-178 channelCertPin canonical convention through the real transport",
   });
 });
 
-// ── F-178 — destination policy: no socket to a refused destination ─────────────────────────────────────────
+// ── F-181 — destination policy: no socket to a refused destination ─────────────────────────────────────────
 
-describe("F-178 destination policy in the transport", () => {
+describe("F-181 destination policy in the transport", () => {
   it("refuses a link-local (cloud metadata) IP literal even when loopback is allowed — and opens no socket", async () => {
     const outcome = await createNodeMllpTransport().send(
       baseInput({ host: "169.254.169.254", port: 80, allowLoopback: true }),

@@ -44,7 +44,7 @@ export function mountOrderRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: OrderWriteOutboxPort,
-  /** F-178 (#248) — the lab-ORM producer's ports (M5 demographics, M40 physician, M29-aware destination). */
+  /** F-181 (#248) — the lab-ORM producer's ports (M5 demographics, M40 physician, M29-aware destination). */
   orm?: OrmRequestedPorts,
 ): void {
   const backend = createDbOrderBackend(db, outbox, orm);

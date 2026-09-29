@@ -42,7 +42,7 @@ export interface TlsListenerRegistryDeps {
   /** The per-connection handler deps (the ingest sink, ACK minting, clock) for a feed. */
   connectionDeps(feed: SupervisorFeedDescriptor): MllpConnectionDeps;
   log(level: "info" | "warn", event: string, fields: Record<string, unknown>): void;
-  /** F-179 — may a `mllp_plain` listener bind? Omitted ⇒ `inboundPlainAllowed(process.env)` (never in
+  /** F-182 — may a `mllp_plain` listener bind? Omitted ⇒ `inboundPlainAllowed(process.env)` (never in
    *  production, opt-in elsewhere) — FAIL CLOSED. */
   allowPlainProtocol?: boolean;
 }
@@ -59,7 +59,7 @@ export function createTlsListenerRegistry(deps: TlsListenerRegistryDeps): Listen
   return {
     async start(feed: SupervisorFeedDescriptor): Promise<void> {
       if (servers.has(feed.id)) return;
-      // F-179 — the bind point is the last line of defence: a caller that bypassed the supervisor's gate still
+      // F-182 — the bind point is the last line of defence: a caller that bypassed the supervisor's gate still
       // cannot open a cleartext socket the deployment forbids. Refuses BEFORE `net.createServer`.
       const allowPlain = deps.allowPlainProtocol ?? inboundPlainAllowed(process.env);
       if (listenerProtocolRefusal(feed.protocol, allowPlain) !== null) {
@@ -70,7 +70,7 @@ export function createTlsListenerRegistry(deps: TlsListenerRegistryDeps): Listen
 
       let server: net.Server;
       if (feed.protocol === "mllp_plain") {
-        // Non-production plain TCP only (F-179: refused above unless the explicit opt-in is set outside
+        // Non-production plain TCP only (F-182: refused above unless the explicit opt-in is set outside
         // production — the arch posture is mTLS, §8.7).
         server = net.createServer((socket) => handleMllpConnection(socket, feed, connDeps));
       } else {

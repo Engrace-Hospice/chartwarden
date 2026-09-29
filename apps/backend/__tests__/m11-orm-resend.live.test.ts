@@ -1,7 +1,7 @@
 /**
- * F-179 (#248) — RESEND of a refused lab ORM, proven end to end over real Postgres.
+ * F-182 (#248) — RESEND of a refused lab ORM, proven end to end over real Postgres.
  *
- * F-178's producer REFUSES (never fabricates) when a fact the HL7 ORM needs is unresolvable at sign time: the order
+ * F-181's producer REFUSES (never fabricates) when a fact the HL7 ORM needs is unresolvable at sign time: the order
  * stays signed, `transmission_status='failed'`, `transmission_failure_reason='orm_refused:<reason>'`. After someone
  * fixes the fact nothing retried. `resendLabTransmission` is the explicit, authorized, audited re-run. This drives:
  *
@@ -74,7 +74,7 @@ const keys: OutboundTenantKeyProvider = {
 const LOINC = [{ system: "http://loinc.org", code: "2345-7", display: "Glucose" }];
 const LAB_DATA = { testCodes: LOINC, fastingRequired: false, routingLabId: FAC_ACTIVE };
 
-describe.skipIf(!DB_URL)("F-179 — resend of a refused lab ORM, LIVE Postgres", () => {
+describe.skipIf(!DB_URL)("F-182 — resend of a refused lab ORM, LIVE Postgres", () => {
   let admin: Client;
   let handle: ReturnType<typeof createDbClient>;
   let svc: ReturnType<typeof createDbOrderBackend>;
@@ -273,7 +273,7 @@ describe.skipIf(!DB_URL)("F-179 — resend of a refused lab ORM, LIVE Postgres",
           transport,
           alerts: { emit: async () => undefined } as never,
           // The seeded feed is `mllp_plain` on loopback; the stub transport never dials, but the worker's
-          // production-safe default policy (F-178) refuses plain MLLP before it reaches the transport.
+          // production-safe default policy (F-181) refuses plain MLLP before it reaches the transport.
           destinationPolicy: { allowPlain: true, allowLoopback: true },
         }),
         buildM11LabTransmissionApplierConsumer({ db: handle.db, outbox: m11Outbox }),

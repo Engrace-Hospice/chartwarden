@@ -1,5 +1,5 @@
 // apps/backend/src/modules/29-external-interfaces/outbound/destination-policy.ts — where the outbound MLLP
-// worker may dial, and over what protocol (F-178, #248).
+// worker may dial, and over what protocol (F-181, #248).
 //
 // The `external_feed.host` an outbound ORM is sent to is ADMIN-SUPPLIED, and the process holds PHI and cloud
 // credentials, so a hostile or mistyped feed must not be able to aim it at the instance-metadata service or

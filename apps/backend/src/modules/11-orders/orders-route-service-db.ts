@@ -34,7 +34,7 @@
 // real catalogued payload per kind from `order_record.data` (already validated at draft time against the
 // exact TypeBox `packages/orders/src/kinds.ts` uses). `hl7_orm_requested`'s full `OrmRequestedPayload` needs
 // patient demographics + a resolved M40 provider identity + a destination M11 does not hold in its own tables:
-// F-178 (#248) binds it through INJECTED ports (`./orm-request/orm-requested.ts` — read its header for the
+// F-181 (#248) binds it through INJECTED ports (`./orm-request/orm-requested.ts` — read its header for the
 // refuse-never-fabricate contract). Without `orm` ports (unit tests, the standing/verbal workers) a signed lab
 // order emits nothing, exactly as before. The returned object IS BOTH the OrderRouteService AND the §4.7
 // AbacResolver.
@@ -98,7 +98,7 @@ const OD = schema.orderDiscontinuations;
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
-/** The order-side facts `signInternal` already holds that the F-178 lab-ORM producer needs. */
+/** The order-side facts `signInternal` already holds that the F-181 lab-ORM producer needs. */
 interface LabSignContext {
   readonly patientId: string;
   readonly orderingPhysicianMdmId: string;
@@ -264,7 +264,7 @@ const toStandingView = (r: {
 export function createDbOrderBackend(
   db: DbClient,
   outbox: OrderWriteOutboxPort = NOOP_OUTBOX,
-  /** F-178 (#248) — the ports the outbound lab-ORM producer reads through. Omitted ⇒ a signed lab emits no ORM. */
+  /** F-181 (#248) — the ports the outbound lab-ORM producer reads through. Omitted ⇒ a signed lab emits no ORM. */
   orm?: OrmRequestedPorts,
 ): OrderRouteService {
   /** Emit one `m11.order.*` event on the caller's tx (validated + persisted by the bound publisher). */
@@ -496,7 +496,7 @@ export function createDbOrderBackend(
    * `downstreamSignedEvents` effect on every sign, built here from `order_record.data` (already validated
    * at draft time against the exact per-kind TypeBox `packages/orders/src/kinds.ts` uses, so every field
    * this reads is guaranteed present). Only the three kinds whose full catalogued payload is derivable
-   * from data M11 already holds are wired here; `lab` goes through {@link emitOrmRequested} (F-178) because its
+   * from data M11 already holds are wired here; `lab` goes through {@link emitOrmRequested} (F-181) because its
    * payload needs facts from M5/M40 that arrive via injected ports.
    */
   async function emitDownstreamSignedEvent(
@@ -542,11 +542,11 @@ export function createDbOrderBackend(
   }
 
   /**
-   * F-178 (#248) — a signed lab order requests the outbound HL7 ORM^O01 IN THE SIGN TRANSACTION. The facts come
+   * F-181 (#248) — a signed lab order requests the outbound HL7 ORM^O01 IN THE SIGN TRANSACTION. The facts come
    * through the injected ports; if ANY is unresolvable the order stays signed, `transmission_status` becomes
    * `failed` (`orm_refused:<reason>` in `transmission_failure_reason` — existing columns, no migration) and
    * `m11.order.transmission_terminal_failed` raises the ordering-provider alert with `transmittedAttempts: 0`.
-   * Nothing partial is ever published. No ports ⇒ no-op (the pre-F-178 behavior).
+   * Nothing partial is ever published. No ports ⇒ no-op (the pre-F-181 behavior).
    */
   async function emitOrmRequested(
     tx: DbClient,
@@ -1146,7 +1146,7 @@ export function createDbOrderBackend(
     },
 
     /**
-     * F-179 (#248) — re-run F-178's producer for a lab order whose ORM request was refused. Everything below is ONE
+     * F-182 (#248) — re-run F-181's producer for a lab order whose ORM request was refused. Everything below is ONE
      * transaction, so a caller never observes `pending` without the published request or the reverse:
      *   1. `SELECT … FOR UPDATE` the order row — two resends (a double-click, two tabs) serialize here; the second
      *      then reads the first's committed `pending` and is refused as `not_failed`.

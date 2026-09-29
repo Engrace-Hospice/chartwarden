@@ -374,7 +374,7 @@ export const SuggestionsResponseSchema = Type.Object({
   patientId: Type.String(),
   suggestions: Type.Array(Type.Object({ kind: ORDER_KIND, reason: Type.String() })),
 });
-/** F-179 — POST /orders/:id/resend-transmission. `refusalReason` is a fixed producer token, never PHI. */
+/** F-182 — POST /orders/:id/resend-transmission. `refusalReason` is a fixed producer token, never PHI. */
 export const ResendLabTransmissionResponseSchema = Type.Object({
   outcome: Type.Union([Type.Literal("requested"), Type.Literal("still_refused")]),
   refusalReason: nullableString(),

@@ -1,5 +1,5 @@
 // apps/backend/src/modules/29-external-interfaces/outbound/order-dispatch-dedupe.ts — the ORDER-level dedupe
-// question for outbound ORM dispatch (F-180, #248). READ-ONLY.
+// question for outbound ORM dispatch (F-183, #248). READ-ONLY.
 //
 // WHY THIS EXISTS. M29 §2.6's dispatch dedup key is `hash(feed_id, source_aggregate_kind, source_aggregate_id)`
 // (`outboundIdempotencyKey`). That key is right for "the same event redelivered to the same feed" and it is
@@ -12,7 +12,7 @@
 //
 // The invariant the key was reaching for is one ORM per ORDER, so this asks that question directly: is there any
 // outbound row — on ANY feed, in ANY status (a crashed `in_flight`, a `dlq` terminal, a sent one) — for this order?
-// A redelivery that finds one must send nothing: the row owns the order's MSH-10 and the reclaim sweep (F-179) is
+// A redelivery that finds one must send nothing: the row owns the order's MSH-10 and the reclaim sweep (F-182) is
 // the only path allowed to re-send it. Runs on the caller's org-scoped transaction, so RLS applies.
 import { type DbClient, schema } from "@wardenx/db";
 import { and, eq } from "drizzle-orm";

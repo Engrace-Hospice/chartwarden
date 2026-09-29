@@ -90,7 +90,7 @@ export {
   dosespotSyncDemographicsForOrg,
 } from "./seams/dosespot-sync-snapshot-for-org";
 
-// F-178 (#248) — the minimum-necessary PID facts + fail-closed SUD flag M11's outbound lab-ORM producer reads,
+// F-181 (#248) — the minimum-necessary PID facts + fail-closed SUD flag M11's outbound lab-ORM producer reads,
 // on the caller's transaction, injected as a port (M11 has no `dependsOn` edge to 5).
 export { type Hl7OrmDemographics, hl7OrmDemographicsInTx } from "./seams/hl7-orm-demographics";
 

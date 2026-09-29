@@ -1,5 +1,5 @@
 // apps/backend/src/modules/05-patient/seams/hl7-orm-demographics.ts — the M5-owned, org-explicit read the
-// M11 outbound-lab-ORM producer needs (F-178, #248). Same reason as `dosespotSyncDemographicsForOrg`:
+// M11 outbound-lab-ORM producer needs (F-181, #248). Same reason as `dosespotSyncDemographicsForOrg`:
 // `patient_address` / `patient_privacy_flag_snapshot` are M5-owned, M11's manifest `dependsOn` is
 // `[1, 6, 36, 38, 40]` (no edge to 5), so M11 reads them through THIS function, injected as a port at the
 // composition root — never a schema import (`arch:tables` / `arch:boundaries`).

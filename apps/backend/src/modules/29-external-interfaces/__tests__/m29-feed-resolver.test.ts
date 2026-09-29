@@ -1,4 +1,4 @@
-// F-178 (#248) — `selectOutboundFeed`, the pure routing + MSH-identity rules of the outbound feed resolver.
+// F-181 (#248) — `selectOutboundFeed`, the pure routing + MSH-identity rules of the outbound feed resolver.
 import { describe, expect, it } from "vitest";
 import {
   type OutboundFeedCandidateRow,
