@@ -153,7 +153,7 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     family: "hci",
     periodKind: ROLLING,
     activatesFy: 2025,
-    calculatorVersion: "0.1.0",
+    calculatorVersion: "0.2.0",
     description: "HCI 8 — Skilled Nursing Minutes per RHC day",
   },
   {
@@ -161,7 +161,7 @@ export const MEASURE_CATALOG: readonly MeasureCatalogEntry[] = [
     family: "hci",
     periodKind: ROLLING,
     activatesFy: 2025,
-    calculatorVersion: "0.1.0",
+    calculatorVersion: "0.2.0",
     description: "HCI 9 — Skilled Nursing Minutes on Weekends",
   },
   {

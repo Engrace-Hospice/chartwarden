@@ -7,7 +7,6 @@
 // (`m30-hci-indicator-inputs.live.test.ts`) proves the two Drizzle readers produce the shapes assumed.
 import {
   HCI_SKILLED_NURSING_GAP_DAYS,
-  HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR,
   computeHciIndicator02,
   computeHciIndicator08,
   computeHciIndicator09,
@@ -68,8 +67,8 @@ function seamsOf(args: {
   } as never;
 }
 
-describe("HCI indicator 8 — skilled-nursing minutes per routine-home-care day", () => {
-  it("counts RHC days as the denominator and floor-meeting days as the numerator", async () => {
+describe("HCI indicator 8 — mean skilled-nursing minutes per routine-home-care day (CMS)", () => {
+  it("divides the SN minutes on RHC days by the RHC days", async () => {
     const input = await resolveHciSkilledNursingDayInput(
       REQUEST("hci_indicator_08", "2026-01-01", "2026-01-11"),
       seamsOf({
@@ -85,16 +84,21 @@ describe("HCI indicator 8 — skilled-nursing minutes per routine-home-care day"
         days: [
           { admissionId: "a1", serviceDate: "2026-01-02", visits: 1, minutes: 45 },
           { admissionId: "a1", serviceDate: "2026-01-05", visits: 1, minutes: 30 },
-          // Below the floor — a visit happened, but not enough minutes for indicator 8.
+          // A short visit is still minutes — there is no per-day floor in the CMS definition.
           { admissionId: "a1", serviceDate: "2026-01-07", visits: 1, minutes: 5 },
         ],
       }),
     );
-    expect(input).toMatchObject({ totalRhcDays: 10, rhcDaysMeetingSnMinuteFloor: 2 });
-    expect(computeHciIndicator08(input as never).rate).toBeCloseTo(0.2);
+    expect(input).toMatchObject({ totalRhcDays: 10, skilledNursingMinutesOnRhcDays: 80 });
+    const r = computeHciIndicator08(input as never);
+    expect(r.numerator).toBe(80);
+    expect(r.denominator).toBe(10);
+    expect(r.computationSnapshot.meanSkilledNursingMinutesPerRhcDay).toBeCloseTo(8);
+    // 8 min/RHC day is under the 15-minute cut.
+    expect(r.thresholdMet).toBe(false);
   });
 
-  it("excludes days at any level of care OTHER than routine home care", async () => {
+  it("excludes days — and minutes — at any level of care OTHER than routine home care", async () => {
     const input = await resolveHciSkilledNursingDayInput(
       REQUEST("hci_indicator_08", "2026-01-01", "2026-01-11"),
       seamsOf({
@@ -113,54 +117,26 @@ describe("HCI indicator 8 — skilled-nursing minutes per routine-home-care day"
             to: "2026-01-11",
           },
         ],
+        days: [
+          { admissionId: "a1", serviceDate: "2026-01-02", visits: 1, minutes: 60 },
+          { admissionId: "a1", serviceDate: "2026-01-08", visits: 1, minutes: 240 },
+        ],
       }),
     );
-    expect(input).toMatchObject({ totalRhcDays: 5 });
+    expect(input).toMatchObject({ totalRhcDays: 5, skilledNursingMinutesOnRhcDays: 60 });
   });
 
-  it("an org with no level-of-care spans SUPPRESSES rather than scoring 0%", async () => {
+  it("an org with no level-of-care spans SUPPRESSES rather than scoring 0", async () => {
     const input = await resolveHciSkilledNursingDayInput(REQUEST("hci_indicator_08"), seamsOf({}));
     const r = computeHciIndicator08(input as never);
     expect(r.denominator).toBe(0);
     expect(r.rate).toBeNull();
     expect(r.bandColor).toBe("insufficient_n");
   });
-
-  it("uses the declared per-day minute floor, not a hard-coded one", async () => {
-    const input = await resolveHciSkilledNursingDayInput(
-      REQUEST("hci_indicator_08", "2026-01-01", "2026-01-03"),
-      seamsOf({
-        locSpans: [
-          {
-            admissionId: "a1",
-            levelOfCare: "routine_home_care",
-            from: "2026-01-01",
-            to: "2026-01-03",
-          },
-        ],
-        days: [
-          // Exactly at the floor counts (>=); one minute under does not.
-          {
-            admissionId: "a1",
-            serviceDate: "2026-01-01",
-            visits: 1,
-            minutes: HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR,
-          },
-          {
-            admissionId: "a1",
-            serviceDate: "2026-01-02",
-            visits: 1,
-            minutes: HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR - 1,
-          },
-        ],
-      }),
-    );
-    expect(input).toMatchObject({ totalRhcDays: 2, rhcDaysMeetingSnMinuteFloor: 1 });
-  });
 });
 
-describe("HCI indicator 9 — skilled-nursing minutes on weekends", () => {
-  it("counts only Saturdays and Sundays, at ANY level of care", async () => {
+describe("HCI indicator 9 — share of skilled-nursing minutes on weekends (CMS)", () => {
+  it("divides the Saturday/Sunday SN minutes on RHC days by all SN minutes on RHC days", async () => {
     // 2026-01-01 is a Thursday; 01-03/01-04 and 01-10/01-11 are the weekends in this window.
     const input = await resolveHciSkilledNursingDayInput(
       REQUEST("hci_indicator_09", "2026-01-01", "2026-01-12"),
@@ -172,7 +148,7 @@ describe("HCI indicator 9 — skilled-nursing minutes on weekends", () => {
             from: "2026-01-01",
             to: "2026-01-06",
           },
-          // A weekend spent at general inpatient level is still a weekend the agency staffed.
+          // Minutes on a non-RHC weekend are outside the CMS population (numerator AND denominator).
           {
             admissionId: "a1",
             levelOfCare: "general_inpatient_care",
@@ -182,14 +158,18 @@ describe("HCI indicator 9 — skilled-nursing minutes on weekends", () => {
         ],
         days: [
           { admissionId: "a1", serviceDate: "2026-01-03", visits: 1, minutes: 60 },
+          { admissionId: "a1", serviceDate: "2026-01-02", visits: 1, minutes: 180 },
           { admissionId: "a1", serviceDate: "2026-01-11", visits: 1, minutes: 60 },
-          // A weekday visit is irrelevant to this indicator.
-          { admissionId: "a1", serviceDate: "2026-01-07", visits: 1, minutes: 90 },
         ],
       }),
     );
-    expect(input).toMatchObject({ totalWeekendCareDays: 4, weekendDaysMeetingSnMinuteFloor: 2 });
-    expect(computeHciIndicator09(input as never).rate).toBeCloseTo(0.5);
+    expect(input).toMatchObject({
+      totalSkilledNursingMinutes: 240,
+      weekendSkilledNursingMinutes: 60,
+    });
+    const r = computeHciIndicator09(input as never);
+    expect(r.rate).toBeCloseTo(0.25);
+    expect(r.thresholdMet).toBe(true);
   });
 
   it("shares one pair of reads with indicator 8 but reduces them differently", async () => {
@@ -202,7 +182,10 @@ describe("HCI indicator 9 — skilled-nursing minutes on weekends", () => {
           to: "2026-01-12",
         },
       ],
-      days: [{ admissionId: "a1", serviceDate: "2026-01-03", visits: 1, minutes: 60 }],
+      days: [
+        { admissionId: "a1", serviceDate: "2026-01-03", visits: 1, minutes: 60 },
+        { admissionId: "a1", serviceDate: "2026-01-05", visits: 1, minutes: 30 },
+      ],
     });
     const eight = await resolveHciSkilledNursingDayInput(
       REQUEST("hci_indicator_08", "2026-01-01", "2026-01-12"),
@@ -212,8 +195,30 @@ describe("HCI indicator 9 — skilled-nursing minutes on weekends", () => {
       REQUEST("hci_indicator_09", "2026-01-01", "2026-01-12"),
       seams,
     );
-    expect(eight).toMatchObject({ totalRhcDays: 11, rhcDaysMeetingSnMinuteFloor: 1 });
-    expect(nine).toMatchObject({ totalWeekendCareDays: 4, weekendDaysMeetingSnMinuteFloor: 1 });
+    expect(eight).toMatchObject({ totalRhcDays: 11, skilledNursingMinutesOnRhcDays: 90 });
+    expect(nine).toMatchObject({
+      totalSkilledNursingMinutes: 90,
+      weekendSkilledNursingMinutes: 60,
+    });
+  });
+
+  it("no skilled-nursing minutes on RHC days SUPPRESSES rather than scoring 0%", async () => {
+    const input = await resolveHciSkilledNursingDayInput(
+      REQUEST("hci_indicator_09", "2026-01-01", "2026-01-12"),
+      seamsOf({
+        locSpans: [
+          {
+            admissionId: "a1",
+            levelOfCare: "routine_home_care",
+            from: "2026-01-01",
+            to: "2026-01-12",
+          },
+        ],
+      }),
+    );
+    const r = computeHciIndicator09(input as never);
+    expect(r.rate).toBeNull();
+    expect(r.bandColor).toBe("insufficient_n");
   });
 });
 

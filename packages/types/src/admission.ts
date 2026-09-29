@@ -464,9 +464,9 @@ export interface LevelOfCarePeriodReader {
 
   /**
    * M30 HCI indicators 8 and 9 — every level-of-care span overlapping `[period.from, period.to)`, CLIPPED
-   * to it. Indicator 8's denominator is routine-home-care DAYS, indicator 9's is weekend CARE days, and
-   * both numerators need those days joined to per-day skilled-nursing minutes M8 holds — so the day sets
-   * cannot be reduced to counts on either side of the module boundary. Spans (not day lists) keep the
+   * to it. Both indicators are defined over routine-home-care DAYS (8: SN minutes on them ÷ the days;
+   * 9: the weekend share of those minutes), and both need those days joined to per-day skilled-nursing
+   * minutes M8 holds — so the day sets cannot be reduced to counts on either side of the module boundary. Spans (not day lists) keep the
    * payload proportional to LOC CHANGES rather than to census × 365.
    *
    * Admission-linked within one org, like the death census {@link DeathDischargeReader} returns: no patient

@@ -25,7 +25,6 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
 import {
-  HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR,
   computeHciIndicator02,
   computeHciIndicator08,
   computeHciIndicator09,
@@ -479,46 +478,43 @@ describe.skipIf(!DB_URL)("F-042 — HCI indicator inputs, LIVE Postgres", () => 
   });
 
   describe("the three indicators, computed end to end over the real readers", () => {
-    it("indicator 8 — RHC days meeting the SN-minutes floor", async () => {
+    it("indicator 8 — mean skilled-nursing minutes per RHC day", async () => {
       const a = await activate();
-      // Ten routine-home-care days; two of them carry a qualifying nursing visit.
+      // Ten routine-home-care days carrying 45 + 30 + 10 = 85 skilled-nursing minutes.
       await seedLoc(a.admissionId, "routine_home_care", "2026-01-01", "2026-01-11");
       await seedEncounter(a.admissionId, a.patientId, "2026-01-02", "rn", 45);
       await seedEncounter(a.admissionId, a.patientId, "2026-01-05", "rn", 30);
-      // Under the floor — a visit, but not a qualifying day for this indicator.
-      await seedEncounter(
-        a.admissionId,
-        a.patientId,
-        "2026-01-08",
-        "rn",
-        HCI_SKILLED_NURSING_MINUTES_PER_DAY_FLOOR - 5,
-      );
+      // A short visit still contributes its minutes — the CMS mean has no per-day floor.
+      await seedEncounter(a.admissionId, a.patientId, "2026-01-08", "rn", 10);
 
       const input = (await resolveHciSkilledNursingDayInput(
         REQUEST("hci_indicator_08"),
         seams,
-      )) as { totalRhcDays: number; rhcDaysMeetingSnMinuteFloor: number };
+      )) as { totalRhcDays: number; skilledNursingMinutesOnRhcDays: number };
       // Other tests in this suite seed their own spans into the same org, so assert this admission's
-      // contribution through the deltas rather than the org totals.
+      // contribution through lower bounds rather than the org totals.
       expect(input.totalRhcDays).toBeGreaterThanOrEqual(10);
-      expect(input.rhcDaysMeetingSnMinuteFloor).toBeGreaterThanOrEqual(2);
+      expect(input.skilledNursingMinutesOnRhcDays).toBeGreaterThanOrEqual(85);
       const result = computeHciIndicator08(input as never);
       expect(result.rate).not.toBeNull();
+      expect(result.numerator).toBe(input.skilledNursingMinutesOnRhcDays);
       expect(result.denominator).toBe(input.totalRhcDays);
     });
 
-    it("indicator 9 — weekend care days meeting the floor", async () => {
+    it("indicator 9 — weekend share of skilled-nursing minutes on RHC days", async () => {
       const a = await activate();
-      // 2026-01-03 and 2026-01-04 are the Saturday/Sunday inside this span.
+      // 2026-01-03 and 2026-01-04 are the Saturday/Sunday inside this span; 01-05 is a Monday.
       await seedLoc(a.admissionId, "routine_home_care", "2026-01-02", "2026-01-06");
       await seedEncounter(a.admissionId, a.patientId, "2026-01-03", "rn", 60);
+      await seedEncounter(a.admissionId, a.patientId, "2026-01-05", "rn", 40);
 
       const input = (await resolveHciSkilledNursingDayInput(
         REQUEST("hci_indicator_09"),
         seams,
-      )) as { totalWeekendCareDays: number; weekendDaysMeetingSnMinuteFloor: number };
-      expect(input.totalWeekendCareDays).toBeGreaterThanOrEqual(2);
-      expect(input.weekendDaysMeetingSnMinuteFloor).toBeGreaterThanOrEqual(1);
+      )) as { totalSkilledNursingMinutes: number; weekendSkilledNursingMinutes: number };
+      expect(input.totalSkilledNursingMinutes).toBeGreaterThanOrEqual(100);
+      expect(input.weekendSkilledNursingMinutes).toBeGreaterThanOrEqual(60);
+      expect(input.weekendSkilledNursingMinutes).toBeLessThan(input.totalSkilledNursingMinutes);
       expect(computeHciIndicator09(input as never).rate).not.toBeNull();
     });
 

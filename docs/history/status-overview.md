@@ -36,7 +36,8 @@ M30 (`CostReportFilingStatusReader`) are **live and tested**, not deny-stubs (`m
 418.310 failure-to-file indicator. **The HCI is now resolved as far as a provider-side system can take it
 (F-042, #102).** Seven of the ten indicators compute from data the agency itself records: 1 and 2 off M6's
 election periods, 3 and 4 off its discharges, 8 and 9 off M6 level-of-care day spans intersected with a new
-M8 per-day skilled-nursing read (`skilledNursingDayTotalsForOrg`), and 10 off the death census. **Three
+M8 per-day skilled-nursing read (`skilledNursingDayTotalsForOrg`) — on the CMS definitions: 8 is mean SN
+minutes per RHC day, 9 the weekend share of those minutes — and 10 off the death census. **Three
 never will**: 5, 6 and 7 are defined by CMS over the beneficiary's Medicare claims across EVERY provider —
 the inpatient stay in the middle of a burdensome transition, and the non-hospice Part A/B spend — which no
 single-tenant EHR holds. They are a DECLARED absence (`HCI_UNAVAILABLE_INDICATORS`) that computes a real

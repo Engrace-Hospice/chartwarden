@@ -118,6 +118,32 @@ export function ratePct(rate: number | null, bandColor?: MeasureBandColor): stri
   return `${(rate * 100).toFixed(1)}%`;
 }
 
+/**
+ * The measure whose CMS value is a MEAN rather than a proportion: HCI indicator 8, skilled-nursing minutes
+ * per routine-home-care day. Its numerator/denominator are SN minutes / RHC days, and its wire `rate` is that
+ * mean rescaled to a share of the day (÷ 1440) so it fits the proportion contract — which would read as a
+ * meaningless "1.0%". It is shown in CMS's own unit instead, from the exact numerator/denominator.
+ */
+const MINUTES_PER_DAY_MEASURES = new Set(["hci_indicator_08"]);
+
+/** Render a measure value's rate: minutes per RHC day for HCI 8, a percentage for everything else. */
+export function measureRate(
+  measureId: string,
+  value: {
+    readonly rate: number | null;
+    readonly bandColor?: MeasureBandColor;
+    readonly numerator: number;
+    readonly denominator: number;
+  },
+): string {
+  if (MINUTES_PER_DAY_MEASURES.has(measureId)) {
+    if (value.bandColor === "insufficient_n" || value.rate === null || value.denominator <= 0)
+      return "—";
+    return `${(value.numerator / value.denominator).toFixed(1)} min/day`;
+  }
+  return ratePct(value.rate, value.bandColor);
+}
+
 /** `18 / 20` — the population behind the rate, always shown beside it. */
 export function fraction(numerator: number, denominator: number): string {
   return `${numerator} / ${denominator}`;
