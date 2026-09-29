@@ -343,6 +343,12 @@ export interface RenderPayloadCore {
   readonly aggregateId: string;
   readonly patientId?: string | null;
   readonly title?: string;
+  /** F-168 (#248) — the delivered outbox event that requested this render, when the caller has one.
+   *  Forwarded straight through to `RenderUpsert.sourceEventId` (`document_version.source_event_id`) — the
+   *  §4.11 render-consumer sets this; every other `render()` caller (DSAR/tenant-export jobs, the M39
+   *  consent render, the lab-backref/statement-of-disagreement variants) leaves it unset, which the store
+   *  writes as NULL, exactly its prior behaviour. */
+  readonly sourceEventId?: string | null;
 }
 
 /** Injectable wall clock (ISO instant). Overridable for deterministic tests; defaults to real time. */
@@ -431,6 +437,7 @@ export function createDocumentRenderer(deps: DocumentRendererDeps): DocumentRend
         byteSize: bytes.byteLength,
         mimeType: RENDER_MIME_TYPE,
         renderedAt: now(),
+        sourceEventId: core.sourceEventId ?? null,
       });
 
       return { documentId: row.documentId };

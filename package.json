@@ -149,6 +149,7 @@
     "test:m30:bereavement-plan-closed-consumer:live": "vitest run apps/backend/__tests__/m30-bereavement-plan-closed-consumer.live.test.ts",
     "test:f161:m7-m17-render-requests:live": "vitest run apps/backend/__tests__/f161-m7-m17-render-requests.live.test.ts",
     "test:f166:render-requests:live": "vitest run apps/backend/__tests__/f166-m8-m18-m14-m15-render-requests.live.test.ts",
+    "test:f168:document-request-idempotency:live": "vitest run apps/backend/__tests__/f168-document-request-idempotency.live.test.ts",
     "test:m17:evv-checkout-corrected:live": "vitest run apps/backend/__tests__/m17-evv-checkout-corrected.live.test.ts",
     "test:m17:volunteer-triage-consumers:live": "vitest run apps/backend/__tests__/m17-volunteer-triage-consumers.live.test.ts",
     "test:m2:consent-revoked:live": "vitest run apps/backend/__tests__/m2-consent-revoked.live.test.ts",

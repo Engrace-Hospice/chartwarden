@@ -1251,7 +1251,16 @@ export function createDbIdgBackend(
     ): Promise<{ amendmentId: string; minutesId: string }> {
       return withOrg(orgId, async (tx) => {
         const [min] = await tx
-          .select({ id: MIN.id, status: MIN.status })
+          .select({
+            id: MIN.id,
+            status: MIN.status,
+            // F-168 (#248) — the exact `renderPayload` shape `.signed` already sends, re-read
+            // post-amendment: M22 re-renders through the SAME `idg_minutes` template, and until now this
+            // event carried no content for it to render with at all.
+            attendanceSnapshot: MIN.attendanceSnapshot,
+            decisionListSnapshot: MIN.decisionListSnapshot,
+            actionItemListSnapshot: MIN.actionItemListSnapshot,
+          })
           .from(MIN)
           .where(eq(MIN.id, minutesId))
           .limit(1);
@@ -1277,6 +1286,15 @@ export function createDbIdgBackend(
           minutesId,
           requestedByMembershipId: userId,
           approvedByMembershipId: userId,
+          // `amendmentReason` itself is DENYLISTED free-text (`idg_minutes_amendment.amendment_reason`,
+          // §3.3) and deliberately stays OFF the wire, same as before this change (only its hash is
+          // published) — `renderPayload` carries the same three snapshot columns `.signed` already
+          // publishes in the clear, never the reason text.
+          renderPayload: {
+            attendanceSnapshot: min.attendanceSnapshot,
+            decisionListSnapshot: min.decisionListSnapshot,
+            actionItemListSnapshot: min.actionItemListSnapshot,
+          },
           amendmentReasonHash: createHash("sha256").update(amendmentReason, "utf8").digest("hex"),
         });
         return { amendmentId: row!.id, minutesId };

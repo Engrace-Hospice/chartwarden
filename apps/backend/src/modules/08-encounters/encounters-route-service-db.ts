@@ -2321,6 +2321,10 @@ export function createDbEncounterRouteService(
           signedByMembershipId: actor.membershipId,
           signedAt: now.toISOString(),
           reason: a.reason,
+          // F-168 (#248) — the same PHI-safe stand-in `.signed` sends (`final: ""`; the pinned narrative
+          // never leaves the outbox in the clear). M22 appends a new `document_version` on the SAME
+          // `encounterId` from this.
+          documentRenderPayload: { final: "", addenda: [{ addendumId, reason: a.reason, text: "" }] },
         });
         return { status: "signed", signedAt: now.toISOString() };
       });

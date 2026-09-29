@@ -43,6 +43,11 @@ export interface RenderUpsert {
    *  carried on the DTO (not hardcoded in the store) so a future non-PDF template stays honest. */
   readonly mimeType: string;
   readonly renderedAt: IsoInstant;
+  /** F-168 (#248) — the specific delivered outbox event that requested this render, when the caller has
+   *  one (the render-consumer does; a manual upload or a DSAR/tenant-export job does not). Written into
+   *  `document_version.source_event_id` in the SAME insert as the version row — see that column's own
+   *  schema comment for why this must be atomic with the write it dedupes, not a side receipt table. */
+  readonly sourceEventId?: string | null;
 }
 
 /** The rows the store returns after an upsert — the back-ref every source module's consumer applies. */
@@ -77,6 +82,24 @@ export interface DocumentSeamStore {
     versionId: DocumentVersionId;
     /** The active version's number — 1 on a genesis render, >1 after a W2 addendum/correction. Carried
      *  on `m22.document.rendered` so a requesting module can tell a first render from a re-render. */
+    versionNumber: number;
+    renderedAt: IsoInstant;
+  } | null>;
+  /**
+   * F-168 (#248) — the §4.11 render-request idempotency check, at REQUEST granularity rather than
+   * aggregate granularity: the version (if any) a specific delivered outbox event already produced, keyed
+   * by `document_version.source_event_id`. Null means this exact request has never rendered — including
+   * when the AGGREGATE already has other, different requests' versions on it (the case
+   * `renderedDocumentForAggregate` alone cannot distinguish from a genuine redelivery). A non-null result
+   * is what `decideDocumentRequest`'s `alreadyRendered` fact resolves from; the render-consumer reuses the
+   * returned row to re-announce `m22.document.rendered` on a redelivery without rendering twice.
+   */
+  documentVersionForSourceEvent(args: {
+    readonly sourceEventId: string;
+    readonly organizationId: OrgId;
+  }): Promise<{
+    documentId: DocumentId;
+    versionId: DocumentVersionId;
     versionNumber: number;
     renderedAt: IsoInstant;
   } | null>;
@@ -158,6 +181,7 @@ interface StoredRendered {
     objectKey: string;
     bucket: string;
     renderedAt: IsoInstant;
+    sourceEventId: string | null;
   }[];
 }
 
@@ -177,6 +201,7 @@ export function createInMemoryDocumentSeamStore(seed: DocumentSeamSeed = {}): {
         objectKey: "",
         bucket: "",
         renderedAt: d.renderedAt,
+        sourceEventId: null,
       },
     ],
   }));
@@ -200,6 +225,7 @@ export function createInMemoryDocumentSeamStore(seed: DocumentSeamSeed = {}): {
       async upsertRenderedDocument(input): Promise<RenderedDocumentRow> {
         const existing = find(input.aggregateType, input.aggregateId, input.organizationId);
         const versionId = uuidFromCounter("8001", ++verCounter);
+        const sourceEventId = input.sourceEventId ?? null;
         if (existing) {
           // W2 addendum/correction: a NEW immutable version on the SAME document (never a new document).
           const versionNumber = Math.max(...existing.versions.map((v) => v.versionNumber)) + 1;
@@ -209,6 +235,7 @@ export function createInMemoryDocumentSeamStore(seed: DocumentSeamSeed = {}): {
             objectKey: input.objectKey,
             bucket: input.bucket,
             renderedAt: input.renderedAt,
+            sourceEventId,
           });
           return {
             documentId: existing.documentId,
@@ -231,6 +258,7 @@ export function createInMemoryDocumentSeamStore(seed: DocumentSeamSeed = {}): {
               objectKey: input.objectKey,
               bucket: input.bucket,
               renderedAt: input.renderedAt,
+              sourceEventId,
             },
           ],
         });
@@ -252,6 +280,21 @@ export function createInMemoryDocumentSeamStore(seed: DocumentSeamSeed = {}): {
           versionNumber: latest.versionNumber,
           renderedAt: latest.renderedAt,
         };
+      },
+      async documentVersionForSourceEvent(args) {
+        for (const d of docs) {
+          if (d.organizationId !== args.organizationId) continue;
+          const v = d.versions.find((v) => v.sourceEventId === args.sourceEventId);
+          if (v) {
+            return {
+              documentId: d.documentId,
+              versionId: v.versionId,
+              versionNumber: v.versionNumber,
+              renderedAt: v.renderedAt,
+            };
+          }
+        }
+        return null;
       },
     },
   };

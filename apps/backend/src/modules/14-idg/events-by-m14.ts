@@ -388,6 +388,11 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       requestedByMembershipId: id,
       approvedByMembershipId: id,
       amendmentReasonHash: id,
+      // F-168 (#248) — the same `renderPayload` shape `.signed` sends (the three minutes snapshot
+      // columns, re-read post-amendment), so M22's render-consumer has content to append a new
+      // `idg_minutes` `document_version` with. `amendmentReason` itself stays OFF the wire — it is
+      // DENYLISTED free-text (§3.3); only its hash (above) was ever published.
+      renderPayload: Type.Unknown(),
     }),
     declaredConsumers: ["m22"],
     seamConsumers: ["m33"],

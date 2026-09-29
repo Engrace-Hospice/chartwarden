@@ -2780,6 +2780,98 @@ suites re-run for regression on every touched shared file (`m31:portal-telehealt
 `m5:visit-assignment-cache` 8/8, `m5:death-cascade` 3/3). Leaving #248 open — 80 pairs across 17
 modules remain.
 
+**A ninth round of four parallel forks fixed a real shared-infrastructure defect in M22's render
+pipeline and bound 3 more events off the fix, while the other three forks converged on the same
+honest outcome — genuinely re-verified, nothing new to build (F-168, #248).** Targets: the m22
+group's own standing "idempotency-key-granularity collision" (first found F-162, re-confirmed
+F-166), M30's `no-consumer-surface` group (21 events, never before checked for BUILD rather than
+catalog correctness), and a targeted re-check of M11's and M21's 8 remaining events against the
+exact upstream facts their standing blockers name. **M22 — the fix, and 3 events bound.**
+`decideDocumentRequest`'s `alreadyRendered` fact had always been resolved from
+`renderedDocumentForAggregate({aggregateType, aggregateId})` — "does ANY document exist for this
+aggregate" — never from the specific delivered outbox event, despite the file's own header comment
+naming `(sourceEvent, aggregateId)` as the intended design (F-162's own finding, left unfixed).
+That made every SECOND render request against an aggregate that already had one document silently
+`idempotent_skip` forever — correct for a genuine crash-and-retry redelivery of the identical
+outbox row, wrong for a second, different request event that needs a new document VERSION.
+**Re-verified against `outbox-dispatcher.ts` before designing anything**: the delivery receipt is
+written in a SEPARATE transaction after `handle()` returns, so a genuine redelivery of the SAME row
+can still reach the consumer twice — `decideDocumentRequest` genuinely needs its own dedup floor,
+it just had the wrong granularity. Migration 0261 adds `document_version.source_event_id`
+(nullable, no FK — `outbox_event` rows are purged past retention and provenance must outlive the
+row that requested it, the `render_form_fill_id` precedent) with a plain `UNIQUE
+(organization_id, source_event_id)` — NULLS DISTINCT by default, so the many non-request-driven
+historical/manual-upload rows coexist freely and only request-linked ones collide — written in the
+SAME insert as the version row itself, so the fix is crash-safe by construction rather than adding
+a second lost-write window. **The naive single-tier fix (dedup on source-event-id for every event)
+was built first and caught its own regression before landing**: `gap-023-024-038-render-handshake
+.live.test.ts`'s existing D14 cases simulate a PRODUCER-side duplicate emission (a fresh outbox
+row, same order, same content — never a real second signature) and assert exactly one document
+results; a pure per-event-id key would have rendered a second version, since a fresh duplicate row
+has a fresh id. Redesigned as a two-tier `RequestShape.appends` flag: ~40 GENESIS-only events keep
+the exact pre-fix aggregate-level dedup (their source transition fires exactly once per real
+occurrence — an order is signed once), and only events whose real transition can legitimately
+recur against the same aggregate use the new per-request key. **3 events bound** on the new tier:
+`m8.encounter.addendum_signed` (appends onto `.signed`'s `encounter` doc; payload widened with the
+same `documentRenderPayload` shape `.signed` already sends), `m14.minutes.amended` (appends onto
+`.signed`'s `idg_minutes` doc; payload widened with the same three snapshot columns `.signed`
+publishes — caught and fixed its own near-miss before landing: the DENYLISTED
+`idg_minutes_amendment.amendment_reason` plaintext was in the first draft's payload, corrected to
+keep only its SHA-256 hash on the wire, matching the pre-existing design), and
+`m12.medication_order.transmitted` (appends onto `.document_requested`'s `medication_order` doc —
+honestly reported as NOT end-to-end working: this event is catalogued with no producer anywhere in
+`12-dosespot/`, the `m17.caregiver_reminder_due`/F-161 posture, the binding real and tested against
+the real payload shape with nothing yet emitting it). `m12.medication_order.list_changed` was
+checked and found NOT the same collision, correcting a stale F-166 framing — its real aggregate is
+`patientId` (a med-list render), genuinely different from `.document_requested`'s `orderId`, needing
+a new aggregate type and template, real feature scope beyond this fix. `m9.assessment
+.summary_requested` and `m6.discharge.cosigned` are now technically unblocked by the granularity fix
+but deliberately left unbound — each needs its own product decision about what "a new version" means
+for a point-in-time summary and a for-cause discharge cosign respectively, not decided here. **M30's
+`no-consumer-surface` group — 1 catalog correction, 20 confirmed genuinely blocked.**
+`m9.assessment.recorded`'s F-115 verdict ("no assessment reader exists in `30-quality/`") was
+checked against the wrong directory: a real, typed `QualityAssessmentConsumer` seam interface
+already exists at `packages/quality/src/seams/consumed/m9-assessment.ts`, matching M30's own
+decisive spec text that M9 is seam-pull-only — moved from `declaredConsumers` to `seamConsumers`
+at the source rather than left a stale deferral. The other 20 (14 already-swept M6/M15/M23
+compliance-window events, plus 6 freshly investigated this round) stay genuinely blocked: two have
+no producer anywhere (`m12.medication_order.transmission_failed` — the whole `transmit-newrx`
+worker doesn't exist; `m37.ipu_admission.death_recorded` — `recordDeath` is called nowhere outside
+its own unit test, and M37 isn't even declared a consumer of the M6 event that would drive it), and
+the rest have a real producer but no receiving mechanism on M30's side at any level — measure
+registry, seam interface, or consumer table (`m37.restraint.applied`'s own spec claims a
+"forward-seam-deny-stub" that was never actually stubbed; the two M16 bereavement events have real
+producers but M30's one registered bereavement measure reads a different fact entirely). **M11 and
+M21's remaining 8 events — re-checked fresh against the exact specific fact each standing blocker
+depends on, all confirmed still genuinely blocked, 0 changed.** `care_plan_intervention
+.linked_order_id` is still written by no code path anywhere (still literal `null` on every insert);
+no `ConsentEvaluator`/DPOA pull exists anywhere in `11-orders/`; M11's `dme`/`supply` order-kind
+contracts are still `contract_not_published`; `PatientAddressReader` still carries no street-address
+field; no DoseSpot credential/webhook infrastructure exists anywhere. One fact was checked freshly
+rather than assumed unchanged, since real M13 comfort-kit-return-reconciliation infrastructure has
+landed since the last check: `m13.comfort_kit.controlled_substance_discrepancy` now IS published, by
+a real emitter at true reconciliation time (not bedside-admin time as previously) — but its payload
+is still `{deploymentId, medicationOrderId, deltaQuantity, deltaPercent}`, still missing the
+`returnId`/`custodyChain` M21's catalogued schema requires, a gap that emitter's own header already
+documents as a separate, still-open M21-side blocker this pass does not touch. Net: **80 → 76** (4
+bound/corrected — 3 M22 events, 1 M30 catalog fix — 0 dropped; module count unchanged at 17, no
+group fully emptied this round). Verified centrally, once, after all four forks' edits landed
+together plus one F-number renumbering (two forks independently used F-171 and F-168 for their own
+paragraphs; reconciled to the single round number F-168): `bun run build`/`typecheck` clean (0
+errors), `arch:fitness` 38/38 (`arch:outbox-bindings` confirms 76 pairs, down from 80, and 140 live
+bindings now covering 143 catalogued events, up from 140), full non-live suite 654 files / 9603
+tests green, a clean `check:boot:platform` run against a freshly migrated, RLS-enforced disposable
+Postgres (proving migration 0261 applies cleanly and the widened `M22_DOCUMENT_REQUEST_EVENTS`
+catalog boots), the new live suite (`f168:document-request-idempotency` 5/5 — proving both halves:
+a genuinely new request against an already-rendered aggregate creates a real new version, and a
+genuine redelivery of the identical event id does not double-render), and ten sibling regression
+suites re-run individually against the same disposable Postgres+Valkey
+(`f144:render-requests` 10/10, `f161:m7-m17-render-requests` 4/4, `f166:render-requests` 8/8,
+`m6:cop-documents` 6/6, `m27:ecr-backref` 7/7, `m22:document-seam-store` 3/3, `m22:write` 15/15,
+`m22:read` 5/5, `m8:write` 50/50, `m14:write` 26/26 — the last two catching real regressions on
+first attempt with the naive single-tier design, both green after the two-tier redesign). Leaving
+#248 open — 76 pairs across 17 modules remain.
+
 The **2026-06-27 security/compliance audit remediation is merged** (PRs #103/#104):
 production ABAC-evaluator + `step_up_recent` boot wiring; PHI-safe Fastify logging + no PHI in
 browser storage; chromed-route auth guard with fail-closed nav; a fail-closed **PHI read-audit

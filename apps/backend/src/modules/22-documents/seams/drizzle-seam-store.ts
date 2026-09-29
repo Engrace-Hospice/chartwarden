@@ -94,6 +94,7 @@ export function createDrizzleDocumentSeamStore(db: DbClient): DocumentSeamStore 
               sha256Hex: input.sha256Hex,
               uploadedByMembershipId: null,
               uploadedByKind: "system_render",
+              sourceEventId: input.sourceEventId ?? null,
               createdAt: renderedAt,
             })
             .returning({ id: VER.id });
@@ -142,6 +143,7 @@ export function createDrizzleDocumentSeamStore(db: DbClient): DocumentSeamStore 
             sha256Hex: input.sha256Hex,
             uploadedByMembershipId: null,
             uploadedByKind: "system_render",
+            sourceEventId: input.sourceEventId ?? null,
             createdAt: renderedAt,
           })
           .returning({ id: VER.id });
@@ -188,6 +190,33 @@ export function createDrizzleDocumentSeamStore(db: DbClient): DocumentSeamStore 
           // `document_version.version_number` is a TEXT column ("app-side serial"), and
           // `RenderedDocumentRow.versionNumber` is a number — the upsert path already narrows the same
           // way, so the read must too or the two halves of this port disagree on the type.
+          versionNumber: Number(version.versionNumber),
+          renderedAt: version.createdAt.toISOString(),
+        };
+      });
+    },
+
+    async documentVersionForSourceEvent(args) {
+      return inOrg(args.organizationId, async (tx) => {
+        const [version] = await tx
+          .select({
+            id: VER.id,
+            documentId: VER.documentId,
+            versionNumber: VER.versionNumber,
+            createdAt: VER.createdAt,
+          })
+          .from(VER)
+          .where(
+            and(
+              eq(VER.organizationId, args.organizationId),
+              eq(VER.sourceEventId, args.sourceEventId),
+            ),
+          )
+          .limit(1);
+        if (!version) return null;
+        return {
+          documentId: version.documentId,
+          versionId: version.id,
           versionNumber: Number(version.versionNumber),
           renderedAt: version.createdAt.toISOString(),
         };

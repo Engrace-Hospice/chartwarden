@@ -5,10 +5,13 @@
  *   · `m8.encounter.signed` — template `encounter`, published since the platform-floor
  *     `PLATFORM_TEMPLATE_TABLE` with no consumer wired to it. The LOCKED payload's
  *     `documentRenderPayload: {final, addenda}` has carried the renderable content since the event
- *     existed. `m8.encounter.addendum_signed` is deliberately NOT built here — it is a second render
- *     request against the SAME `aggregateType/aggregateId` this suite's own `.signed` case renders,
- *     which `decideDocumentRequest`'s `(aggregateType, aggregateId)`-only idempotency answers
- *     `idempotent_skip` for (the F-162 gap).
+ *     existed. `m8.encounter.addendum_signed` was NOT built here at the time — it asked for a SECOND
+ *     render against the SAME `aggregateType/aggregateId` this suite's own `.signed` case renders,
+ *     which `decideDocumentRequest`'s then-`(aggregateType, aggregateId)`-only idempotency answered
+ *     `idempotent_skip` for (the F-162 gap). F-168 (#248) fixed that granularity (migration 0261) and
+ *     bound `.addendum_signed` for real — see `f168-document-request-idempotency.live.test.ts` for the
+ *     end-to-end proof that it now appends a genuine new version; this suite keeps only the narrower
+ *     decider-level assertion that survives the fix (below).
  *   · `m18.evv.aggregator_accepted` — template `evv_verification`. Its declared sibling
  *     `m18.evv.verification_pdf_requested` was checked and found VAPOR (no emit site anywhere in
  *     `18-evv/`) and dropped from the catalog at the source; `aggregator_accepted` is the real,
@@ -83,6 +86,10 @@ import {
   createDrizzleDocumentSeamStore,
   createInMemoryObjectStore,
 } from "../src/modules/22-documents/index";
+// F-168 (#248) — a static import (the original test used a dynamic one because it never needed the
+// symbol at module scope); kept here so the remaining `alreadyRendered: false` assertion can run
+// synchronously.
+import { decideDocumentRequest } from "../src/modules/22-documents/outbox-consumers/decide-document-request";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -269,60 +276,35 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
     // consumers' behalf. The document assertions above are the real proof M22's own binding ran.
   });
 
-  it("a later m8.encounter.addendum_signed against the SAME encounter idempotent-skips (F-162 gap, confirmed)", async () => {
-    const encounterId = randomUUID();
-    const patientId = randomUUID();
-    await publish({
-      eventName: "m8.encounter.signed",
-      organizationId: ORG_A,
-      aggregateKind: "encounter",
-      aggregateId: encounterId,
-      callerModule: "m8",
-      payload: {
-        encounterId,
-        patientId,
-        admissionId: randomUUID(),
-        encounterType: "routine_visit",
-        discipline: "rn",
-        signedByMembershipId: MEMBER,
-        signedAt: new Date().toISOString(),
-        lateEntryTier: "normal",
-        layer2Involved: false,
-        evvBracketState: "evv_present",
-        requiresCosign: false,
-        careplanLinks: [],
-        documentRenderPayload: { final: "Initial note.", addenda: [] },
-      },
-    });
-    await dispatcher.tick();
-    expect(await documentsFor(encounterId)).toHaveLength(1);
-
-    // `m8.encounter.addendum_signed` is NOT in `M22_DOCUMENT_REQUEST_EVENTS` (deliberately, per the
-    // F-166 finding above) — this asserts the reason precisely: if it WERE wired to the generic
-    // REQUEST_SHAPES table with the same `encounterId` aggregate, it would still only ever produce
-    // one version, never an append, because `decideDocumentRequest`'s idempotency is keyed on
-    // `(aggregateType, aggregateId)` alone. Proven directly against the shared decider + facts
-    // resolution the render consumer actually runs.
-    const { decideDocumentRequest } = await import(
-      "../src/modules/22-documents/outbox-consumers/decide-document-request"
-    );
+  // F-168 (#248) — this test used to prove `m8.encounter.addendum_signed` `idempotent_skip`s against the
+  // SAME `encounterId` `.signed` genesis-rendered (the F-162 granularity gap, at the time genuinely
+  // unbound). Migration 0261 fixed the underlying idempotency-key granularity and
+  // `m8.encounter.addendum_signed` is now bound and appends a real new version — proven end to end in
+  // `f168-document-request-idempotency.live.test.ts`, which is the suite to read for that behavior now.
+  // What remains true and worth asserting HERE, in this suite's own `alreadyRendered: true` scenario, is
+  // the narrower fact the fix preserves: a `sourceEventId` the store has never seen resolves
+  // `documentVersionForSourceEvent` to null (never rendered YET), so `decideDocumentRequest` still
+  // renders on the FIRST delivery of any request, addendum included.
+  it("decideDocumentRequest renders (not idempotent_skip) when the specific request has never been fulfilled", () => {
     const action = decideDocumentRequest(
-      "m8.encounter.signed",
+      "m8.encounter.addendum_signed",
       {
         organizationId: ORG_A,
         templateKey: "encounter",
-        aggregateId: encounterId,
-        patientId,
-        content: { final: "Addendum: patient improved." },
+        aggregateId: randomUUID(),
+        patientId: randomUUID(),
+        content: { final: "", addenda: [{ addendumId: randomUUID(), reason: "x", text: "" }] },
       },
       {
-        alreadyRendered: true, // the fact `renderedDocumentForAggregate` would report post-`.signed`
+        // F-168: this is now what a NEVER-before-seen `sourceEventId` resolves to, even against an
+        // aggregate that already has other versions — `alreadyRendered` is per-REQUEST, not per-aggregate.
+        alreadyRendered: false,
         templateKnown: true,
         aggregateType: "encounter",
         retentionClass: "clinical_record",
       },
     );
-    expect(action.kind).toBe("idempotent_skip");
+    expect(action.kind).toBe("render");
   });
 
   it("m18.evv.aggregator_accepted requests + renders the visit verification PDF", async () => {

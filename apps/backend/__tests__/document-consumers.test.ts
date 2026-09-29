@@ -99,6 +99,12 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       "m14.packet.render_requested",
       "m14.minutes.signed",
       "m15.plan.version_signed",
+      // F-168 (#248) — three requests genuinely blocked ONLY by the idempotency-key-granularity gate
+      // (migration 0261, `document_version.source_event_id`): each asks for a NEW VERSION of an
+      // aggregate its own GENESIS sibling above already rendered.
+      "m8.encounter.addendum_signed",
+      "m14.minutes.amended",
+      "m12.medication_order.transmitted",
     ]);
   });
 

@@ -556,6 +556,12 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       "m14.packet.render_requested",
       "m14.minutes.signed",
       "m15.plan.version_signed",
+      // F-168 (#248) — three requests genuinely blocked ONLY by the idempotency-key-granularity gate
+      // (migration 0261): each asks for a NEW VERSION of an aggregate its GENESIS sibling above already
+      // rendered.
+      "m8.encounter.addendum_signed",
+      "m14.minutes.amended",
+      "m12.medication_order.transmitted",
     ]);
   });
 

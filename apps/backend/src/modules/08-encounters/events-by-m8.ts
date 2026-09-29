@@ -171,6 +171,23 @@ export const M8_OUTBOX_EVENTS: ModuleEventContribution = [
       signedByMembershipId: Type.String({ minLength: 1 }),
       signedAt: Type.String({ minLength: 1 }),
       reason: Type.String({ minLength: 1 }),
+      // F-168 (#248) — was missing from this LOCKED payload since the event existed, the same reason
+      // `.signed`'s `documentRenderPayload` field exists: M22's render-consumer needed CONTENT to append
+      // a new `document_version` with, and had nothing (the idempotency-granularity gate this bind
+      // needed fixing first meant it was never reachable regardless). `final` stays the SAME PHI-safe
+      // empty-string stand-in `.signed` already sends (the pinned narrative is DEK-sealed and never
+      // copied into the outbox in the clear) — this is not a new gap, just the existing one repeated on
+      // the append path rather than left unaddressed.
+      documentRenderPayload: Type.Object({
+        final: Type.String(),
+        addenda: Type.Array(
+          Type.Object({
+            addendumId: Type.String({ minLength: 1 }),
+            reason: Type.String(),
+            text: Type.String(),
+          }),
+        ),
+      }),
     }),
     // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
     declaredConsumers: ["m22"],

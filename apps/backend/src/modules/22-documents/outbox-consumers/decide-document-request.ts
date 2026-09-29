@@ -21,8 +21,23 @@
 // import. So the consumed event names are STRING literals and the consumed payload is a locally-declared
 // structural minimum (the source module owns the canonical wire payload). This directory is NOT scanned by
 // arch:gaps' event-catalog / seam-registry gates, so consuming `m6.*`/`m11.*`/… here adds no M22-produced
-// event and no edge. Idempotency follows the M6-T11 D14 rail: a prior `m22.document.rendered` for the same
-// `(sourceEvent, aggregateId)` → `idempotent_skip` (re-delivery never double-renders).
+// event and no edge. Idempotency follows the M6-T11 D14 rail: a prior render for the SAME DELIVERED OUTBOX
+// ROW → `idempotent_skip` (re-delivery never double-renders).
+//
+// F-168 (#248) — this comment used to say the idempotency key was `(sourceEvent, aggregateId)`, meaning the
+// EVENT TYPE STRING + aggregate id; the real call site never implemented that, and resolved `alreadyRendered`
+// from `(aggregateType, aggregateId)` alone instead — "does ANY document exist for this aggregate", coarser
+// than even the stated design. That made every SECOND render request against an aggregate that already had
+// one document silently `idempotent_skip` forever, which is correct for a genuine crash-and-retry
+// redelivery of the identical outbox row and wrong for a genuinely different request (even the same event
+// TYPE — an amendment after a signature, a transmission after a document_requested) that needs a NEW
+// version. The real fix (migration 0261, `document_version.source_event_id`) keys `alreadyRendered` on the
+// SPECIFIC delivered outbox event id (`DispatchableOutboxEvent.id`), not the event type string: that is the
+// only identity a genuine redelivery is guaranteed to share (the dispatcher replays the same row, never a
+// fresh one with the same type), and it is written in the SAME insert as the version row inside
+// `upsertRenderedDocument`, so the redelivery-dedup and the artifact it protects are atomic — no separate
+// receipt table with its own lost-write crash window between "the version was written" and "the dedup key
+// was recorded". `render-consumer.ts` resolves the fact via `store.documentVersionForSourceEvent`.
 import type { DocumentAggregateType, DocumentRetentionClass } from "@wardenx/types";
 
 // ── The §4.11 `*.document_requested` events M22 renders (string literals — no producer import) ──────────
@@ -102,17 +117,29 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   "m7.care_plan.version_signed", // care_plan — M7's own catalog: "drives … M22 PDF"
   // ── F-166 (#248) — M22's own `handlers-unbound` group's survey-then-build pass: five SOURCE-event
   // GENESIS renders (a first document per aggregate, never a re-render of one that already exists —
-  // the exact distinction that keeps `m6.discharge.cosigned`/`m8.encounter.addendum_signed`/
-  // `m14.minutes.amended`/`m12.medication_order.{transmitted,list_changed}` NOT here: each of those
-  // asks for a SECOND document against an aggregate id M22 has already rendered, which
-  // `decideDocumentRequest`'s idempotency (keyed `(aggregateType, aggregateId)` only, never
-  // `(sourceEvent, aggregateId)`) answers `idempotent_skip` for, silently, forever).
+  // at the time this landed, the exact distinction that kept `m6.discharge.cosigned`/
+  // `m8.encounter.addendum_signed`/`m14.minutes.amended`/`m12.medication_order.{transmitted,list_changed}`
+  // NOT here: each of those asks for a SECOND document against an aggregate id M22 had already rendered,
+  // which `decideDocumentRequest`'s idempotency — keyed `(aggregateType, aggregateId)` ONLY at the time —
+  // answered `idempotent_skip` for, silently, forever. F-168 (#248) fixed that granularity (see this
+  // file's own header comment and migration 0261): three of those four are now bound below
+  // (`m8.encounter.addendum_signed`, `m14.minutes.amended`, `m12.medication_order.transmitted`).
+  // `m6.discharge.cosigned` is a real, now-technically-unblocked candidate this pass did NOT build —
+  // reported in render-consumer.ts's own comment (where its request-shape would live) rather than
+  // built, because binding it needs its own per-event review (a for-cause discharge cosign is a
+  // materially different kind of "new version" than an amendment/re-transmission — worth its own pass
+  // rather than a drive-by add). `m12.medication_order.list_changed` was checked and is NOT actually the
+  // same collision at all: its aggregate is the PATIENT (`patientId`, no `orderId` field on the payload
+  // — a med-LIST render, not a per-order one), a genuinely different aggregate from
+  // `.document_requested`'s `order_record`/`orderId`, so the granularity fix does not unblock it; it
+  // would need a brand-new aggregate type + template (a "medication list" document keyed on patient),
+  // real feature scope beyond an idempotency-key fix, and stays unbound with its reason corrected.
   //
   // M8 §2 — the signed encounter note. `documentRenderPayload: {final, addenda}` has been ON THE LOCKED
   // PAYLOAD since the event existed — the content M22 renders was always in hand, unconsumed.
   // `aggregateType: "encounter"` has published a descriptor since the platform-floor template table;
-  // nothing else renders under it, so this is the aggregate's FIRST document, not a collision with
-  // `.addendum_signed`'s later append (which correctly stays unbound, two paragraphs up).
+  // this is the aggregate's FIRST document (`.addendum_signed`'s later append is now bound too — see
+  // the F-168 block below).
   "m8.encounter.signed", // encounter
   // M18 §4.11 D11 — the EVV verification PDF. `m18.evv.verification_pdf_requested` is the request-
   // shaped SIBLING this event's own description claims to duplicate ("triggers the M22
@@ -138,6 +165,28 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   // not one patient (the payload carries none), matching `DocumentRequestPayload.patientId`'s documented
   // "or null for patient-independent renders" case.
   "m15.plan.version_signed", // aide_poc | msw_plan | spiritual_plan | volunteer_plan, by `kind`
+  // ── F-168 (#248) — the three genuinely-blocked-only-by-granularity events: a SECOND request against an
+  // aggregate M22 already rendered (a real new version, never a redelivery), now bindable since
+  // `alreadyRendered` keys on the specific delivered outbox event id, not the aggregate. Each still
+  // collides with its GENESIS sibling under the OLD key — that collision is exactly what migration 0261
+  // fixes, not something these three routes around.
+  //
+  // M8 §2 — the addendum. Reuses the `encounter` template `.signed` already publishes; appends a new
+  // `document_version` on the SAME `encounterId` (the W2 addendum/correction path
+  // `upsertRenderedDocument` already builds correctly — the append machinery was never the gap).
+  "m8.encounter.addendum_signed", // encounter (append)
+  // M14 §2.6 D10 — the minutes amendment. Reuses `idg_minutes` on the SAME `minutesId` `.signed` renders.
+  // Widened at the M14 emit site (`submitAmendment`) to carry the same `renderPayload` shape `.signed`
+  // sends (the minutes' own `attendanceSnapshot`/`decisionListSnapshot`/`actionItemListSnapshot`
+  // columns, re-read post-amendment) plus the amendment reason — the "amendmentDiff never on the wire"
+  // gap F-162 also named stays unfixed (`idg_minutes_amendment.amendment_diff` is written `{}` at every
+  // call site, a separate producer-side defect), but the re-rendered minutes now carry real content
+  // rather than nothing.
+  "m14.minutes.amended", // idg_minutes (append)
+  // M12 §4.4 — the transmit-to-pharmacy confirmation. Reuses `medication_order` on the SAME `orderId`
+  // `.document_requested` renders at sign; the transmitted PDF is a new version carrying the pharmacy
+  // transmission facts.
+  "m12.medication_order.transmitted", // medication_order (append)
 ] as const;
 
 /** §4.11 render-request events the SPEC anticipates but no module's event catalog declares yet. Listed —

@@ -61,6 +61,24 @@ interface RequestShape {
   };
   /** Payload field holding the render content blob (passed through to the byte renderer). */
   readonly contentField?: string;
+  /**
+   * F-168 (#248) — true for the rare event that is meant to fire MORE THAN ONCE against the same
+   * aggregate, each time producing a genuinely NEW `document_version` (an addendum, an amendment, a
+   * transmission confirmation). Default (unset/false): the event is GENESIS-only — this source
+   * transition fires exactly once per real-world occurrence, so `alreadyRendered` stays keyed on
+   * `(aggregateType, aggregateId)` (`renderedDocumentForAggregate`), exactly the pre-F-168 behaviour.
+   * That is NOT merely the safer default, it is the semantically correct one for these events: an order
+   * is signed once, so `m11.order.document_requested` firing TWICE for the same order (a producer-side
+   * duplicate emission, a double-submitted request — never a real second signature) must still resolve
+   * to exactly ONE `order_record` document, proven by `gap-023-024-038-render-handshake.live.test.ts`'s
+   * own D14 "re-delivering the same request renders nothing new" cases, which key on a FRESH outbox row
+   * with identical content rather than a redelivery of the same row id — the aggregate-level dedup is
+   * what makes that scenario safe, and per-event-id dedup alone would NOT catch it (a fresh row has a
+   * fresh id). Setting `appends: true` keys `alreadyRendered` on `documentVersionForSourceEvent`
+   * instead (the specific delivered outbox event id) — correct ONLY for an event whose real-world
+   * source transition can legitimately recur against the same aggregate.
+   */
+  readonly appends?: boolean;
 }
 
 /** The §4.11 wire shapes, one per LIVE consumed event (see {@link M22_DOCUMENT_REQUEST_EVENTS}). */
@@ -202,11 +220,17 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     templateKey: "revocation",
   },
   // `m6.discharge.cosigned` and `m6.transfer.created` are deliberately NOT here. The cosign fires on the
-  // SAME `discharge_event` id, so it is a new VERSION of this document rather than a new one, and the
-  // decider answers `idempotent_skip` — the W2 append path has to be built before it can be bound. The
-  // transfer wants what the M22 spec calls "discharge_summary (transfer variant)", and no variant exists;
+  // SAME `discharge_event` id, so it is a new VERSION of this document rather than a new one — F-168
+  // (#248, migration 0261) fixed the idempotency-granularity gate that used to answer `idempotent_skip`
+  // for exactly this shape, so the W2 append machinery itself is no longer the blocker (it never was:
+  // `upsertRenderedDocument` has always appended correctly once actually reached). Left unbound anyway,
+  // deliberately, for its own review pass rather than a drive-by add alongside the three F-168 events
+  // that ARE bound below — a for-cause discharge cosign is a different kind of "new version" (does the
+  // surveyor-facing discharge summary need to visibly change on cosign, or does the cosign only need to
+  // be recorded on the `discharge_event` row itself?) that this pass did not investigate. The transfer
+  // wants what the M22 spec calls "discharge_summary (transfer variant)", and no variant exists;
   // rendering the base template would file a document titled Discharge Summary for a patient who was
-  // transferred, not discharged.
+  // transferred, not discharged — unrelated to the granularity fix, still genuinely unbuilt.
   "m6.discharge.created": {
     aggregateIdFields: ["dischargeEventId"],
     templateKey: "discharge_summary",
@@ -337,6 +361,40 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
       },
     },
     contentField: "snapshot",
+  },
+  // ── F-168 (#248) — the three §4.11 render requests that were genuinely blocked ONLY by the
+  // idempotency-key-granularity gate (migration 0261 fixed it): each asks for a NEW VERSION of an
+  // aggregate its own GENESIS sibling (above) already rendered, which the OLD `(aggregateType,
+  // aggregateId)`-only check answered `idempotent_skip` for, silently, forever.
+  //
+  // M8 §2 — the addendum. Appends onto the SAME `encounterId` `.signed` genesis-rendered. Payload
+  // widened at the source (`signAddendum`) to carry `documentRenderPayload`, the exact `.signed` shape.
+  "m8.encounter.addendum_signed": {
+    aggregateIdFields: ["encounterId"],
+    templateKey: "encounter",
+    contentField: "documentRenderPayload",
+    appends: true,
+  },
+  // M14 §2.6 D10 — the minutes amendment. Appends onto the SAME `minutesId` `.signed` genesis-rendered.
+  // Payload widened at the source (`submitAmendment`) to carry `renderPayload`, the exact `.signed`
+  // shape (never the DENYLISTED `amendmentReason` plaintext — only its hash was ever on the wire).
+  "m14.minutes.amended": {
+    aggregateIdFields: ["minutesId"],
+    templateKey: "idg_minutes",
+    contentField: "renderPayload",
+    appends: true,
+  },
+  // M12 §4.4 — the transmit-to-pharmacy confirmation. Appends onto the SAME `orderId`
+  // `.document_requested` genesis-rendered. NOTE (reported, not fixed): this event is CATALOGUED with
+  // no producer anywhere in `12-dosespot/` — the `dosespot.transmit_newrx` worker its own catalog
+  // description names does not exist in this codebase (no DoseSpot vendor credential is configured
+  // anywhere either). The consumer binding is real and tested against the real catalogued payload
+  // shape, the `m17.caregiver_reminder_due` (F-161) posture — nothing emits the event yet. No
+  // `contentField`: the whole payload (the transmission facts) is what the appended version renders.
+  "m12.medication_order.transmitted": {
+    aggregateIdFields: ["orderId"],
+    templateKey: "medication_order",
+    appends: true,
   },
 };
 
@@ -514,14 +572,30 @@ export function buildM22DocumentRequestConsumer(
     eventTypes: [...M22_DOCUMENT_REQUEST_EVENTS],
     async handle(event: DispatchableOutboxEvent): Promise<void> {
       const { event: sourceEvent, payload } = normalizeDocumentRequest(event);
+      // F-168 (#248) — two-tier idempotency, per event shape. Most events are GENESIS-only (their real
+      // source transition fires exactly once per real-world occurrence — an order is signed once), so
+      // `alreadyRendered` stays keyed on `(aggregateType, aggregateId)`: this is what makes a PRODUCER-
+      // side duplicate emission (a fresh outbox row, same order, same content — never a real second
+      // signature) still resolve to exactly one `order_record` document, the pre-F-168 behaviour
+      // `gap-023-024-038-render-handshake.live.test.ts`'s own D14 cases prove and still require. Only the
+      // events whose real source transition CAN legitimately recur against the same aggregate
+      // (`RequestShape.appends`, e.g. `m8.encounter.addendum_signed`) use the finer per-request key
+      // (`documentVersionForSourceEvent`, keyed on the specific delivered outbox event id) — see that
+      // flag's own doc comment for why the two must not be conflated.
+      const appends = REQUEST_SHAPES[sourceEvent]?.appends === true;
 
       const descriptor = templates[payload.templateKey];
       const prior = descriptor
-        ? await deps.store.renderedDocumentForAggregate({
-            aggregateType: descriptor.aggregateType,
-            aggregateId: payload.aggregateId,
-            organizationId: payload.organizationId,
-          })
+        ? appends
+          ? await deps.store.documentVersionForSourceEvent({
+              sourceEventId: event.id,
+              organizationId: payload.organizationId,
+            })
+          : await deps.store.renderedDocumentForAggregate({
+              aggregateType: descriptor.aggregateType,
+              aggregateId: payload.aggregateId,
+              organizationId: payload.organizationId,
+            })
         : null;
 
       const facts: DocumentRequestFacts = {
@@ -631,14 +705,20 @@ export function buildM22DocumentRequestConsumer(
             patientId: render.patientId,
             ...(render.title ? { title: render.title } : {}),
             ...(render.sudRedacted ? { sudRedacted: true } : {}),
+            // F-168 (#248) — carried straight through renderer.ts's `RenderPayloadCore.sourceEventId` into
+            // `document_version.source_event_id`, so the crash-retry dedup and this write are ATOMIC (one
+            // insert), not a separate receipt that could itself be lost between the two. Resolved fields
+            // win over the content blob for the same F-100 reason as `aggregateId`/`patientId` above.
+            sourceEventId: event.id,
           });
-          // Re-read rather than trusting the renderer's `{documentId}`: the leaf-typed `DocumentRenderer`
-          // seam returns only that, and the back-ref event carries the version identity too. This read is
-          // the same row the render just wrote, under the same org.
+          // Re-read BY SOURCE EVENT rather than trusting the renderer's `{documentId}`: the leaf-typed
+          // `DocumentRenderer` seam returns only that, and the back-ref event carries the version identity
+          // too. Reading by `event.id` (not `renderedDocumentForAggregate`) is deliberate — it is the exact
+          // row this call just wrote, never a DIFFERENT version that happened to be active if another
+          // request for the same aggregate raced in between.
           if (deps.emitRendered && descriptor) {
-            const written = await deps.store.renderedDocumentForAggregate({
-              aggregateType: descriptor.aggregateType,
-              aggregateId: payload.aggregateId,
+            const written = await deps.store.documentVersionForSourceEvent({
+              sourceEventId: event.id,
               organizationId: payload.organizationId,
             });
             if (written) await announce(written);

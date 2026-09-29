@@ -47,14 +47,31 @@ export const M9_OUTBOX_EVENTS: ModuleEventContribution = [
       sourceEncounterId: Type.Optional(Type.Union([Type.String({ minLength: 1 }), Type.Null()])),
       isCorrection: Type.Boolean(),
     }),
-    // F-115 (#248) — m28 removed: never subscribes to anything (F-035). m30 stays declared — unlike its
-    // M6/M7/M8 siblings this fact has no current M30 seam (no assessment reader exists in
-    // apps/backend/src/modules/30-quality/), so this remains a genuine gap, not a seam-pull.
+    // F-115 (#248) — m28 removed: never subscribes to anything (F-035).
     // F-142 (#248) — m7 dropped: M7's own spec (§"Clinical assessments") is decisive — M7 reads M9's
     // latest scores via the registered `LatestAssessmentProvider` seam at packet-assembly time, never a
     // push cache to invalidate.
-    declaredConsumers: ["m14", "m30"],
-    seamConsumers: ["m33"],
+    // F-168 (#248) — m30 MOVED from declaredConsumers to seamConsumers: F-115's own check was scoped to
+    // the wrong directory ("no assessment reader exists in apps/backend/src/modules/30-quality/") — the
+    // real consumed-seam interface lives one layer down, in `packages/quality/src/seams/consumed/
+    // m9-assessment.ts` (`QualityAssessmentConsumer.latestScaleValue`/`.scaleSeries`), declared on
+    // `QualityConsumedSeams` since that file existed. M30's own spec is decisive that this is a PULL, not
+    // a push: its Clinical-assessments relationship-inventory line states "M30 consumes
+    // `LatestAssessmentProvider` and `ScaleSeriesProvider` for the symptom-management dimension of
+    // mortality reviews and the HOPE-derived measure symptom-trajectory context; it does not write to
+    // M9," and its own blanket §353 principle lists M9 explicitly among the modules M30 reads via
+    // in-process seam call, never HTTP/outbox ("M30 *calls* M5/M6/.../M9/.../M27 reader seams"). M30's own
+    // D16 recompute-trigger list (the exhaustive set of outbox events that mark a period
+    // `requires_recompute=true`) does NOT include `m9.assessment.recorded` either — confirmed against
+    // `m30-jobs.ts` and the read/write services, neither of which currently calls
+    // `latestScaleValue`/`scaleSeries` anywhere (the interface is real but uncalled, the identical
+    // `bound is not computing` F-042 shape as the M6 `ComplianceWindowReader` finding one entry up — the
+    // MECHANISM decided is still pull, which is what moves the declaration, independent of whether the
+    // pull is wired yet). Kept for `seamConsumers` rather than dropped bare, matching the M11
+    // `OrderProvider`/M21 `SupplyFulfillmentProvider` precedent (F-149): a real, named, typed interface
+    // exists for the relationship even though it has no live caller yet.
+    declaredConsumers: ["m14"],
+    seamConsumers: ["m30", "m33"],
     // ALSO live: server → patient room live chart refresh (§4.4).
     isOutboxOnly: false,
   },

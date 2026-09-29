@@ -576,6 +576,15 @@ jobs:
               name: "M22 F-166 render requests",
               scripts: "test:f166:render-requests:live",
             }
+          # F-168 (#248) — the idempotency-key-granularity fix (migration 0261,
+          # `document_version.source_event_id`): a genuinely different request against an already-rendered
+          # aggregate now appends a real new version (m8.encounter.addendum_signed, m14.minutes.amended,
+          # m12.medication_order.transmitted), while a genuine crash-retry redelivery of the IDENTICAL
+          # outbox row still does not double-render.
+          - {
+              name: "M22 F-168 document-request idempotency",
+              scripts: "test:f168:document-request-idempotency:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.
