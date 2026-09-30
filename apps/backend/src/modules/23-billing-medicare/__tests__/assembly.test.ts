@@ -43,9 +43,14 @@ const RATE_TABLE = {
   // TODO(CMS-fixture): the published FY per-diem amounts replace these representative values.
   rhcDays1to60PerDiemCents: 20_000,
   rhcDays61PlusPerDiemCents: 16_000,
-  chcPerDiemCents: 150_000,
+  chcHourlyRateCents: 6_250,
   ircPerDiemCents: 50_000,
   gipPerDiemCents: 100_000,
+  // F-211 labor shares (wage index is 1.0000 here, so they do not move any price in this suite).
+  rhcLaborShare: "0.6600",
+  chcLaborShare: "0.6600",
+  ircLaborShare: "0.5400",
+  gipLaborShare: "0.6400",
 } as const;
 
 /** One trivial always-pass rule so the initial validation run executes deterministically (all_pass). */
@@ -416,5 +421,59 @@ describe("F-209 (#251) — the claim carries the real M7 diagnosis sequence", ()
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
     await expect(svc.assemble(ACTOR, REQUEST)).rejects.toThrow("SEAM_UNBOUND");
     expect(store.claims.size).toBe(0);
+  });
+});
+
+describe("F-212 - no sequestration policy fails CLOSED with an actionable error (never a silent 0% / 2% default)", () => {
+  it("names the service date, the provider entity, the route and the permission, and persists nothing", async () => {
+    const seams = buildSeams({
+      referenceData: {
+        hippsRateTable: async () => RATE_TABLE,
+        chcHourlyRateCents: async () => 6_000,
+        wageIndexForCcn: async () => ({ factorDecimal: "1.0000", cbsaCode: null }),
+        activeSequestrationPolicy: async () => null,
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    const err = await svc.assemble(ACTOR, REQUEST).then(
+      () => null,
+      (e: unknown) => e as { code: string; statusCode: number; message: string },
+    );
+    expect(err).toMatchObject({ code: "SEQUESTRATION_POLICY_UNAVAILABLE", statusCode: 422 });
+    expect(err?.message).toContain("POST /api/v1/billing/sequestration-policies");
+    expect(err?.message).toContain("billing.sequestration_policy.edit");
+    expect(store.claims.size).toBe(0);
+  });
+});
+
+describe("F-213 (#252) — placeOfService is resolved over the whole claim range and drives the line Q-code", () => {
+  it.each([
+    ["home", "Q5001"],
+    ["alf", "Q5002"],
+    ["ltc", "Q5003"],
+    ["snf", "Q5004"],
+    ["hospital", "Q5005"],
+    ["ipu", "Q5006"],
+    ["ltch", "Q5007"],
+    ["psych", "Q5008"],
+    [null, "Q5009"],
+  ] as const)("resolved placeOfService %s -> every line Q-code %s", async (pos, qCode) => {
+    const resolve = vi.fn(async () => ({
+      attending: null,
+      hospicePhysician: null,
+      placeOfService: pos,
+    }));
+    const seams = buildSeams({
+      mdm: { ...buildSeams().mdm, resolveClinicalParticipants: resolve },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    // The resolver gets the WHOLE service range (a range can span a move), not just serviceFrom.
+    expect(resolve).toHaveBeenCalledWith(ORG, "pat-1", REQUEST.serviceFrom, {
+      from: REQUEST.serviceFrom,
+      to: REQUEST.serviceTo,
+    });
+    expect(store.lines.length).toBeGreaterThan(0);
+    for (const line of store.lines) expect(line.qCode).toBe(qCode);
   });
 });

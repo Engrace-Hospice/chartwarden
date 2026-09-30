@@ -37,6 +37,7 @@ import { and, eq } from "drizzle-orm";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerSeam } from "../src/bootstrap/index";
+import { buildPatientAddressReader } from "../src/modules/05-patient/address-reader";
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { claimAssemblyRangeContextForOrg } from "../src/modules/06-admission/index";
@@ -66,7 +67,11 @@ import {
   createDbTerminologyStore,
   registerTerminologySeams,
 } from "../src/modules/38-terminology/index";
-import { createDbMdmStore, registerMdmSeams } from "../src/modules/40-mdm/index";
+import {
+  createDbMdmStore,
+  facilityKindsForIds,
+  registerMdmSeams,
+} from "../src/modules/40-mdm/index";
 import { appRoleConnectionString } from "./_live-app-role";
 import { admitViaQualifiedReferral, registerM5IntakeSeams } from "./_m6-admit";
 
@@ -578,7 +583,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     it("resolves a loaded CMS wage-index factor for (ccn, fiscal year)", async () => {
       await seedWageIndex("381237", 2026, "0.9234", "38900");
       const adapter = buildM23ReferenceDataAdapter(handle.db);
-      expect(await adapter.wageIndexForCcn("381237", 2026)).toEqual({
+      expect(await adapter.wageIndexForCcn("381237", 2026, ORG_A)).toEqual({
         factorDecimal: "0.9234",
         cbsaCode: "38900",
       });
@@ -589,7 +594,17 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       // FY2026 (010001, 050002, 380001, 450003, 999999 — explicitly marked "not authoritative"), so a
       // real null-path proof must use a CCN/FY outside that fixed set, not assume the table is empty.
       const adapter = buildM23ReferenceDataAdapter(handle.db);
-      expect(await adapter.wageIndexForCcn("777777", 2026)).toBeNull();
+      expect(await adapter.wageIndexForCcn("777777", 2026, ORG_A)).toBeNull();
+    });
+
+    it("NEVER prices from a non-authoritative migration-0080 placeholder row (F-211)", async () => {
+      // 0280 flips the 5 placeholder rows to is_authoritative = false; they exist (checked) but do not resolve.
+      const seeded = await admin.query(
+        "SELECT ccn FROM wage_index_factor WHERE ccn = '010001' AND fiscal_year_starting = 2026 AND is_authoritative = false",
+      );
+      expect(seeded.rowCount).toBe(1);
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
+      expect(await adapter.wageIndexForCcn("010001", 2026, ORG_A)).toBeNull();
     });
   });
 
@@ -1346,7 +1361,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
         status: "inactive",
         licenseUnexpiredOnServiceDates: false,
       });
-      // Genuinely unbound — no facility-type taxonomy exists anywhere in the schema (F-127).
+      // Built WITHOUT the F-213 place-of-service ports, so it stays null (its own section below binds them).
       expect(resolution.placeOfService).toBeNull();
     });
 
@@ -1375,6 +1390,264 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       // physician ids never resolve and the adapter correctly reports both physicians as null.
       const resolution = await seam.resolveClinicalParticipants(ORG_A, patientIdB, range.from);
       expect(resolution).toEqual({ attending: null, hospicePhysician: null, placeOfService: null });
+    });
+  });
+
+  describe("mdm.resolveClinicalParticipants: placeOfService from M5 address history + M40 facility.kind (F-213, #252)", () => {
+    const POS_RANGE_FROM = "2026-01-01";
+
+    async function seedFacility(kind: string, mergedIntoId: string | null = null): Promise<string> {
+      const row = await admin.query(
+        `INSERT INTO facility (kind, name, status, merged_into_id) VALUES ($1, $2, $3, $4) RETURNING id`,
+        [kind, `F213-${crypto.randomUUID()}`, mergedIntoId ? "merged" : "active", mergedIntoId],
+      );
+      return row.rows[0].id as string;
+    }
+
+    async function seedAddress(
+      orgId: string,
+      patientId: string,
+      a: {
+        kind: "home" | "facility" | "mailing" | "temporary" | "prior";
+        facilityId?: string | null;
+        from?: string;
+        to?: string | null;
+        primary?: boolean;
+      },
+    ) {
+      await admin.query(
+        `INSERT INTO patient_address
+           (patient_id, organization_id, kind, line1, city, state, postal_code, is_primary,
+            effective_from, effective_to, facility_id)
+         VALUES ($1,$2,$3,'1 Test St','Portland','OR','97000',$4,$5,$6,$7)`,
+        [
+          patientId,
+          orgId,
+          a.kind,
+          a.primary ?? true,
+          a.from ?? POS_RANGE_FROM,
+          a.to ?? null,
+          a.facilityId ?? null,
+        ],
+      );
+    }
+
+    /** The exact production wiring: the real M5 reader + the real M40 facility-kind read, real M6 range. */
+    function posSeam() {
+      const addr = buildPatientAddressReader(handle.db);
+      return buildM23ClinicalParticipantsAdapter(
+        { forRange: (orgId, pid, r) => claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r) },
+        undefined,
+        {
+          residence: {
+            residencesBetween: (orgId, pid, from, to) =>
+              addr.residencesBetween(orgId, pid, from, to),
+          },
+          facilityKinds: { kindsFor: (ids) => facilityKindsForIds(handle.db, ids) },
+        },
+      );
+    }
+
+    /** A patient with an ACTIVE admission and one open routine-home-care LOC period from 2026-01-01. */
+    async function rhcPatient(orgId: string, ccn: string): Promise<string> {
+      const patientId = await seedPatient(orgId);
+      const pe = await seedProviderEntity(orgId, ccn);
+      const { admissionId } = await activeAdmissionForRange(
+        orgId,
+        patientId,
+        pe,
+        "2026-01-01T00:00:00.000Z",
+      );
+      await admissionSvc().changeLoc(
+        orgId,
+        admissionId,
+        "routine_home_care",
+        null,
+        "2026-01-01T00:00:00.000Z",
+        "initial LOC",
+      );
+      return patientId;
+    }
+
+    let ccnSeq = 381300;
+    const nextCcn = () => String(++ccnSeq);
+
+    it("home address -> the Q5001 label", async () => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      await seedAddress(ORG_A, patientId, { kind: "home" });
+      const { range } = futureClaimRange();
+      const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBe("home");
+    });
+
+    it.each([
+      ["alf", "alf"],
+      ["nf", "ltc"],
+      ["snf", "snf"],
+      ["hospital", "hospital"],
+      ["ipu", "ipu"],
+      ["ltch", "ltch"],
+      ["psych", "psych"],
+    ] as const)("facility kind %s -> POS_BY_QCODE label %s", async (kind, label) => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      await seedAddress(ORG_A, patientId, { kind: "facility", facilityId: await seedFacility(kind) });
+      const { range } = futureClaimRange();
+      const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBe(label);
+    });
+
+    it.each(["clinic", "other"] as const)(
+      "unmapped facility kind %s -> null (falls to Q5009, never guessed)",
+      async (kind) => {
+        const patientId = await rhcPatient(ORG_A, nextCcn());
+        await seedAddress(ORG_A, patientId, {
+          kind: "facility",
+          facilityId: await seedFacility(kind),
+        });
+        const { range } = futureClaimRange();
+        const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+        expect(r.placeOfService).toBeNull();
+      },
+    );
+
+    it("a non-residence primary address kind (temporary) -> null", async () => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      await seedAddress(ORG_A, patientId, { kind: "temporary" });
+      const { range } = futureClaimRange();
+      const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBeNull();
+    });
+
+    it("no address history at all -> null", async () => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      const { range } = futureClaimRange();
+      const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBeNull();
+    });
+
+    it("chases a merged facility to its SURVIVOR's kind", async () => {
+      const survivor = await seedFacility("snf");
+      const merged = await seedFacility("alf", survivor);
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      await seedAddress(ORG_A, patientId, { kind: "facility", facilityId: merged });
+      const { range } = futureClaimRange();
+      const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBe("snf"); // the dead row said alf; the survivor is a SNF
+    });
+
+    const shiftDay = (d: string, delta: number) => {
+      const x = new Date(`${d}T00:00:00Z`);
+      x.setUTCDate(x.getUTCDate() + delta);
+      return x.toISOString().slice(0, 10);
+    };
+
+    it("date-effective: a residence that ended BEFORE the range does not count; the range's own residence does", async () => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      const { range } = futureClaimRange();
+      await seedAddress(ORG_A, patientId, {
+        kind: "facility",
+        facilityId: await seedFacility("hospital"),
+        from: POS_RANGE_FROM,
+        to: shiftDay(range.from, -1),
+      });
+      await seedAddress(ORG_A, patientId, { kind: "home", from: range.from });
+      const r = await posSeam().resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBe("home");
+    });
+
+    it("date-effective: a move INSIDE the range -> null (one claim-level Q-code cannot be honest)", async () => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      const { range } = futureClaimRange();
+      const moveDay = shiftDay(range.from, 10);
+      const lastHomeDay = shiftDay(moveDay, -1);
+      await seedAddress(ORG_A, patientId, { kind: "home", from: POS_RANGE_FROM, to: lastHomeDay });
+      await seedAddress(ORG_A, patientId, {
+        kind: "facility",
+        facilityId: await seedFacility("alf"),
+        from: moveDay,
+      });
+      const seam = posSeam();
+      const whole = await seam.resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(whole.placeOfService).toBeNull();
+      // ... but a sub-range that sits entirely on one side of the move IS answerable.
+      const pre = { from: range.from, to: lastHomeDay };
+      expect(
+        (await seam.resolveClinicalParticipants(ORG_A, patientId, pre.from, pre)).placeOfService,
+      ).toBe("home");
+      const post = { from: moveDay, to: range.to };
+      expect(
+        (await seam.resolveClinicalParticipants(ORG_A, patientId, post.from, post)).placeOfService,
+      ).toBe("alf");
+    });
+
+    it("a general-inpatient period in the range -> null even with a home address (the residence is not the site)", async () => {
+      const patientId = await rhcPatient(ORG_A, nextCcn());
+      await seedAddress(ORG_A, patientId, { kind: "home" });
+      const { range } = futureClaimRange();
+      const addr = buildPatientAddressReader(handle.db);
+      const gipSeam = buildM23ClinicalParticipantsAdapter(
+        {
+          forRange: async (orgId, pid, r) => {
+            const ctx = await claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r);
+            return ctx
+              ? {
+                  ...ctx,
+                  levelOfCarePeriods: [
+                    ...ctx.levelOfCarePeriods,
+                    {
+                      levelOfCarePeriodId: crypto.randomUUID(),
+                      levelOfCare: "general_inpatient_care",
+                      from: range.from,
+                      to: range.to,
+                      chcDocumentedHours: null,
+                      gipAdmissionCriteriaDocumented: null,
+                    },
+                  ],
+                }
+              : ctx;
+          },
+        },
+        undefined,
+        {
+          residence: {
+            residencesBetween: (o, p, f, t) => addr.residencesBetween(o, p, f, t),
+          },
+          facilityKinds: { kindsFor: (ids) => facilityKindsForIds(handle.db, ids) },
+        },
+      );
+      const r = await gipSeam.resolveClinicalParticipants(ORG_A, patientId, range.from, range);
+      expect(r.placeOfService).toBeNull();
+    });
+
+    it("never resolves another org's residence (cross-tenant isolation, real NOBYPASSRLS role)", async () => {
+      const patientIdB = await rhcPatient(ORG_B, nextCcn());
+      await seedAddress(ORG_B, patientIdB, { kind: "home" });
+      const { range } = futureClaimRange();
+      const seam = posSeam();
+      // Org B asking about its own patient works ...
+      expect(
+        (await seam.resolveClinicalParticipants(ORG_B, patientIdB, range.from, range))
+          .placeOfService,
+      ).toBe("home");
+      // ... org A asking about org B's patient sees no admission, no LOC period and no address.
+      expect(
+        (await seam.resolveClinicalParticipants(ORG_A, patientIdB, range.from, range))
+          .placeOfService,
+      ).toBeNull();
+    });
+
+    it("M5 residencesBetween itself: org-scoped, primary-only, kind + facility + window only (no address columns)", async () => {
+      const patientId = await seedPatient(ORG_A);
+      await seedAddress(ORG_A, patientId, { kind: "home", primary: true });
+      await seedAddress(ORG_A, patientId, { kind: "mailing", primary: false });
+      const addr = buildPatientAddressReader(handle.db);
+      const rows = await addr.residencesBetween(ORG_A, patientId, "2026-02-01", "2026-02-28");
+      expect(rows).toEqual([
+        { kind: "home", facilityId: null, effectiveFrom: POS_RANGE_FROM, effectiveTo: null },
+      ]);
+      expect(await addr.residencesBetween(ORG_B, patientId, "2026-02-01", "2026-02-28")).toEqual(
+        [],
+      );
     });
   });
 
@@ -1414,6 +1687,51 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       });
     });
 
+    it("with NO wage index for the CCN the wall is the typed WAGE_INDEX_UNAVAILABLE naming the entry endpoint, and a tenant entry moves it to RATE_TABLE_MISSING (F-211)", async () => {
+      const patientId = await seedPatient(ORG_A);
+      await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
+      const pe = await seedProviderEntity(ORG_A, "381299");
+      await seedMacCredential(ORG_A, pe, "ngs_j6");
+      const { range, fiscalYearStarting } = futureClaimRange();
+      await activeAdmissionForRange(ORG_A, patientId, pe, "2026-01-01T00:00:00.000Z");
+      const service = buildM23BootAssemblyService(handle.db, {
+        providerCcn: testProviderCcnPort,
+        m6ClaimRange: {
+          forRange: (orgId, pid, r) => claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r),
+        },
+      });
+      const assemble = () =>
+        service.assemble(
+          { organizationId: ORG_A, userId: M6_USER, membershipId: M6_USER, actorKind: "user" },
+          {
+            providerEntityId: pe,
+            patientId,
+            serviceFrom: range.from,
+            serviceTo: range.to,
+            tob: "811",
+          },
+        );
+      await expect(assemble()).rejects.toMatchObject({
+        code: "WAGE_INDEX_UNAVAILABLE",
+        statusCode: 422,
+        message: expect.stringContaining("/api/v1/billing/wage-indexes"),
+      });
+      // ANOTHER tenant's entry for the same CCN + year must not satisfy this tenant's assembly.
+      await admin.query(
+        `INSERT INTO tenant_wage_index (organization_id, ccn, fiscal_year_starting, factor_decimal, source_reference, entered_by_membership_id)
+         VALUES ($1,'381299',$2,1.0,'other tenant',$3)`,
+        [ORG_B, fiscalYearStarting, U],
+      );
+      await expect(assemble()).rejects.toMatchObject({ code: "WAGE_INDEX_UNAVAILABLE" });
+      // This tenant's own entry moves the wall on to the rate table.
+      await admin.query(
+        `INSERT INTO tenant_wage_index (organization_id, ccn, fiscal_year_starting, factor_decimal, source_reference, entered_by_membership_id)
+         VALUES ($1,'381299',$2,0.95,'CMS wage index table',$3)`,
+        [ORG_A, fiscalYearStarting, U],
+      );
+      await expect(assemble()).rejects.toMatchObject({ code: "RATE_TABLE_MISSING" });
+    });
+
     it("with a tenant-entered rate table + sequestration policy the wall MOVES PAST hippsRateTable/activeSequestrationPolicy to billableEncounters (F-210)", async () => {
       const patientId = await seedPatient(ORG_A);
       await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
@@ -1425,8 +1743,8 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       await admin.query(
         `INSERT INTO hospice_rate_table (organization_id, provider_entity_id, fiscal_year_starting, effective_from, effective_to,
            rhc_days_1_60_per_diem_cents, rhc_days_61_plus_per_diem_cents, chc_per_diem_cents, irc_per_diem_cents,
-           gip_per_diem_cents, chc_hourly_rate_cents, entered_by_membership_id)
-         VALUES ($1,$2,$3,$4,$5, 21500, 17000, 105600, 49000, 118000, 4400, $6)`,
+           gip_per_diem_cents, chc_hourly_rate_cents, labor_share_rhc, labor_share_chc, labor_share_irc, labor_share_gip, entered_by_membership_id)
+         VALUES ($1,$2,$3,$4,$5, 21500, 17000, 105600, 49000, 118000, 4400, 0.66, 0.68, 0.54, 0.64, $6)`,
         [ORG_A, pe, fiscalYearStarting, `${fiscalYearStarting}-10-01`, `${fiscalYearStarting + 1}-09-30`, U],
       );
       await activeAdmissionForRange(ORG_A, patientId, pe, "2026-01-01T00:00:00.000Z");

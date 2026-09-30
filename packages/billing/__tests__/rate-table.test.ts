@@ -4,6 +4,7 @@ import {
   type RateTableEntry,
   dateRangesOverlap,
   fiscalYearWindow,
+  hasLaborShares,
   hospiceFiscalYearStartingOf,
   toHippsRateTable,
   validateRateTableEntry,
@@ -19,6 +20,10 @@ const GOOD: RateTableEntry = {
   ircPerDiemCents: 49_000,
   gipPerDiemCents: 118_000,
   chcHourlyRateCents: 4_400,
+  laborShareRhc: "0.6600",
+  laborShareChc: "0.6800",
+  laborShareIrc: "0.5400",
+  laborShareGip: "0.6400",
 };
 
 describe("validateRateTableEntry", () => {
@@ -116,13 +121,48 @@ describe("dateRangesOverlap / windowCovers", () => {
 });
 
 describe("toHippsRateTable", () => {
-  it("projects exactly the five per-diems the HIPPS calculator injects", () => {
+  it("projects the rates + labor shares the HIPPS calculator injects (CHC as its HOURLY rate)", () => {
     expect(toHippsRateTable({ ...GOOD })).toEqual({
       rhcDays1to60PerDiemCents: 21_500,
       rhcDays61PlusPerDiemCents: 17_000,
-      chcPerDiemCents: 105_600,
+      chcHourlyRateCents: 4_400,
       ircPerDiemCents: 49_000,
       gipPerDiemCents: 118_000,
+      rhcLaborShare: "0.6600",
+      chcLaborShare: "0.6800",
+      ircLaborShare: "0.5400",
+      gipLaborShare: "0.6400",
     });
+  });
+
+  it("refuses to project a pre-0280 row with no labor shares (callers fail closed first)", () => {
+    const legacy = {
+      ...GOOD,
+      laborShareRhc: null,
+      laborShareChc: null,
+      laborShareIrc: null,
+      laborShareGip: null,
+    };
+    expect(hasLaborShares(legacy)).toBe(false);
+    expect(() => toHippsRateTable(legacy)).toThrow(RangeError);
+    expect(hasLaborShares({ ...GOOD })).toBe(true);
+    expect(hasLaborShares({ ...GOOD, laborShareGip: null })).toBe(false);
+  });
+});
+
+describe("validateRateTableEntry — labor shares (F-211)", () => {
+  it("accepts the CMS-shaped band edges", () => {
+    expect(validateRateTableEntry({ ...GOOD, laborShareRhc: "0.3", laborShareGip: "0.9" }).ok).toBe(true);
+  });
+  it("rejects a percent (68.71), a 5-place fraction, a non-numeric value, and out-of-band fractions", () => {
+    for (const bad of ["68.71", "0.68711", "abc", "", "0.2999", "0.9001", "-0.5"]) {
+      const r = validateRateTableEntry({ ...GOOD, laborShareChc: bad });
+      expect(r.ok, bad).toBe(false);
+    }
+  });
+  it("names the offending field", () => {
+    const r = validateRateTableEntry({ ...GOOD, laborShareIrc: "0.1" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.join(" ")).toMatch(/laborShareIrc/);
   });
 });

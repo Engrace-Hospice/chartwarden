@@ -45274,6 +45274,10 @@
                           "ircPerDiemCents",
                           "gipPerDiemCents",
                           "chcHourlyRateCents",
+                          "laborShareRhc",
+                          "laborShareChc",
+                          "laborShareIrc",
+                          "laborShareGip",
                           "enteredByMembershipId",
                           "entryReason",
                           "supersededAt",
@@ -45323,6 +45327,46 @@
                           },
                           "chcHourlyRateCents": {
                             "type": "integer"
+                          },
+                          "laborShareRhc": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "laborShareChc": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "laborShareIrc": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "laborShareGip": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
                           },
                           "enteredByMembershipId": {
                             "type": "string"
@@ -45413,6 +45457,10 @@
                     "ircPerDiemCents",
                     "gipPerDiemCents",
                     "chcHourlyRateCents",
+                    "laborShareRhc",
+                    "laborShareChc",
+                    "laborShareIrc",
+                    "laborShareGip",
                     "enteredByMembershipId",
                     "entryReason",
                     "supersededAt",
@@ -45462,6 +45510,46 @@
                     },
                     "chcHourlyRateCents": {
                       "type": "integer"
+                    },
+                    "laborShareRhc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareChc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareIrc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareGip": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "enteredByMembershipId": {
                       "type": "string"
@@ -45526,7 +45614,11 @@
                   "chcPerDiemCents",
                   "ircPerDiemCents",
                   "gipPerDiemCents",
-                  "chcHourlyRateCents"
+                  "chcHourlyRateCents",
+                  "laborShareRhc",
+                  "laborShareChc",
+                  "laborShareIrc",
+                  "laborShareGip"
                 ],
                 "properties": {
                   "providerEntityId": {
@@ -45576,6 +45668,26 @@
                     "minimum": 1,
                     "maximum": 1000000,
                     "type": "integer"
+                  },
+                  "laborShareRhc": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "laborShareChc": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "laborShareIrc": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "laborShareGip": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
                   },
                   "entryReason": {
                     "maxLength": 2000,
@@ -45634,6 +45746,10 @@
                     "ircPerDiemCents",
                     "gipPerDiemCents",
                     "chcHourlyRateCents",
+                    "laborShareRhc",
+                    "laborShareChc",
+                    "laborShareIrc",
+                    "laborShareGip",
                     "enteredByMembershipId",
                     "entryReason",
                     "supersededAt",
@@ -45683,6 +45799,46 @@
                     },
                     "chcHourlyRateCents": {
                       "type": "integer"
+                    },
+                    "laborShareRhc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareChc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareIrc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareGip": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "enteredByMembershipId": {
                       "type": "string"
@@ -45780,6 +45936,10 @@
                     "ircPerDiemCents",
                     "gipPerDiemCents",
                     "chcHourlyRateCents",
+                    "laborShareRhc",
+                    "laborShareChc",
+                    "laborShareIrc",
+                    "laborShareGip",
                     "enteredByMembershipId",
                     "entryReason",
                     "supersededAt",
@@ -45829,6 +45989,46 @@
                     },
                     "chcHourlyRateCents": {
                       "type": "integer"
+                    },
+                    "laborShareRhc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareChc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareIrc": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "laborShareGip": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     },
                     "enteredByMembershipId": {
                       "type": "string"
@@ -45893,7 +46093,11 @@
                   "chcPerDiemCents",
                   "ircPerDiemCents",
                   "gipPerDiemCents",
-                  "chcHourlyRateCents"
+                  "chcHourlyRateCents",
+                  "laborShareRhc",
+                  "laborShareChc",
+                  "laborShareIrc",
+                  "laborShareGip"
                 ],
                 "properties": {
                   "providerEntityId": {
@@ -45943,6 +46147,26 @@
                     "minimum": 1,
                     "maximum": 1000000,
                     "type": "integer"
+                  },
+                  "laborShareRhc": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "laborShareChc": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "laborShareIrc": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
+                  },
+                  "laborShareGip": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "Decimal fraction with at most four places, e.g. \"0.6871\" (not a percent).",
+                    "type": "string"
                   },
                   "entryReason": {
                     "maxLength": 2000,
@@ -46004,6 +46228,10 @@
                         "ircPerDiemCents",
                         "gipPerDiemCents",
                         "chcHourlyRateCents",
+                        "laborShareRhc",
+                        "laborShareChc",
+                        "laborShareIrc",
+                        "laborShareGip",
                         "enteredByMembershipId",
                         "entryReason",
                         "supersededAt",
@@ -46053,6 +46281,46 @@
                         },
                         "chcHourlyRateCents": {
                           "type": "integer"
+                        },
+                        "laborShareRhc": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "laborShareChc": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "laborShareIrc": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "laborShareGip": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
                         },
                         "enteredByMembershipId": {
                           "type": "string"
@@ -46751,6 +47019,14 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "name": "includeSuperseded",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -46777,6 +47053,8 @@
                           "effectiveTo",
                           "setByMembershipId",
                           "setReason",
+                          "supersededAt",
+                          "supersededById",
                           "createdAt"
                         ],
                         "properties": {
@@ -46818,6 +47096,26 @@
                               }
                             ]
                           },
+                          "supersededAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersededById": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdAt": {
                             "type": "string"
                           }
@@ -46842,11 +47140,104 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33)",
-        "parameters": [],
+        "summary": "Enter a sequestration policy row - percentage a decimal string in 0-2 (reason required off 2), may start in the past, non-overlapping; an open-ended entry takes over from the prior open row (201, §4.1 #33, F-212)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "policyId",
+                    "organizationId",
+                    "providerEntityId",
+                    "percentage",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "setByMembershipId",
+                    "setReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "policyId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "percentage": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "setByMembershipId": {
+                      "type": "string"
+                    },
+                    "setReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -46872,10 +47263,297 @@
                     "type": "string"
                   },
                   "percentage": {
-                    "pattern": "^-?\\d+(\\.\\d+)?$",
+                    "pattern": "^\\d+(\\.\\d+)?$",
+                    "maxLength": 12,
                     "type": "string"
                   },
                   "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "setReason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/sequestration-policies/{id}": {
+      "get": {
+        "operationId": "getApiV1BillingSequestrationpoliciesById",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Read one sequestration policy row (F-212)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "policyId",
+                    "organizationId",
+                    "providerEntityId",
+                    "percentage",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "setByMembershipId",
+                    "setReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "policyId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "percentage": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "setByMembershipId": {
+                      "type": "string"
+                    },
+                    "setReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/sequestration-policies/{id}/supersede": {
+      "post": {
+        "operationId": "postApiV1BillingSequestrationpoliciesByIdSupersede",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Supersede a live sequestration policy row with a corrected one; the old row is kept as history (F-212)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "policyId",
+                    "organizationId",
+                    "providerEntityId",
+                    "percentage",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "setByMembershipId",
+                    "setReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "policyId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "percentage": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "setByMembershipId": {
+                      "type": "string"
+                    },
+                    "setReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "percentage",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "percentage": {
+                    "pattern": "^\\d+(\\.\\d+)?$",
+                    "maxLength": 12,
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
                     "format": "date",
                     "type": "string"
                   },
@@ -46896,7 +47574,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "The active-on-now sequestration policy for a ProviderEntity (or null, §4.1)",
+        "summary": "The current open-ended sequestration policy for a ProviderEntity (or null, §4.1)",
         "parameters": [
           {
             "name": "providerEntityId",
@@ -46926,6 +47604,8 @@
                         "effectiveTo",
                         "setByMembershipId",
                         "setReason",
+                        "supersededAt",
+                        "supersededById",
                         "createdAt"
                       ],
                       "properties": {
@@ -46958,6 +47638,156 @@
                           "type": "string"
                         },
                         "setReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededById": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/sequestration-policies/effective": {
+      "get": {
+        "operationId": "getApiV1BillingSequestrationpoliciesEffective",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "The live sequestration policy claim assembly would apply on a service date, or null (F-212)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "onDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "policyId",
+                        "organizationId",
+                        "providerEntityId",
+                        "percentage",
+                        "effectiveFrom",
+                        "effectiveTo",
+                        "setByMembershipId",
+                        "setReason",
+                        "supersededAt",
+                        "supersededById",
+                        "createdAt"
+                      ],
+                      "properties": {
+                        "policyId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "providerEntityId": {
+                          "type": "string"
+                        },
+                        "percentage": {
+                          "type": "string"
+                        },
+                        "effectiveFrom": {
+                          "type": "string"
+                        },
+                        "effectiveTo": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "setByMembershipId": {
+                          "type": "string"
+                        },
+                        "setReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededById": {
                           "anyOf": [
                             {
                               "type": "string"
@@ -47047,6 +47877,743 @@
                       ]
                     }
                   }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/wage-indexes": {
+      "get": {
+        "operationId": "getApiV1BillingWageindexes",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "List the tenant-entered hospice wage indexes, newest fiscal year first (F-211; includeSuperseded=true adds history)",
+        "parameters": [
+          {
+            "name": "ccn",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "pattern": "^[0-9A-Za-z]{6}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "fiscalYearStarting",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "minimum": 2000,
+              "maximum": 2100,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "includeSuperseded",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "wageIndexes"
+                  ],
+                  "properties": {
+                    "wageIndexes": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "wageIndexId",
+                          "organizationId",
+                          "ccn",
+                          "fiscalYearStarting",
+                          "cbsaCode",
+                          "factorDecimal",
+                          "sourceReference",
+                          "enteredByMembershipId",
+                          "entryReason",
+                          "supersededAt",
+                          "supersededById",
+                          "createdAt"
+                        ],
+                        "properties": {
+                          "wageIndexId": {
+                            "type": "string"
+                          },
+                          "organizationId": {
+                            "type": "string"
+                          },
+                          "ccn": {
+                            "type": "string"
+                          },
+                          "fiscalYearStarting": {
+                            "type": "integer"
+                          },
+                          "cbsaCode": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "factorDecimal": {
+                            "type": "string"
+                          },
+                          "sourceReference": {
+                            "type": "string"
+                          },
+                          "enteredByMembershipId": {
+                            "type": "string"
+                          },
+                          "entryReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersededAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersededById": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "postApiV1BillingWageindexes",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Enter the CMS hospice wage index for a CCN + fiscal year - one live value per pair; org-scoped, never shared (F-211)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "wageIndexId",
+                    "organizationId",
+                    "ccn",
+                    "fiscalYearStarting",
+                    "cbsaCode",
+                    "factorDecimal",
+                    "sourceReference",
+                    "enteredByMembershipId",
+                    "entryReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "wageIndexId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "fiscalYearStarting": {
+                      "type": "integer"
+                    },
+                    "cbsaCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "factorDecimal": {
+                      "type": "string"
+                    },
+                    "sourceReference": {
+                      "type": "string"
+                    },
+                    "enteredByMembershipId": {
+                      "type": "string"
+                    },
+                    "entryReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ccn",
+                  "fiscalYearStarting",
+                  "factorDecimal",
+                  "sourceReference"
+                ],
+                "properties": {
+                  "ccn": {
+                    "pattern": "^[0-9A-Za-z]{6}$",
+                    "description": "6-character CMS Certification Number.",
+                    "type": "string"
+                  },
+                  "fiscalYearStarting": {
+                    "minimum": 2000,
+                    "maximum": 2100,
+                    "description": "Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026).",
+                    "type": "integer"
+                  },
+                  "cbsaCode": {
+                    "pattern": "^[0-9]{5}$",
+                    "type": "string"
+                  },
+                  "factorDecimal": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "The published hospice wage index as a decimal string with at most four places, e.g. \"1.0342\".",
+                    "type": "string"
+                  },
+                  "sourceReference": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "Where the value was keyed from (CMS wage-index table / Federal Register notice).",
+                    "type": "string"
+                  },
+                  "entryReason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/wage-indexes/{id}": {
+      "get": {
+        "operationId": "getApiV1BillingWageindexesById",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Read one tenant-entered wage-index version (F-211)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "wageIndexId",
+                    "organizationId",
+                    "ccn",
+                    "fiscalYearStarting",
+                    "cbsaCode",
+                    "factorDecimal",
+                    "sourceReference",
+                    "enteredByMembershipId",
+                    "entryReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "wageIndexId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "fiscalYearStarting": {
+                      "type": "integer"
+                    },
+                    "cbsaCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "factorDecimal": {
+                      "type": "string"
+                    },
+                    "sourceReference": {
+                      "type": "string"
+                    },
+                    "enteredByMembershipId": {
+                      "type": "string"
+                    },
+                    "entryReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/wage-indexes/{id}/supersede": {
+      "post": {
+        "operationId": "postApiV1BillingWageindexesByIdSupersede",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Supersede a live wage index with a corrected value for the same CCN + fiscal year; the old value is kept as history (F-211)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "wageIndexId",
+                    "organizationId",
+                    "ccn",
+                    "fiscalYearStarting",
+                    "cbsaCode",
+                    "factorDecimal",
+                    "sourceReference",
+                    "enteredByMembershipId",
+                    "entryReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "wageIndexId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "ccn": {
+                      "type": "string"
+                    },
+                    "fiscalYearStarting": {
+                      "type": "integer"
+                    },
+                    "cbsaCode": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "factorDecimal": {
+                      "type": "string"
+                    },
+                    "sourceReference": {
+                      "type": "string"
+                    },
+                    "enteredByMembershipId": {
+                      "type": "string"
+                    },
+                    "entryReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "ccn",
+                  "fiscalYearStarting",
+                  "factorDecimal",
+                  "sourceReference"
+                ],
+                "properties": {
+                  "ccn": {
+                    "pattern": "^[0-9A-Za-z]{6}$",
+                    "description": "6-character CMS Certification Number.",
+                    "type": "string"
+                  },
+                  "fiscalYearStarting": {
+                    "minimum": 2000,
+                    "maximum": 2100,
+                    "description": "Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026).",
+                    "type": "integer"
+                  },
+                  "cbsaCode": {
+                    "pattern": "^[0-9]{5}$",
+                    "type": "string"
+                  },
+                  "factorDecimal": {
+                    "pattern": "^\\d(\\.\\d{1,4})?$",
+                    "description": "The published hospice wage index as a decimal string with at most four places, e.g. \"1.0342\".",
+                    "type": "string"
+                  },
+                  "sourceReference": {
+                    "minLength": 1,
+                    "maxLength": 500,
+                    "description": "Where the value was keyed from (CMS wage-index table / Federal Register notice).",
+                    "type": "string"
+                  },
+                  "entryReason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/wage-indexes/effective": {
+      "get": {
+        "operationId": "getApiV1BillingWageindexesEffective",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "The live tenant-entered wage index for a CCN + fiscal year, or null (F-211)",
+        "parameters": [
+          {
+            "name": "ccn",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9A-Za-z]{6}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "fiscalYearStarting",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "minimum": 2000,
+              "maximum": 2100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "wageIndexId",
+                        "organizationId",
+                        "ccn",
+                        "fiscalYearStarting",
+                        "cbsaCode",
+                        "factorDecimal",
+                        "sourceReference",
+                        "enteredByMembershipId",
+                        "entryReason",
+                        "supersededAt",
+                        "supersededById",
+                        "createdAt"
+                      ],
+                      "properties": {
+                        "wageIndexId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "ccn": {
+                          "type": "string"
+                        },
+                        "fiscalYearStarting": {
+                          "type": "integer"
+                        },
+                        "cbsaCode": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "factorDecimal": {
+                          "type": "string"
+                        },
+                        "sourceReference": {
+                          "type": "string"
+                        },
+                        "enteredByMembershipId": {
+                          "type": "string"
+                        },
+                        "entryReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededById": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
                 }
               }
             }

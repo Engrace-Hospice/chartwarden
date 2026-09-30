@@ -328,12 +328,10 @@ import {
   ClaimListQuerySchema,
   ClaimPatchDraftBodySchema,
   CreateRuleConfigBodySchema,
-  ForwardDateSequestrationBodySchema,
   MacCredentialListQuerySchema,
   NoeListQuerySchema,
   NotrListQuerySchema,
   OverrideValidationResultBodySchema,
-  RequiredProviderEntityQuerySchema,
   RuleConfigListQuerySchema,
   UpdateRuleConfigBodySchema,
   UpsertMacCredentialBodySchema,
@@ -348,6 +346,25 @@ import {
   RateTableViewSchema,
   SupersedeRateTableBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/rate-table-typebox";
+import {
+  CreateWageIndexBodySchema,
+  SupersedeWageIndexBodySchema,
+  WageIndexEffectiveQuerySchema,
+  WageIndexEffectiveResponseSchema,
+  WageIndexListQuerySchema,
+  WageIndexListResponseSchema,
+  WageIndexViewSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/wage-index-typebox";
+import {
+  CreateSequestrationPolicyBodySchema,
+  SequestrationPolicyEffectiveQuerySchema,
+  SequestrationPolicyGetQuerySchema,
+  SequestrationPolicyListQuerySchema,
+  SequestrationPolicyListResponseSchema,
+  SequestrationPolicyNullableResponseSchema,
+  SequestrationPolicyViewSchema,
+  SupersedeSequestrationPolicyBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/sequestration-policy-typebox";
 // M24 Billing — Medicaid — the §4.2 request bodies / list queries / response DTOs for the state-Medicaid
 // claim, R&B, rule-overlay, eligibility, and trading-partner surfaces (modules/24-billing-medicaid/routes).
 import {
@@ -2749,8 +2766,19 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // ── sequestration policy (sequestration-policy.routes.ts) ──
   "POST /api/v1/billing/sequestration-policies": {
     summary:
-      "Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33)",
-    body: ForwardDateSequestrationBodySchema,
+      "Enter a sequestration policy row - percentage a decimal string in 0-2 (reason required off 2), may start in the past, non-overlapping; an open-ended entry takes over from the prior open row (201, §4.1 #33, F-212)",
+    body: CreateSequestrationPolicyBodySchema,
+    response: SequestrationPolicyViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/sequestration-policies/:id/supersede": {
+    summary:
+      "Supersede a live sequestration policy row with a corrected one; the old row is kept as history (F-212)",
+    body: SupersedeSequestrationPolicyBodySchema,
+    response: SequestrationPolicyViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
   },
   // ── MAC credentials (mac-credentials.routes.ts, §3.6) ──
   "POST /api/v1/billing/mac-credentials": {
@@ -9253,22 +9281,6 @@ const M23RuleConfigListResponse = Type.Object({
   hasMore: Type.Boolean(),
 });
 
-const M23SequestrationPolicyView = Type.Object({
-  policyId: Type.String(),
-  organizationId: Type.String(),
-  providerEntityId: Type.String(),
-  percentage: Type.String(),
-  effectiveFrom: Type.String(),
-  effectiveTo: Type.Union([Type.String(), Type.Null()]),
-  setByMembershipId: Type.String(),
-  setReason: Type.Union([Type.String(), Type.Null()]),
-  createdAt: Type.String(),
-});
-const M23SequestrationPolicyListResponse = Type.Object({
-  policies: Type.Array(M23SequestrationPolicyView),
-});
-const M23SequestrationPolicyActiveResponse = Type.Union([M23SequestrationPolicyView, Type.Null()]);
-
 const M23MacCredentialView = Type.Object({
   credentialId: Type.String(),
   organizationId: Type.String(),
@@ -9377,13 +9389,24 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/billing/sequestration-policies": {
     summary:
       "Per-ProviderEntity sequestration-percentage timeline - effective-dated rows (D11, §4.1 #32)",
-    query: RequiredProviderEntityQuerySchema,
-    response: M23SequestrationPolicyListResponse,
+    query: SequestrationPolicyListQuerySchema,
+    response: SequestrationPolicyListResponseSchema,
   },
   "GET /api/v1/billing/sequestration-policies/active": {
-    summary: "The active-on-now sequestration policy for a ProviderEntity (or null, §4.1)",
-    query: RequiredProviderEntityQuerySchema,
-    response: M23SequestrationPolicyActiveResponse,
+    summary: "The current open-ended sequestration policy for a ProviderEntity (or null, §4.1)",
+    query: SequestrationPolicyGetQuerySchema,
+    response: SequestrationPolicyNullableResponseSchema,
+  },
+  "GET /api/v1/billing/sequestration-policies/effective": {
+    summary:
+      "The live sequestration policy claim assembly would apply on a service date, or null (F-212)",
+    query: SequestrationPolicyEffectiveQuerySchema,
+    response: SequestrationPolicyNullableResponseSchema,
+  },
+  "GET /api/v1/billing/sequestration-policies/:id": {
+    summary: "Read one sequestration policy row (F-212)",
+    query: SequestrationPolicyGetQuerySchema,
+    response: SequestrationPolicyViewSchema,
   },
   // ── F-210: the tenant-entered hospice per-diem rate table (rate-table.routes.ts) ──
   "GET /api/v1/billing/rate-tables": {
@@ -9416,6 +9439,38 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Supersede a live rate-table version with a corrected one; the old version is kept as history (F-210)",
     body: SupersedeRateTableBodySchema,
     response: RateTableViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  // ── F-211: the tenant-entered CMS hospice wage index (wage-index.routes.ts) ──
+  "GET /api/v1/billing/wage-indexes": {
+    summary:
+      "List the tenant-entered hospice wage indexes, newest fiscal year first (F-211; includeSuperseded=true adds history)",
+    query: WageIndexListQuerySchema,
+    response: WageIndexListResponseSchema,
+  },
+  "GET /api/v1/billing/wage-indexes/effective": {
+    summary: "The live tenant-entered wage index for a CCN + fiscal year, or null (F-211)",
+    query: WageIndexEffectiveQuerySchema,
+    response: WageIndexEffectiveResponseSchema,
+  },
+  "GET /api/v1/billing/wage-indexes/:id": {
+    summary: "Read one tenant-entered wage-index version (F-211)",
+    response: WageIndexViewSchema,
+  },
+  "POST /api/v1/billing/wage-indexes": {
+    summary:
+      "Enter the CMS hospice wage index for a CCN + fiscal year - one live value per pair; org-scoped, never shared (F-211)",
+    body: CreateWageIndexBodySchema,
+    response: WageIndexViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/wage-indexes/:id/supersede": {
+    summary:
+      "Supersede a live wage index with a corrected value for the same CCN + fiscal year; the old value is kept as history (F-211)",
+    body: SupersedeWageIndexBodySchema,
+    response: WageIndexViewSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
   },

@@ -16,7 +16,7 @@
 // (F-123, #251: bridging M8's `encounterVisitIdsForOrg` and M18's new bulk `complianceStatesForVisitsForOrg`),
 // and `terminology` (F-124, #251: over M38's registered `TerminologyProvider.expand()`). `mdm` is
 // PARTIALLY bound — `resolveProviderEntity` (#250) and, as of F-127 (#251), the physician-IDENTITY half of
-// `resolveClinicalParticipants`; `placeOfService` stays unbound (see below) — so it counts toward neither
+// `resolveClinicalParticipants`; `placeOfService` is bound only partially (F-213, see below) — so it counts toward neither
 // the bound nor the fully-stub tally cleanly. All four of `referenceData`'s methods are also real:
 // `wageIndexForCcn`, `activeSequestrationPolicy` (#250) and — F-210 — the TENANT-ENTERED `hippsRateTable`/
 // `chcHourlyRateCents` over the M23-owned `hospice_rate_table` (see the "RATE TABLE" note below).
@@ -44,14 +44,11 @@
 // `MdmEntityProvider.resolvePhysician`. `licenseUnexpiredOnServiceDates` is honestly `false` always — M40
 // tracks which STATES a physician is licensed in, never a per-state EXPIRY DATE, so there is nothing to
 // confirm (`physician-credentials.ts`'s defect message was rewordered, F-126, so it never asserts a
-// confirmed expiry this seam cannot back up). `placeOfService` stays genuinely unbound: checked against the
-// whole schema, not assumed — `patient_address.kind` distinguishes only `home`/`facility`/`mailing`/
-// `temporary`/`prior`, with no facility-type taxonomy beneath `facility`, and M40's `CanonicalFacilityFields`
-// carries `ccn`/`npi`/`sendingFacilityCodes`, no site-type field either. No table anywhere records which of
-// home/ALF/SNF/hospital/IPU a patient is currently receiving care in. That is genuine new infrastructure —
-// a producer decision, the CMS-rate-table gap's own shape — not a wiring task, and is not guessed at: an
-// `patient_address.kind === 'facility'` heuristic could mean any of five different Q-code sites, exactly the
-// "a guessed provider entity is a mis-stated cost report" mistake F-102 already named for a different module.
+// confirmed expiry this seam cannot back up). `placeOfService` is REAL as of F-213 (#252)
+// (F-127's "no producer exists" was corrected): M5's effective-dated address history + M40 `facility.kind`
+// (migration 0183) via injected ports (`ports.placeOfService`). It maps home + the seven facility kinds with an
+// unambiguous CMS Q-code and returns null (line falls to Q5009) for clinic/other, GIP/IRC claims (the site is
+// the LOC facility, not the residence), or a range that spans a move — see `place-of-service-resolver.ts`.
 //
 // Binding the physician-identity half surfaced an independent, real Q-code defect (F-125, #251):
 // `qCodeForPlaceOfService` (below) and `@wardenx/billing`'s own `place_of_service_consistency` rule had
@@ -107,6 +104,7 @@ import { createDefaultBillingRegistry, type repositories } from "@wardenx/billin
 import { WardenXError } from "@wardenx/types";
 
 import type { ProviderCcnPort } from "../routes/write-service";
+import type { PlaceOfServicePorts } from "./place-of-service-resolver";
 import { buildM23CapProjectionAdapter } from "./cap-projection-adapter";
 import {
   type AssemblyOutboxPort,
@@ -184,6 +182,10 @@ export function buildM23BootAssemblyService(
      *  stays its fail-closed `unbound()` deny-stub below (an unbound sequence must never read as "no
      *  diagnoses" — that would silently fail `icd10_sequencing` on real data). */
     readonly m7ClaimDiagnoses?: M7ClaimDiagnosesReader;
+    /** F-213 (#252) — the M5 residence-range + M40 facility-kind ports behind
+     *  `mdm.resolveClinicalParticipants().placeOfService`. Absent, `placeOfService` stays `null`
+     *  (line Q-code falls to Q5009 honestly). */
+    readonly placeOfService?: PlaceOfServicePorts;
   } = {},
 ): ClaimAssemblyService {
   const outbox: AssemblyOutboxPort = ports.outbox ?? {
@@ -235,10 +237,14 @@ export function buildM23BootAssemblyService(
       // own doc comment).
       resolveProviderEntity: mdmAdapter.resolveProviderEntity,
       // PARTIALLY REAL (#251, F-127) — physician identity/NPPES-status over the SAME injected `m6ClaimRange`
-      // port (extended, no new port) + M40's registered `MdmEntityProvider`; `placeOfService` stays honestly
-      // `null` (see the adapter's own doc comment: no facility-type taxonomy exists anywhere in the schema).
+      // port (extended, no new port) + M40's registered `MdmEntityProvider`; `placeOfService` via the injected
+      // F-213 ports (null when unresolvable — `place-of-service-resolver.ts`).
       resolveClinicalParticipants: ports.m6ClaimRange
-        ? buildM23ClinicalParticipantsAdapter(ports.m6ClaimRange).resolveClinicalParticipants
+        ? buildM23ClinicalParticipantsAdapter(
+            ports.m6ClaimRange,
+            undefined,
+            ports.placeOfService,
+          ).resolveClinicalParticipants
         : () => unbound("MdmEntityProvider"),
     },
     // REAL (#251, F-124) — over the registered M38 `TerminologyProvider` seam's bulk `expand()`; needs no

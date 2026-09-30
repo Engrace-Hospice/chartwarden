@@ -31,7 +31,7 @@ import {
   withPlatformContext,
 } from "@wardenx/tenancy";
 import { DegradedError, WardenXError } from "@wardenx/types";
-import type { AdmissionStatusReader } from "@wardenx/types";
+import type { AdmissionStatusReader, PatientAddressReader } from "@wardenx/types";
 import { createX12835Client } from "@wardenx/x12-835-client";
 import { type ConnectionOptions, Queue, Worker } from "bullmq";
 import { and, eq, inArray, isNull, ne, sql } from "drizzle-orm";
@@ -591,6 +591,8 @@ import {
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
   buildDrizzleRateTableService,
+  buildDrizzleWageIndexService,
+  buildDrizzleSequestrationPolicyService,
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
   buildM23NoeDraftConsumer,
@@ -991,6 +993,7 @@ import {
   createDbMdmStore,
   createDbNppesNpiSource,
   createDrizzleMdmEraseStore,
+  facilityKindsForIds,
   getMdmEntityProvider,
   mountMdmRoutes,
   registerMdmErasers,
@@ -3600,6 +3603,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // assembly service's `referenceData.hippsRateTable`/`chcHourlyRateCents` read (M23-owned, so
             // the boot assembly reads it over `dbHandle.db` directly — no injected port).
             rateTableService: buildDrizzleRateTableService(dbHandle.db),
+            // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
+            wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
+            // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
+            // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
+            sequestrationService: buildDrizzleSequestrationPolicyService(dbHandle.db),
             readService: buildDrizzleM23ReadService(dbHandle.db),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
               outbox: m23OutboxPublisher,
@@ -3639,6 +3647,20 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               m18Compliance: {
                 forVisits: (orgId, visitIds) =>
                   complianceStatesForVisitsForOrg(dbHandle.db, orgId, visitIds),
+              },
+              // F-213 (#252) - mdm placeOfService: M5's effective-dated address history (the registered
+              // PatientAddressReader seam, resolved lazily per call so boot registration order never
+              // matters) + M40's merge-resolved facility.kind. M23 imports neither module.
+              placeOfService: {
+                residence: {
+                  residencesBetween: (orgId, patientId, from, to) =>
+                    (
+                      getSeam("PatientAddressReader") as PatientAddressReader
+                    ).residencesBetween(orgId, patientId, from, to),
+                },
+                facilityKinds: {
+                  kindsFor: (facilityIds) => facilityKindsForIds(dbHandle.db, facilityIds),
+                },
               },
             }),
           });

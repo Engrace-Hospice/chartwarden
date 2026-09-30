@@ -801,6 +801,7 @@ export const MODULES: ModuleDef[] = [
       "notr_record",
       "sequestration_policy",
       "sia_calculation",
+      "tenant_wage_index",
       "unmapped_taxonomy_occurrence",
       "validation_override",
       "validation_result",

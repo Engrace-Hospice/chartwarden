@@ -4111,8 +4111,42 @@ export interface paths {
         /** Per-ProviderEntity sequestration-percentage timeline - effective-dated rows (D11, §4.1 #32) */
         get: operations["getApiV1BillingSequestrationpolicies"];
         put?: never;
-        /** Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33) */
+        /** Enter a sequestration policy row - percentage a decimal string in 0-2 (reason required off 2), may start in the past, non-overlapping; an open-ended entry takes over from the prior open row (201, §4.1 #33, F-212) */
         post: operations["postApiV1BillingSequestrationpolicies"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/sequestration-policies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one sequestration policy row (F-212) */
+        get: operations["getApiV1BillingSequestrationpoliciesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/sequestration-policies/{id}/supersede": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Supersede a live sequestration policy row with a corrected one; the old row is kept as history (F-212) */
+        post: operations["postApiV1BillingSequestrationpoliciesByIdSupersede"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4126,8 +4160,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The active-on-now sequestration policy for a ProviderEntity (or null, §4.1) */
+        /** The current open-ended sequestration policy for a ProviderEntity (or null, §4.1) */
         get: operations["getApiV1BillingSequestrationpoliciesActive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/sequestration-policies/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The live sequestration policy claim assembly would apply on a service date, or null (F-212) */
+        get: operations["getApiV1BillingSequestrationpoliciesEffective"];
         put?: never;
         post?: never;
         delete?: never;
@@ -4145,6 +4196,75 @@ export interface paths {
         };
         /** Lightweight billing status */
         get: operations["getApiV1BillingStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/wage-indexes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the tenant-entered hospice wage indexes, newest fiscal year first (F-211; includeSuperseded=true adds history) */
+        get: operations["getApiV1BillingWageindexes"];
+        put?: never;
+        /** Enter the CMS hospice wage index for a CCN + fiscal year - one live value per pair; org-scoped, never shared (F-211) */
+        post: operations["postApiV1BillingWageindexes"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/wage-indexes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one tenant-entered wage-index version (F-211) */
+        get: operations["getApiV1BillingWageindexesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/wage-indexes/{id}/supersede": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Supersede a live wage index with a corrected value for the same CCN + fiscal year; the old value is kept as history (F-211) */
+        post: operations["postApiV1BillingWageindexesByIdSupersede"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/wage-indexes/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The live tenant-entered wage index for a CCN + fiscal year, or null (F-211) */
+        get: operations["getApiV1BillingWageindexesEffective"];
         put?: never;
         post?: never;
         delete?: never;
@@ -30965,6 +31085,10 @@ export interface operations {
                             ircPerDiemCents: number;
                             gipPerDiemCents: number;
                             chcHourlyRateCents: number;
+                            laborShareRhc: string | null;
+                            laborShareChc: string | null;
+                            laborShareIrc: string | null;
+                            laborShareGip: string | null;
                             enteredByMembershipId: string;
                             entryReason: string | null;
                             supersededAt: string | null;
@@ -31005,6 +31129,14 @@ export interface operations {
                     ircPerDiemCents: number;
                     gipPerDiemCents: number;
                     chcHourlyRateCents: number;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareRhc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareChc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareIrc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareGip: string;
                     entryReason?: string;
                 };
             };
@@ -31029,6 +31161,10 @@ export interface operations {
                         ircPerDiemCents: number;
                         gipPerDiemCents: number;
                         chcHourlyRateCents: number;
+                        laborShareRhc: string | null;
+                        laborShareChc: string | null;
+                        laborShareIrc: string | null;
+                        laborShareGip: string | null;
                         enteredByMembershipId: string;
                         entryReason: string | null;
                         supersededAt: string | null;
@@ -31073,6 +31209,10 @@ export interface operations {
                         ircPerDiemCents: number;
                         gipPerDiemCents: number;
                         chcHourlyRateCents: number;
+                        laborShareRhc: string | null;
+                        laborShareChc: string | null;
+                        laborShareIrc: string | null;
+                        laborShareGip: string | null;
                         enteredByMembershipId: string;
                         entryReason: string | null;
                         supersededAt: string | null;
@@ -31114,6 +31254,14 @@ export interface operations {
                     ircPerDiemCents: number;
                     gipPerDiemCents: number;
                     chcHourlyRateCents: number;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareRhc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareChc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareIrc: string;
+                    /** @description Decimal fraction with at most four places, e.g. "0.6871" (not a percent). */
+                    laborShareGip: string;
                     entryReason?: string;
                 };
             };
@@ -31138,6 +31286,10 @@ export interface operations {
                         ircPerDiemCents: number;
                         gipPerDiemCents: number;
                         chcHourlyRateCents: number;
+                        laborShareRhc: string | null;
+                        laborShareChc: string | null;
+                        laborShareIrc: string | null;
+                        laborShareGip: string | null;
                         enteredByMembershipId: string;
                         entryReason: string | null;
                         supersededAt: string | null;
@@ -31181,6 +31333,10 @@ export interface operations {
                         ircPerDiemCents: number;
                         gipPerDiemCents: number;
                         chcHourlyRateCents: number;
+                        laborShareRhc: string | null;
+                        laborShareChc: string | null;
+                        laborShareIrc: string | null;
+                        laborShareGip: string | null;
                         enteredByMembershipId: string;
                         entryReason: string | null;
                         supersededAt: string | null;
@@ -31399,6 +31555,7 @@ export interface operations {
         parameters: {
             query: {
                 providerEntityId: string;
+                includeSuperseded?: boolean;
             };
             header?: never;
             path?: never;
@@ -31422,6 +31579,8 @@ export interface operations {
                             effectiveTo: string | null;
                             setByMembershipId: string;
                             setReason: string | null;
+                            supersededAt: string | null;
+                            supersededById: string | null;
                             createdAt: string;
                         }[];
                     };
@@ -31434,7 +31593,10 @@ export interface operations {
     postApiV1BillingSequestrationpolicies: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -31446,17 +31608,123 @@ export interface operations {
                     percentage: string;
                     /** Format: date */
                     effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
                     setReason?: string;
                 };
             };
         };
         responses: {
             /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingSequestrationpoliciesById: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingSequestrationpoliciesByIdSupersede: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    percentage: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    setReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -31488,6 +31756,45 @@ export interface operations {
                         effectiveTo: string | null;
                         setByMembershipId: string;
                         setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    } | null;
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingSequestrationpoliciesEffective: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                onDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
                         createdAt: string;
                     } | null;
                 };
@@ -31519,6 +31826,230 @@ export interface operations {
                         hasValidPaymentMethod: boolean;
                         paymentMethodExpiresAt: string | null;
                     };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingWageindexes: {
+        parameters: {
+            query?: {
+                ccn?: string;
+                fiscalYearStarting?: number;
+                includeSuperseded?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexes: {
+                            wageIndexId: string;
+                            organizationId: string;
+                            ccn: string;
+                            fiscalYearStarting: number;
+                            cbsaCode: string | null;
+                            factorDecimal: string;
+                            sourceReference: string;
+                            enteredByMembershipId: string;
+                            entryReason: string | null;
+                            supersededAt: string | null;
+                            supersededById: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingWageindexes: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description 6-character CMS Certification Number. */
+                    ccn: string;
+                    /** @description Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026). */
+                    fiscalYearStarting: number;
+                    cbsaCode?: string;
+                    /** @description The published hospice wage index as a decimal string with at most four places, e.g. "1.0342". */
+                    factorDecimal: string;
+                    /** @description Where the value was keyed from (CMS wage-index table / Federal Register notice). */
+                    sourceReference: string;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexId: string;
+                        organizationId: string;
+                        ccn: string;
+                        fiscalYearStarting: number;
+                        cbsaCode: string | null;
+                        factorDecimal: string;
+                        sourceReference: string;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingWageindexesById: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexId: string;
+                        organizationId: string;
+                        ccn: string;
+                        fiscalYearStarting: number;
+                        cbsaCode: string | null;
+                        factorDecimal: string;
+                        sourceReference: string;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingWageindexesByIdSupersede: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @description 6-character CMS Certification Number. */
+                    ccn: string;
+                    /** @description Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026). */
+                    fiscalYearStarting: number;
+                    cbsaCode?: string;
+                    /** @description The published hospice wage index as a decimal string with at most four places, e.g. "1.0342". */
+                    factorDecimal: string;
+                    /** @description Where the value was keyed from (CMS wage-index table / Federal Register notice). */
+                    sourceReference: string;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexId: string;
+                        organizationId: string;
+                        ccn: string;
+                        fiscalYearStarting: number;
+                        cbsaCode: string | null;
+                        factorDecimal: string;
+                        sourceReference: string;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingWageindexesEffective: {
+        parameters: {
+            query: {
+                ccn: string;
+                fiscalYearStarting: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        wageIndexId: string;
+                        organizationId: string;
+                        ccn: string;
+                        fiscalYearStarting: number;
+                        cbsaCode: string | null;
+                        factorDecimal: string;
+                        sourceReference: string;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    } | null;
                 };
             };
             "4XX": components["responses"]["Error"];

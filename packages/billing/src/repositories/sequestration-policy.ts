@@ -1,17 +1,11 @@
 // @wardenx/billing · repositories — `sequestration_policy` (per-provider-entity effective-dated
 // sequestration-percentage schedule, §3.3, D11; non-partitioned; retention class `operational`). ORG-SCOPED.
 //
-// FORWARD-ONLY WRITES (D11 / §3.5 "effective-date-immutable; no version needed"): tenants may only
-// forward-date a NEW policy entry; they may never rewrite a past or current effective period. This is
-// belt-and-braces with the DB `sequestration_policy_active_uq` partial unique index + the `forwardOnly`
-// CHECK (`effective_from > CURRENT_DATE OR effective_to IS NOT NULL`). The repo therefore offers exactly
-// two write doors:
-//   * `create` — insert a forward-dated policy (the DB CHECK rejects a non-future, still-open period).
-//   * `closeActivePolicy` — set `effective_to` on the CURRENTLY-ACTIVE row (the one with `effective_to IS
-//     NULL`) so a forward-dated successor can take over; the WHERE clause requires `effective_to IS NULL`
-//     so this can only ever CLOSE the open period, never reopen or rewrite a historical one.
-// There is deliberately NO general update/delete surface and NO `version` column (effective-date immutability
-// is the concurrency model — the active partial-unique index serializes competing forward-dates).
+// APPEND-ONLY (F-212, migration 0281): a policy row's percentage / start / actor / reason are never edited. The app role may
+// only (a) CLOSE an open period (`effective_to` NULL -> date) so a successor can take over, and (b) SUPERSEDE a row
+// (`superseded_at` + `superseded_by_id`) when it was keyed wrongly; both are column-GRANT + `sequestration_policy_guard`
+// trigger enforced. "Live" = `superseded_at IS NULL`; a DB EXCLUDE constraint guarantees at most one live row covers any date per
+// provider entity, so `findEffectiveOn` has at most one answer. There is NO delete surface (destruction role only).
 //
 // No enum case translation (this table has no enums). No PHI (D18).
 import * as schema from "@wardenx/db/schema";
@@ -20,44 +14,46 @@ import type { BillingDb } from "./db";
 
 const S = schema.sequestrationPolicy;
 
-/** Data port for `sequestration_policy` (FORWARD-ONLY: forward-dated insert + active-row close; reads). */
+/** Data port for `sequestration_policy` (APPEND-ONLY: insert, close-open-period, supersede; live-row reads). */
 export class SequestrationPolicyRepository {
   constructor(private readonly db: BillingDb) {}
 
-  /**
-   * Insert a forward-dated sequestration policy. The DB `forwardOnly` CHECK guarantees the new period is
-   * either future-dated (`effective_from > CURRENT_DATE`) or already closed (`effective_to IS NOT NULL`),
-   * so a tenant can never write into the past/present. Returns the inserted row.
-   */
+  /** Insert a policy row (the DB CHECKs + EXCLUDE are the backstop for the service's validation and overlap pre-check). */
   async create(values: schema.NewSequestrationPolicy): Promise<schema.SequestrationPolicy> {
     const [row] = await this.db.insert(S).values(values).returning();
     if (!row) throw new Error("sequestration_policy insert returned no row");
     return row;
   }
 
-  /** Point read by id, or `null`. */
+  /** Point read by id (live OR superseded), or `null`. */
   async findById(id: string): Promise<schema.SequestrationPolicy | null> {
     const [row] = await this.db.select().from(S).where(eq(S.id, id)).limit(1);
     return row ?? null;
   }
 
-  /** The currently-active policy for a provider entity (`effective_to IS NULL`), or `null`. */
+  /** The LIVE open-ended policy for a provider entity (`effective_to IS NULL`, not superseded), or `null`. */
   async findActiveForProviderEntity(
     providerEntityId: string,
   ): Promise<schema.SequestrationPolicy | null> {
     const [row] = await this.db
       .select()
       .from(S)
-      .where(and(eq(S.providerEntityId, providerEntityId), isNull(S.effectiveTo)))
+      .where(
+        and(
+          eq(S.providerEntityId, providerEntityId),
+          isNull(S.effectiveTo),
+          isNull(S.supersededAt),
+        ),
+      )
+      .orderBy(desc(S.effectiveFrom))
       .limit(1);
     return row ?? null;
   }
 
   /**
-   * The policy in effect for a provider entity on a given service date — `effective_from <= date AND
-   * (effective_to IS NULL OR effective_to >= date)`, newest `effective_from` first (the snapshot read the
-   * claim-assembly calculator uses to stamp `claim.sequestration_applied_pct`). Returns `null` if no policy
-   * covers the date.
+   * The LIVE policy in effect for a provider entity on a given service date — `effective_from <= date AND
+   * (effective_to IS NULL OR effective_to >= date)` — the snapshot read claim assembly uses to stamp
+   * `claim.sequestration_applied_pct`. At most one row can match (EXCLUDE constraint). `null` if none covers the date.
    */
   async findEffectiveOn(
     providerEntityId: string,
@@ -69,6 +65,7 @@ export class SequestrationPolicyRepository {
       .where(
         and(
           eq(S.providerEntityId, providerEntityId),
+          isNull(S.supersededAt),
           lte(S.effectiveFrom, serviceDate),
           or(isNull(S.effectiveTo), gte(S.effectiveTo, serviceDate)),
         ),
@@ -78,30 +75,56 @@ export class SequestrationPolicyRepository {
     return row ?? null;
   }
 
-  /**
-   * A provider entity's policy schedule, newest `effective_from` first (a per-PE history is small — bounded
-   * read like `validation_run.listForClaim`, not cursor-paginated).
-   */
-  async listForProviderEntity(
+  /** LIVE rows whose window intersects `[from, to]` (`to` null = open), optionally ignoring one row. */
+  async findLiveOverlapping(
     providerEntityId: string,
-    opts: { limit?: number } = {},
+    from: string,
+    to: string | null,
+    excludeId?: string,
   ): Promise<readonly schema.SequestrationPolicy[]> {
     return this.db
       .select()
       .from(S)
-      .where(eq(S.providerEntityId, providerEntityId))
-      .orderBy(desc(S.effectiveFrom))
+      .where(
+        and(
+          eq(S.providerEntityId, providerEntityId),
+          isNull(S.supersededAt),
+          excludeId ? sql`${S.id} <> ${excludeId}` : undefined,
+          or(isNull(S.effectiveTo), gte(S.effectiveTo, from)),
+          to === null ? undefined : lte(S.effectiveFrom, to),
+        ),
+      )
+      .orderBy(S.effectiveFrom);
+  }
+
+  /**
+   * A provider entity's schedule, newest `effective_from` first; superseded rows only when asked (a per-PE history is
+   * small — a bounded read, not cursor-paginated).
+   */
+  async listForProviderEntity(
+    providerEntityId: string,
+    opts: { includeSuperseded?: boolean; limit?: number } = {},
+  ): Promise<readonly schema.SequestrationPolicy[]> {
+    return this.db
+      .select()
+      .from(S)
+      .where(
+        and(
+          eq(S.providerEntityId, providerEntityId),
+          opts.includeSuperseded ? undefined : isNull(S.supersededAt),
+        ),
+      )
+      .orderBy(desc(S.effectiveFrom), desc(S.createdAt))
       .limit(Math.min(Math.max(opts.limit ?? 50, 1), 200));
   }
 
   /**
-   * CLOSE the currently-active policy for a provider entity by stamping `effective_to`, so a forward-dated
-   * successor takes over. The WHERE clause requires `effective_to IS NULL`, so this can ONLY close the open
-   * period — it can never reopen a closed one or rewrite a historical period (forward-only invariant).
-   * Returns the closed row, or `null` if there was no open period to close.
+   * CLOSE a LIVE open-ended row by stamping `effective_to`, so a successor can take over. The WHERE requires
+   * `effective_to IS NULL` and `superseded_at IS NULL`, so this can only ever close an open period (the guard trigger
+   * enforces the same). Returns the closed row, or `null`.
    */
-  async closeActivePolicy(
-    providerEntityId: string,
+  async closeOpenPeriod(
+    id: string,
     effectiveTo: string,
   ): Promise<schema.SequestrationPolicy | null> {
     const [row] = await this.db
@@ -109,12 +132,26 @@ export class SequestrationPolicyRepository {
       .set({ effectiveTo })
       .where(
         and(
-          eq(S.providerEntityId, providerEntityId),
+          eq(S.id, id),
           isNull(S.effectiveTo),
-          // never close a row to a date on/before its own start (keeps the period non-degenerate):
+          isNull(S.supersededAt),
           sql`${S.effectiveFrom} <= ${effectiveTo}`,
         ),
       )
+      .returning();
+    return row ?? null;
+  }
+
+  /** Stamp a LIVE row as superseded by `successorId`. Returns the row, or `null` if it was not live. */
+  async markSuperseded(
+    id: string,
+    successorId: string,
+    at: Date,
+  ): Promise<schema.SequestrationPolicy | null> {
+    const [row] = await this.db
+      .update(S)
+      .set({ supersededAt: at, supersededById: successorId })
+      .where(and(eq(S.id, id), isNull(S.supersededAt)))
       .returning();
     return row ?? null;
   }

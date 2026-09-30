@@ -54,6 +54,10 @@ const VIEW: RateTableView = {
   ircPerDiemCents: 49_000,
   gipPerDiemCents: 118_000,
   chcHourlyRateCents: 4_400,
+  laborShareRhc: "0.6600",
+  laborShareChc: "0.6800",
+  laborShareIrc: "0.5400",
+  laborShareGip: "0.6400",
   enteredByMembershipId: MEMBERSHIP,
   entryReason: null,
   supersededAt: null,
@@ -71,6 +75,10 @@ const BODY = {
   ircPerDiemCents: 49_000,
   gipPerDiemCents: 118_000,
   chcHourlyRateCents: 4_400,
+  laborShareRhc: "0.6600",
+  laborShareChc: "0.6800",
+  laborShareIrc: "0.5400",
+  laborShareGip: "0.6400",
 };
 
 function fakeService() {
@@ -221,6 +229,8 @@ describe("M23 rate-table routes (F-210)", () => {
     ["a non-integer cents value", { rhcDays1to60PerDiemCents: 215.5 }],
     ["a zero rate", { gipPerDiemCents: 0 }],
     ["a missing required rate", { chcHourlyRateCents: undefined }],
+    ["a missing labor share", { laborShareRhc: undefined }],
+    ["a labor share keyed as a percent", { laborShareChc: "68.71" }],
     ["a malformed date", { effectiveFrom: "10/01/2025" }],
     ["a non-uuid provider entity", { providerEntityId: "not-a-uuid" }],
   ])("rejects %s before the service runs", async (_name, over) => {

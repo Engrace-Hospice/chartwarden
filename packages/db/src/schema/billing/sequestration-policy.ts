@@ -26,20 +26,28 @@ export const sequestrationPolicy = pgTable(
     setByMembershipId: uuid("set_by_membership_id").notNull(), // logical FK → memberships
     setReason: text("set_reason"),
 
+    /** F-212 (migration 0281): a correction SUPERSEDES a row; a superseded row is frozen history, not "live". */
+    supersededAt: timestamp("superseded_at", { withTimezone: true }),
+    supersededById: uuid("superseded_by_id"),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     activeUq: uniqueIndex("sequestration_policy_active_uq")
       .on(t.providerEntityId, t.effectiveFrom)
-      .where(sql`effective_to IS NULL`),
+      .where(sql`effective_to IS NULL AND superseded_at IS NULL`),
     byPe: index("sequestration_policy_by_pe_idx").on(t.providerEntityId, t.effectiveFrom),
+    // F-212 (migration 0281) — append-only + overlap-safe, in SQL only (drizzle cannot express an EXCLUDE): the
+    // `sequestration_policy_no_overlap` EXCLUDE (two LIVE rows for one provider entity never overlap in date), CHECKs
+    // (`_percentage_chk` decimal in [0, 2], `_start_chk` >= 2013-04-01, `_period_chk`, `_superseded_chk`), a column-level
+    // UPDATE GRANT (effective_to + the two supersede columns only) and the `sequestration_policy_guard` trigger.
     // NO `forwardOnly` CHECK (DB-005, dropped in migration 0162): an `effective_from > CURRENT_DATE`
     // CHECK re-validates on every future write using the CURRENT date, not the date the row was
     // created — so the CURRENTLY-ACTIVE policy (the normal, expected steady state once a
     // formerly-future effective_from naturally arrives) becomes unupdatable, and `pg_restore`'s
     // COPY-time re-validation rejects any such row restored after its start date. Enforced at write
-    // time instead — see `forwardDateSequestrationPolicy` in
-    // apps/backend/src/modules/23-billing-medicare/routes/write-service-drizzle.ts.
+    // time instead (F-212: the plausibility band + effective window live in `validateSequestrationPolicyEntry`, and the
+    // service in apps/backend/src/modules/23-billing-medicare/routes/sequestration-policy-service.ts).
   }),
 );
 

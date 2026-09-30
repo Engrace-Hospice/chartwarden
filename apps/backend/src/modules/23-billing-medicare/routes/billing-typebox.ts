@@ -156,14 +156,6 @@ export const CheckEligibilityBodySchema = Type.Object({
   asOfServiceDate: isoDate(),
 });
 
-// ── sequestration-policy body (forward-dated; percentage is a decimal STRING, D11) ──────────────────────
-export const ForwardDateSequestrationBodySchema = Type.Object({
-  providerEntityId: uuid(),
-  percentage: decimal(),
-  effectiveFrom: isoDate(),
-  setReason: Type.Optional(Type.String({ maxLength: 2000 })),
-});
-
 // ── MAC-credential upsert body (clientSecret is write-only; encrypted at the boundary) ──────────────────
 export const UpsertMacCredentialBodySchema = Type.Object({
   providerEntityId: uuid(),
