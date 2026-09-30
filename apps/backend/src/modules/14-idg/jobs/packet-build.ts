@@ -15,10 +15,11 @@
 //                             (`upcomingTimepoints`, due = window close) + the open/overdue SFV count. Seam
 //                             success ⇒ an entry for every patient (an empty context is a TRUE "nothing due");
 //                             unbound port / seam error / missing patient ⇒ `null` ("not captured"), never a guess.
-//   • `flaggedEvents`      — POPULATED from three org-explicit BATCHED seams behind `IdgFlaggedEventSourcePort`s:
+//   • `flaggedEvents`      — POPULATED from four org-explicit BATCHED seams behind `IdgFlaggedEventSourcePort`s:
 //                             M6 (`idgHospitalEventsForOrg` → `hospitalisation` / `er_visit`, from the ADT-derived
 //                             `concurrent_hospital_admission` windows), M13 (`idgMissedDosesForOrg` → `missed_dose`),
-//                             M30 (`idgQualityFlaggedEventsForOrg` → `fall` / `infection`). Each source is isolated —
+//                             M30 (`idgQualityFlaggedEventsForOrg` → `fall` / `infection`), M19 (`idgTriageCarePlanChangesForOrg` →
+//                             `triage_care_plan_change`, F-218). Each source is isolated —
 //                             one failing is logged and contributes nothing, never a guessed row. The builder applies
 //                             the per-patient `> cursor` filter.
 //   • `carryForwardActionItems` — POPULATED from M14's OWN `idg_action_item` (read directly, no seam): the patient's
@@ -216,6 +217,7 @@ const FLAGGED_KINDS: ReadonlySet<string> = new Set([
   "missed_dose",
   "fall",
   "infection",
+  "triage_care_plan_change",
 ]);
 const FLAGGED_SEVERITIES: ReadonlySet<string> = new Set(["info", "attention", "urgent"]);
 const validInstant = (v: string): boolean => Number.isFinite(Date.parse(v));
@@ -386,7 +388,7 @@ export interface PacketBuildWorkerDeps {
   readonly m7: Idg7PacketPort;
   /** §2.4 cover recert/F2F facts (M6 `idgRecertWindowsForOrg`). Optional: unbound ⇒ the fields stay null. */
   readonly recertWindows?: Idg6RecertWindowPort;
-  /** §2.4 `sinceLastIdg.flaggedEvents` sources (M6 hospital/ER, M13 missed dose, M30 fall/infection). Unbound ⇒ `[]`. */
+  /** §2.4 `sinceLastIdg.flaggedEvents` sources (M6 hospital/ER, M13 missed dose, M30 fall/infection, M19 triage GIP proposal). Unbound ⇒ `[]`. */
   readonly flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
   /** §2.4 `hopeContext` (M10 `idgHopeContextForOrg`). Unbound ⇒ `null` (not captured). */
   readonly hope?: Idg10HopeContextPort;

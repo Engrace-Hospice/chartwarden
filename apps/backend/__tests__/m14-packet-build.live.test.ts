@@ -24,6 +24,7 @@
  *   WARDENX_TEST_DATABASE_URL=postgres://… WARDENX_TEST_REDIS_URL=redis://localhost:PORT \
  *     bun run test:m14:packet-build:live
  */
+import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
@@ -63,6 +64,7 @@ import {
   runScheduleMaterialiseCron,
 } from "../src/modules/14-idg/index";
 import { recomputeCarryForwardCountsForMeeting } from "../src/modules/14-idg/jobs/carry-forward-count";
+import { idgTriageCarePlanChangesForOrg } from "../src/modules/19-oncall/index";
 import { idgQualityFlaggedEventsForOrg } from "../src/modules/30-quality/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -346,6 +348,12 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
             flaggedEventsForOrg: (o: string, ids: readonly string[], since: string) =>
               idgQualityFlaggedEventsForOrg(handle.db, o, ids, since),
           },
+          // F-218 — M19's after-hours triage GIP proposals (`care_plan_change_indicated`), a seam pull.
+          {
+            source: "m19.triage_care_plan_change",
+            flaggedEventsForOrg: (o: string, ids: readonly string[], since: string) =>
+              idgTriageCarePlanChangesForOrg(handle.db, o, ids, since),
+          },
         ],
         hope: {
           hopeContextForOrg: (o: string, ids: readonly string[]) =>
@@ -408,6 +416,55 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
          VALUES ($1,$2,$3,$4, now() - interval '7 days','MRSA','wound','community',$5)`,
         [orgId, pe, loc, patientId, MEMBER],
       );
+      // M19 (F-218) — an after-hours triage call that proposed a GIP admission 3 days ago (counts), one from
+      // before the admission cursor (does not), and a non-GIP disposition (does not). The free-text criteria
+      // summary must never reach the snapshot.
+      const tUser = (
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [
+          `m19-${randomUUID()}@x.test`,
+        ])
+      ).rows[0].id as string;
+      const tMember = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [tUser, orgId],
+        )
+      ).rows[0].id as string;
+      const tShift = (
+        await admin.query(
+          `INSERT INTO on_call_shift (organization_id, provider_entity_id, shift_starts_at, shift_ends_at,
+             discipline, primary_on_call_membership_id, policy_snapshot, status, opened_at)
+           VALUES ($1,$2, now() - interval '200 days', now() - interval '199 days','clinical_rn',$3,'{}'::jsonb,'active', now() - interval '200 days')
+           RETURNING id`,
+          [orgId, pe, tMember],
+        )
+      ).rows[0].id as string;
+      const gipData = JSON.stringify({
+        disposition: "gip_admission_proposed",
+        gipCriteriaSummary: "triage free text must not cross",
+        preferredFacility: null,
+      });
+      for (const [agoDays, disposition, data] of [
+        [3, "gip_admission_proposed", gipData],
+        [100, "gip_admission_proposed", gipData],
+        [3, "visit_dispatched_now", null],
+      ] as const) {
+        const call = (
+          await admin.query(
+            `INSERT INTO triage_call (organization_id, provider_entity_id, on_call_shift_id, patient_id, caller_kind,
+               inbound_channel, source, state, disposition, disposition_data, opened_at)
+             VALUES ($1,$2,$3,$4,'caregiver','phone','manual','documented_pending_encounter',$5,$6, now() - ($7 || ' days')::interval)
+             RETURNING id`,
+            [orgId, pe, tShift, patientId, disposition, data, String(agoDays)],
+          )
+        ).rows[0].id as string;
+        await admin.query(
+          `INSERT INTO triage_call_state_history (organization_id, provider_entity_id, triage_call_id, from_state,
+             to_state, transitioned_at, system_actor)
+           VALUES ($1,$2,$3,'disposition_pending','documented_pending_encounter', now() - ($4 || ' days')::interval, true)`,
+          [orgId, pe, call, String(agoDays)],
+        );
+      }
       // M10 — two open windows (HUV1 due in 10d, HUV2 in 40d), a completed admission RFA, and three SFVs.
       await admin.query(
         `INSERT INTO hope_timepoint_schedule (organization_id, provider_entity_id, location_id, patient_id,
@@ -722,7 +779,15 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       // The outpatient (`O`) window is not a hospitalisation.
       const flagged = snap.sinceLastIdg.flaggedEvents;
       expect(flagged.map((f) => f.kind).sort()).toEqual(
-        ["er_visit", "fall", "hospitalisation", "infection", "missed_dose", "missed_dose"].sort(),
+        [
+          "er_visit",
+          "fall",
+          "hospitalisation",
+          "infection",
+          "missed_dose",
+          "missed_dose",
+          "triage_care_plan_change",
+        ].sort(),
       );
       const bySev = (k: string) =>
         flagged
@@ -732,7 +797,9 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(bySev("missed_dose")).toEqual(["info", "urgent"]);
       expect(bySev("fall")).toEqual(["urgent"]);
       expect(bySev("infection")).toEqual(["attention"]);
+      expect(bySev("triage_care_plan_change")).toEqual(["attention"]); // only the in-window GIP proposal
       expect(JSON.stringify(snap)).not.toContain("free text must not cross");
+      expect(JSON.stringify(snap)).not.toContain("triage free text must not cross");
       // The hospital event derives the §2.4 level-of-care-candidate discussion flag.
       expect(snap.flagsForDiscussion.map((f) => f.kind)).toContain("level_of_care_candidate");
 
@@ -878,6 +945,14 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect((await idgHospitalEventsForOrg(handle.db, ORG_A, [bPatient], since)).size).toBe(0);
       expect((await idgMissedDosesForOrg(handle.db, ORG_A, [bPatient], since)).size).toBe(0);
       expect((await idgQualityFlaggedEventsForOrg(handle.db, ORG_A, [bPatient], since)).size).toBe(
+        0,
+      );
+      // F-218 — the M19 triage source: the owning tenant sees its 2 GIP proposals (3d and 100d old, both after
+      // `since` = 200d ago; the non-GIP disposition is excluded), the other tenant sees nothing.
+      expect(
+        (await idgTriageCarePlanChangesForOrg(handle.db, ORG_B, [bPatient], since)).get(bPatient),
+      ).toHaveLength(2);
+      expect((await idgTriageCarePlanChangesForOrg(handle.db, ORG_A, [bPatient], since)).size).toBe(
         0,
       );
       expect((await idgHopeContextForOrg(handle.db, ORG_A, [bPatient])).get(bPatient)).toEqual({

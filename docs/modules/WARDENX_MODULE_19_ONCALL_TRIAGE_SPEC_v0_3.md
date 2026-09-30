@@ -1413,8 +1413,8 @@ export const M19_ALERT_RULES = [
 | `m19.triage_call.disposition_selected` | info | disposition_pending → documented or terminal | `{ triageCallId, disposition, dispositionData }` |
 | `m19.triage_call.documented` | info | → documented | `{ triageCallId, linkedEncounterId, patientId, dispositionSummary }` |
 | `m19.triage_call.visit_needed` | warn | disposition is `visit_dispatched_now` or `visit_scheduled_first_light` | `{ triageCallId, patientId, requestedDiscipline, requestedArrivalBy?, proposedForDate?, reason }` |
-| `m19.triage_call.gip_admission_proposed` | warn | disposition is `gip_admission_proposed` | `{ triageCallId, patientId, gipCriteriaSummary, preferredFacility? }` |
-| `m19.triage_call.care_plan_change_indicated` | info | disposition payload indicates clinical-relevant change | `{ triageCallId, patientId, changeKind }` |
+| `m19.triage_call.gip_admission_proposed` | warn | disposition is `gip_admission_proposed` | `{ triageCallId, patientId, gipCriteriaSummary, preferredFacility? }` — F-219 (#248): M37's intake worklist PULLS these proposals through M19's org-explicit published read `gipProposalsForOrg` (a seam, not an outbox consumer; M37 gains no table) |
+| `m19.triage_call.care_plan_change_indicated` | info | disposition payload indicates clinical-relevant change | `{ triageCallId, patientId, changeKind }` — F-218 (#248): M14's packet build PULLS it (same M19 read, `idgTriageCarePlanChangesForOrg`) as a `triage_care_plan_change` flagged event, not an outbox consumer |
 | `m19.triage_call.closed` | info | → closed | `{ triageCallId, finalDisposition }` |
 | `m19.oncall_shift.activated` | info | scheduled → active | `{ shiftId, providerEntityId, membershipId?, externalActorId?, openedAt }` — **single canonical shift-open topic** (M19-F12: the prior duplicate `m19.on_call_shift.opened` topic is retired; M20's `m19-on-call-shift-changed.consumer` and M36's channel-rotation synchronizer both subscribe to this single topic; the payload is a superset of the old duplicate's fields) |
 | `m19.oncall_shift.completed` | info | active → completed | `{ shiftId, providerEntityId }` |

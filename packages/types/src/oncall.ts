@@ -568,7 +568,7 @@ export interface M19TriageCallGipAdmissionProposedPayload extends M19TriageCallE
   readonly preferredFacility: string | null;
 }
 
-/** `m19.triage_call.care_plan_change_indicated` → M7. */
+/** `m19.triage_call.care_plan_change_indicated` → M14's packet build PULLS it as a flagged event (F-218). */
 export interface M19TriageCallCarePlanChangeIndicatedPayload extends M19TriageCallEventBase {
   readonly patientId: PatientId;
   readonly changeKind: string;

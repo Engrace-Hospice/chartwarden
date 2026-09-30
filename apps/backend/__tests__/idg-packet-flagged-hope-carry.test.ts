@@ -22,6 +22,42 @@ const src = (
 ): IdgFlaggedEventSourcePort => ({ source, flaggedEventsForOrg: async () => m });
 
 describe("resolveFlaggedEvents", () => {
+  // F-218 (#248) — the fourth source: M19's triage GIP-proposal read, kind `triage_care_plan_change`.
+  it("accepts the M19 triage_care_plan_change kind and keeps its back-reference", async () => {
+    const out = await resolveFlaggedEvents(
+      [
+        src(
+          "m19.triage_care_plan_change",
+          new Map([
+            [
+              "p1",
+              [
+                {
+                  kind: "triage_care_plan_change",
+                  sourceId: "call-1",
+                  occurredAt: "2026-09-12T00:00:00Z",
+                  severity: "attention",
+                },
+              ],
+            ],
+          ]),
+        ),
+      ],
+      "org",
+      ["p1"],
+      SINCE,
+      vi.fn(),
+    );
+    expect(out.get("p1")).toEqual([
+      {
+        kind: "triage_care_plan_change",
+        sourceId: "call-1",
+        occurredAt: "2026-09-12T00:00:00.000Z",
+        severity: "attention",
+      },
+    ]);
+  });
+
   it("merges every source, validates, de-duplicates and orders oldest to newest", async () => {
     const warn = vi.fn();
     const out = await resolveFlaggedEvents(

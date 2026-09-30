@@ -181,7 +181,14 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-142 (#248) — m7 corrected to m14: this module's own §11 D8-cascade table (line 117) is
     // decisive — "M19 emits `m19.triage_call.care_plan_change_indicated` consumed by M14's IDG packet
     // builder so the next IDG agenda includes it" — the real consumer was always M14, not M7.
-    declaredConsumers: ["m14"],
+    //
+    // F-218 (#248) — m14 MOVED from `declaredConsumers` to `seamConsumers`. The packet-build worker (F-171)
+    // already PULLS flagged events per patient at T-24h through `flaggedEventSources`; this event fires
+    // only alongside `gip_admission_proposed`, so M14 pulls it through the same M19 read
+    // (`idgTriageCarePlanChangesForOrg`, `seams/gip-proposals-for-org.ts`) as a `triage_care_plan_change`
+    // flagged event. A push consumer would need a per-patient cache with a reader; the pull needs neither.
+    declaredConsumers: [],
+    seamConsumers: ["m14"],
     isOutboxOnly: true,
   },
   {

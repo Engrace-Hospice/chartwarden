@@ -43,6 +43,7 @@ import { idgHopeContextForOrg } from "../../apps/backend/src/modules/10-hope/ind
 import { idgMissedDosesForOrg } from "../../apps/backend/src/modules/13-emar/index";
 import type { IdgWriteOutboxPort } from "../../apps/backend/src/modules/14-idg/idg-route-service-db";
 import { M14_OUTBOX_EVENTS, runPacketBuildCron } from "../../apps/backend/src/modules/14-idg/index";
+import { idgTriageCarePlanChangesForOrg } from "../../apps/backend/src/modules/19-oncall/index";
 import { idgQualityFlaggedEventsForOrg } from "../../apps/backend/src/modules/30-quality/index";
 
 void registerSeam;
@@ -94,6 +95,11 @@ async function main(): Promise<void> {
           source: "m30.fall_infection",
           flaggedEventsForOrg: (o, ids, since) =>
             idgQualityFlaggedEventsForOrg(handle.db, o, ids, since),
+        },
+        {
+          source: "m19.triage_care_plan_change",
+          flaggedEventsForOrg: (o, ids, since) =>
+            idgTriageCarePlanChangesForOrg(handle.db, o, ids, since),
         },
       ],
       hope: { hopeContextForOrg: (o, ids) => idgHopeContextForOrg(handle.db, o, ids) },

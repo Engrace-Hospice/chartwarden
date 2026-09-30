@@ -240,11 +240,18 @@ function deriveDiscussionFlags(
       detail: `recert/F2F window: ${cover.f2fWindowState ?? "within 30 days"}`,
     });
   }
+  // One `level_of_care_candidate` flag however many triggers fired (a second flag of the same kind would
+  // render twice on the cover). F-218 added the GIP-proposal trigger: an after-hours triage call that
+  // indicated a care-plan change (M19 `care_plan_change_indicated`, pulled as a flagged event).
+  const locTriggers: string[] = [];
   if (since.flaggedEvents.some((f) => f.kind === "hospitalisation" || f.kind === "er_visit")) {
-    flags.push({
-      kind: "level_of_care_candidate",
-      detail: "hospitalisation / ER event since last IDG",
-    });
+    locTriggers.push("hospitalisation / ER event since last IDG");
+  }
+  if (since.flaggedEvents.some((f) => f.kind === "triage_care_plan_change")) {
+    locTriggers.push("after-hours triage call proposed a GIP admission since last IDG");
+  }
+  if (locTriggers.length > 0) {
+    flags.push({ kind: "level_of_care_candidate", detail: locTriggers.join("; ") });
   }
   if (since.significantAssessmentChanges.length > 0 || since.j2051Triggers.length > 0) {
     flags.push({

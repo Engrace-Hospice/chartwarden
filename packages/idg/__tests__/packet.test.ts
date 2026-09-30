@@ -212,6 +212,32 @@ describe("§2.4 D1 packet build", () => {
     expect(kinds).toContain("sud_pattern_review"); // active SUD flag
   });
 
+  // F-218 (#248) — an after-hours triage call that proposed a GIP admission is a level-of-care candidate,
+  // and it shares ONE flag with a hospitalisation/ER event rather than emitting a second flag of the kind.
+  it("flags a triage-proposed GIP admission as a level-of-care candidate (one flag, combined detail)", () => {
+    const flaggedOnly = (kinds: string[]) =>
+      buildPacketSnapshot(
+        input({
+          sinceLastIdg: {
+            ...input().sinceLastIdg,
+            flaggedEvents: kinds.map((kind, i) => ({
+              kind: kind as never,
+              sourceId: `f-${i}`,
+              occurredAt: "2026-06-09T00:00:00.000Z",
+              severity: "attention" as const,
+            })),
+          },
+        }),
+      ).snapshot.flagsForDiscussion.filter((f) => f.kind === "level_of_care_candidate");
+    const triage = flaggedOnly(["triage_care_plan_change"]);
+    expect(triage).toHaveLength(1);
+    expect(triage[0]?.detail).toMatch(/GIP admission/);
+    const both = flaggedOnly(["hospitalisation", "triage_care_plan_change"]);
+    expect(both).toHaveLength(1);
+    expect(both[0]?.detail).toMatch(/hospitalisation.*GIP admission/);
+    expect(flaggedOnly(["fall"])).toHaveLength(0);
+  });
+
   it("carries the M26 cap projection as null and surfaces carry-forward items", () => {
     const { snapshot, disciplineViews } = buildPacketSnapshot(
       input({
