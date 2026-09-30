@@ -9,7 +9,7 @@
 // history, M9 trend, M10 HOPE, M11 orders, M21 supplies, M40 grief) resolve their seam through a LOCAL
 // structural shape with an OPTIONAL method, so a missing arm yields the empty lay view rather than a type
 // error or a leak (D17). No route reads a raw clinical field.
-import { WardenXError } from "@wardenx/types";
+import { DegradedError, NotFoundError, WardenXError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
 import { getSeam } from "../../../bootstrap/index";
 import {
@@ -21,7 +21,13 @@ import {
   resolveTriageList,
   resolveVisitList,
 } from "../read-surfaces/resolve";
-import { type M31Actor, actorOf, portalAccountIdOf, portalPatientIdOf } from "./actor";
+import {
+  type M31Actor,
+  actorOf,
+  portalAccountIdOf,
+  portalPatientIdOf,
+  portalSessionIdOf,
+} from "./actor";
 import { rejectOffsetPagination } from "./concurrency";
 import { ABAC_ACCOUNT, ABAC_BEREAVED, ABAC_GRANT, P } from "./guards";
 import type { PortalRouteDeps } from "./index";
@@ -52,13 +58,22 @@ interface MessagingArm {
     spec: { kind: string; subjectId?: string; creatorUserId: string },
   ): Promise<{ channelId: string }>;
 }
+/** The M22 `PortalDocumentReader` arms the download route drives (F-225 — the published contract). */
 interface DocumentDownloadArm {
-  mintPortalDownloadUrl?(input: {
+  resolvePortalDocumentVersion(input: {
     organizationId: string;
     patientId: string;
     documentId: string;
-  }): Promise<{ url: string; expiresAt: string }>;
+  }): Promise<{ documentVersionId: string } | null>;
+  mintPortalDownloadUrl(input: {
+    organizationId: string;
+    patientId: string;
+    documentVersionId: string;
+    portalAccountId: string;
+    portalSessionId: string;
+  }): Promise<{ url: string; expiresAt: string } | { denied: true; reason: string }>;
 }
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** Resolve a seam by name (raw — some upstream portal arms are not typed in `SeamContracts`; the name is in
  *  M31_REQUIRED_SEAMS so the fitness-gaps registry check covers it). */
 const arm = <T>(name: string): T => (getSeam as unknown as (n: string) => unknown)(name) as T;
@@ -273,29 +288,57 @@ export function registerPortalReadRoutes(app: FastifyInstance, deps: PortalRoute
   );
 
   // document download url (M22 mintPortalDownloadUrl — 60-min watermarked).
+  //
+  // F-225 (#248). The route resolves the GOVERNED version through M22's published reader (the document's
+  // active version, only for the SESSION patient's own patient-facing document), then mints with the
+  // session's account + session ids so M22 appends the `document_access_log` disclosure row before the URL
+  // leaves. EVERY refusal (bad id, unknown / other patient's / other org's / not patient-facing / not
+  // active / SUD consent absent) is ONE indistinguishable 404, and an M22 outage or a failed ledger append
+  // is a 503 — never a 200 with an empty url. That matters to M4: the read-audit hook emits only on 2xx, so
+  // `audit_log` holds a `portal_document` read row (resource id = the document, patient = the session
+  // patient, from the response) exactly when a URL was actually minted.
   app.get(
     "/api/v1/portal/documents/:documentId/download-url",
     {
       preHandler: [P("portal.documents.download"), ABAC_GRANT("portal.documents.download")],
-      config: PHI("portal_document", false),
+      config: {
+        auditRead: {
+          resourceKind: "portal_document",
+          resourceIdParam: "documentId",
+          patientIdPayloadPath: "patientId",
+        },
+      },
     },
     async (request) => {
       const actor = actorOf(request);
       const patientId = portalPatientIdOf(actor);
+      const portalAccountId = portalAccountIdOf(actor);
+      const portalSessionId = portalSessionIdOf(actor);
       const { documentId } = request.params as { documentId: string };
+      if (!UUID_RE.test(documentId)) throw new NotFoundError("document");
+      let minted: Awaited<ReturnType<DocumentDownloadArm["mintPortalDownloadUrl"]>>;
       try {
-        const minted = await arm<DocumentDownloadArm>(
-          "PortalDocumentReader",
-        ).mintPortalDownloadUrl?.({
+        const reader = arm<DocumentDownloadArm>("PortalDocumentReader");
+        const version = await reader.resolvePortalDocumentVersion({
           organizationId: actor.organizationId,
           patientId,
           documentId,
         });
-        if (minted) return { url: minted.url, expiresAt: minted.expiresAt };
-      } catch {
-        /* fail closed */
+        if (version === null) throw new NotFoundError("document");
+        minted = await reader.mintPortalDownloadUrl({
+          organizationId: actor.organizationId,
+          patientId,
+          documentVersionId: version.documentVersionId,
+          portalAccountId,
+          portalSessionId,
+        });
+      } catch (err) {
+        if (err instanceof NotFoundError) throw err;
+        request.log.error({ err }, "portal document mint failed closed");
+        throw new DegradedError("m22.portal_download", "document download is unavailable");
       }
-      return { url: "", expiresAt: now().toISOString() };
+      if ("denied" in minted) throw new NotFoundError("document");
+      return { url: minted.url, expiresAt: minted.expiresAt, patientId };
     },
   );
 

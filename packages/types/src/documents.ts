@@ -482,14 +482,38 @@ export interface PortalDocumentReader {
     readonly sinceCursor?: string;
   }): Promise<ReadonlyArray<PortalDocumentDigest>>;
 
+  /**
+   * F-225 (#248) — resolve the GOVERNED version a portal session may download for one document: the
+   * document's ACTIVE version, only when the document belongs to `patientId`, is patient-facing and is not
+   * superseded / destroyed. `null` for every other case (unknown, other patient's, not patient-facing,
+   * no active version) — one indistinguishable answer, never a leak of which gate failed. This is a
+   * RESOLUTION, not a disclosure: nothing is logged; `mintPortalDownloadUrl` re-verifies every gate.
+   */
+  resolvePortalDocumentVersion(args: {
+    readonly documentId: DocumentId;
+    readonly patientId: PatientId;
+    readonly organizationId: OrgId;
+  }): Promise<{ readonly documentVersionId: DocumentVersionId } | null>;
+
+  /**
+   * Mint the short-lived (<= 60 min) download URL for one document version. F-225 (#248): a successful mint
+   * appends ONE `document_access_log` row (M22's §164.528 disclosure ledger) BEFORE the URL is returned —
+   * if the append fails the mint throws and no URL leaves. A `{ denied }` result logs nothing (a refusal is
+   * not a disclosure). `portalAccountId` / `portalSessionId` come from the server-assembled session, never
+   * from the wire.
+   */
   mintPortalDownloadUrl(args: {
     readonly documentVersionId: DocumentVersionId;
     readonly portalSessionId: string;
+    readonly portalAccountId: string;
     readonly patientId: PatientId;
     readonly organizationId: OrgId;
   }): Promise<
     | { url: string; expiresAt: IsoInstant }
-    | { denied: true; reason: "sud_consent_absent" | "not_patient_facing" | "not_owner" }
+    | {
+        denied: true;
+        reason: "sud_consent_absent" | "not_patient_facing" | "not_owner" | "not_active";
+      }
   >;
 }
 

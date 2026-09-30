@@ -87,9 +87,12 @@ describe("m22.document.rendered — the event that did not exist", () => {
       "m14",
       "m21",
       "m27",
-      "m31",
       "m33",
     ]);
+    // F-225 (#248) — m31 was DROPPED again (user-approved, F-221): portal document visibility is the
+    // `PortalDocumentReader` seam pull and the §164.528 accounting is M22's `document_access_log` row
+    // appended by the portal mint. It is recorded as a seam consumer, never a declared (deferred) one.
+    expect(entry?.seamConsumers).toEqual(["m31"]);
   });
 
   it("announces the render with the routing the requesting module keys on", async () => {

@@ -134,6 +134,8 @@ export const CaregiverAttestedAdministrationResponse = Type.Object({
 export const DocumentDownloadUrlResponse = Type.Object({
   url: Type.String({ format: "uri" }),
   expiresAt: Iso,
+  /** F-225 — the session patient (M4 read-audit attribution); never caller-supplied. */
+  patientId: Type.String(),
 });
 export const PortalDocumentUploadInitRequest = Type.Object({
   purpose: Type.Union([

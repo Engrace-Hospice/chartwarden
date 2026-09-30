@@ -234,7 +234,8 @@
       "suiteFiles": [
         "apps/backend/__tests__/document-doclens.test.ts",
         "apps/backend/__tests__/document-routes.test.ts",
-        "apps/backend/__tests__/document-workflow-acceptance.test.ts"
+        "apps/backend/__tests__/document-workflow-acceptance.test.ts",
+        "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts"
       ],
       "directRoutesReferenced": 35
     },
@@ -320,6 +321,7 @@
       "routes": 53,
       "covered": true,
       "suiteFiles": [
+        "apps/backend/__tests__/f225-portal-document-access-log.live.test.ts",
         "apps/backend/__tests__/portal-inject.test.ts"
       ],
       "directRoutesReferenced": 53

@@ -648,6 +648,13 @@ jobs:
               name: "F-197 M22 mint-time SUD consent",
               scripts: "test:f197:m22-mint-time-sud-consent:live",
             }
+          # F-225 (#248) — the portal document download is ACCOUNTED (§164.528): an authorized mint appends
+          # exactly one ids-only `document_access_log` row + one M4 read row carrying the document id; every
+          # refusal logs nothing; the ledger is tenant-isolated and append-only for the app role (migration 0298).
+          - {
+              name: "F-225 M22 portal access log",
+              scripts: "test:f225:m22-portal-access-log:live",
+            }
           # F-100: M6's six CoP compliance documents through the same chain — the real admission write
           # service, the real catalog-VALIDATING publisher, the real dispatcher, into real `document`
           # rows and the six `document_id` columns M6 built for them and nothing ever wrote.

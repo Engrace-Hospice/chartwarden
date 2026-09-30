@@ -59356,6 +59356,7 @@ export interface operations {
                         url: string;
                         /** Format: date-time */
                         expiresAt: string;
+                        patientId: string;
                     };
                 };
             };

@@ -28,7 +28,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 19-oncall | 40 | ✅ | 39/40 | apps/backend/__tests__/oncall-inject.test.ts |
 | 20-field-safety | 30 | ✅ | 30/30 | apps/backend/__tests__/field-safety-inject.test.ts |
 | 21-supplies | 38 | ✅ | 38/38 | apps/backend/__tests__/supplies-inject.test.ts |
-| 22-documents | 40 | ✅ | 35/40 | apps/backend/__tests__/document-doclens.test.ts, apps/backend/__tests__/document-routes.test.ts, apps/backend/__tests__/document-workflow-acceptance.test.ts |
+| 22-documents | 40 | ✅ | 35/40 | apps/backend/__tests__/document-doclens.test.ts, apps/backend/__tests__/document-routes.test.ts, apps/backend/__tests__/document-workflow-acceptance.test.ts, apps/backend/__tests__/f225-portal-document-access-log.live.test.ts |
 | 23-billing-medicare | 56 | ✅ | 55/56 | apps/backend/__tests__/billing-medicare-inject.test.ts, apps/backend/__tests__/m23-rate-table-routes.test.ts, apps/backend/__tests__/m23-sequestration-policy-routes.test.ts, apps/backend/__tests__/m23-wage-index-routes.test.ts |
 | 24-billing-medicaid | 39 | ✅ | 39/39 | apps/backend/__tests__/billing-medicaid-inject.test.ts |
 | 25-remittance | 32 | ✅ | 31/32 | apps/backend/__tests__/remittance-inject.test.ts |
@@ -37,7 +37,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 28-fhir | 35 | ✅ | 35/35 | apps/backend/__tests__/fhir-inject.test.ts, apps/backend/__tests__/m28-fhir-gateway.live.test.ts |
 | 29-external-interfaces | 33 | ✅ | 33/33 | apps/backend/__tests__/external-interfaces-inject.test.ts |
 | 30-quality | 60 | ✅ | 60/60 | apps/backend/__tests__/quality-inject.test.ts |
-| 31-portal | 53 | ✅ | 53/53 | apps/backend/__tests__/portal-inject.test.ts |
+| 31-portal | 53 | ✅ | 53/53 | apps/backend/__tests__/f225-portal-document-access-log.live.test.ts, apps/backend/__tests__/portal-inject.test.ts |
 | 32-ai-platform | 32 | ✅ | 32/32 | apps/backend/__tests__/ai-platform-inject.test.ts |
 | 33-reporting | 42 | ✅ | 42/42 | apps/backend/__tests__/reporting-inject.test.ts |
 | 34-saas-tenant-platform | 50 | ✅ | 49/50 | apps/backend/__tests__/saas-tenant-platform-inject.test.ts |

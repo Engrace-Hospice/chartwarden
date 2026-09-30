@@ -20,7 +20,7 @@ import { withOrgContextFromRequest } from "@wardenx/tenancy";
 import { DegradedError } from "@wardenx/types";
 import type { DocumentDigest, IntakeMetrics, ProvenanceRecord } from "@wardenx/types";
 import { and, desc, eq, gte, inArray, lt, or, sql } from "drizzle-orm";
-import type { DocumentReaderStore } from "./readers-store";
+import type { DocumentReaderStore, PortalAccessLogPort } from "./readers-store";
 import type { ObjectStorePort } from "./store";
 
 const DOC = schema.documents;
@@ -208,6 +208,9 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
             patientId: DOC.patientId,
             patientFacing: DOC.patientFacing,
             activeVersionId: DOC.activeVersionId,
+            status: DOC.status,
+            // F-225 (#248) — the version's REAL stored object key (the portal URL presigns it).
+            objectKey: DV.minioObjectKey,
             // F-197 (#248) — §7.16 portal mint-time SUD-consent re-check.
             metadata: DOC.metadata,
           })
@@ -224,6 +227,8 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
           patientId: row.patientId,
           patientFacing: row.patientFacing,
           isSudClass: metadata?.sudRedacted === true,
+          status: row.status as DocumentDigest["status"],
+          objectKey: row.objectKey,
         };
       });
     },
@@ -314,6 +319,34 @@ export function createDrizzleDocumentReaderStore(db: DbClient): DocumentReaderSt
             committedAt: r.committedAt.toISOString(),
           }),
         );
+      });
+    },
+  };
+}
+
+/**
+ * F-225 (#248) — the Drizzle {@link PortalAccessLogPort}: appends ONE `document_access_log` row (M22 owns the
+ * table) under the consumer's request context (`withOrgContextFromRequest`, the same wall as every reader in
+ * this file; the asserted `organizationId` must equal the ambient org or the insert is refused by RLS's
+ * WITH CHECK). Ids only. The app role holds INSERT + SELECT, never UPDATE/DELETE (migration 0298).
+ */
+export function createDrizzlePortalAccessLog(db: DbClient): PortalAccessLogPort {
+  return {
+    async appendPortalDownload(entry) {
+      await withOrgContextFromRequest(db, async (tx: SeamTx) => {
+        await tx.insert(schema.documentAccessLog).values({
+          organizationId: entry.organizationId,
+          documentId: entry.documentId,
+          documentVersionId: entry.documentVersionId,
+          accessorMembershipId: null,
+          accessorPortalAccountId: entry.portalAccountId,
+          portalSessionId: entry.portalSessionId,
+          patientId: entry.patientId,
+          accessKind: "portal_view",
+          purpose: "patient_access",
+          correlationId: entry.correlationId,
+          accessedAt: new Date(entry.accessedAt),
+        });
       });
     },
   };

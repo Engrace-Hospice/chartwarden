@@ -335,6 +335,9 @@ export const portalDocumentReaderDenyStub: PortalDocumentReader = {
   documentsForPatient() {
     throw new NotImplementedError("PortalDocumentReader");
   },
+  resolvePortalDocumentVersion() {
+    throw new NotImplementedError("PortalDocumentReader");
+  },
   mintPortalDownloadUrl() {
     throw new NotImplementedError("PortalDocumentReader");
   },

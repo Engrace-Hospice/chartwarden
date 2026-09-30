@@ -224,7 +224,9 @@ export const M31_SUBSCRIBED_EVENT_NAMES = [
   // F-222 (#248) — `m6.admission.discharged` removed: the non-death branch is a daily SWEEP pulled from M6 through
   // `portalDischargedPastGraceForOrg` (`31-portal/jobs/`), catalogued as `seamConsumers: ['m31']`; the death branch is
   // redundant with the bound `m6.bereavement.eligible` -> M16 `plan_opened`/`contact_active` chain.
-  "m22.document.rendered",
+  // F-225 (#248) — `m22.document.rendered` removed (user-approved, F-221): "what can this account see" is the
+  // SEAM PULL `PortalDocumentReader.documentsForPatient`; a push on render cannot record a VIEW, and the
+  // §164.528 accounting is M22's `document_access_log` row appended by `mintPortalDownloadUrl` (F-225).
   // Subscribed and NOT routed here.
   "m39.consent.created",
   "m4.legal_hold.applied",

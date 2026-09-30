@@ -152283,7 +152283,8 @@
                   "type": "object",
                   "required": [
                     "url",
-                    "expiresAt"
+                    "expiresAt",
+                    "patientId"
                   ],
                   "properties": {
                     "url": {
@@ -152292,6 +152293,9 @@
                     },
                     "expiresAt": {
                       "format": "date-time",
+                      "type": "string"
+                    },
+                    "patientId": {
                       "type": "string"
                     }
                   }

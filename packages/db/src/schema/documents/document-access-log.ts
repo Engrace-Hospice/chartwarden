@@ -20,7 +20,12 @@ export const documentAccessLog = pgTable(
       .references(() => organizations.id),
     documentId: uuid("document_id").notNull(),
     documentVersionId: uuid("document_version_id").notNull(),
-    accessorMembershipId: uuid("accessor_membership_id").notNull(),
+    // F-225 (#248) — NULLABLE since migration 0298: a PORTAL accessor has no membership. Exactly one of
+    // `accessor_membership_id` / `accessor_portal_account_id` is set (CHECK document_access_log_one_accessor).
+    accessorMembershipId: uuid("accessor_membership_id"),
+    accessorPortalAccountId: uuid("accessor_portal_account_id"), // F-225 — the portal account (logical FK, M31)
+    portalSessionId: uuid("portal_session_id"), // F-225 — the M2 portal session the access ran under
+    patientId: uuid("patient_id"), // F-225 — the patient whose record was disclosed (per-patient §164.528 scan)
     accessKind: text("access_kind").notNull(), // document_access_kind value
     purpose: text("purpose").notNull(), // DENYLISTED (§3.6)
     recipientMembershipId: uuid("recipient_membership_id"),
@@ -34,6 +39,11 @@ export const documentAccessLog = pgTable(
     byAccessor: index("doc_access_log_accessor_idx").on(
       t.organizationId,
       t.accessorMembershipId,
+      t.accessedAt.desc(),
+    ),
+    byPatient: index("doc_access_log_patient_idx").on(
+      t.organizationId,
+      t.patientId,
       t.accessedAt.desc(),
     ),
     byPurpose: index("doc_access_log_purpose_idx").on(

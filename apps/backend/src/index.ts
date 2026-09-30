@@ -569,6 +569,7 @@ import {
   createDrizzleDocumentEraseStore,
   createDrizzleDocumentReaderStore,
   createDrizzleDocumentSeamStore,
+  createDrizzlePortalAccessLog,
   createRefusingObjectStore,
   createS3ObjectStore,
   createS3TenantStorageProvisioner,
@@ -1563,6 +1564,8 @@ export function wireModuleSeams(
             ? createS3ObjectStore(s3Config)
             : createRefusingObjectStore(),
           portalConsent: createSudConsentEvaluatorPortalConsentPort(),
+          // F-225 (#248) — the portal mint's §164.528 `document_access_log` append.
+          portalAccessLog: createDrizzlePortalAccessLog(deps.db),
         }
       : {},
   );

@@ -1,4 +1,4 @@
-# M31 portal — the three user-decided deferred pairs (F-220, F-221, F-222)
+# M31 portal — the three user-decided deferred pairs (F-220, F-221, F-222) + F-225 (F-221 resolved)
 
 > #248 outbox arc. The `m31` group of `scripts/outbox-deferred-consumers.ts` held three declared-but-unbound
 > pairs; the triage decisions were user-approved and each cited fact was re-verified against code before acting.
@@ -32,7 +32,7 @@ the deps unbound it is byte-for-byte the old behaviour. Catalog: `m31` removed f
 - A losing concurrent mint leaves an orphan vendor room (reaped by the vendor TTL; `mintRoom` is idempotent on the id it is
   given).
 
-## F-221 — `m31 <- m22.document.rendered`: STOPPED, premise false (declaration NOT dropped)
+## F-221 — `m31 <- m22.document.rendered`: STOPPED, premise false (declaration NOT dropped) — RESOLVED by F-225 below
 
 The approved decision was "drop the declaration, because M4 audit + the M22 mint audit cover accounting of disclosures". That
 premise is **false** on the current code, so per the brief no change was made and the pair stays deferred:
@@ -94,3 +94,48 @@ Tests: `apps/backend/__tests__/m31-post-discharge-grace-sweep.live.test.ts` (rea
 death/voided/pending discharges, bereaved grants, tenant grace longer/shorter, cross-tenant, capped backlog drain, failure
 isolation), `m31-lazy-telehealth-room-mint.live.test.ts`, and unit suites `m31-post-discharge-grace-sweep.test.ts` and the
 F-220 block of `portal-inject.test.ts`.
+
+## F-225 — the portal document download is accounted; `m31 <- m22.document.rendered` dropped (resolves F-221)
+
+The user approved "fix it, then drop the declaration". Every F-221 claim was re-verified on current code first (all four held),
+then fixed:
+
+**1. The route returns a usable URL.** `GET /api/v1/portal/documents/:documentId/download-url` now (a) resolves the GOVERNED
+version through M22's published `PortalDocumentReader.resolvePortalDocumentVersion` (new published method: the document's
+ACTIVE version, only for the session patient's own, patient-facing, non-superseded/non-destroyed document), then (b) calls
+`mintPortalDownloadUrl({documentVersionId, portalSessionId, portalAccountId, patientId, organizationId})` with the account,
+session and patient taken from the SERVER-assembled session (`attributes.portalAccountId` / `.sessionId` / `.sessionPatientId`).
+The mint also stopped presigning an invented `portal/<versionId>` key: it presigns the version's real `minio_object_key` in the
+tenant bucket (TTL 3600 s). The M22 gates are unchanged (owner, patient-facing, F-197 SUD consent re-check) plus a new
+`not_active` denial for superseded/destroyed documents. Response: `{ url, expiresAt, patientId }` (`patientId` = the session
+patient, used only for M4 attribution).
+
+**2. The ledger row.** Migration `0298` makes `document_access_log` able to account a portal accessor: `accessor_membership_id`
+nullable, `+ accessor_portal_account_id`, `+ portal_session_id`, `+ patient_id`, CHECK exactly one accessor kind, per-patient
+index; and REVOKEs `UPDATE` from `wardenx_app` (0049 had granted it; the log is append-only by contract, nothing updates it).
+The mint appends ONE row (`access_kind='portal_view'`, `purpose='patient_access'`, ids only) AFTER every gate passed and the URL
+exists and BEFORE it is returned; if the append fails the mint throws (no un-logged URL) and the route answers 503. A refusal
+returns before the append, so the ledger holds ONLY actual disclosures. Design choices: (a) denials are NOT logged in
+`document_access_log` (no outcome column was added on purpose: a consumer summing the ledger must not be able to mistake a
+refusal for a disclosure; refusals are visible as 404s in request logs only); (b) the append is not in a shared DB transaction
+with a read (the mint has none — presign is local SigV4 math); ordering gives "no URL without a row", and a crash between append
+and delivery over-reports by one row, never under-reports.
+
+**3. M4 audit semantics.** The route's `config.auditRead` now sets `resourceIdParam: 'documentId'` and
+`patientIdPayloadPath: 'patientId'`. The read-audit hook emits only on 2xx; the route used to return 200 with an empty url on
+every failure. Every refusal is now a 404 (one indistinguishable answer; malformed id, unknown, other patient's, other org's,
+not patient-facing, superseded, SUD without consent) and an M22 outage / failed ledger append is a 503, so an `audit_event`
+`portal_document` row exists exactly when a URL was minted, carrying the document id and the session patient. No framework change
+was needed. A session with no session id is 403 before any M22 call.
+
+**4. Outbox.** `m31` dropped from `declaredConsumers` of `m22.document.rendered` (recorded under `seamConsumers` — M31 pulls
+documents through `PortalDocumentReader`), removed from `M31_SUBSCRIBED_EVENT_NAMES`, and the emptied `m31` group deleted from
+`scripts/outbox-deferred-consumers.ts`. `arch:outbox-bindings` declared-but-unbound: 8 -> 7 pairs.
+
+**5. Accounting-of-disclosures read surface — what remains.** M31 §4.3's `PortalDisclosureAccountingProvider.disclosuresForPatient`
+is still a stub returning `[]` (`31-portal/routes/store.ts`, "M4 is the source"), and no patient/compliance accounting report reads
+`document_access_log` or `audit_event` yet. The new rows are query-ready (`patient_id` + index, 6-year `compliance` audit
+trigger) but NOTHING renders them to a patient. Other document disclosure paths still write no ledger row: the STAFF signed-url
+service (`signed-url-service.ts` mint — `planAccessLog` is a pure descriptor nothing persists), content download, disclosure
+export. The portal watermark rasterization layer (M22 §7.10) is not built: the URL serves the stored PDF unwatermarked.
+

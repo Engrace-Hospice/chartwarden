@@ -1,3 +1,4 @@
+import { getRequestContext } from "@wardenx/tenancy";
 // apps/backend/src/modules/22-documents/seams/readers.ts — M22-T05 the five §4.3 PUBLISHED reader seam impls:
 // pure orchestration over an injected {@link DocumentReaderStore} (+ the object-store + consent ports for the
 // portal mint). Each returns the leaf-typed seam interface (@wardenx/types) the M1 registry validates and the
@@ -21,7 +22,8 @@ import type {
   PortalDocumentReader,
   RenderedDocumentProvider,
 } from "@wardenx/types";
-import type { DocumentReaderStore, PortalConsentPort } from "./readers-store";
+import { deriveTenantBucket } from "../lifecycle/storage";
+import type { DocumentReaderStore, PortalAccessLogPort, PortalConsentPort } from "./readers-store";
 import type { ObjectStorePort } from "./store";
 
 /** The §4.5 default cap for portal documents to page in one call (keyset-paged via `sinceCursor`). */
@@ -81,8 +83,30 @@ export function createPortalDocumentReader(deps: {
   readonly store: DocumentReaderStore;
   readonly objects: ObjectStorePort;
   readonly consent: PortalConsentPort;
+  /** F-225 (#248) — the §164.528 `document_access_log` appender; REQUIRED so a mint can never skip the ledger. */
+  readonly accessLog: PortalAccessLogPort;
+  /** Injectable clock (tests). */
+  readonly now?: () => Date;
 }): PortalDocumentReader {
+  const now = deps.now ?? (() => new Date());
   return {
+    async resolvePortalDocumentVersion({ documentId, patientId, organizationId }) {
+      // F-225 — the governed version a portal session may download = the document's ACTIVE version, only
+      // for the session patient's own, patient-facing, live document. Every failure is the same `null`.
+      const d = await deps.store.documentMetadata({ documentId, organizationId });
+      if (
+        d === null ||
+        d.organizationId !== organizationId ||
+        d.patientId !== patientId ||
+        !d.patientFacing ||
+        d.activeVersionId === null ||
+        d.status === "superseded" ||
+        d.status === "destroyed_tombstone"
+      ) {
+        return null;
+      }
+      return { documentVersionId: d.activeVersionId };
+    },
     async documentsForPatient({ patientId, organizationId, aggregateType, sinceCursor }) {
       const digests = await deps.store.documentsForPatient({
         patientId,
@@ -105,7 +129,13 @@ export function createPortalDocumentReader(deps: {
           }),
         );
     },
-    async mintPortalDownloadUrl({ documentVersionId, portalSessionId, patientId, organizationId }) {
+    async mintPortalDownloadUrl({
+      documentVersionId,
+      portalSessionId,
+      portalAccountId,
+      patientId,
+      organizationId,
+    }) {
       const owner = await deps.store.activeVersionForDocument({
         documentVersionId,
         organizationId,
@@ -115,6 +145,9 @@ export function createPortalDocumentReader(deps: {
       }
       if (!owner.patientFacing) {
         return { denied: true, reason: "not_patient_facing" } as const;
+      }
+      if (owner.status === "superseded" || owner.status === "destroyed_tombstone") {
+        return { denied: true, reason: "not_active" } as const;
       }
       // F-197 (#248) — `owner.isSudClass` (D20/D23, `document.metadata.sudRedacted`) replaces the PRIOR
       // `isSudVersion` deps-injected lookup function, which had no real implementation anywhere and was
@@ -127,16 +160,29 @@ export function createPortalDocumentReader(deps: {
       ) {
         return { denied: true, reason: "sud_consent_absent" } as const;
       }
-      // portalSessionId is the audit anchor (M4 `auditRead` purpose='portal'); the presigned URL is never logged.
-      void portalSessionId;
+      // The presigned URL is never logged. It targets the version's REAL stored object in the tenant bucket.
       const { url, expiresAt } = await deps.objects.presign({
         descriptor: {
-          bucket: `tenant-${organizationId}`,
-          objectKey: `portal/${documentVersionId}`,
+          bucket: deriveTenantBucket(organizationId),
+          objectKey: owner.objectKey,
           ttlSeconds: PORTAL_URL_TTL_SECONDS,
           accessKind: "portal_view",
         },
         organizationId,
+      });
+      // F-225 (#248) — the §164.528 disclosure-accounting append. It happens AFTER every gate passed and
+      // the URL exists, and BEFORE the URL is returned: a failed append throws (no URL leaves un-logged); a
+      // denial above returned early, so a refusal never writes a 'disclosed' row. If the process dies
+      // between append and delivery the ledger over-reports by one row, never under-reports.
+      await deps.accessLog.appendPortalDownload({
+        organizationId,
+        documentId: owner.documentId,
+        documentVersionId,
+        patientId,
+        portalAccountId,
+        portalSessionId,
+        correlationId: getRequestContext()?.correlationId ?? `portal-mint:${portalSessionId}`,
+        accessedAt: now().toISOString(),
       });
       return { url, expiresAt };
     },
