@@ -8,7 +8,8 @@
 // Part 2: a patient label is display metadata of the meeting's own packet; the PDF builder never prints a
 // label for an entry whose text is withheld.
 import { type DbClient, schema } from "@wardenx/db";
-import { eq } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
+import { type DecisionRenderEntry, buildDecisionContent } from "./minutes-decision-content";
 
 const MTG = schema.idgMeeting;
 const ATT = schema.idgAttendance;
@@ -17,6 +18,31 @@ const ACT = schema.idgActionItem;
 const NOTE = schema.idgDisciplineNote;
 const PKT = schema.idgPatientPacket;
 const AMD = schema.idgMinutesAmendment;
+
+/**
+ * W-SUD-01 fact for a set of patients on ONE meeting: which of them a note's / decision's text may be shown for
+ * WITHOUT a Part 2 release. The SUD flag lives on the patient's packet snapshot (`patientCover.activeSudFlag`,
+ * the same signal `mapPacketContent` reads). A patient with no readable packet is UNDETERMINABLE and is
+ * treated as needing a release (fail-closed) — never assumed clear.
+ */
+export async function patientsNeedingRelease(
+  tx: DbClient,
+  meetingId: string,
+  patientIds: readonly string[],
+): Promise<Set<string>> {
+  const needs = new Set<string>(patientIds);
+  if (patientIds.length === 0) return needs;
+  const pkts = await tx
+    .select({ patientId: PKT.patientId, builtSnapshot: PKT.builtSnapshot })
+    .from(PKT)
+    .where(and(eq(PKT.idgMeetingId, meetingId), inArray(PKT.patientId, [...patientIds])));
+  for (const p of pkts) {
+    const cover = (p.builtSnapshot as { patientCover?: { activeSudFlag?: unknown } } | null)
+      ?.patientCover;
+    if (cover?.activeSudFlag === false) needs.delete(p.patientId);
+  }
+  return needs;
+}
 
 const iso = (d: Date | null): string | null => (d ? d.toISOString() : null);
 
@@ -56,11 +82,27 @@ export interface MinutesRenderContext {
     readonly scheduledStart: string | null;
     readonly actualStart: string | null;
     readonly actualEnd: string | null;
+    /** PDF header: the organization's display name. Omitted when the site-display port is unbound / failed. */
+    readonly organizationName?: string;
+    /** PDF header: the meeting location's name. Omitted when the site-display port is unbound / failed. */
+    readonly locationName?: string;
   };
   readonly memberNames: Record<string, string>;
   readonly patientLabels: Record<string, string>;
   readonly minutesStatus: "final" | "amended";
   readonly amendmentCount: number;
+  /**
+   * Decision CONTENT (kind-specific summary lines), re-derived from the live `idg_decision` rows at every emit —
+   * the frozen `decision_list_snapshot` is never touched. 42 CFR Part 2: metadata-only + `withheld` for a patient
+   * who needs a release. See `./minutes-decision-content`.
+   */
+  readonly decisionContent: readonly DecisionRenderEntry[];
+}
+
+/** The org/location display names resolved (before the tx) through the M1 site-display port. */
+export interface MinutesSiteNames {
+  readonly organizationName: string | null;
+  readonly locationName: string | null;
 }
 
 /** The context block spread into `renderPayload` at `.signed`, `.amended` and `.addendum_recorded`. */
@@ -70,6 +112,7 @@ export async function loadMinutesRenderContext(
     readonly meetingId: string;
     readonly minutesId: string;
     readonly names: ReadonlyMap<string, string | null>;
+    readonly site?: MinutesSiteNames;
   },
 ): Promise<MinutesRenderContext> {
   const [m] = await tx
@@ -97,6 +140,23 @@ export async function loadMinutesRenderContext(
       ?.patientCover?.fullNameRedacted;
     if (typeof label === "string" && label.length > 0) patientLabels[p.patientId] = label;
   }
+  const decisionRows = await tx
+    .select({
+      id: DEC.id,
+      patientId: DEC.patientId,
+      decisionKind: DEC.decisionKind,
+      status: DEC.status,
+      recordedAt: DEC.recordedAt,
+      supersededByDecisionId: DEC.supersededByDecisionId,
+      payload: DEC.payload,
+    })
+    .from(DEC)
+    .where(eq(DEC.idgMeetingId, args.meetingId))
+    .orderBy(asc(DEC.recordedAt));
+  const releaseNeeded = await patientsNeedingRelease(tx, args.meetingId, [
+    ...new Set(decisionRows.map((d) => d.patientId).filter((p): p is string => p !== null)),
+  ]);
+  const decisionContent = buildDecisionContent(decisionRows, releaseNeeded);
   const memberNames: Record<string, string> = {};
   for (const [id, name] of args.names) if (name) memberNames[id] = name;
   return {
@@ -106,10 +166,13 @@ export async function loadMinutesRenderContext(
       scheduledStart: iso(m?.scheduledStart ?? null),
       actualStart: iso(m?.actualStart ?? null),
       actualEnd: iso(m?.actualEnd ?? null),
+      ...(args.site?.organizationName ? { organizationName: args.site.organizationName } : {}),
+      ...(args.site?.locationName ? { locationName: args.site.locationName } : {}),
     },
     memberNames,
     patientLabels,
     minutesStatus: amendments.length > 0 ? "amended" : "final",
     amendmentCount: amendments.length,
+    decisionContent,
   };
 }

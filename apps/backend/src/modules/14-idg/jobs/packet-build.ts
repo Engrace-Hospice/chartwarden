@@ -84,7 +84,14 @@ import type Redis from "ioredis";
 import { getSeam } from "../../../bootstrap/index";
 import { readSinceLastIdgEntry } from "../consumers/since-last-idg-cache";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";
+import type { IdgMembershipDisplayPort, IdgSiteDisplayPort } from "../routes/idg-enrichment";
 import type { ActiveOrgListPort } from "./index";
+import {
+  type PacketSiteNames,
+  buildPacketRenderContext,
+  resolveMemberNames,
+  resolvePacketSiteNames,
+} from "./packet-render-context";
 
 const MTG = schema.idgMeeting;
 const PKT = schema.idgPatientPacket;
@@ -383,6 +390,10 @@ export interface PacketBuildWorkerDeps {
   readonly flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
   /** §2.4 `hopeContext` (M10 `idgHopeContextForOrg`). Unbound ⇒ `null` (not captured). */
   readonly hope?: Idg10HopeContextPort;
+  /** M1 org/location display names for the packet PDF header. Unbound/failing ⇒ no names. */
+  readonly siteDisplay?: IdgSiteDisplayPort;
+  /** M2 batched staff display read (names only) for the carry-forward assignees. Unbound/failing ⇒ no names. */
+  readonly membershipDisplay?: IdgMembershipDisplayPort;
   readonly activeOrgs: ActiveOrgListPort;
   now?: () => Date;
   readonly warn?: PacketBuildWarn;
@@ -586,6 +597,10 @@ interface PatientPacketExtras {
   /** `null` ⇒ HOPE context not captured (unbound / failed seam). */
   readonly hopeContext: PacketSnapshot["hopeContext"];
   readonly carryForward: readonly PacketActionItemCarryForwardDigest[];
+  /** Header names for the M22 render payload (per meeting, NOT stored in the snapshot). */
+  readonly site: PacketSiteNames;
+  /** Meeting-wide membership id -> display name (a superset; filtered per patient to the redacted snapshot). */
+  readonly memberNames: ReadonlyMap<string, string>;
 }
 
 /** Build (or replace-in-place, D5) one patient's packet for one meeting. Every REQUIRED (non-nullable)
@@ -758,7 +773,19 @@ async function buildOnePatientPacket(
             meetingId,
             patientId: candidate.patientId,
             packetId: id,
-            renderPayload: { snapshot, disciplineViews },
+            // Names ride the render payload ONLY (never the frozen `built_snapshot`); re-derived at every emit.
+            // `memberNames` is filtered to the assignees of the REDACTED snapshot, so a Part 2-elided item is
+            // never named.
+            renderPayload: {
+              snapshot,
+              disciplineViews,
+              ...buildPacketRenderContext(snapshot, {
+                meetingId,
+                locationId,
+                site: extras.site,
+                names: extras.memberNames,
+              }),
+            },
           },
           organizationId,
           aggregateKind: "idg_patient_packet",
@@ -868,6 +895,23 @@ async function processDueMeeting(
   );
   const hopeByPatient = await resolveHopeContext(deps.hope, organizationId, patientIds, warn);
 
+  // Display names for the PDF (org/location header + carry-forward assignees) — resolved here, ONCE per meeting,
+  // outside any tenant tx (the ports open their own). Failures degrade to no names.
+  const site = await resolvePacketSiteNames(
+    deps.siteDisplay,
+    organizationId,
+    meeting.locationId,
+    warn,
+  );
+  const memberNames = await resolveMemberNames(
+    deps.membershipDisplay,
+    organizationId,
+    [...carryForwardByPatient.values()].flatMap((items) =>
+      items.map((i) => i.assignedToMembershipId as string),
+    ),
+    warn,
+  );
+
   let builtCount = 0;
   for (const candidate of candidates) {
     const result = await buildOnePatientPacket(
@@ -883,6 +927,8 @@ async function processDueMeeting(
         flaggedEvents: flaggedByPatient.get(candidate.patientId) ?? [],
         hopeContext: hopeByPatient.get(candidate.patientId) ?? null,
         carryForward: carryForwardByPatient.get(candidate.patientId) ?? [],
+        site,
+        memberNames,
       },
     );
     if (result.ok) {

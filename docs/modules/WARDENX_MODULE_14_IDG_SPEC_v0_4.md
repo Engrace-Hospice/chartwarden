@@ -1921,6 +1921,33 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
    themself (403 `ATTESTATION_SELF_FORBIDDEN`). `administrator` is an attendable, non-quorum seat. Pre-0286 rows are grandfathered.
    `GET /idg/meetings/{id}/attendance-eligibility` tells the check-in UI what the caller may attest.
 
+4. **Render context for the M22 PDFs (implementation extension; no migration).** The `idg_minutes` and
+   `idg_patient_packet` documents are rendered as real PDFs by M22 from the `renderPayload` of `m14.minutes.signed` /
+   `.amended` / `m14.discipline_note.addendum_recorded` and `m14.packet.render_requested`. Besides the frozen
+   snapshots, M14 adds display-only context that is **re-derived at every emit, rides only the outbox payload, and is
+   never stored** (the frozen `decision_list_snapshot` / `built_snapshot` are not changed):
+   (a) **Header names** — `meeting.organizationName` / `meeting.locationName` (the organization's display name, else
+   legal name, and the location's name), through an org-explicit, batched, names-only M1 seam (`siteDisplayForOrg`,
+   `apps/backend/src/bootstrap/site-display-for-org.ts`) that M14 consumes as the structural port `IdgSiteDisplayPort`
+   (route backend `createDbIdgBackend`, and the packet-build worker deps), bound at the composition root
+   (`apps/backend/src/index.ts`) and in `scripts/db/run-idg-packet-build.ts`; resolved before the write transaction;
+   an unbound or failing port omits the names (never blocks a sign, addendum or packet build).
+   (b) **Decision content** — minutes payloads carry `decisionContent`: per live `idg_decision` row of the meeting
+   `{decisionId, decisionKind, status, recordedAt, supersededByDecisionId, patientId, withheld, summary[]}`, where
+   `summary` is a safe projection of the typed payload (only the known fields of each of the nine kinds; ids never
+   printed; each free-text field capped at 1000 characters with a truncation marker; at most 20 items per decision).
+   Decisions are immutable once `emitted`, but may be superseded after adjournment, so the live status and supersede
+   link are shown. 42 CFR Part 2 is the discipline-note snapshot's rule, fail-closed: for a patient who needs a release
+   (active SUD flag, or no packet to vouch for them) the entry is metadata only with `withheld: true`, an empty
+   `summary` and `patientId: null`; the builder prints "Withheld — 42 CFR Part 2" and does not label the patient.
+   (c) **Named carry-forward assignees** — the packet `renderPayload` carries `meeting` (ids + header names) and
+   `memberNames` (membership id to display name, name only) for the assignees present in the **redacted** snapshot's
+   `carryForwardActionItems`, resolved once per meeting through M2's `membershipDisplayForOrg` (port
+   `IdgMembershipDisplayPort`) inside the worker; an item the Part 2 redactor elided is never named, and names are never
+   written into `built_snapshot`.
+   Because a packet build is replace-in-place (same `packetId`), M22 treats `m14.packet.render_requested` as an
+   appending request (per delivered event id), so a rebuilt packet renders a new version of the same document.
+
 -----
 
 **End of Module 14 — Interdisciplinary Group Specification v0.4 (Consolidated)**

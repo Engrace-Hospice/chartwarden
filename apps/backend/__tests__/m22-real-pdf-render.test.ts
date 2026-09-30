@@ -88,6 +88,77 @@ const minutesPayload = {
       recordedAt: "2026-09-29T14:40:00.000Z",
       supersededByDecisionId: null,
     },
+    {
+      decisionId: "d2",
+      patientId: SECRET_PATIENT,
+      decisionKind: "team_note",
+      status: "emitted",
+      wasQuorate: true,
+      recordedAt: "2026-09-29T14:45:00.000Z",
+      supersededByDecisionId: null,
+    },
+    {
+      decisionId: "d3",
+      patientId: "p1",
+      decisionKind: "referral",
+      status: "emitted",
+      wasQuorate: true,
+      recordedAt: "2026-09-29T14:50:00.000Z",
+      supersededByDecisionId: "d4",
+    },
+    {
+      decisionId: "d4",
+      patientId: "p1",
+      decisionKind: "referral",
+      status: "emitted",
+      wasQuorate: true,
+      recordedAt: "2026-09-29T14:55:00.000Z",
+      supersededByDecisionId: null,
+    },
+  ],
+  decisionContent: [
+    {
+      decisionId: "d1",
+      decisionKind: "level_of_care_change",
+      status: "emitted",
+      recordedAt: "2026-09-29T14:40:00.000Z",
+      supersededByDecisionId: null,
+      patientId: "p1",
+      withheld: false,
+      summary: [
+        "Level of care considered: General Inpatient | Rationale: Uncontrolled dyspnea at home.",
+      ],
+    },
+    {
+      decisionId: "d2",
+      decisionKind: "team_note",
+      status: "emitted",
+      recordedAt: "2026-09-29T14:45:00.000Z",
+      supersededByDecisionId: null,
+      patientId: SECRET_PATIENT, // a producer bug must not label the patient either
+      withheld: true,
+      summary: [SECRET_BODY], // ...nor print text
+    },
+    {
+      decisionId: "d3",
+      decisionKind: "referral",
+      status: "superseded",
+      recordedAt: "2026-09-29T14:50:00.000Z",
+      supersededByDecisionId: "d4",
+      patientId: "p1",
+      withheld: false,
+      summary: ["Referral: Chaplaincy"],
+    },
+    {
+      decisionId: "d4",
+      decisionKind: "referral",
+      status: "emitted",
+      recordedAt: "2026-09-29T14:55:00.000Z",
+      supersededByDecisionId: null,
+      patientId: "p1",
+      withheld: false,
+      summary: ["Referral: Spiritual care | Rationale: Family requested a chaplain visit."],
+    },
   ],
   actionItemListSnapshot: [
     {
@@ -155,9 +226,10 @@ describe("idg_minutes doc model (pure)", () => {
   it("has the sections in order, Final status, no amendment banner", () => {
     const doc = buildIdgMinutesDoc(minutesPayload);
     const headings = doc.blocks.flatMap((b) => (b.kind === "heading" ? [b.text] : []));
-    expect(headings.slice(0, 4)).toEqual([
+    expect(headings.slice(0, 5)).toEqual([
       "Attendance",
       "Decisions",
+      "Decision details",
       "Action items",
       "Discipline notes",
     ]);
@@ -177,6 +249,20 @@ describe("idg_minutes doc model (pure)", () => {
     });
     expect(doc.blocks.some((b) => b.kind === "banner" && b.text.startsWith("AMENDED"))).toBe(true);
     expect(doc.createdAtIso).toBe("2026-09-30T09:30:00.000Z");
+  });
+
+  it("prints decision content per decision; a withheld decision is metadata-only and its patient unlabelled", () => {
+    const doc = buildIdgMinutesDoc(minutesPayload);
+    const entries = doc.blocks.filter((b) => b.kind === "entry");
+    const decisionEntries = entries.filter((b) => b.kind === "entry" && b.meta.startsWith("#"));
+    expect(decisionEntries).toHaveLength(4);
+    const d2 = decisionEntries[1];
+    expect(d2 && d2.kind === "entry" && d2.withheld).toBe(true);
+    expect(d2 && d2.kind === "entry" && d2.body).toBe("Withheld — 42 CFR Part 2");
+    const table = doc.blocks.find((b) => b.kind === "table" && b.columns[1]?.header === "Decision");
+    const rows = table && table.kind === "table" ? table.rows : [];
+    expect(rows[1]?.[2]).toBe("Withheld — 42 CFR Part 2");
+    expect(rows[2]?.[3]).toBe("Superseded (superseded by #4)");
   });
 
   it("never carries withheld text, reason or patient identity into the model", () => {
@@ -215,6 +301,12 @@ describe("idg_minutes PDF bytes", () => {
       "Registered Nurse (RN)",
       "Level of Care Change",
       "Maria G.",
+      "Decision details",
+      "Level of care considered: General Inpatient",
+      "Rationale: Uncontrolled dyspnea at home.",
+      "Referral: Chaplaincy",
+      "superseded by #4",
+      "Family requested a chaplain visit.",
       "Pain controlled on current regimen.",
       "Appendix: Addenda",
       "Reason: Missed dose confirmed after the meeting",
@@ -394,6 +486,12 @@ const packetPayload = {
       layer2Polished: null,
     },
   },
+  meeting: {
+    meetingId: "aaaaaaaa-0000-4000-8000-000000000001",
+    locationId: "bbbbbbbb-0000-4000-8000-000000000001",
+    organizationName: "Sunrise Hospice",
+    locationName: "North Campus",
+  },
   memberNames: { m1: "Dana Reyes" },
 };
 
@@ -403,6 +501,7 @@ describe("idg_patient_packet PDF bytes", () => {
     const all = allText(bytes);
     for (const s of [
       "IDG Patient Packet",
+      "Sunrise Hospice - North Campus",
       "Maria G.",
       "C34.90 - Lung cancer",
       "Routine Home Care",
@@ -436,6 +535,15 @@ describe("idg_patient_packet PDF bytes", () => {
       ),
     ).toBe(true);
     expect(() => buildIdgPacketDoc({})).not.toThrow();
+  });
+  it("falls back to a short member ref when no name resolved, and omits the header names when absent", () => {
+    const p = structuredClone(packetPayload) as Record<string, any>;
+    p.memberNames = {};
+    p.meeting = { meetingId: "x" };
+    const t = allText(renderDocModelToPdf(buildIdgPacketDoc(p)));
+    expect(t).toContain("Member m1");
+    expect(t).not.toContain("Sunrise Hospice");
+    expect(t).not.toContain("Dana Reyes");
   });
   it("prints HOPE 'not captured' when the context is null", () => {
     const p = structuredClone(packetPayload) as Record<string, any>;

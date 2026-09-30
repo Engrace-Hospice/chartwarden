@@ -42,6 +42,8 @@ export function buildIdgPacketDoc(payload: unknown): DocModel {
   const hope =
     snap.hopeContext === null || snap.hopeContext === undefined ? null : rec(snap.hopeContext);
   const views = rec(p.disciplineViews);
+  const site = rec(p.meeting);
+  const siteLine = [str(site.organizationName), str(site.locationName)].filter(Boolean).join(" - ");
   const memberNames = rec(p.memberNames);
   const nameFor = (id: unknown): string => {
     const s = str(id);
@@ -53,7 +55,9 @@ export function buildIdgPacketDoc(payload: unknown): DocModel {
   blocks.push({
     kind: "title",
     text: "IDG Patient Packet",
-    subtitle: str(cover.fullNameRedacted) ? `${cover.fullNameRedacted}` : undefined,
+    subtitle:
+      [siteLine, str(cover.fullNameRedacted)].filter((x) => x && x.length > 0).join(" | ") ||
+      undefined,
   });
 
   if (part2) {

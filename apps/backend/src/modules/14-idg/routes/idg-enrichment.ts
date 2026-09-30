@@ -90,11 +90,30 @@ export interface IdgMembershipRolesPort {
   ): Promise<ReadonlyMap<string, readonly string[]>>;
 }
 
+/** The site display facts an IDG minutes/packet PDF header needs (NAMES only). Mirrors M1's `SiteDisplay`. */
+export interface IdgSiteDisplay {
+  /** The organization's display name, or null when unresolved. */
+  readonly organizationName: string | null;
+  /** Location id -> display name, for the ids that resolved (others absent). */
+  readonly locationNames: ReadonlyMap<string, string>;
+}
+
+/**
+ * The foundation-owned (M1) org-explicit site display read, injected: the organization's and the named locations'
+ * display names, in ONE call. M14 imports no M1 code/schema — the composition root binds `siteDisplayForOrg`.
+ * Used ONLY to fill the PDF header on the M22 render payloads; unbound / failing => the header omits the names.
+ */
+export interface IdgSiteDisplayPort {
+  displayForSite(organizationId: string, locationIds: readonly string[]): Promise<IdgSiteDisplay>;
+}
+
 export interface IdgRouteEnrichmentPorts {
   readonly membershipRoles?: IdgMembershipRolesPort;
   readonly patientDisplay?: IdgPatientDisplayPort;
   readonly recertWindows?: IdgRecertWindowPort;
   readonly membershipDisplay?: IdgMembershipDisplayPort;
+  /** M1's org/location display names — only the minutes render payload's PDF header reads it. */
+  readonly siteDisplay?: IdgSiteDisplayPort;
 }
 
 /**

@@ -109,6 +109,7 @@ import {
 } from "./bootstrap/provider-entity-resolver";
 // F-166 (#248) — M13's `m12.medication_order.active` materializer needs the order's location timezone.
 import { buildFoundationSiteReader } from "./bootstrap/foundation-site-reader";
+import { siteDisplayForOrg } from "./bootstrap/site-display-for-org";
 import { buildReadinessProbe } from "./bootstrap/readiness-probe";
 import { registerLocationLookupRoutes } from "./bootstrap/routes/locations";
 import { registerProviderEntityLookupRoutes } from "./bootstrap/routes/provider-entities";
@@ -3336,6 +3337,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               displayForMemberships: (organizationId, membershipIds) =>
                 membershipDisplayForOrg(dbHandle.db, organizationId, membershipIds),
             },
+            // M1's org-explicit site display read (organization + location NAMES only) — the minutes PDF header.
+            siteDisplay: {
+              displayForSite: (organizationId, locationIds) =>
+                siteDisplayForOrg(dbHandle.db, organizationId, locationIds),
+            },
             // M3's authorization-owned batched role-key read (keys only) — the authoritative basis M14 validates an
             // attendance row's discipline against when a coordinator records SOMEONE ELSE (attendance trust, 0286).
             membershipRoles: {
@@ -5371,6 +5377,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       hope: {
         hopeContextForOrg: (organizationId, patientIds) =>
           idgHopeContextForOrg(dbHandle.db, organizationId, patientIds),
+      },
+      // The packet PDF's org/location header + named carry-forward assignees (M1 / M2 org-explicit seams; the
+      // worker has no request, so both take the org id explicitly and open their own `withOrgContext`).
+      siteDisplay: {
+        displayForSite: (organizationId, locationIds) =>
+          siteDisplayForOrg(dbHandle.db, organizationId, locationIds),
+      },
+      membershipDisplay: {
+        displayForMemberships: (organizationId, membershipIds) =>
+          membershipDisplayForOrg(dbHandle.db, organizationId, membershipIds),
       },
       locationTimezone: {
         locationTimezone: (organizationId, locationId) =>

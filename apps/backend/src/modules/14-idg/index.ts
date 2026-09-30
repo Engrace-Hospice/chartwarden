@@ -20,7 +20,12 @@ export function mountIdgRoutes(
   outbox?: IdgWriteOutboxPort,
   enrichment?: IdgRouteEnrichmentPorts,
 ): void {
-  const backend = createDbIdgBackend(db, outbox, enrichment?.membershipDisplay);
+  const backend = createDbIdgBackend(
+    db,
+    outbox,
+    enrichment?.membershipDisplay,
+    enrichment?.siteDisplay,
+  );
   _registerM14Abac({ resolver: backend });
   _registerM14Routes(app, { service: backend, enrichment });
 }
@@ -86,6 +91,8 @@ export {
   type IdgRecertWindowFact,
   type IdgRecertWindowPort,
   type IdgRouteEnrichmentPorts,
+  type IdgSiteDisplay,
+  type IdgSiteDisplayPort,
   withFinalizerName,
   withPatientDisplay,
 } from "./routes/idg-enrichment";

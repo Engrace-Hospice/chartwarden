@@ -22,6 +22,8 @@ import {
   buildBootOutboxCatalog,
   buildTxOutboxPublisher,
 } from "../../apps/backend/src/bootstrap/outbox-persister";
+import { siteDisplayForOrg } from "../../apps/backend/src/bootstrap/site-display-for-org";
+import { membershipDisplayForOrg } from "../../apps/backend/src/modules/02-identity/index";
 import {
   createDrizzlePatientReaderStore,
   registerPatientSeams,
@@ -95,6 +97,10 @@ async function main(): Promise<void> {
         },
       ],
       hope: { hopeContextForOrg: (o, ids) => idgHopeContextForOrg(handle.db, o, ids) },
+      siteDisplay: { displayForSite: (o, ids) => siteDisplayForOrg(handle.db, o, ids) },
+      membershipDisplay: {
+        displayForMemberships: (o, ids) => membershipDisplayForOrg(handle.db, o, ids),
+      },
     });
     console.log("✓ idg.packets-cron handler ran for the demo org");
   } finally {

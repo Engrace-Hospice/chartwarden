@@ -345,10 +345,16 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
   },
   // M14 — both request-shaped, `renderPayload: Type.Unknown()` (the M11/M12 shape): the M22 template
   // key is fixed per event, not read off the payload.
+  // `appends: true`: the packet build is replace-in-place (D5 — one `idg_patient_packet` row per
+  // (meeting, patient), rebuilt by the T-24h resume and the coordinator's on-demand build), so the SAME
+  // `packetId` legitimately requests a render again with NEW content. Genesis-only idempotency answered
+  // `idempotent_skip` for every rebuild, leaving the first PDF stale forever; the per-delivered-event key
+  // renders each rebuild as a new VERSION of the same packet document (a redelivery still renders nothing).
   "m14.packet.render_requested": {
     aggregateIdFields: ["packetId"],
     templateKey: "idg_patient_packet",
     contentField: "renderPayload",
+    appends: true,
   },
   "m14.minutes.signed": {
     aggregateIdFields: ["minutesId"],

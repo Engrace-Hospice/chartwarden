@@ -20,6 +20,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { siteDisplayForOrg } from "../src/bootstrap/site-display-for-org";
 import { membershipRoleKeysForOrg } from "../src/modules/03-authorization/membership-role-keys-for-org";
 import {
   type IdgWriteOutboxPort,
@@ -183,11 +184,17 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     outbox = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m14" }),
     };
-    svc = createDbIdgBackend(handle.db, outbox, {
-      // Deterministic stand-in for M2's batched name-only display seam (the addenda appendix's `authorName`).
-      displayForMemberships: async (_org, ids) =>
-        new Map(ids.map((i) => [i, { displayName: `Name-${i.slice(0, 8)}` }])),
-    });
+    svc = createDbIdgBackend(
+      handle.db,
+      outbox,
+      {
+        // Deterministic stand-in for M2's batched name-only display seam (the addenda appendix's `authorName`).
+        displayForMemberships: async (_org, ids) =>
+          new Map(ids.map((i) => [i, { displayName: `Name-${i.slice(0, 8)}` }])),
+      },
+      // The REAL M1 site-display seam over the real wardenx_app connection (org + location NAMES for the PDF header).
+      { displayForSite: (o, ids) => siteDisplayForOrg(handle.db, o, ids) },
+    );
   }, 120_000);
 
   afterAll(async () => {
@@ -1010,6 +1017,39 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       await app.end();
     }
 
+    // Decisions for the minutes render's DECISION CONTENT: a clear patient (text shown), a SUD-flagged patient
+    // (Part 2: metadata only), and a meeting-level team note (no patient: never withheld).
+    const decClear = await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: PATIENT_CLEAR,
+      decisionKind: "care_plan_update",
+      payload: {
+        kind: "care_plan_update",
+        mutations: [
+          {
+            op: "problem_add",
+            icd10Code: null,
+            snomedCode: null,
+            description: "CLEAR-DECISION-TEXT dyspnea",
+            problemKind: "related",
+          },
+        ],
+      },
+    });
+    const decFlagged = await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: PATIENT_FLAGGED,
+      decisionKind: "level_of_care_consideration",
+      payload: {
+        kind: "level_of_care_consideration",
+        consideredLevel: "general_inpatient",
+        rationaleText: "FLAGGED-DECISION-SECRET",
+      },
+    });
+    const decTeam = await svc.recordDecision(ORG_A, MEMBER, m, {
+      patientId: null,
+      decisionKind: "team_note",
+      payload: { kind: "team_note", noteText: "MEETING-LEVEL-DECISION-TEXT" },
+    });
+
     // Adjournment freezes the notes into the minutes; SUD-flagged text is elided in the snapshot.
     const adjourned = await svc.adjournMeeting(ORG_A, MEMBER, m, true);
     expect(adjourned.status).toBe("adjourned");
@@ -1049,6 +1089,52 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(JSON.stringify(ev[0].payload)).not.toContain("SUD history");
     expect(JSON.stringify(ev[0].payload)).not.toContain("FLAGGED-LIVE-REASON-SECRET");
     expect(ev[0].payload.renderPayload.disciplineNoteSnapshot).toEqual(snap[0].s); // reason rides in the render payload
+
+    // PDF header names (real M1 seam, as wardenx_app) + live DECISION CONTENT, re-derived at emit.
+    const signedRp = ev[0].payload.renderPayload;
+    expect(signedRp.meeting).toMatchObject({
+      organizationName: "A",
+      locationName: "Loc",
+      locationId: locationOf[ORG_A],
+    });
+    const content = new Map(
+      (
+        signedRp.decisionContent as Array<{
+          decisionId: string;
+          withheld: boolean;
+          patientId: string | null;
+          summary: string[];
+          status: string;
+        }>
+      ).map((d) => [d.decisionId, d]),
+    );
+    expect(content.size).toBe(3);
+    expect(content.get(decClear.id)).toMatchObject({
+      withheld: false,
+      patientId: PATIENT_CLEAR,
+      status: "emitted",
+      summary: ["Add problem (Related) | CLEAR-DECISION-TEXT dyspnea"],
+    });
+    // 42 CFR Part 2 (fail-closed, same set as the note snapshot): metadata only, patient NOT labelled.
+    expect(content.get(decFlagged.id)).toMatchObject({
+      withheld: true,
+      patientId: null,
+      summary: [],
+    });
+    expect(JSON.stringify(ev[0].payload)).not.toContain("FLAGGED-DECISION-SECRET");
+    expect(content.get(decTeam.id)).toMatchObject({
+      withheld: false,
+      patientId: null,
+      summary: ["MEETING-LEVEL-DECISION-TEXT"],
+    });
+    // The frozen decision_list_snapshot is NOT mutated by any of this: kind + metadata only, no content.
+    const { rows: dsnap } = await admin.query(
+      "SELECT decision_list_snapshot::text AS s FROM idg_minutes WHERE id=$1",
+      [minutes.id],
+    );
+    expect(dsnap[0].s).not.toContain("CLEAR-DECISION-TEXT");
+    expect(dsnap[0].s).not.toContain("MEETING-LEVEL-DECISION-TEXT");
+    expect(JSON.parse(dsnap[0].s)).toHaveLength(3);
 
     // Final minutes are frozen for ORIGINAL notes: no edit once the meeting is no longer live...
     expect(
@@ -1154,8 +1240,10 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     // The render CONTEXT the M22 PDF needs rides the payload (dates, names, status) — never stored.
     expect(rp.minutesStatus).toBe("final");
     expect(rp.amendmentCount).toBe(0);
-    expect(rp.meeting).toMatchObject({ meetingId: m });
+    expect(rp.meeting).toMatchObject({ meetingId: m, organizationName: "A", locationName: "Loc" });
     expect(rp.meeting.actualEnd).toEqual(expect.any(String));
+    // decision content is re-derived at the addendum emit too (same Part 2 verdicts)
+    expect(rp.decisionContent).toEqual(signedRp.decisionContent);
     expect(rp.memberNames[rn.membershipId]).toBe(`Name-${rn.membershipId.slice(0, 8)}`);
     expect(JSON.stringify(aev[0].payload)).not.toContain("ADDENDUM-");
     // audit: the INSERT is audited, and neither body_text nor reason lands in audit_event
@@ -1318,6 +1406,27 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
         [],
     ).toEqual([]);
   });
+  it("minutes header names degrade: a throwing / unbound site-display port never blocks adjourn and omits the names", async () => {
+    const degraded = createDbIdgBackend(handle.db, outbox, undefined, {
+      displayForSite: async () => {
+        throw new Error("site port down");
+      },
+    });
+    const m = await seedMeeting(ORG_A, "live");
+    await degraded.recordAttendance(ORG_A, MEMBER, m, { membershipId: MEMBER, discipline: "rn" });
+    expect((await degraded.adjournMeeting(ORG_A, MEMBER, m, true)).status).toBe("adjourned");
+    const minutes = await degraded.getMinutes(ORG_A, m);
+    const { rows } = await admin.query(
+      "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m14.minutes.signed'",
+      [minutes.id],
+    );
+    const meeting = rows[0].payload.renderPayload.meeting;
+    expect(meeting.meetingId).toBe(m);
+    expect(meeting.organizationName).toBeUndefined();
+    expect(meeting.locationName).toBeUndefined();
+    expect(rows[0].payload.renderPayload.decisionContent).toEqual([]);
+  });
+
   it("attendance trust (0286): the recorder + attestation flag persist; a legacy write defaults to null/false and still counts toward quorum", async () => {
     const m = await seedMeeting(ORG_A, "live");
     const coordinator = await seedMembership(ORG_A, "active");

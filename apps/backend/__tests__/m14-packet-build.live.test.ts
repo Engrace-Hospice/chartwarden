@@ -34,6 +34,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { registerSeam } from "../src/bootstrap/index";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { siteDisplayForOrg } from "../src/bootstrap/site-display-for-org";
+import { membershipDisplayForOrg } from "../src/modules/02-identity/index";
 import {
   createDrizzlePatientReaderStore,
   registerPatientSeams,
@@ -741,6 +743,116 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         true,
       );
       expect(pkt.cover_summary_layer1).toContain("2 carried-forward action item(s)");
+    });
+
+    it("render payload NAMES: org/location header + named carry-forward assignees come from the REAL org-explicit " +
+      "seams (as wardenx_app), ride the render payload ONLY (never built_snapshot), are tenant-scoped, and degrade", async () => {
+      const assignee = "5a5a5a5a-0000-4000-8000-0000000000a1";
+      const assigneeB = "5a5a5a5a-0000-4000-8000-0000000000b1";
+      await admin.query(
+        `INSERT INTO "user" (id,email,name) VALUES ($1,'dana@x.test','Dana Reyes'),($2,'bee@x.test','Bee Tenant')`,
+        ["6b6b6b6b-0000-4000-8000-0000000000a1", "6b6b6b6b-0000-4000-8000-0000000000b1"],
+      );
+      await admin.query(
+        `INSERT INTO membership (id,user_id,organization_id,status) VALUES ($1,$2,$3,'active'),($4,$5,$6,'active')`,
+        [
+          assignee,
+          "6b6b6b6b-0000-4000-8000-0000000000a1",
+          ORG_A,
+          assigneeB,
+          "6b6b6b6b-0000-4000-8000-0000000000b1",
+          ORG_B,
+        ],
+      );
+      const patientId = await seedPatient(ORG_A, "Nam", "Ed");
+      const admissionId = await seedAdmission(ORG_A, patientId, "active", 40);
+      await seedLocPeriod(ORG_A, admissionId);
+      await seedSignedCarePlan(ORG_A, patientId, admissionId);
+      const otherMeetingId = await seedMeeting(ORG_A, "scheduled", 902);
+      const meetingId = await seedMeeting(ORG_A, "scheduled", 2);
+      await seedSectionSources(ORG_A, patientId, admissionId, otherMeetingId, meetingId);
+      await admin.query(
+        "UPDATE idg_action_item SET assigned_to_membership_id=$1 WHERE idg_meeting_id=$2",
+        [assignee, otherMeetingId],
+      );
+
+      const namePorts = {
+        siteDisplay: {
+          displayForSite: (o: string, ids: readonly string[]) =>
+            siteDisplayForOrg(handle.db, o, ids),
+        },
+        membershipDisplay: {
+          displayForMemberships: (o: string, ids: readonly string[]) =>
+            membershipDisplayForOrg(handle.db, o, ids),
+        },
+      };
+      await runPacketBuildCron({
+        db: handle.db,
+        outbox,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        redis,
+        ...m6m7Ports(),
+        ...sectionPorts(),
+        ...namePorts,
+      });
+      const { rows } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE event_type='m14.packet.render_requested' AND payload->>'patientId'=$1 AND payload->>'meetingId'=$2",
+        [patientId, meetingId],
+      );
+      expect(rows).toHaveLength(1);
+      const rp = rows[0].payload.renderPayload;
+      expect(rp.meeting).toEqual({
+        meetingId,
+        locationId: locationOf[ORG_A],
+        organizationName: "org-a",
+        locationName: "Loc",
+      });
+      expect(rp.memberNames).toEqual({ [assignee]: "Dana Reyes" });
+      expect(rp.snapshot.carryForwardActionItems).toHaveLength(2);
+      // names are render-context only: the frozen built_snapshot never carries them.
+      const pkt = await packetFor(meetingId, patientId);
+      expect(JSON.stringify(pkt.built_snapshot)).not.toContain("Dana Reyes");
+      expect(JSON.stringify(pkt.built_snapshot)).not.toContain("org-a");
+
+      // names ONLY, tenant-scoped, batched: org A cannot resolve org B's membership or location.
+      const site = await siteDisplayForOrg(handle.db, ORG_A, [
+        locationOf[ORG_A],
+        locationOf[ORG_B],
+      ]);
+      expect(site.organizationName).toBe("org-a");
+      expect([...site.locationNames]).toEqual([[locationOf[ORG_A], "Loc"]]);
+      const who = await membershipDisplayForOrg(handle.db, ORG_A, [assignee, assigneeB]);
+      expect([...who.keys()]).toEqual([assignee]);
+      expect(Object.keys(who.get(assignee) ?? {}).sort()).toEqual(["displayName", "membershipId"]);
+
+      // degrade: throwing ports still build + emit the packet, just without names.
+      const meeting2 = await seedMeeting(ORG_A, "scheduled", 3);
+      await runPacketBuildCron({
+        db: handle.db,
+        outbox,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        redis,
+        ...m6m7Ports(),
+        ...sectionPorts(),
+        siteDisplay: {
+          displayForSite: async () => {
+            throw new Error("site port down");
+          },
+        },
+        membershipDisplay: {
+          displayForMemberships: async () => {
+            throw new Error("member port down");
+          },
+        },
+        warn: () => undefined,
+      });
+      const { rows: rows2 } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE event_type='m14.packet.render_requested' AND payload->>'meetingId'=$1",
+        [meeting2],
+      );
+      expect(rows2.length).toBeGreaterThanOrEqual(1);
+      expect(rows2[0].payload.renderPayload.memberNames).toEqual({});
+      expect(rows2[0].payload.renderPayload.meeting.organizationName).toBeUndefined();
     });
 
     it("the section seams are tenant-scoped under the real NOBYPASSRLS role: org A cannot read org B's rows", async () => {

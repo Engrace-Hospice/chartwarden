@@ -47,6 +47,12 @@ export function buildIdgMinutesDoc(payload: unknown): DocModel {
   const patients = rec(p.patientLabels);
   const attendance = arr(p.attendanceSnapshot).filter(isRec);
   const decisions = arr(p.decisionListSnapshot).filter(isRec);
+  // Live decision CONTENT (re-derived at emit; the frozen snapshot holds the kind only), keyed by decision id.
+  const contentById = new Map<string, Rec>();
+  for (const c of arr(p.decisionContent).filter(isRec)) {
+    const cid = str(c.decisionId);
+    if (cid !== undefined) contentById.set(cid, c);
+  }
   const actions = arr(p.actionItemListSnapshot).filter(isRec);
   const notes = arr(p.disciplineNoteSnapshot).filter(isRec);
   const addenda = arr(p.disciplineAddenda).filter(isRec);
@@ -127,21 +133,37 @@ export function buildIdgMinutesDoc(payload: unknown): DocModel {
       { header: "Recorded", weight: 2.2 },
     ],
     rows: decisions.map((d, i) => {
-      const sup = str(d.supersededByDecisionId);
+      const content = contentById.get(str(d.decisionId) ?? "");
+      const sup = str(d.supersededByDecisionId) ?? str(content?.supersededByDecisionId);
       const supNo = sup === undefined ? undefined : decisionRefs.get(sup);
+      const status = content?.status === "superseded" ? "superseded" : d.status;
       return [
         String(i + 1),
         humanize(d.decisionKind),
-        patientLabel(patients, d.patientId),
+        // Part 2: a withheld decision never labels its patient.
+        content !== undefined && bool(content.withheld)
+          ? PART2_WITHHELD
+          : patientLabel(patients, d.patientId),
         sup === undefined
-          ? humanize(d.status)
-          : `${humanize(d.status)} (superseded by ${supNo === undefined ? shortId(sup) : `#${supNo}`})`,
+          ? humanize(status)
+          : `${humanize(status)} (superseded by ${supNo === undefined ? shortId(sup) : `#${supNo}`})`,
         d.wasQuorate === false ? "Non-quorate" : "Quorate",
         fmtInstant(d.recordedAt),
       ];
     }),
     emptyText: "No decisions were recorded at this meeting.",
   });
+
+  // ── Decision details (live content; Part 2 metadata-only) ──
+  const detailed = decisions.filter((d) => contentById.has(str(d.decisionId) ?? ""));
+  if (detailed.length > 0) {
+    blocks.push({ kind: "heading", level: 2, text: "Decision details" });
+    decisions.forEach((d, i) => {
+      const content = contentById.get(str(d.decisionId) ?? "");
+      if (content === undefined) return;
+      blocks.push(decisionEntry(i + 1, d, content, patients, decisionRefs));
+    });
+  }
 
   // ── Action items ──
   blocks.push({ kind: "heading", level: 1, text: "Action items" });
@@ -216,6 +238,37 @@ export function buildIdgMinutesDoc(payload: unknown): DocModel {
     ...addenda.map((a) => a.recordedAt),
   ]);
   return { title: IDG_MINUTES_TITLE, createdAtIso, blocks };
+}
+
+/** One decision's content. A withheld decision NEVER touches summary text or the patient identity. */
+function decisionEntry(
+  no: number,
+  d: Rec,
+  content: Rec,
+  patients: Rec,
+  refs: ReadonlyMap<string, number>,
+): Block {
+  const kind = humanize(content.decisionKind ?? d.decisionKind);
+  const sup = str(content.supersededByDecisionId) ?? str(d.supersededByDecisionId);
+  const supNo = sup === undefined ? undefined : refs.get(sup);
+  const status =
+    sup === undefined
+      ? humanize(content.status ?? d.status)
+      : `${humanize(content.status ?? d.status)} (superseded by ${supNo === undefined ? shortId(sup) : `#${supNo}`})`;
+  const meta = `#${no} ${kind} - ${status} - ${fmtInstant(content.recordedAt ?? d.recordedAt)}`;
+  if (bool(content.withheld)) {
+    return { kind: "entry", withheld: true, meta, body: PART2_WITHHELD };
+  }
+  const lines = arr(content.summary).filter((l): l is string => typeof l === "string");
+  return {
+    kind: "entry",
+    meta,
+    muted:
+      str(content.patientId) === undefined
+        ? "Meeting-level"
+        : patientLabel(patients, content.patientId),
+    body: lines.length > 0 ? lines.join("\n") : "(no decision text recorded)",
+  };
 }
 
 /** One note or addendum. A withheld entry NEVER touches text, reason or patient identity. */

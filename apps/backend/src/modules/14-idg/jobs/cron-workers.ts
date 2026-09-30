@@ -9,6 +9,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, type Job, Queue, Worker } from "bullmq";
 import type Redis from "ioredis";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";
+import type { IdgMembershipDisplayPort, IdgSiteDisplayPort } from "../routes/idg-enrichment";
 import { runCarryForwardCron } from "./carry-forward";
 import { reviewClockPatientsForOrg } from "./cron-store";
 import type { ActiveOrgListPort } from "./index";
@@ -53,6 +54,10 @@ export interface M14WorkerDeps {
   readonly flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
   /** §2.4 `hopeContext` (M10 `idgHopeContextForOrg`); unbound ⇒ `null` (not captured). */
   readonly hope?: Idg10HopeContextPort;
+  /** M1 `siteDisplayForOrg` (org + location NAMES) for the packet PDF header; unbound ⇒ header omits the names. */
+  readonly siteDisplay?: IdgSiteDisplayPort;
+  /** M2 `membershipDisplayForOrg` (names only) for the carry-forward assignees; unbound ⇒ "Member xxxxxxxx". */
+  readonly membershipDisplay?: IdgMembershipDisplayPort;
   /** F-171 — the M1 `FoundationSiteReader.locationTimezone` org-explicit port (`schedule-materialise.ts`). */
   readonly locationTimezone?: Idg1LocationTimezonePort;
   now?: () => Date;
@@ -135,6 +140,8 @@ export function buildM14WorkerDeps(deps: {
   recertWindows?: Idg6RecertWindowPort;
   flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
   hope?: Idg10HopeContextPort;
+  siteDisplay?: IdgSiteDisplayPort;
+  membershipDisplay?: IdgMembershipDisplayPort;
   locationTimezone?: Idg1LocationTimezonePort;
 }): M14WorkerDeps {
   return {
@@ -148,6 +155,8 @@ export function buildM14WorkerDeps(deps: {
     recertWindows: deps.recertWindows,
     flaggedEventSources: deps.flaggedEventSources,
     hope: deps.hope,
+    siteDisplay: deps.siteDisplay,
+    membershipDisplay: deps.membershipDisplay,
     locationTimezone: deps.locationTimezone,
     now: () => new Date(),
   };
@@ -337,6 +346,8 @@ export function registerM14CronWorkers(deps: M14WorkerDeps): Worker[] {
           recertWindows: deps.recertWindows,
           flaggedEventSources: deps.flaggedEventSources,
           hope: deps.hope,
+          siteDisplay: deps.siteDisplay,
+          membershipDisplay: deps.membershipDisplay,
           now: deps.now,
         }),
       { connection, concurrency: M14_QUEUE_PARAMS.packetsBuild.concurrency },

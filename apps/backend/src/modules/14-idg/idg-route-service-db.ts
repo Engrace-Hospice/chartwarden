@@ -60,8 +60,13 @@ import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/t
 import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import { and, asc, desc, eq, gt, gte, inArray, lt, lte, ne, notInArray, sql } from "drizzle-orm";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "./abac-predicates";
-import { loadMinutesMemberIds, loadMinutesRenderContext } from "./minutes-render-context";
-import type { IdgMembershipDisplayPort } from "./routes/idg-enrichment";
+import {
+  type MinutesSiteNames,
+  loadMinutesMemberIds,
+  loadMinutesRenderContext,
+  patientsNeedingRelease as patientsNeedingReleaseForMeeting,
+} from "./minutes-render-context";
+import type { IdgMembershipDisplayPort, IdgSiteDisplayPort } from "./routes/idg-enrichment";
 import { mapPacketContent } from "./routes/packet-content";
 import type {
   ActionItemPatchStatus,
@@ -189,6 +194,12 @@ export function createDbIdgBackend(
    * Used ONLY to put `authorName` on the minutes re-render's addenda appendix; absent (slice/tests) => null names.
    */
   membershipDisplay?: IdgMembershipDisplayPort,
+  /**
+   * M1's org-explicit site display read (organization + location NAMES only), bound at the composition root.
+   * Used ONLY to put `meeting.organizationName` / `meeting.locationName` on the minutes render payload (the PDF
+   * header); unbound or failing => the header simply omits the names (never blocks a sign / addendum).
+   */
+  siteDisplay?: IdgSiteDisplayPort,
 ): IdgRouteService & IdgAbacResolver {
   const withOrg = <T>(orgId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) => fn(tx as DbClient));
@@ -407,24 +418,11 @@ export function createDbIdgBackend(
    * the same signal `mapPacketContent` reads). A patient with no readable packet is UNDETERMINABLE and is
    * treated as needing a release (fail-closed) — never assumed clear.
    */
-  async function patientsNeedingRelease(
+  const patientsNeedingRelease = (
     tx: DbClient,
     meetingId: string,
     patientIds: readonly string[],
-  ): Promise<Set<string>> {
-    const needs = new Set<string>(patientIds);
-    if (patientIds.length === 0) return needs;
-    const pkts = await tx
-      .select({ patientId: PKT.patientId, builtSnapshot: PKT.builtSnapshot })
-      .from(PKT)
-      .where(and(eq(PKT.idgMeetingId, meetingId), inArray(PKT.patientId, [...patientIds])));
-    for (const p of pkts) {
-      const cover = (p.builtSnapshot as { patientCover?: { activeSudFlag?: unknown } } | null)
-        ?.patientCover;
-      if (cover?.activeSudFlag === false) needs.delete(p.patientId);
-    }
-    return needs;
-  }
+  ): Promise<Set<string>> => patientsNeedingReleaseForMeeting(tx, meetingId, patientIds);
   /**
    * Author display names for the addenda appendix of a minutes re-render. Resolved BEFORE (never inside) the
    * write transaction — the M2 port opens its own tenant tx, and nesting it would re-enter the pool mid-
@@ -457,6 +455,37 @@ export function createDbIdgBackend(
       return new Map(all.map((id) => [id, byId.get(id)?.displayName ?? null]));
     } catch {
       return new Map();
+    }
+  }
+
+  /**
+   * The organization + meeting-location NAMES for the minutes PDF header, resolved BEFORE the write transaction
+   * (the M1 port opens its own tenant tx). `onlyIfAdjourned` skips the port for a live meeting (a live note
+   * emits nothing, so there is nothing to render). Degrades to null names when the port is unbound or throws.
+   */
+  async function resolveMinutesSiteNames(
+    orgId: string,
+    meetingId: string,
+    onlyIfAdjourned: boolean,
+  ): Promise<MinutesSiteNames | undefined> {
+    if (!siteDisplay) return undefined;
+    try {
+      const m = await withOrg(orgId, async (tx) => {
+        const [r] = await tx
+          .select({ locationId: MTG.locationId, status: MTG.status })
+          .from(MTG)
+          .where(eq(MTG.id, meetingId))
+          .limit(1);
+        return r ?? null;
+      });
+      if (m === null || (onlyIfAdjourned && m.status !== "adjourned")) return undefined;
+      const site = await siteDisplay.displayForSite(orgId, [m.locationId]);
+      return {
+        organizationName: site.organizationName,
+        locationName: site.locationNames.get(m.locationId) ?? null,
+      };
+    } catch {
+      return undefined;
     }
   }
 
@@ -1193,6 +1222,7 @@ export function createDbIdgBackend(
     },
     async adjournMeeting(orgId, userId, id, stepUpFresh): Promise<MeetingView> {
       const minutesMemberNames = await resolveMinutesMemberNames(orgId, id);
+      const minutesSite = await resolveMinutesSiteNames(orgId, id, false);
       return withOrg(orgId, async (tx) => {
         const m = await loadMeeting(tx, id);
         // `transitionMeeting` raises STEP_UP_REQUIRED (412) when the fresh step-up is absent (§2.2 D13).
@@ -1360,6 +1390,7 @@ export function createDbIdgBackend(
               meetingId: id,
               minutesId,
               names: minutesMemberNames,
+              site: minutesSite,
             })),
           },
         });
@@ -1518,6 +1549,7 @@ export function createDbIdgBackend(
       const addendumAuthorNames = await resolveAddendumAuthorNames(orgId, meetingId, [
         actor.membershipId,
       ]);
+      const addendumSite = await resolveMinutesSiteNames(orgId, meetingId, true);
       return withOrg(orgId, async (tx) => {
         const m = await loadMeeting(tx, meetingId);
         // live => an ordinary note; adjourned + in-window + reason => a LATE ADDENDUM (a new row — the frozen
@@ -1604,6 +1636,7 @@ export function createDbIdgBackend(
               meetingId,
               minutesId: min.id,
               names: addendumAuthorNames,
+              site: addendumSite,
             });
             await emit(tx, orgId, "m14.discipline_note.addendum_recorded", "idg_minutes", min.id, {
               minutesId: min.id,
@@ -1885,6 +1918,10 @@ export function createDbIdgBackend(
         meetingIdForNames === null
           ? new Map<string, string | null>()
           : await resolveAddendumAuthorNames(orgId, meetingIdForNames, []);
+      const amendSite =
+        meetingIdForNames === null
+          ? undefined
+          : await resolveMinutesSiteNames(orgId, meetingIdForNames, false);
       return withOrg(orgId, async (tx) => {
         const [min] = await tx
           .select({
@@ -1938,6 +1975,7 @@ export function createDbIdgBackend(
               meetingId: min.meetingId,
               minutesId,
               names: addendumAuthorNames,
+              site: amendSite,
             })),
           },
           amendmentReasonHash: createHash("sha256").update(amendmentReason, "utf8").digest("hex"),
