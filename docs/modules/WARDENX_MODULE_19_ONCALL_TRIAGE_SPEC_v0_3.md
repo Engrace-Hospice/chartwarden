@@ -904,6 +904,7 @@ Tenant-offboarding cryptographic shred (architecture §8) destroys the per-tenan
 | 11 | POST | `/api/v1/triage-calls/:id/disposition` | `triage.disposition` | (same) | dispatches per-disposition payload |
 | 12 | POST | `/api/v1/triage-calls/:id/document` | `triage.write` | (same) | invokes M8 EncounterCreator |
 | 13 | POST | `/api/v1/triage-calls/:id/abandon` | `triage.close_abandoned` | (same) | caller disconnected |
+| 13b | POST | `/api/v1/triage-calls/:id/request-summary` | `triage.request_summary` | (same) | F-217 (#248): the EXPLICIT staff action behind `m19.triage.summary_requested`; body `{recipientKind: 'caregiver' \| 'attending'}`; Idempotency-Key; AI-block; documented/closed call with a summarizable disposition only; in-agency actors only (never a vendor session) |
 | 14 | GET | `/api/v1/triage-calls/:id/transcript-decrypt` | `triage.read_transcript` | (same) | step-up; per-access M4 audit; decrypts transcript_cipher |
 | **Escalations** | | | | | |
 | 15 | POST | `/api/v1/triage-calls/:id/escalations` | `triage.escalate` | (same) | manual escalation |
@@ -1221,6 +1222,8 @@ export const M19_PERMISSION_KEYS = [
   { key: 'triage.disposition', category: 'triage', description: 'Select disposition' },
   { key: 'triage.read_transcript', category: 'triage', description: 'Decrypt and read transcript_cipher (step-up)' },
   { key: 'triage.close_abandoned', category: 'triage', description: 'Close as abandoned' },
+  // F-217: explicit caregiver/attending summary request (m19.triage.summary_requested -> M22)
+  { key: 'triage.request_summary', category: 'triage', description: 'Request the caregiver/attending summary document for a documented or closed call' },
   { key: 'triage.escalate', category: 'triage', description: 'Escalate to higher tier' },
   { key: 'triage.read_escalations', category: 'triage', description: 'Read escalation inbox' },
   { key: 'triage.escalation_ack', category: 'triage', description: 'Acknowledge an escalation' },
@@ -1237,7 +1240,7 @@ export const M19_PERMISSION_KEYS = [
 ```
 
 **Default role-template assignments** (per M3 §7 catalog):
-- **RN / NP**: `triage.open`, `triage.read`, `triage.write`, `triage.disposition`, `triage.read_transcript`, `triage.close_abandoned`, `triage.escalate`, `triage.read_escalations`, `triage.escalation_ack`, `triage.escalation_resolve`, `oncall.read_schedule`
+- **RN / NP**: `triage.open`, `triage.read`, `triage.write`, `triage.disposition`, `triage.read_transcript`, `triage.close_abandoned`, `triage.request_summary`, `triage.escalate`, `triage.read_escalations`, `triage.escalation_ack`, `triage.escalation_resolve`, `oncall.read_schedule`
 - **LPN**: subset — `triage.open`, `triage.read`, `triage.write` (cannot disposition without RN cosign — handled by ABAC at disposition route), `triage.escalate`, `oncall.read_schedule`
 - **Medical Director**: all triage + `triage.escalation_resolve` (tier 3 default recipient)
 - **MSW / Chaplain**: triage.read (within caseload) + `triage.escalation_resolve` for their tier
@@ -1419,7 +1422,7 @@ export const M19_ALERT_RULES = [
 | `m19.oncall_shift.activated` | info | scheduled → active | `{ shiftId, providerEntityId, membershipId?, externalActorId?, openedAt }` — **single canonical shift-open topic** (M19-F12: the prior duplicate `m19.on_call_shift.opened` topic is retired; M20's `m19-on-call-shift-changed.consumer` and M36's channel-rotation synchronizer both subscribe to this single topic; the payload is a superset of the old duplicate's fields) |
 | `m19.oncall_shift.completed` | info | active → completed | `{ shiftId, providerEntityId }` |
 | `m19.oncall_shift.coverage_gap` | warn | watchdog detects gap | `{ providerEntityId, gapStartsAt, gapEndsAt, discipline }` |
-| `m19.triage.summary_requested` | info | tenant policy / disposition trigger | `{ triageCallId, recipientKind: 'caregiver' \| 'attending' }` (M22 consumer) |
+| `m19.triage.summary_requested` | info | explicit staff action — `POST /api/v1/triage-calls/:id/request-summary` (F-217, #248; was "tenant policy / disposition trigger", which was never defined) | `{ orgId, providerEntityId, triageCallId, occurredAt, recipientKind: 'caregiver' \| 'attending', patientId, callOpenedAt, requestedByMembershipId, disposition, requestedDiscipline, requestedArrivalBy, proposedForDate, transportArrangedBy }` — an ALLOWLIST of enumerated facts: never free text, answers, transcript or medications (M22 consumer renders `triage_summary_caregiver` / `triage_summary_attending`) |
 
 Idempotency: every outbox emit is keyed on `(triageCallId, outboxTopic, transitionedAt)` via the M1 outbox helper.
 

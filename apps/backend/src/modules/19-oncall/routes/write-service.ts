@@ -139,6 +139,20 @@ export interface AbandonCallInput extends Versioned {
   readonly callbackAttempts: number;
 }
 
+/** F-217 — who the summary is for (the wire `recipientKind`). */
+export type TriageSummaryRecipientKind = "caregiver" | "attending";
+
+export interface RequestSummaryInput {
+  readonly recipientKind: TriageSummaryRecipientKind;
+}
+
+export interface RequestSummaryResult {
+  readonly requested: true;
+  readonly triageCallId: string;
+  readonly recipientKind: TriageSummaryRecipientKind;
+  readonly requestedAt: string;
+}
+
 export interface EscalateInput extends Versioned {
   readonly tier: TriageEscalationTier;
   readonly reason: string;
@@ -333,6 +347,13 @@ export interface M19WriteService {
     triageCallId: string,
     input: AbandonCallInput,
   ): Promise<TriageCallDetail | VendorTriageCallView>;
+
+  /** F-217 — emit `m19.triage.summary_requested` for a documented/closed call (M22 renders it). */
+  requestSummary(
+    actor: M19WriteActor,
+    triageCallId: string,
+    input: RequestSummaryInput,
+  ): Promise<RequestSummaryResult>;
 
   // §4.1 rows 15, 17-18 — escalations
   escalate(

@@ -54,6 +54,11 @@ import {
 } from "../alerts";
 import { linkTriageEncounter } from "../clinical/encounter-link";
 import {
+  SUMMARIZABLE_DISPOSITIONS,
+  SUMMARY_READY_STATES,
+  triageSummaryContent,
+} from "../clinical/triage-summary";
+import {
   DEFAULT_UNRESOLVED_ESCALATION_TIER,
   type SelectableDisposition,
 } from "../lifecycle/disposition";
@@ -126,6 +131,8 @@ import type {
   PatchVendorBindingInput,
   ProtocolQuestionInput,
   RecordAnswerInput,
+  RequestSummaryInput,
+  RequestSummaryResult,
   ResolveEscalationInput,
   SelectDispositionInput,
   WriteOutboxPort,
@@ -984,6 +991,63 @@ export function buildDrizzleM19WriteService(
         }),
       );
       return reread(actor, triageCallId);
+    },
+
+    // ── F-217 — the explicit caregiver/attending summary request ──────────────────────────────────────
+    async requestSummary(
+      actor,
+      triageCallId,
+      input: RequestSummaryInput,
+    ): Promise<RequestSummaryResult> {
+      // An in-agency disclosure: a vendor operator holds no clinical identity and is PHI-minimised (D13).
+      require_(
+        !isVendorActor(actor),
+        "TRIAGE_SUMMARY_ACTOR_FORBIDDEN",
+        "an external triage vendor session cannot request a caregiver/attending summary",
+      );
+      const at = now();
+      await withOrgContext(db, ctx(actor), async (tx) =>
+        tx.transaction(async (inner) => {
+          const call = await loadCall(inner, actor, triageCallId);
+          // The disposition must have been SELECTED, the end must be one with an outcome to tell, and a
+          // patient must be identified (the document is filed on a chart). Checked here, in the write
+          // transaction, not only at the route: the guard is the cheap early refusal, this is the authority.
+          require_(
+            SUMMARY_READY_STATES.has(call.state) &&
+              call.disposition !== null &&
+              SUMMARIZABLE_DISPOSITIONS.has(call.disposition),
+            "TRIAGE_SUMMARY_NOT_AVAILABLE",
+            "a summary can be requested only for a documented or closed call whose disposition has an outcome to report",
+          );
+          require_(
+            call.patientId !== null,
+            "TRIAGE_SUMMARY_NOT_AVAILABLE",
+            "no patient has been identified on this call, so there is no chart to file a summary against",
+          );
+          const content = triageSummaryContent(call.disposition, call.dispositionData);
+          await outbox.publish(inner, {
+            eventName: "m19.triage.summary_requested",
+            payload: {
+              ...callEventBase(call),
+              occurredAt: iso(at),
+              recipientKind: input.recipientKind,
+              patientId: call.patientId,
+              callOpenedAt: iso(call.openedAt),
+              requestedByMembershipId: actor.membershipId,
+              ...content,
+            },
+            organizationId: actor.organizationId,
+            aggregateKind: "triage_call",
+            aggregateId: call.id,
+          });
+        }),
+      );
+      return {
+        requested: true,
+        triageCallId,
+        recipientKind: input.recipientKind,
+        requestedAt: iso(at),
+      };
     },
 
     // ── §4.1 rows 15, 17-18 — escalations ─────────────────────────────────────────────────────────────

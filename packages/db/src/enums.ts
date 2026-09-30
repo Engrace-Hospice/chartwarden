@@ -2073,6 +2073,10 @@ export const documentAggregateType = pgEnum("document_aggregate_type", [
   // per-assessment HOPE timepoint PDF): `m9.assessment.summary_requested` carries no per-request id, so
   // this renders as ONE evolving per-patient document, versioned via the F-168 append mechanism.
   "assessment_summary",
+  // F-217 (#248, mig 0290) — the M19 caregiver / attending triage-call summaries behind
+  // `m19.triage.summary_requested`: one document per triage call, one aggregate type per audience.
+  "triage_summary_caregiver",
+  "triage_summary_attending",
   "other",
 ]);
 

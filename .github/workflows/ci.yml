@@ -682,6 +682,13 @@ jobs:
               name: "F-208 M9 assessment summary render",
               scripts: "test:f208:m9-assessment-summary-render:live",
             }
+          # F-217/F-218/F-219 (#248) — the three M19 triage pairs: the explicit caregiver/attending summary
+          # request -> M22 render (migration 0290), and the GIP-proposal seam pull M14 (flagged events) and
+          # M37 (intake worklist) share, on the real wardenx_app role.
+          - {
+              name: "F-217/218/219 M19 triage pairs",
+              scripts: "test:f217-f219:m19-triage-pairs:live",
+            }
           - { name: "M6 discharge cascade", scripts: "test:m6:discharge-cascade:live" }
           # F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           - { name: "M6 LOC change signed", scripts: "test:m6:loc-change-signed:live" }

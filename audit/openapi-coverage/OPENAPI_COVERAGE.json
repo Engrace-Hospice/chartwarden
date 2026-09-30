@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1341,
-    "enriched": 1336,
+    "routes": 1343,
+    "enriched": 1338,
     "deficit": 5,
-    "mutating": 759,
+    "mutating": 760,
     "mutatingNoBody": 1,
-    "gets": 549,
+    "gets": 550,
     "getsNoResponse": 8
   },
   "modules": [
@@ -181,10 +181,10 @@
     },
     {
       "module": "19-oncall",
-      "routes": 39,
-      "enriched": 39,
+      "routes": 40,
+      "enriched": 40,
       "deficit": 0,
-      "mutating": 27,
+      "mutating": 28,
       "mutatingNoBody": 0,
       "gets": 12,
       "getsNoResponse": 0
@@ -361,12 +361,12 @@
     },
     {
       "module": "37-ipu",
-      "routes": 51,
-      "enriched": 51,
+      "routes": 52,
+      "enriched": 52,
       "deficit": 0,
       "mutating": 34,
       "mutatingNoBody": 0,
-      "gets": 15,
+      "gets": 16,
       "getsNoResponse": 0
     },
     {

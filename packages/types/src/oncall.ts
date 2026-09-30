@@ -610,9 +610,19 @@ export interface M19OnCallShiftCoverageGapPayload extends M19OnCallShiftEventBas
   readonly discipline: OncallShiftDiscipline;
 }
 
-/** `m19.triage.summary_requested` → M22 renders the caregiver/attending summary document. */
+/** `m19.triage.summary_requested` → M22 renders the caregiver/attending summary document (F-217: produced
+ *  by the explicit `POST /api/v1/triage-calls/:id/request-summary` staff action). The content fields are an
+ *  ALLOWLIST of enumerated facts — never a free-text field, answer, transcript or medication. */
 export interface M19TriageSummaryRequestedPayload extends M19TriageCallEventBase {
   readonly recipientKind: "caregiver" | "attending";
+  readonly patientId: PatientId;
+  readonly callOpenedAt: IsoInstant;
+  readonly requestedByMembershipId: MembershipId;
+  readonly disposition: TriageDisposition;
+  readonly requestedDiscipline: string | null;
+  readonly requestedArrivalBy: IsoInstant | null;
+  readonly proposedForDate: IsoDate | null;
+  readonly transportArrangedBy: "family" | "ems" | "facility" | "unknown" | null;
 }
 
 /** The §4.10 topic → payload map every emitter and consumer type-checks against. */

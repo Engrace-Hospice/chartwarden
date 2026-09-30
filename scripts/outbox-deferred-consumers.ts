@@ -712,11 +712,19 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       " mechanism, which is what makes the evolving-document interpretation (vs. one-per-snapshot) safe:" +
       " repeated/successive render requests against the same aggregate correctly produce new versions" +
       " instead of silently no-opping. `m12.medication_order.draft_created_from_extraction`," +
-      " `m19.triage.summary_requested`, and `m5.patient.draft_created_from_extraction` stay deferred," +
-      " unchanged — no producer.",
+      " and `m5.patient.draft_created_from_extraction` stay deferred, unchanged — no producer." +
+      " **F-217 (#248) — `m19.triage.summary_requested` is BOUND, GONE from this group.** The user decided its" +
+      " producer is an EXPLICIT staff action (not a policy/disposition trigger): `POST" +
+      " /api/v1/triage-calls/:triageCallId/request-summary` (`requestSummary`, a new `triage.request_summary`" +
+      " permission, Idempotency-Key, the D13 AI-block, per-call ABAC), which emits the event through the real" +
+      " catalog-validating publisher with the payload FIXED to carry `recipientKind` (caregiver | attending)" +
+      " plus an allowlist of enumerated call facts — never a free-text field, answer or medication." +
+      " M22 renders it as `triage_summary_caregiver` / `triage_summary_attending` (migration 0290, two" +
+      " additive `document_aggregate_type` values; one document per call per audience, a new version per" +
+      " explicit re-request via F-168's source-event-id mechanism) with a real PDF builder" +
+      " (`render-pdf/triage-summary-doc.ts`).",
     events: [
       "m12.medication_order.draft_created_from_extraction",
-      "m19.triage.summary_requested",
       "m5.patient.draft_created_from_extraction",
     ],
   },

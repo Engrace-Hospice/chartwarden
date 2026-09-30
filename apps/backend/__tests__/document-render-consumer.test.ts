@@ -19,6 +19,7 @@ import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
+import { M19_OUTBOX_EVENTS } from "../src/modules/19-oncall/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import {
@@ -421,6 +422,43 @@ describe("GAP-023/024/038 — normalizeDocumentRequest adapts each source module
     expect(payload.patientId).toBe(PAT);
   });
 
+  // F-217 (#248) — ONE event, TWO artifacts, discriminated by `recipientKind`; the aggregate is the CALL.
+  it.each([
+    ["caregiver", "triage_summary_caregiver"],
+    ["attending", "triage_summary_attending"],
+  ])(
+    "m19.triage.summary_requested (%s) renders %s against the call",
+    (recipientKind, templateKey) => {
+      const { payload } = normalizeDocumentRequest({
+        eventType: "m19.triage.summary_requested",
+        organizationId: ORG,
+        aggregateId: DISPATCH,
+        payload: {
+          triageCallId: ORDER,
+          recipientKind,
+          patientId: PAT,
+          disposition: "caregiver_education_only",
+        },
+      });
+      expect(payload.templateKey).toBe(templateKey);
+      expect(payload.aggregateId).toBe(ORDER);
+      expect(payload.patientId).toBe(PAT);
+    },
+  );
+
+  it("throws on an m19.triage.summary_requested whose recipientKind maps to no template (never a guess)", () => {
+    for (const recipientKind of ["family", undefined, "CAREGIVER"]) {
+      expect(() =>
+        normalizeDocumentRequest({
+          eventType: "m19.triage.summary_requested",
+          organizationId: ORG,
+          aggregateId: DISPATCH,
+          payload: { triageCallId: ORDER, recipientKind, patientId: PAT },
+        }),
+      ).toThrow(/maps to no M22 template|names no template/);
+    }
+  });
+
   it("throws on an M6 request whose payload names no source row", () => {
     expect(() =>
       normalizeDocumentRequest({
@@ -572,6 +610,8 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       // request — chart-open auto-refresh or the explicit download/print action — appends a new
       // version of one evolving per-patient `assessment_summary` document.
       "m9.assessment.summary_requested",
+      // F-217 (#248) — M19's caregiver/attending triage summary (explicit staff action; per-audience template).
+      "m19.triage.summary_requested",
     ]);
   });
 
@@ -601,6 +641,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
         ...M16_OUTBOX_EVENTS,
         ...M17_OUTBOX_EVENTS,
         ...M18_OUTBOX_EVENTS,
+        ...M19_OUTBOX_EVENTS,
         ...M20_OUTBOX_EVENTS,
         ...M21_OUTBOX_EVENTS,
         ...M23_OUTBOX_EVENTS,

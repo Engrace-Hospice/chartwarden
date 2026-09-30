@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1330,
-    "coveredRoutes": 1330,
-    "directRoutesReferenced": 1271
+    "routes": 1332,
+    "coveredRoutes": 1332,
+    "directRoutesReferenced": 1273
   },
   "modules": [
     {
@@ -202,12 +202,12 @@
     },
     {
       "module": "19-oncall",
-      "routes": 39,
+      "routes": 40,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/oncall-inject.test.ts"
       ],
-      "directRoutesReferenced": 38
+      "directRoutesReferenced": 39
     },
     {
       "module": "20-field-safety",
@@ -373,12 +373,12 @@
     },
     {
       "module": "37-ipu",
-      "routes": 51,
+      "routes": 52,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/ipu-inject.test.ts"
       ],
-      "directRoutesReferenced": 51
+      "directRoutesReferenced": 52
     },
     {
       "module": "38-terminology",

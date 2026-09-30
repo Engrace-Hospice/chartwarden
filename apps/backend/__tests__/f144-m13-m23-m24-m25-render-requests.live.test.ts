@@ -64,6 +64,7 @@ import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
+import { M19_OUTBOX_EVENTS } from "../src/modules/19-oncall/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
 import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
@@ -227,6 +228,7 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
       M16_OUTBOX_EVENTS,
       M17_OUTBOX_EVENTS,
       M18_OUTBOX_EVENTS,
+      M19_OUTBOX_EVENTS,
       M20_OUTBOX_EVENTS,
       M21_OUTBOX_EVENTS,
       M22_OUTBOX_EVENTS,

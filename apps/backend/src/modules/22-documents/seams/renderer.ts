@@ -326,6 +326,20 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "clinical_record",
     defaultTitle: "Assessment Summary",
   },
+  // F-217 (#248) — M19's caregiver / attending triage-call summaries (one descriptor per audience — never a
+  // shared type, so a caregiver version and an attending version can never interleave in one chain, and so
+  // the portal/mint gates can key on the audience). `clinical_record`: the rendered summary is filed on the
+  // chart. Mig 0290 adds both `document_aggregate_type` values.
+  triage_summary_caregiver: {
+    aggregateType: "triage_summary_caregiver",
+    retentionClass: "clinical_record",
+    defaultTitle: "After-Hours Call Summary (Caregiver)",
+  },
+  triage_summary_attending: {
+    aggregateType: "triage_summary_attending",
+    retentionClass: "clinical_record",
+    defaultTitle: "After-Hours Call Summary (Attending)",
+  },
   // F-166 (#248) — M14's two IDG render requests. Both `document_aggregate_type` values have existed
   // since migration 0048 with no descriptor and no subscription — F-162's own precise finding
   // ("even a first-ever render would hit `unknown_template` today"). `clinical_record`: both are the

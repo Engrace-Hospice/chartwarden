@@ -91,7 +91,7 @@ const VENDOR_ID = "55555555-5555-4555-8555-555555555555";
 // ── §4.6 permission keys ─────────────────────────────────────────────────────────────────────────────
 
 describe("M19-T07 §4.6 permission keys", () => {
-  it("registers exactly the eighteen §4.6 keys, verbatim", () => {
+  it("registers exactly the nineteen §4.6 keys, verbatim", () => {
     expect(M19_PERMISSION_KEY_LIST).toEqual([
       "triage.open",
       "triage.read",
@@ -99,6 +99,8 @@ describe("M19-T07 §4.6 permission keys", () => {
       "triage.disposition",
       "triage.read_transcript",
       "triage.close_abandoned",
+      // F-217 — the explicit caregiver/attending summary request (`m19.triage.summary_requested`).
+      "triage.request_summary",
       "triage.escalate",
       "triage.read_escalations",
       "triage.escalation_ack",
@@ -149,6 +151,8 @@ describe("M19-T07 §4.6 permission keys", () => {
 
   it("scopes an external vendor session to §6's five keys — never the transcript or the catalog", () => {
     expect(M19_VENDOR_SESSION_PERMISSION_KEYS).not.toContain("triage.read_transcript");
+    // F-217 — the caregiver/attending summary is an in-agency disclosure, never a vendor action.
+    expect(M19_VENDOR_SESSION_PERMISSION_KEYS).not.toContain("triage.request_summary");
     expect(M19_VENDOR_SESSION_PERMISSION_KEYS).not.toContain("triage.admin_protocol");
     expect(M19_VENDOR_SESSION_PERMISSION_KEYS).not.toContain("oncall.admin_policy");
     expect(M19_VENDOR_SESSION_PERMISSION_KEYS).toContain("triage.escalate");

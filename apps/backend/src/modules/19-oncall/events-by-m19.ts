@@ -20,12 +20,11 @@
 // coverage_gap`'s schema mirrors `consumers/inbound-trigger.ts`'s `TriggerCoverageGap`, and at the time
 // nothing published it. `consumers/bindings.ts` (F-043/#103) now does — the D10 `no_coverage` outcome
 // publishes it INSTEAD of a call, since `triage_call.on_call_shift_id` is NOT NULL and a thrown DLQ entry
-// would park a patient-welfare check where no clinician would see it. `m19.triage.summary_requested`
-// still has no producer at all: reserved for the M22 caregiver/attending PDF-summary render request this
-// module's own spec names (F-142/#248 corrected the declared consumer from m32 to m22 — a prior
-// documentation error), its schema is the same conservative call-scoped base every other
-// `m19.triage_call.*` event carries — a future implementer may need to widen it, but a closed,
-// too-narrow schema here is strictly safer than an unregistered event name.
+// would park a patient-welfare check where no clinician would see it. `m19.triage.summary_requested` is
+// produced by an EXPLICIT staff action since F-217 (#248): `POST /api/v1/triage-calls/:id/request-summary`
+// (`triage.request_summary`), whose payload carries the `recipientKind` (caregiver | attending) the M22
+// render needs plus an allowlist of enumerated call facts — M22 renders it as `triage_summary_caregiver` /
+// `triage_summary_attending` (F-99/F-100/F-208 render-request pattern).
 import { Type } from "@sinclair/typebox";
 import type { ModuleEventContribution } from "@wardenx/types";
 
@@ -268,8 +267,19 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m19.triage.summary_requested",
     moduleOwner: "m19",
     description:
-      "A triage call generated a patient-facing summary (caregiver/attending instructions); M22 renders the PDF, M19 has no PDF code. No producer exists yet. Schema kept to the conservative call-scoped base shared by every other `m19.triage_call.*` event.",
-    payloadSchema: Type.Object(callEventBase),
+      "A staff member explicitly requested a caregiver/attending summary of a documented or closed triage call (`POST /api/v1/triage-calls/:id/request-summary`, F-217); M22 renders the PDF, M19 has no PDF code. The payload is an ALLOWLIST of enumerated facts (disposition, discipline token, arrival instants/dates, transport enum) — never any free-text field, answer, transcript or medication (see `clinical/triage-summary.ts`).",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      recipientKind: Type.Union([Type.Literal("caregiver"), Type.Literal("attending")]),
+      patientId: id,
+      callOpenedAt: isoInstant,
+      requestedByMembershipId: id,
+      disposition: id,
+      requestedDiscipline: nullableStr,
+      requestedArrivalBy: nullableStr,
+      proposedForDate: nullableStr,
+      transportArrangedBy: nullableStr,
+    }),
     // F-142 (#248) — corrected m32 to m22: this file's own prior comment ("reserved for an M32 AI
     // call-summary request") was a documentation error, contradicted three separate ways by this
     // module's own locked spec — the §"Consumed by" table (module 22: "M19 emits

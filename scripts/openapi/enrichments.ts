@@ -232,6 +232,8 @@ import {
   PortalRecentQuery as M19PortalRecentQuery,
   ProtocolQuestionBody as M19ProtocolQuestionBody,
   RecordAnswerBody as M19RecordAnswerBody,
+  RequestSummaryBody as M19RequestSummaryBody,
+  RequestSummaryResponse as M19RequestSummaryResponse,
   ResolveEscalationBody as M19ResolveEscalationBody,
   SelectDispositionBody as M19SelectDispositionBody,
   ShiftTransitionBody as M19ShiftTransitionBody,
@@ -6254,6 +6256,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "The caller disconnected. A mandatory escalation still blocks: 'the caller hung up' is not an answer to 'did a human respond to the suicidal-ideation page?' (§4.1 #13)",
     body: M19AbandonCallBody,
     response: M19TriageCallResponse,
+  },
+  "POST /api/v1/triage-calls/:triageCallId/request-summary": {
+    summary:
+      "F-217 explicit staff action — request the caregiver or attending summary document for a documented/closed call (emits m19.triage.summary_requested; M22 renders triage_summary_caregiver / triage_summary_attending)",
+    body: M19RequestSummaryBody,
+    response: M19RequestSummaryResponse,
   },
   "GET /api/v1/triage-calls/:triageCallId/transcript-decrypt": {
     summary:

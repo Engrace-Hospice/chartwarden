@@ -411,6 +411,23 @@ export const AbandonCallBody = Type.Object(
   { additionalProperties: false },
 );
 
+/** F-217 — request the caregiver/attending summary document for a documented/closed call. `recipientKind`
+ *  is the ONLY input: the content is assembled server-side from the call's own enumerated disposition. */
+export const RequestSummaryBody = Type.Object(
+  {
+    recipientKind: Type.Union([Type.Literal("caregiver"), Type.Literal("attending")]),
+  },
+  { additionalProperties: false },
+);
+
+/** F-217 — the acknowledgement: the request was emitted; M22 renders the document asynchronously. */
+export const RequestSummaryResponse = Type.Object({
+  requested: Type.Literal(true),
+  triageCallId: Type.String(),
+  recipientKind: Type.Union([Type.Literal("caregiver"), Type.Literal("attending")]),
+  requestedAt: Type.String(),
+});
+
 // ── §4.1 rows 15-18 — escalations ───────────────────────────────────────────────────────────────────
 
 /** §4.2's `EscalateRequest`. Recipient coherence (§3.3's CHECK) is re-asserted in the write service. */

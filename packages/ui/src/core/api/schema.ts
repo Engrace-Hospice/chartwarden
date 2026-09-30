@@ -10504,6 +10504,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/ipu-intake/gip-proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** F-219 intake worklist — pending M19 GIP admission PROPOSALS (a pull; never an ipu_admission row) */
+        get: operations["getApiV1IpuintakeGipproposals"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/ipu-meals": {
         parameters: {
             query?: never;
@@ -19018,6 +19035,23 @@ export interface paths {
         put?: never;
         /** Resolve the caller to a served person — patient AND admission together, because M8's encounter creator requires both NOT NULL (§4.1 #4) */
         post: operations["postApiV1TriagecallsByTriageCallIdIdentifypatient"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/triage-calls/{triageCallId}/request-summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** F-217 explicit staff action — request the caregiver or attending summary document for a documented/closed call (emits m19.triage.summary_requested; M22 renders triage_summary_caregiver / triage_summary_attending) */
+        post: operations["postApiV1TriagecallsByTriageCallIdRequestsummary"];
         delete?: never;
         options?: never;
         head?: never;
@@ -48977,6 +49011,39 @@ export interface operations {
             "5XX": components["responses"]["Error"];
         };
     };
+    getApiV1IpuintakeGipproposals: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            triageCallId: string;
+                            patientId: string;
+                            admissionId: string | null;
+                            providerEntityId: string;
+                            locationId: string | null;
+                            proposedAt: string;
+                            preferredFacility: string | null;
+                            callState: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
     postApiV1Ipumeals: {
         parameters: {
             query?: never;
@@ -74612,6 +74679,42 @@ export interface operations {
                         nextQuestionId: string | null;
                         permittedDispositions: ("caregiver_education_only" | "prn_intervention_authorized" | "verbal_order_recorded" | "visit_dispatched_now" | "visit_scheduled_first_light" | "gip_admission_proposed" | "ed_transfer_acknowledged" | "pronouncement_scheduled")[];
                         version: number;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1TriagecallsByTriageCallIdRequestsummary: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                triageCallId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    recipientKind: "caregiver" | "attending";
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @constant */
+                        requested: true;
+                        triageCallId: string;
+                        recipientKind: "caregiver" | "attending";
+                        requestedAt: string;
                     };
                 };
             };

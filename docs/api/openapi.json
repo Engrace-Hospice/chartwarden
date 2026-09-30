@@ -111511,6 +111511,107 @@
         }
       }
     },
+    "/api/v1/ipu-intake/gip-proposals": {
+      "get": {
+        "operationId": "getApiV1IpuintakeGipproposals",
+        "tags": [
+          "37-ipu"
+        ],
+        "summary": "F-219 intake worklist — pending M19 GIP admission PROPOSALS (a pull; never an ipu_admission row)",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "items"
+                  ],
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "triageCallId",
+                          "patientId",
+                          "admissionId",
+                          "providerEntityId",
+                          "locationId",
+                          "proposedAt",
+                          "preferredFacility",
+                          "callState"
+                        ],
+                        "properties": {
+                          "triageCallId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "patientId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "admissionId": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "providerEntityId": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
+                          "locationId": {
+                            "anyOf": [
+                              {
+                                "minLength": 1,
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "proposedAt": {
+                            "type": "string"
+                          },
+                          "preferredFacility": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "callState": {
+                            "type": "string"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
     "/api/v1/ipu-meals": {
       "post": {
         "operationId": "postApiV1Ipumeals",
@@ -222310,6 +222411,101 @@
                   "callerCaregiverId": {
                     "format": "uuid",
                     "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/triage-calls/{triageCallId}/request-summary": {
+      "post": {
+        "operationId": "postApiV1TriagecallsByTriageCallIdRequestsummary",
+        "tags": [
+          "19-oncall"
+        ],
+        "summary": "F-217 explicit staff action — request the caregiver or attending summary document for a documented/closed call (emits m19.triage.summary_requested; M22 renders triage_summary_caregiver / triage_summary_attending)",
+        "parameters": [
+          {
+            "name": "triageCallId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "requested",
+                    "triageCallId",
+                    "recipientKind",
+                    "requestedAt"
+                  ],
+                  "properties": {
+                    "requested": {
+                      "const": true,
+                      "type": "boolean"
+                    },
+                    "triageCallId": {
+                      "type": "string"
+                    },
+                    "recipientKind": {
+                      "anyOf": [
+                        {
+                          "const": "caregiver",
+                          "type": "string"
+                        },
+                        {
+                          "const": "attending",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "type": "object",
+                "required": [
+                  "recipientKind"
+                ],
+                "properties": {
+                  "recipientKind": {
+                    "anyOf": [
+                      {
+                        "const": "caregiver",
+                        "type": "string"
+                      },
+                      {
+                        "const": "attending",
+                        "type": "string"
+                      }
+                    ]
                   }
                 }
               }
