@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   build-and-verify:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, hostinger]
     # `tsc -b` over the full project graph outgrew Node's default heap on the runner (~2 GB, sized
     # from runner RAM): it died with "Reached heap limit … JavaScript heap out of memory" (SIGABRT,
     # exit 134) before arch:fitness, the unit suite or the dependency audit ever ran.
@@ -96,7 +96,7 @@ jobs:
 
   rls-live:
     name: RLS isolation — ${{ matrix.suite.name }} (live Postgres)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, hostinger]
     strategy:
       fail-fast: false
       matrix:
@@ -163,6 +163,7 @@ jobs:
       # M26 and M30 suites; at 4096 all fifteen pass.
       - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
         run: |
+          docker rm -f wardenx-ci-pg >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
             -p 5432:5432 pgvector/pgvector:pg16 \
@@ -174,6 +175,12 @@ jobs:
           echo "Postgres did not become ready" >&2; docker logs wardenx-ci-pg; exit 1
       - name: ${{ matrix.suite.name }} — cross-tenant isolation proof (real Postgres + real RLS)
         run: bun run ${{ matrix.suite.script }}
+      # The runner host is persistent (hosted runners are wiped per job): a container left behind keeps
+      # its fixed name and published port and would fail the NEXT job on this host.
+      - name: Remove CI containers and background processes
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg >/dev/null 2>&1 || true
 
   lifecycle-live:
     # GAP-086: the 25 per-module read/write LIFECYCLE suites had scripts in package.json and no runner
@@ -190,7 +197,7 @@ jobs:
     # schema and replays the migrations itself, so they compose sequentially, and 13 runners instead of 25
     # halves the per-job migration replay for identical coverage.
     name: Lifecycle — ${{ matrix.suite.name }} (live Postgres)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, hostinger]
     strategy:
       fail-fast: false
       matrix:
@@ -810,6 +817,7 @@ jobs:
       # note): these suites replay the full migration set, partitioned parents included, in one transaction.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
+          docker rm -f wardenx-ci-pg-lifecycle >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-pg-lifecycle \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
             -p 5432:5432 pgvector/pgvector:pg16 \
@@ -831,6 +839,12 @@ jobs:
             bun run "$script"
             echo "::endgroup::"
           done
+      # The runner host is persistent (hosted runners are wiped per job): a container left behind keeps
+      # its fixed name and published port and would fail the NEXT job on this host.
+      - name: Remove CI containers and background processes
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg-lifecycle >/dev/null 2>&1 || true
 
   migration-gate:
     # TASK-040E (OPS-016): scripts/db/migrate.ts is the real production migration path. This job
@@ -838,7 +852,7 @@ jobs:
     # and the failure path (a deliberately corrupted checksum on an already-applied file fails the
     # pipeline under --strict, not just a warning).
     name: Production migration path (scripts/db/migrate.ts)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, hostinger]
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_migration_gate
@@ -855,6 +869,7 @@ jobs:
       # max_locks_per_transaction=64.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
+          docker rm -f wardenx-ci-pg-migrate >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-pg-migrate \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_migration_gate \
             -p 5432:5432 pgvector/pgvector:pg16 \
@@ -889,10 +904,16 @@ jobs:
             exit 1
           fi
           echo "✓ --strict correctly failed the pipeline on checksum drift"
+      # The runner host is persistent (hosted runners are wiped per job): a container left behind keeps
+      # its fixed name and published port and would fail the NEXT job on this host.
+      - name: Remove CI containers and background processes
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg-migrate >/dev/null 2>&1 || true
 
   auth-live:
     name: Better Auth live (Postgres) — schema reconciliation + sign-in (AUTH-T06)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, hostinger]
     env:
       WARDENX_TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_test
       BETTER_AUTH_SECRET: ci-test-secret-at-least-32-characters-long
@@ -911,6 +932,7 @@ jobs:
       # migration set, which exhausts the default max_locks_per_transaction=64. See the rls-live note.
       - name: Start Postgres (pgvector image — M38 ships a `vector` column; raised lock limit)
         run: |
+          docker rm -f wardenx-ci-pg >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-pg \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_test \
             -p 5432:5432 pgvector/pgvector:pg16 \
@@ -929,6 +951,12 @@ jobs:
         run: bun run test:auth:live
       - name: device_attestation RLS survives a reused pooled connection (empty-GUC regression)
         run: bun run test:device-attestation-guc:live
+      # The runner host is persistent (hosted runners are wiped per job): a container left behind keeps
+      # its fixed name and published port and would fail the NEXT job on this host.
+      - name: Remove CI containers and background processes
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg >/dev/null 2>&1 || true
 
   outbox-boot:
     # F-020 (issue #49): the backend refused to START in the documented production configuration —
@@ -941,7 +969,7 @@ jobs:
     # covers the rest of the branch — the platform pool, the audited active-org enumerator, the relay
     # start — by doing the one thing a gate cannot do: running the process the way production runs it.
     name: Production-configuration boot (DATABASE_PLATFORM_URL + outbox relay)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, hostinger]
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
       DATABASE_ADMIN_URL: postgresql://postgres:postgres@localhost:5432/wardenx_boot
@@ -962,6 +990,7 @@ jobs:
       # Same pgvector image + raised lock limit as rls-live: booting applies the full migration set.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
+          docker rm -f wardenx-ci-pg-boot >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-pg-boot \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_boot \
             -p 5432:5432 pgvector/pgvector:pg16 \
@@ -979,6 +1008,12 @@ jobs:
         run: bun run db:provision-roles
       - name: Boot with the platform credential and prove the relay starts
         run: bun run check:boot:platform
+      # The runner host is persistent (hosted runners are wiped per job): a container left behind keeps
+      # its fixed name and published port and would fail the NEXT job on this host.
+      - name: Remove CI containers and background processes
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg-boot >/dev/null 2>&1 || true
 
   # #41 — the ONLY live suite gated on WARDENX_TEST_REDIS_URL rather than WARDENX_TEST_DATABASE_URL,
   # which is a second reason it went unnoticed: it needs no Postgres at all, so it fitted none of the
@@ -988,7 +1023,7 @@ jobs:
   # jobs this needs no command arguments and replays no migrations.
   rate-limit-store-live:
     name: Rate-limit store live (Valkey) — cluster-wide counter (WX-PR-017)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, hostinger]
     services:
       valkey:
         image: valkey/valkey:8-alpine
@@ -1030,7 +1065,7 @@ jobs:
     # seed chain runs here through the very `db:seed:all` script `db:reset` composes, so the two cannot
     # drift apart.
     name: Critical-workflow E2E + accessibility (Playwright, full stack)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, hostinger]
     services:
       # `db:seed:scenario-billing` drives M27 `refresh-inputs`, which enqueues a trial-balance pull —
       # with no queue connection that port is unbound and the step fails (docs/DEVELOPMENT.md). A
@@ -1116,6 +1151,7 @@ jobs:
       # job's note): booting replays the full migration set, ~47 partitioned parents included.
       - name: Start Postgres (pgvector image; raised lock limit)
         run: |
+          docker rm -f wardenx-ci-pg-e2e >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-pg-e2e \
             -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=wardenx_e2e \
             -p 5432:5432 pgvector/pgvector:pg16 \
@@ -1131,6 +1167,7 @@ jobs:
       # (`docker pull` is denied).
       - name: Start MinIO (document storage)
         run: |
+          docker rm -f wardenx-ci-minio-e2e >/dev/null 2>&1 || true
           docker run -d --name wardenx-ci-minio-e2e \
             -e MINIO_ROOT_USER=wardenx -e MINIO_ROOT_PASSWORD=wardenx-minio-ci-secret \
             -p 9000:9000 cgr.dev/chainguard/minio:latest server /data
@@ -1139,8 +1176,10 @@ jobs:
             sleep 1
           done
           echo "MinIO did not become ready" >&2; docker logs wardenx-ci-minio-e2e; exit 1
+      # No `--with-deps`: that runs apt and the persistent runner user has no sudo. The system libraries
+      # are installed once on the host (`playwright install-deps chromium`, run as root).
       - name: Install the Chromium build this Playwright version pins
-        run: bunx playwright install --with-deps chromium
+        run: bunx playwright install chromium
       - name: Migrate
         run: bun run db:migrate
       # A REAL provisioned role (carrier + BYPASSRLS), not a superuser alias — same as `outbox-boot`.
@@ -1199,3 +1238,13 @@ jobs:
             e2e/test-results/
             ${{ runner.temp }}/e2e-logs/
           retention-days: 7
+      # The runner host is persistent (hosted runners are wiped per job): a container left behind keeps
+      # its fixed name and published port and would fail the NEXT job on this host.
+      - name: Remove CI containers and background processes
+        if: always()
+        run: |
+          docker rm -f wardenx-ci-pg-e2e >/dev/null 2>&1 || true
+          docker rm -f wardenx-ci-minio-e2e >/dev/null 2>&1 || true
+          # backgrounded by the boot steps above; the runner host is persistent, so stop them explicitly
+          pkill -u "$(id -u)" -f 'bun src/index.ts' >/dev/null 2>&1 || true
+          pkill -u "$(id -u)" -f 'vite' >/dev/null 2>&1 || true
