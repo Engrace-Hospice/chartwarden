@@ -1,8 +1,10 @@
 import {
+  ChcHoursError,
   type HippsCalculationInput,
   type HippsRateTable,
   type HippsSegmentResult,
   applyWageIndexFactor,
+  applyWageIndexToLaborShare,
   calculateHipps,
   deriveHippsCode,
   levelOfCareToCode,
@@ -22,9 +24,14 @@ import { describe, expect, it } from "vitest";
 const RATE_TABLE: HippsRateTable = {
   rhcDays1to60PerDiemCents: 20_000,
   rhcDays61PlusPerDiemCents: 16_000,
-  chcPerDiemCents: 160_000,
+  chcHourlyRateCents: 6_667, // ~ $160,000-cents / 24h; CHC is priced HOURLY x documented hours (F-211)
   ircPerDiemCents: 50_000,
   gipPerDiemCents: 100_000,
+  // F-211 labor shares (representative; the real ones are the CMS-published per-LOC shares, tenant-entered).
+  rhcLaborShare: "0.6600",
+  chcLaborShare: "0.6800",
+  ircLaborShare: "0.5400",
+  gipLaborShare: "0.6400",
 };
 
 const ADMISSION = "2026-01-01"; // day-of-stay anchor; day 1 = 2026-01-01.
@@ -118,22 +125,150 @@ describe("calculateHipps — ADR-0001 RHC day-60 tier boundary (day-of-stay from
 });
 
 describe("calculateHipps — non-RHC levels of care (CHC / IRC / GIP)", () => {
-  it("prices a CHC-only claim at the CHC per-diem with bucket n/a", () => {
+  it("prices a CHC-only claim HOURLY (rate x documented hours) with bucket n/a, one segment per day", () => {
     const r = calculateHipps(
       input({
         claimServiceFrom: "2026-03-01",
         claimServiceTo: "2026-03-03",
         levelOfCarePeriods: [
-          { levelOfCare: "continuous_home_care", from: "2026-03-01", to: "2026-03-03" },
+          {
+            levelOfCare: "continuous_home_care",
+            from: "2026-03-01",
+            to: "2026-03-03",
+            chcDocumentedHours: 24,
+          },
         ],
       }),
     );
-    expect(r.segments).toHaveLength(1);
+    // CHC never coalesces: each day's charge depends on that day's hours.
+    expect(r.segments).toHaveLength(3);
     expect(r.segments[0]!.levelOfCareCode).toBe("CHC");
     expect(r.segments[0]!.rhcDayBucket).toBe("n/a");
-    expect(r.totalCents).toBe(3 * 160_000);
+    expect(r.segments[0]!.days).toBe(1);
+    expect(r.segments[0]!.chcHours).toBe(24);
+    expect(r.segments[0]!.chcAdjustedHourlyRateCents).toBe(6_667); // WI 1.0000
+    // 24 h x 6667 = 160,008 per day (NOT a per-diem multiple of 160,000).
+    expect(r.segments[0]!.ratePerDiemCents).toBe(160_008);
+    expect(r.totalCents).toBe(3 * 160_008);
     expect(r.rhcDays1to60).toBe(0);
     expect(r.rhcDays61Plus).toBe(0);
+  });
+
+  it("CHC day = the labor-share-adjusted HOURLY rate x hours (hand-computed, WI 0.9000, labor 0.68)", () => {
+    // adjusted hourly = 6667 x (0.68 x 0.9 + 0.32) = 6667 x 0.932 = 6213.644 -> 6214 (half-up).
+    const r = calculateHipps(
+      input({
+        claimServiceFrom: "2026-03-01",
+        claimServiceTo: "2026-03-01",
+        wageIndexFactorDecimal: "0.9000",
+        levelOfCarePeriods: [
+          {
+            levelOfCare: "continuous_home_care",
+            from: "2026-03-01",
+            to: "2026-03-01",
+            chcDocumentedHours: 10,
+          },
+        ],
+      }),
+    );
+    expect(r.segments[0]!.chcAdjustedHourlyRateCents).toBe(6_214);
+    expect(r.segments[0]!.ratePerDiemCents).toBe(62_140); // 10 h x 6214
+    expect(r.segments[0]!.baseRatePerDiemCents).toBe(66_670); // 10 h x 6667, pre-wage-index
+    expect(r.totalCents).toBe(62_140);
+  });
+
+  it("CHC quarter-hour hours round half-up on the day's charge (8.25 h x 6214 = 51,265.5 -> 51,266)", () => {
+    const r = calculateHipps(
+      input({
+        claimServiceFrom: "2026-03-01",
+        claimServiceTo: "2026-03-01",
+        wageIndexFactorDecimal: "0.9000",
+        levelOfCarePeriods: [
+          {
+            levelOfCare: "continuous_home_care",
+            from: "2026-03-01",
+            to: "2026-03-01",
+            chcDocumentedHours: 8.25,
+          },
+        ],
+      }),
+    );
+    expect(r.totalCents).toBe(51_266);
+  });
+
+  it("accepts exactly the 8-hour CMS minimum and exactly 24 hours", () => {
+    const at = (hours: number) =>
+      calculateHipps(
+        input({
+          claimServiceFrom: "2026-03-01",
+          claimServiceTo: "2026-03-01",
+          levelOfCarePeriods: [
+            {
+              levelOfCare: "continuous_home_care",
+              from: "2026-03-01",
+              to: "2026-03-01",
+              chcDocumentedHours: hours,
+            },
+          ],
+        }),
+      ).totalCents;
+    expect(at(8)).toBe(8 * 6_667);
+    expect(at(24)).toBe(24 * 6_667);
+  });
+
+  it("fails closed (ChcHoursError) on an undocumented, sub-8h, >24h or non-quarter-hour CHC day", () => {
+    const run = (hours: number | null | undefined) =>
+      calculateHipps(
+        input({
+          claimServiceFrom: "2026-03-01",
+          claimServiceTo: "2026-03-01",
+          levelOfCarePeriods: [
+            {
+              levelOfCare: "continuous_home_care",
+              from: "2026-03-01",
+              to: "2026-03-01",
+              chcDocumentedHours: hours,
+            },
+          ],
+        }),
+      );
+    expect(() => run(null)).toThrow(ChcHoursError);
+    expect(() => run(undefined)).toThrow(ChcHoursError);
+    expect(() => run(7.75)).toThrow(/below the 8-hour/);
+    expect(() => run(24.25)).toThrow(/above the 24-hour/);
+    expect(() => run(9.1)).toThrow(/15-minute units/);
+    try {
+      run(null);
+    } catch (e) {
+      expect((e as ChcHoursError).reason).toBe("undocumented");
+      expect((e as ChcHoursError).dates).toEqual(["2026-03-01"]);
+    }
+  });
+
+  it("a mixed RHC / CHC / RHC claim keeps RHC coalesced and splits CHC per day", () => {
+    const r = calculateHipps(
+      input({
+        claimServiceFrom: "2026-02-10",
+        claimServiceTo: "2026-02-14",
+        levelOfCarePeriods: [
+          { levelOfCare: "routine_home_care", from: "2026-02-10", to: "2026-02-10" },
+          {
+            levelOfCare: "continuous_home_care",
+            from: "2026-02-11",
+            to: "2026-02-12",
+            chcDocumentedHours: 12,
+          },
+          { levelOfCare: "routine_home_care", from: "2026-02-13", to: "2026-02-14" },
+        ],
+      }),
+    );
+    expect(r.segments.map((s) => `${s.levelOfCareCode}:${s.days}`)).toEqual([
+      "RHC:1",
+      "CHC:1",
+      "CHC:1",
+      "RHC:2",
+    ]);
+    expect(r.totalCents).toBe(20_000 + 2 * 12 * 6_667 + 2 * 20_000);
   });
 
   it("prices an IRC-only claim at the IRC per-diem", () => {
@@ -276,19 +411,54 @@ describe("calculateHipps — wage index application + snapshot (D7 / D12)", () =
     expect(r.segments[0]!.ratePerDiemCents).toBe(20_000);
   });
 
-  it("scales the per-diem by a sub-1 wage index, matching the money primitive exactly", () => {
-    const factor = "0.9234";
-    const r = calculateHipps(input({ wageIndexFactorDecimal: factor }));
-    const expectedRate = applyWageIndexFactor(20_000, factor);
-    expect(r.segments[0]!.ratePerDiemCents).toBe(expectedRate);
+  it("adjusts ONLY the labor share (F-211): RHC 20,000 x (0.66 x 0.9234 + 0.34) = 18,988.88 -> 18,989", () => {
+    // Hand-computed: 0.66 x 0.9234 = 0.609444; + 0.34 = 0.949444; x 20,000 = 18,988.88.
+    const r = calculateHipps(input({ wageIndexFactorDecimal: "0.9234" }));
+    expect(r.segments[0]!.ratePerDiemCents).toBe(18_989);
     expect(r.segments[0]!.baseRatePerDiemCents).toBe(20_000); // base is pre-wage-index
-    expect(r.totalCents).toBe(expectedRate * 7);
+    expect(r.totalCents).toBe(7 * 18_989);
+    // The pre-fix whole-rate multiply would have been 20,000 x 0.9234 = 18,468 - a $5.21/day underpayment.
+    expect(r.segments[0]!.ratePerDiemCents).not.toBe(applyWageIndexFactor(20_000, "0.9234"));
+    expect(applyWageIndexFactor(20_000, "0.9234")).toBe(18_468);
   });
 
-  it("scales the per-diem by an above-1 wage index", () => {
-    const factor = "1.1500";
-    const r = calculateHipps(input({ wageIndexFactorDecimal: factor }));
-    expect(r.segments[0]!.ratePerDiemCents).toBe(applyWageIndexFactor(20_000, factor));
+  it("adjusts only the labor share for an above-1 wage index: RHC 20,000 x (0.66 x 1.15 + 0.34) = 21,980", () => {
+    const r = calculateHipps(input({ wageIndexFactorDecimal: "1.1500" }));
+    expect(r.segments[0]!.ratePerDiemCents).toBe(21_980);
+  });
+
+  it("uses each level of care's OWN labor share (IRC 0.54, GIP 0.64), hand-computed", () => {
+    // IRC 50,000 x (0.54 x 1.10 + 0.46) = 50,000 x 1.054 = 52,700.
+    const irc = calculateHipps(
+      input({
+        claimServiceFrom: "2026-03-01",
+        claimServiceTo: "2026-03-01",
+        wageIndexFactorDecimal: "1.1000",
+        levelOfCarePeriods: [
+          { levelOfCare: "inpatient_respite_care", from: "2026-03-01", to: "2026-03-01" },
+        ],
+      }),
+    );
+    expect(irc.totalCents).toBe(52_700);
+    // GIP 100,000 x (0.64 x 0.90 + 0.36) = 100,000 x 0.936 = 93,600.
+    const gip = calculateHipps(
+      input({
+        claimServiceFrom: "2026-03-01",
+        claimServiceTo: "2026-03-01",
+        wageIndexFactorDecimal: "0.9000",
+        levelOfCarePeriods: [
+          { levelOfCare: "general_inpatient_care", from: "2026-03-01", to: "2026-03-01" },
+        ],
+      }),
+    );
+    expect(gip.totalCents).toBe(93_600);
+  });
+
+  it("a labor share of 1 reduces to the whole-rate multiply, and 0 ignores the wage index entirely", () => {
+    expect(applyWageIndexToLaborShare(20_000, "0.9234", "1")).toBe(applyWageIndexFactor(20_000, "0.9234"));
+    expect(applyWageIndexToLaborShare(20_000, "0.9234", "0")).toBe(20_000);
+    expect(() => applyWageIndexToLaborShare(20_000, "0.9234", "1.2")).toThrow(RangeError);
+    expect(() => applyWageIndexToLaborShare(20_000, "-1", "0.6")).toThrow(RangeError);
   });
 
   it("snapshots the wage index ccn / fiscal year / factor into the result", () => {
@@ -336,6 +506,8 @@ describe("deriveHippsCode — placeholder encoding (TODO(CMS-fixture))", () => {
       baseRatePerDiemCents: 20_000,
       ratePerDiemCents: 20_000,
       rhcDayBucket: "days_1_60",
+      chcHours: null,
+      chcAdjustedHourlyRateCents: null,
       hippsCharPosition: 1,
       segmentTotalCents: 20_000,
       ...over,

@@ -10,7 +10,8 @@
 // The calculator is purely encounter-derived (D6) — it does NOT consult M9/M10/M14. The CHC hourly rate
 // is the wage-index-ADJUSTED published CMS amount and is INJECTED by the caller (not fabricated here).
 // The 4-hour/day cap is the documented CMS SIA rule. The CHC hourly amount per FY is TENANT-ENTERED (F-210,
-// `hospice_rate_table.chc_hourly_rate_cents`), wage-adjusted at the service layer, and passed in as `chcHourlyRateCents`.
+// `hospice_rate_table.chc_hourly_rate_cents`), wage-adjusted at the service layer on the CHC LABOR SHARE only (F-211), and
+// passed in as `chcHourlyRateCents`.
 //
 // PURE DOMAIN: no Fastify, no Drizzle/DB, no BullMQ, no `@wardenx/db`, no `getSeam`, no clock. No PHI (D13).
 import type { IsoDate } from "../contracts";

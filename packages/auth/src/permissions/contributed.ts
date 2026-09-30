@@ -3027,6 +3027,19 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_billing_scope",
   },
+  // --- tenant-entered wage index (F-211) ---
+  "billing.wage_index.read": {
+    resource: "billing_wage_index",
+    action: "read",
+    category: "billing",
+    abac: "inOrg",
+  },
+  "billing.wage_index.admin": {
+    resource: "billing_wage_index",
+    action: "admin",
+    category: "billing",
+    abac: "inOrg",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of the M23 contributed permission keys (twenty-eight + the two F-210 rate-table keys). */

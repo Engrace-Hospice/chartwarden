@@ -43,9 +43,14 @@ const RATE_TABLE = {
   // TODO(CMS-fixture): the published FY per-diem amounts replace these representative values.
   rhcDays1to60PerDiemCents: 20_000,
   rhcDays61PlusPerDiemCents: 16_000,
-  chcPerDiemCents: 150_000,
+  chcHourlyRateCents: 6_250,
   ircPerDiemCents: 50_000,
   gipPerDiemCents: 100_000,
+  // F-211 labor shares (wage index is 1.0000 here, so they do not move any price in this suite).
+  rhcLaborShare: "0.6600",
+  chcLaborShare: "0.6600",
+  ircLaborShare: "0.5400",
+  gipLaborShare: "0.6400",
 } as const;
 
 /** One trivial always-pass rule so the initial validation run executes deterministically (all_pass). */

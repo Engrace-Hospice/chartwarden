@@ -346,7 +346,8 @@ jobs:
               scripts:
                 "test:m23:remittance-feedback:live test:m23:billed-days-seam:live
                 test:m23:claim-submit-worker:live test:m23:claim-match-seam:live
-                test:m23:claim-assembly-seams:live test:m23:rate-table:live",
+                test:m23:claim-assembly-seams:live test:m23:rate-table:live
+                test:m23:wage-index:live",
             }
           - {
               name: "M24 Billing-Medicaid",

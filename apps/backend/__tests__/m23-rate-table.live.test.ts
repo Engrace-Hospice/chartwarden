@@ -73,6 +73,10 @@ function rates(over: Partial<CreateRateTableBody> = {}): CreateRateTableBody {
     ircPerDiemCents: 49_000,
     gipPerDiemCents: 118_000,
     chcHourlyRateCents: 4_400,
+    laborShareRhc: "0.6600",
+    laborShareChc: "0.6800",
+    laborShareIrc: "0.5400",
+    laborShareGip: "0.6400",
     ...over,
   };
 }
@@ -458,25 +462,74 @@ describe.skipIf(!DB_URL)("M23 hospice rate table — LIVE Postgres (F-210)", () 
       serviceFrom,
     });
 
-    it("hippsRateTable returns exactly the five per-diems for the service date", async () => {
+    it("hippsRateTable returns the per-diems, the CHC HOURLY rate and the four labor shares for the service date", async () => {
       await reset();
       await svc().createRateTable(actorA, rates());
       const adapter = buildM23ReferenceDataAdapter(handle.db);
       expect(await adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-02-14"))).toEqual({
         rhcDays1to60PerDiemCents: 21_500,
         rhcDays61PlusPerDiemCents: 17_000,
-        chcPerDiemCents: 105_600,
+        chcHourlyRateCents: 4_400,
         ircPerDiemCents: 49_000,
         gipPerDiemCents: 118_000,
+        rhcLaborShare: "0.6600",
+        chcLaborShare: "0.6800",
+        ircLaborShare: "0.5400",
+        gipLaborShare: "0.6400",
       });
     });
 
-    it("chcHourlyRateCents applies the wage-index factor to the tenant-entered hourly rate (half-up)", async () => {
+    it("chcHourlyRateCents applies the wage index to the CHC LABOR SHARE only (half-up)", async () => {
       await reset();
-      await svc().createRateTable(actorA, rates()); // hourly 4400
+      await svc().createRateTable(actorA, rates()); // hourly 4400, CHC labor share 0.68
       const adapter = buildM23ReferenceDataAdapter(handle.db);
-      // 4400 x 0.9234 = 4062.96 -> 4063
-      expect(await adapter.chcHourlyRateCents(2025, "0.9234", scope(ORG_A, PE_A, "2026-02-14"))).toBe(4_063);
+      // 4400 x (0.68 x 0.9234 + 0.32) = 4400 x 0.947912 = 4170.8128 -> 4171 (the whole-rate multiply gave 4063)
+      expect(await adapter.chcHourlyRateCents(2025, "0.9234", scope(ORG_A, PE_A, "2026-02-14"))).toBe(4_171);
+    });
+
+    it("a version entered BEFORE labor shares existed (NULL set) fails closed RATE_TABLE_LABOR_SHARE_MISSING", async () => {
+      await reset();
+      await admin.query(
+        `INSERT INTO hospice_rate_table (organization_id, provider_entity_id, fiscal_year_starting, effective_from, effective_to,
+           rhc_days_1_60_per_diem_cents, rhc_days_61_plus_per_diem_cents, chc_per_diem_cents, irc_per_diem_cents, gip_per_diem_cents,
+           chc_hourly_rate_cents, entered_by_membership_id)
+         VALUES ($1,$2,2025,'2025-10-01','2026-09-30',21500,17000,105600,49000,118000,4400,$3)`,
+        [ORG_A, PE_A, MEMBERSHIP_A],
+      );
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
+      for (const call of [
+        () => adapter.hippsRateTable("ngs_j6", 2025, scope(ORG_A, PE_A, "2026-02-14")),
+        () => adapter.chcHourlyRateCents(2025, "0.9234", scope(ORG_A, PE_A, "2026-02-14")),
+      ]) {
+        await expect(call()).rejects.toMatchObject({
+          code: "RATE_TABLE_LABOR_SHARE_MISSING",
+          statusCode: 422,
+        });
+      }
+    });
+
+    it("the database CHECKs the labor shares: band, and all-or-none", async () => {
+      await reset();
+      const ins = (rhc: string | null, chc: string | null, irc: string | null, gip: string | null) =>
+        admin.query(
+          `INSERT INTO hospice_rate_table (organization_id, provider_entity_id, fiscal_year_starting, effective_from, effective_to,
+             rhc_days_1_60_per_diem_cents, rhc_days_61_plus_per_diem_cents, chc_per_diem_cents, irc_per_diem_cents, gip_per_diem_cents,
+             chc_hourly_rate_cents, labor_share_rhc, labor_share_chc, labor_share_irc, labor_share_gip, entered_by_membership_id)
+           VALUES ($1,$2,2025,'2025-10-01','2026-09-30',21500,17000,105600,49000,118000,4400,$3,$4,$5,$6,$7)`,
+          [ORG_A, PE_A, rhc, chc, irc, gip, MEMBERSHIP_A],
+        );
+      await expect(ins("0.2900", "0.68", "0.54", "0.64")).rejects.toThrow(/hospice_rate_table_labor_share_chk/);
+      await expect(ins("0.66", "0.9100", "0.54", "0.64")).rejects.toThrow(/hospice_rate_table_labor_share_chk/);
+      await expect(ins("0.66", "0.68", null, "0.64")).rejects.toThrow(/hospice_rate_table_labor_share_chk/);
+      await ins("0.66", "0.68", "0.54", "0.64");
+    });
+
+    it("a stored labor share is frozen (append-only trigger), even against a superuser UPDATE of the live row", async () => {
+      await reset();
+      const created = await svc().createRateTable(actorA, rates());
+      await expect(
+        admin.query("UPDATE hospice_rate_table SET labor_share_rhc = 0.5 WHERE id = $1", [created.rateTableId]),
+      ).rejects.toThrow(/append-only/);
     });
 
     it("prices from the version in effect on the service date, not a later correction window", async () => {

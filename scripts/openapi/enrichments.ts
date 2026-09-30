@@ -348,6 +348,15 @@ import {
   RateTableViewSchema,
   SupersedeRateTableBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/rate-table-typebox";
+import {
+  CreateWageIndexBodySchema,
+  SupersedeWageIndexBodySchema,
+  WageIndexEffectiveQuerySchema,
+  WageIndexEffectiveResponseSchema,
+  WageIndexListQuerySchema,
+  WageIndexListResponseSchema,
+  WageIndexViewSchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/wage-index-typebox";
 // M24 Billing — Medicaid — the §4.2 request bodies / list queries / response DTOs for the state-Medicaid
 // claim, R&B, rule-overlay, eligibility, and trading-partner surfaces (modules/24-billing-medicaid/routes).
 import {
@@ -9365,6 +9374,38 @@ Object.assign(ROUTE_ENRICHMENTS, {
       "Supersede a live rate-table version with a corrected one; the old version is kept as history (F-210)",
     body: SupersedeRateTableBodySchema,
     response: RateTableViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  // ── F-211: the tenant-entered CMS hospice wage index (wage-index.routes.ts) ──
+  "GET /api/v1/billing/wage-indexes": {
+    summary:
+      "List the tenant-entered hospice wage indexes, newest fiscal year first (F-211; includeSuperseded=true adds history)",
+    query: WageIndexListQuerySchema,
+    response: WageIndexListResponseSchema,
+  },
+  "GET /api/v1/billing/wage-indexes/effective": {
+    summary: "The live tenant-entered wage index for a CCN + fiscal year, or null (F-211)",
+    query: WageIndexEffectiveQuerySchema,
+    response: WageIndexEffectiveResponseSchema,
+  },
+  "GET /api/v1/billing/wage-indexes/:id": {
+    summary: "Read one tenant-entered wage-index version (F-211)",
+    response: WageIndexViewSchema,
+  },
+  "POST /api/v1/billing/wage-indexes": {
+    summary:
+      "Enter the CMS hospice wage index for a CCN + fiscal year - one live value per pair; org-scoped, never shared (F-211)",
+    body: CreateWageIndexBodySchema,
+    response: WageIndexViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/wage-indexes/:id/supersede": {
+    summary:
+      "Supersede a live wage index with a corrected value for the same CCN + fiscal year; the old value is kept as history (F-211)",
+    body: SupersedeWageIndexBodySchema,
+    response: WageIndexViewSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
     status: 201,
   },

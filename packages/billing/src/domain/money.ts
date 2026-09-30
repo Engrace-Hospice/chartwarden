@@ -50,10 +50,9 @@ export function lineChargeCents(unitCount: number, unitRateCents: Cents): Cents 
  * Apply the CMS wage index (D12) to a base per-diem rate: `baseRateCents × factor`, rounded HALF-UP to
  * whole cents. The wage index `factorDecimal` is the platform-shared `wage_index_factor.factor_decimal`
  * value carried as a decimal STRING (e.g. `"0.9234"`) so no float ever touches the factor; it is lifted
- * into `decimal.js` exactly. Throws on a non-finite/negative factor. The *exact* CMS per-diem base rates
- * and the labor-vs-nonlabor split that the wage index applies to are an annual published table.
- * TODO(CMS-fixture): the labor-share split (apply the factor to the labor portion only) lands with the
- * HIPPS calculator's published FY rate fixture; this helper is the single-factor multiply primitive.
+ * into `decimal.js` exactly. Throws on a non-finite/negative factor. This is the WHOLE-RATE single-factor
+ * multiply primitive; it is NOT how CMS applies the wage index to a hospice rate (only the LABOR SHARE is
+ * adjusted) — claim pricing uses {@link applyWageIndexToLaborShare} (F-211, audit M23-F02).
  */
 export function applyWageIndexFactor(baseRateCents: Cents, factorDecimal: string): Cents {
   const factor = new D(factorDecimal);
@@ -61,6 +60,30 @@ export function applyWageIndexFactor(baseRateCents: Cents, factorDecimal: string
     throw new RangeError("applyWageIndexFactor: factor must be finite and non-negative");
   }
   return fromDecimal(toDecimal(baseRateCents).times(factor));
+}
+
+/**
+ * F-211 (audit M23-F02, ADR-0016 D1): apply the CMS hospice wage index to the LABOR SHARE of a rate only —
+ * `adjusted = base × (laborShare × wageIndex + (1 − laborShare))` — rounded HALF-UP to whole cents ONCE, at the
+ * end (the non-labor share is never touched by the index). `laborShareDecimal` and `factorDecimal` are decimal
+ * STRINGS lifted into `decimal.js` exactly (no float). Throws unless the labor share is within `[0, 1]` and the
+ * factor is finite and non-negative. With `laborShare = 1` this equals {@link applyWageIndexFactor}.
+ */
+export function applyWageIndexToLaborShare(
+  baseRateCents: Cents,
+  factorDecimal: string,
+  laborShareDecimal: string,
+): Cents {
+  const factor = new D(factorDecimal);
+  const labor = new D(laborShareDecimal);
+  if (!factor.isFinite() || factor.isNegative()) {
+    throw new RangeError("applyWageIndexToLaborShare: factor must be finite and non-negative");
+  }
+  if (!labor.isFinite() || labor.isNegative() || labor.greaterThan(1)) {
+    throw new RangeError("applyWageIndexToLaborShare: labor share must be within [0, 1]");
+  }
+  const multiplier = labor.times(factor).plus(new D(1).minus(labor));
+  return fromDecimal(toDecimal(baseRateCents).times(multiplier));
 }
 
 /** The result of a sequestration reduction: the net payable plus the reduction withheld (D11). */

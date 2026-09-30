@@ -9,6 +9,11 @@ import { parse } from "./billing-typebox";
 const uuid = () => Type.String({ format: "uuid" });
 const isoDate = () => Type.String({ format: "date" });
 const cents = () => Type.Integer({ minimum: 1, maximum: 1_000_000 });
+const laborShare = () =>
+  Type.String({
+    pattern: "^\\d(\\.\\d{1,4})?$",
+    description: 'Decimal fraction with at most four places, e.g. "0.6871" (not a percent).',
+  });
 
 const RateFields = {
   fiscalYearStarting: Type.Integer({
@@ -26,6 +31,12 @@ const RateFields = {
   ircPerDiemCents: cents(),
   gipPerDiemCents: cents(),
   chcHourlyRateCents: cents(),
+  // F-211 — the CMS-published labor share per level of care (decimal-fraction STRINGS, e.g. "0.6871"); the wage index adjusts
+  // only this share of each rate. The pure rules bound them to 0.30-0.90.
+  laborShareRhc: laborShare(),
+  laborShareChc: laborShare(),
+  laborShareIrc: laborShare(),
+  laborShareGip: laborShare(),
   entryReason: Type.Optional(Type.String({ maxLength: 2000 })),
 };
 
@@ -67,6 +78,11 @@ export const RateTableViewSchema = Type.Object({
   ircPerDiemCents: Type.Integer(),
   gipPerDiemCents: Type.Integer(),
   chcHourlyRateCents: Type.Integer(),
+  /** NULL on a version entered before migration 0280: it cannot price a claim until superseded with labor shares. */
+  laborShareRhc: Type.Union([Type.String(), Type.Null()]),
+  laborShareChc: Type.Union([Type.String(), Type.Null()]),
+  laborShareIrc: Type.Union([Type.String(), Type.Null()]),
+  laborShareGip: Type.Union([Type.String(), Type.Null()]),
   enteredByMembershipId: Type.String(),
   entryReason: Type.Union([Type.String(), Type.Null()]),
   supersededAt: Type.Union([Type.String(), Type.Null()]),
@@ -89,6 +105,12 @@ export function assertWholeCents(raw: unknown): void {
     if (key.endsWith("Cents") && typeof value === "number" && !Number.isInteger(value)) {
       throw new ValidationError("request validation failed", [
         { field: key, code: "INVALID", message: `${key} must be a whole number of cents` },
+      ]);
+    }
+    // F-211: `Value.Convert` would COERCE a JSON number into the labor-share `String` field; they are decimal strings.
+    if (key.startsWith("laborShare") && value !== undefined && typeof value !== "string") {
+      throw new ValidationError("request validation failed", [
+        { field: key, code: "INVALID", message: `${key} must be a decimal string, e.g. "0.6871"` },
       ]);
     }
   }
