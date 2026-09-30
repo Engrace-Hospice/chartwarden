@@ -312,6 +312,7 @@ describe("M30 §4.10 upstream handlers", () => {
       triggeringEventOutboxId: "evt-med-err-1",
       reportedByMembershipId: "svc-membership",
       medicationOrderId: "mo-1",
+      medicationErrorId: "med-err-1",
       patientId: "patient-7",
     };
     const report = await handleMedicationErrorReported(event, cap.ports);
@@ -322,6 +323,10 @@ describe("M30 §4.10 upstream handlers", () => {
       lifecycle: "draft",
       mandatoryReportFlag: false,
       triggeringEventOutboxId: "evt-med-err-1",
+    });
+    expect(cap.incidentDrafts[0]?.kindData).toMatchObject({
+      medicationOrderId: "mo-1",
+      medicationErrorId: "med-err-1",
     });
   });
 

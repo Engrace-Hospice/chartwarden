@@ -34,6 +34,7 @@ import {
   RecordVerbalRequest,
   RefillInboxPolicyRequest,
   RefillParamsSchema,
+  ReportMedicationErrorRequest,
   RequestSignatureRequest,
   RevokePrescriberRequest,
   RxBenefitLookupRequest,
@@ -89,6 +90,7 @@ const SIGN_CONTROLLED = P("prescribing.sign_controlled_substance");
 const VERBAL = P("prescribing.verbal.record");
 const COSIGN = P("prescribing.cosign");
 const DISCONTINUE = P("prescribing.discontinue");
+const REPORT_ERROR = P("prescribing.report_error");
 const REFILL_DECIDE = P("prescribing.refill_decide");
 const ROSTER = P("prescribing.admin.roster");
 const POLICY = P("prescribing.admin.policy");
@@ -285,6 +287,23 @@ export function registerDoseSpotRoutes(app: FastifyInstance, deps: DoseSpotRoute
         reason: b.reason,
         effectiveAt: b.effectiveAt,
         notes: b.notes,
+      });
+    },
+  );
+
+  // F-205 (#248) — file a clinician-initiated medication-error report against an order. Not a status
+  // transition (the order's lifecycle/version is untouched); emits `m12.medication.error_reported` for
+  // M30's auto-incident-draft consumer.
+  app.post(
+    "/api/v1/medication-orders/:id/report-error",
+    { preHandler: [REPORT_ERROR] },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      const { id } = parse(OrderParamsSchema, request.params);
+      const b = parse(ReportMedicationErrorRequest, request.body);
+      return service.reportMedicationError(organizationId, userId, id, {
+        errorCategory: b.errorCategory,
+        summary: b.summary,
       });
     },
   );

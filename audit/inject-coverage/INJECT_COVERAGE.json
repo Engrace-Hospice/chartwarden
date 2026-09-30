@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1309,
-    "coveredRoutes": 1309,
-    "directRoutesReferenced": 1251
+    "routes": 1310,
+    "coveredRoutes": 1310,
+    "directRoutesReferenced": 1252
   },
   "modules": [
     {
@@ -131,12 +131,12 @@
     },
     {
       "module": "12-dosespot",
-      "routes": 31,
+      "routes": 32,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/dosespot-routes.test.ts"
       ],
-      "directRoutesReferenced": 19
+      "directRoutesReferenced": 20
     },
     {
       "module": "13-emar",

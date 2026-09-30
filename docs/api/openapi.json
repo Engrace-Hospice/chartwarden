@@ -117906,6 +117906,86 @@
         }
       }
     },
+    "/api/v1/medication-orders/{id}/report-error": {
+      "post": {
+        "operationId": "postApiV1MedicationordersByIdReporterror",
+        "tags": [
+          "12-dosespot"
+        ],
+        "summary": "File a clinician-initiated medication-error report against an order (F-205, #248)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "medicationErrorId",
+                    "orderId",
+                    "reportedAt"
+                  ],
+                  "properties": {
+                    "medicationErrorId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "orderId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "reportedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "errorCategory"
+                ],
+                "properties": {
+                  "errorCategory": {
+                    "minLength": 1,
+                    "maxLength": 100,
+                    "type": "string"
+                  },
+                  "summary": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/medication-orders/{id}/request-signature": {
       "post": {
         "operationId": "postApiV1MedicationordersByIdRequestsignature",

@@ -1406,7 +1406,8 @@ export type M11ContributedPermissionKey = keyof typeof M11_CONTRIBUTED_PERMISSIO
  * admin roster/policy/EPCS-certification keys are pure RBAC (`none`; org-admin / compliance / platform-ops
  * reference rows, step-up enforced at the route). Keys carry a `prescribing.` NAMESPACE prefix on top of the
  * `resource.action` decomposition (like M11's `orders.` / M10's `hope.`), so `key` is the full dotted
- * permission string used at `requirePermission(...)`. Fourteen keys total (§4.6). Kept in a dedicated const
+ * permission string used at `requirePermission(...)`. Fifteen keys total (§4.6; F-205, #248, added
+ * `prescribing.report_error`). Kept in a dedicated const
  * for §3.3 attributability.
  */
 export const M12_CONTRIBUTED_PERMISSIONS = {
@@ -1456,6 +1457,13 @@ export const M12_CONTRIBUTED_PERMISSIONS = {
   "prescribing.discontinue": {
     resource: "medication_order",
     action: "discontinue",
+    category: "clinical",
+    abac: "caseload_or_scope",
+  },
+  // F-205 (#248) — file a clinician-initiated medication-error report against an order (`reportMedicationError`).
+  "prescribing.report_error": {
+    resource: "medication_order",
+    action: "report_error",
     category: "clinical",
     abac: "caseload_or_scope",
   },

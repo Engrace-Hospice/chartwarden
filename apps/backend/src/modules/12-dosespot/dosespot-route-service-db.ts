@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import { type DbClient, schema } from "@wardenx/db";
 // apps/backend/src/modules/12-dosespot — PRODUCTION MedicationOrderRouteService + §4.7 ABAC resolver
 // (M12L reads + writes over Drizzle+RLS). No route is left at 501.
@@ -757,6 +759,35 @@ export function createDbDoseSpotBackend(
           },
         );
         return readOrder(tx, id);
+      });
+    },
+    // F-205 (#248) — the user's decided trigger for M30's previously-unbound `m12.medication.error_reported`:
+    // a new explicit clinician-initiated report action (not auto-derived from any order transition). Not a
+    // status transition — the order's lifecycle/version is untouched, matching `recordVerbal`'s "an added
+    // fact, not a state change" shape more than `discontinueOrder`'s. `reportedByMembershipId` carries the
+    // REAL filing clinician (the F-165 correction — never a fictional M30-service sentinel).
+    async reportMedicationError(organizationId, userId, id, args) {
+      return withOrg(organizationId, async (tx) => {
+        const r = await loadOrder(tx, id);
+        const medicationErrorId = randomUUID();
+        const reportedAt = new Date();
+        await emit(
+          tx,
+          organizationId,
+          "m12.medication.error_reported",
+          "medication_order",
+          id,
+          {
+            medicationErrorId,
+            orderId: id,
+            patientId: r.patientId,
+            errorCategory: args.errorCategory,
+            reportedByMembershipId: userId,
+            reportedAt: reportedAt.toISOString(),
+            ...(args.summary !== undefined ? { summary: args.summary } : {}),
+          },
+        );
+        return { medicationErrorId, orderId: id, reportedAt: reportedAt.toISOString() };
       });
     },
     async completeOrder(organizationId, _userId, id, reason) {
