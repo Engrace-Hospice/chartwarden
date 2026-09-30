@@ -176,12 +176,11 @@ not employed/paid by the hospice) and GW (service unrelated to the terminal diag
 (`level_of_care`, `place_of_service_q_codes`) — the same scale of fix, not the "no table exists" scale of
 the CMS rate-table gap below. The constant is exported from `@wardenx/billing` (`CMS_HOSPICE_MODIFIER_
 VALUE_SET`) so the rule and the M23 adapter share one literal rather than each carrying its own copy.
-**`icd10Billable` is honestly `{}`, traced rather than assumed**: `icd10_sequencing` is the only reader of
-that map, over `ctx.claim.icd10Sequence` — and `claim-assembly.ts`'s own line-assembly hardcodes
-`icd10Sequence: []` on every claim it assembles today (no seam anywhere populates a diagnosis sequence at
-assembly time; a separate, real M23-side gap this pass did not create and does not fix, reported here
-rather than silently worked around). With no diagnosis code ever on the claim to ask about, there is
-nothing to bulk-resolve. Net effect on `POST /claims/assemble` reachability: none, stated precisely —
+**`icd10Billable` was honestly `{}` AT F-124 time (superseded by F-205 below), traced rather than
+assumed**: `icd10_sequencing` is the only reader of that map, over `ctx.claim.icd10Sequence` — and
+`claim-assembly.ts`'s own line-assembly then hardcoded `icd10Sequence: []` on every claim it assembled (no
+seam populated a diagnosis sequence at assembly time; reported here rather than silently worked around, and
+fixed by F-205). With no diagnosis code on the claim to ask about, there was nothing to bulk-resolve. Net effect on `POST /claims/assemble` reachability: none, stated precisely —
 `terminology` sits later in call order than the still-unbound `referenceData.hippsRateTable`, so the live
 wall is unmoved; real, individually-verified progress on a fourth M23 seam this pass (patientPayer/M6/M8/
 M18/terminology is now 10 of the 11 named ports), not a further unblock. Proven by
@@ -189,7 +188,7 @@ M18/terminology is now 10 of the 11 named ports), not a further unblock. Proven 
 org's own tenant extension (`value_set_tenant_extension`, seeded directly since hcpcs has no Phase-1
 concept table and so no code on it could ever pass `addTenantExtension`'s own add-time validation — a
 separate, real limit on who can extend an hcpcs-keyed set, reported and not fixed here) is included for
-that org and NOT for a sibling org, and `icd10Billable` comes back empty.
+that org and NOT for a sibling org, and (at F-124 time) `icd10Billable` came back empty.
 
 **`mdm.resolveClinicalParticipants` was recorded as one "genuinely unbuilt" verdict, and it was two
 independent facts with opposite answers (F-127, #251).** Physician IDENTITY is real, bound the M6/M8/M18/
@@ -283,3 +282,47 @@ RLS — this module's migrations already grant and policy the six tables the pip
 fix makes the file's own claim true rather than finding a defect it happened to have been hiding. Proven
 live: `m25-835-ingestion.live.test.ts` (9/9, real RLS throughout), full non-live suite, all 38
 `arch:fitness` gates, `db:migrate` + `db:provision-roles` + `check:boot:platform`.
+
+**`icd10Sequence: []` was hardcoded on every assembled claim, so `icd10_sequencing` could never pass and
+`icd10Billable` resolved to `{}` (F-205, #251).** The F-124 paragraph above traced this and left it: no seam
+anywhere produced a claim's diagnosis sequence. The owner is M7 (`problem`: `kind` terminal/related/
+unrelated, nullable `icd10_code`, `status`, `onset_at`/`resolved_at`), and M23 may not import it (manifest
+`dependsOn` is `[1,6,8,22,38,40]`). Bound the F-121/F-122 way:
+`claimDiagnosesForOrg(db, orgId, patientId, {from,to})` (`07-care-plan/seams/drizzle-store.ts`, exported
+through `seams/index.ts` and the module barrel) is org-explicit and patient-keyed — `withOrgContext` plus an
+explicit `organization_id` predicate on both `problem` and its `care_plan` — and projects code +
+relationship ONLY (never the free-text `description`). M23 declares a local structural port
+(`M7ClaimDiagnosesReader`), an optional `ports.m7ClaimDiagnoses` on `buildM23BootAssemblyService` (absent =>
+`buildM23BootDiagnosesSeam` returns a fail-closed `SEAM_UNBOUND` stub, NEVER an empty sequence — an unbound
+read must not masquerade as "no diagnoses"), and `index.ts` injects it beside `m6ClaimRange`. `diagnoses`
+joins `ClaimAssemblySeams`.
+
+*Selection (documented approximation).* `status = 'active'`, non-blank `icd10_code`, overlapping the service
+range (`onset_at` null or before the END of `to`; `resolved_at` null or after the START of `from`). `problem`
+keeps NO status history, so a problem since flipped to `resolved`/`inactive` is excluded even if it was
+active during the range — the read never fabricates a past status; an as-of-exact read needs a history
+table (out of scope). Ordered terminal, related, unrelated, then `created_at`, `id`; positions 1..12 (the
+X12 ceiling); a repeated code keeps its highest-ranked occurrence. Multiple `terminal` problems are NOT
+collapsed here: the sequence is passed through and the `icd10_sequencing` rule reports "a second terminal
+diagnosis" — a data defect the biller must see, not one the seam should hide.
+
+*Wiring in `claim-assembly.ts`.* The sequence is read BEFORE `terminology.resolveForClaim`, whose optional
+third parameter now carries the codes; the same sequence is the ctx `icd10Sequence`. Line pointer policy
+(deliberately simple): every line points at the TERMINAL position(s) only (hospice per-diem lines bill the
+terminal illness; related/unrelated conditions are claim-level context); no terminal => no pointer. The
+sequence is NOT persisted to a claim column (none exists; out of scope) — it is re-read at each
+(re)validation from M7's current state.
+
+*`icd10Billable`.* `buildM23TerminologyAdapter` now resolves the asked codes through M38's bulk
+`lookupBatch("icd10cm", codes, asOf)`: `true` iff the concept exists, is `active`, and
+`properties.isBillableLeaf === true`; unknown, deprecated/retired-at-the-service-date, or non-leaf header
+codes are `false`. As-of is the claim's service-from, so a since-retired code still resolves at its service
+date. No codes => no M38 round trip (`{}`).
+
+*Behaviour change to expect.* Claims with real, billable diagnoses can now PASS `icd10_sequencing`; claims
+whose patient has no active coded problem in the window still fail it ("no ICD-10 diagnosis sequence"),
+now for a true reason. The end-to-end `POST /claims/assemble` wall is unmoved (`hippsRateTable`, earlier in
+call order). Proven by `m23-claim-assembly-seams.live.test.ts` on the real NOBYPASSRLS `wardenx_app` role:
+ordering, terminal first, resolved/inactive/null/blank-code exclusion, range overlap edges, the 12 cap,
+cross-org and cross-patient isolation, and M38 billability (leaf/non-leaf/retired/unknown/as-of) over real
+`concept_icd10cm` rows; unit coverage in `assembly.test.ts` and `diagnoses-seam.test.ts`.

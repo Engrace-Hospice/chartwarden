@@ -1,5 +1,5 @@
 /**
- * M23 claim-assembly seam bindings — LIVE Postgres proof (#250, #251, F-119, F-121, F-122, F-123, F-124).
+ * M23 claim-assembly seam bindings — LIVE Postgres proof (#250, #251, F-119, F-121, F-122, F-123, F-124, F-205).
  *
  * `boot-assembly.ts` binds TEN of the eleven named `ClaimAssemblySeams` reader ports to real data:
  * `patientPayer` (M5), all FIVE M6 range-shaped seams (F-121, #251: `admission`, `electionPeriods`,
@@ -41,6 +41,7 @@ import { registerSeam } from "../src/bootstrap/index";
 import { buildPatientCoverageReader } from "../src/modules/05-patient/coverage-reader";
 import { createDbAdmissionRouteService } from "../src/modules/06-admission/admission-route-service-db";
 import { claimAssemblyRangeContextForOrg } from "../src/modules/06-admission/index";
+import { claimDiagnosesForOrg } from "../src/modules/07-care-plan/index";
 import {
   billableEncountersInRangeForOrg,
   createDrizzleEncounterReaderStore,
@@ -54,6 +55,7 @@ import {
   buildM23AdmissionRangeAdapters,
   buildM23BillableEncountersAdapter,
   buildM23ClinicalParticipantsAdapter,
+  buildM23DiagnosesAdapter,
   buildM23EvvComplianceAdapter,
   buildM23MdmProviderEntityAdapter,
   buildM23PatientPayerAdapter,
@@ -448,6 +450,36 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
          ('${M6_MD}', '1122334455', 'Hospice', 'MD', 'active'),
          ('${M6_ATTENDING}', '1234567893', 'Attending', 'MD', 'deactivated')`,
     );
+    // F-205 (#251) — real ICD-10-CM concept rows behind M38's registered provider, so `icd10Billable`
+    // resolves against the SAME `lookupBatch` production runs. One active code-system version; then:
+    //   C34.90 billable leaf (since 2020) · C34 non-leaf header · J44.9 + I10 billable leaves ·
+    //   L89.90 active billable leaf that only takes effect 2026-03-01 (as-of boundary) ·
+    //   A00.0 leaf that was retired with end_date 2026-05-31 (a since-retired code at its service date).
+    await admin.query(
+      `INSERT INTO code_system (id, name, license_source) VALUES ('icd10cm','ICD-10-CM','CDC')
+       ON CONFLICT (id) DO NOTHING`,
+    );
+    const versionId = (
+      await admin.query(
+        `INSERT INTO code_system_version (code_system_id, version, released_on, effective_from,
+           source_file_ref, checksum, status)
+         VALUES ('icd10cm','F205-fixture','2020-01-01','2020-01-01','f205','f205','active') RETURNING id`,
+      )
+    ).rows[0].id as string;
+    for (const [code, status, leaf, eff, end] of [
+      ["C34.90", "active", true, "2020-01-01", null],
+      ["C34", "active", false, "2020-01-01", null],
+      ["J44.9", "active", true, "2020-01-01", null],
+      ["I10", "active", true, "2020-01-01", null],
+      ["L89.90", "active", true, "2026-03-01", null],
+      ["A00.0", "retired", true, "2020-01-01", "2026-05-31"],
+    ] as const) {
+      await admin.query(
+        `INSERT INTO concept_icd10cm (code, display, status, effective_date, end_date, version_id, is_billable_leaf)
+         VALUES ($1,$1,$2,$3,$4,$5,$6)`,
+        [code, status, eff, end, versionId, leaf],
+      );
+    }
   }, 120_000);
 
   const admissionSvc = () =>
@@ -1072,9 +1104,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       expect(
         resolutionA.valueSetMembership[CMS_HOSPICE_MODIFIER_VALUE_SET]?.slice().sort(),
       ).toEqual(["GV", "GW", "GX"]);
-      // Traced against `claim-assembly.ts`'s own hardcoded `icd10Sequence: []` (a separate, real
-      // M23-side gap this seam does not create): no diagnosis code ever reaches this call, so the
-      // honest bulk map has nothing to resolve.
+      // F-205: no diagnosis codes asked about => an empty per-code map (no M38 round trip).
       expect(resolutionA.icd10Billable).toEqual({});
     });
 
@@ -1085,6 +1115,244 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       expect(
         resolutionB.valueSetMembership[CMS_HOSPICE_MODIFIER_VALUE_SET]?.slice().sort(),
       ).toEqual(["GV", "GW"]);
+    });
+  });
+
+  describe("terminology.resolveForClaim: icd10Billable via M38 lookupBatch (F-205, #251)", () => {
+    it("true for an active billable leaf; false for a non-leaf header, a retired code and an unknown code", async () => {
+      const seam = buildM23TerminologyAdapter();
+      const res = await seam.resolveForClaim(ORG_A, "2026-06-01", [
+        "C34.90",
+        "C34",
+        "A00.0",
+        "ZZZ.99",
+        "J44.9",
+      ]);
+      expect(res.icd10Billable).toEqual({
+        "C34.90": true,
+        C34: false,
+        "A00.0": false, // retired: its end_date (2026-05-31) precedes the service date
+        "ZZZ.99": false, // unknown to M38 => false, never omitted-as-true
+        "J44.9": true,
+      });
+    });
+
+    it("is as-of the SERVICE date: a code not yet effective is false, effective from its start date on", async () => {
+      const seam = buildM23TerminologyAdapter();
+      const before = await seam.resolveForClaim(ORG_A, "2026-02-28", ["L89.90"]);
+      const onto = await seam.resolveForClaim(ORG_A, "2026-03-01", ["L89.90"]);
+      expect(before.icd10Billable).toEqual({ "L89.90": false });
+      expect(onto.icd10Billable).toEqual({ "L89.90": true });
+    });
+  });
+
+  describe("diagnoses: M7 claimDiagnosesForOrg (F-205, #251)", () => {
+    const RANGE = { from: "2026-06-01", to: "2026-06-30" };
+
+    async function seedPlan(orgId: string, patientId: string, pe: string): Promise<string> {
+      const loc = await seedLocation(pe);
+      const row = await admin.query(
+        `INSERT INTO care_plan (organization_id, provider_entity_id, location_id, patient_id, admission_id,
+           initial_due_at) VALUES ($1,$2,$3,$4,gen_random_uuid(), now() + interval '5 days')
+         RETURNING id`,
+        [orgId, pe, loc, patientId],
+      );
+      return row.rows[0].id as string;
+    }
+
+    async function seedProblem(
+      orgId: string,
+      planId: string,
+      pe: string,
+      p: {
+        code: string | null;
+        kind: "terminal" | "related" | "unrelated";
+        status?: "active" | "resolved" | "inactive";
+        onset?: string | null;
+        resolved?: string | null;
+        createdAt?: string;
+      },
+    ): Promise<void> {
+      const loc = (await admin.query("SELECT location_id FROM care_plan WHERE id=$1", [planId]))
+        .rows[0].location_id as string;
+      await admin.query(
+        `INSERT INTO problem (organization_id, provider_entity_id, location_id, care_plan_id, icd10_code,
+           description, kind, status, onset_at, resolved_at, created_at)
+         VALUES ($1,$2,$3,$4,$5,'F-205 fixture problem',$6,$7::problem_status,$8,$9, COALESCE($10::timestamptz, now()))`,
+        [
+          orgId,
+          pe,
+          loc,
+          planId,
+          p.code,
+          p.kind,
+          p.status ?? "active",
+          p.onset ?? null,
+          p.resolved ?? null,
+          p.createdAt ?? null,
+        ],
+      );
+    }
+
+    it("orders terminal, related, unrelated (then created_at), positions 1..n, code + relationship only", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381290");
+      const plan = await seedPlan(ORG_A, patientId, pe);
+      // Inserted deliberately OUT of ranking order; the two related rows tie-break on created_at.
+      await seedProblem(ORG_A, plan, pe, {
+        code: "I10",
+        kind: "unrelated",
+        createdAt: "2026-01-01",
+      });
+      await seedProblem(ORG_A, plan, pe, {
+        code: "J44.9",
+        kind: "related",
+        createdAt: "2026-02-02",
+      });
+      await seedProblem(ORG_A, plan, pe, {
+        code: "E11.9",
+        kind: "related",
+        createdAt: "2026-02-01",
+      });
+      await seedProblem(ORG_A, plan, pe, {
+        code: "C34.90",
+        kind: "terminal",
+        createdAt: "2026-03-01",
+      });
+      const seq = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+      expect(seq).toEqual([
+        { position: 1, code: "C34.90", relationship: "terminal" },
+        { position: 2, code: "E11.9", relationship: "related" },
+        { position: 3, code: "J44.9", relationship: "related" },
+        { position: 4, code: "I10", relationship: "unrelated" },
+      ]);
+    });
+
+    it("excludes resolved / inactive / null- and blank-code problems, and de-duplicates a repeated code", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381291");
+      const plan = await seedPlan(ORG_A, patientId, pe);
+      await seedProblem(ORG_A, plan, pe, { code: "C34.90", kind: "terminal" });
+      await seedProblem(ORG_A, plan, pe, { code: "J44.9", kind: "related", status: "resolved" });
+      await seedProblem(ORG_A, plan, pe, { code: "I10", kind: "related", status: "inactive" });
+      await seedProblem(ORG_A, plan, pe, { code: null, kind: "related" });
+      await seedProblem(ORG_A, plan, pe, { code: "  ", kind: "related" });
+      await seedProblem(ORG_A, plan, pe, { code: "C34.90", kind: "related" }); // same code again
+      const seq = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+      expect(seq).toEqual([{ position: 1, code: "C34.90", relationship: "terminal" }]);
+    });
+
+    it("keeps only problems overlapping the service range (onset before its end, not resolved before its start)", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381292");
+      const plan = await seedPlan(ORG_A, patientId, pe);
+      await seedProblem(ORG_A, plan, pe, {
+        code: "C34.90",
+        kind: "terminal",
+        onset: "2026-01-15T00:00:00Z",
+      });
+      // Onset on the range's LAST day (any time of day) still overlaps.
+      await seedProblem(ORG_A, plan, pe, {
+        code: "J44.9",
+        kind: "related",
+        onset: "2026-06-30T23:00:00Z",
+      });
+      // Onset the day AFTER the range ends: not yet a problem during the service window.
+      await seedProblem(ORG_A, plan, pe, {
+        code: "I10",
+        kind: "related",
+        onset: "2026-07-01T00:00:00Z",
+      });
+      // Still-`active` row whose resolved_at precedes the range: over before the window began.
+      await seedProblem(ORG_A, plan, pe, {
+        code: "E11.9",
+        kind: "related",
+        onset: "2026-01-01T00:00:00Z",
+        resolved: "2026-05-31T23:59:59Z",
+      });
+      // resolved_at inside the range: still overlaps (was active for part of it).
+      await seedProblem(ORG_A, plan, pe, {
+        code: "L89.90",
+        kind: "unrelated",
+        onset: "2026-01-01T00:00:00Z",
+        resolved: "2026-06-10T00:00:00Z",
+      });
+      const seq = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+      expect(seq.map((d) => d.code)).toEqual(["C34.90", "J44.9", "L89.90"]);
+    });
+
+    it("caps the sequence at 12 positions", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381293");
+      const plan = await seedPlan(ORG_A, patientId, pe);
+      await seedProblem(ORG_A, plan, pe, { code: "C34.90", kind: "terminal" });
+      for (let i = 0; i < 14; i++) {
+        await seedProblem(ORG_A, plan, pe, {
+          code: `R${String(10 + i)}.0`,
+          kind: "related",
+          createdAt: `2026-02-${String(i + 1).padStart(2, "0")}`,
+        });
+      }
+      const seq = await claimDiagnosesForOrg(handle.db, ORG_A, patientId, RANGE);
+      expect(seq).toHaveLength(12);
+      expect(seq.map((d) => d.position)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+      expect(seq[0]).toEqual({ position: 1, code: "C34.90", relationship: "terminal" });
+      expect(seq[11]?.code).toBe("R20.0"); // 11 related rows survive, oldest-created first
+    });
+
+    it("never resolves another org's problems, or another patient's (cross-tenant + cross-patient isolation)", async () => {
+      const patientA = await seedPatient(ORG_A);
+      const otherPatientA = await seedPatient(ORG_A);
+      const patientB = await seedPatient(ORG_B);
+      const peA = await seedProviderEntity(ORG_A, "381294");
+      const peB = await seedProviderEntity(ORG_B, "381295");
+      const planA = await seedPlan(ORG_A, patientA, peA);
+      const planOther = await seedPlan(ORG_A, otherPatientA, peA);
+      const planB = await seedPlan(ORG_B, patientB, peB);
+      await seedProblem(ORG_A, planA, peA, { code: "C34.90", kind: "terminal" });
+      await seedProblem(ORG_A, planOther, peA, { code: "J44.9", kind: "terminal" });
+      await seedProblem(ORG_B, planB, peB, { code: "I10", kind: "terminal" });
+      // Org A's patient, asked as org A: only its own row.
+      expect(await claimDiagnosesForOrg(handle.db, ORG_A, patientA, RANGE)).toEqual([
+        { position: 1, code: "C34.90", relationship: "terminal" },
+      ]);
+      // Org B asking about org A's patient id: nothing (RLS + explicit organization_id predicate).
+      expect(await claimDiagnosesForOrg(handle.db, ORG_B, patientA, RANGE)).toEqual([]);
+      // Org A asking about org B's patient id: nothing.
+      expect(await claimDiagnosesForOrg(handle.db, ORG_A, patientB, RANGE)).toEqual([]);
+    });
+
+    it("the explicit organization_id predicate is a second wall: it holds even where RLS does not apply (superuser handle)", async () => {
+      const patientA = await seedPatient(ORG_A);
+      const peA = await seedProviderEntity(ORG_A, "381297");
+      const planA = await seedPlan(ORG_A, patientA, peA);
+      await seedProblem(ORG_A, planA, peA, { code: "C34.90", kind: "terminal" });
+      // A deliberately RLS-bypassing handle — the ONLY use of the superuser url for a read in this block,
+      // so the assertion isolates the query's own organization_id predicate from the row-level policy.
+      const superHandle = createDbClient({ connectionString: DB_URL! });
+      try {
+        expect(await claimDiagnosesForOrg(superHandle.db, ORG_B, patientA, RANGE)).toEqual([]);
+        expect(await claimDiagnosesForOrg(superHandle.db, ORG_A, patientA, RANGE)).toHaveLength(1);
+      } finally {
+        await superHandle.close();
+      }
+    });
+
+    it("M7 diagnoses feed M38 billability: a billable terminal leaf and a non-leaf header resolve distinctly", async () => {
+      const patientId = await seedPatient(ORG_A);
+      const pe = await seedProviderEntity(ORG_A, "381296");
+      const plan = await seedPlan(ORG_A, patientId, pe);
+      await seedProblem(ORG_A, plan, pe, { code: "C34.90", kind: "terminal" });
+      await seedProblem(ORG_A, plan, pe, { code: "C34", kind: "related" }); // non-leaf header
+      const seq = await buildM23DiagnosesAdapter({
+        forRange: (orgId, pid, range) => claimDiagnosesForOrg(handle.db, orgId, pid, range),
+      }).forRange(ORG_A, patientId, RANGE);
+      const terminology = await buildM23TerminologyAdapter().resolveForClaim(
+        ORG_A,
+        RANGE.from,
+        seq.map((d) => d.code),
+      );
+      expect(terminology.icd10Billable).toEqual({ "C34.90": true, C34: false });
     });
   });
 

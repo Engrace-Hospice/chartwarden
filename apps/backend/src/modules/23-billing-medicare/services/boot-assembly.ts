@@ -97,10 +97,12 @@ import {
   type AssemblyOutboxPort,
   type ClaimAssemblySeams,
   type ClaimAssemblyService,
+  type DiagnosisSequenceReader,
   buildClaimAssemblyService,
 } from "./claim-assembly";
 import {
   type M6ClaimRangeReader,
+  type M7ClaimDiagnosesReader,
   type M8BillableEncountersReader,
   type M8EncounterVisitIdsReader,
   type M8SignedEncountersReader,
@@ -108,6 +110,7 @@ import {
   buildM23AdmissionRangeAdapters,
   buildM23BillableEncountersAdapter,
   buildM23ClinicalParticipantsAdapter,
+  buildM23DiagnosesAdapter,
   buildM23EvvComplianceAdapter,
   buildM23MdmProviderEntityAdapter,
   buildM23PatientPayerAdapter,
@@ -125,6 +128,17 @@ function unbound(seam: string): never {
     `M23 claim-assembly seam '${seam}' is not bound at boot — see boot-assembly.ts's header for the exact, per-seam reason (a real new read-surface addition needed in the owning module, or genuinely absent CMS reference data)`,
     503,
   );
+}
+
+/**
+ * F-205 (#251) — the `diagnoses` seam: the real M7-backed adapter when the composition root injects the
+ * port, otherwise a fail-closed `SEAM_UNBOUND` stub. Exported so the port-absent behaviour is unit-testable
+ * (the call sits behind `referenceData.hippsRateTable`, which the end-to-end path cannot yet pass).
+ */
+export function buildM23BootDiagnosesSeam(port?: M7ClaimDiagnosesReader): DiagnosisSequenceReader {
+  return port
+    ? buildM23DiagnosesAdapter(port)
+    : { forRange: () => unbound("DiagnosisSequenceReader") };
 }
 
 /**
@@ -151,6 +165,10 @@ export function buildM23BootAssemblyService(
      *  composition root. Absent, `evvCompliance` stays its fail-closed `unbound()` deny-stub below. */
     readonly m8EncounterVisitIds?: M8EncounterVisitIdsReader;
     readonly m18Compliance?: M18ComplianceStatesReader;
+    /** F-205 (#251) — M7's `claimDiagnosesForOrg`, injected by the composition root. Absent, `diagnoses`
+     *  stays its fail-closed `unbound()` deny-stub below (an unbound sequence must never read as "no
+     *  diagnoses" — that would silently fail `icd10_sequencing` on real data). */
+    readonly m7ClaimDiagnoses?: M7ClaimDiagnosesReader;
   } = {},
 ): ClaimAssemblyService {
   const outbox: AssemblyOutboxPort = ports.outbox ?? {
@@ -182,6 +200,8 @@ export function buildM23BootAssemblyService(
     certifications: m6Range?.certifications ?? { forPatient: () => unbound("CertificationReader") },
     faceToFace: m6Range?.faceToFace ?? { forPatient: () => unbound("FaceToFaceReader") },
     levelOfCare: m6Range?.levelOfCare ?? { periodsInRange: () => unbound("LevelOfCareReader") },
+    // REAL (#251, F-205) — the claim's diagnosis sequence over M7's org-explicit seam function, when injected.
+    diagnoses: buildM23BootDiagnosesSeam(ports.m7ClaimDiagnoses),
     // REAL (#251, F-122) — over M8's two new range-shaped seam functions, when injected.
     billableEncounters: ports.m8BillableEncounters
       ? buildM23BillableEncountersAdapter(ports.m8BillableEncounters)

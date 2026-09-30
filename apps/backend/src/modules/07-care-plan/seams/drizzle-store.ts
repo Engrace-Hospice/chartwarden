@@ -395,7 +395,9 @@ export function idgPacketCarePlanContextForOrg(
     const [sudRow] = await tx
       .select({ id: PROB.id })
       .from(PROB)
-      .where(and(eq(PROB.carePlanId, plan.id), eq(PROB.status, "active"), eq(PROB.sudRelated, true)))
+      .where(
+        and(eq(PROB.carePlanId, plan.id), eq(PROB.status, "active"), eq(PROB.sudRelated, true)),
+      )
       .limit(1);
 
     const asOf = new Date(asOfIso);
@@ -415,4 +417,80 @@ export function idgPacketCarePlanContextForOrg(
       sudFlag: !!sudRow,
     };
   });
+}
+
+/** The X12 837 diagnosis-pointer ceiling — a claim carries at most 12 diagnoses. */
+const CLAIM_DIAGNOSIS_MAX = 12;
+
+/** One claim diagnosis position (F-205, #251): code + relationship ONLY — never the free-text description. */
+export interface ClaimDiagnosisRecord {
+  /** 1..12 — the X12 diagnosis-pointer position. */
+  readonly position: number;
+  readonly code: string;
+  readonly relationship: "terminal" | "related" | "unrelated";
+}
+
+/**
+ * F-205 (#251) — the diagnosis sequence M23 claim assembly needs, org-explicit and patient-keyed (the
+ * `idgPacketCarePlanContextForOrg` shape; the assembly worker has no request scope). Reads the patient's
+ * `problem` rows across ALL of their care plans (`problem.organization_id` + the plan's `patient_id`).
+ *
+ * Selection: `status = 'active'`, non-null/non-blank `icd10_code`, overlapping the service range —
+ * `onset_at` (null = onset unknown, kept) is before the END of `to`, and `resolved_at` is null or after
+ * the START of `from`. This is an APPROXIMATE as-of read: `problem` keeps no status history, so a problem
+ * since flipped to `resolved`/`inactive` is excluded even if it was active during the range (never
+ * fabricates a past status). Ordered terminal, related, unrelated, then `created_at`, `id`; capped at
+ * {@link CLAIM_DIAGNOSIS_MAX}; positions 1..n. A code repeated across problems keeps its first (highest
+ * ranked) occurrence — a claim lists each diagnosis once. Whether the sequence is a VALID claim sequence
+ * (exactly one terminal, first) is deliberately NOT decided here: the M23 `icd10_sequencing` rule judges it.
+ */
+export function claimDiagnosesForOrg(
+  db: DbClient,
+  organizationId: string,
+  patientId: string,
+  range: { readonly from: string; readonly to: string },
+): Promise<readonly ClaimDiagnosisRecord[]> {
+  const fromStart = new Date(`${range.from}T00:00:00.000Z`);
+  const toExclusive = new Date(`${range.to}T00:00:00.000Z`);
+  toExclusive.setUTCDate(toExclusive.getUTCDate() + 1);
+  return withOrgContext(
+    db,
+    { organizationId, userId: CARE_PLAN_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const rows = await tx
+        .select({ code: PROB.icd10Code, kind: PROB.kind })
+        .from(PROB)
+        .innerJoin(CP, eq(CP.id, PROB.carePlanId))
+        .where(
+          and(
+            eq(PROB.organizationId, organizationId),
+            eq(CP.organizationId, organizationId),
+            eq(CP.patientId, patientId),
+            eq(PROB.status, "active"),
+            sql`${PROB.icd10Code} IS NOT NULL AND btrim(${PROB.icd10Code}) <> ''`,
+            sql`(${PROB.onsetAt} IS NULL OR ${PROB.onsetAt} < ${toExclusive.toISOString()}::timestamptz)`,
+            sql`(${PROB.resolvedAt} IS NULL OR ${PROB.resolvedAt} > ${fromStart.toISOString()}::timestamptz)`,
+          ),
+        )
+        .orderBy(
+          sql`CASE ${PROB.kind} WHEN 'terminal' THEN 0 WHEN 'related' THEN 1 ELSE 2 END`,
+          asc(PROB.createdAt),
+          asc(PROB.id),
+        );
+      const seen = new Set<string>();
+      const out: ClaimDiagnosisRecord[] = [];
+      for (const r of rows) {
+        const code = (r.code ?? "").trim();
+        if (code === "" || seen.has(code)) continue;
+        seen.add(code);
+        out.push({
+          position: out.length + 1,
+          code,
+          relationship: r.kind as ClaimDiagnosisRecord["relationship"],
+        });
+        if (out.length === CLAIM_DIAGNOSIS_MAX) break;
+      }
+      return out;
+    },
+  );
 }

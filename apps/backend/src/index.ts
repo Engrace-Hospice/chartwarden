@@ -229,6 +229,7 @@ import {
   buildM7AdmissionDischargedConsumer,
   buildM7IdgDecisionConsumer,
   buildM7WorkerDeps,
+  claimDiagnosesForOrg,
   createDbCarePlanAbacResolver,
   createDrizzleCarePlanEraseStore,
   createDrizzleCarePlanReaderStore,
@@ -3564,6 +3565,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               m6ClaimRange: {
                 forRange: (orgId, patientId, range) =>
                   claimAssemblyRangeContextForOrg(dbHandle.db, orgId, patientId, range),
+              },
+              // F-205 (#251) — M7's org-explicit, patient-keyed claim-diagnosis read.
+              m7ClaimDiagnoses: {
+                forRange: (orgId, patientId, range) =>
+                  claimDiagnosesForOrg(dbHandle.db, orgId, patientId, range),
               },
               // F-122 (#251) — M8's two new range-shaped seam functions, same org-explicit binding.
               m8BillableEncounters: {
