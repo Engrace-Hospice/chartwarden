@@ -12,6 +12,7 @@ import type { ClaimAssemblyService } from "../services/claim-assembly";
 import type { RateTableRouteService } from "./rate-table-service";
 import type { M23ReadRouteService } from "./read-service";
 import type { WageIndexRouteService } from "./wage-index-service";
+import type { SequestrationPolicyRouteService } from "./sequestration-policy-service";
 import type { M23WriteRouteService } from "./write-service";
 
 export {
@@ -77,6 +78,8 @@ export interface M23RouteServices {
   readonly rateTableService?: RateTableRouteService;
   /** F-211 — the tenant-entered wage-index service (absent ⇒ the /billing/wage-indexes routes are not mounted). */
   readonly wageIndexService?: WageIndexRouteService;
+  /** F-212 — the tenant-entered sequestration-policy service (absent ⇒ the /billing/sequestration-policies routes are not mounted). */
+  readonly sequestrationService?: SequestrationPolicyRouteService;
 }
 
 export {
@@ -90,3 +93,8 @@ export {
   buildDrizzleRateTableService,
   hospiceRateTableEffectiveForOrg,
 } from "./rate-table-service";
+
+export {
+  type SequestrationPolicyRouteService,
+  buildDrizzleSequestrationPolicyService,
+} from "./sequestration-policy-service";

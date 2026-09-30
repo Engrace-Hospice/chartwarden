@@ -65,6 +65,7 @@ export {
   buildDrizzleM23WriteService,
   buildDrizzleRateTableService,
   buildDrizzleWageIndexService,
+  buildDrizzleSequestrationPolicyService,
 } from "./routes/index";
 export { mountM23Routes } from "./routes/mount";
 export { buildM23BootAssemblyService } from "./services/boot-assembly";

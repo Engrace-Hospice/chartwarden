@@ -46,7 +46,6 @@ import type {
   NotrView,
   RuleConfigListFilter,
   RuleConfigView,
-  SequestrationPolicyView,
   ValidationOverrideView,
   ValidationResultView,
   ValidationRunDetailView,
@@ -201,20 +200,6 @@ function mapRuleConfig(row: schema.ValidationRuleConfig): RuleConfigView {
     version: row.version,
     createdAt: isoReq(row.createdAt),
     updatedAt: isoReq(row.updatedAt),
-  };
-}
-
-function mapSequestration(row: schema.SequestrationPolicy): SequestrationPolicyView {
-  return {
-    policyId: row.id,
-    organizationId: row.organizationId,
-    providerEntityId: row.providerEntityId,
-    percentage: row.percentage,
-    effectiveFrom: row.effectiveFrom,
-    effectiveTo: row.effectiveTo ?? null,
-    setByMembershipId: row.setByMembershipId,
-    setReason: row.setReason ?? null,
-    createdAt: isoReq(row.createdAt),
   };
 }
 
@@ -589,26 +574,6 @@ export function buildDrizzleM23ReadService(
         if (!row || row.organizationId !== actor.organizationId)
           throw new NotFoundError("rule config");
         return mapRuleConfig(row);
-      });
-    },
-
-    async listSequestrationPolicies(actor, providerEntityId) {
-      return read(actor, async (tx) => {
-        const rows = await new repositories.SequestrationPolicyRepository(tx).listForProviderEntity(
-          providerEntityId,
-        );
-        // RLS already scopes to the org; the explicit org filter is belt-and-braces on the projection.
-        return rows.filter((r) => r.organizationId === actor.organizationId).map(mapSequestration);
-      });
-    },
-
-    async getActiveSequestrationPolicy(actor, providerEntityId) {
-      return read(actor, async (tx) => {
-        const row = await new repositories.SequestrationPolicyRepository(
-          tx,
-        ).findActiveForProviderEntity(providerEntityId);
-        if (!row || row.organizationId !== actor.organizationId) return null;
-        return mapSequestration(row);
       });
     },
 

@@ -47019,6 +47019,14 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "name": "includeSuperseded",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean"
+            }
           }
         ],
         "responses": {
@@ -47045,6 +47053,8 @@
                           "effectiveTo",
                           "setByMembershipId",
                           "setReason",
+                          "supersededAt",
+                          "supersededById",
                           "createdAt"
                         ],
                         "properties": {
@@ -47086,6 +47096,26 @@
                               }
                             ]
                           },
+                          "supersededAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "supersededById": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
                           "createdAt": {
                             "type": "string"
                           }
@@ -47110,11 +47140,104 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33)",
-        "parameters": [],
+        "summary": "Enter a sequestration policy row - percentage a decimal string in 0-2 (reason required off 2), may start in the past, non-overlapping; an open-ended entry takes over from the prior open row (201, §4.1 #33, F-212)",
+        "parameters": [
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
-          "200": {
-            "description": "OK"
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "policyId",
+                    "organizationId",
+                    "providerEntityId",
+                    "percentage",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "setByMembershipId",
+                    "setReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "policyId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "percentage": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "setByMembershipId": {
+                      "type": "string"
+                    },
+                    "setReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
           },
           "4XX": {
             "$ref": "#/components/responses/Error"
@@ -47140,10 +47263,297 @@
                     "type": "string"
                   },
                   "percentage": {
-                    "pattern": "^-?\\d+(\\.\\d+)?$",
+                    "pattern": "^\\d+(\\.\\d+)?$",
+                    "maxLength": 12,
                     "type": "string"
                   },
                   "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "setReason": {
+                    "maxLength": 2000,
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/billing/sequestration-policies/{id}": {
+      "get": {
+        "operationId": "getApiV1BillingSequestrationpoliciesById",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Read one sequestration policy row (F-212)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "policyId",
+                    "organizationId",
+                    "providerEntityId",
+                    "percentage",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "setByMembershipId",
+                    "setReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "policyId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "percentage": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "setByMembershipId": {
+                      "type": "string"
+                    },
+                    "setReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/sequestration-policies/{id}/supersede": {
+      "post": {
+        "operationId": "postApiV1BillingSequestrationpoliciesByIdSupersede",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "Supersede a live sequestration policy row with a corrected one; the old row is kept as history (F-212)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "policyId",
+                    "organizationId",
+                    "providerEntityId",
+                    "percentage",
+                    "effectiveFrom",
+                    "effectiveTo",
+                    "setByMembershipId",
+                    "setReason",
+                    "supersededAt",
+                    "supersededById",
+                    "createdAt"
+                  ],
+                  "properties": {
+                    "policyId": {
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "type": "string"
+                    },
+                    "providerEntityId": {
+                      "type": "string"
+                    },
+                    "percentage": {
+                      "type": "string"
+                    },
+                    "effectiveFrom": {
+                      "type": "string"
+                    },
+                    "effectiveTo": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "setByMembershipId": {
+                      "type": "string"
+                    },
+                    "setReason": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "supersededById": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "providerEntityId",
+                  "percentage",
+                  "effectiveFrom"
+                ],
+                "properties": {
+                  "providerEntityId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "percentage": {
+                    "pattern": "^\\d+(\\.\\d+)?$",
+                    "maxLength": 12,
+                    "type": "string"
+                  },
+                  "effectiveFrom": {
+                    "format": "date",
+                    "type": "string"
+                  },
+                  "effectiveTo": {
                     "format": "date",
                     "type": "string"
                   },
@@ -47164,7 +47574,7 @@
         "tags": [
           "23-billing-medicare"
         ],
-        "summary": "The active-on-now sequestration policy for a ProviderEntity (or null, §4.1)",
+        "summary": "The current open-ended sequestration policy for a ProviderEntity (or null, §4.1)",
         "parameters": [
           {
             "name": "providerEntityId",
@@ -47194,6 +47604,8 @@
                         "effectiveTo",
                         "setByMembershipId",
                         "setReason",
+                        "supersededAt",
+                        "supersededById",
                         "createdAt"
                       ],
                       "properties": {
@@ -47226,6 +47638,156 @@
                           "type": "string"
                         },
                         "setReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededById": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/billing/sequestration-policies/effective": {
+      "get": {
+        "operationId": "getApiV1BillingSequestrationpoliciesEffective",
+        "tags": [
+          "23-billing-medicare"
+        ],
+        "summary": "The live sequestration policy claim assembly would apply on a service date, or null (F-212)",
+        "parameters": [
+          {
+            "name": "providerEntityId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "onDate",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "required": [
+                        "policyId",
+                        "organizationId",
+                        "providerEntityId",
+                        "percentage",
+                        "effectiveFrom",
+                        "effectiveTo",
+                        "setByMembershipId",
+                        "setReason",
+                        "supersededAt",
+                        "supersededById",
+                        "createdAt"
+                      ],
+                      "properties": {
+                        "policyId": {
+                          "type": "string"
+                        },
+                        "organizationId": {
+                          "type": "string"
+                        },
+                        "providerEntityId": {
+                          "type": "string"
+                        },
+                        "percentage": {
+                          "type": "string"
+                        },
+                        "effectiveFrom": {
+                          "type": "string"
+                        },
+                        "effectiveTo": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "setByMembershipId": {
+                          "type": "string"
+                        },
+                        "setReason": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededAt": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "supersededById": {
                           "anyOf": [
                             {
                               "type": "string"

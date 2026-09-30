@@ -75,7 +75,10 @@ export function mountM23Routes(
   registerNotrRoutes(app, { readService, writeService });
   // Route group E — eligibility / sequestration-policy / MAC credentials.
   registerEligibilityRoutes(app, { readService, writeService });
-  registerSequestrationPolicyRoutes(app, { readService, writeService });
+  // F-212 — the tenant-entered sequestration policy (absent service => the /billing/sequestration-policies routes are not mounted).
+  if (services.sequestrationService) {
+    registerSequestrationPolicyRoutes(app, { sequestrationService: services.sequestrationService });
+  }
   registerMacCredentialRoutes(app, { readService, writeService });
   // F-210 — the tenant-entered hospice rate table (the per-diem input claim assembly prices from).
   if (services.rateTableService) {

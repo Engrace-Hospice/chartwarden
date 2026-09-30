@@ -379,3 +379,45 @@ smoke `m23-rate-table-routes.test.ts`.
 **The wage-index wall is removed by a TENANT-ENTERED, org-scoped value, and the payment math is corrected to CMS's labor-share and hourly-CHC rules (F-211, #252, audit M23-F02).** After F-210 `POST /claims/assemble` stopped at `WAGE_INDEX_UNAVAILABLE`: `wage_index_factor` is platform-shared (D12: no `organization_id`, `wardenx_app` SELECT-only), has no loader, and holds only the five migration-0080 placeholder CCNs. Migration `0280_m23_wage_index_labor_share.sql` adds (1) the org-scoped, append-only `tenant_wage_index` (FORCEd RLS, superseded-columns-only UPDATE grant + guard trigger, M4 audit trigger, destruction-role erase, one LIVE row per (org, CCN, fiscal year) by partial unique index, `numeric(6,4)` factor CHECKed 0.5..2.5, required `source_reference`); (2) `wage_index_factor.is_authoritative` (default true; the five 0080 rows flipped to false); (3) four nullable `labor_share_*` `numeric(5,4)` columns on `hospice_rate_table` (band 0.30..0.90, all-or-none, frozen by the guard). **Decision, stated because the task preferred reuse: a tenant write path into the shared `wage_index_factor` was rejected** — it would let one tenant's hand-keyed value silently reprice every tenant, contradicting the table's own platform-read-only design; the entry surface is a separate org-scoped table instead. API `GET/POST /api/v1/billing/wage-indexes` (+ `/effective`, `/:id`, `/:id/supersede`), keys `billing.wage_index.read/admin` (admin roles only), AI-block + `Idempotency-Key`, a non-string `factorDecimal` rejected on the raw body (`Value.Convert` would coerce a JSON number). `wageIndexForCcn(ccn, fy, orgId)` resolves the tenant's live row, then a platform row **only if authoritative**, else null -> `WAGE_INDEX_UNAVAILABLE` naming the endpoint; **a placeholder never prices a claim** (behaviour change: the dev CCNs 010001/050002/380001/450003/999999 no longer assemble without a tenant entry). Pure rules: `packages/billing/src/wage-index`.
 
 **Payment math (M23-F02 b and d), CMS rules relied on.** (b) The wage index adjusts only the LABOR SHARE: `adjusted = base x (labor x WI + (1 - labor))`, rounded half-up to whole cents once (`applyWageIndexToLaborShare`; ADR-0016 D1 states the formula). CMS publishes a labor share per level of care per fiscal year and they differ; **no repository document states a value**, so the four shares are tenant-entered with the rate set (a wrong entry prices wrong, as with the rates; the band catches percent-keyed and order-of-magnitude slips only). Rate versions entered under 0279 have NULL shares and **fail closed** `RATE_TABLE_LABOR_SHARE_MISSING` until superseded with shares. Hand check: RHC 20,000 at WI 0.9234, labor 0.66 -> 18,989 (the old whole-rate multiply gave 18,468). (d) CHC is paid HOURLY (ADR-0016 D2): each CHC day = adjusted hourly rate x that day's documented hours (M6 `chcDocumentedHours`, read per day like the `level_of_care_coherence` rule), one single-day segment per CHC day, `HippsRateTable` now carries `chcHourlyRateCents` instead of `chcPerDiemCents`. The calculator throws `ChcHoursError` (-> `CHC_HOURS_UNPRICEABLE` 422) for undocumented, < 8 h, > 24 h, or non-quarter-hour days rather than guessing or silently repricing a sub-8-hour day as RHC. **Today M6 always reports `chcDocumentedHours = null`, so every CHC claim fails closed** (as the coherence rule already failed it). Still open, unchanged: M23-F02(c) the wage index is keyed by provider CCN, not the site-of-service CBSA (value codes 61/G8); 837I CHC unit reporting in 15-minute units (M23-F04); the SIA add-on's hourly rate now uses the CHC labor share. Also noticed, not changed: migration 0080 seeds `fiscal_year_starting = 2026` labelled "FY2026", but the repo convention (`hospiceFiscalYearStarting`) makes 2026 = FY2027 (Oct 2026 - Sep 2027); moot now that placeholders never price. Proven: `m23-wage-index.live.test.ts` (real NOBYPASSRLS role: cross-tenant, one-live-per-key incl. the unique-index backstop, append-only, precedence), `m23-rate-table.live.test.ts` (labor-share adapter, CHECKs, legacy-NULL fail-closed), `m23-claim-assembly-seams.live.test.ts`, route smoke `m23-wage-index-routes.test.ts`, and pure `hipps.test.ts` / `wage-index.test.ts` / `rate-table.test.ts`.
+**The sequestration-policy write path is completed, not built from scratch (F-212, #252).** Checked before writing
+anything: `POST/GET /billing/sequestration-policies` and a web screen already existed, with the
+`billing.sequestration_policy.read`/`.edit` keys registered; the issue's "nothing lets a tenant create a row" was true
+only in effect. The real defects were (1) the write service refused any `effectiveFrom <= today` (forward-only, D11),
+so a tenant could never cover a *current or past* service date, which is exactly what `POST /claims/assemble` asks
+for; (2) no supersede semantics: the app role held UPDATE on every column, so a mis-keyed percentage could only be
+"fixed" by editing history; (3) nothing prevented two rows covering one date (the lookup silently picked the newest
+start); (4) `percentage` was unconstrained text (`"20"` was accepted). Migration `0281_m23_sequestration_policy_append_only.sql`
+mirrors F-210's `hospice_rate_table`: `superseded_at`/`superseded_by_id`, a btree_gist `EXCLUDE` over LIVE rows per
+provider entity, CHECKs (percentage a decimal in [0, 2], `effective_from >= 2013-04-01`, period order; `NOT VALID`
+so legacy rows never block the migration), a column-level UPDATE GRANT narrowed to `effective_to` + the two supersede
+columns, and a guard trigger (an open period may only be CLOSED, a closed or superseded row is frozen, DELETE is the
+destruction role's alone, unchanged for org erasure). The old "one open row per (entity, start)" unique index now
+ignores superseded rows, or the commonest correction (right start, wrong percentage) could not be inserted beside
+the row it replaces. **Legacy data is repaired in the migration, not left to fail it:** the old forward-date path closed
+the predecessor's `effective_to` *on* the successor's start (a one-day inclusive overlap the new EXCLUDE would reject);
+step 1 shifts that to the day before, step 2 supersedes any older row that still overlaps a newer one (newest wins,
+as the old lookup did). Proven on a scratch DB with both patterns seeded, and the migration re-applies cleanly.
+The routes were rewritten over a new `SequestrationPolicyRouteService` (the F-210 shape; the old read/write-service
+methods and `ForwardDateSequestrationBodySchema` were removed rather than left dead): list (`includeSuperseded`),
+`/active`, `/effective?onDate`, `/:id`, `POST` (create, may be back-dated, optional `effectiveTo`) and
+`POST /:id/supersede`, on the existing keys (the spec already models them; no new key was needed), AI-block +
+`Idempotency-Key` + `provider_entity_billing_scope`. An open-ended entry starting after a live open-ended row *takes
+over* (closes it the day before: the annual-change case the old route did); any other overlap is a 409 naming the
+clashing row. `validateSequestrationPolicyEntry` (`@wardenx/billing`, pure) holds the band: 0 to 2 (the Medicare FFS
+statutory cap; 0 is legitimate for the CARES-Act moratorium 2020-05-01..2022-03-31, 1 for the Apr-Jun 2022 step-down),
+a `setReason` required for anything other than exactly 2, start not before 2013-04-01 and not more than two years
+ahead. **No silent default, deliberately:** a tenant with no row still gets `SEQUESTRATION_POLICY_UNAVAILABLE`, now
+naming the date, the provider entity, `POST /api/v1/billing/sequestration-policies` and
+`billing.sequestration_policy.edit`. The tradeoff: a default of 2% would be right for every service date after
+2022-07-01 and unblock every new tenant, but it would be wrong for 2020-05 to 2022-06 dates and would hide the
+"nobody entered the schedule" state behind plausible-looking numbers on money claims; the cost of fail-closed is one
+extra onboarding step per provider entity (an onboarding-time seed, if wanted, must be an explicit, audited row
+written by a person or a documented platform job, never a read-time fallback). Residual risks: the [0, 2] band is a
+code+DB constraint, so a future statutory change above 2% (e.g. S-PAYGO) needs a migration; an entry of exactly 2%
+with the wrong dates is plausible-but-wrong and unguarded; the web screen still constrains its date picker to
+tomorrow-or-later (`sequestration-policy.tsx`), so back-dated entry is API-only until that screen is revised.
+Permission grants: `administrator`/`org_admin` only (migration 0281 + the catalog sync), not Compliance Officer as the
+module spec table suggests. Proven live: `m23-sequestration-policy.live.test.ts` (real NOBYPASSRLS role: RLS
+isolation incl. forged org and un-contexted reads, back-dated create, the full 2013-2026 timeline lookup, overlap 409 +
+EXCLUDE backstop, takeover, supersede incl. same-start open correction, append-only GRANT/trigger, audit trail, adapter
+ignores superseded rows), `m23-claim-assembly-seams.live.test.ts`, and the route smoke `m23-sequestration-policy-routes.test.ts`.

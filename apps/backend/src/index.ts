@@ -581,6 +581,7 @@ import {
   buildDrizzleM23WriteService,
   buildDrizzleRateTableService,
   buildDrizzleWageIndexService,
+  buildDrizzleSequestrationPolicyService,
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
   buildM23NoeDraftConsumer,
@@ -3559,6 +3560,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             rateTableService: buildDrizzleRateTableService(dbHandle.db),
             // F-211 — the tenant-entered CMS wage index (`/billing/wage-indexes`), read by the same boot assembly.
             wageIndexService: buildDrizzleWageIndexService(dbHandle.db),
+            // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
+            // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
+            sequestrationService: buildDrizzleSequestrationPolicyService(dbHandle.db),
             readService: buildDrizzleM23ReadService(dbHandle.db),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
               outbox: m23OutboxPublisher,
