@@ -364,11 +364,11 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
       // event carries no fact M23 needs beyond what discharge.created already delivers.
       "m37",
       "m36",
-      // F-139 (#248) — `m31` ADDED: M31's own §4.10 "M31 consumes" table names this event TWICE, filtered
-      // by `reason` — `reason='death'` triggers the M16-coordinated bereaved-portal transition
-      // (`m6-admission-discharged-death.ts`), `reason!='death'` enqueues the 30-day post-discharge grace
-      // timer (`m6-admission-discharged-non-death.ts`) — a real relationship the catalog never declared.
-      "m31",
+      // F-222 (#248) — `m31` REMOVED (was F-139's ADD): the `reason!='death'` branch is now a DAILY SWEEP over
+      // M6's CURRENT discharge state through the org-explicit published read `portalDischargedPastGraceForOrg`
+      // (`31-portal/jobs/post-discharge-grace-sweep.ts`) — a SEAM PULL, see `seamConsumers` below; a re-admitted
+      // patient simply stops being a candidate, so no per-event grace job exists to cancel. The `reason='death'`
+      // branch is redundant with the bound `m6.bereavement.eligible` -> M16 `plan_opened`/`contact_active` chain.
     ],
     // F-130 (#248) — m27 REMOVED: same reasoning as `m6.admission.activated` above — M27's S-3 census is
     // a seam pull, refreshed on demand, never a push subscription to admission lifecycle events.
@@ -379,7 +379,7 @@ export const M6_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-131 (#248) — m26 REMOVED: same reasoning as `m6.admission.activated` above — M26's only M6
     // subscriptions are `revocation.created`/`transfer.created`; an ordinary discharge is a benefit-period
     // boundary M26 reads via the `ElectionPeriodReader` PULL, not a push subscription.
-    seamConsumers: ["m30", "m33"],
+    seamConsumers: ["m30", "m31", "m33"],
     isOutboxOnly: true,
   },
   // ── election ──────────────────────────────────────────────────────────────────────────────────

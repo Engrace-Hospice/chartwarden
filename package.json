@@ -196,6 +196,7 @@
     "test:m31:bereavement-consent-consumers:live": "vitest run apps/backend/__tests__/m31-bereavement-consent-consumers.live.test.ts",
     "test:m31:bereavement-plan-opened:live": "vitest run apps/backend/__tests__/m31-bereavement-plan-opened-consumer.live.test.ts",
     "test:m31:bereavement-contact-active:live": "vitest run apps/backend/__tests__/m31-bereavement-contact-active-consumer.live.test.ts",
+    "test:m31:post-discharge-grace:live": "vitest run apps/backend/__tests__/m31-post-discharge-grace-sweep.live.test.ts",
     "test:f144:render-requests:live": "vitest run apps/backend/__tests__/f144-m13-m23-m24-m25-render-requests.live.test.ts",
     "test:m23:noe-draft:live": "vitest run apps/backend/__tests__/m23-noe-draft.live.test.ts",
     "test:m23:notr-draft:live": "vitest run apps/backend/__tests__/m23-notr-draft.live.test.ts",
