@@ -153,6 +153,7 @@ import {
   mountDeviceAttestationRoutes,
   mountIdentityRoutes,
   mountOrganizationLifecycleRoutes,
+  membershipDisplayForOrg,
   mountSessionStepUpRoutes,
   registerIdentityErasers,
   registerIdentitySeams,
@@ -192,6 +193,7 @@ import {
   hl7OrmDemographicsInTx,
   membershipUserIdForOrg,
   mountPatientRoutes,
+  patientDisplayLabelsForOrg,
   registerPatientErasers,
   registerPatientSeams,
 } from "./modules/05-patient/index";
@@ -205,6 +207,7 @@ import {
   admissionSchedulingContextForOrg,
   idgCurrentLevelOfCareForOrg,
   idgPacketInclusionForOrg,
+  idgRecertWindowsForOrg,
   buildM6DocumentBackrefConsumer,
   buildM6LevelOfCareChangeSignedConsumer,
   buildM6ProposalAcceptedConsumer,
@@ -388,6 +391,7 @@ import {
   buildM14ActionItemAutoCloseConsumer,
   buildM14AssessmentRecordedConsumer,
   buildM14AssessmentSignificantChangeConsumer,
+  buildM14DocumentBackrefConsumer,
   buildM14HopeJ2051TriggerConsumer,
   buildM14HopeSfvCreatedConsumer,
   buildM14MedicationOrderDiscontinuedConsumer,
@@ -3310,7 +3314,24 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           registerHeldTransmissionRoutes(app, { recovery: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher) });
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
           mountEmarRoutes(app, dbHandle.db, m13OutboxPublisher); // M13 — reads + the write lifecycle over Drizzle+RLS, m13.* transactional outbox
-          mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
+          mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher, {
+            // M14 read enrichment — org-explicit BATCHED seams bound as locally-declared ports (M14 imports no M5/M6 code):
+            // M5 "First L." + MRN last-4 for the agenda/packet/decision/action-item reads, and M6's per-patient recert/F2F
+            // window (M6's own window math) for GET /idg/meetings/:id/recert-windows.
+            patientDisplay: {
+              displayForPatients: (organizationId, patientIds) =>
+                patientDisplayLabelsForOrg(dbHandle.db, organizationId, patientIds),
+            },
+            recertWindows: {
+              recertWindowsForPatients: (organizationId, patientIds) =>
+                idgRecertWindowsForOrg(dbHandle.db, organizationId, patientIds),
+            },
+            // M2's identity-owned batched staff display read (name only) — the minutes "Finalized by".
+            membershipDisplay: {
+              displayForMemberships: (organizationId, membershipIds) =>
+                membershipDisplayForOrg(dbHandle.db, organizationId, membershipIds),
+            },
+          }); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox
           mountEvvRoutes(app, dbHandle.db, m18OutboxPublisher); // M18 — reads + the write lifecycle over Drizzle+RLS, m18.evv.* transactional outbox
           mountDocumentRoutes(app, dbHandle.db, featureFlagReader); // M22 — reads + the write lifecycle over Drizzle+RLS (no producer outbox: M22's outbox is the consumer-side render handshake); the reader is the `documents.doclens` DocLens gate (F-091)
@@ -4575,7 +4596,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // under withPlatformContext (allowlisted via wireM30Tenancy above; audited by the shared platform-bypass
     // auditor — its event records the M30 jobId, so the "M34" name is incidental, the auditor is module-agnostic).
     const m30ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M30_PLATFORM_JOB_ID,
       reason: "M30 §4.8 cron fan-out (active-org enumeration)",
@@ -4655,7 +4676,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // forward work (see wiring.ts / jobs/m27-jobs.ts for why — RULE 4 still applies: those typed thunks
     // throw only when a JOB RUNS, so boot stays green).
     const m27ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M27_PLATFORM_JOB_ID,
       reason: "M27 §4.8 cron fan-out (active-org enumeration)",
@@ -4868,7 +4889,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // exist — it will simply observe and report nothing until Oregon's launch gateway is also configured.
     if (m24CredentialCipher) {
       const m24ActiveOrgs = buildActiveOrgEnumerator({
-        platformDb: dbHandle.db,
+        platformDb: platformDbHandle?.db,
         auditBypass: m34PlatformBypassAuditor,
         jobId: M24_PLATFORM_JOB_ID,
         reason: "M24 §4.9 state-channel-health cron fan-out (active-org enumeration)",
@@ -4907,7 +4928,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // "no extra credential needed" shape.
     if (queueConnection) {
       const m29ActiveOrgs = buildActiveOrgEnumerator({
-        platformDb: dbHandle.db,
+        platformDb: platformDbHandle?.db,
         auditBypass: m34PlatformBypassAuditor,
         jobId: M29_PLATFORM_JOB_ID,
         reason: "M29 §4.9-shaped outbound-dispatch retry-sweep cron fan-out (active-org enumeration)",
@@ -4943,7 +4964,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // the shared module-agnostic platform-bypass auditor) + the M36 AlertEmitter so the crons enumerate
     // every active tenant under withPlatformContext and fire the §4.9 typed alerts.
     const m25ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M25_PLATFORM_JOB_ID,
       reason: "M25 §4.8 cron fan-out (active-org enumeration)",
@@ -5021,7 +5042,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // ── M7 §4.6 `care-plan.gates` cron (TASK-040D — the M25 worker-runner shape) ─────────────────────────
     // The CoP 418.56 5-/15-day gate scans. Absent this, they never ran in production — this is the fix.
     const m7ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M7_PLATFORM_JOB_ID,
       reason: "M7 §4.6 care-plan.gates cron fan-out (active-org enumeration)",
@@ -5052,7 +5073,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
 
     // ── M17 Phase-3 scheduling automation: recurring materialization + visit attention ───────────────
     const m17ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M17_PLATFORM_JOB_ID,
       reason:
@@ -5085,7 +5106,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
 
     // ── M8 Phase-3 encounter attention + cosignature SLA automation ─────────────────────────────────
     const m8ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M8_PLATFORM_JOB_ID,
       reason:
@@ -5118,7 +5139,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
 
     // ── M6 admission F2F due-reminder cron ───────────────────────────────────────────────────────────────
     const m6ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M6_PLATFORM_JOB_ID,
       reason:
@@ -5158,7 +5179,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // ── M9 §4.8 `license`/`changes`/`cadence` crons (TASK-040D — the M25 worker-runner shape) ────────────
     // `summary`/`eraser` (M9_QUEUES) stay out of scope — event-driven / M4-destruction-cert consumers.
     const m9ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M9_PLATFORM_JOB_ID,
       reason:
@@ -5197,7 +5218,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // choice consumers/m36-delivery-failed.ts already made for the identical edge — no caller anywhere in
     // this codebase implements the terminus's dial/PSAP/page effects).
     const m20ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M20_PLATFORM_JOB_ID,
       reason: "M20 §4.8 SOS SLA watchdog cron fan-out (active-org enumeration)",
@@ -5240,7 +5261,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // raises a typed `retryable: false` DegradedError, so the job DLQs immediately (no retry storm) and
     // `attachDlqAlertsToAll` surfaces it, while Tier-2 capture is untouched (§5.6 / §7.10).
     const m10ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M10_PLATFORM_JOB_ID,
       reason: "M10 §4.8 HOPE watchdog cron fan-out (active-org enumeration)",
@@ -5289,7 +5310,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // M7), wired here rather than imported by M14 directly — a locally-declared structural port type on
     // the M14 side, the `arch:boundaries` type-only-import rule (F-165's `m16-plan-closed.ts` precedent).
     const m14ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M14_PLATFORM_JOB_ID,
       reason:
@@ -5310,6 +5331,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       m7: {
         carePlanContextForOrg: (organizationId, patientId, asOfIso) =>
           idgPacketCarePlanContextForOrg(dbHandle.db, organizationId, patientId, asOfIso),
+      },
+      // §2.4 cover `nextRecertDueAt`/`f2fWindowState` — M6's own window math, snapshotted at packet freeze.
+      recertWindows: {
+        recertWindowsForOrg: (organizationId, patientIds, asOfIso) =>
+          idgRecertWindowsForOrg(dbHandle.db, organizationId, patientIds, new Date(asOfIso)),
       },
       locationTimezone: {
         locationTimezone: (organizationId, locationId) =>
@@ -5339,7 +5365,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // M11 D5 — one repeatable hourly trigger enumerates active org ids under the audited platform
     // context; each delegated service call opens its own tenant/RLS transaction before touching PHI.
     const m11StandingActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M11_PLATFORM_JOB_ID,
       reason: "M11 D5 standing-order hourly spawn fan-out",
@@ -5365,7 +5391,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // standing-spawn worker above does; the real scan/write logic lives on `OrderRouteService
     // .expireOverdueVerbals`, this is a thin fan-out wrapper (F-164, #248).
     const m11VerbalTimerActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M11_VERBAL_TIMER_PLATFORM_JOB_ID,
       reason: "M11 §2.3 D3 verbal-order-expiry hourly sweep fan-out",
@@ -5393,7 +5419,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // critical). Fans out over active orgs like the two M11 sweeps above; each service call opens its own tenant/RLS
     // transaction. Grep this factory: a worker that is bound but never constructed is dead code.
     const m11StuckTransmissionActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID,
       reason: "M11 stuck lab-order recovery (auto-retry + held-order aging) fan-out",
@@ -5421,7 +5447,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // separately from the six outbox consumers that enqueue onto it (below) — the drain performs real
     // outbound vendor I/O, so it runs as its own scheduled worker (F-164, #248).
     const m12SyncActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M12_PLATFORM_JOB_ID,
       reason: "M12 §2.6/§2.8 dosespot_sync_queue drain fan-out",
@@ -5453,7 +5479,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // model roster sync had ever executed. The drain reads no PHI and performs no outbound vendor I/O
     // (unlike M12's), so it needs no dedicated outbox publisher of its own here.
     const m19ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M19_PLATFORM_JOB_ID,
       reason: "M19 §4.5/§4.8 on_call_roster_sync_queue drain + catch-up-seed fan-out",
@@ -5485,7 +5511,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     // (`@wardenx/inpatient` `buildCoverageWindows`) has existed and been unit-tested since M37-T07; this
     // is the worker its own header named and that was never built.
     const m37ActiveOrgs = buildActiveOrgEnumerator({
-      platformDb: dbHandle.db,
+      platformDb: platformDbHandle?.db,
       auditBypass: m34PlatformBypassAuditor,
       jobId: M37_PLATFORM_JOB_ID,
       reason: "M37 §4.8 ipu.rn-coverage-watchdog cron fan-out (active-org enumeration)",
@@ -6239,6 +6265,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // matches on, was written by no code path at all, so binding alone would have matched nothing
           // forever. An action item saying "sign this care plan" stayed open after the plan was signed.
           buildM14ActionItemAutoCloseConsumer({ db: dbHandle.db, outbox: m14OutboxPublisher }),
+          // The §4.4 M22 back-ref (return leg of the F-166 render handshake): stamps
+          // `idg_minutes.minutes_document_id` / `idg_patient_packet.packet_document_id` off
+          // `m22.document.rendered`. Until it was bound both columns were written by nothing and the minutes
+          // screen said "not rendered" for a document M22 had rendered.
+          buildM14DocumentBackrefConsumer({ db: dbHandle.db }),
           // F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers, gated on the
           // dedicated `m14SinceLastIdgRedisClient` the same way F-152's M11 suggestion-banner consumer
           // gates on its own dedicated client (no Redis in dev/test without `queueConnection`).

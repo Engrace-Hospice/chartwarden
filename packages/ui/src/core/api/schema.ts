@@ -8980,6 +8980,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/idg/meetings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Schedule a single (ad-hoc) IDG meeting */
+        post: operations["postApiV1IdgMeetings"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/idg/meetings/{id}": {
         parameters: {
             query?: never;
@@ -9153,6 +9170,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/idg/meetings/{id}/recert-windows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Per-agenda-patient recert / face-to-face windows for the IDG right pane — next recert due date, benefit-period end, F2F status/window (seam-pulled from M6's window math, org-timezone; unresolved patients are `unknown`, never fabricated) */
+        get: operations["getApiV1IdgMeetingsByIdRecertwindows"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/idg/meetings/{id}/reschedule": {
         parameters: {
             query?: never;
@@ -9194,7 +9228,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read one patient's packet (SUD redaction applied) */
+        /** Read one patient's packet with its content — cover summary (deterministic), per-discipline views, signed encounters, assessment changes, HOPE, order/medication changes, flagged events, carry-forward items (SUD redaction applied per caller) */
         get: operations["getApiV1IdgMeetingsByMeetingIdPacketsByPatientId"];
         put?: never;
         post?: never;
@@ -44125,6 +44159,10 @@ export interface operations {
                         meetingId: string;
                         decisionId: string | null;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         /** Format: uuid */
                         assignedToMembershipId: string;
                         status: "open" | "in_progress" | "completed" | "cancelled" | "auto_closed";
@@ -44198,6 +44236,10 @@ export interface operations {
                         meetingId: string;
                         decisionId: string | null;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         /** Format: uuid */
                         assignedToMembershipId: string;
                         status: "open" | "in_progress" | "completed" | "cancelled" | "auto_closed";
@@ -44271,6 +44313,10 @@ export interface operations {
                         meetingId: string;
                         kind: "patient_review" | "carry_forward" | "administrative_note" | "family_meeting_setup" | "other";
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                     };
                 };
             };
@@ -44489,6 +44535,10 @@ export interface operations {
                         /** Format: uuid */
                         meetingId: string;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         agendaItemId: string | null;
                         decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
                         status: "open" | "emitted" | "superseded";
@@ -44534,6 +44584,10 @@ export interface operations {
                         /** Format: uuid */
                         meetingId: string;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         agendaItemId: string | null;
                         decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
                         status: "open" | "emitted" | "superseded";
@@ -44543,6 +44597,59 @@ export interface operations {
                         /** Format: date-time */
                         recordedAt: string;
                         supersededByDecisionId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1IdgMeetings: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    locationId: string;
+                    /** Format: date-time */
+                    scheduledStart: string;
+                    /** Format: date-time */
+                    scheduledEnd: string;
+                    /** Format: uuid */
+                    coordinatorMembershipId?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        id: string;
+                        /** Format: uuid */
+                        organizationId: string;
+                        /** Format: uuid */
+                        locationId: string;
+                        status: "scheduled" | "packets_building" | "packets_ready" | "live" | "adjourned" | "cancelled" | "rescheduled";
+                        /** Format: date-time */
+                        scheduledStart: string;
+                        /** Format: date-time */
+                        scheduledEnd: string;
+                        adjournedAt: string | null;
+                        /** Format: uuid */
+                        coordinatorMembershipId: string;
                     };
                 };
             };
@@ -44580,6 +44687,8 @@ export interface operations {
                         /** Format: date-time */
                         scheduledEnd: string;
                         adjournedAt: string | null;
+                        /** Format: uuid */
+                        coordinatorMembershipId: string;
                     };
                 };
             };
@@ -44627,6 +44736,10 @@ export interface operations {
                         meetingId: string;
                         decisionId: string | null;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         /** Format: uuid */
                         assignedToMembershipId: string;
                         status: "open" | "in_progress" | "completed" | "cancelled" | "auto_closed";
@@ -44691,6 +44804,10 @@ export interface operations {
                         meetingId: string;
                         kind: "patient_review" | "carry_forward" | "administrative_note" | "family_meeting_setup" | "other";
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                     }[];
                 };
             };
@@ -44731,6 +44848,10 @@ export interface operations {
                         meetingId: string;
                         kind: "patient_review" | "carry_forward" | "administrative_note" | "family_meeting_setup" | "other";
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                     };
                 };
             };
@@ -44872,6 +44993,10 @@ export interface operations {
                         /** Format: uuid */
                         meetingId: string;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         agendaItemId: string | null;
                         decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
                         status: "open" | "emitted" | "superseded";
@@ -45032,6 +45157,10 @@ export interface operations {
                         /** Format: uuid */
                         meetingId: string;
                         patientId: string | null;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         agendaItemId: string | null;
                         decisionKind: "care_plan_update" | "order_request" | "medication_recommendation" | "level_of_care_consideration" | "recertification_consideration" | "family_meeting_needed" | "bereavement_risk_flag" | "referral" | "team_note";
                         status: "open" | "emitted" | "superseded";
@@ -45074,6 +45203,9 @@ export interface operations {
                         finalizedAt: string | null;
                         finalizedByMembershipId: string | null;
                         minutesDocumentId: string | null;
+                        renderStatus: "not_rendered" | "pending" | "rendered";
+                        finalizedByName?: string | null;
+                        finalizedByDiscipline: string | null;
                         attendanceCount: number | null;
                         decisionCount: number | null;
                         actionItemCount: number | null;
@@ -45108,6 +45240,10 @@ export interface operations {
                         meetingId: string;
                         /** Format: uuid */
                         patientId: string;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         frozenAt: string | null;
                     }[];
                 };
@@ -45146,6 +45282,58 @@ export interface operations {
                         /** Format: date-time */
                         scheduledEnd: string;
                         adjournedAt: string | null;
+                        /** Format: uuid */
+                        coordinatorMembershipId: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IdgMeetingsByIdRecertwindows: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        meetingId: string;
+                        /** Format: date-time */
+                        generatedAt: string;
+                        items: {
+                            /** Format: uuid */
+                            patientId: string;
+                            patient?: {
+                                displayName: string;
+                                mrnSuffix: string | null;
+                            } | null;
+                            admissionId: string | null;
+                            currentPeriodSequence: number | null;
+                            benefitPeriodStart: string | null;
+                            benefitPeriodEnd: string | null;
+                            nextRecertDueDate: string | null;
+                            nextPeriodSequence: number | null;
+                            daysUntilNextRecert: number | null;
+                            f2fRequired: boolean | null;
+                            f2fWindowStart: string | null;
+                            f2fWindowEnd: string | null;
+                            f2fStatus: "not_required" | "not_yet_open" | "window_open" | "attested" | "missed" | "unknown";
+                            f2fWindowState: ("not_due" | "window_open" | "overdue") | null;
+                            f2fScheduledDate: string | null;
+                        }[];
                     };
                 };
             };
@@ -45217,6 +45405,8 @@ export interface operations {
                         /** Format: date-time */
                         scheduledEnd: string;
                         adjournedAt: string | null;
+                        /** Format: uuid */
+                        coordinatorMembershipId: string;
                     };
                 };
             };
@@ -45249,7 +45439,129 @@ export interface operations {
                         meetingId: string;
                         /** Format: uuid */
                         patientId: string;
+                        patient?: {
+                            displayName: string;
+                            mrnSuffix: string | null;
+                        } | null;
                         frozenAt: string | null;
+                        content: {
+                            /** @constant */
+                            schemaVersion: "2026-01-v1";
+                            cover: {
+                                summary: string;
+                                /** Format: date-time */
+                                builtAt: string;
+                                /** Format: date-time */
+                                sinceCursorAt: string;
+                                sinceContext: "prior_idg" | "first_idg";
+                                nameAtBuild: string;
+                                age: number;
+                                primaryDiagnosisIcd10: string;
+                                primaryDiagnosisLabel: string;
+                                levelOfCare: "routine" | "continuous" | "inpatient_respite" | "general_inpatient";
+                                daysOnService: number;
+                                hasActiveDpoa: boolean;
+                                activeSudFlag: boolean;
+                                recert: {
+                                    nextRecertDueAt: string | null;
+                                    f2fWindowState: ("not_due" | "window_open" | "overdue") | null;
+                                };
+                                carePlan: {
+                                    activeProblemCount: number;
+                                    activeGoalCount: number;
+                                    activeInterventionCount: number;
+                                    /** Format: date-time */
+                                    lastSignedAt: string;
+                                    /** Format: date-time */
+                                    nextReviewDueAt: string;
+                                    isReviewOverdue: boolean;
+                                };
+                                discussionFlags: {
+                                    kind: string;
+                                    detail: string;
+                                }[];
+                                counts: {
+                                    signedEncounters: number;
+                                    assessmentChanges: number;
+                                    hopeTriggers: number;
+                                    orderChanges: number;
+                                    medicationChanges: number;
+                                    flaggedEvents: number;
+                                    carryForwardActionItems: number;
+                                };
+                            };
+                            disciplines: {
+                                discipline: "rn" | "msw" | "chaplain" | "aide" | "md_np" | "volunteer" | "medical_director";
+                                oneLineSummary: string;
+                                items: {
+                                    sourceKind: "encounter" | "assessment" | "order" | "medication" | "hope" | "action_item" | "flag";
+                                    sourceId: string;
+                                    label: string;
+                                    summary: string;
+                                    severity: ("info" | "attention" | "urgent") | null;
+                                }[];
+                                openQuestions: string[];
+                            }[];
+                            signedEncounters: {
+                                encounterId: string;
+                                encounterType: string;
+                                discipline: string;
+                                /** Format: date-time */
+                                signedAt: string;
+                            }[];
+                            assessmentChanges: {
+                                assessmentId: string;
+                                scaleKind: string;
+                                changeKind: string;
+                                /** Format: date-time */
+                                occurredAt: string;
+                            }[];
+                            hopeTimepoints: {
+                                captured: boolean;
+                                upcoming: {
+                                    timepoint: string;
+                                    /** Format: date-time */
+                                    dueAt: string;
+                                }[];
+                                openSfvCount: number | null;
+                                symptomImpactTriggers: {
+                                    hopeAssessmentId: string;
+                                    triggerKind: string;
+                                    /** Format: date-time */
+                                    firedAt: string;
+                                }[];
+                            };
+                            orderChanges: {
+                                orderId: string;
+                                orderKind: string;
+                                changeKind: string;
+                                /** Format: date-time */
+                                changedAt: string;
+                            }[];
+                            medicationChanges: {
+                                medicationOrderId: string;
+                                drugLabel: string;
+                                changeKind: string;
+                                /** Format: date-time */
+                                changedAt: string;
+                            }[];
+                            flaggedEvents: {
+                                kind: string;
+                                sourceId: string;
+                                /** Format: date-time */
+                                occurredAt: string;
+                                severity: "info" | "attention" | "urgent";
+                            }[];
+                            carryForwardActionItems: {
+                                actionItemId: string;
+                                assignedToMembershipId: string;
+                                /** Format: date-time */
+                                dueDate: string;
+                                carryForwardCount: number;
+                            }[];
+                        } | null;
+                        appliedSudRedaction: boolean;
+                        redactionNotice: string | null;
                     };
                 };
             };
@@ -45399,6 +45711,8 @@ export interface operations {
                         scheduledStart: string;
                         /** Format: date-time */
                         scheduledEnd: string;
+                        /** Format: uuid */
+                        coordinatorMembershipId: string;
                     }[];
                 };
             };

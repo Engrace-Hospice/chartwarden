@@ -18,6 +18,7 @@ import type {
   MeetingScheduleView as ServiceMeetingScheduleView,
   MeetingView as ServiceMeetingView,
   MinutesView as ServiceMinutesView,
+  PacketDetailView as ServicePacketDetailView,
   PacketDigestView as ServicePacketDigestView,
   RecurringPolicyView as ServiceRecurringPolicyView,
 } from "./service";
@@ -26,11 +27,27 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 if (!FormatRegistry.Has("uuid")) {
   FormatRegistry.Set("uuid", (v) => typeof v === "string" && UUID_RE.test(v));
 }
+if (!FormatRegistry.Has("date")) {
+  FormatRegistry.Set("date", (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v));
+}
 if (!FormatRegistry.Has("date-time")) {
   FormatRegistry.Set("date-time", (v) => typeof v === "string" && !Number.isNaN(Date.parse(v)));
 }
 
 const Nullable = <T extends TSchema>(schema: T) => Type.Union([schema, Type.Null()]);
+
+/**
+ * Minimum-necessary patient display info attached to the meeting-screen reads that carry a `patientId`
+ * (agenda, packets, decisions, action items). "First L." (legal first name + last initial — the M5 D3 /
+ * M14 §2.4 display rule) plus the MRN's last four characters; the full name, DOB and full MRN never ride
+ * these reads. `Optional` because only the enriched READS populate it (POST/PATCH echoes and the in-memory
+ * slice omit it); `null` when the item has no patient or the org cannot resolve the id.
+ */
+export const PatientDisplaySchema = Type.Object({
+  displayName: Type.String(),
+  mrnSuffix: Nullable(Type.String()),
+});
+const PatientDisplayField = Type.Optional(Nullable(PatientDisplaySchema));
 
 /** §2.6 decision taxonomy (mirrors `IdgDecisionKind`). */
 const DECISION_KIND = Type.Union([
@@ -112,6 +129,8 @@ export const ScheduleMeetingRequest = Type.Object({
   locationId: Type.String({ format: "uuid" }),
   scheduledStart: Type.String({ format: "date-time" }),
   scheduledEnd: Type.String({ format: "date-time" }),
+  /** Defaults to the acting membership when omitted. */
+  coordinatorMembershipId: Type.Optional(Type.String({ format: "uuid" })),
 });
 
 export const CancelMeetingRequest = Type.Object({
@@ -200,6 +219,7 @@ export const MeetingScheduleViewSchema = Type.Object({
   status: MEETING_STATUS,
   scheduledStart: Type.String({ format: "date-time" }),
   scheduledEnd: Type.String({ format: "date-time" }),
+  coordinatorMembershipId: Type.String({ format: "uuid" }),
 });
 export const ScheduleListResponseSchema = Type.Array(MeetingScheduleViewSchema);
 
@@ -212,6 +232,7 @@ export const MeetingViewSchema = Type.Object({
   scheduledStart: Type.String({ format: "date-time" }),
   scheduledEnd: Type.String({ format: "date-time" }),
   adjournedAt: Nullable(Type.String({ format: "date-time" })),
+  coordinatorMembershipId: Type.String({ format: "uuid" }),
 });
 
 /** A per-patient packet digest (GET /idg/meetings/:id/packets + .../packets/:patientId). */
@@ -219,9 +240,177 @@ export const PacketDigestViewSchema = Type.Object({
   packetId: Type.String({ format: "uuid" }),
   meetingId: Type.String({ format: "uuid" }),
   patientId: Type.String({ format: "uuid" }),
+  patient: PatientDisplayField,
   frozenAt: Nullable(Type.String({ format: "date-time" })),
 });
 export const PacketListResponseSchema = Type.Array(PacketDigestViewSchema);
+
+// ── Packet CONTENT (GET /idg/meetings/:meetingId/packets/:patientId) — the frozen `built_snapshot` shaped for the
+//    packet page / live-meeting centre pane (see ./packet-content.ts). Snapshot facts only; null/empty where the
+//    build holds nothing; deterministic Layer-1 cover text (no AI polish); W-SUD-01 applied per caller. ────────
+const PacketDateTime = Type.String({ format: "date-time" });
+const PacketSeverity = Type.Union([
+  Type.Literal("info"),
+  Type.Literal("attention"),
+  Type.Literal("urgent"),
+]);
+const F2fWindowState = Nullable(
+  Type.Union([Type.Literal("not_due"), Type.Literal("window_open"), Type.Literal("overdue")]),
+);
+export const PacketDisciplineKeySchema = Type.Union([
+  Type.Literal("rn"),
+  Type.Literal("msw"),
+  Type.Literal("chaplain"),
+  Type.Literal("aide"),
+  Type.Literal("md_np"),
+  Type.Literal("volunteer"),
+  Type.Literal("medical_director"),
+]);
+export const PacketContentViewSchema = Type.Object({
+  schemaVersion: Type.Literal("2026-01-v1"),
+  cover: Type.Object({
+    /** Deterministic Layer-1 cover text composed from the facts below (no AI polish). */
+    summary: Type.String(),
+    builtAt: PacketDateTime,
+    sinceCursorAt: PacketDateTime,
+    sinceContext: Type.Union([Type.Literal("prior_idg"), Type.Literal("first_idg")]),
+    /** "First L." as frozen at build (the live display label rides the top-level `patient`). */
+    nameAtBuild: Type.String(),
+    age: Type.Integer(),
+    primaryDiagnosisIcd10: Type.String(),
+    primaryDiagnosisLabel: Type.String(),
+    levelOfCare: Type.Union([
+      Type.Literal("routine"),
+      Type.Literal("continuous"),
+      Type.Literal("inpatient_respite"),
+      Type.Literal("general_inpatient"),
+    ]),
+    daysOnService: Type.Integer(),
+    hasActiveDpoa: Type.Boolean(),
+    activeSudFlag: Type.Boolean(),
+    /** M6 recert/F2F cover facts as snapshotted at build; null = the build could not resolve it. */
+    recert: Type.Object({
+      nextRecertDueAt: Nullable(PacketDateTime),
+      f2fWindowState: F2fWindowState,
+    }),
+    carePlan: Type.Object({
+      activeProblemCount: Type.Integer(),
+      activeGoalCount: Type.Integer(),
+      activeInterventionCount: Type.Integer(),
+      lastSignedAt: PacketDateTime,
+      nextReviewDueAt: PacketDateTime,
+      isReviewOverdue: Type.Boolean(),
+    }),
+    discussionFlags: Type.Array(Type.Object({ kind: Type.String(), detail: Type.String() })),
+    counts: Type.Object({
+      signedEncounters: Type.Integer(),
+      assessmentChanges: Type.Integer(),
+      hopeTriggers: Type.Integer(),
+      orderChanges: Type.Integer(),
+      medicationChanges: Type.Integer(),
+      flaggedEvents: Type.Integer(),
+      carryForwardActionItems: Type.Integer(),
+    }),
+  }),
+  /** One entry per discipline view, in policy order (rn, msw, chaplain, aide, md_np, …). */
+  disciplines: Type.Array(
+    Type.Object({
+      discipline: PacketDisciplineKeySchema,
+      oneLineSummary: Type.String(),
+      items: Type.Array(
+        Type.Object({
+          sourceKind: Type.Union([
+            Type.Literal("encounter"),
+            Type.Literal("assessment"),
+            Type.Literal("order"),
+            Type.Literal("medication"),
+            Type.Literal("hope"),
+            Type.Literal("action_item"),
+            Type.Literal("flag"),
+          ]),
+          sourceId: Type.String(),
+          label: Type.String(),
+          summary: Type.String(),
+          severity: Nullable(PacketSeverity),
+        }),
+      ),
+      openQuestions: Type.Array(Type.String()),
+    }),
+  ),
+  signedEncounters: Type.Array(
+    Type.Object({
+      encounterId: Type.String(),
+      encounterType: Type.String(),
+      discipline: Type.String(),
+      signedAt: PacketDateTime,
+    }),
+  ),
+  assessmentChanges: Type.Array(
+    Type.Object({
+      assessmentId: Type.String(),
+      scaleKind: Type.String(),
+      changeKind: Type.String(),
+      occurredAt: PacketDateTime,
+    }),
+  ),
+  hopeTimepoints: Type.Object({
+    /** false => the build captured no HOPE context ("not captured", not "none due"). */
+    captured: Type.Boolean(),
+    upcoming: Type.Array(Type.Object({ timepoint: Type.String(), dueAt: PacketDateTime })),
+    openSfvCount: Nullable(Type.Integer()),
+    symptomImpactTriggers: Type.Array(
+      Type.Object({
+        hopeAssessmentId: Type.String(),
+        triggerKind: Type.String(),
+        firedAt: PacketDateTime,
+      }),
+    ),
+  }),
+  orderChanges: Type.Array(
+    Type.Object({
+      orderId: Type.String(),
+      orderKind: Type.String(),
+      changeKind: Type.String(),
+      changedAt: PacketDateTime,
+    }),
+  ),
+  medicationChanges: Type.Array(
+    Type.Object({
+      medicationOrderId: Type.String(),
+      drugLabel: Type.String(),
+      changeKind: Type.String(),
+      changedAt: PacketDateTime,
+    }),
+  ),
+  flaggedEvents: Type.Array(
+    Type.Object({
+      kind: Type.String(),
+      sourceId: Type.String(),
+      occurredAt: PacketDateTime,
+      severity: PacketSeverity,
+    }),
+  ),
+  carryForwardActionItems: Type.Array(
+    Type.Object({
+      actionItemId: Type.String(),
+      assignedToMembershipId: Type.String(),
+      dueDate: PacketDateTime,
+      carryForwardCount: Type.Integer(),
+    }),
+  ),
+});
+/** One patient's packet with its content (GET /idg/meetings/:meetingId/packets/:patientId). */
+export const PacketDetailViewSchema = Type.Composite([
+  PacketDigestViewSchema,
+  Type.Object({
+    /** null only when the stored snapshot is missing / an unsupported schema version. */
+    content: Nullable(PacketContentViewSchema),
+    /** W-SUD-01 — Part 2 content was elided for THIS caller on THIS read. */
+    appliedSudRedaction: Type.Boolean(),
+    /** "Some content filtered per 42 CFR Part 2" when redacted, else null. */
+    redactionNotice: Nullable(Type.String()),
+  }),
+]);
 
 // Patient IDG review history (patient-chart tab). NOTE: `meetings` is published as a loose record array
 // on purpose — each meeting item nests decisions[] + actionItems[] arrays of objects, and publishing that
@@ -238,6 +427,7 @@ export const ActionItemViewSchema = Type.Object({
   meetingId: Type.String({ format: "uuid" }),
   decisionId: Nullable(Type.String({ format: "uuid" })),
   patientId: Nullable(Type.String({ format: "uuid" })),
+  patient: PatientDisplayField,
   assignedToMembershipId: Type.String({ format: "uuid" }),
   status: Type.Union([
     Type.Literal("open"),
@@ -270,6 +460,23 @@ export const MinutesViewSchema = Type.Object({
   finalizedAt: Nullable(Type.String({ format: "date-time" })),
   finalizedByMembershipId: Nullable(Type.String({ format: "uuid" })),
   minutesDocumentId: Nullable(Type.String({ format: "uuid" })),
+  /**
+   * Where the M22 render stands, from real data: `not_rendered` (still `in_progress`), `pending` (`final`, the
+   * `m14.minutes.signed` render request in flight — no back-ref yet), `rendered` (`minutesDocumentId` stamped).
+   */
+  renderStatus: Type.Union([
+    Type.Literal("not_rendered"),
+    Type.Literal("pending"),
+    Type.Literal("rendered"),
+  ]),
+  /**
+   * The finalizer's display NAME only (minimum-necessary staff projection via the identity-owned batched
+   * `membershipDisplayForOrg` seam). Present when the enrichment port is bound; null when the membership has no
+   * name on file or is unknown to the org. Absent (not null) in the slice/tests that mount no port.
+   */
+  finalizedByName: Type.Optional(Nullable(Type.String())),
+  /** The finalizer's discipline off THIS meeting's frozen attendance snapshot; null when they did not attend. */
+  finalizedByDiscipline: Nullable(Type.String()),
   attendanceCount: Nullable(Type.Integer({ minimum: 0 })),
   decisionCount: Nullable(Type.Integer({ minimum: 0 })),
   actionItemCount: Nullable(Type.Integer({ minimum: 0 })),
@@ -302,6 +509,7 @@ export const AgendaItemViewSchema = Type.Object({
   meetingId: Type.String({ format: "uuid" }),
   kind: AGENDA_KIND,
   patientId: Nullable(Type.String({ format: "uuid" })),
+  patient: PatientDisplayField,
 });
 
 /** The meeting's ordered agenda (GET /idg/meetings/:id/agenda). */
@@ -323,6 +531,7 @@ export const DecisionViewSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   meetingId: Type.String({ format: "uuid" }),
   patientId: Nullable(Type.String({ format: "uuid" })),
+  patient: PatientDisplayField,
   agendaItemId: Nullable(Type.String({ format: "uuid" })),
   decisionKind: DECISION_KIND,
   status: DECISION_STATUS,
@@ -332,6 +541,46 @@ export const DecisionViewSchema = Type.Object({
   supersededByDecisionId: Nullable(Type.String({ format: "uuid" })),
 });
 export const DecisionListResponseSchema = Type.Array(DecisionViewSchema);
+
+/**
+ * One agenda patient's recert / face-to-face window (GET /idg/meetings/:id/recert-windows) — the M14 spec's
+ * "recert/F2F windows in the IDG right pane" (§1.1, §2.4 `patientCover.nextRecertDueAt` / `f2fWindowState`),
+ * SEAM-PULLED from M6 (M6's own window math, evaluated in the org timezone). Dates are org-local
+ * `yyyy-mm-dd`; `f2fWindowState` is the §2.4 cover enum, `f2fStatus` the richer verdict. A patient with no live
+ * (non-terminal) admission — or whose current benefit period cannot be resolved — has `admissionId`/dates
+ * null and `f2fStatus: "unknown"`: an honest gap, never a fabricated compliance judgment. Non-narrative.
+ */
+export const RecertWindowItemSchema = Type.Object({
+  patientId: Type.String({ format: "uuid" }),
+  patient: PatientDisplayField,
+  admissionId: Nullable(Type.String({ format: "uuid" })),
+  currentPeriodSequence: Nullable(Type.Integer({ minimum: 1 })),
+  benefitPeriodStart: Nullable(Type.String({ format: "date" })),
+  benefitPeriodEnd: Nullable(Type.String({ format: "date" })),
+  nextRecertDueDate: Nullable(Type.String({ format: "date" })),
+  nextPeriodSequence: Nullable(Type.Integer({ minimum: 2 })),
+  daysUntilNextRecert: Nullable(Type.Integer()),
+  f2fRequired: Nullable(Type.Boolean()),
+  f2fWindowStart: Nullable(Type.String({ format: "date" })),
+  f2fWindowEnd: Nullable(Type.String({ format: "date" })),
+  f2fStatus: Type.Union([
+    Type.Literal("not_required"),
+    Type.Literal("not_yet_open"),
+    Type.Literal("window_open"),
+    Type.Literal("attested"),
+    Type.Literal("missed"),
+    Type.Literal("unknown"),
+  ]),
+  f2fWindowState: Nullable(
+    Type.Union([Type.Literal("not_due"), Type.Literal("window_open"), Type.Literal("overdue")]),
+  ),
+  f2fScheduledDate: Nullable(Type.String({ format: "date" })),
+});
+export const RecertWindowsResponseSchema = Type.Object({
+  meetingId: Type.String({ format: "uuid" }),
+  generatedAt: Type.String({ format: "date-time" }),
+  items: Type.Array(RecertWindowItemSchema),
+});
 
 /** The `{ id, removed: true }` envelope the DELETE routes return (attendance/agenda/action-items). */
 export const RemovedResponseSchema = Type.Object({
@@ -355,6 +604,7 @@ type _MeetingSchedule = Conforms<
 >;
 type _Meeting = Conforms<Static<typeof MeetingViewSchema>, ServiceMeetingView>;
 type _Packet = Conforms<Static<typeof PacketDigestViewSchema>, ServicePacketDigestView>;
+type _PacketDetail = Conforms<Static<typeof PacketDetailViewSchema>, ServicePacketDetailView>;
 type _ActionItem = Conforms<Static<typeof ActionItemViewSchema>, ServiceActionItemView>;
 type _Minutes = Conforms<Static<typeof MinutesViewSchema>, ServiceMinutesView>;
 type _RecurringPolicy = Conforms<

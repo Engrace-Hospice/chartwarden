@@ -213,7 +213,13 @@ export function PatientIdgHistory(): JSX.Element {
     void client
       .GET("/api/v1/patients/{patientId}/care-plan", { params: { path: { patientId } } })
       .then((r) => {
-        if (active) setPlan(r.error ? null : ((r.data as unknown as PlanSummary) ?? null));
+        if (!active) return;
+        // The read can answer 200 with a body that has no plan on it (no plan of care started yet);
+        // a plan without a versions array is "no plan", not a plan to render.
+        const body = r.error ? null : (r.data as unknown as Partial<PlanSummary> | null);
+        setPlan(
+          body && Array.isArray(body.versions) ? ({ goals: [], ...body } as PlanSummary) : null,
+        );
       })
       .catch(() => active && setPlan(null));
     return () => {

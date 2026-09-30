@@ -289,7 +289,8 @@ jobs:
           - {
               name: "M14 IDG",
               scripts:
-                "test:m14:read:live test:m14:write:live test:m14:clinical-event-consumers:live",
+                "test:m14:read:live test:m14:write:live test:m14:clinical-event-consumers:live
+                test:m14:enrichment:live",
             }
           - {
               name: "M17 Scheduling",

@@ -234,6 +234,14 @@ export {
 } from "./audit/identity-audit";
 export { registerIdentityRoutes } from "./routes/identity-routes";
 export { createDbMembershipRepository } from "./membership-repository";
+// Org-explicit BATCHED staff display read (name only), injected into other modules' route layers as a port at the
+// composition root (e.g. M14's finalized-minutes "Finalized by") — consumers import no identity code/schema.
+export {
+  MEMBERSHIP_DISPLAY_MAX_IDS,
+  type MembershipDisplayLabel,
+  membershipDisplayForOrg,
+  toMembershipDisplayLabel,
+} from "./membership-display-for-org";
 // §11 D19 (#205 hard half) — the real org activate/suspend/close capability + its one ABAC predicate.
 export {
   type OrganizationLifecycleEvent,

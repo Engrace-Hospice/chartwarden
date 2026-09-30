@@ -287,4 +287,70 @@ describe("W-SUD-01 SUD redaction at read", () => {
     // The cover banner signal (activeSudFlag) is preserved — it is non-PHI.
     expect(out.snapshot.patientCover.activeSudFlag).toBe(true);
   });
+
+  it("elides a SUD-flagged source from EVERY since-block, not only encounters + highlights", () => {
+    const built = buildPacketSnapshot(
+      input({
+        cover: { ...input().cover, activeSudFlag: true },
+        sinceLastIdg: {
+          encounters: [],
+          significantAssessmentChanges: [
+            {
+              assessmentId: "a-sud",
+              scaleKind: "pain",
+              changeKind: "worsened",
+              occurredAt: "2026-06-10T00:00:00.000Z",
+            },
+            {
+              assessmentId: "a-ok",
+              scaleKind: "pain",
+              changeKind: "improved",
+              occurredAt: "2026-06-11T00:00:00.000Z",
+            },
+          ],
+          j2051Triggers: [
+            {
+              hopeAssessmentId: "h-sud",
+              triggerKind: "symptom_impact",
+              firedAt: "2026-06-10T00:00:00.000Z",
+            },
+          ],
+          ordersChanged: [
+            {
+              orderId: "o-sud",
+              orderKind: "lab",
+              changeKind: "signed",
+              changedAt: "2026-06-10T00:00:00.000Z",
+            },
+          ],
+          medicationsChanged: [
+            {
+              medicationOrderId: "m-sud",
+              drugLabel: "x",
+              changeKind: "started",
+              changedAt: "2026-06-10T00:00:00.000Z",
+            },
+          ],
+          flaggedEvents: [
+            {
+              kind: "fall",
+              sourceId: "f-sud",
+              occurredAt: "2026-06-10T00:00:00.000Z",
+              severity: "attention",
+            },
+          ],
+        },
+      }),
+    );
+    const out = applySudRedaction(built, {
+      hasPart2Release: false,
+      sudFlaggedSourceIds: new Set(["a-sud", "h-sud", "o-sud", "m-sud", "f-sud"]),
+    });
+    const s = out.snapshot.sinceLastIdg;
+    expect(s.significantAssessmentChanges.map((a) => a.assessmentId)).toEqual(["a-ok"]);
+    expect(s.j2051Triggers).toEqual([]);
+    expect(s.ordersChanged).toEqual([]);
+    expect(s.medicationsChanged).toEqual([]);
+    expect(s.flaggedEvents).toEqual([]);
+  });
 });

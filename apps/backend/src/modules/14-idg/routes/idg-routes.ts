@@ -13,10 +13,16 @@
 // through the meeting-specific predicate.
 import { type AbacTarget, requireAbac, requirePermission } from "@wardenx/auth";
 import type { IdgActionItemStatus, IdgAttendanceStatus } from "@wardenx/types";
-import { UnauthorizedError, ValidationError } from "@wardenx/types";
+import { NotFoundError, UnauthorizedError, ValidationError } from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { REVIEW_FLOOR_OVERRIDE_ATTRIBUTE } from "../abac-predicates";
+import {
+  type IdgRecertWindowFact,
+  type IdgRouteEnrichmentPorts,
+  withFinalizerName,
+  withPatientDisplay,
+} from "./idg-enrichment";
 import {
   ActionItemListQuerySchema,
   AddAgendaItemRequest,
@@ -30,6 +36,7 @@ import {
   RecordDecisionRequest,
   RecurringPolicyRequest,
   RescheduleMeetingRequest,
+  ScheduleMeetingRequest,
   ScheduleQuerySchema,
   SubmitAmendmentRequest,
   SupersedeDecisionRequest,
@@ -39,6 +46,11 @@ import {
   UpdateDecisionRequest,
   parse,
 } from "./idg-typebox";
+import {
+  type PacketDisclosurePort,
+  seamPacketDisclosurePort,
+  sudDisclosureAllowedForPacket,
+} from "./packet-disclosure";
 import type { IdgRouteService } from "./service";
 
 /** A @wardenx/auth GuardHandler wrapped as a Fastify preHandler (structurally assignable). */
@@ -46,6 +58,16 @@ type PreHandler = (request: FastifyRequest, reply: FastifyReply) => Promise<void
 
 export interface IdgRouteDeps {
   service: IdgRouteService;
+  /**
+   * Optional read-enrichment ports (patient display info; meeting-scoped recert/F2F windows), bound to M5/M6's
+   * org-explicit seams at the composition root — see ./idg-enrichment.ts. Absent in the in-memory slice/tests.
+   */
+  enrichment?: IdgRouteEnrichmentPorts;
+  /**
+   * W-SUD-01 caller verdict for the packet READ (M39 `evaluateForInternalAccess`, per actor). Defaults to the
+   * seam-registry-backed, fail-closed port — an unbound M39 REDACTS. Injected in tests.
+   */
+  sudDisclosure?: PacketDisclosurePort;
 }
 
 function actorOf(request: FastifyRequest): { organizationId: string; userId: string } {
@@ -74,26 +96,27 @@ const SCOPE = (action: string): PreHandler =>
   requireAbac(action, "idg_meeting_scope") as PreHandler;
 const ABAC_QUORATE = requireAbac("idg.decide", "quorate_decision") as PreHandler;
 
-// The cancel/reschedule target lifts the body's `proposedTransition` + `newScheduledStart` so
-// `per_patient_review_floor_clear` resolves at authz time; the meeting `:id` comes from the params.
-const reviewFloorTarget = (request: {
-  readonly params?: unknown;
-  readonly body?: unknown;
-}): AbacTarget => {
-  const params = (request.params ?? {}) as { id?: unknown };
-  const body = (request.body ?? {}) as {
-    proposedTransition?: unknown;
-    newScheduledStart?: unknown;
+// The cancel/reschedule target pins the transition from the ROUTE (cancel route => "cancel", reschedule route
+// => "reschedule") and lifts only `newScheduledStart` from the body; the meeting `:id` comes from the params.
+// The transition MUST NOT be read from the body: the body is not schema-validated until the handler runs, so a
+// body missing `proposedTransition` used to be denied by the predicate (fail-closed on "unknown transition")
+// as a misleading 403 before the 422 validation could fire — even for an empty-agenda meeting.
+const reviewFloorTarget =
+  (transition: "cancel" | "reschedule") =>
+  (request: { readonly params?: unknown; readonly body?: unknown }): AbacTarget => {
+    const params = (request.params ?? {}) as { id?: unknown };
+    const body = (request.body ?? {}) as { newScheduledStart?: unknown };
+    const target: Record<string, unknown> = { proposedTransition: transition };
+    if (typeof params.id === "string") target.id = params.id;
+    if (transition === "reschedule" && typeof body.newScheduledStart === "string")
+      target.newScheduledStart = body.newScheduledStart;
+    return target;
   };
-  const target: Record<string, unknown> = {};
-  if (typeof params.id === "string") target.id = params.id;
-  if (typeof body.proposedTransition === "string")
-    target.proposedTransition = body.proposedTransition;
-  if (typeof body.newScheduledStart === "string") target.newScheduledStart = body.newScheduledStart;
-  return target;
-};
-const ABAC_REVIEW_FLOOR = requireAbac("idg.schedule", "per_patient_review_floor_clear", {
-  getTarget: reviewFloorTarget,
+const ABAC_REVIEW_FLOOR_CANCEL = requireAbac("idg.schedule", "per_patient_review_floor_clear", {
+  getTarget: reviewFloorTarget("cancel"),
+}) as PreHandler;
+const ABAC_REVIEW_FLOOR_RESCHEDULE = requireAbac("idg.schedule", "per_patient_review_floor_clear", {
+  getTarget: reviewFloorTarget("reschedule"),
 }) as PreHandler;
 
 /** GAP-091 — `per_patient_review_floor_clear` flags `context.attributes[REVIEW_FLOOR_OVERRIDE_ATTRIBUTE]`
@@ -118,6 +141,10 @@ const ADJOURN_STEP_UP_OPERATION = "idg.meeting.adjourn";
 
 export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): void {
   const { service } = deps;
+  const patientDisplay = deps.enrichment?.patientDisplay;
+  const recertPort = deps.enrichment?.recertWindows;
+  const membershipDisplay = deps.enrichment?.membershipDisplay;
+  const sudDisclosure = deps.sudDisclosure ?? seamPacketDisclosurePort;
 
   // 1 — list the meeting schedule for a location/range (location-scoped server-side).
   app.get(
@@ -149,6 +176,17 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     return service.updateRecurringPolicy(organizationId, userId, id, b);
   });
 
+  // 3b — schedule ONE ad-hoc meeting (§4.1; the recurring worker is the only other creator). Location scope
+  // is enforced here (the create has no meeting `:id` for `idg_meeting_scope` to resolve): a location outside
+  // the caller's session location memberships is a 404 (no existence oracle), same non-leak as RLS-hidden rows.
+  app.post("/api/v1/idg/meetings", { preHandler: [SCHEDULE] }, async (request, reply) => {
+    const { organizationId, userId } = actorOf(request);
+    const b = parse(ScheduleMeetingRequest, request.body);
+    if (!request.context?.locationIds.includes(b.locationId)) throw new NotFoundError("location");
+    const res = await service.scheduleMeeting(organizationId, userId, b);
+    return reply.code(201).send(res);
+  });
+
   // 4 — read one meeting.
   app.get(
     "/api/v1/idg/meetings/:id",
@@ -166,7 +204,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 5 — cancel a meeting (per_patient_review_floor_clear ABAC; override composed at the route).
   app.post(
     "/api/v1/idg/meetings/:id/cancel",
-    { preHandler: [SCHEDULE, SCOPE("idg.schedule"), ABAC_REVIEW_FLOOR] },
+    { preHandler: [SCHEDULE, SCOPE("idg.schedule"), ABAC_REVIEW_FLOOR_CANCEL] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -184,7 +222,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
   // 6 — reschedule a meeting (per_patient_review_floor_clear ABAC; override composed at the route).
   app.post(
     "/api/v1/idg/meetings/:id/reschedule",
-    { preHandler: [SCHEDULE, SCOPE("idg.schedule"), ABAC_REVIEW_FLOOR] },
+    { preHandler: [SCHEDULE, SCOPE("idg.schedule"), ABAC_REVIEW_FLOOR_RESCHEDULE] },
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
@@ -297,7 +335,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.listPackets(organizationId, id);
+      return withPatientDisplay(
+        patientDisplay,
+        organizationId,
+        await service.listPackets(organizationId, id),
+        request.log,
+      );
     },
   );
 
@@ -311,7 +354,33 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { meetingId, patientId } = parse(MeetingPacketParamsSchema, request.params);
-      return service.getPacket(organizationId, meetingId, patientId);
+      // W-SUD-01: the per-actor Part 2 verdict is resolved lazily (only for a SUD-flagged patient) and the
+      // elision happens in the service's read path, before the view is shaped — never a UI hide.
+      const membershipId = request.context?.attributes.membershipId;
+      const roles = request.context?.roles ?? [];
+      const detail = await service.getPacket(organizationId, meetingId, patientId, {
+        sudDisclosureAllowed: (pid) =>
+          sudDisclosureAllowedForPacket(sudDisclosure, {
+            organizationId,
+            patientId: pid,
+            membershipId: typeof membershipId === "string" ? membershipId : null,
+            roles,
+          }),
+        // Sampled-audit stand-in (§8.1 `idg.sud_redaction_applied`): the read itself is already in the M4 read
+        // log (`auditRead`); this records THAT redaction happened, with the count kept server-side only.
+        onSudRedaction: ({ patientId: pid, redactedEntryCount }) =>
+          request.log.info(
+            { event: "idg.sud_redaction_applied", meetingId, patientId: pid, redactedEntryCount },
+            "idg: packet content filtered per 42 CFR Part 2",
+          ),
+      });
+      const [packet] = await withPatientDisplay(
+        patientDisplay,
+        organizationId,
+        [detail],
+        request.log,
+      );
+      return packet;
     },
   );
 
@@ -372,7 +441,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.listAgenda(organizationId, id);
+      return withPatientDisplay(
+        patientDisplay,
+        organizationId,
+        await service.listAgenda(organizationId, id),
+        request.log,
+      );
     },
   );
 
@@ -429,7 +503,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.listDecisions(organizationId, id);
+      return withPatientDisplay(
+        patientDisplay,
+        organizationId,
+        await service.listDecisions(organizationId, id),
+        request.log,
+      );
     },
   );
 
@@ -495,10 +574,76 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId, userId } = actorOf(request);
       const q = parse(ActionItemListQuerySchema, request.query);
-      return service.listActionItems(organizationId, userId, {
-        assignee: q.assignee,
-        status: q.status as IdgActionItemStatus | undefined,
+      return withPatientDisplay(
+        patientDisplay,
+        organizationId,
+        await service.listActionItems(organizationId, userId, {
+          assignee: q.assignee,
+          status: q.status as IdgActionItemStatus | undefined,
+        }),
+        request.log,
+      );
+    },
+  );
+
+  // 24b — the meeting's recert / face-to-face windows, one row per agenda patient (the IDG right pane). The
+  // existing M6 reads are keyed by ADMISSION; a meeting has PATIENTS. The patient set is the agenda's
+  // patient-scoped items UNION the built packets (packets are authoritative once built; agenda items are the
+  // pre-build signal — the same split `patientIncluded` draws). The facts are SEAM-PULLED from M6 (§1.1 "recert/
+  // F2F windows via M6 readers"): M6's own window math in the org timezone, one batched read for the whole
+  // meeting. Same gate as the other per-meeting reads (idg.read + idg_meeting_scope → 404 non-leak).
+  app.get(
+    "/api/v1/idg/meetings/:id/recert-windows",
+    {
+      preHandler: [READ, SCOPE("idg.read")],
+      config: { auditRead: { resourceKind: "idg_meeting", resourceIdParam: "id", list: true } },
+    },
+    async (request) => {
+      const { organizationId } = actorOf(request);
+      const { id } = parse(IdParamsSchema, request.params);
+      const [agenda, packets] = await Promise.all([
+        service.listAgenda(organizationId, id),
+        service.listPackets(organizationId, id),
+      ]);
+      const patientIds = [
+        ...new Set([
+          ...agenda.map((a) => a.patientId).filter((p): p is string => p !== null),
+          ...packets.map((p) => p.patientId),
+        ]),
+      ];
+      let windows: ReadonlyMap<string, IdgRecertWindowFact> = new Map();
+      if (recertPort !== undefined && patientIds.length > 0) {
+        try {
+          windows = await recertPort.recertWindowsForPatients(organizationId, patientIds);
+        } catch (err) {
+          // An M6 read failure degrades to "unknown" rows (never a fabricated verdict, never a 500 on the screen).
+          request.log.warn({ err }, "idg: recert-window read failed; returning unknown windows");
+        }
+      }
+      const rows = patientIds.map((patientId) => {
+        const w = windows.get(patientId);
+        return {
+          patientId,
+          admissionId: w?.admissionId ?? null,
+          currentPeriodSequence: w?.currentPeriodSequence ?? null,
+          benefitPeriodStart: w?.benefitPeriodStart ?? null,
+          benefitPeriodEnd: w?.benefitPeriodEnd ?? null,
+          nextRecertDueDate: w?.nextRecertDueDate ?? null,
+          nextPeriodSequence: w?.nextPeriodSequence ?? null,
+          daysUntilNextRecert: w?.daysUntilNextRecert ?? null,
+          f2fRequired: w?.f2fRequired ?? null,
+          f2fWindowStart: w?.f2fWindowStart ?? null,
+          f2fWindowEnd: w?.f2fWindowEnd ?? null,
+          f2fStatus: w?.f2fStatus ?? ("unknown" as const),
+          f2fWindowState: w?.f2fWindowState ?? null,
+          f2fScheduledDate: w?.f2fScheduledDate ?? null,
+        };
       });
+      return {
+        meetingId: id,
+        generatedAt: new Date().toISOString(),
+        items: await withPatientDisplay(patientDisplay, organizationId, rows, request.log),
+      };
     },
   );
 
@@ -512,7 +657,12 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     async (request) => {
       const { organizationId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
-      return service.getMinutes(organizationId, id);
+      return withFinalizerName(
+        membershipDisplay,
+        organizationId,
+        await service.getMinutes(organizationId, id),
+        request.log,
+      );
     },
   );
 

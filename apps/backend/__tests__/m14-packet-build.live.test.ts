@@ -27,10 +27,12 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
+import { registerPlatformJob } from "@wardenx/tenancy";
 import IORedis from "ioredis";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { buildActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { registerSeam } from "../src/bootstrap/index";
 import {
   createDrizzlePatientReaderStore,
@@ -39,6 +41,7 @@ import {
 import {
   idgCurrentLevelOfCareForOrg,
   idgPacketInclusionForOrg,
+  idgRecertWindowsForOrg,
 } from "../src/modules/06-admission/index";
 import { idgPacketCarePlanContextForOrg } from "../src/modules/07-care-plan/index";
 import {
@@ -48,6 +51,7 @@ import {
 import type { IdgWriteOutboxPort } from "../src/modules/14-idg/idg-route-service-db";
 import {
   M14_OUTBOX_EVENTS,
+  M14_PLATFORM_JOB_ID,
   runPacketBuildCron,
   runScheduleMaterialiseCron,
 } from "../src/modules/14-idg/index";
@@ -56,7 +60,7 @@ import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer"];
+const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer", "wardenx_platform_live_test"];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -116,7 +120,11 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       ).rows[0].id as string;
     }
 
-    async function seedPatient(orgId: string, firstName = "Jane", lastName = "Doe"): Promise<string> {
+    async function seedPatient(
+      orgId: string,
+      firstName = "Jane",
+      lastName = "Doe",
+    ): Promise<string> {
       const { rows } = await admin.query(
         `INSERT INTO patient (organization_id, mrn, legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status)
          VALUES ($1,$2,$3,$4,'1950-01-01','female','active') RETURNING id`,
@@ -150,6 +158,21 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         ],
       );
       return rows[0].id as string;
+    }
+
+    /** An `active` benefit period (sequence 2) ending in `endsInDays`: the NEXT period (3) needs a F2F whose
+     *  CMS prior-to window is already open, and no attested F2F exists ⇒ cover `window_open`. */
+    async function seedActiveBenefitPeriod(
+      orgId: string,
+      admissionId: string,
+      endsInDays: number,
+    ): Promise<void> {
+      await admin.query(
+        `INSERT INTO election_period (organization_id, admission_id, sequence_number, period_kind, effective_at,
+            scheduled_end_at, status)
+         VALUES ($1,$2,2,'sixty_day', current_date - 50, current_date + $3::int, 'active')`,
+        [orgId, admissionId, endsInDays],
+      );
     }
 
     async function seedLocPeriod(orgId: string, admissionId: string): Promise<void> {
@@ -267,12 +290,23 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
             asOfIso: string,
             wrapUpDays: number,
           ) => idgPacketInclusionForOrg(handle.db, organizationId, locationId, asOfIso, wrapUpDays),
-          currentLevelOfCareForOrg: (organizationId: string, admissionId: string, asOfIso: string) =>
-            idgCurrentLevelOfCareForOrg(handle.db, organizationId, admissionId, asOfIso),
+          currentLevelOfCareForOrg: (
+            organizationId: string,
+            admissionId: string,
+            asOfIso: string,
+          ) => idgCurrentLevelOfCareForOrg(handle.db, organizationId, admissionId, asOfIso),
         },
         m7: {
           carePlanContextForOrg: (organizationId: string, patientId: string, asOfIso: string) =>
             idgPacketCarePlanContextForOrg(handle.db, organizationId, patientId, asOfIso),
+        },
+        // §2.4 cover recert/F2F facts — the REAL M6 seam over the real wardenx_app connection.
+        recertWindows: {
+          recertWindowsForOrg: (
+            organizationId: string,
+            patientIds: readonly string[],
+            asOfIso: string,
+          ) => idgRecertWindowsForOrg(handle.db, organizationId, patientIds, new Date(asOfIso)),
         },
       };
     }
@@ -324,58 +358,60 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(second).toBe(first);
     });
 
-    it(
-      "idg.packets-cron builds a REAL packet for an included active-caseload patient from real M5/M6/M7 " +
-        "facts, transitions the meeting, and emits the §4.4 events",
-      async () => {
-        const patientId = await seedPatient(ORG_A, "Ann", "Smith");
-        const admissionId = await seedAdmission(ORG_A, patientId, "active", 40);
-        await seedLocPeriod(ORG_A, admissionId);
-        await seedSignedCarePlan(ORG_A, patientId, admissionId);
-        const meetingId = await seedMeeting(ORG_A, "scheduled", 12); // 12h from now — inside the 24h window
+    it("idg.packets-cron builds a REAL packet for an included active-caseload patient from real M5/M6/M7 " +
+      "facts, transitions the meeting, and emits the §4.4 events", async () => {
+      const patientId = await seedPatient(ORG_A, "Ann", "Smith");
+      const admissionId = await seedAdmission(ORG_A, patientId, "active", 40);
+      await seedLocPeriod(ORG_A, admissionId);
+      await seedActiveBenefitPeriod(ORG_A, admissionId, 10);
+      await seedSignedCarePlan(ORG_A, patientId, admissionId);
+      const meetingId = await seedMeeting(ORG_A, "scheduled", 12); // 12h from now — inside the 24h window
 
-        const deps = {
-          db: handle.db,
-          outbox,
-          activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
-          redis,
-          ...m6m7Ports(),
-        };
-        await runPacketBuildCron(deps);
+      const deps = {
+        db: handle.db,
+        outbox,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        redis,
+        ...m6m7Ports(),
+      };
+      await runPacketBuildCron(deps);
 
-        expect(await meetingStatus(meetingId)).toBe("packets_ready");
-        expect(await eventsFor(meetingId)).toEqual(
-          expect.arrayContaining(["m14.packets.build_started", "m14.packets.ready"]),
-        );
+      expect(await meetingStatus(meetingId)).toBe("packets_ready");
+      expect(await eventsFor(meetingId)).toEqual(
+        expect.arrayContaining(["m14.packets.build_started", "m14.packets.ready"]),
+      );
 
-        const pkt = await packetFor(meetingId, patientId);
-        expect(pkt).not.toBeNull();
-        const snapshot = pkt.built_snapshot as Record<string, unknown>;
-        expect(snapshot.schemaVersion).toBe("2026-01-v1");
-        const meta = snapshot.meta as Record<string, unknown>;
-        expect(meta.sinceContext).toBe("first_idg"); // no prior IDG for this patient
-        const cover = snapshot.patientCover as Record<string, unknown>;
-        expect(cover.fullNameRedacted).toBe("Ann S.");
-        expect(cover.primaryDiagnosisIcd10).toBe("C34.90");
-        expect(cover.levelOfCare).toBe("routine");
-        expect(cover.activeSudFlag).toBe(false);
-        const carePlanSummary = snapshot.carePlanSummary as Record<string, unknown>;
-        expect(carePlanSummary.activeProblemCount).toBe(1);
-        expect(carePlanSummary.activeGoalCount).toBe(1);
-        expect(carePlanSummary.activeInterventionCount).toBe(1);
-        expect(carePlanSummary.isReviewOverdue).toBe(false);
-        expect(pkt.cover_summary_layer1).toEqual(expect.any(String));
-        expect((pkt.cover_summary_layer1 as string).length).toBeGreaterThan(0);
+      const pkt = await packetFor(meetingId, patientId);
+      expect(pkt).not.toBeNull();
+      const snapshot = pkt.built_snapshot as Record<string, unknown>;
+      expect(snapshot.schemaVersion).toBe("2026-01-v1");
+      const meta = snapshot.meta as Record<string, unknown>;
+      expect(meta.sinceContext).toBe("first_idg"); // no prior IDG for this patient
+      const cover = snapshot.patientCover as Record<string, unknown>;
+      expect(cover.fullNameRedacted).toBe("Ann S.");
+      expect(cover.primaryDiagnosisIcd10).toBe("C34.90");
+      expect(cover.levelOfCare).toBe("routine");
+      expect(cover.activeSudFlag).toBe(false);
+      // §2.4 recert/F2F cover facts, snapshotted at freeze from M6's own window math via the real seam:
+      // period 2 ends in 10 days ⇒ next period (3) starts in 11 days, F2F required, window already open.
+      expect(cover.f2fWindowState).toBe("window_open");
+      expect(cover.nextRecertDueAt).toMatch(/^\d{4}-\d{2}-\d{2}T00:00:00\.000Z$/);
+      const carePlanSummary = snapshot.carePlanSummary as Record<string, unknown>;
+      expect(carePlanSummary.activeProblemCount).toBe(1);
+      expect(carePlanSummary.activeGoalCount).toBe(1);
+      expect(carePlanSummary.activeInterventionCount).toBe(1);
+      expect(carePlanSummary.isReviewOverdue).toBe(false);
+      expect(pkt.cover_summary_layer1).toEqual(expect.any(String));
+      expect((pkt.cover_summary_layer1 as string).length).toBeGreaterThan(0);
 
-        // The M22 render handshake carries the built content, not an empty shell.
-        const { rows: renderRows } = await admin.query(
-          "SELECT payload FROM outbox_event WHERE event_type='m14.packet.render_requested' AND payload->>'patientId'=$1",
-          [patientId],
-        );
-        expect(renderRows).toHaveLength(1);
-        expect(renderRows[0].payload.renderPayload.snapshot.meta.patientId).toBe(patientId);
-      },
-    );
+      // The M22 render handshake carries the built content, not an empty shell.
+      const { rows: renderRows } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE event_type='m14.packet.render_requested' AND payload->>'patientId'=$1 AND payload->>'meetingId'=$2",
+        [patientId, meetingId],
+      );
+      expect(renderRows).toHaveLength(1);
+      expect(renderRows[0].payload.renderPayload.snapshot.meta.patientId).toBe(patientId);
+    });
 
     it("§2.3 D9: a patient discharged within the 7-day wrap-up is included; one discharged 10 days ago is not", async () => {
       const wrappedPatient = await seedPatient(ORG_A, "Wrap", "Included");
@@ -402,51 +438,108 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       expect(await packetFor(meetingId, staleePatient)).toBeNull();
     });
 
-    it(
-      "per-patient failure isolation: a patient with no signed care plan is skipped with " +
-        "build_failed_for_patient while a sibling patient's packet still builds",
-      async () => {
-        const goodPatient = await seedPatient(ORG_A, "Good", "Plan");
-        const goodAdmission = await seedAdmission(ORG_A, goodPatient, "active", 20);
-        await seedLocPeriod(ORG_A, goodAdmission);
-        await seedSignedCarePlan(ORG_A, goodPatient, goodAdmission);
+    it("per-patient failure isolation: a patient with no signed care plan is skipped with " +
+      "build_failed_for_patient while a sibling patient's packet still builds", async () => {
+      const goodPatient = await seedPatient(ORG_A, "Good", "Plan");
+      const goodAdmission = await seedAdmission(ORG_A, goodPatient, "active", 20);
+      await seedLocPeriod(ORG_A, goodAdmission);
+      await seedSignedCarePlan(ORG_A, goodPatient, goodAdmission);
 
-        const badPatient = await seedPatient(ORG_A, "No", "Plan");
-        await seedAdmission(ORG_A, badPatient, "active", 20); // no care plan at all
+      const badPatient = await seedPatient(ORG_A, "No", "Plan");
+      await seedAdmission(ORG_A, badPatient, "active", 20); // no care plan at all
 
-        const meetingId = await seedMeeting(ORG_A, "scheduled", 3);
-        const deps = {
+      const meetingId = await seedMeeting(ORG_A, "scheduled", 3);
+      const deps = {
+        db: handle.db,
+        outbox,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        redis,
+        ...m6m7Ports(),
+      };
+      await runPacketBuildCron(deps);
+
+      expect(await packetFor(meetingId, goodPatient)).not.toBeNull();
+      expect(await packetFor(meetingId, badPatient)).toBeNull();
+      expect(await meetingStatus(meetingId)).toBe("packets_ready");
+
+      const { rows } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE event_type='m14.packets.build_failed_for_patient' AND payload->>'patientId'=$1",
+        [badPatient],
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].payload).toMatchObject({
+        meetingId,
+        patientId: badPatient,
+        reason: "no_care_plan",
+        // The meeting flips to packets_ready anyway, so the next tick does NOT retry — recovery is the coordinator's
+        // on-demand rebuild. `willRetry: true` here was a false claim (it fed M36/M33 a promise nobody keeps).
+        willRetry: false,
+      });
+
+      // Not asserted as exactly 1: ORG_A's shared location accumulates other active/wrap-up-included
+      // admissions from EARLIER `it` blocks in this suite (real §2.3 D9 behavior, not a fixture bug —
+      // each prior test's patient genuinely is still "active" at this location) — the meaningful,
+      // isolated proof is the presence/absence assertions above (bad patient excluded, good included)
+      // plus the failure event itself.
+      const { rows: readyRows } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE event_type='m14.packets.ready' AND aggregate_id=$1",
+        [meetingId],
+      );
+      expect(readyRows[0].payload.builtPacketCount).toBeGreaterThanOrEqual(1);
+    });
+
+    it("active-org enumeration: the TENANT pool (wardenx_app) sees ZERO orgs under `organization` RLS; the PLATFORM pool " +
+      "sees them — and the cron fed by the platform-bound enumerator actually builds", async () => {
+      // A BYPASSRLS login with SELECT on `organization` only — the shape of `wardenx_platform_login` (the real role
+      // is created out-of-band by ops, so the suite stands up its own stand-in of the same privilege class).
+      await admin.query(
+        `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='wardenx_platform_live_test') THEN
+           CREATE ROLE wardenx_platform_live_test LOGIN BYPASSRLS PASSWORD 'platform_live_test'; END IF; END $$;`,
+      );
+      await admin.query("GRANT USAGE ON SCHEMA public TO wardenx_platform_live_test");
+      await admin.query("GRANT SELECT ON organization TO wardenx_platform_live_test");
+      await admin.query("UPDATE organization SET status='active' WHERE id IN ($1,$2)", [ORG_A, ORG_B]);
+      const platformUrl = new URL(DB_URL as string);
+      platformUrl.username = "wardenx_platform_live_test";
+      platformUrl.password = "platform_live_test";
+      const platformHandle = createDbClient({ connectionString: platformUrl.toString() });
+      try {
+        registerPlatformJob(M14_PLATFORM_JOB_ID);
+        const enumeratorOn = (db: typeof handle.db | undefined) =>
+          buildActiveOrgEnumerator({
+            platformDb: db,
+            auditBypass: async () => {}, // audit_event write is covered by platform-bypass-auditor.test.ts
+            jobId: M14_PLATFORM_JOB_ID,
+            reason: "live: m14 enumerator pool proof",
+          });
+
+        // The defect: bound to the tenant pool, `organization` RLS hides every row -> zero orgs, cron builds nothing.
+        expect(await enumeratorOn(handle.db).listActiveOrgs()).toEqual([]);
+        // The fix: the platform pool enumerates both seeded active orgs.
+        const ids = (await enumeratorOn(platformHandle.db).listActiveOrgs()).map((o) => o.organizationId);
+        expect(ids).toEqual(expect.arrayContaining([ORG_A, ORG_B]));
+        // Not bound at all -> loud, never a silent empty list.
+        await expect(enumeratorOn(undefined).listActiveOrgs()).rejects.toThrow(/DATABASE_PLATFORM_URL/);
+
+        // End-to-end: the cron with the REAL platform-bound enumerator (tenant pool for the org-scoped work).
+        const patient = await seedPatient(ORG_A, "Enum", "Proof");
+        const admission = await seedAdmission(ORG_A, patient, "active", 10);
+        await seedLocPeriod(ORG_A, admission);
+        await seedSignedCarePlan(ORG_A, patient, admission);
+        const meetingId = await seedMeeting(ORG_A, "scheduled", 1);
+        await runPacketBuildCron({
           db: handle.db,
           outbox,
-          activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+          activeOrgs: enumeratorOn(platformHandle.db),
           redis,
           ...m6m7Ports(),
-        };
-        await runPacketBuildCron(deps);
-
-        expect(await packetFor(meetingId, goodPatient)).not.toBeNull();
-        expect(await packetFor(meetingId, badPatient)).toBeNull();
+        });
+        expect(await packetFor(meetingId, patient)).not.toBeNull();
         expect(await meetingStatus(meetingId)).toBe("packets_ready");
-
-        const { rows } = await admin.query(
-          "SELECT payload FROM outbox_event WHERE event_type='m14.packets.build_failed_for_patient' AND payload->>'patientId'=$1",
-          [badPatient],
-        );
-        expect(rows).toHaveLength(1);
-        expect(rows[0].payload).toMatchObject({ meetingId, patientId: badPatient, reason: "no_care_plan" });
-
-        // Not asserted as exactly 1: ORG_A's shared location accumulates other active/wrap-up-included
-        // admissions from EARLIER `it` blocks in this suite (real §2.3 D9 behavior, not a fixture bug —
-        // each prior test's patient genuinely is still "active" at this location) — the meaningful,
-        // isolated proof is the presence/absence assertions above (bad patient excluded, good included)
-        // plus the failure event itself.
-        const { rows: readyRows } = await admin.query(
-          "SELECT payload FROM outbox_event WHERE event_type='m14.packets.ready' AND aggregate_id=$1",
-          [meetingId],
-        );
-        expect(readyRows[0].payload.builtPacketCount).toBeGreaterThanOrEqual(1);
-      },
-    );
+      } finally {
+        await platformHandle.close();
+      }
+    });
 
     it("cross-tenant: org B's admission never appears in org A's meeting build", async () => {
       const orgBPatient = await seedPatient(ORG_B, "Other", "Tenant");

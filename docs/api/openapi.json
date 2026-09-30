@@ -95614,6 +95614,35 @@
                           }
                         ]
                       },
+                      "patient": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "displayName",
+                              "mrnSuffix"
+                            ],
+                            "properties": {
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "mrnSuffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "assignedToMembershipId": {
                         "format": "uuid",
                         "type": "string"
@@ -95808,6 +95837,35 @@
                         {
                           "format": "uuid",
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -96046,6 +96104,35 @@
                         {
                           "format": "uuid",
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -96310,6 +96397,35 @@
                         {
                           "format": "uuid",
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -97205,6 +97321,35 @@
                         }
                       ]
                     },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "agendaItemId": {
                       "anyOf": [
                         {
@@ -97324,25 +97469,26 @@
         }
       }
     },
-    "/api/v1/idg/meetings/{id}": {
-      "get": {
-        "operationId": "getApiV1IdgMeetingsById",
+    "/api/v1/idg/meetings": {
+      "post": {
+        "operationId": "postApiV1IdgMeetings",
         "tags": [
           "14-idg"
         ],
-        "summary": "Read one IDG meeting's lifecycle view",
+        "summary": "Schedule a single (ad-hoc) IDG meeting",
         "parameters": [
           {
-            "name": "id",
-            "in": "path",
+            "name": "Idempotency-Key",
+            "in": "header",
             "required": true,
+            "description": "Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1).",
             "schema": {
               "type": "string"
             }
           }
         ],
         "responses": {
-          "200": {
+          "201": {
             "description": "OK",
             "content": {
               "application/json": {
@@ -97355,7 +97501,8 @@
                     "status",
                     "scheduledStart",
                     "scheduledEnd",
-                    "adjournedAt"
+                    "adjournedAt",
+                    "coordinatorMembershipId"
                   ],
                   "properties": {
                     "id": {
@@ -97420,6 +97567,159 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "coordinatorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "locationId",
+                  "scheduledStart",
+                  "scheduledEnd"
+                ],
+                "properties": {
+                  "locationId": {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  "scheduledStart": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "scheduledEnd": {
+                    "format": "date-time",
+                    "type": "string"
+                  },
+                  "coordinatorMembershipId": {
+                    "format": "uuid",
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsById",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Read one IDG meeting's lifecycle view",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "id",
+                    "organizationId",
+                    "locationId",
+                    "status",
+                    "scheduledStart",
+                    "scheduledEnd",
+                    "adjournedAt",
+                    "coordinatorMembershipId"
+                  ],
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "organizationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "locationId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "status": {
+                      "anyOf": [
+                        {
+                          "const": "scheduled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "packets_building",
+                          "type": "string"
+                        },
+                        {
+                          "const": "packets_ready",
+                          "type": "string"
+                        },
+                        {
+                          "const": "live",
+                          "type": "string"
+                        },
+                        {
+                          "const": "adjourned",
+                          "type": "string"
+                        },
+                        {
+                          "const": "cancelled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rescheduled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "scheduledStart": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "scheduledEnd": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "adjournedAt": {
+                      "anyOf": [
+                        {
+                          "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "coordinatorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
                     }
                   }
                 }
@@ -97495,6 +97795,35 @@
                         {
                           "format": "uuid",
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -97769,6 +98098,35 @@
                             "type": "null"
                           }
                         ]
+                      },
+                      "patient": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "displayName",
+                              "mrnSuffix"
+                            ],
+                            "properties": {
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "mrnSuffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     }
                   }
@@ -97851,6 +98209,35 @@
                         {
                           "format": "uuid",
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -98265,6 +98652,35 @@
                           }
                         ]
                       },
+                      "patient": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "displayName",
+                              "mrnSuffix"
+                            ],
+                            "properties": {
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "mrnSuffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "agendaItemId": {
                         "anyOf": [
                           {
@@ -98417,6 +98833,35 @@
                         {
                           "format": "uuid",
                           "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
                         },
                         {
                           "type": "null"
@@ -99303,6 +99748,8 @@
                     "finalizedAt",
                     "finalizedByMembershipId",
                     "minutesDocumentId",
+                    "renderStatus",
+                    "finalizedByDiscipline",
                     "attendanceCount",
                     "decisionCount",
                     "actionItemCount"
@@ -99354,6 +99801,42 @@
                       "anyOf": [
                         {
                           "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "renderStatus": {
+                      "anyOf": [
+                        {
+                          "const": "not_rendered",
+                          "type": "string"
+                        },
+                        {
+                          "const": "pending",
+                          "type": "string"
+                        },
+                        {
+                          "const": "rendered",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "finalizedByName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "finalizedByDiscipline": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -99453,6 +99936,35 @@
                         "format": "uuid",
                         "type": "string"
                       },
+                      "patient": {
+                        "anyOf": [
+                          {
+                            "type": "object",
+                            "required": [
+                              "displayName",
+                              "mrnSuffix"
+                            ],
+                            "properties": {
+                              "displayName": {
+                                "type": "string"
+                              },
+                              "mrnSuffix": {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              }
+                            }
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "frozenAt": {
                         "anyOf": [
                           {
@@ -99510,7 +100022,8 @@
                     "status",
                     "scheduledStart",
                     "scheduledEnd",
-                    "adjournedAt"
+                    "adjournedAt",
+                    "coordinatorMembershipId"
                   ],
                   "properties": {
                     "id": {
@@ -99575,6 +100088,289 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "coordinatorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/recert-windows": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByIdRecertwindows",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "Per-agenda-patient recert / face-to-face windows for the IDG right pane — next recert due date, benefit-period end, F2F status/window (seam-pulled from M6's window math, org-timezone; unresolved patients are `unknown`, never fabricated)",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "meetingId",
+                    "generatedAt",
+                    "items"
+                  ],
+                  "properties": {
+                    "meetingId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "generatedAt": {
+                      "format": "date-time",
+                      "type": "string"
+                    },
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "required": [
+                          "patientId",
+                          "admissionId",
+                          "currentPeriodSequence",
+                          "benefitPeriodStart",
+                          "benefitPeriodEnd",
+                          "nextRecertDueDate",
+                          "nextPeriodSequence",
+                          "daysUntilNextRecert",
+                          "f2fRequired",
+                          "f2fWindowStart",
+                          "f2fWindowEnd",
+                          "f2fStatus",
+                          "f2fWindowState",
+                          "f2fScheduledDate"
+                        ],
+                        "properties": {
+                          "patientId": {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          "patient": {
+                            "anyOf": [
+                              {
+                                "type": "object",
+                                "required": [
+                                  "displayName",
+                                  "mrnSuffix"
+                                ],
+                                "properties": {
+                                  "displayName": {
+                                    "type": "string"
+                                  },
+                                  "mrnSuffix": {
+                                    "anyOf": [
+                                      {
+                                        "type": "string"
+                                      },
+                                      {
+                                        "type": "null"
+                                      }
+                                    ]
+                                  }
+                                }
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "admissionId": {
+                            "anyOf": [
+                              {
+                                "format": "uuid",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "currentPeriodSequence": {
+                            "anyOf": [
+                              {
+                                "minimum": 1,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "benefitPeriodStart": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "benefitPeriodEnd": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "nextRecertDueDate": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "nextPeriodSequence": {
+                            "anyOf": [
+                              {
+                                "minimum": 2,
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "daysUntilNextRecert": {
+                            "anyOf": [
+                              {
+                                "type": "integer"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "f2fRequired": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "f2fWindowStart": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "f2fWindowEnd": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "f2fStatus": {
+                            "anyOf": [
+                              {
+                                "const": "not_required",
+                                "type": "string"
+                              },
+                              {
+                                "const": "not_yet_open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "window_open",
+                                "type": "string"
+                              },
+                              {
+                                "const": "attested",
+                                "type": "string"
+                              },
+                              {
+                                "const": "missed",
+                                "type": "string"
+                              },
+                              {
+                                "const": "unknown",
+                                "type": "string"
+                              }
+                            ]
+                          },
+                          "f2fWindowState": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "const": "not_due",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "window_open",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "overdue",
+                                    "type": "string"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "f2fScheduledDate": {
+                            "anyOf": [
+                              {
+                                "format": "date",
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -99686,7 +100482,8 @@
                     "status",
                     "scheduledStart",
                     "scheduledEnd",
-                    "adjournedAt"
+                    "adjournedAt",
+                    "coordinatorMembershipId"
                   ],
                   "properties": {
                     "id": {
@@ -99751,6 +100548,10 @@
                           "type": "null"
                         }
                       ]
+                    },
+                    "coordinatorMembershipId": {
+                      "format": "uuid",
+                      "type": "string"
                     }
                   }
                 }
@@ -99772,7 +100573,7 @@
         "tags": [
           "14-idg"
         ],
-        "summary": "Read one patient's packet (SUD redaction applied)",
+        "summary": "Read one patient's packet with its content — cover summary (deterministic), per-discipline views, signed encounters, assessment changes, HOPE, order/medication changes, flagged events, carry-forward items (SUD redaction applied per caller)",
         "parameters": [
           {
             "name": "meetingId",
@@ -99802,7 +100603,10 @@
                     "packetId",
                     "meetingId",
                     "patientId",
-                    "frozenAt"
+                    "frozenAt",
+                    "content",
+                    "appliedSudRedaction",
+                    "redactionNotice"
                   ],
                   "properties": {
                     "packetId": {
@@ -99817,10 +100621,671 @@
                       "format": "uuid",
                       "type": "string"
                     },
+                    "patient": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "displayName",
+                            "mrnSuffix"
+                          ],
+                          "properties": {
+                            "displayName": {
+                              "type": "string"
+                            },
+                            "mrnSuffix": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
                     "frozenAt": {
                       "anyOf": [
                         {
                           "format": "date-time",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "content": {
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "required": [
+                            "schemaVersion",
+                            "cover",
+                            "disciplines",
+                            "signedEncounters",
+                            "assessmentChanges",
+                            "hopeTimepoints",
+                            "orderChanges",
+                            "medicationChanges",
+                            "flaggedEvents",
+                            "carryForwardActionItems"
+                          ],
+                          "properties": {
+                            "schemaVersion": {
+                              "const": "2026-01-v1",
+                              "type": "string"
+                            },
+                            "cover": {
+                              "type": "object",
+                              "required": [
+                                "summary",
+                                "builtAt",
+                                "sinceCursorAt",
+                                "sinceContext",
+                                "nameAtBuild",
+                                "age",
+                                "primaryDiagnosisIcd10",
+                                "primaryDiagnosisLabel",
+                                "levelOfCare",
+                                "daysOnService",
+                                "hasActiveDpoa",
+                                "activeSudFlag",
+                                "recert",
+                                "carePlan",
+                                "discussionFlags",
+                                "counts"
+                              ],
+                              "properties": {
+                                "summary": {
+                                  "type": "string"
+                                },
+                                "builtAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "sinceCursorAt": {
+                                  "format": "date-time",
+                                  "type": "string"
+                                },
+                                "sinceContext": {
+                                  "anyOf": [
+                                    {
+                                      "const": "prior_idg",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "first_idg",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "nameAtBuild": {
+                                  "type": "string"
+                                },
+                                "age": {
+                                  "type": "integer"
+                                },
+                                "primaryDiagnosisIcd10": {
+                                  "type": "string"
+                                },
+                                "primaryDiagnosisLabel": {
+                                  "type": "string"
+                                },
+                                "levelOfCare": {
+                                  "anyOf": [
+                                    {
+                                      "const": "routine",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "continuous",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "inpatient_respite",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "general_inpatient",
+                                      "type": "string"
+                                    }
+                                  ]
+                                },
+                                "daysOnService": {
+                                  "type": "integer"
+                                },
+                                "hasActiveDpoa": {
+                                  "type": "boolean"
+                                },
+                                "activeSudFlag": {
+                                  "type": "boolean"
+                                },
+                                "recert": {
+                                  "type": "object",
+                                  "required": [
+                                    "nextRecertDueAt",
+                                    "f2fWindowState"
+                                  ],
+                                  "properties": {
+                                    "nextRecertDueAt": {
+                                      "anyOf": [
+                                        {
+                                          "format": "date-time",
+                                          "type": "string"
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    },
+                                    "f2fWindowState": {
+                                      "anyOf": [
+                                        {
+                                          "anyOf": [
+                                            {
+                                              "const": "not_due",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "window_open",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "overdue",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        {
+                                          "type": "null"
+                                        }
+                                      ]
+                                    }
+                                  }
+                                },
+                                "carePlan": {
+                                  "type": "object",
+                                  "required": [
+                                    "activeProblemCount",
+                                    "activeGoalCount",
+                                    "activeInterventionCount",
+                                    "lastSignedAt",
+                                    "nextReviewDueAt",
+                                    "isReviewOverdue"
+                                  ],
+                                  "properties": {
+                                    "activeProblemCount": {
+                                      "type": "integer"
+                                    },
+                                    "activeGoalCount": {
+                                      "type": "integer"
+                                    },
+                                    "activeInterventionCount": {
+                                      "type": "integer"
+                                    },
+                                    "lastSignedAt": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    "nextReviewDueAt": {
+                                      "format": "date-time",
+                                      "type": "string"
+                                    },
+                                    "isReviewOverdue": {
+                                      "type": "boolean"
+                                    }
+                                  }
+                                },
+                                "discussionFlags": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "kind",
+                                      "detail"
+                                    ],
+                                    "properties": {
+                                      "kind": {
+                                        "type": "string"
+                                      },
+                                      "detail": {
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                },
+                                "counts": {
+                                  "type": "object",
+                                  "required": [
+                                    "signedEncounters",
+                                    "assessmentChanges",
+                                    "hopeTriggers",
+                                    "orderChanges",
+                                    "medicationChanges",
+                                    "flaggedEvents",
+                                    "carryForwardActionItems"
+                                  ],
+                                  "properties": {
+                                    "signedEncounters": {
+                                      "type": "integer"
+                                    },
+                                    "assessmentChanges": {
+                                      "type": "integer"
+                                    },
+                                    "hopeTriggers": {
+                                      "type": "integer"
+                                    },
+                                    "orderChanges": {
+                                      "type": "integer"
+                                    },
+                                    "medicationChanges": {
+                                      "type": "integer"
+                                    },
+                                    "flaggedEvents": {
+                                      "type": "integer"
+                                    },
+                                    "carryForwardActionItems": {
+                                      "type": "integer"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "disciplines": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "discipline",
+                                  "oneLineSummary",
+                                  "items",
+                                  "openQuestions"
+                                ],
+                                "properties": {
+                                  "discipline": {
+                                    "anyOf": [
+                                      {
+                                        "const": "rn",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "msw",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "chaplain",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "aide",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "md_np",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "volunteer",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "medical_director",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  },
+                                  "oneLineSummary": {
+                                    "type": "string"
+                                  },
+                                  "items": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "required": [
+                                        "sourceKind",
+                                        "sourceId",
+                                        "label",
+                                        "summary",
+                                        "severity"
+                                      ],
+                                      "properties": {
+                                        "sourceKind": {
+                                          "anyOf": [
+                                            {
+                                              "const": "encounter",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "assessment",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "order",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "medication",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "hope",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "action_item",
+                                              "type": "string"
+                                            },
+                                            {
+                                              "const": "flag",
+                                              "type": "string"
+                                            }
+                                          ]
+                                        },
+                                        "sourceId": {
+                                          "type": "string"
+                                        },
+                                        "label": {
+                                          "type": "string"
+                                        },
+                                        "summary": {
+                                          "type": "string"
+                                        },
+                                        "severity": {
+                                          "anyOf": [
+                                            {
+                                              "anyOf": [
+                                                {
+                                                  "const": "info",
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "const": "attention",
+                                                  "type": "string"
+                                                },
+                                                {
+                                                  "const": "urgent",
+                                                  "type": "string"
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "null"
+                                            }
+                                          ]
+                                        }
+                                      }
+                                    }
+                                  },
+                                  "openQuestions": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "string"
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "signedEncounters": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "encounterId",
+                                  "encounterType",
+                                  "discipline",
+                                  "signedAt"
+                                ],
+                                "properties": {
+                                  "encounterId": {
+                                    "type": "string"
+                                  },
+                                  "encounterType": {
+                                    "type": "string"
+                                  },
+                                  "discipline": {
+                                    "type": "string"
+                                  },
+                                  "signedAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "assessmentChanges": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "assessmentId",
+                                  "scaleKind",
+                                  "changeKind",
+                                  "occurredAt"
+                                ],
+                                "properties": {
+                                  "assessmentId": {
+                                    "type": "string"
+                                  },
+                                  "scaleKind": {
+                                    "type": "string"
+                                  },
+                                  "changeKind": {
+                                    "type": "string"
+                                  },
+                                  "occurredAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "hopeTimepoints": {
+                              "type": "object",
+                              "required": [
+                                "captured",
+                                "upcoming",
+                                "openSfvCount",
+                                "symptomImpactTriggers"
+                              ],
+                              "properties": {
+                                "captured": {
+                                  "type": "boolean"
+                                },
+                                "upcoming": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "timepoint",
+                                      "dueAt"
+                                    ],
+                                    "properties": {
+                                      "timepoint": {
+                                        "type": "string"
+                                      },
+                                      "dueAt": {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                },
+                                "openSfvCount": {
+                                  "anyOf": [
+                                    {
+                                      "type": "integer"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                "symptomImpactTriggers": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "object",
+                                    "required": [
+                                      "hopeAssessmentId",
+                                      "triggerKind",
+                                      "firedAt"
+                                    ],
+                                    "properties": {
+                                      "hopeAssessmentId": {
+                                        "type": "string"
+                                      },
+                                      "triggerKind": {
+                                        "type": "string"
+                                      },
+                                      "firedAt": {
+                                        "format": "date-time",
+                                        "type": "string"
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            },
+                            "orderChanges": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "orderId",
+                                  "orderKind",
+                                  "changeKind",
+                                  "changedAt"
+                                ],
+                                "properties": {
+                                  "orderId": {
+                                    "type": "string"
+                                  },
+                                  "orderKind": {
+                                    "type": "string"
+                                  },
+                                  "changeKind": {
+                                    "type": "string"
+                                  },
+                                  "changedAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "medicationChanges": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "medicationOrderId",
+                                  "drugLabel",
+                                  "changeKind",
+                                  "changedAt"
+                                ],
+                                "properties": {
+                                  "medicationOrderId": {
+                                    "type": "string"
+                                  },
+                                  "drugLabel": {
+                                    "type": "string"
+                                  },
+                                  "changeKind": {
+                                    "type": "string"
+                                  },
+                                  "changedAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            },
+                            "flaggedEvents": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "kind",
+                                  "sourceId",
+                                  "occurredAt",
+                                  "severity"
+                                ],
+                                "properties": {
+                                  "kind": {
+                                    "type": "string"
+                                  },
+                                  "sourceId": {
+                                    "type": "string"
+                                  },
+                                  "occurredAt": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "severity": {
+                                    "anyOf": [
+                                      {
+                                        "const": "info",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "attention",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "urgent",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            },
+                            "carryForwardActionItems": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": [
+                                  "actionItemId",
+                                  "assignedToMembershipId",
+                                  "dueDate",
+                                  "carryForwardCount"
+                                ],
+                                "properties": {
+                                  "actionItemId": {
+                                    "type": "string"
+                                  },
+                                  "assignedToMembershipId": {
+                                    "type": "string"
+                                  },
+                                  "dueDate": {
+                                    "format": "date-time",
+                                    "type": "string"
+                                  },
+                                  "carryForwardCount": {
+                                    "type": "integer"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "appliedSudRedaction": {
+                      "type": "boolean"
+                    },
+                    "redactionNotice": {
+                      "anyOf": [
+                        {
                           "type": "string"
                         },
                         {
@@ -100128,7 +101593,8 @@
                       "locationId",
                       "status",
                       "scheduledStart",
-                      "scheduledEnd"
+                      "scheduledEnd",
+                      "coordinatorMembershipId"
                     ],
                     "properties": {
                       "id": {
@@ -100177,6 +101643,10 @@
                       },
                       "scheduledEnd": {
                         "format": "date-time",
+                        "type": "string"
+                      },
+                      "coordinatorMembershipId": {
+                        "format": "uuid",
                         "type": "string"
                       }
                     }

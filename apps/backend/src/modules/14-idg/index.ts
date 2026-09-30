@@ -4,6 +4,7 @@ import type { DbClient } from "@wardenx/db";
 import type { FastifyInstance } from "fastify";
 import { registerIdgAbacPredicates as _registerM14Abac } from "./abac-predicates";
 import { type IdgWriteOutboxPort, createDbIdgBackend } from "./idg-route-service-db";
+import type { IdgRouteEnrichmentPorts } from "./routes/idg-enrichment";
 import { registerIdgRoutes as _registerM14Routes } from "./routes/idg-routes";
 
 /**
@@ -17,10 +18,11 @@ export function mountIdgRoutes(
   app: FastifyInstance,
   db: DbClient,
   outbox?: IdgWriteOutboxPort,
+  enrichment?: IdgRouteEnrichmentPorts,
 ): void {
   const backend = createDbIdgBackend(db, outbox);
   _registerM14Abac({ resolver: backend });
-  _registerM14Routes(app, { service: backend });
+  _registerM14Routes(app, { service: backend, enrichment });
 }
 
 export { type IdgWriteOutboxPort, createDbIdgBackend } from "./idg-route-service-db";
@@ -66,6 +68,28 @@ export {
 // Drizzle in prod under withOrgContext so RLS backstops).
 export { type IdgRouteDeps, registerIdgRoutes } from "./routes/idg-routes";
 export {
+  type PacketDisclosurePort,
+  type PacketPart2Verdict,
+  seamPacketDisclosurePort,
+  sudDisclosureAllowedForPacket,
+} from "./routes/packet-disclosure";
+export {
+  type PacketContentView,
+  SUD_REDACTION_NOTICE,
+  mapPacketContent,
+} from "./routes/packet-content";
+export {
+  type IdgMembershipDisplay,
+  type IdgMembershipDisplayPort,
+  type IdgPatientDisplay,
+  type IdgPatientDisplayPort,
+  type IdgRecertWindowFact,
+  type IdgRecertWindowPort,
+  type IdgRouteEnrichmentPorts,
+  withFinalizerName,
+  withPatientDisplay,
+} from "./routes/idg-enrichment";
+export {
   type IdgRouteService,
   type IdgRouteSeed,
   type MeetingView,
@@ -74,7 +98,9 @@ export {
   type DecisionView,
   type ActionItemView,
   type MinutesView,
+  type PacketDetailView,
   type PacketDigestView,
+  type PacketViewer,
   type RecurringPolicyView,
   type MeetingScheduleView,
   type RecordedIdgEvent,
@@ -97,6 +123,13 @@ export {
   buildM14ActionItemAutoCloseConsumer,
   planActionItemAutoClose,
 } from "./consumers/index";
+// The §4.4 M22 back-ref (return leg of the render handshake): stamps `idg_minutes.minutes_document_id` /
+// `idg_patient_packet.packet_document_id` from `m22.document.rendered`. Lives in its own file (Drizzle).
+export {
+  type IdgDocumentBackrefConsumerDeps,
+  M14_DOCUMENT_BACKREF_CONSUMER,
+  buildM14DocumentBackrefConsumer,
+} from "./consumers/m22-document-backref";
 // F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers (M9's two, M10's two, M11's
 // one, M12's one). The M6 inclusion-cache pair and the M15 trio stay unbound — a fresh investigation
 // found the evidence genuinely mixed rather than confidently misdeclared or confidently genuine; see
@@ -172,6 +205,9 @@ export {
 export {
   type Idg6PacketInclusionCandidate,
   type Idg6PacketPort,
+  type Idg6RecertWindowFact,
+  type Idg6RecertWindowPort,
+  resolveRecertCoverFacts,
   type Idg7PacketCarePlanContext,
   type Idg7PacketPort,
   type PacketBuildWorkerDeps,

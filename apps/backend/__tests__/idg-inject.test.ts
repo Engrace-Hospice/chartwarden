@@ -40,6 +40,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildServer } from "../src/bootstrap/index";
 import { __resetSeamsForTest, registerSeam } from "../src/bootstrap/seams/registry";
 import {
+  type IdgMembershipDisplayPort,
+  type IdgRouteEnrichmentPorts,
   buildIdgAbacPredicates,
   createInMemoryIdgBackend,
   registerIdgRoutes,
@@ -103,7 +105,10 @@ const PERMISSION_SEED = [
   { userId: "noperm_1", permissions: [] as string[] },
 ];
 
-function makeServer(meetings: readonly IdgMeetingSeed[] = []) {
+function makeServer(
+  meetings: readonly IdgMeetingSeed[] = [],
+  enrichment?: IdgRouteEnrichmentPorts,
+) {
   const backend = createInMemoryIdgBackend({ now: () => NOW, meetings });
 
   const grantStore = createInMemoryEffectivePermissionStore(
@@ -123,7 +128,7 @@ function makeServer(meetings: readonly IdgMeetingSeed[] = []) {
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  registerIdgRoutes(app, { service: backend });
+  registerIdgRoutes(app, { service: backend, enrichment });
   return { app, backend };
 }
 
@@ -521,6 +526,10 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
     // taken" are different facts about a meeting, and a screen has to be able to tell them apart.
     expect(minutesBefore.json().attendanceCount).toBeNull();
     expect(minutesBefore.json().decisionCount).toBeNull();
+    // Nothing frozen, nothing to render — and no enrichment port is mounted here, so no name key at all.
+    expect(minutesBefore.json().renderStatus).toBe("not_rendered");
+    expect(minutesBefore.json().finalizedByDiscipline).toBeNull();
+    expect(minutesBefore.json()).not.toHaveProperty("finalizedByName");
 
     // route #9 — adjourn (fresh step-up required, §2.2 D13); the commit point: emits the open decision,
     // finalizes the minutes.
@@ -549,7 +558,113 @@ describe("M14-idg-inject — live meeting: reads + attendance + packets + agenda
     expect(minutesAfter.json().attendanceCount).toBe(4);
     expect(minutesAfter.json().decisionCount).toBe(1);
     expect(minutesAfter.json().actionItemCount).toBe(1);
+    // Final with no M22 back-ref yet: the render request is in flight, which is `pending` — never the
+    // "not rendered" a screen would read as "nothing will ever render".
+    expect(minutesAfter.json().minutesDocumentId).toBeNull();
+    expect(minutesAfter.json().renderStatus).toBe("pending");
 
+    await app.close();
+  });
+});
+
+describe("M14-idg-inject — minutes signer name (identity-owned membershipDisplay port)", () => {
+  const seed: readonly IdgMeetingSeed[] = [
+    {
+      id: MEETING_LIVE,
+      organizationId: ORG,
+      locationId: LOC,
+      status: "live",
+      scheduledStart: "2026-06-08T09:00:00.000Z",
+      scheduledEnd: "2026-06-08T10:00:00.000Z",
+      includedPatientIds: [PATIENT],
+    },
+  ];
+  const displayPort = (
+    names: Record<string, string | null>,
+    calls: Array<{ org: string; ids: readonly string[] }> = [],
+  ): IdgMembershipDisplayPort => ({
+    async displayForMemberships(org, ids) {
+      calls.push({ org, ids });
+      return new Map(
+        ids.filter((i) => i in names).map((i) => [i, { displayName: names[i] ?? null }] as const),
+      );
+    },
+  });
+  const adjournAndRead = async (app: ReturnType<typeof makeServer>["app"]) => {
+    const adjourn = await app.inject({
+      method: "POST",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/adjourn`,
+      headers: SUPER_FRESH,
+      payload: {},
+    });
+    expect(adjourn.statusCode).toBe(200);
+    return app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/minutes`,
+      headers: SUPER,
+    });
+  };
+
+  it("names the finalizer (name only, ONE batched call, the caller's own org) and carries the discipline off the attendance snapshot", async () => {
+    const calls: Array<{ org: string; ids: readonly string[] }> = [];
+    const { app, backend } = makeServer(seed, {
+      membershipDisplay: displayPort({ coord_1: "Dana Coordinator" }, calls),
+    });
+    // The finalizer attended, so the frozen roster records their discipline. Written through the backend
+    // directly: the test principal id ("coord_1") is not a uuid, which the attendance route body requires.
+    await backend.recordAttendance(ORG, "coord_1", MEETING_LIVE, {
+      membershipId: "coord_1",
+      discipline: "rn_case_manager",
+    });
+    const res = await adjournAndRead(app);
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    expect(body.finalizedByMembershipId).toBe("coord_1");
+    expect(body.finalizedByName).toBe("Dana Coordinator");
+    expect(body.finalizedByDiscipline).toBe("rn_case_manager");
+    expect(calls).toEqual([{ org: ORG, ids: ["coord_1"] }]);
+    await app.close();
+  });
+
+  it("an unknown / nameless membership yields finalizedByName:null, never a fabricated label", async () => {
+    for (const port of [displayPort({}), displayPort({ coord_1: null })]) {
+      const { app } = makeServer(seed, { membershipDisplay: port });
+      const res = await adjournAndRead(app);
+      expect(res.statusCode).toBe(200);
+      expect(res.json().finalizedByName).toBeNull();
+      expect(res.json().finalizedByDiscipline).toBeNull(); // did not attend
+      await app.close();
+    }
+  });
+
+  it("a failing port degrades to the id-only view (200, no name key) rather than 500ing the minutes screen", async () => {
+    const { app } = makeServer(seed, {
+      membershipDisplay: {
+        displayForMemberships: async () => {
+          throw new Error("identity down");
+        },
+      },
+    });
+    const res = await adjournAndRead(app);
+    expect(res.statusCode).toBe(200);
+    expect(res.json().finalizedByMembershipId).toBe("coord_1");
+    expect(res.json()).not.toHaveProperty("finalizedByName");
+    await app.close();
+  });
+
+  it("in-progress minutes make no lookup (nobody has finalized yet) and report finalizedByName:null", async () => {
+    const calls: Array<{ org: string; ids: readonly string[] }> = [];
+    const { app } = makeServer(seed, { membershipDisplay: displayPort({ coord_1: "X" }, calls) });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MEETING_LIVE}/minutes`,
+      headers: SUPER,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().status).toBe("in_progress");
+    expect(res.json().finalizedByName).toBeNull();
+    expect(res.json().renderStatus).toBe("not_rendered");
+    expect(calls).toHaveLength(0);
     await app.close();
   });
 });

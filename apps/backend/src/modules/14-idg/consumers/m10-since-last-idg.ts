@@ -40,7 +40,9 @@ function stringField(payload: unknown, key: string): string | null {
  * into the label — `PacketHopeTriggerDigest` has no separate severity field, and the payload's own
  * `maxSeverity` (`none`/`mild`/`moderate`/`severe` per the J2051 evaluator) is otherwise lost.
  */
-export function buildM14HopeJ2051TriggerConsumer(deps: SinceLastIdgHopeDeps): OutboxConsumerBinding {
+export function buildM14HopeJ2051TriggerConsumer(
+  deps: SinceLastIdgHopeDeps,
+): OutboxConsumerBinding {
   return {
     consumerName: "m14.m10-j2051-trigger",
     consumerModule: "m14",

@@ -74,6 +74,14 @@ export {
   idgCurrentLevelOfCareForOrg,
   idgPacketInclusionForOrg,
 } from "./drizzle-store";
+// M14 IDG screens — the org-explicit, BATCHED per-patient recert/F2F window read (M6's own pure window math).
+export {
+  type IdgRecertF2fStatus,
+  type IdgRecertWindow,
+  IDG_RECERT_WINDOWS_MAX_PATIENTS,
+  idgRecertWindowsForOrg,
+  projectIdgRecertWindow,
+} from "./idg-recert-windows-for-org";
 export {
   type AdmissionReaderStore,
   type AdmissionReaderSeed,

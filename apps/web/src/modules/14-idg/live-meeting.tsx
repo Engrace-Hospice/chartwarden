@@ -1,37 +1,57 @@
 import {
   Button,
+  CountBadge,
+  DataTable,
+  type DataTableColumn,
   EmptyState,
+  Glyph,
+  type GlyphName,
+  InfoRows,
   LoadingSpinner,
-  PageHeader,
+  Panel,
   StatusPill,
-  WorkQueueLayout,
+  type StatusTone,
+  type operations,
+  t,
   useApiClient,
 } from "@wardenx/ui";
 // apps/web/src/modules/14-idg — Live Meeting Surface (M14 §4.1/§5, Track B / ADR-0030).
 // Spec: docs/design/screens/clinical/WARDENX_UI_IDG_MEETING.md — "Use Work Queue + Documentation Workspace".
+// 2026-09 "Lantern Clinical 2.0" redesign: flat sections (no boxes-in-boxes), three panes —
+//   left   agenda / patient worklist (agenda kinds, carry-forward flag, packet state),
+//   centre patient packet digest + the decision ledger and recorder,
+//   right  attendance & quorum banner, action items, and the per-patient recert / F2F windows.
 //
-// The IDG Coordinator's in-meeting surface. Until #91 this was a left-rail list of patient ids and
-// nothing else: the decision-recording panel, the attendance tracker, the action-item assignment and
-// the adjourn control were all deferred, so the meeting where 42 CFR 418.56(b) says the plan of care
-// is established — and §418.56(d) says it is reviewed every 15 days — could be opened and read and
-// never conducted. The routes behind every control here were mounted and guarded the whole time; six
-// of them wrote rows that NO read route returned, which is why this change carries a server half
-// (F-062: `GET .../attendance`, `.../agenda`, `.../decisions`).
+// The IDG Coordinator's in-meeting surface: 42 CFR 418.56(b) says the plan of care is established here and
+// §418.56(d) says it is reviewed every 15 days. Every control below (check-in, agenda, decision, follow-up,
+// supersede, excuse, status amendment, adjourn) is a mounted, guarded route; the three read ledgers
+// (`GET .../attendance`, `.../agenda`, `.../decisions`) are F-062.
 //
 // THE QUORUM READOUT IS INFORMATION, NOT A GATE. §4.7's `quorate_decision` counts the roster
 // server-side and refuses a non-quorate decision with a 422. This surface shows which of the four
 // §2.7 disciplines are present because a coordinator needs to know who to call — but Record a
 // decision stays ENABLED regardless, and the refusal is rendered where the coordinator is looking.
 // Disabling it here would be a second implementation of the CoP composition rule, free to disagree
-// with the one the server enforces (ADR-0030 — the server is the only enforcement point).
+// with the one the server enforces (ADR-0030 — the server is the only enforcement point). A decision the
+// server recorded while the group was not quorate carries `wasQuorate: false` and is shown as an
+// annotation, not a binding decision.
 //
-// The Socket.IO real-time propagation and the Capacitor Mobile Live variant remain deferred; this
-// surface reloads the three ledgers after each write, which is correct if less live.
+// PATIENT NAMES arrive as the optional `patient: { displayName: "First L.", mrnSuffix }` the agenda / packet /
+// decision / action-item reads now carry; when it is null or absent the short id is shown instead.
+// RECERT / F2F WINDOWS come from `GET /idg/meetings/{id}/recert-windows` (org-local yyyy-mm-dd dates, one item
+// per agenda patient). An `unknown` F2F status is rendered "Not available" — never guessed — and a failed read
+// leaves one quiet line rather than a broken pane.
+// LIVE UPDATES: there is no realtime channel to subscribe to (no socket/SSE gateway server-side; the UI's
+// `SocketProvider` is unmounted), so while the meeting is `live` and the tab visible the surface polls its
+// ledgers — see `use-live-refresh.ts`. The selected patient's packet content (cover + discipline tabs) is fetched per patient, cached, and NOT re-read
+// on the poll — see `usePacketDetail` in packet-content.tsx.
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { JSX } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import type { JSX, ReactNode } from "react";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import {
+  type ActionItemView,
   type AgendaItemView,
+  type AttendanceStatus,
   type AttendanceView,
   type DecisionView,
   type MeetingView,
@@ -41,6 +61,7 @@ import {
   loadAttendance,
   loadDecisions,
   supersedeDecision,
+  updateAttendance,
 } from "./idg-api";
 import { DecisionModal } from "./idg-decision-modal";
 import {
@@ -49,16 +70,118 @@ import {
   AttendanceModal,
   LifecycleModal,
 } from "./idg-meeting-modals";
-import { MEETING_TONE, stateLabel } from "./idg-status";
+import { ACTION_TONE, MEETING_TONE, stateLabel } from "./idg-status";
+import "./live-meeting.css";
+import { PacketCompact, usePacketDetail } from "./packet-content";
+import { useLiveRefresh } from "./use-live-refresh";
+
+type RecertWindows = NonNullable<
+  operations["getApiV1IdgMeetingsByIdRecertwindows"]["responses"][200]["content"]["application/json"]
+>;
+type RecertItem = RecertWindows["items"][number];
+/** `unavailable` = the read failed (or returned nothing usable) — shown as one quiet line. */
+type RecertState =
+  | { readonly state: "loading" }
+  | { readonly state: "ok"; readonly items: RecertItem[] }
+  | { readonly state: "unavailable" };
+interface PatientRef {
+  readonly displayName: string;
+  readonly mrnSuffix: string | null;
+}
 
 /** The four disciplines §2.7's `IDG_REQUIRED_QUORUM` looks for. Displayed, never enforced here. */
-const REQUIRED_QUORUM = ["rn_case_manager", "hospice_physician", "msw", "chaplain"] as const;
+const REQUIRED_QUORUM = ["hospice_physician", "rn_case_manager", "msw", "chaplain"] as const;
+const DISCIPLINE_LABEL: Record<string, string> = {
+  hospice_physician: "Physician",
+  rn_case_manager: "RN",
+  msw: "MSW",
+  chaplain: "Chaplain",
+};
 /** Statuses that count as PRESENT for the quorum readout (mirrors the server's present-set). */
 const PRESENT_STATUSES = new Set(["present", "tardy", "partial"]);
+/** §2.7 participation statuses, in the order the spec lists them. */
+const ATTENDANCE_STATUSES: readonly AttendanceStatus[] = [
+  "present",
+  "tardy",
+  "partial",
+  "absent",
+  "excused",
+];
+const ATTENDANCE_TONE: Record<string, StatusTone> = {
+  present: "success",
+  tardy: "warning",
+  partial: "warning",
+  absent: "error",
+  excused: "neutral",
+};
 
 const short = (id: string): string => id.slice(0, 8);
 const humanize = (k: string): string =>
   k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+const disciplineLabel = (d: string): string => DISCIPLINE_LABEL[d] ?? humanize(d);
+
+function dateOf(v: string | null | undefined): string {
+  if (!v) return "—";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime())
+    ? v
+    : d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+function timeOf(v: string | null | undefined): string {
+  if (!v) return "";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime())
+    ? ""
+    : d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+}
+
+/** Keep the previous reference when a poll returns identical data, so memos / modal effects stay stable. */
+const keep =
+  <T,>(next: T) =>
+  (prev: T): T =>
+    JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+
+/** `yyyy-mm-dd` (org-local calendar day) → a local Date, so no timezone shift moves the day. */
+function dayOf(v: string | null | undefined): string {
+  if (!v) return "—";
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(v);
+  if (!m) return dateOf(v);
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function recertDaysText(days: number | null): { text: string; overdue: boolean } {
+  if (days === null) return { text: "", overdue: false };
+  if (days === 0) return { text: "due today", overdue: false };
+  if (days > 0) return { text: `in ${days} day${days === 1 ? "" : "s"}`, overdue: false };
+  return { text: `${-days} day${days === -1 ? "" : "s"} overdue`, overdue: true };
+}
+
+/** F2F status → pill. Overdue/missed = error, window open = warning, attested = success, unknown = muted. */
+function f2fPill(i: RecertItem): { label: string; tone: StatusTone } {
+  if (i.f2fStatus === "attested") return { label: "Attested", tone: "success" };
+  if (i.f2fStatus === "missed") return { label: "Missed", tone: "error" };
+  if (i.f2fWindowState === "overdue") return { label: "Overdue", tone: "error" };
+  switch (i.f2fStatus) {
+    case "window_open":
+      return { label: "Window open", tone: "warning" };
+    case "not_yet_open":
+      return { label: "Not yet open", tone: "neutral" };
+    case "not_required":
+      return { label: "Not required", tone: "neutral" };
+    default:
+      return { label: "Not available", tone: "neutral" };
+  }
+}
+
+interface MemberRow {
+  membershipId: string;
+  displayName: string | null;
+  email: string | null;
+}
 
 type Dialog =
   | { kind: "none" }
@@ -77,15 +200,57 @@ export function LiveMeeting(): JSX.Element {
   const [roster, setRoster] = useState<AttendanceView[]>([]);
   const [agenda, setAgenda] = useState<AgendaItemView[]>([]);
   const [decisions, setDecisions] = useState<DecisionView[]>([]);
+  const [actionItems, setActionItems] = useState<ActionItemView[]>([]);
+  const [names, setNames] = useState<Map<string, string>>(new Map());
+  const [locationName, setLocationName] = useState<string | null>(null);
+  const [selected, setSelected] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [dialog, setDialog] = useState<Dialog>({ kind: "none" });
+  const [recert, setRecert] = useState<RecertState>({ state: "loading" });
+  const [loadedAt, setLoadedAt] = useState<number | null>(null);
+
+  const loadRecert = useCallback(
+    async (signal?: AbortSignal) => {
+      if (!id) return;
+      try {
+        const r = await client.GET("/api/v1/idg/meetings/{id}/recert-windows", {
+          params: { path: { id } },
+          signal,
+        });
+        const items = (r.data as { items?: unknown } | undefined)?.items;
+        setRecert(
+          keep<RecertState>(
+            r.error || !Array.isArray(items)
+              ? { state: "unavailable" }
+              : { state: "ok", items: items as RecertItem[] },
+          ),
+        );
+      } catch {
+        if (signal?.aborted) return;
+        setRecert(keep<RecertState>({ state: "unavailable" }));
+      }
+    },
+    [client, id],
+  );
+
+  const loadActionItems = useCallback(async () => {
+    if (!id) return;
+    try {
+      const r = await client.GET("/api/v1/idg/action-items", { params: { query: {} } });
+      const rows = Array.isArray(r.data) ? (r.data as ActionItemView[]) : [];
+      setActionItems(keep(rows.filter((a) => a.meetingId === id)));
+    } catch {
+      setActionItems([]);
+    }
+  }, [client, id]);
 
   const load = useCallback(async () => {
     if (!id) return;
     setLoading(true);
     setError(null);
+    void loadRecert();
     const [m, p] = await Promise.all([
       client.GET("/api/v1/idg/meetings/{id}", { params: { path: { id } } }),
       client.GET("/api/v1/idg/meetings/{id}/packets", { params: { path: { id } } }),
@@ -95,38 +260,162 @@ export function LiveMeeting(): JSX.Element {
       setLoading(false);
       return;
     }
-    setMeeting((m.data ?? null) as MeetingView | null);
-    setPackets((p.data ?? []) as PacketDigestView[]);
+    setMeeting(keep((m.data ?? null) as MeetingView | null));
+    setPackets(keep((p.data ?? []) as PacketDigestView[]));
     const [att, agd, dec] = await Promise.all([
       loadAttendance(client, id),
       loadAgenda(client, id),
       loadDecisions(client, id),
     ]);
-    setRoster(att);
-    setAgenda(agd);
-    setDecisions(dec);
+    setRoster(keep(att));
+    setAgenda(keep(agd));
+    setDecisions(keep(dec));
     setLoading(false);
-  }, [client, id]);
+    setLoadedAt(Date.now());
+    void loadActionItems();
+  }, [client, id, loadActionItems, loadRecert]);
+
+  /** One live poll: every ledger re-read with the abort signal; rejects when a core read fails (→ backoff). */
+  const pollLedgers = useCallback(
+    async (signal: AbortSignal) => {
+      if (!id) return;
+      const path = { params: { path: { id } }, signal };
+      const [m, p, att, agd, dec] = await Promise.all([
+        client.GET("/api/v1/idg/meetings/{id}", path),
+        client.GET("/api/v1/idg/meetings/{id}/packets", path),
+        client.GET("/api/v1/idg/meetings/{id}/attendance", path),
+        client.GET("/api/v1/idg/meetings/{id}/agenda", path),
+        client.GET("/api/v1/idg/meetings/{id}/decisions", path),
+      ]);
+      if (m.error || p.error || att.error || agd.error || dec.error) {
+        throw new Error("live refresh failed");
+      }
+      setMeeting(keep((m.data ?? null) as MeetingView | null));
+      setPackets(keep((p.data ?? []) as PacketDigestView[]));
+      setRoster(keep((att.data ?? []) as AttendanceView[]));
+      setAgenda(keep((agd.data ?? []) as AgendaItemView[]));
+      setDecisions(keep((dec.data ?? []) as DecisionView[]));
+      await Promise.all([loadActionItems(), loadRecert(signal)]);
+    },
+    [client, id, loadActionItems, loadRecert],
+  );
+  const live = useLiveRefresh({ enabled: meeting?.status === "live", refresh: pollLedgers });
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Names for the roster / action-item assignees, and the site name — context only, never load-bearing.
+  const orgId = meeting?.organizationId;
+  const locationId = meeting?.locationId;
+  useEffect(() => {
+    if (!orgId) return;
+    let active = true;
+    void client
+      .GET("/api/v1/orgs/{id}/members", { params: { path: { id: orgId }, query: {} } })
+      .then((r) => {
+        if (!active) return;
+        const map = new Map<string, string>();
+        const rows = (r.data as { members?: MemberRow[] } | undefined)?.members;
+        for (const m of Array.isArray(rows) ? rows : []) {
+          const label = m.displayName ?? m.email;
+          if (label) map.set(m.membershipId, label);
+        }
+        setNames(map);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [client, orgId]);
+  useEffect(() => {
+    if (!locationId) return;
+    let active = true;
+    void client
+      .GET("/api/v1/locations", { params: { query: {} } })
+      .then((r) => {
+        const items = (r.data as { items?: { id: string; name: string }[] } | undefined)?.items;
+        if (active && Array.isArray(items)) {
+          setLocationName(items.find((l) => l.id === locationId)?.name ?? null);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [client, locationId]);
+
+  /** Names carried on the reads (agenda / packets / decisions / action items / recert windows). */
+  const patientRefs = useMemo(() => {
+    const map = new Map<string, PatientRef>();
+    const rows: { patientId?: string | null; patient?: PatientRef | null }[] = [
+      ...agenda,
+      ...packets,
+      ...decisions,
+      ...actionItems,
+      ...(recert.state === "ok" ? recert.items : []),
+    ];
+    for (const r of rows)
+      if (r.patientId && r.patient && !map.has(r.patientId)) map.set(r.patientId, r.patient);
+    return map;
+  }, [agenda, packets, decisions, actionItems, recert]);
+  const patientLabel = useCallback(
+    (pid: string): string => {
+      const ref = patientRefs.get(pid);
+      if (!ref) return `Patient ${short(pid)}`;
+      return ref.mrnSuffix ? `${ref.displayName} · MRN …${ref.mrnSuffix}` : ref.displayName;
+    },
+    [patientRefs],
+  );
+  const nameOf = (pid: string): JSX.Element => {
+    const ref = patientRefs.get(pid);
+    if (!ref) {
+      return (
+        <>
+          Patient <span className="wx-data-md">{short(pid)}</span>
+        </>
+      );
+    }
+    return (
+      <>
+        {ref.displayName}
+        {ref.mrnSuffix ? <span className="wx-idg-live-mrn">MRN …{ref.mrnSuffix}</span> : null}
+      </>
+    );
+  };
 
   /** The patients this meeting may record a decision about — the agenda, falling back to the packets. */
   const patients = useMemo(() => {
     const ids = new Set<string>();
     for (const a of agenda) if (a.patientId) ids.add(a.patientId);
     for (const p of packets) ids.add(p.patientId);
-    return [...ids].map((pid) => ({ id: pid, label: `Patient ${short(pid)}` }));
-  }, [agenda, packets]);
+    return [...ids].map((pid) => ({ id: pid, label: patientLabel(pid) }));
+  }, [agenda, packets, patientLabel]);
+
+  const activePatient =
+    selected && patients.some((p) => p.id === selected) ? selected : (patients[0]?.id ?? null);
+  const activePacket = packets.find((p) => p.patientId === activePatient) ?? null;
+  // The selected patient's packet content — fetched once per (patient, packet version), never per poll.
+  const packetLoad = usePacketDetail(
+    id,
+    activePatient,
+    activePacket ? `${activePacket.packetId}|${activePacket.frozenAt ?? "draft"}` : null,
+  );
+  const activeKinds = agenda.filter((a) => a.patientId === activePatient).map((a) => a.kind);
 
   const presentDisciplines = useMemo(
     () => new Set(roster.filter((r) => PRESENT_STATUSES.has(r.status)).map((r) => r.discipline)),
     [roster],
   );
   const missingQuorum = REQUIRED_QUORUM.filter((d) => !presentDisciplines.has(d));
+  const quorate = missingQuorum.length === 0;
   const openDecisions = decisions.filter((d) => d.status === "open").length;
+  const carryForward = agenda.filter((a) => a.kind === "carry_forward").length;
   const isLive = meeting?.status === "live";
+  const closed = meeting?.status === "adjourned" || meeting?.status === "cancelled";
+  const coordinatorId = (meeting as { coordinatorMembershipId?: string } | null)
+    ?.coordinatorMembershipId;
+  const who = (membershipId: string): string => names.get(membershipId) ?? short(membershipId);
 
   async function onExcuse(rowId: string): Promise<void> {
     const res = await excuseAttendance(client, rowId);
@@ -136,299 +425,749 @@ export function LiveMeeting(): JSX.Element {
     if (res.ok) await load();
   }
 
+  async function onStatus(rowId: string, status: AttendanceStatus): Promise<void> {
+    const res = await updateAttendance(client, rowId, status);
+    setNotice(res.ok ? `Attendance updated to ${humanize(status)}.` : res.message);
+    if (res.ok) await load();
+  }
+
   async function onSupersede(decisionId: string): Promise<void> {
     const res = await supersedeDecision(client, decisionId);
     setNotice(res.ok ? "Decision superseded — a new open decision replaces it." : res.message);
     if (res.ok) await load();
   }
 
+  const otherAgenda = agenda.filter((a) => !a.patientId);
+  const worklist = patients.map((p) => ({
+    ...p,
+    kinds: agenda.filter((a) => a.patientId === p.id).map((a) => a.kind),
+    packet: packets.find((k) => k.patientId === p.id) ?? null,
+    decisionCount: decisions.filter((d) => d.patientId === p.id).length,
+  }));
+
+  const openActionItems = actionItems.filter(
+    (a) => a.status === "open" || a.status === "in_progress",
+  ).length;
+  const worklistRows = worklist;
+
+  const worklistColumns: DataTableColumn<(typeof worklist)[number]>[] = [
+    {
+      id: "patient",
+      header: "Patient",
+      cell: (p) => <span className="wx-row-title">{nameOf(p.id)}</span>,
+    },
+    {
+      id: "agenda",
+      header: "Agenda",
+      priority: "secondary",
+      cell: (p) => (p.kinds.length > 0 ? p.kinds.map(humanize).join(", ") : "Packet only"),
+    },
+    {
+      id: "decisions",
+      header: "Decisions",
+      priority: "secondary",
+      numeric: true,
+      cell: (p) => p.decisionCount,
+    },
+    {
+      id: "packet",
+      header: "Packet",
+      cell: (p) =>
+        p.packet ? (
+          <StatusPill
+            label={p.packet.frozenAt ? "Frozen" : "Draft"}
+            tone={p.packet.frozenAt ? "neutral" : "warning"}
+          />
+        ) : (
+          <span className="wx-row-sub">Not built</span>
+        ),
+    },
+  ];
+
+  const decisionColumns: DataTableColumn<DecisionView>[] = [
+    {
+      id: "decision",
+      header: "Decision",
+      cell: (d) => <span className="wx-row-title">{humanize(d.decisionKind)}</span>,
+    },
+    {
+      id: "patient",
+      header: "Patient",
+      cell: (d) => (d.patientId ? nameOf(d.patientId) : "Team"),
+    },
+    {
+      id: "status",
+      header: "Status",
+      cell: (d) => (
+        <span className="wx-idg-live-pills">
+          <StatusPill
+            label={humanize(d.status)}
+            tone={
+              d.status === "superseded"
+                ? "neutral"
+                : d.status === "emitted"
+                  ? "success"
+                  : "progress"
+            }
+          />
+          {d.wasQuorate ? null : <StatusPill label="Not quorate · annotation" tone="warning" />}
+        </span>
+      ),
+    },
+    {
+      id: "recorded",
+      header: "Recorded",
+      priority: "secondary",
+      cell: (d) => (
+        <span className="wx-nums">
+          {dateOf(d.recordedAt)} {timeOf(d.recordedAt)}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      header: <span className="wx-sr-only">Actions</span>,
+      cell: (d) => (
+        <span className="wx-idg-live-cell-actions">
+          <Button
+            tone="tertiary"
+            size="sm"
+            onClick={() => setDialog({ kind: "action-item", decisionId: d.id })}
+          >
+            Assign follow-up
+          </Button>
+          {d.status !== "superseded" ? (
+            <Button tone="tertiary" size="sm" onClick={() => void onSupersede(d.id)}>
+              Supersede
+            </Button>
+          ) : null}
+        </span>
+      ),
+    },
+  ];
+
   return (
-    <WorkQueueLayout
-      header={
-        <PageHeader
-          title="Live IDG Meeting"
-          breadcrumb={meeting ? meeting.scheduledStart.slice(0, 10) : undefined}
-          actions={
-            meeting ? (
-              <div style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+    <div className="wx-with-rail wx-idg-live">
+      <div className="wx-with-rail-main">
+        <header className="wx-page-head">
+          <div className="wx-idg-live-head-main">
+            <h1 style={{ fontSize: "1.875rem" }}>Live IDG Meeting</h1>
+            {meeting ? (
+              <p className="wx-idg-live-meta">
+                <span>
+                  <Glyph name="calendar" size={16} />
+                  <span className="wx-nums">
+                    {dateOf(meeting.scheduledStart)} · {timeOf(meeting.scheduledStart)} –{" "}
+                    {timeOf(meeting.scheduledEnd)}
+                  </span>
+                </span>
+                {locationName ? (
+                  <span>
+                    <Glyph name="building" size={16} />
+                    {locationName}
+                  </span>
+                ) : null}
+                {coordinatorId ? (
+                  <span>
+                    <Glyph name="user-circle" size={16} />
+                    Coordinator {who(coordinatorId)}
+                  </span>
+                ) : null}
                 <StatusPill
                   label={stateLabel(meeting.status)}
                   tone={MEETING_TONE[meeting.status] ?? "neutral"}
                 />
-                <Button
-                  tone="tertiary"
-                  onClick={() => setDialog({ kind: "attendance" })}
-                  disabled={meeting.status === "adjourned" || meeting.status === "cancelled"}
-                >
-                  Check in
-                </Button>
-                <Button
-                  tone="tertiary"
-                  onClick={() => setDialog({ kind: "agenda" })}
-                  disabled={meeting.status === "adjourned" || meeting.status === "cancelled"}
-                >
-                  Add agenda item
-                </Button>
-                <Button onClick={() => setDialog({ kind: "decision" })} disabled={!isLive}>
-                  Record decision
-                </Button>
-                <Button
-                  tone="secondary"
-                  onClick={() => setDialog({ kind: "adjourn" })}
-                  disabled={!isLive}
-                >
-                  Adjourn
-                </Button>
-              </div>
-            ) : undefined
-          }
-        />
-      }
-      table={
-        error ? (
+                <StatusPill
+                  label={quorate ? "Quorate" : "Not quorate"}
+                  tone={quorate ? "success" : "warning"}
+                />
+                {isLive ? (
+                  <LiveIndicator
+                    updatedAt={Math.max(live.lastUpdatedAt ?? 0, loadedAt ?? 0) || null}
+                    failing={live.failing}
+                  />
+                ) : null}
+                {id ? <Link to={`/idg/meetings/${id}`}>Meeting details</Link> : null}
+                {id ? <Link to={`/idg/meetings/${id}/minutes`}>Minutes</Link> : null}
+              </p>
+            ) : null}
+          </div>
+          {meeting ? (
+            <div className="wx-idg-live-actions">
+              <Button
+                tone="secondary"
+                onClick={() => setDialog({ kind: "attendance" })}
+                disabled={closed}
+              >
+                Check in
+              </Button>
+              <Button
+                tone="secondary"
+                onClick={() => setDialog({ kind: "agenda" })}
+                disabled={closed}
+              >
+                Add agenda item
+              </Button>
+              <Button onClick={() => setDialog({ kind: "decision" })} disabled={!isLive}>
+                Record decision
+              </Button>
+              <Button
+                tone="secondary"
+                onClick={() => setDialog({ kind: "adjourn" })}
+                disabled={!isLive}
+              >
+                Adjourn
+              </Button>
+            </div>
+          ) : null}
+        </header>
+
+        {error ? (
           <EmptyState title="Unavailable" description={error} />
         ) : loading && meeting === null ? (
           <LoadingSpinner />
         ) : (
-          <div style={{ display: "flex", flexDirection: "column" }}>
-            {notice ? <output style={noticeBox}>{notice}</output> : null}
+          <>
+            {notice ? (
+              <output className="wx-idg-alert" data-tone="info">
+                <Glyph name="check-circle" size={16} />
+                <span>{notice}</span>
+              </output>
+            ) : null}
+            {meeting && !isLive ? (
+              <p className="wx-idg-alert" data-tone="warning">
+                <Glyph name="alert-circle" size={16} />
+                <span>
+                  This meeting is {stateLabel(meeting.status).toLowerCase()}, not live — decisions
+                  and adjournment open only while it is live.
+                </span>
+              </p>
+            ) : null}
 
-            <Section
-              title="Attendance"
-              count={roster.length}
-              caption={
-                missingQuorum.length === 0
-                  ? "All four §2.7 disciplines are present. The server still decides quorum."
-                  : `Not yet showing: ${missingQuorum.map(humanize).join(", ")}. Decisions stay available — the server refuses a non-quorate one.`
-              }
-            >
-              {roster.length === 0 ? (
-                <p style={emptyLine}>Nobody has checked in.</p>
-              ) : (
-                <ul style={list}>
-                  {roster.map((r) => (
-                    <li key={r.id} style={row}>
+            <div className="wx-stat-grid" aria-label="Meeting summary">
+              <StatCard
+                icon="users"
+                label="Patients"
+                value={worklist.length}
+                hint={`${packets.filter((k) => k.frozenAt).length} of ${packets.length} packets frozen`}
+              />
+              <StatCard
+                icon="scale"
+                label="Decisions"
+                value={decisions.length}
+                hint={`${openDecisions} open`}
+              />
+              <StatCard
+                icon="shield-check"
+                label="Quorum"
+                value={`${REQUIRED_QUORUM.length - missingQuorum.length} of ${REQUIRED_QUORUM.length}`}
+                hint={quorate ? "All disciplines present" : `Missing ${missingQuorum.length}`}
+                color={quorate ? t.success : t.warning}
+              />
+              <StatCard
+                icon="check-circle"
+                label="Action items"
+                value={actionItems.length}
+                hint={`${openActionItems} open`}
+              />
+            </div>
+
+            {/* ── Patient worklist ─────────────────────────────────────────────────── */}
+            <Region title="Patient worklist">
+              <Panel
+                title="Patient worklist"
+                icon="users"
+                flush
+                action={<CountBadge count={worklist.length} tone="primary" />}
+              >
+                <DataTable
+                  ariaLabel="Patient worklist"
+                  rows={worklistRows}
+                  columns={worklistColumns}
+                  getRowId={(p) => p.id}
+                  selectedRowId={activePatient}
+                  onRowSelect={(p) => setSelected(p.id)}
+                  empty={
+                    <p className="wx-rail-empty">No patient packets are loaded for this meeting.</p>
+                  }
+                />
+              </Panel>
+            </Region>
+
+            {/* ── Patient packet + agenda ──────────────────────────────────────────── */}
+            <div className="wx-idg-live-pair">
+              <Region title="Patient packet">
+                <Panel
+                  title="Patient packet"
+                  icon="file-check"
+                  action={
+                    activePacket && id ? (
+                      <Button
+                        tone="secondary"
+                        size="sm"
+                        onClick={() =>
+                          navigate(`/idg/meetings/${id}/packets/${activePacket.patientId}`)
+                        }
+                      >
+                        Open full packet
+                      </Button>
+                    ) : undefined
+                  }
+                >
+                  {activePatient === null ? (
+                    <p className="wx-row-sub">
+                      Select a patient from the worklist once one is on the agenda.
+                    </p>
+                  ) : (
+                    <>
+                      <InfoRows
+                        labelWidth="7rem"
+                        rows={[
+                          { label: "Patient", value: nameOf(activePatient) },
+                          {
+                            label: "Agenda",
+                            value: activeKinds.length ? activeKinds.map(humanize).join(", ") : "—",
+                          },
+                          {
+                            label: "Packet",
+                            value: activePacket ? (
+                              activePacket.frozenAt ? (
+                                <StatusPill label="Frozen" tone="neutral" />
+                              ) : (
+                                <StatusPill label="Draft (pre-adjournment)" tone="warning" />
+                              )
+                            ) : (
+                              "Not built"
+                            ),
+                          },
+                          {
+                            label: "Frozen at",
+                            value: (
+                              <span className="wx-nums">
+                                {activePacket?.frozenAt
+                                  ? `${dateOf(activePacket.frozenAt)} ${timeOf(activePacket.frozenAt)}`
+                                  : "—"}
+                              </span>
+                            ),
+                          },
+                        ]}
+                      />
+                      {packetLoad.status === "ok" ? (
+                        <PacketCompact packet={packetLoad.packet} />
+                      ) : packetLoad.status === "loading" ? (
+                        <div className="wx-packet-compact" aria-busy="true">
+                          <LoadingSpinner />
+                        </div>
+                      ) : packetLoad.status === "error" ? (
+                        <p className="wx-row-sub" style={{ marginTop: "0.75rem" }} role="alert">
+                          Could not load this patient's packet content. Open the full packet to
+                          retry.
+                        </p>
+                      ) : (
+                        <p className="wx-row-sub" style={{ marginTop: "0.75rem" }}>
+                          No packet has been built for this patient yet.
+                        </p>
+                      )}
+                    </>
+                  )}
+                </Panel>
+              </Region>
+
+              <Region title="Agenda">
+                <Panel
+                  title="Agenda"
+                  icon="clipboard-list"
+                  flush
+                  action={<CountBadge count={agenda.length} tone="primary" />}
+                >
+                  {carryForward >= 3 ? (
+                    <p
+                      className="wx-idg-alert"
+                      data-tone="warning"
+                      style={{ margin: "0 1.125rem 0.75rem" }}
+                    >
+                      <Glyph name="alert-circle" size={16} />
                       <span>
-                        {humanize(r.discipline)}{" "}
-                        <span className="wx-data-md">{short(r.membershipId)}</span>
+                        {carryForward} carry-forward items are on this agenda — three or more raises
+                        a compliance alert.
                       </span>
-                      <span style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
+                    </p>
+                  ) : null}
+                  <DataTable
+                    ariaLabel="Agenda items"
+                    rows={agenda}
+                    getRowId={(a) => a.id}
+                    columns={[
+                      {
+                        id: "kind",
+                        header: "Item",
+                        cell: (a) => <span className="wx-row-title">{humanize(a.kind)}</span>,
+                      },
+                      {
+                        id: "patient",
+                        header: "Patient",
+                        cell: (a) => (a.patientId ? nameOf(a.patientId) : "Meeting-level"),
+                      },
+                      {
+                        id: "flag",
+                        header: <span className="wx-sr-only">Flag</span>,
+                        cell: (a) =>
+                          a.kind === "carry_forward" ? (
+                            <StatusPill label="Carry-forward" tone="warning" />
+                          ) : null,
+                      },
+                    ]}
+                    empty={<p className="wx-rail-empty">Nothing on the agenda yet.</p>}
+                  />
+                  {otherAgenda.length > 0 ? (
+                    <p className="wx-row-sub" style={{ margin: "0.5rem 1.125rem 0.875rem" }}>
+                      {otherAgenda.length} item(s) are not tied to a patient.
+                    </p>
+                  ) : null}
+                </Panel>
+              </Region>
+            </div>
+
+            {/* ── Decisions ────────────────────────────────────────────────────────── */}
+            <Region title="Decisions">
+              <Panel
+                title="Decisions"
+                icon="scale"
+                flush
+                description={
+                  openDecisions > 0
+                    ? `${openDecisions} open — adjourning emits them to the downstream modules.`
+                    : "Binding decisions need quorum at the moment of recording."
+                }
+                action={
+                  <>
+                    <CountBadge count={decisions.length} tone="primary" />
+                    <Button
+                      tone="secondary"
+                      size="sm"
+                      onClick={() => setDialog({ kind: "decision" })}
+                      disabled={!isLive}
+                    >
+                      Record for this patient
+                    </Button>
+                  </>
+                }
+              >
+                {!quorate ? (
+                  <p
+                    className="wx-idg-alert"
+                    data-tone="warning"
+                    style={{ margin: "0 1.125rem 0.75rem" }}
+                  >
+                    <Glyph name="alert-circle" size={16} />
+                    <span>
+                      The group is not quorate (missing{" "}
+                      {missingQuorum.map(disciplineLabel).join(", ")}). The server refuses a binding
+                      decision now; a row it recorded without quorum is marked as an annotation.
+                    </span>
+                  </p>
+                ) : null}
+                <DataTable
+                  ariaLabel="Decisions"
+                  rows={decisions}
+                  columns={decisionColumns}
+                  getRowId={(d) => d.id}
+                  empty={<p className="wx-rail-empty">No decisions recorded.</p>}
+                />
+              </Panel>
+            </Region>
+          </>
+        )}
+      </div>
+
+      {error || (loading && meeting === null) ? null : (
+        <aside className="wx-with-rail-side" aria-label="Attendance, action items and recert">
+          {/* ── Attendance & quorum ───────────────────────────────────────────────── */}
+          <Region title="Attendance & quorum">
+            <Panel
+              title="Attendance & quorum"
+              icon="shield-check"
+              action={<CountBadge count={roster.length} tone="primary" />}
+            >
+              <div className="wx-idg-alert" data-tone={quorate ? "success" : "warning"}>
+                <Glyph name={quorate ? "check-circle" : "alert-circle"} size={18} />
+                <div>
+                  <strong>
+                    {quorate
+                      ? "Quorate ✓ — Physician + RN + MSW + Chaplain present"
+                      : `Not quorate — missing ${missingQuorum.map(disciplineLabel).join(", ")}`}
+                  </strong>
+                  <p>
+                    {quorate
+                      ? "All four §2.7 disciplines are present. The server still decides quorum."
+                      : "Decisions stay available — the server refuses a non-quorate one."}
+                  </p>
+                </div>
+              </div>
+              <ul className="wx-idg-live-discs" aria-label="Required disciplines">
+                {REQUIRED_QUORUM.map((d) => (
+                  <li key={d} className="wx-idg-live-disc" data-present={presentDisciplines.has(d)}>
+                    {presentDisciplines.has(d) ? <Glyph name="check" size={12} /> : null}
+                    {disciplineLabel(d)}
+                  </li>
+                ))}
+              </ul>
+              {roster.length === 0 ? (
+                <p className="wx-row-sub" style={{ marginTop: "0.75rem" }}>
+                  Nobody has checked in.
+                </p>
+              ) : (
+                <ul className="wx-idg-rail-list">
+                  {roster.map((r) => (
+                    <li key={r.id}>
+                      <div className="wx-idg-rail-row">
+                        <span style={{ minWidth: 0 }}>
+                          <strong className="wx-row-title">{who(r.membershipId)}</strong>
+                          <small className="wx-row-sub">{disciplineLabel(r.discipline)}</small>
+                        </span>
                         <StatusPill
                           label={humanize(r.status)}
-                          tone={PRESENT_STATUSES.has(r.status) ? "success" : "neutral"}
+                          tone={ATTENDANCE_TONE[r.status] ?? "neutral"}
                         />
+                      </div>
+                      <div className="wx-idg-rail-tools">
+                        <select
+                          className="wx-select"
+                          aria-label={`Attendance status for ${who(r.membershipId)}`}
+                          value={r.status}
+                          disabled={closed}
+                          onChange={(e) => void onStatus(r.id, e.target.value as AttendanceStatus)}
+                        >
+                          {ATTENDANCE_STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {humanize(s)}
+                            </option>
+                          ))}
+                        </select>
                         {r.status !== "excused" ? (
                           <Button tone="tertiary" size="sm" onClick={() => void onExcuse(r.id)}>
                             Excuse
                           </Button>
                         ) : null}
-                      </span>
+                      </div>
                     </li>
                   ))}
                 </ul>
               )}
-            </Section>
+            </Panel>
+          </Region>
 
-            <Section title="Agenda" count={agenda.length}>
-              {agenda.length === 0 ? (
-                <p style={emptyLine}>Nothing on the agenda yet.</p>
+          {/* ── Action items ─────────────────────────────────────────────────────── */}
+          <Region title="Action items">
+            <Panel
+              title="Action items"
+              icon="check-circle"
+              action={<CountBadge count={actionItems.length} tone="primary" />}
+            >
+              {actionItems.length === 0 ? (
+                <p className="wx-row-sub">No follow-ups assigned from this meeting.</p>
               ) : (
-                <ul style={list}>
-                  {agenda.map((a) => (
-                    <li key={a.id} style={row}>
-                      <span>{humanize(a.kind)}</span>
-                      <span className="wx-data-md">{a.patientId ? short(a.patientId) : "—"}</span>
+                <ul className="wx-idg-rail-list">
+                  {actionItems.map((a) => (
+                    <li key={a.id}>
+                      <div className="wx-idg-rail-row">
+                        <span style={{ minWidth: 0 }}>
+                          <strong className="wx-row-title">{who(a.assignedToMembershipId)}</strong>
+                          <small className="wx-row-sub wx-nums">
+                            Due {dateOf(a.dueDate)}
+                            {a.patientId ? <> · {nameOf(a.patientId)}</> : null}
+                          </small>
+                        </span>
+                        <StatusPill
+                          label={stateLabel(a.status)}
+                          tone={ACTION_TONE[a.status] ?? "neutral"}
+                        />
+                      </div>
                     </li>
                   ))}
                 </ul>
               )}
-            </Section>
+            </Panel>
+          </Region>
 
-            <Section
-              title="Decisions"
-              count={decisions.length}
-              caption={
-                openDecisions > 0
-                  ? `${openDecisions} open — adjourning emits them to the downstream modules.`
-                  : undefined
+          {/* ── Recert & F2F windows ─────────────────────────────────────────────── */}
+          <Region title="Recert & F2F windows">
+            <Panel
+              title="Recert & F2F windows"
+              icon="calendar-check"
+              action={
+                recert.state === "ok" ? (
+                  <CountBadge count={recert.items.length} tone="primary" />
+                ) : undefined
               }
             >
-              {decisions.length === 0 ? (
-                <p style={emptyLine}>No decisions recorded.</p>
+              {recert.state === "loading" ? (
+                <p className="wx-row-sub">Loading recert windows…</p>
+              ) : recert.state === "unavailable" ? (
+                <p className="wx-row-sub">Recert and F2F windows are unavailable right now.</p>
+              ) : recert.items.length === 0 ? (
+                <p className="wx-row-sub">No agenda patients have a recert window.</p>
               ) : (
-                <ul style={list}>
-                  {decisions.map((d) => (
-                    <li key={d.id} style={row}>
-                      <span>
-                        {humanize(d.decisionKind)}{" "}
-                        <span className="wx-data-md">
-                          {d.patientId ? short(d.patientId) : "team"}
-                        </span>
-                      </span>
-                      <span style={{ display: "flex", gap: "0.5rem", alignItems: "center" }}>
-                        <StatusPill
-                          label={humanize(d.status)}
-                          tone={d.status === "superseded" ? "neutral" : "progress"}
-                        />
-                        {d.wasQuorate ? null : <StatusPill label="Not quorate" tone="warning" />}
-                        <Button
-                          tone="tertiary"
-                          size="sm"
-                          onClick={() => setDialog({ kind: "action-item", decisionId: d.id })}
+                <ul className="wx-idg-rail-list">
+                  {recert.items.map((r) => {
+                    const days = recertDaysText(r.daysUntilNextRecert);
+                    const pill = f2fPill(r);
+                    const window =
+                      r.f2fWindowStart && r.f2fWindowEnd
+                        ? ` · window ${dayOf(r.f2fWindowStart)} – ${dayOf(r.f2fWindowEnd)}`
+                        : "";
+                    return (
+                      <li key={r.patientId}>
+                        <button
+                          type="button"
+                          className="wx-idg-rail-row wx-idg-pick"
+                          aria-current={r.patientId === activePatient}
+                          onClick={() => setSelected(r.patientId)}
                         >
-                          Assign follow-up
-                        </Button>
-                        {d.status !== "superseded" ? (
-                          <Button tone="tertiary" size="sm" onClick={() => void onSupersede(d.id)}>
-                            Supersede
-                          </Button>
-                        ) : null}
-                      </span>
-                    </li>
-                  ))}
+                          <span style={{ minWidth: 0 }}>
+                            <strong className="wx-row-title">{nameOf(r.patientId)}</strong>
+                            <small className="wx-row-sub wx-nums" data-overdue={days.overdue}>
+                              {r.nextRecertDueDate
+                                ? `Recert due ${dayOf(r.nextRecertDueDate)}${days.text ? ` · ${days.text}` : ""}`
+                                : "Recert date not available"}
+                            </small>
+                            <small className="wx-row-sub wx-nums">
+                              {r.f2fStatus === "unknown"
+                                ? "F2F status unknown"
+                                : `F2F${window || " — n/a"}`}
+                            </small>
+                          </span>
+                          <StatusPill label={pill.label} tone={pill.tone} />
+                        </button>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
-            </Section>
+            </Panel>
+          </Region>
+        </aside>
+      )}
 
-            <Section title="Patients" count={packets.length}>
-              {packets.length === 0 ? (
-                <p style={emptyLine}>No patient packets are loaded for this meeting.</p>
-              ) : (
-                <ul style={list}>
-                  {packets.map((p) => (
-                    <li key={p.packetId}>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          navigate(`/idg/meetings/${p.meetingId}/packets/${p.patientId}`)
-                        }
-                        style={packetButton}
-                      >
-                        <span>
-                          Patient <span className="wx-data-md">{short(p.patientId)}</span>
-                        </span>
-                        <StatusPill
-                          label={p.frozenAt ? "Frozen" : "Draft"}
-                          tone={p.frozenAt ? "neutral" : "warning"}
-                        />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </Section>
-
-            {id ? (
-              <>
-                <AttendanceModal
-                  open={dialog.kind === "attendance"}
-                  meetingId={id}
-                  onClose={() => setDialog({ kind: "none" })}
-                  onRecorded={() => void load()}
-                />
-                <AgendaModal
-                  open={dialog.kind === "agenda"}
-                  meetingId={id}
-                  patients={patients}
-                  onClose={() => setDialog({ kind: "none" })}
-                  onAdded={() => void load()}
-                />
-                <DecisionModal
-                  open={dialog.kind === "decision"}
-                  meetingId={id}
-                  patients={patients}
-                  onClose={() => setDialog({ kind: "none" })}
-                  onRecorded={() => void load()}
-                />
-                <ActionItemModal
-                  open={dialog.kind === "action-item"}
-                  meetingId={id}
-                  patients={patients}
-                  decisionId={dialog.kind === "action-item" ? dialog.decisionId : null}
-                  onClose={() => setDialog({ kind: "none" })}
-                  onCreated={() => setNotice("Action item assigned.")}
-                />
-                <LifecycleModal
-                  open={dialog.kind === "adjourn"}
-                  action="adjourn"
-                  meetingId={id}
-                  pending={{ decisions: openDecisions, patients: packets.length }}
-                  onClose={() => setDialog({ kind: "none" })}
-                  onDone={() => void load()}
-                />
-              </>
-            ) : null}
-          </div>
-        )
-      }
-    />
+      {error || (loading && meeting === null) ? null : (
+        <>
+          {id ? (
+            <>
+              <AttendanceModal
+                open={dialog.kind === "attendance"}
+                meetingId={id}
+                onClose={() => setDialog({ kind: "none" })}
+                onRecorded={() => void load()}
+              />
+              <AgendaModal
+                open={dialog.kind === "agenda"}
+                meetingId={id}
+                patients={patients}
+                onClose={() => setDialog({ kind: "none" })}
+                onAdded={() => void load()}
+              />
+              <DecisionModal
+                open={dialog.kind === "decision"}
+                meetingId={id}
+                patients={patients}
+                defaultPatientId={activePatient}
+                quorum={{ quorate, missing: missingQuorum.map(disciplineLabel) }}
+                onClose={() => setDialog({ kind: "none" })}
+                onRecorded={() => void load()}
+              />
+              <ActionItemModal
+                open={dialog.kind === "action-item"}
+                meetingId={id}
+                patients={patients}
+                decisionId={dialog.kind === "action-item" ? dialog.decisionId : null}
+                onClose={() => setDialog({ kind: "none" })}
+                onCreated={() => {
+                  setNotice("Action item assigned.");
+                  void loadActionItems();
+                }}
+              />
+              <LifecycleModal
+                open={dialog.kind === "adjourn"}
+                action="adjourn"
+                meetingId={id}
+                pending={{ decisions: openDecisions, patients: packets.length }}
+                onClose={() => setDialog({ kind: "none" })}
+                onDone={() => void load()}
+              />
+            </>
+          ) : null}
+        </>
+      )}
+    </div>
   );
 }
 
-function Section({
-  title,
-  count,
-  caption,
-  children,
-}: {
-  title: string;
-  count: number;
-  caption?: string;
-  children: JSX.Element;
-}): JSX.Element {
+/** A named landmark around a shared Panel, so screen-reader users (and tests) can jump to each pane. */
+function Region({ title, children }: { title: string; children: ReactNode }): JSX.Element {
   return (
-    <section style={sectionBox}>
-      <header style={sectionHeader}>
-        <h2 style={sectionTitle}>
-          {title} <span style={{ fontWeight: 400 }}>({count})</span>
-        </h2>
-      </header>
-      {caption ? <p style={captionText}>{caption}</p> : null}
+    <section aria-label={title} className="wx-idg-region">
       {children}
     </section>
   );
 }
 
-const sectionBox = {
-  borderBottom: "1px solid color-mix(in srgb, var(--color-outline-variant) 35%, transparent)",
-  padding: "0.75rem 1rem 1rem",
-} as const;
-const sectionHeader = { display: "flex", justifyContent: "space-between" } as const;
-const sectionTitle = { margin: "0 0 0.25rem", fontSize: "0.95rem", fontWeight: 600 } as const;
-const captionText = {
-  margin: "0 0 0.5rem",
-  fontSize: "0.75rem",
-  color: "var(--color-on-surface-variant)",
-} as const;
-const list = { listStyle: "none", margin: 0, padding: 0 } as const;
-const row = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: "0.75rem",
-  padding: "0.4rem 0",
-  fontSize: "0.85rem",
-} as const;
-const emptyLine = {
-  margin: 0,
-  fontSize: "0.8rem",
-  color: "var(--color-on-surface-variant)",
-} as const;
-const packetButton = {
-  cursor: "pointer",
-  width: "100%",
-  textAlign: "left",
-  border: "none",
-  background: "none",
-  padding: "0.5rem 0",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  color: "var(--color-on-surface)",
-} as const;
-const noticeBox = {
-  display: "block",
-  margin: "0.75rem 1rem 0",
-  fontSize: "0.8rem",
-  color: "var(--color-on-surface-variant)",
-} as const;
+export function StatCard({
+  icon,
+  label,
+  value,
+  hint,
+  color,
+}: {
+  icon: GlyphName;
+  label: string;
+  value: ReactNode;
+  hint: string;
+  color?: string;
+}): JSX.Element {
+  const c = color ?? t.primary;
+  return (
+    <div className="wx-stat-card">
+      <span
+        className="wx-stat-icon"
+        style={{ color: c, background: `color-mix(in srgb, ${c} 12%, ${t.surfaceLowest})` }}
+      >
+        <Glyph name={icon} size={20} />
+      </span>
+      <div style={{ minWidth: 0 }}>
+        <div className="wx-stat-label">{label}</div>
+        <strong className="wx-stat-value wx-nums" style={color ? { color } : undefined}>
+          {value}
+        </strong>
+        <div className="wx-stat-label">{hint}</div>
+      </div>
+    </div>
+  );
+}
+
+/** "Live · updated Ns ago" — ticks on its own so the page does not re-render every second. */
+function LiveIndicator({
+  updatedAt,
+  failing,
+}: {
+  updatedAt: number | null;
+  failing: boolean;
+}): JSX.Element {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const secs = updatedAt === null ? null : Math.max(0, Math.floor((now - updatedAt) / 1000));
+  const ago =
+    secs === null
+      ? "updating…"
+      : secs < 60
+        ? `updated ${secs}s ago`
+        : `updated ${Math.floor(secs / 60)}m ago`;
+  return (
+    <output className="wx-idg-live-pulse" data-failing={failing} aria-live="off">
+      <span className="wx-idg-live-pulse-dot" aria-hidden="true" />
+      {failing ? `Live · ${ago} · retrying` : `Live · ${ago}`}
+    </output>
+  );
+}

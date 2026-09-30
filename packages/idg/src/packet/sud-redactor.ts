@@ -5,8 +5,8 @@
 // build produces the FULL snapshot once; every read re-applies this filter per the caller. In production the
 // elision is a SQL `WHERE` over `built_snapshot`/`discipline_views` (the spec's "filtered before data leaves
 // the database"); this pure decider is the canonical projection the M14-T05 read service mirrors and the
-// unit tests assert against. It drops the SUD-flagged source ids from `sinceLastIdg.encounters` and every
-// `disciplineViews[*].highlightedEntries`, and stamps `meta.appliedSudRedaction` so the response carries the
+// unit tests assert against. It drops the SUD-flagged source ids from every `sinceLastIdg` block (encounters, assessment
+// changes, HOPE triggers, order/medication changes, flagged events) and every `disciplineViews[*].highlightedEntries`, and stamps `meta.appliedSudRedaction` so the response carries the
 // "Some content filtered per 42 CFR Part 2" banner.
 //
 // PURE — `@wardenx/types` only; the `consent.evaluate` call + the M4 sampled-audit row are the service's job.
@@ -24,7 +24,7 @@ export interface SudRedactionContext {
 /**
  * Apply W-SUD-01 to a built packet for one reader. A caller WITH an active Part 2 release sees the full
  * content (`appliedSudRedaction` stays `false`). A caller WITHOUT one gets the SUD-flagged entries elided from
- * `sinceLastIdg.encounters` and every `disciplineViews[*].highlightedEntries`, with `meta.appliedSudRedaction`
+ * every `sinceLastIdg` block and every `disciplineViews[*].highlightedEntries`, with `meta.appliedSudRedaction`
  * set so the surface renders the Part 2 banner. The cover `activeSudFlag` is intentionally NOT cleared — it is
  * the non-PHI banner signal, never the protected content itself. Returns a new packet (no mutation).
  */
@@ -49,6 +49,26 @@ export function applySudRedaction(built: BuiltPacket, ctx: SudRedactionContext):
         ...built.snapshot.sinceLastIdg,
         encounters: built.snapshot.sinceLastIdg.encounters.filter(
           (e) => !flagged.has(e.encounterId),
+        ),
+        // The other since-blocks are keyed by their own source ids (the same id space `sudFlaggedSourceIds`
+        // names — "encounter / order / medication / assessment / flag ids"). They used to pass through
+        // untouched, so a SUD-flagged source was elided from the discipline highlights yet still listed in
+        // the block it came from once the packet READ surface began publishing those blocks.
+        significantAssessmentChanges:
+          built.snapshot.sinceLastIdg.significantAssessmentChanges.filter(
+            (a) => !flagged.has(a.assessmentId),
+          ),
+        j2051Triggers: built.snapshot.sinceLastIdg.j2051Triggers.filter(
+          (h) => !flagged.has(h.hopeAssessmentId),
+        ),
+        ordersChanged: built.snapshot.sinceLastIdg.ordersChanged.filter(
+          (o) => !flagged.has(o.orderId),
+        ),
+        medicationsChanged: built.snapshot.sinceLastIdg.medicationsChanged.filter(
+          (m) => !flagged.has(m.medicationOrderId),
+        ),
+        flaggedEvents: built.snapshot.sinceLastIdg.flaggedEvents.filter(
+          (f) => !flagged.has(f.sourceId),
         ),
       },
     },

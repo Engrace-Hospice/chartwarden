@@ -45,46 +45,56 @@ export function dosespotSyncDemographicsForOrg(
   const P = schema.patients;
   const PA = schema.patientAddresses;
   const PH = schema.patientPhones;
-  return withOrgContext(db, { organizationId, userId: PATIENT_READER_SYSTEM_USER_ID }, async (tx) => {
-    const t = tx as unknown as DbClient;
-    const [patient] = await t
-      .select()
-      .from(P)
-      .where(and(eq(P.organizationId, organizationId), eq(P.id, patientId)))
-      .limit(1);
-    if (!patient) return null;
+  return withOrgContext(
+    db,
+    { organizationId, userId: PATIENT_READER_SYSTEM_USER_ID },
+    async (tx) => {
+      const t = tx as unknown as DbClient;
+      const [patient] = await t
+        .select()
+        .from(P)
+        .where(and(eq(P.organizationId, organizationId), eq(P.id, patientId)))
+        .limit(1);
+      if (!patient) return null;
 
-    const [address] = await t
-      .select()
-      .from(PA)
-      .where(
-        and(
-          eq(PA.organizationId, organizationId),
-          eq(PA.patientId, patientId),
-          eq(PA.isPrimary, true),
-          isNull(PA.effectiveTo),
-        ),
-      )
-      .limit(1);
-    const [phone] = await t
-      .select()
-      .from(PH)
-      .where(and(eq(PH.organizationId, organizationId), eq(PH.patientId, patientId), eq(PH.isPrimary, true)))
-      .limit(1);
+      const [address] = await t
+        .select()
+        .from(PA)
+        .where(
+          and(
+            eq(PA.organizationId, organizationId),
+            eq(PA.patientId, patientId),
+            eq(PA.isPrimary, true),
+            isNull(PA.effectiveTo),
+          ),
+        )
+        .limit(1);
+      const [phone] = await t
+        .select()
+        .from(PH)
+        .where(
+          and(
+            eq(PH.organizationId, organizationId),
+            eq(PH.patientId, patientId),
+            eq(PH.isPrimary, true),
+          ),
+        )
+        .limit(1);
 
-    return {
-      firstName: patient.legalFirstName,
-      lastName: patient.legalLastName,
-      dateOfBirth: patient.dob,
-      gender: patient.sexAssignedAtBirth,
-      addressLine1: address?.line1 ?? "",
-      ...(address?.line2 ? { addressLine2: address.line2 } : {}),
-      city: address?.city ?? "",
-      state: address?.state ?? "",
-      postalCode: address?.postalCode ?? "",
-      ...(phone?.e164 ? { phone: phone.e164 } : {}),
-      status: patient.status,
-      updatedAt: patient.updatedAt.toISOString(),
-    };
-  });
+      return {
+        firstName: patient.legalFirstName,
+        lastName: patient.legalLastName,
+        dateOfBirth: patient.dob,
+        gender: patient.sexAssignedAtBirth,
+        addressLine1: address?.line1 ?? "",
+        ...(address?.line2 ? { addressLine2: address.line2 } : {}),
+        city: address?.city ?? "",
+        state: address?.state ?? "",
+        postalCode: address?.postalCode ?? "",
+        ...(phone?.e164 ? { phone: phone.e164 } : {}),
+        status: patient.status,
+        updatedAt: patient.updatedAt.toISOString(),
+      };
+    },
+  );
 }

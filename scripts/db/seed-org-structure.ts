@@ -76,7 +76,31 @@ async function main(): Promise<void> {
     [LOCATION_IPU_ID, PROVIDER_ENTITY_ID],
   );
 
+  // The tenant-admin demo logins (`db:seed` admin@ + `db:seed:org-admin` orgadmin@) are created BEFORE any
+  // location exists, so their membership carries `default_location_ids = []` — and an empty scope array can
+  // never contain a target's id, so every location-scoped ABAC predicate (M14 `idg_meeting_scope`, ...) denied
+  // the primary admin login on every meeting screen. Assign them the two demo locations now that they exist.
+  // Additive and idempotent: only ever UNIONS in the two ids (never removes an existing assignment), and only
+  // touches these two accounts' memberships in the demo org. (The clinical personas from `db:seed:staff` are
+  // already scoped to the main office by that script.)
+  const assigned = await db.query(
+    `UPDATE membership m
+        SET default_location_ids = (
+              SELECT COALESCE(jsonb_agg(DISTINCT v ORDER BY v), '[]'::jsonb)
+                FROM jsonb_array_elements_text(m.default_location_ids || $2::jsonb) AS t(v)
+            )
+       FROM "user" u
+      WHERE u.id = m.user_id
+        AND m.organization_id = $1
+        AND u.email IN ('admin@wardenx.local', 'orgadmin@wardenx.local')
+        AND NOT (m.default_location_ids @> $2::jsonb)`,
+    [orgId, JSON.stringify([LOCATION_MAIN_ID, LOCATION_IPU_ID])],
+  );
+
   await db.end();
+  console.log(
+    `✓ org structure seed: ${assigned.rowCount ?? 0} admin membership(s) assigned to both demo locations.`,
+  );
   console.log(
     `✓ org structure seed: provider_entity ${PROVIDER_ENTITY_ID} (CCN 341234), ` +
       `locations ${LOCATION_MAIN_ID} (main) + ${LOCATION_IPU_ID} (IPU).`,

@@ -94,6 +94,15 @@ export {
 // on the caller's transaction, injected as a port (M11 has no `dependsOn` edge to 5).
 export { type Hl7OrmDemographics, hl7OrmDemographicsInTx } from "./seams/hl7-orm-demographics";
 
+// M14 IDG screens — the org-explicit BATCHED minimum-necessary display read ("First L." + MRN last-4), injected
+// into M14's route layer as a port at the composition root (M14 imports no M5 code/schema).
+export {
+  type PatientDisplayLabel,
+  PATIENT_DISPLAY_MAX_IDS,
+  patientDisplayLabelsForOrg,
+  toPatientDisplayLabel,
+} from "./seams/patient-display-for-org";
+
 // F-152 (#248) — the §3.3/ARCH-011 admission-siting denormalization, bound live for the first time.
 export {
   M5_ADMISSION_SITING_CONSUMER,

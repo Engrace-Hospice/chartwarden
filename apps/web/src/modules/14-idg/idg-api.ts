@@ -374,3 +374,49 @@ export async function submitAmendment(
 
 /** ISO instant for a `date-time` field the server records as client-observed time. */
 export const nowIso = (): string => new Date().toISOString();
+
+// ── schedule a single (ad-hoc) meeting ─────────────────────────────────────────────────────────────────
+
+export type ScheduleMeetingBody = ReqBody<operations["postApiV1IdgMeetings"]>;
+
+/** The wire code of a refusal (`{ error: { code } }`), when the server sent one. */
+const errorCodeOf = (body: unknown): string | null => {
+  const err =
+    body && typeof body === "object" && "error" in body
+      ? (body as { error?: { code?: unknown } }).error
+      : undefined;
+  return typeof err?.code === "string" ? err.code : null;
+};
+
+/**
+ * `POST /api/v1/idg/meetings` — schedule ONE meeting for a location. The server owns every rule
+ * (permission `idg.schedule`, overlap with the location's other meetings, end after start, the 12-hour
+ * ceiling, start not in the past, location scope); this only maps each refusal to copy the coordinator
+ * can act on. 403 is surfaced, never pre-empted (ADR-0030 — no frontend authz). The typed client adds
+ * the required `Idempotency-Key` header (`client.ts`); it is named here so the contract stays typed.
+ */
+export async function scheduleMeeting(
+  client: ApiClient,
+  body: ScheduleMeetingBody,
+): Promise<WriteResult<MeetingView>> {
+  const { data, error, response } = await client.POST("/api/v1/idg/meetings", {
+    params: { header: { "Idempotency-Key": globalThis.crypto.randomUUID() } },
+    body,
+  });
+  if (!error && data) return ok(data as MeetingView);
+  const status = response?.status;
+  const detail = failure(status, error);
+  if (detail.ok) return detail;
+  const code = errorCodeOf(error);
+  const message =
+    status === 409 || code === "IDG_MEETING_OVERLAP"
+      ? "That time overlaps another IDG meeting at this location. Choose a different time."
+      : status === 404
+        ? "That location is not available to you."
+        : status === 403
+          ? "Your role is not permitted to schedule IDG meetings."
+          : status === 422
+            ? detail.message
+            : "The meeting could not be scheduled. Try again.";
+  return { ok: false, status: detail.status, message };
+}

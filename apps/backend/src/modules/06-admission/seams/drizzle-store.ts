@@ -1137,13 +1137,19 @@ export function idgCurrentLevelOfCareForOrg(
     { organizationId, userId: ADMISSION_READER_SYSTEM_USER_ID },
     async (tx) => {
       const rows = await tx
-        .select({ levelOfCare: LOC.levelOfCare, effectiveAt: LOC.effectiveAt, endedAt: LOC.endedAt })
+        .select({
+          levelOfCare: LOC.levelOfCare,
+          effectiveAt: LOC.effectiveAt,
+          endedAt: LOC.endedAt,
+        })
         .from(LOC)
         .where(and(eq(LOC.admissionId, admissionId), ne(LOC.status, "assigning")))
         .orderBy(desc(LOC.effectiveAt));
       if (rows.length === 0) return null;
       const asOf = new Date(asOfIso);
-      const open = rows.find((r) => r.effectiveAt <= asOf && (r.endedAt === null || r.endedAt > asOf));
+      const open = rows.find(
+        (r) => r.effectiveAt <= asOf && (r.endedAt === null || r.endedAt > asOf),
+      );
       return (open ?? rows[0])!.levelOfCare;
     },
   );

@@ -1,11 +1,11 @@
 {
   "totals": {
-    "routes": 1327,
-    "enriched": 1322,
+    "routes": 1329,
+    "enriched": 1324,
     "deficit": 5,
-    "mutating": 753,
+    "mutating": 754,
     "mutatingNoBody": 1,
-    "gets": 541,
+    "gets": 542,
     "getsNoResponse": 8
   },
   "modules": [
@@ -131,12 +131,12 @@
     },
     {
       "module": "14-idg",
-      "routes": 30,
-      "enriched": 30,
+      "routes": 32,
+      "enriched": 32,
       "deficit": 0,
-      "mutating": 17,
+      "mutating": 18,
       "mutatingNoBody": 0,
-      "gets": 10,
+      "gets": 11,
       "getsNoResponse": 0
     },
     {

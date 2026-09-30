@@ -1,5 +1,7 @@
 // #107 item 2 — the platform-scoped active-org enumerator: proves it reads only 'active' orgs through a
 // GATED + AUDITED withPlatformContext entry, and is REFUSED when its job id is not allowlisted (fail-closed).
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { DbClient } from "@wardenx/db";
 import {
   type PlatformBypassAuditor,
@@ -69,5 +71,36 @@ describe("buildActiveOrgEnumerator", () => {
       reason: "unit",
     });
     await expect(enumerator.listActiveOrgs()).rejects.toBeInstanceOf(PlatformContextDeniedError);
+  });
+
+  it("queries ONLY the pool it was given as the platform pool (never a tenant pool) and returns its orgs", async () => {
+    const platform = fakePlatformDb([{ organizationId: "org-a" }]);
+    const tenant = fakePlatformDb([]); // what wardenx_app sees under `organization` RLS: nothing
+    const tenantTransaction = vi.spyOn(tenant.db as { transaction: () => unknown }, "transaction");
+    const enumerator = buildActiveOrgEnumerator({
+      platformDb: platform.db,
+      auditBypass: vi.fn(async () => {}),
+      jobId: JOB_ID,
+    });
+    expect(await enumerator.listActiveOrgs()).toEqual([{ organizationId: "org-a" }]);
+    expect(tenantTransaction).not.toHaveBeenCalled();
+  });
+
+  it("fails LOUD (never returns []) when no platform pool is configured — the M14 packets-cron zero-org bug", async () => {
+    const auditBypass = vi.fn<PlatformBypassAuditor<DbClient>>(async () => {});
+    const enumerator = buildActiveOrgEnumerator({ platformDb: undefined, auditBypass, jobId: JOB_ID });
+    await expect(enumerator.listActiveOrgs()).rejects.toThrow(/DATABASE_PLATFORM_URL/);
+    expect(auditBypass).not.toHaveBeenCalled();
+  });
+
+  it("composition root: every buildActiveOrgEnumerator in index.ts binds the PLATFORM pool, never dbHandle.db", () => {
+    const src = readFileSync(join(__dirname, "../src/index.ts"), "utf8");
+    const calls = src.split("buildActiveOrgEnumerator({").slice(1);
+    expect(calls.length).toBeGreaterThan(15);
+    for (const call of calls) {
+      const platformDbLine = /platformDb:\s*([^,\n]+),/.exec(call.slice(0, 400))?.[1];
+      expect(platformDbLine).toMatch(/^platformDbHandle\??\.db$/);
+      expect(platformDbLine).not.toContain("dbHandle.db");
+    }
   });
 });

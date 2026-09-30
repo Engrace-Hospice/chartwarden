@@ -67,7 +67,7 @@ import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
-import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
+import { M14_OUTBOX_EVENTS, buildM14DocumentBackrefConsumer } from "../src/modules/14-idg/index";
 import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
@@ -81,6 +81,7 @@ import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
 import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
 import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import {
+  M22_DOCUMENT_RENDERED_EVENT,
   M22_OUTBOX_EVENTS,
   buildM22DocumentRequestConsumer,
   createDocumentRenderer,
@@ -218,6 +219,19 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
           return renderer.render(scope, templateKey, payload);
         },
       }),
+      // The §7.2 downstream half, wired exactly as boot wires it (its own tx, the same catalog-validating
+      // publisher): what M14's back-ref consumer below is delivered.
+      emitRendered: ({ organizationId, ...payload }) =>
+        withOrgContext(handle.db, { organizationId, userId: "" }, (tx) =>
+          publisher.publish(tx as never, {
+            eventName: M22_DOCUMENT_RENDERED_EVENT,
+            payload,
+            organizationId,
+            aggregateKind: "document",
+            aggregateId: payload.documentId,
+            callerModule: "m22",
+          } as never),
+        ),
     });
 
     const orgs: ActiveOrgEnumerator = {
@@ -226,7 +240,7 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
     dispatcher = createOutboxDispatcher({
       db: handle.db,
       orgs,
-      consumers: [m22Consumer],
+      consumers: [m22Consumer, buildM14DocumentBackrefConsumer({ db: handle.db })],
       eventCatalog: catalog,
       options: { log: () => {} },
     });
@@ -473,5 +487,186 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
     } finally {
       await b.end();
     }
+  });
+
+  // ── M14 §4.4 back-ref: the RETURN leg of the minutes/packet render handshake ────────────────────────────
+  // The request half above renders a `document`, but nothing on M14's side consumed `m22.document.rendered`,
+  // so `idg_minutes.minutes_document_id` / `idg_patient_packet.packet_document_id` were written by NO code
+  // path and the minutes screen read "not rendered" for a rendered document. These prove the whole loop
+  // through the real publisher + dispatcher + M22 render consumer + the real M14 back-ref binding.
+
+  /** Seed one meeting + its minutes + one packet for `org` as superuser (FK order); returns their ids. */
+  async function seedMeetingChain(org: string, tag: string) {
+    const q = async (sql: string, params: unknown[]) => (await admin.query(sql, params)).rows[0].id as string;
+    const providerEntity = await q(
+      `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
+       VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
+      [org, `CCN-${tag}`, `PE ${tag}`, `NPI-${tag}`],
+    );
+    const location = await q(
+      `INSERT INTO location (provider_entity_id, name, address_line1, city, state, postal_code, timezone)
+       VALUES ($1,$2,'1 St','Town','OR','97000','America/Los_Angeles') RETURNING id`,
+      [providerEntity, `Loc-${tag}`],
+    );
+    const meetingId = await q(
+      `INSERT INTO idg_meeting (organization_id, location_id, scheduled_start, scheduled_end, status,
+         coordinator_membership_id, tenant_quorum_snapshot)
+       VALUES ($1,$2, now(), now() + interval '2 hours', 'adjourned', $3, '{}'::jsonb) RETURNING id`,
+      [org, location, MEMBER],
+    );
+    const minutesId = await q(
+      `INSERT INTO idg_minutes (organization_id, idg_meeting_id, status, finalized_at, finalized_by_membership_id)
+       VALUES ($1,$2,'final', now(), $3) RETURNING id`,
+      [org, meetingId, MEMBER],
+    );
+    const patientId = randomUUID();
+    const packetId = await q(
+      `INSERT INTO idg_patient_packet (organization_id, provider_entity_id, location_id, idg_meeting_id,
+         patient_id, admission_id, since_cursor_iso, built_snapshot, discipline_views, cover_summary_layer1)
+       VALUES ($1,$2,$3,$4,$5,$6,'2026-01-01T00:00:00Z','{}'::jsonb,'{}'::jsonb,'summary') RETURNING id`,
+      [org, providerEntity, location, meetingId, patientId, randomUUID()],
+    );
+    return { meetingId, minutesId, packetId, patientId };
+  }
+  async function backrefs(minutesId: string, packetId: string) {
+    const { rows } = await admin.query(
+      `SELECT (SELECT minutes_document_id FROM idg_minutes WHERE id=$1) AS minutes_doc,
+              (SELECT packet_document_id FROM idg_patient_packet WHERE id=$2) AS packet_doc`,
+      [minutesId, packetId],
+    );
+    return rows[0] as { minutes_doc: string | null; packet_doc: string | null };
+  }
+
+  it("m14.minutes.signed + packet render -> M14's back-ref consumer stamps minutes_document_id / packet_document_id; amendment re-render keeps the stamp stable", async () => {
+    const { meetingId, minutesId, packetId, patientId } = await seedMeetingChain(ORG_A, "BR1");
+    expect(await backrefs(minutesId, packetId)).toEqual({ minutes_doc: null, packet_doc: null });
+
+    await publish({
+      eventName: "m14.minutes.signed",
+      organizationId: ORG_A,
+      aggregateKind: "idg_minutes",
+      aggregateId: minutesId,
+      callerModule: "m14",
+      payload: {
+        minutesId,
+        meetingId,
+        finalizedByMembershipId: MEMBER,
+        renderPayload: { attendanceSnapshot: [], decisionListSnapshot: [], actionItemListSnapshot: [] },
+      },
+    });
+    await publish({
+      eventName: "m14.packet.render_requested",
+      organizationId: ORG_A,
+      aggregateKind: "idg_patient_packet",
+      aggregateId: packetId,
+      callerModule: "m14",
+      payload: { meetingId, patientId, packetId, renderPayload: { sections: ["diagnosis"] } },
+    });
+    // Tick until quiescent: the render tick emits `m22.document.rendered`, a later tick delivers it to M14.
+    await dispatcher.tick();
+    await dispatcher.tick();
+
+    const minutesDocs = await documentsFor(minutesId);
+    const packetDocs = await documentsFor(packetId);
+    expect(minutesDocs).toHaveLength(1);
+    expect(packetDocs).toHaveLength(1);
+    const stamped = await backrefs(minutesId, packetId);
+    expect(stamped.minutes_doc).toBe(minutesDocs[0].id);
+    expect(stamped.packet_doc).toBe(packetDocs[0].id);
+
+    // The W2 append path: an amendment renders a new VERSION of the SAME document, so the back-ref id is
+    // unchanged (and re-stamping it is a harmless no-op, not a duplicate/erroring delivery).
+    await publish({
+      eventName: "m14.minutes.amended",
+      organizationId: ORG_A,
+      aggregateKind: "idg_minutes",
+      aggregateId: minutesId,
+      callerModule: "m14",
+      payload: {
+        amendmentId: randomUUID(),
+        minutesId,
+        requestedByMembershipId: MEMBER,
+        approvedByMembershipId: MEMBER,
+        amendmentReasonHash: "a".repeat(64),
+        renderPayload: { attendanceSnapshot: [], decisionListSnapshot: [], actionItemListSnapshot: [] },
+      },
+    });
+    await dispatcher.tick();
+    await dispatcher.tick();
+    const afterAmend = await documentsFor(minutesId);
+    expect(afterAmend).toHaveLength(2); // two versions (the query joins document_version) …
+    expect(new Set(afterAmend.map((d) => d.id)).size).toBe(1); // … of ONE document
+    expect((await backrefs(minutesId, packetId)).minutes_doc).toBe(minutesDocs[0].id);
+    // No delivery of `m22.document.rendered` FAILED. (The rows stay `pending` by design in this harness: the
+    // event declares consumers this suite does not bind — the dispatcher parks such a row with a
+    // "deferred: …" note after running every live binding, which is not an error.)
+    const { rows: failed } = await admin.query(
+      `SELECT count(*)::int AS n FROM outbox_event
+        WHERE event_type='m22.document.rendered' AND organization_id=$1
+          AND last_error IS NOT NULL AND last_error NOT LIKE 'deferred:%'`,
+      [ORG_A],
+    );
+    expect(failed[0].n).toBe(0);
+  });
+
+  it("tenant-safe: an org B render request naming org A's minutes id never stamps org A's row", async () => {
+    const chainA = await seedMeetingChain(ORG_A, "BR2");
+    await publish({
+      eventName: "m14.minutes.signed",
+      organizationId: ORG_B,
+      aggregateKind: "idg_minutes",
+      aggregateId: chainA.minutesId, // a cross-tenant id literal
+      callerModule: "m14",
+      payload: {
+        minutesId: chainA.minutesId,
+        meetingId: randomUUID(),
+        finalizedByMembershipId: MEMBER,
+        renderPayload: {},
+      },
+    });
+    await dispatcher.tick();
+    await dispatcher.tick();
+    // The render happened under org B (its own document)…
+    const { rows: bDocs } = await admin.query(
+      "SELECT organization_id FROM document WHERE aggregate_id=$1",
+      [chainA.minutesId],
+    );
+    expect(bDocs.map((r) => r.organization_id)).toEqual([ORG_B]);
+    // …and org A's minutes row is untouched: the back-ref write is pinned to the EVENT's org.
+    expect((await backrefs(chainA.minutesId, chainA.packetId)).minutes_doc).toBeNull();
+  });
+
+  it("fail-closed: another module's document, or a non-M14 aggregate type, is a no-op", async () => {
+    const chain = await seedMeetingChain(ORG_A, "BR3");
+    const rendered = (over: Record<string, unknown>) =>
+      publish({
+        eventName: "m22.document.rendered",
+        organizationId: ORG_A,
+        aggregateKind: "document",
+        aggregateId: randomUUID(),
+        callerModule: "m22",
+        payload: {
+          documentId: randomUUID(),
+          documentVersionId: randomUUID(),
+          versionNumber: 1,
+          isFirstVersion: true,
+          templateKey: "idg_minutes",
+          aggregateType: "idg_minutes",
+          aggregateId: chain.minutesId,
+          retentionClass: "clinical_record",
+          patientId: null,
+          sourceEvent: "m14.minutes.signed",
+          sourceModule: "m14",
+          renderedAt: new Date().toISOString(),
+          ...over,
+        },
+      });
+    await rendered({ sourceModule: "m13", sourceEvent: "m13.administration_record.document_requested" });
+    await rendered({ aggregateType: "encounter", aggregateId: chain.packetId });
+    await dispatcher.tick();
+    expect(await backrefs(chain.minutesId, chain.packetId)).toEqual({
+      minutes_doc: null,
+      packet_doc: null,
+    });
   });
 });

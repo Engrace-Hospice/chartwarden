@@ -497,6 +497,121 @@ describe.skipIf(!DB_URL)("M6 Drizzle write lifecycle — LIVE Postgres (M6L-T02)
     });
   });
 
+  // ── D9 — a transfer-in admission can be ACTIVATED ───────────────────────────────────────────────
+  //
+  // `gateFacts` was hard-wired to `sequence_number = 1`, but a transfer-in has no period 1: `transferIn`
+  // inserts the INHERITED period (carried sequence, already `active`) plus the NEXT pending one, whose CTI
+  // is ours. The gate therefore found no period, could never see the election statement, and demanded a
+  // CTI that D9 says the receiving hospice does not owe on the inherited period — so a transfer-in sat at
+  // `notice_of_rights_acknowledged` forever. Activation must gate on the inherited period, owe no CTI/F2F
+  // on it, and NOT re-run `setActive` on the already-active period nor re-date it.
+  it("D9: transfer-in reaches active with the election statement + NOR alone (no CTI/F2F on the inherited period)", async () => {
+    const patientId = "66000000-0000-4000-8000-0000000d0009";
+    await admin.query(
+      `INSERT INTO patient (id, organization_id, provider_entity_id, location_id, mrn,
+         legal_first_name, legal_last_name, dob, sex_assigned_at_birth, status)
+       VALUES ($1,$2,$3,$4,'MRN-XFER-IN','Xfer','Patient','1950-01-01','F','prospective')`,
+      [patientId, ORG_A, providerEntityId, locationId],
+    );
+    const adm = await svc.createAdmission(
+      ORG_A,
+      { patientId, intakeMethod: "transfer_in", hospiceMedicalDirectorId: PHYSICIAN } as never,
+      USER,
+    );
+    const startDay = new Date(Date.now() - 80 * 86_400_000).toISOString().slice(0, 10);
+    await svc.transferIn(
+      ORG_A,
+      adm.id,
+      {
+        direction: "in",
+        effectiveDate: new Date().toISOString().slice(0, 10),
+        otherHospiceName: "Other Hospice",
+        priorBenefitPeriodSequence: 3,
+        priorElectionStartDate: startDay,
+        hospiceMedicalDirectorId: PHYSICIAN,
+        narrative: "relocated; election transferred in mid benefit period 3",
+      } as never,
+      USER,
+    );
+    const periods = (
+      await admin.query(
+        "SELECT id, sequence_number, status FROM election_period WHERE admission_id=$1 ORDER BY sequence_number",
+        [adm.id],
+      )
+    ).rows;
+    expect(periods.map((r) => [r.sequence_number, r.status])).toEqual([
+      [3, "active"],
+      [4, "pending"],
+    ]);
+    const inherited = periods[0].id as string;
+    const inheritedBefore = (
+      await admin.query("SELECT effective_at, scheduled_end_at FROM election_period WHERE id=$1", [
+        inherited,
+      ])
+    ).rows[0];
+
+    // (`getAdmission` resolves the hospice physician through the MDM seam, unbound in this suite.)
+    const curVersion = Number(
+      (await admin.query("SELECT version FROM admission WHERE id=$1", [adm.id])).rows[0].version,
+    );
+    await svc.updateAdmission(
+      ORG_A,
+      adm.id,
+      { providerEntityId, locationId, admissionAt: new Date().toISOString() },
+      curVersion,
+    );
+    const nor = await svc.acknowledgeNor(
+      ORG_A,
+      adm.id,
+      { deliveryMethod: "electronic_witnessed", acknowledgedByRole: "patient" },
+      USER,
+    );
+    // Election statement outstanding: the gate names exactly it (and NOT the CTI / F2F).
+    await expect(svc.activateAdmission(ORG_A, adm.id, nor.version)).rejects.toMatchObject({
+      code: "ADMISSION_NOT_READY",
+      missing: ["election_signed"],
+    });
+    // The receiving hospice's own election statement is signed AGAINST the already-`active` inherited
+    // period (the draft route needs an M1 port this suite leaves unbound, so the draft is a fixture).
+    const esId = (
+      await admin.query(
+        `INSERT INTO election_statement (organization_id, election_period_id, patient_id, signer_kind,
+           patient_name_at_signing, hospice_name_at_signing, curative_care_acknowledgment, status)
+         VALUES ($1,$2,$3,'patient','Xfer Patient','A Hospice',true,'drafted') RETURNING id`,
+        [ORG_A, inherited, patientId],
+      )
+    ).rows[0].id as string;
+    const signed = await svc.signElection(ORG_A, esId, 0, USER, {
+      signingPatientName: "Xfer Patient",
+      signingRole: "patient",
+    } as never);
+    expect(signed.state).toBe("signed");
+    // Signing must not regress the running period (`active` → `signed`) nor touch its dates.
+    const inheritedAfterSign = (
+      await admin.query("SELECT status, effective_at FROM election_period WHERE id=$1", [inherited])
+    ).rows[0];
+    expect(inheritedAfterSign.status).toBe("active");
+    expect(inheritedAfterSign.effective_at).toEqual(inheritedBefore.effective_at);
+    const readiness = await svc.getAdmissionReadiness(ORG_A, adm.id);
+    expect(readiness?.canActivate).toBe(true);
+    const active = await svc.activateAdmission(ORG_A, adm.id, nor.version);
+    expect(active.state).toBe("active");
+    // The inherited period keeps the dates `transferIn` gave it; the next one stays pending with our CTI.
+    const after = (
+      await admin.query(
+        "SELECT sequence_number, status, effective_at, scheduled_end_at FROM election_period WHERE admission_id=$1 ORDER BY sequence_number",
+        [adm.id],
+      )
+    ).rows;
+    expect(after.map((r) => [r.sequence_number, r.status])).toEqual([
+      [3, "active"],
+      [4, "pending"],
+    ]);
+    expect(after[0].effective_at).toEqual(inheritedBefore.effective_at);
+    expect(after[0].scheduled_end_at).toEqual(inheritedBefore.scheduled_end_at);
+    expect(after[0].effective_at).not.toBeNull();
+  });
+
   it("RLS: org B cannot triage org A's referral through the service (cross-tenant → 404)", async () => {
     const ref = await svc.createReferral(
       ORG_A,

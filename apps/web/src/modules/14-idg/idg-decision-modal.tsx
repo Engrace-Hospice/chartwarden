@@ -1,4 +1,12 @@
-import { Button, Modal, SelectField, TextAreaField, TextField, t, useApiClient } from "@wardenx/ui";
+import {
+  Button,
+  Glyph,
+  Modal,
+  SelectField,
+  TextAreaField,
+  TextField,
+  useApiClient,
+} from "@wardenx/ui";
 // apps/web/src/modules/14-idg — the §2.6 decision recorder (#91).
 //
 // This is the write the IDG exists to make. 42 CFR 418.56(b) puts the interdisciplinary group at the
@@ -21,7 +29,7 @@ import { Button, Modal, SelectField, TextAreaField, TextField, t, useApiClient }
 // `interventionId`), which needs the care-plan element picker that belongs with the M07 surface. A
 // form asking a coordinator to paste a uuid is not a working control (the F-007 rule), so it is not
 // offered and the modal says so rather than leaving the reader to wonder.
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JSX } from "react";
 import { type DecisionView, recordDecision } from "./idg-api";
 
@@ -82,6 +90,10 @@ export interface DecisionModalProps {
   readonly meetingId: string;
   /** The patients on this meeting's agenda — the only ones a patient-scoped decision may name. */
   readonly patients: readonly { readonly id: string; readonly label: string }[];
+  /** Preselect this patient (the worklist's current selection) when the modal opens. */
+  readonly defaultPatientId?: string | null;
+  /** The quorum READOUT shown as context — information only; the server decides (§4.7). */
+  readonly quorum?: { readonly quorate: boolean; readonly missing: readonly string[] };
   readonly onClose: () => void;
   readonly onRecorded: (decision: DecisionView) => void;
 }
@@ -90,6 +102,8 @@ export function DecisionModal({
   open,
   meetingId,
   patients,
+  defaultPatientId,
+  quorum,
   onClose,
   onRecorded,
 }: DecisionModalProps): JSX.Element | null {
@@ -110,19 +124,26 @@ export function DecisionModal({
   const [referralKind, setReferralKind] = useState("");
   const [familyMembers, setFamilyMembers] = useState("");
 
+  // The live surface re-renders on every poll; the form must reset only when the modal OPENS, never
+  // because the patient list / default was recomputed underneath a half-typed decision.
+  const seed = useRef({ patients, defaultPatientId });
+  seed.current = { patients, defaultPatientId };
   useEffect(() => {
     if (!open) return;
+    const { patients: ps, defaultPatientId: def } = seed.current;
     setBusy(false);
     setError(null);
     setKind("team_note");
-    setPatientId(patients.length === 1 ? (patients[0]?.id ?? "") : "");
+    setPatientId(
+      ps.length === 1 ? (ps[0]?.id ?? "") : def && ps.some((p) => p.id === def) ? def : "",
+    );
     setRationale("");
     setIcd10("");
     setDrugLabel("");
     setReferralKind("");
     setFamilyMembers("");
     setPeriodIndex("1");
-  }, [open, patients]);
+  }, [open]);
 
   if (!open) return null;
 
@@ -229,155 +250,173 @@ export function DecisionModal({
       ariaLabel="Record a decision"
       width="34rem"
     >
-      <div style={{ padding: "1.5rem", display: "flex", flexDirection: "column", gap: "0.875rem" }}>
-        <h2 style={title}>Record a decision</h2>
-
-        <SelectField
-          label="Decision"
-          value={kind}
-          onChange={(e) => setKind(e.target.value as DecisionKind)}
-          options={DECISION_KINDS.map((k) => ({ value: k, label: KIND_LABEL[k] }))}
-        />
-
-        {needsPatient ? (
-          patients.length === 0 ? (
-            <p style={meta}>
-              No patients are on this meeting's agenda yet, so a patient-scoped decision cannot name
-              one. Add an agenda item first, or record a team note.
-            </p>
-          ) : (
-            <SelectField
-              label="Patient"
-              value={patientId}
-              onChange={(e) => setPatientId(e.target.value)}
-              options={[
-                ...(patients.length > 1 ? [{ value: "", label: "Select a patient…" }] : []),
-                ...patients.map((p) => ({ value: p.id, label: p.label })),
-              ]}
-            />
-          )
-        ) : null}
-
-        {kind === "care_plan_update" ? (
-          <>
-            <SelectField
-              label="Problem kind"
-              value={problemKind}
-              onChange={(e) => setProblemKind(e.target.value as (typeof PROBLEM_KINDS)[number])}
-              options={PROBLEM_KINDS.map((k) => ({ value: k, label: humanize(k) }))}
-            />
-            <TextField
-              label="ICD-10 code (optional)"
-              value={icd10}
-              onChange={(e) => setIcd10(e.target.value)}
-            />
-            <p style={meta}>
-              Adds a PROBLEM to the plan. Updating an existing problem, goal or intervention
-              addresses it by id and needs the care-plan element picker on the M07 surface — not
-              offered here rather than asking you to paste one.
-            </p>
-          </>
-        ) : null}
-
-        {kind === "level_of_care_consideration" ? (
-          <SelectField
-            label="Considered level"
-            value={level}
-            onChange={(e) => setLevel(e.target.value as (typeof LEVELS)[number])}
-            options={LEVELS.map((l) => ({ value: l, label: humanize(l) }))}
-          />
-        ) : null}
-
-        {kind === "recertification_consideration" ? (
-          <TextField
-            label="Benefit period"
-            value={periodIndex}
-            onChange={(e) => setPeriodIndex(e.target.value)}
-          />
-        ) : null}
-
-        {kind === "medication_recommendation" ? (
-          <>
-            <SelectField
-              label="Recommendation"
-              value={medKind}
-              onChange={(e) => setMedKind(e.target.value as (typeof MED_KINDS)[number])}
-              options={MED_KINDS.map((k) => ({ value: k, label: humanize(k) }))}
-            />
-            <TextField
-              label="Drug"
-              value={drugLabel}
-              onChange={(e) => setDrugLabel(e.target.value)}
-            />
-          </>
-        ) : null}
-
-        {kind === "order_request" ? (
-          <SelectField
-            label="Order kind"
-            value={orderHint}
-            onChange={(e) => setOrderHint(e.target.value as (typeof ORDER_HINTS)[number])}
-            options={ORDER_HINTS.map((k) => ({ value: k, label: humanize(k) }))}
-          />
-        ) : null}
-
-        {kind === "referral" ? (
-          <TextField
-            label="Referral to"
-            value={referralKind}
-            onChange={(e) => setReferralKind(e.target.value)}
-          />
-        ) : null}
-
-        {kind === "family_meeting_needed" ? (
-          <TextField
-            label="Family members (comma-separated)"
-            value={familyMembers}
-            onChange={(e) => setFamilyMembers(e.target.value)}
-          />
-        ) : null}
-
-        {kind === "bereavement_risk_flag" ? (
-          <SelectField
-            label="Risk level"
-            value={riskLevel}
-            onChange={(e) => setRiskLevel(e.target.value as (typeof RISK_LEVELS)[number])}
-            options={RISK_LEVELS.map((l) => ({ value: l, label: humanize(l) }))}
-          />
-        ) : null}
-
-        <TextAreaField
-          label={
-            kind === "team_note"
-              ? "Note"
-              : kind === "care_plan_update"
-                ? "Problem description"
-                : "Rationale"
-          }
-          value={rationale}
-          onChange={(e) => setRationale(e.target.value)}
-          rows={4}
-        />
-
-        {error ? (
-          <p role="alert" style={errorText}>
-            {error}
+      <div style={shell}>
+        <header style={{ display: "grid", gap: "0.25rem" }}>
+          <h2 style={title}>Record a decision</h2>
+          <p style={meta}>
+            {quorum
+              ? quorum.quorate
+                ? "Quorate — Physician + RN + MSW + Chaplain present."
+                : `Group is not quorate (missing ${quorum.missing.join(", ")}). The server refuses a binding decision without quorum.`
+              : "The server checks quorum at the moment of recording."}
           </p>
-        ) : null}
+        </header>
+        <div style={body}>
+          <SelectField
+            label="Decision"
+            value={kind}
+            onChange={(e) => setKind(e.target.value as DecisionKind)}
+            options={DECISION_KINDS.map((k) => ({ value: k, label: KIND_LABEL[k] }))}
+          />
 
-        <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end" }}>
-          <Button tone="tertiary" onClick={onClose} disabled={busy}>
+          {needsPatient ? (
+            patients.length === 0 ? (
+              <p style={meta}>
+                No patients are on this meeting's agenda yet, so a patient-scoped decision cannot
+                name one. Add an agenda item first, or record a team note.
+              </p>
+            ) : (
+              <SelectField
+                label="Patient"
+                value={patientId}
+                onChange={(e) => setPatientId(e.target.value)}
+                options={[
+                  ...(patients.length > 1 ? [{ value: "", label: "Select a patient…" }] : []),
+                  ...patients.map((p) => ({ value: p.id, label: p.label })),
+                ]}
+              />
+            )
+          ) : null}
+
+          {kind === "care_plan_update" ? (
+            <>
+              <SelectField
+                label="Problem kind"
+                value={problemKind}
+                onChange={(e) => setProblemKind(e.target.value as (typeof PROBLEM_KINDS)[number])}
+                options={PROBLEM_KINDS.map((k) => ({ value: k, label: humanize(k) }))}
+              />
+              <TextField
+                label="ICD-10 code (optional)"
+                value={icd10}
+                onChange={(e) => setIcd10(e.target.value)}
+              />
+              <p style={meta}>
+                Adds a PROBLEM to the plan. Updating an existing problem, goal or intervention
+                addresses it by id and needs the care-plan element picker on the M07 surface — not
+                offered here rather than asking you to paste one.
+              </p>
+            </>
+          ) : null}
+
+          {kind === "level_of_care_consideration" ? (
+            <SelectField
+              label="Considered level"
+              value={level}
+              onChange={(e) => setLevel(e.target.value as (typeof LEVELS)[number])}
+              options={LEVELS.map((l) => ({ value: l, label: humanize(l) }))}
+            />
+          ) : null}
+
+          {kind === "recertification_consideration" ? (
+            <TextField
+              label="Benefit period"
+              value={periodIndex}
+              onChange={(e) => setPeriodIndex(e.target.value)}
+            />
+          ) : null}
+
+          {kind === "medication_recommendation" ? (
+            <>
+              <SelectField
+                label="Recommendation"
+                value={medKind}
+                onChange={(e) => setMedKind(e.target.value as (typeof MED_KINDS)[number])}
+                options={MED_KINDS.map((k) => ({ value: k, label: humanize(k) }))}
+              />
+              <TextField
+                label="Drug"
+                value={drugLabel}
+                onChange={(e) => setDrugLabel(e.target.value)}
+              />
+            </>
+          ) : null}
+
+          {kind === "order_request" ? (
+            <SelectField
+              label="Order kind"
+              value={orderHint}
+              onChange={(e) => setOrderHint(e.target.value as (typeof ORDER_HINTS)[number])}
+              options={ORDER_HINTS.map((k) => ({ value: k, label: humanize(k) }))}
+            />
+          ) : null}
+
+          {kind === "referral" ? (
+            <TextField
+              label="Referral to"
+              value={referralKind}
+              onChange={(e) => setReferralKind(e.target.value)}
+            />
+          ) : null}
+
+          {kind === "family_meeting_needed" ? (
+            <TextField
+              label="Family members (comma-separated)"
+              value={familyMembers}
+              onChange={(e) => setFamilyMembers(e.target.value)}
+            />
+          ) : null}
+
+          {kind === "bereavement_risk_flag" ? (
+            <SelectField
+              label="Risk level"
+              value={riskLevel}
+              onChange={(e) => setRiskLevel(e.target.value as (typeof RISK_LEVELS)[number])}
+              options={RISK_LEVELS.map((l) => ({ value: l, label: humanize(l) }))}
+            />
+          ) : null}
+
+          <TextAreaField
+            label={
+              kind === "team_note"
+                ? "Note"
+                : kind === "care_plan_update"
+                  ? "Problem description"
+                  : "Rationale"
+            }
+            value={rationale}
+            onChange={(e) => setRationale(e.target.value)}
+            rows={4}
+          />
+
+          {error ? (
+            <p role="alert" style={errorText}>
+              <Glyph name="alert-circle" size={14} /> {error}
+            </p>
+          ) : null}
+        </div>
+
+        <footer style={footer}>
+          <Button tone="secondary" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button onClick={submit} disabled={busy || blocked}>
             {busy ? "Recording…" : "Record decision"}
           </Button>
-        </div>
+        </footer>
       </div>
     </Modal>
   );
 }
 
+const shell = {
+  padding: "1.5rem",
+  display: "flex",
+  flexDirection: "column",
+  gap: "0.875rem",
+} as const;
+const body = { display: "flex", flexDirection: "column", gap: "0.875rem" } as const;
 const title = { margin: 0, fontSize: "1.05rem", fontWeight: 600 } as const;
+const footer = { display: "flex", gap: "0.5rem", justifyContent: "flex-end" } as const;
 const meta = { margin: 0, fontSize: "0.75rem", color: "var(--color-on-surface-variant)" } as const;
 const errorText = { margin: 0, fontSize: "0.8rem", color: "var(--color-error)" } as const;

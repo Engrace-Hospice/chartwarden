@@ -18,7 +18,7 @@ import {
   M14_WORKER_SYSTEM_USER_ID,
   planReviewClockSweep,
 } from "./index";
-import type { Idg6PacketPort, Idg7PacketPort } from "./packet-build";
+import type { Idg6PacketPort, Idg6RecertWindowPort, Idg7PacketPort } from "./packet-build";
 import { runPacketBuildCron } from "./packet-build";
 import type { Idg1LocationTimezonePort } from "./schedule-materialise";
 import { runScheduleMaterialiseCron } from "./schedule-materialise";
@@ -40,6 +40,8 @@ export interface M14WorkerDeps {
   readonly m6?: Idg6PacketPort;
   /** F-171 — the M7 §2.4 care-plan-summary org-explicit port (`packet-build.ts`). */
   readonly m7?: Idg7PacketPort;
+  /** §2.4 cover recert/F2F facts (M6 `idgRecertWindowsForOrg`); unbound ⇒ the cover fields stay null. */
+  readonly recertWindows?: Idg6RecertWindowPort;
   /** F-171 — the M1 `FoundationSiteReader.locationTimezone` org-explicit port (`schedule-materialise.ts`). */
   readonly locationTimezone?: Idg1LocationTimezonePort;
   now?: () => Date;
@@ -68,7 +70,10 @@ function m6Of(deps: M14WorkerDeps): Idg6PacketPort {
       inclusionForOrg: () =>
         unbound("m6.inclusionForOrg", "bind idgPacketInclusionForOrg at the composition root"),
       currentLevelOfCareForOrg: () =>
-        unbound("m6.currentLevelOfCareForOrg", "bind idgCurrentLevelOfCareForOrg at the composition root"),
+        unbound(
+          "m6.currentLevelOfCareForOrg",
+          "bind idgCurrentLevelOfCareForOrg at the composition root",
+        ),
     }
   );
 }
@@ -77,7 +82,10 @@ function m7Of(deps: M14WorkerDeps): Idg7PacketPort {
   return (
     deps.m7 ?? {
       carePlanContextForOrg: () =>
-        unbound("m7.carePlanContextForOrg", "bind idgPacketCarePlanContextForOrg at the composition root"),
+        unbound(
+          "m7.carePlanContextForOrg",
+          "bind idgPacketCarePlanContextForOrg at the composition root",
+        ),
     }
   );
 }
@@ -97,7 +105,9 @@ function locationTimezoneOf(deps: M14WorkerDeps): Idg1LocationTimezonePort {
 function redisOf(deps: M14WorkerDeps): Redis {
   if (deps.redis) return deps.redis;
   const err = (): never => {
-    throw new Error("M14_WORKER_PORT_UNBOUND: redis — bind the Valkey client at the composition root");
+    throw new Error(
+      "M14_WORKER_PORT_UNBOUND: redis — bind the Valkey client at the composition root",
+    );
   };
   return new Proxy({}, { get: () => err }) as Redis;
 }
@@ -111,6 +121,7 @@ export function buildM14WorkerDeps(deps: {
   redis?: Redis;
   m6?: Idg6PacketPort;
   m7?: Idg7PacketPort;
+  recertWindows?: Idg6RecertWindowPort;
   locationTimezone?: Idg1LocationTimezonePort;
 }): M14WorkerDeps {
   return {
@@ -121,6 +132,7 @@ export function buildM14WorkerDeps(deps: {
     redis: deps.redis,
     m6: deps.m6,
     m7: deps.m7,
+    recertWindows: deps.recertWindows,
     locationTimezone: deps.locationTimezone,
     now: () => new Date(),
   };
@@ -307,6 +319,7 @@ export function registerM14CronWorkers(deps: M14WorkerDeps): Worker[] {
           redis: redisOf(deps),
           m6: m6Of(deps),
           m7: m7Of(deps),
+          recertWindows: deps.recertWindows,
           now: deps.now,
         }),
       { connection, concurrency: M14_QUEUE_PARAMS.packetsBuild.concurrency },

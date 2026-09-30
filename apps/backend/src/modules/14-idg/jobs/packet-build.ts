@@ -19,13 +19,20 @@
 //   • `carryForwardActionItems` — []. §2.7's carry-forward computation is a SEPARATE cron concern (its own
 //                             row in the §2.7 table, "T-24h cron on next meeting build") this pass does not
 //                             attempt — reported, not built.
-//   • `nextRecertDueAt`, `f2fWindowState`, `activeDpoa` — null. Each needs either a real M6 window-state
-//                             decider (F2F/recert timing rules this pass declines to re-derive from raw
-//                             CTI/F2F rows without an existing pure source — the exact "STOP rather than
-//                             guess" case for a load-bearing clinical-timing judgment) or an M39 DPOA seam
-//                             this pass does not build. All three are display-only cover facts (they feed a
-//                             discussion FLAG, never D9 inclusion), so an honest `null` is the safe
-//                             direction — never a fabricated compliance judgment.
+//   • `activeDpoa`          — null. Needs an M39 DPOA seam this pass does not build. Display-only cover
+//                             fact (feeds a discussion FLAG, never D9 inclusion), so an honest `null` is the
+//                             safe direction — never a fabricated compliance judgment.
+//   • `nextRecertDueAt`, `f2fWindowState` — POPULATED at build time (packet-freeze semantics: snapshotted into
+//                             `built_snapshot`, never re-read live) from the M6 seam `idgRecertWindowsForOrg`
+//                             through the org-explicit `Idg6RecertWindowPort` (ONE batched call per meeting,
+//                             evaluated as of the tick's `now` in the ORG's timezone). The window math is M6's
+//                             own (`computeF2fWindow`/`decideF2fWindowStatus`) — NOT re-derived here; this
+//                             worker only maps: the seam's org-local `nextRecertDueDate` (`yyyy-mm-dd`) →
+//                             an ISO instant at that calendar day's 00:00Z (a date anchor, not a local-midnight
+//                             claim), and its §2.4 `f2fWindowState` enum straight through. FAIL-HONEST: no
+//                             port bound, a seam error/timeout (logged, never thrown — a display-only cover
+//                             fact must not fail a patient's packet), a patient absent from the result, or an
+//                             unresolvable benefit period ⇒ `null` for that field, never a guess.
 //   • Layer 2 narrative polish — untouched; the pure builder already always returns `layer2Polished: null`
 //                             ("BASIC build" per its own header).
 // Every OTHER §2.4 field is populated from REAL data: M5 patient identity, M6 admission siting +
@@ -44,17 +51,22 @@
 import { randomUUID } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import {
-  buildPacketSnapshot,
   type CarePlanSummaryInput,
+  POST_DISCHARGE_WRAP_UP_FLOOR_DAYS,
   type PacketBuildContext,
   type PacketCoverInput,
-  POST_DISCHARGE_WRAP_UP_FLOOR_DAYS,
-  resolveSinceCursor,
   type SinceLastIdgInput,
+  buildPacketSnapshot,
+  resolveSinceCursor,
   transitionMeeting,
 } from "@wardenx/idg";
 import { withOrgContext } from "@wardenx/tenancy";
-import type { DisciplineKey, DisciplineViewBlock, IdgLevelOfCare, PacketSnapshot } from "@wardenx/types";
+import type {
+  DisciplineKey,
+  DisciplineViewBlock,
+  IdgLevelOfCare,
+  PacketSnapshot,
+} from "@wardenx/types";
 import { and, eq, inArray, lte } from "drizzle-orm";
 import type Redis from "ioredis";
 import { getSeam } from "../../../bootstrap/index";
@@ -122,14 +134,94 @@ export interface Idg7PacketPort {
   ): Promise<Idg7PacketCarePlanContext | null>;
 }
 
+/** One patient's recert/F2F cover facts as M6's `idgRecertWindowsForOrg` projects them (structural subset —
+ *  dates are org-local `yyyy-mm-dd`; `f2fWindowState` is already the §2.4 cover enum, null = unknown). */
+export interface Idg6RecertWindowFact {
+  readonly nextRecertDueDate: string | null;
+  readonly f2fWindowState: "not_due" | "window_open" | "overdue" | null;
+}
+
+/** The M6 recert/F2F window port (§2.4 cover): BATCHED + org-explicit + cron-callable. Patients with no live
+ *  admission are absent from the map. */
+export interface Idg6RecertWindowPort {
+  recertWindowsForOrg(
+    organizationId: string,
+    patientIds: readonly string[],
+    asOfIso: string,
+  ): Promise<ReadonlyMap<string, Idg6RecertWindowFact>>;
+}
+
+/** Cover facts resolved for one patient (both fields null = unknown). */
+export interface PacketRecertCoverFacts {
+  readonly nextRecertDueAt: string | null;
+  readonly f2fWindowState: "not_due" | "window_open" | "overdue" | null;
+}
+
+const F2F_STATES = new Set(["not_due", "window_open", "overdue"]);
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Resolve the recert cover facts for a meeting's candidate patients. Never throws: a port failure is
+ * reported through `warn` and yields an empty map (every patient's fields stay null). Values are validated
+ * — an unrecognised enum or a malformed date is dropped to null rather than passed through.
+ */
+export async function resolveRecertCoverFacts(
+  port: Idg6RecertWindowPort | undefined,
+  organizationId: string,
+  patientIds: readonly string[],
+  asOf: Date,
+  warn: PacketBuildWarn,
+): Promise<ReadonlyMap<string, PacketRecertCoverFacts>> {
+  const out = new Map<string, PacketRecertCoverFacts>();
+  if (!port || patientIds.length === 0) return out;
+  const ids = [...new Set(patientIds)];
+  const facts = new Map<string, Idg6RecertWindowFact>();
+  try {
+    // The seam caps a call at 500 patients (an IDG caseload is dozens) — chunk rather than fail a big org.
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = await port.recertWindowsForOrg(
+        organizationId,
+        ids.slice(i, i + 500),
+        asOf.toISOString(),
+      );
+      for (const [k, v] of chunk) facts.set(k, v);
+    }
+  } catch (error) {
+    warn("m14.packet_build.recert_windows_unavailable", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return out;
+  }
+  for (const [patientId, f] of facts) {
+    const date = f.nextRecertDueDate;
+    out.set(patientId, {
+      nextRecertDueAt: date !== null && YMD.test(date) ? `${date}T00:00:00.000Z` : null,
+      f2fWindowState:
+        f.f2fWindowState !== null && F2F_STATES.has(f.f2fWindowState) ? f.f2fWindowState : null,
+    });
+  }
+  return out;
+}
+
+/** Structured warning sink (default: JSON line on stderr). */
+export type PacketBuildWarn = (event: string, context: Record<string, unknown>) => void;
+
+const defaultWarn: PacketBuildWarn = (event, context) => {
+  console.warn(JSON.stringify({ level: "warn", event, ...context }));
+};
+
 export interface PacketBuildWorkerDeps {
   readonly db: DbClient;
   readonly outbox: IdgWriteOutboxPort;
   readonly redis: Redis;
   readonly m6: Idg6PacketPort;
   readonly m7: Idg7PacketPort;
+  /** §2.4 cover recert/F2F facts (M6 `idgRecertWindowsForOrg`). Optional: unbound ⇒ the fields stay null. */
+  readonly recertWindows?: Idg6RecertWindowPort;
   readonly activeOrgs: ActiveOrgListPort;
   now?: () => Date;
+  readonly warn?: PacketBuildWarn;
 }
 
 /** The M6 `level_of_care` enum → M14's `IdgLevelOfCare` — the two enums use different string values
@@ -196,7 +288,9 @@ async function wrapUpDaysForLocation(
       ),
     )
     .limit(1);
-  return row ? Math.max(row.days, POST_DISCHARGE_WRAP_UP_FLOOR_DAYS) : POST_DISCHARGE_WRAP_UP_FLOOR_DAYS;
+  return row
+    ? Math.max(row.days, POST_DISCHARGE_WRAP_UP_FLOOR_DAYS)
+    : POST_DISCHARGE_WRAP_UP_FLOOR_DAYS;
 }
 
 /** §1.1 — the prior IDG's `adjourned_at` for THIS patient: `MAX(last_idg_reviewed_at)` across every OTHER
@@ -214,7 +308,8 @@ async function priorIdgAdjournedAtForPatient(
   let latest: Date | string | null = null;
   for (const r of rows) {
     if (r.meetingId === excludeMeetingId || r.lastIdgReviewedAt === null) continue;
-    if (latest === null || new Date(r.lastIdgReviewedAt) > new Date(latest)) latest = r.lastIdgReviewedAt;
+    if (latest === null || new Date(r.lastIdgReviewedAt) > new Date(latest))
+      latest = r.lastIdgReviewedAt;
   }
   return latest === null ? null : latest instanceof Date ? latest.toISOString() : latest;
 }
@@ -256,7 +351,13 @@ function layer1CoverSummary(snapshot: PacketSnapshot): string {
 
 /** One per-patient build outcome — either a built packet id, or a reported (never fabricated) reason. */
 type PatientBuildResult =
-  | { readonly ok: true; readonly packetId: string; readonly patientId: string; readonly snapshot: PacketSnapshot; readonly disciplineViews: Record<DisciplineKey, DisciplineViewBlock> }
+  | {
+      readonly ok: true;
+      readonly packetId: string;
+      readonly patientId: string;
+      readonly snapshot: PacketSnapshot;
+      readonly disciplineViews: Record<DisciplineKey, DisciplineViewBlock>;
+    }
   | { readonly ok: false; readonly patientId: string; readonly reason: string };
 
 /** Build (or replace-in-place, D5) one patient's packet for one meeting. Every REQUIRED (non-nullable)
@@ -269,8 +370,13 @@ async function buildOnePatientPacket(
   locationId: string,
   candidate: Idg6PacketInclusionCandidate,
   asOf: Date,
+  recert: PacketRecertCoverFacts | undefined,
 ): Promise<PatientBuildResult> {
-  const fail = (reason: string): PatientBuildResult => ({ ok: false, patientId: candidate.patientId, reason });
+  const fail = (reason: string): PatientBuildResult => ({
+    ok: false,
+    patientId: candidate.patientId,
+    reason,
+  });
   try {
     const identity = await getSeam("PatientReader").findById({
       organizationId,
@@ -351,8 +457,8 @@ async function buildOnePatientPacket(
       primaryDiagnosisIcd10: carePlan.terminalDiagnosisIcd10,
       primaryDiagnosisLabel: carePlan.terminalDiagnosisLabel,
       levelOfCare,
-      nextRecertDueAt: null, // see file header
-      f2fWindowState: null, // see file header
+      nextRecertDueAt: recert?.nextRecertDueAt ?? null, // M6 seam, snapshotted at freeze — see file header
+      f2fWindowState: recert?.f2fWindowState ?? null, // M6 seam, snapshotted at freeze — see file header
       activeDpoa: null, // see file header
       activeSudFlag: carePlan.sudFlag,
     };
@@ -458,10 +564,8 @@ async function processDueMeeting(
   meeting: DueMeeting,
   now: Date,
 ): Promise<void> {
-  const wrapUpDays = await withOrgContext(
-    deps.db,
-    { organizationId, userId: "" },
-    (tx) => wrapUpDaysForLocation(tx as unknown as DbClient, organizationId, meeting.locationId),
+  const wrapUpDays = await withOrgContext(deps.db, { organizationId, userId: "" }, (tx) =>
+    wrapUpDaysForLocation(tx as unknown as DbClient, organizationId, meeting.locationId),
   );
   const candidates = await deps.m6.inclusionForOrg(
     organizationId,
@@ -497,6 +601,14 @@ async function processDueMeeting(
     });
   }
 
+  const recertFacts = await resolveRecertCoverFacts(
+    deps.recertWindows,
+    organizationId,
+    candidates.map((c) => c.patientId),
+    now,
+    deps.warn ?? defaultWarn,
+  );
+
   let builtCount = 0;
   for (const candidate of candidates) {
     const result = await buildOnePatientPacket(
@@ -506,6 +618,7 @@ async function processDueMeeting(
       meeting.locationId,
       candidate,
       now,
+      recertFacts.get(candidate.patientId),
     );
     if (result.ok) {
       builtCount += 1;
@@ -518,7 +631,13 @@ async function processDueMeeting(
           meetingId: meeting.meetingId,
           patientId: result.patientId,
           reason: result.reason,
-          willRetry: true, // the next tick re-selects this meeting (status stays `packets_building`)
+          // NO automatic retry: the meeting still flips `packets_building → packets_ready` below (spec §2.2/§1435 —
+          // one bad patient must not hold the whole IDG meeting hostage past its T-24h window), so the next tick
+          // does NOT re-select it. Recovery is the coordinator's on-demand `POST /meetings/:id/packets/build`
+          // (idempotent on `(meeting_id, patient_id)`, spec §1215 `willRetry=false` DLQ semantics). SPEC AMBIGUITY
+          // flagged: §1435 says "once all per-patient jobs complete" -> ready, §1197/§1215 give the per-patient
+          // retry to the queue's own attempts (not modelled here); this worker builds inline, so a failure is final.
+          willRetry: false,
         },
         organizationId,
         aggregateKind: "idg_meeting",
@@ -567,10 +686,8 @@ export async function runPacketBuildCron(deps: PacketBuildWorkerDeps): Promise<v
   const failures: { organizationId: string; error: unknown }[] = [];
   for (const { organizationId } of orgs) {
     try {
-      const due = await withOrgContext(
-        deps.db,
-        { organizationId, userId: "" },
-        (tx) => dueMeetingsForOrg(tx as unknown as DbClient, organizationId, now),
+      const due = await withOrgContext(deps.db, { organizationId, userId: "" }, (tx) =>
+        dueMeetingsForOrg(tx as unknown as DbClient, organizationId, now),
       );
       for (const meeting of due) {
         await processDueMeeting(deps, organizationId, meeting, now);

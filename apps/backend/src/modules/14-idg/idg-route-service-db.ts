@@ -47,6 +47,7 @@
 import { createHash } from "node:crypto";
 import { type DbClient, schema } from "@wardenx/db";
 import {
+  IDG_REQUIRED_QUORUM,
   isActionableDecisionKind,
   planDecisionRecord,
   planDecisionSupersede,
@@ -56,9 +57,10 @@ import {
 } from "@wardenx/idg";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
-import { and, asc, desc, eq, gte, inArray, lte, ne, notInArray } from "drizzle-orm";
+import { NotFoundError, WardenXError } from "@wardenx/types";
+import { and, asc, desc, eq, gt, gte, inArray, lt, lte, ne, notInArray, sql } from "drizzle-orm";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "./abac-predicates";
+import { mapPacketContent } from "./routes/packet-content";
 import type {
   ActionItemPatchStatus,
   ActionItemView,
@@ -69,9 +71,15 @@ import type {
   MeetingScheduleView,
   MeetingView,
   MinutesView,
+  PacketDetailView,
   PacketDigestView,
   PatientIdgHistoryView,
   RecurringPolicyView,
+} from "./routes/service";
+import {
+  invalidCoordinatorError,
+  minutesRenderStatus,
+  validateMeetingWindow,
 } from "./routes/service";
 import { getCarePlanReader } from "./seams/index";
 
@@ -149,6 +157,7 @@ const toMeetingView = (m: MeetingRow): MeetingView => ({
   scheduledStart: isoReq(m.scheduledStart),
   scheduledEnd: isoReq(m.scheduledEnd),
   adjournedAt: m.status === "adjourned" ? iso(m.actualEnd) : null,
+  coordinatorMembershipId: m.coordinatorMembershipId,
 });
 
 /**
@@ -292,6 +301,31 @@ export function createDbIdgBackend(
     }
     return breaches;
   }
+  /**
+   * The coordinator must be a real, ACTIVE membership of THIS org. `coordinator_membership_id` is a plain uuid
+   * (no cross-module FK), so nothing else stops a foreign-org / revoked / pending / made-up id. `membership` is
+   * M1-owned and M14 `dependsOn` M1, so the read is in-boundary. RLS pins the read to `app.org_id`; the explicit
+   * org predicate is defense in depth. One uniform 422 for "absent", "other org" and "not active" so the
+   * response is not an existence oracle for another tenant's membership ids.
+   */
+  async function assertCoordinatorMembership(
+    tx: DbClient,
+    orgId: string,
+    membershipId: string,
+  ): Promise<void> {
+    const [row] = await tx
+      .select({ id: schema.memberships.id })
+      .from(schema.memberships)
+      .where(
+        and(
+          eq(schema.memberships.id, membershipId),
+          eq(schema.memberships.organizationId, orgId),
+          eq(schema.memberships.status, "active"),
+        ),
+      )
+      .limit(1);
+    if (!row) throw invalidCoordinatorError();
+  }
   /** Ensure a `in_progress` minutes row for the meeting (idempotent); returns its id. */
   async function ensureMinutes(tx: DbClient, orgId: string, meetingId: string): Promise<string> {
     const [existing] = await tx
@@ -362,6 +396,7 @@ export function createDbIdgBackend(
             status: MTG.status,
             scheduledStart: MTG.scheduledStart,
             scheduledEnd: MTG.scheduledEnd,
+            coordinatorMembershipId: MTG.coordinatorMembershipId,
           })
           .from(MTG)
           .where(
@@ -378,7 +413,63 @@ export function createDbIdgBackend(
           status: r.status,
           scheduledStart: isoReq(r.scheduledStart),
           scheduledEnd: isoReq(r.scheduledEnd),
+          coordinatorMembershipId: r.coordinatorMembershipId,
         }));
+      });
+    },
+    async scheduleMeeting(orgId, userId, args): Promise<MeetingView> {
+      validateMeetingWindow(args.scheduledStart, args.scheduledEnd, Date.now());
+      const start = new Date(args.scheduledStart);
+      const end = new Date(args.scheduledEnd);
+      return withOrg(orgId, async (tx) => {
+        // Serialise concurrent creates for the same location so the overlap check below cannot race.
+        await tx.execute(
+          sql`select pg_advisory_xact_lock(hashtext(${`idg_meeting:${args.locationId}`}))`,
+        );
+        if (args.coordinatorMembershipId !== undefined) {
+          // Only an explicit coordinator needs checking — the default is the caller's own (session) membership.
+          await assertCoordinatorMembership(tx, orgId, args.coordinatorMembershipId);
+        }
+        const [clash] = await tx
+          .select({ id: MTG.id })
+          .from(MTG)
+          .where(
+            and(
+              eq(MTG.locationId, args.locationId),
+              notInArray(MTG.status, ["cancelled", "rescheduled"]),
+              lt(MTG.scheduledStart, end),
+              gt(MTG.scheduledEnd, start),
+            ),
+          )
+          .limit(1);
+        if (clash) {
+          throw new WardenXError(
+            "IDG_MEETING_OVERLAP",
+            "another IDG meeting at this location overlaps the requested window",
+            409,
+          );
+        }
+        const [row] = await tx
+          .insert(MTG)
+          .values({
+            organizationId: orgId,
+            locationId: args.locationId,
+            recurringPolicyId: null,
+            scheduledStart: start,
+            scheduledEnd: end,
+            status: "scheduled",
+            coordinatorMembershipId: args.coordinatorMembershipId ?? userId,
+            // Platform-floor quorum, verbatim — same as the schedule worker (no per-tenant tightening surface).
+            tenantQuorumSnapshot: IDG_REQUIRED_QUORUM,
+          })
+          .returning();
+        await emit(tx, orgId, "m14.meeting.scheduled", "idg_meeting", row!.id, {
+          meetingId: row!.id,
+          locationId: row!.locationId,
+          scheduledStart: start.toISOString(),
+          scheduledEnd: end.toISOString(),
+        });
+        return toMeetingView(row!);
       });
     },
     async getMeeting(orgId, id): Promise<MeetingView> {
@@ -401,17 +492,40 @@ export function createDbIdgBackend(
         }));
       });
     },
-    async getPacket(orgId, meetingId, patientId): Promise<PacketDigestView> {
-      return withOrg(orgId, async (tx) => {
+    async getPacket(orgId, meetingId, patientId, viewer): Promise<PacketDetailView> {
+      // Load the stored row inside the tenant tx (RLS-scoped), then map OUTSIDE it: the W-SUD-01 consent
+      // round-trip (M39) must not run while this read transaction is held open.
+      const r = await withOrg(orgId, async (tx) => {
         if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
-        const [r] = await tx
-          .select({ id: PKT.id, frozenAt: PKT.frozenAt })
+        const [row] = await tx
+          .select({
+            id: PKT.id,
+            frozenAt: PKT.frozenAt,
+            builtSnapshot: PKT.builtSnapshot,
+            disciplineViews: PKT.disciplineViews,
+          })
           .from(PKT)
           .where(and(eq(PKT.idgMeetingId, meetingId), eq(PKT.patientId, patientId)))
+          .orderBy(desc(PKT.builtAt))
           .limit(1);
-        if (!r) throw new NotFoundError("idg_patient_packet");
-        return { packetId: r.id, meetingId, patientId, frozenAt: iso(r.frozenAt) };
+        if (!row) throw new NotFoundError("idg_patient_packet");
+        return row;
       });
+      const mapped = await mapPacketContent(r, () =>
+        viewer ? viewer.sudDisclosureAllowed(patientId) : Promise.resolve(false),
+      );
+      if (mapped.appliedSudRedaction) {
+        viewer?.onSudRedaction?.({ patientId, redactedEntryCount: mapped.redactedEntryCount });
+      }
+      return {
+        packetId: r.id,
+        meetingId,
+        patientId,
+        frozenAt: iso(r.frozenAt),
+        content: mapped.content,
+        appliedSudRedaction: mapped.appliedSudRedaction,
+        redactionNotice: mapped.redactionNotice,
+      };
     },
     async getPatientIdgHistory(orgId, patientId): Promise<PatientIdgHistoryView> {
       return withOrg(orgId, async (tx) => {
@@ -545,6 +659,16 @@ export function createDbIdgBackend(
      * consent gate. `closing_note` is withheld for the same reason (a DENYLISTED free-text column).
      */
     async getMinutes(orgId, meetingId): Promise<MinutesView> {
+      const finalizerDiscipline = (
+        snapshot: unknown,
+        membershipId: string | null,
+      ): string | null => {
+        if (membershipId === null || !Array.isArray(snapshot)) return null;
+        const hit = (
+          snapshot as ReadonlyArray<{ membershipId?: unknown; discipline?: unknown }>
+        ).find((a) => a?.membershipId === membershipId);
+        return typeof hit?.discipline === "string" ? hit.discipline : null;
+      };
       return withOrg(orgId, async (tx) => {
         if (!(await meetingExists(tx, meetingId))) throw new NotFoundError("idg_meeting");
         const [r] = await tx
@@ -572,6 +696,13 @@ export function createDbIdgBackend(
           finalizedAt: iso(r.finalizedAt),
           finalizedByMembershipId: r.finalizedByMembershipId,
           minutesDocumentId: r.minutesDocumentId,
+          renderStatus: minutesRenderStatus(r.status, r.minutesDocumentId),
+          // The finalizer's discipline off M14's OWN frozen attendance snapshot (`{membershipId, discipline}`
+          // per row) — null when they were not on the roster (e.g. an admin finalizing without attending).
+          finalizedByDiscipline: finalizerDiscipline(
+            r.attendanceSnapshot,
+            r.finalizedByMembershipId,
+          ),
           attendanceCount: size(r.attendanceSnapshot),
           decisionCount: size(r.decisionListSnapshot),
           actionItemCount: size(r.actionItemListSnapshot),

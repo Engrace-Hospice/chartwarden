@@ -30,8 +30,9 @@ import type {
   IdgMeetingStatus,
   QuorumSnapshot,
 } from "@wardenx/types";
-import { NotFoundError } from "@wardenx/types";
+import { NotFoundError, ValidationError, WardenXError } from "@wardenx/types";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "../abac-predicates";
+import { type PacketContentView, mapPacketContent } from "./packet-content";
 
 // ── §4.4 outbox events the service records (the relay wraps them in the M1 envelope) ────────────────────
 export interface RecordedIdgEvent {
@@ -48,6 +49,8 @@ export interface MeetingView {
   readonly scheduledStart: string;
   readonly scheduledEnd: string;
   readonly adjournedAt: string | null;
+  /** The meeting's IDG coordinator (M1 membership id — resolve the display name via `GET /orgs/{id}/members`). */
+  readonly coordinatorMembershipId: string;
 }
 export interface AttendanceView {
   readonly id: string;
@@ -101,6 +104,17 @@ export interface ActionItemView {
  *
  * `closingNote` is likewise withheld: it is a DENYLISTED free-text column (§3.3).
  */
+export type MinutesRenderStatus = "not_rendered" | "pending" | "rendered";
+
+/** Pure derivation of {@link MinutesView.renderStatus}. */
+export function minutesRenderStatus(
+  status: "in_progress" | "final",
+  minutesDocumentId: string | null,
+): MinutesRenderStatus {
+  if (minutesDocumentId !== null) return "rendered";
+  return status === "final" ? "pending" : "not_rendered";
+}
+
 export interface MinutesView {
   readonly id: string;
   readonly meetingId: string;
@@ -109,6 +123,15 @@ export interface MinutesView {
   readonly finalizedByMembershipId: string | null;
   /** M22 rendered-PDF back-ref; null until the render lands. */
   readonly minutesDocumentId: string | null;
+  /**
+   * Where the M22 render of these minutes stands, derived from real data (never guessed):
+   * `not_rendered` — still `in_progress`, nothing frozen so nothing to render; `pending` — `final` and the
+   * `m14.minutes.signed` render request is in flight (no `minutesDocumentId` yet); `rendered` — the M22
+   * back-ref is stamped. A `final` row that stays `pending` means the render is failing/retrying upstream.
+   */
+  readonly renderStatus: MinutesRenderStatus;
+  /** The finalizer's discipline as recorded on THIS meeting's frozen attendance snapshot, when they attended. */
+  readonly finalizedByDiscipline: string | null;
   /** Snapshot sizes — null while `in_progress` (nothing is frozen yet). */
   readonly attendanceCount: number | null;
   readonly decisionCount: number | null;
@@ -119,6 +142,29 @@ export interface PacketDigestView {
   readonly meetingId: string;
   readonly patientId: string;
   readonly frozenAt: string | null;
+}
+/**
+ * One patient's packet with its CONTENT (GET /idg/meetings/:meetingId/packets/:patientId): the frozen
+ * `built_snapshot` + discipline views shaped for the packet page / live centre pane. Built by the pure
+ * `mapPacketContent` (./packet-content.ts) — snapshot facts only, never fabricated, W-SUD-01 applied per caller.
+ * `content` is null only for a row whose stored snapshot is missing/an unsupported schema version.
+ */
+export interface PacketDetailView extends PacketDigestView {
+  readonly content: PacketContentView | null;
+  /** W-SUD-01 — Part 2 content was elided for THIS caller on THIS read. */
+  readonly appliedSudRedaction: boolean;
+  /** "Some content filtered per 42 CFR Part 2" when `appliedSudRedaction`, else null. */
+  readonly redactionNotice: string | null;
+}
+/**
+ * The per-request viewer the packet READ resolves W-SUD-01 through. `sudDisclosureAllowed` is consulted lazily
+ * (only for a SUD-flagged patient); an ABSENT viewer means "cannot prove a Part 2 release" ⇒ redact
+ * (fail-closed), so a caller that forgets to pass one narrows the read, never widens it.
+ */
+export interface PacketViewer {
+  sudDisclosureAllowed(patientId: string): Promise<boolean>;
+  /** Sampled-audit hook — called when redaction elided content (count is for the server log, never the wire). */
+  onSudRedaction?(info: { patientId: string; redactedEntryCount: number }): void;
 }
 export interface RecurringPolicyView {
   readonly id: string;
@@ -132,6 +178,8 @@ export interface MeetingScheduleView {
   readonly status: IdgMeetingStatus;
   readonly scheduledStart: string;
   readonly scheduledEnd: string;
+  /** The meeting's IDG coordinator (M1 membership id). */
+  readonly coordinatorMembershipId: string;
 }
 
 /**
@@ -173,6 +221,45 @@ export interface RecurringPolicyArgs {
   readonly locationId: string;
   readonly cadenceDays: number;
   readonly active?: boolean;
+}
+/** `POST /idg/meetings` — schedule ONE ad-hoc meeting (no recurring policy). */
+export interface ScheduleMeetingArgs {
+  readonly locationId: string;
+  readonly scheduledStart: string;
+  readonly scheduledEnd: string;
+  /** Defaults to the acting membership when omitted. */
+  readonly coordinatorMembershipId?: string;
+}
+/** An ad-hoc meeting may not run longer than this (a fat-fingered end date is refused, not persisted). */
+export const MAX_MEETING_DURATION_MS = 12 * 3_600_000;
+/** The pure window rules for scheduling a single meeting (shared by the in-memory + Drizzle backends).
+ * 422 VALIDATION_FAILED when end <= start, the window exceeds {@link MAX_MEETING_DURATION_MS}, or the
+ * start is already in the past. */
+export function validateMeetingWindow(
+  scheduledStart: string,
+  scheduledEnd: string,
+  nowMs: number,
+): void {
+  const s = Date.parse(scheduledStart);
+  const e = Date.parse(scheduledEnd);
+  const fail = (field: string, message: string): never => {
+    throw new ValidationError("request validation failed", [{ field, code: "INVALID", message }]);
+  };
+  if (Number.isNaN(s)) fail("scheduledStart", "scheduledStart is not a valid instant");
+  if (Number.isNaN(e)) fail("scheduledEnd", "scheduledEnd is not a valid instant");
+  if (e <= s) fail("scheduledEnd", "scheduledEnd must be after scheduledStart");
+  if (e - s > MAX_MEETING_DURATION_MS) fail("scheduledEnd", "a meeting may not exceed 12 hours");
+  if (s < nowMs) fail("scheduledStart", "scheduledStart must not be in the past");
+}
+/** The uniform 422 for an unusable `coordinatorMembershipId` (absent / other org / not active) — no existence oracle. */
+export function invalidCoordinatorError(): ValidationError {
+  return new ValidationError("request validation failed", [
+    {
+      field: "coordinatorMembershipId",
+      code: "INVALID",
+      message: "coordinatorMembershipId must be an active member of this organization",
+    },
+  ]);
 }
 export interface RescheduleArgs {
   readonly reason: string;
@@ -226,6 +313,9 @@ export interface IdgRouteService {
     args: RecurringPolicyArgs,
   ): Promise<RecurringPolicyView>;
   // meeting lifecycle
+  /** Schedule ONE ad-hoc meeting (`status: 'scheduled'`, no recurring policy). Emits `m14.meeting.scheduled`.
+   * 409 `IDG_MEETING_OVERLAP` when a live (non-cancelled/rescheduled) meeting at the location overlaps. */
+  scheduleMeeting(orgId: string, userId: string, args: ScheduleMeetingArgs): Promise<MeetingView>;
   getMeeting(orgId: string, id: string): Promise<MeetingView>;
   /** GAP-091 — `overrideAuthorized` is resolved by the ROUTE (idg.override_review_floor + fresh step-up,
    * via the `per_patient_review_floor_clear` ABAC predicate) and passed through, same as `adjournMeeting`'s
@@ -281,7 +371,12 @@ export interface IdgRouteService {
   listAttendance(orgId: string, meetingId: string): Promise<AttendanceView[]>;
   // packets
   listPackets(orgId: string, meetingId: string): Promise<PacketDigestView[]>;
-  getPacket(orgId: string, meetingId: string, patientId: string): Promise<PacketDigestView>;
+  getPacket(
+    orgId: string,
+    meetingId: string,
+    patientId: string,
+    viewer?: PacketViewer,
+  ): Promise<PacketDetailView>;
   /** Patient-scoped IDG review history (patient-chart tab); empty meetings when never on an agenda. */
   getPatientIdgHistory(orgId: string, patientId: string): Promise<PatientIdgHistoryView>;
   // agenda
@@ -367,8 +462,13 @@ export interface IdgMeetingSeed {
   readonly status?: IdgMeetingStatus;
   readonly scheduledStart: string;
   readonly scheduledEnd: string;
+  readonly coordinatorMembershipId?: string;
   /** Patients in the meeting's included set (inclusion + per-patient review-floor evaluation). */
   readonly includedPatientIds?: readonly string[];
+  /** Per-patient stored packet (`built_snapshot` + `discipline_views` jsonb) — drives the packet CONTENT read. */
+  readonly packets?: Readonly<
+    Record<string, { readonly builtSnapshot: unknown; readonly disciplineViews: unknown }>
+  >;
 }
 export interface IdgRouteSeed {
   readonly now?: () => string;
@@ -377,6 +477,12 @@ export interface IdgRouteSeed {
   readonly disciplinesByMembership?: Readonly<Record<string, string>>;
   /** Per-meeting review-floor breaches the `per_patient_review_floor_clear` predicate surfaces (default none). */
   readonly reviewFloorBreaches?: Readonly<Record<string, readonly ReviewFloorBreachFact[]>>;
+  /**
+   * Org id -> the ACTIVE membership ids of that org (the identity dataset the DB backend reads from M1's
+   * `membership`). When given, `scheduleMeeting` rejects an explicit `coordinatorMembershipId` outside the
+   * caller's org list; when omitted the slice has no identity dataset and does not enforce (DB backend does).
+   */
+  readonly activeMembershipsByOrg?: Readonly<Record<string, readonly string[]>>;
 }
 
 interface MeetingRow {
@@ -387,6 +493,7 @@ interface MeetingRow {
   scheduledStart: string;
   scheduledEnd: string;
   adjournedAt: string | null;
+  coordinatorMembershipId: string;
   includedPatientIds: Set<string>;
 }
 interface AttendanceRow {
@@ -477,6 +584,10 @@ export function createInMemoryIdgBackend(
   const disciplines = seed.disciplinesByMembership ?? {};
   const reviewFloorBreaches = seed.reviewFloorBreaches ?? {};
 
+  /** meetingId → patientId → stored packet jsonb (seeded; the slice never builds packets). */
+  const packetSeeds = new Map<string, NonNullable<IdgMeetingSeed["packets"]>>();
+  for (const m of seed.meetings ?? []) if (m.packets) packetSeeds.set(m.id, m.packets);
+
   const meetings = new Map<string, MeetingRow>();
   for (const m of seed.meetings ?? []) {
     meetings.set(m.id, {
@@ -487,6 +598,7 @@ export function createInMemoryIdgBackend(
       scheduledStart: m.scheduledStart,
       scheduledEnd: m.scheduledEnd,
       adjournedAt: null,
+      coordinatorMembershipId: m.coordinatorMembershipId ?? "00000000-0000-4000-8000-0000000000c0",
       includedPatientIds: new Set(m.includedPatientIds ?? []),
     });
   }
@@ -518,6 +630,7 @@ export function createInMemoryIdgBackend(
       scheduledStart: m.scheduledStart,
       scheduledEnd: m.scheduledEnd,
       adjournedAt: m.adjournedAt,
+      coordinatorMembershipId: m.coordinatorMembershipId,
     };
   }
   /** The disciplines PRESENT (present/tardy/partial) at the meeting right now (the quorum present-set). */
@@ -564,6 +677,7 @@ export function createInMemoryIdgBackend(
           status: m.status,
           scheduledStart: m.scheduledStart,
           scheduledEnd: m.scheduledEnd,
+          coordinatorMembershipId: m.coordinatorMembershipId,
         }));
     },
     async createRecurringPolicy(_orgId, _userId, args) {
@@ -587,6 +701,49 @@ export function createInMemoryIdgBackend(
     },
 
     // ── meeting lifecycle ────────────────────────────────────────────────────────────────────────────────
+    async scheduleMeeting(orgId, userId, args) {
+      validateMeetingWindow(args.scheduledStart, args.scheduledEnd, Date.parse(now()));
+      if (
+        args.coordinatorMembershipId !== undefined &&
+        seed.activeMembershipsByOrg !== undefined &&
+        !(seed.activeMembershipsByOrg[orgId] ?? []).includes(args.coordinatorMembershipId)
+      ) {
+        throw invalidCoordinatorError();
+      }
+      const s = Date.parse(args.scheduledStart);
+      const e = Date.parse(args.scheduledEnd);
+      for (const o of meetings.values()) {
+        if (o.organizationId !== orgId || o.locationId !== args.locationId) continue;
+        if (o.status === "cancelled" || o.status === "rescheduled") continue;
+        if (Date.parse(o.scheduledStart) < e && Date.parse(o.scheduledEnd) > s) {
+          throw new WardenXError(
+            "IDG_MEETING_OVERLAP",
+            "another IDG meeting at this location overlaps the requested window",
+            409,
+          );
+        }
+      }
+      const id = globalThis.crypto.randomUUID(); // a real uuid so the id round-trips the `:id` uuid params
+      const row: MeetingRow = {
+        id,
+        organizationId: orgId,
+        locationId: args.locationId,
+        status: "scheduled",
+        scheduledStart: new Date(s).toISOString(),
+        scheduledEnd: new Date(e).toISOString(),
+        adjournedAt: null,
+        coordinatorMembershipId: args.coordinatorMembershipId ?? userId,
+        includedPatientIds: new Set(),
+      };
+      meetings.set(id, row);
+      emit("m14.meeting.scheduled", {
+        meetingId: id,
+        locationId: row.locationId,
+        scheduledStart: row.scheduledStart,
+        scheduledEnd: row.scheduledEnd,
+      });
+      return toMeetingView(row);
+    },
     async getMeeting(orgId, id) {
       return toMeetingView(meetingOf(orgId, id));
     },
@@ -636,6 +793,7 @@ export function createInMemoryIdgBackend(
         scheduledStart: args.newScheduledStart,
         scheduledEnd: args.newScheduledEnd,
         adjournedAt: null,
+        coordinatorMembershipId: m.coordinatorMembershipId,
         includedPatientIds: new Set(m.includedPatientIds),
       });
       emit("m14.meeting.rescheduled", {
@@ -768,14 +926,32 @@ export function createInMemoryIdgBackend(
         frozenAt: m.status === "adjourned" ? m.adjournedAt : null,
       }));
     },
-    async getPacket(orgId, meetingId, patientId) {
+    async getPacket(orgId, meetingId, patientId, viewer) {
       const m = meetingOf(orgId, meetingId);
       if (!m.includedPatientIds.has(patientId)) throw new NotFoundError("idg_patient_packet");
+      const stored = packetSeeds.get(meetingId)?.[patientId];
+      const mapped = stored
+        ? await mapPacketContent(
+            stored,
+            () => viewer?.sudDisclosureAllowed(patientId) ?? Promise.resolve(false),
+          )
+        : {
+            content: null,
+            appliedSudRedaction: false,
+            redactionNotice: null,
+            redactedEntryCount: 0,
+          };
+      if (mapped.appliedSudRedaction) {
+        viewer?.onSudRedaction?.({ patientId, redactedEntryCount: mapped.redactedEntryCount });
+      }
       return {
         packetId: nextId("idg-pkt"),
         meetingId,
         patientId,
         frozenAt: m.status === "adjourned" ? m.adjournedAt : null,
+        content: mapped.content,
+        appliedSudRedaction: mapped.appliedSudRedaction,
+        redactionNotice: mapped.redactionNotice,
       };
     },
     async getPatientIdgHistory(orgId, patientId) {
@@ -992,7 +1168,17 @@ export function createInMemoryIdgBackend(
     async getMinutes(orgId, meetingId) {
       meetingOf(orgId, meetingId);
       const row = ensureMinutes(meetingId);
-      return { ...row };
+      const finalizerAttendance =
+        row.finalizedByMembershipId === null
+          ? undefined
+          : [...attendance.values()].find(
+              (a) => a.meetingId === meetingId && a.membershipId === row.finalizedByMembershipId,
+            );
+      return {
+        ...row,
+        renderStatus: minutesRenderStatus(row.status, row.minutesDocumentId),
+        finalizedByDiscipline: finalizerAttendance?.discipline ?? null,
+      };
     },
     async submitAmendment(orgId, _userId, minutesId, _amendmentReason) {
       const row = minutesById.get(minutesId);

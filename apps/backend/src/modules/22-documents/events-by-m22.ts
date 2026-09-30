@@ -65,7 +65,7 @@ export const M22_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-139 (#248) — m31 ADDED: M31's own §4.10 "M31 consumes" table names this event (patient-facing
     // kinds) with a real consumer file (`m22-document-rendered-patient-facing.ts`) that creates a
     // `portal_document_share` row for active grants — a real relationship the catalog never declared.
-    declaredConsumers: ["m6", "m11", "m12", "m13", "m21", "m27", "m31", "m33"],
+    declaredConsumers: ["m6", "m11", "m12", "m13", "m14", "m21", "m27", "m31", "m33"],
     isOutboxOnly: true,
   },
 ];

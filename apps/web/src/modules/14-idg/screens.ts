@@ -15,11 +15,11 @@
 //     finished earlier today. The screen's own status filter offers `Live` and `Adjourned`, neither of
 //     which could ever match a row. It is anchored at the start of today now.
 //
-// LEFT AS A FINDING: `/idg/schedule` is a per-location read that takes its location from `?location=`,
-// the nav entry points at the bare path, and the screen's answer to a missing location is an EmptyState
-// with no picker in it. Followed as a user follows it, the IDG Schedule nav item is permanently empty
-// on every deployment, whatever is on the calendar. Which locations a coordinator may pick from — and
-// whether the shell should carry a location context at all — is a design decision, not a bug fix.
+// RESOLVED: `/idg/schedule` is a per-location read, and the nav entry points at the bare path. The
+// screen now names the sites the caller can see (`GET /locations`) in a picker and opens the first
+// active one when `?location=` is absent, so the nav item lands on a real schedule instead of an
+// EmptyState. Whether the shell should carry a location context of its own remains a design decision;
+// this picker is local to the schedule and does not persist across screens.
 import type { ScreenRegistryModule } from "@wardenx/types";
 // apps/web/src/modules/14-idg — M14 IDG screen registration (Track B, ADR-0030, M14-T07).
 // The §5 IDG read screens that have a backing M14 read route on the generated client: the IDG Schedule
@@ -42,8 +42,9 @@ import type { ScreenRegistryModule } from "@wardenx/types";
 //     tombstone column). A control over it would report a removal that did not happen (the F-007 rule).
 //   • The `care_plan_update` decision beyond `problem_add` — its other five mutation ops address M7 plan
 //     elements by uuid and need the care-plan element picker on the M07 surface.
-//   • Socket.IO real-time decision/action-item propagation, and the Capacitor Mobile Live variant. The
-//     live surface reloads its three ledgers after each write, which is correct if less live.
+//   • Socket.IO real-time decision/action-item propagation (no realtime gateway exists yet), and the
+//     Capacitor Mobile Live variant. Until then the live surface reloads its ledgers after each write AND
+//     polls them every ~10s while the meeting is `live` and the tab is visible (`use-live-refresh.ts`).
 //   • The action-item link-artifact / add-note surfaces — no route mints either.
 //   • The M22 minutes/packet PDF render and the M28 FHIR CareTeam/Encounter projection (Wave F/H).
 import { lazy } from "react";

@@ -94,6 +94,20 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       )
     ).rows[0].id as string;
   }
+  /** Seed a user + a membership of the given status in `org`; returns the membership id. */
+  async function seedMembership(org: string, status: string): Promise<string> {
+    const userId = randomUUID();
+    await admin.query(`INSERT INTO "user" (id,email) VALUES ($1,$2)`, [
+      userId,
+      `m14-${userId}@x.test`,
+    ]);
+    return (
+      await admin.query(
+        `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,$3) RETURNING id`,
+        [userId, org, status],
+      )
+    ).rows[0].id as string;
+  }
   async function seedInProgressMinutes(org: string, meetingId: string): Promise<string> {
     return (
       await admin.query(
@@ -654,9 +668,116 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(rows).toHaveLength(0);
   });
 
+  it("scheduleMeeting persists a 'scheduled' ad-hoc meeting, defaults + honours the coordinator, emits m14.meeting.scheduled, rejects overlap", async () => {
+    const start = new Date("2031-03-04T15:00:00.000Z");
+    const end = new Date("2031-03-04T17:00:00.000Z");
+    const args = {
+      locationId: locationOf[ORG_A],
+      scheduledStart: start.toISOString(),
+      scheduledEnd: end.toISOString(),
+    };
+    const created = await svc.scheduleMeeting(ORG_A, MEMBER, args);
+    expect(created).toMatchObject({
+      status: "scheduled",
+      locationId: locationOf[ORG_A],
+      coordinatorMembershipId: MEMBER, // defaults to the acting membership
+      adjournedAt: null,
+    });
+    expect(await eventsFor(created.id)).toContain("m14.meeting.scheduled");
+    const { rows } = await admin.query(
+      "SELECT recurring_policy_id, organization_id, status FROM idg_meeting WHERE id=$1",
+      [created.id],
+    );
+    expect(rows[0]).toMatchObject({
+      recurring_policy_id: null,
+      organization_id: ORG_A,
+      status: "scheduled",
+    });
+
+    // the coordinator reaches the read model (detail + schedule list)
+    expect((await svc.getMeeting(ORG_A, created.id)).coordinatorMembershipId).toBe(MEMBER);
+    const listed = await svc.listSchedule(ORG_A, {
+      location: locationOf[ORG_A],
+      from: "2031-03-01T00:00:00.000Z",
+      to: "2031-03-31T00:00:00.000Z",
+    });
+    expect(listed.find((m) => m.id === created.id)?.coordinatorMembershipId).toBe(MEMBER);
+
+    // overlap → 409 IDG_MEETING_OVERLAP; back-to-back + explicit coordinator OK
+    await expect(
+      svc.scheduleMeeting(ORG_A, MEMBER, {
+        ...args,
+        scheduledStart: new Date(start.getTime() + 3_600_000).toISOString(),
+        scheduledEnd: new Date(end.getTime() + 3_600_000).toISOString(),
+      }),
+    ).rejects.toMatchObject({ statusCode: 409, code: "IDG_MEETING_OVERLAP" });
+    const other = await seedMembership(ORG_A, "active"); // an explicit coordinator must be a real active member
+    const adjacent = await svc.scheduleMeeting(ORG_A, MEMBER, {
+      ...args,
+      scheduledStart: end.toISOString(),
+      scheduledEnd: new Date(end.getTime() + 3_600_000).toISOString(),
+      coordinatorMembershipId: other,
+    });
+    expect(adjacent.coordinatorMembershipId).toBe(other);
+
+    // a cancelled meeting frees its slot
+    await svc.cancelMeeting(ORG_A, MEMBER, adjacent.id, "test");
+    await expect(
+      svc.scheduleMeeting(ORG_A, MEMBER, {
+        ...args,
+        scheduledStart: end.toISOString(),
+        scheduledEnd: new Date(end.getTime() + 3_600_000).toISOString(),
+      }),
+    ).resolves.toMatchObject({ status: "scheduled" });
+  });
+
+  it("scheduleMeeting: org B cannot see org A's ad-hoc meeting (RLS, wardenx_app)", async () => {
+    const m = await svc.scheduleMeeting(ORG_A, MEMBER, {
+      locationId: locationOf[ORG_A],
+      scheduledStart: "2032-03-04T15:00:00.000Z",
+      scheduledEnd: "2032-03-04T16:00:00.000Z",
+    });
+    await expect(svc.getMeeting(ORG_B, m.id)).rejects.toMatchObject({ statusCode: 404 });
+  });
+
   it("RLS: org B cannot start or read org A's meeting (404 under the wardenx_app policy)", async () => {
     const m = await seedMeeting(ORG_A, "packets_ready");
     await expect(svc.getMeeting(ORG_B, m)).rejects.toMatchObject({ statusCode: 404 });
     await expect(svc.startMeeting(ORG_B, MEMBER, m)).rejects.toMatchObject({ statusCode: 404 });
+  });
+  it("scheduleMeeting: coordinatorMembershipId must be an ACTIVE membership of the caller's org (422, uniform, wardenx_app)", async () => {
+    const active = await seedMembership(ORG_A, "active");
+    const pending = await seedMembership(ORG_A, "pending");
+    const revoked = await seedMembership(ORG_A, "revoked");
+    const foreignOrg = await seedMembership(ORG_B, "active");
+    const window = (day: number) => ({
+      locationId: locationOf[ORG_A],
+      scheduledStart: `2033-05-${String(day).padStart(2, "0")}T15:00:00.000Z`,
+      scheduledEnd: `2033-05-${String(day).padStart(2, "0")}T16:00:00.000Z`,
+    });
+    const messages: string[] = [];
+    for (const bad of [foreignOrg, pending, revoked, randomUUID()]) {
+      const err = await svc
+        .scheduleMeeting(ORG_A, MEMBER, { ...window(2), coordinatorMembershipId: bad })
+        .then(
+          () => null,
+          (e: { statusCode?: number; code?: string; message?: string }) => e,
+        );
+      expect(err).toMatchObject({ statusCode: 422, code: "VALIDATION_FAILED" });
+      messages.push(JSON.stringify(err));
+    }
+    // foreign-org id is indistinguishable from a made-up id (no cross-tenant existence oracle)
+    expect(messages[0]).toBe(messages[3]);
+    // nothing was persisted for the rejected attempts
+    const { rows } = await admin.query(
+      "SELECT count(*)::int AS n FROM idg_meeting WHERE organization_id=$1 AND scheduled_start=$2",
+      [ORG_A, "2033-05-02T15:00:00.000Z"],
+    );
+    expect(rows[0].n).toBe(0);
+    const ok = await svc.scheduleMeeting(ORG_A, MEMBER, {
+      ...window(3),
+      coordinatorMembershipId: active,
+    });
+    expect(ok.coordinatorMembershipId).toBe(active);
   });
 });

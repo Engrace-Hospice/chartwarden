@@ -150,7 +150,10 @@ export async function readShiftIsAssigned(
  * (a standing caseload patient) never pays a Redis round trip, and a shift-only patient falls through to
  * the cache. See the file header for why a Redis read error degrades rather than propagates.
  */
-export function createCaseloadStoreWithShiftCache(base: CaseloadStore, redis: Redis): CaseloadStore {
+export function createCaseloadStoreWithShiftCache(
+  base: CaseloadStore,
+  redis: Redis,
+): CaseloadStore {
   return {
     async isAssigned(organizationId, userId, patientId) {
       if (await base.isAssigned(organizationId, userId, patientId)) return true;

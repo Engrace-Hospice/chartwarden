@@ -1300,12 +1300,17 @@ import {
   ValidationQuerySchema as M10ValidationQuerySchema,
 } from "../../apps/backend/src/modules/10-hope/routes/hope-typebox";
 import {
+  HeldTransmissionsQuerySchema as M11HeldTransmissionsQuerySchema,
+  HeldTransmissionsResponseSchema as M11HeldTransmissionsResponseSchema,
+} from "../../apps/backend/src/modules/11-orders/routes/held-transmissions-typebox";
+import {
+  CancelLabTransmissionRecoveryResponseSchema as M11CancelLabTransmissionRecoveryResponseSchema,
   CompleteOrderRequest as M11CompleteOrderRequest,
   CorrectOrderRequest as M11CorrectOrderRequest,
   CosignRequest as M11CosignRequest,
   CreateOrderRequest as M11CreateOrderRequest,
-  CreateVerbalOrderRequest as M11CreateVerbalOrderRequest,
   CreateStandingOrderRequest as M11CreateStandingOrderRequest,
+  CreateVerbalOrderRequest as M11CreateVerbalOrderRequest,
   DiscontinueRequest as M11DiscontinueRequest,
   DiscontinueStandingOrderRequest as M11DiscontinueStandingOrderRequest,
   OrderDetailResponseSchema as M11OrderDetailResponseSchema,
@@ -1313,11 +1318,10 @@ import {
   OrderListResponseSchema as M11OrderListResponseSchema,
   OrderViewResponseSchema as M11OrderViewResponseSchema,
   RecordVerbalRequest as M11RecordVerbalRequest,
+  RecoverLabTransmissionRequest as M11RecoverLabTransmissionRequest,
+  RecoverLabTransmissionResponseSchema as M11RecoverLabTransmissionResponseSchema,
   RegenerateVerbalTimerRequest as M11RegenerateVerbalTimerRequest,
   RequestSignatureRequest as M11RequestSignatureRequest,
-  RecoverLabTransmissionRequest as M11RecoverLabTransmissionRequest,
-  CancelLabTransmissionRecoveryResponseSchema as M11CancelLabTransmissionRecoveryResponseSchema,
-  RecoverLabTransmissionResponseSchema as M11RecoverLabTransmissionResponseSchema,
   ResendLabTransmissionResponseSchema as M11ResendLabTransmissionResponseSchema,
   SignOnBehalfRequest as M11SignOnBehalfRequest,
   SignOrderRequest as M11SignOrderRequest,
@@ -1332,10 +1336,6 @@ import {
   VerbalPolicyViewResponseSchema as M11VerbalPolicyViewResponseSchema,
 } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
 import {
-  HeldTransmissionsQuerySchema as M11HeldTransmissionsQuerySchema,
-  HeldTransmissionsResponseSchema as M11HeldTransmissionsResponseSchema,
-} from "../../apps/backend/src/modules/11-orders/routes/held-transmissions-typebox";
-import {
   ApproveRefillRequest as M12ApproveRefillRequest,
   CompleteRequest as M12CompleteRequest,
   ControlledSubstancePolicyRequest as M12ControlledSubstancePolicyRequest,
@@ -1347,13 +1347,13 @@ import {
   DiscontinueRequest as M12DiscontinueRequest,
   EnrollPrescriberRequest as M12EnrollPrescriberRequest,
   HistoryRefreshResponseSchema as M12HistoryRefreshResponseSchema,
+  MedicationErrorReportResponseSchema as M12MedicationErrorReportResponseSchema,
   MedicationHistoryResponseSchema as M12MedicationHistoryResponseSchema,
   MedicationOrderListQuerySchema as M12MedicationOrderListQuerySchema,
   MedicationOrderListResponseSchema as M12MedicationOrderListResponseSchema,
   MedicationOrderResponseSchema as M12MedicationOrderResponseSchema,
   NewOrderIdResponseSchema as M12NewOrderIdResponseSchema,
   PrescriberRosterListResponseSchema as M12PrescriberRosterListResponseSchema,
-  MedicationErrorReportResponseSchema as M12MedicationErrorReportResponseSchema,
   ReconcileRequest as M12ReconcileRequest,
   RecordVerbalRequest as M12RecordVerbalRequest,
   RefillInboxPolicyRequest as M12RefillInboxPolicyRequest,
@@ -1425,8 +1425,9 @@ import {
   DecisionViewSchema as M14DecisionViewSchema,
   MeetingViewSchema as M14MeetingViewSchema,
   MinutesViewSchema as M14MinutesViewSchema,
-  PacketDigestViewSchema as M14PacketDigestViewSchema,
+  PacketDetailViewSchema as M14PacketDetailViewSchema,
   PacketListResponseSchema as M14PacketListResponseSchema,
+  RecertWindowsResponseSchema as M14RecertWindowsResponseSchema,
   RecordAttendanceRequest as M14RecordAttendanceRequest,
   RecordDecisionRequest as M14RecordDecisionRequest,
   RecurringPolicyRequest as M14RecurringPolicyRequest,
@@ -1434,6 +1435,7 @@ import {
   RemovedResponseSchema as M14RemovedResponseSchema,
   RescheduleMeetingRequest as M14RescheduleMeetingRequest,
   ScheduleListResponseSchema as M14ScheduleListResponseSchema,
+  ScheduleMeetingRequest as M14ScheduleMeetingRequest,
   ScheduleQuerySchema as M14ScheduleQuerySchema,
   SubmitAmendmentRequest as M14SubmitAmendmentRequest,
   SupersedeDecisionRequest as M14SupersedeDecisionRequest,
@@ -4750,6 +4752,13 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M14RecurringPolicyRequest,
     response: M14RecurringPolicyViewSchema,
   },
+  "POST /api/v1/idg/meetings": {
+    summary: "Schedule a single (ad-hoc) IDG meeting",
+    body: M14ScheduleMeetingRequest,
+    response: M14MeetingViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
   "GET /api/v1/idg/meetings/:id": {
     summary: "Read one IDG meeting's lifecycle view",
     response: M14MeetingViewSchema,
@@ -4793,8 +4802,9 @@ Object.assign(ROUTE_ENRICHMENTS, {
     response: M14PacketListResponseSchema,
   },
   "GET /api/v1/idg/meetings/:meetingId/packets/:patientId": {
-    summary: "Read one patient's packet (SUD redaction applied)",
-    response: M14PacketDigestViewSchema,
+    summary:
+      "Read one patient's packet with its content — cover summary (deterministic), per-discipline views, signed encounters, assessment changes, HOPE, order/medication changes, flagged events, carry-forward items (SUD redaction applied per caller)",
+    response: M14PacketDetailViewSchema,
   },
   "GET /api/v1/idg/meetings/:id/attendance": {
     summary:
@@ -4804,6 +4814,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/idg/meetings/:id/agenda": {
     summary: "The meeting's agenda in sort_order (F-062: add/update/remove had no reader)",
     response: M14AgendaListResponseSchema,
+  },
+  "GET /api/v1/idg/meetings/:id/recert-windows": {
+    summary:
+      "Per-agenda-patient recert / face-to-face windows for the IDG right pane — next recert due date, benefit-period end, F2F status/window (seam-pulled from M6's window math, org-timezone; unresolved patients are `unknown`, never fabricated)",
+    response: M14RecertWindowsResponseSchema,
   },
   "GET /api/v1/idg/meetings/:id/decisions": {
     summary:
