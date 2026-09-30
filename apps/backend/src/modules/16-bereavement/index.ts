@@ -51,6 +51,12 @@ export {
   M16_CONSENT_SIGNED_CONSUMER,
   buildM16ConsentSignedConsumer,
 } from "./outbox-consumers/m39-consent-signed";
+// F-227 (#248) — the D18 external-source gate release (`m6.discharge.cosigned`).
+export {
+  type DischargeCosignedDeps,
+  M16_DISCHARGE_COSIGNED_CONSUMER,
+  buildM16DischargeCosignedConsumer,
+} from "./outbox-consumers/m6-discharge-cosigned";
 export {
   type PatientOptOutChangedDeps,
   M16_PATIENT_OPT_OUT_CHANGED_CONSUMER,

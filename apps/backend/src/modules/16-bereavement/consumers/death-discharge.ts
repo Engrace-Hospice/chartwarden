@@ -30,16 +30,16 @@
 // Inventing a death date from `eligibleAt` would silently mis-anchor the regulatory clock, which is worse
 // than a dead-lettered event a human can re-drive.
 //
-// KNOWN LIMITATION, carried from the seam's own contract: M6's frozen `discharge_event` models only the
-// death fact, so its `DeathDischargeReader` impl currently returns `source='internal_clinician_recorded'`
-// for every decedent. M16 branches on the CONTRACT, so external-source plans start being created — with
-// their D18 cosign gate — the day M6 models HL7-external death intake, with no change here.
+// F-227 (#248): M6 now models HL7-external death intake (`discharge_event.source`/`source_proposal_id`/
+// cosign columns), so the seam returns real provenance and external-source plans are created with their D18
+// cosign gate and the REAL proposal id.
 import { localDateInTimeZone } from "@wardenx/shared/dates";
 import type {
   AdmissionId,
   BereavementExternalSourceMetadata,
   DeathDischargeRow,
   IsoInstant,
+  MembershipId,
   PatientId,
 } from "@wardenx/types";
 import { getDeathDischargeReader } from "../seams/index";
@@ -90,6 +90,11 @@ export interface ResolvedDeathFact {
   readonly cosignStatus: DeathDischargeRow["cosignStatus"];
   /** M6's admission-level discharge date, for the §2.5 cross-check. Null when M6 has none recorded. */
   readonly admissionDischargeDate: string | null;
+  /** F-227 — the REAL M29 proposal id M6 stamped on an `hl7_external` death (absent for internal deaths). */
+  readonly sourceProposalId?: string;
+  /** F-227 — the director attestation once M6 recorded it (only with `cosignStatus='cosigned'`). */
+  readonly cosignedAt?: IsoInstant;
+  readonly medicalDirectorMembershipId?: string;
   /** The admission's service location. Nullable on `bereavement_plan` by design — a post-death transfer
    *  can leave the decedent's location unresolved (see that table's own tenancy note). */
   readonly locationId: string | null;
@@ -213,6 +218,11 @@ export async function resolveDeathFact(
     deathDate: deathCalendarDate(match.deathAt, timezone),
     source: match.source,
     cosignStatus: match.cosignStatus,
+    ...(match.sourceProposalId !== undefined ? { sourceProposalId: match.sourceProposalId } : {}),
+    ...(match.cosignedAt !== undefined ? { cosignedAt: match.cosignedAt } : {}),
+    ...(match.medicalDirectorMembershipId !== undefined
+      ? { medicalDirectorMembershipId: match.medicalDirectorMembershipId }
+      : {}),
     // F-105 — DELIBERATELY null, and it is not the same as "M6 has no discharge date".
     //
     // `checkDeathDateMatchesAdmission`'s second parameter is named `admissionDeathDate` and its message
@@ -240,22 +250,41 @@ export async function resolveDeathFact(
  * D16 — the `external_source_metadata` blob an external-source plan is stamped with, or `null` for an
  * internal-clinician-recorded death (which is never gated).
  *
- * The seam carries the provenance FACTS M6 can prove (`source`, `cosignStatus`) but not the HL7 message
- * identifiers §4.3.1's payload sketch lists — M6 does not model them yet. Rather than fabricate them, the
- * identifier fields carry the admission-scoped correlation M16 does have, and `cosignStatus` falls back to
- * `'pending'`: an external-source plan whose cosign state is unknown must GATE first contact, not sail
- * past it (the same fail-closed reading `evaluateExternalSourceGate` takes on a malformed blob).
+ * F-227 (#248) — `sourceProposalId` is the REAL M29 proposal id M6 stamped on the death (`discharge_event.
+ * source_proposal_id`, read through the seam); it used to be FABRICATED from `admissionId`, which could
+ * never equal the id on a later `m6.discharge.cosigned`, so the D18 release could not have matched. A
+ * hl7_external row with no proposal id violates M6's own CHECK (migration 0300) — refuse rather than invent.
+ * The HL7 message identifiers §4.3.1 lists beyond the proposal (`sourceMessageId`, facility mdm/name) are
+ * still not modelled by M6 and carry the proposal id / empty string. `cosignStatus` falls back to
+ * `'pending'`: an external-source plan whose cosign state is unknown must GATE first contact (the same
+ * fail-closed reading `evaluateExternalSourceGate` takes on a malformed blob). When the director already
+ * attested before the plan was opened, the facts ride along.
  */
 export function externalSourceMetadataFor(
   fact: ResolvedDeathFact,
 ): BereavementExternalSourceMetadata | null {
   if (fact.source !== "hl7_external") return null;
+  if (fact.sourceProposalId === undefined) {
+    throw new Error(
+      `bereavement: hl7_external death for admission ${fact.admissionId} carries no source proposal id`,
+    );
+  }
+  const cosigned =
+    fact.cosignStatus === "cosigned" &&
+    fact.cosignedAt !== undefined &&
+    fact.medicalDirectorMembershipId !== undefined;
   return {
-    sourceProposalId: fact.admissionId,
-    sourceMessageId: fact.admissionId,
+    sourceProposalId: fact.sourceProposalId,
+    sourceMessageId: fact.sourceProposalId,
     sourceFacilityMdmId: "",
     sourceFacilityName: "",
     ackReceivedAt: fact.deathAt,
-    cosignStatus: fact.cosignStatus === "cosigned" ? "cosigned" : "pending",
+    cosignStatus: cosigned ? "cosigned" : "pending",
+    ...(cosigned
+      ? {
+          cosignedAt: fact.cosignedAt,
+          medicalDirectorMembershipId: fact.medicalDirectorMembershipId as MembershipId,
+        }
+      : {}),
   };
 }

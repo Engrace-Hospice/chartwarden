@@ -3,6 +3,7 @@
 // patient identifier; tenancy via the admission FK). Cross-module refs (M40 death certifier, M22
 // document) are plain uuid app-validated; the admission FK is intra-M6. One discharge per admission
 // (unique). RLS + the M4 write-audit trigger land in M6-T03 (§3.6–3.7).
+import { sql } from "drizzle-orm";
 import {
   bigint,
   boolean,
@@ -38,12 +39,24 @@ export const dischargeEvents = pgTable(
     narrative: text("narrative"),
     documentId: uuid("document_id"), // M22 document (app-validated)
     bereavementEligible: boolean("bereavement_eligible").notNull().default(false),
+    // F-227 (#248) — M6 §4.8.4 / W-M6-31 provenance + the medical-director cosign facts (migration 0300).
+    // An `hl7_external` death is `completed` immediately but `cosign_required` until the director attests.
+    source: text("source", { enum: ["internal_clinician_recorded", "hl7_external"] })
+      .notNull()
+      .default("internal_clinician_recorded"),
+    sourceProposalId: uuid("source_proposal_id"), // M29 hl7_inbound_proposal (logical, no FK)
+    cosignRequired: boolean("cosign_required").notNull().default(false),
+    medicalDirectorMembershipId: uuid("medical_director_membership_id"), // acting user (logical)
+    cosignedAt: timestamp("cosigned_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
     version: bigint("version", { mode: "number" }).notNull().default(0),
   },
   (t) => ({
     admUnique: uniqueIndex("discharge_admission_idx").on(t.admissionId),
+    sourceProposalUnique: uniqueIndex("discharge_source_proposal_idx")
+      .on(t.organizationId, t.sourceProposalId)
+      .where(sql`source_proposal_id IS NOT NULL`),
   }),
 );
 

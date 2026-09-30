@@ -107,14 +107,18 @@ function factsOf(payload: unknown): {
   dischargeEventId: string;
   admissionId: string;
   dischargeDate: string;
-  deathCertifierId: string;
+  /** F-227 — null for an external (M29) death: the sending facility pronounced it, M6 names no physician. */
+  deathCertifierId: string | null;
 } {
   const record = (payload ?? {}) as Record<string, unknown>;
   return {
     dischargeEventId: stringOf(record, "dischargeEventId"),
     admissionId: stringOf(record, "admissionId"),
     dischargeDate: stringOf(record, "dischargeDate"),
-    deathCertifierId: stringOf(record, "deathCertifierId"),
+    deathCertifierId:
+      typeof record.deathCertifierId === "string" && record.deathCertifierId.length > 0
+        ? record.deathCertifierId
+        : null,
   };
 }
 
@@ -193,7 +197,10 @@ export function buildM37DeathRecordedConsumer(deps: DeathRecordedConsumerDeps) {
                 byMembershipId: M37_SYSTEM_MEMBERSHIP_ID,
                 reason: "death",
               });
-            } else if (eff.kind === "open_body_release") {
+            } else if (eff.kind === "open_body_release" && facts.deathCertifierId !== null) {
+              // F-227 — with no pronouncing physician (external death) the NOT NULL
+              // `pronouncing_physician_id` cannot be filled honestly: the admission still moves to
+              // `deceased` above, but no body-release row is auto-opened (the fabricated alternative is worse).
               // Every fact `ipu_body_release` needs beyond the death itself is already ON `ipu_admission`
               // (ARCH-011) — no cross-module read (see file header).
               const [br] = await tx

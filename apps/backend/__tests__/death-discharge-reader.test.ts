@@ -12,6 +12,10 @@ interface FakeRow {
   patientId: string;
   admissionId: string;
   deathAt: Date | null;
+  source?: "internal_clinician_recorded" | "hl7_external";
+  sourceProposalId?: string | null;
+  cosignedAt?: Date | null;
+  medicalDirectorMembershipId?: string | null;
 }
 
 /** Records the set_config calls + the final query predicate so the test can assert the org envelope opened. */
@@ -42,7 +46,15 @@ function makeFakeDb(rows: readonly FakeRow[]): { db: DbClient; probe: FakeDbProb
               probe.joined = true;
               return {
                 where() {
-                  return Promise.resolve(rows);
+                  return Promise.resolve(
+                    rows.map((r) => ({
+                      source: "internal_clinician_recorded" as const,
+                      sourceProposalId: null,
+                      cosignedAt: null,
+                      medicalDirectorMembershipId: null,
+                      ...r,
+                    })),
+                  );
                 },
               };
             },
@@ -89,6 +101,41 @@ describe("DeathDischargeReader (§4.11 — M30 HVLDL denominator)", () => {
     });
     expect(out[0]?.cosignStatus).toBeUndefined();
     expect(out[1]?.source).toBe("internal_clinician_recorded");
+  });
+
+  it("F-227 — projects REAL hl7_external provenance: pending until the director cosigns, then cosigned", async () => {
+    const { db } = makeFakeDb([
+      {
+        patientId: "pat-5",
+        admissionId: "adm-5",
+        deathAt: new Date("2026-02-20T00:00:00.000Z"),
+        source: "hl7_external",
+        sourceProposalId: "prop-5",
+      },
+      {
+        patientId: "pat-6",
+        admissionId: "adm-6",
+        deathAt: new Date("2026-02-21T00:00:00.000Z"),
+        source: "hl7_external",
+        sourceProposalId: "prop-6",
+        cosignedAt: new Date("2026-02-23T09:00:00.000Z"),
+        medicalDirectorMembershipId: "md-1",
+      },
+    ]);
+    const out = await createDeathDischargeReader(db).listDeathDischargesInPeriod("org-7", period);
+    expect(out[0]).toMatchObject({
+      source: "hl7_external",
+      cosignStatus: "pending",
+      sourceProposalId: "prop-5",
+    });
+    expect(out[0]?.cosignedAt).toBeUndefined();
+    expect(out[1]).toMatchObject({
+      source: "hl7_external",
+      cosignStatus: "cosigned",
+      sourceProposalId: "prop-6",
+      cosignedAt: "2026-02-23T09:00:00.000Z",
+      medicalDirectorMembershipId: "md-1",
+    });
   });
 
   it("skips a defensively-null death timestamp rather than fabricate an instant", async () => {

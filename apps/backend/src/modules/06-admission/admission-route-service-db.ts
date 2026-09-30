@@ -1623,6 +1623,10 @@ export function createDbAdmissionRouteService(
       // fix above, no longer need to.
       dischargeEventId?: string;
       reason?: string;
+      /** F-227 — an external (M29) death: the certifier is the sending facility's, attested later by the
+       *  medical-director cosign (M6 §4.8.4), so R-DC-01's credentialed-certifier guard is satisfied by
+       *  provenance rather than an identified `deathCertifierId`. */
+      externalDeath?: boolean;
     },
   ): Promise<{ state: AdmissionState; version: number }> {
     const [row] = await tx
@@ -1658,7 +1662,8 @@ export function createDbAdmissionRouteService(
       forCauseCosigned: ev.forCauseCosigned,
       deathAt: ev.dischargeType === "death" ? ev.effectiveAt : undefined,
       today: now().toISOString().slice(0, 10),
-      deathCertifierCredentialed: ev.dischargeType === "death" ? !!ev.deathCertifierId : undefined,
+      deathCertifierCredentialed:
+        ev.dischargeType === "death" ? !!ev.deathCertifierId || ev.externalDeath === true : undefined,
     });
     const t = transitionAdmission(row.status as AdmissionState, {
       type: "executeDischarge",
@@ -1668,7 +1673,8 @@ export function createDbAdmissionRouteService(
       forCauseCosigned: ev.forCauseCosigned,
       deathAt: ev.dischargeType === "death" ? ev.effectiveAt : undefined,
       today: ev.effectiveAt,
-      deathCertifierCredentialed: ev.dischargeType === "death" ? !!ev.deathCertifierId : undefined,
+      deathCertifierCredentialed:
+        ev.dischargeType === "death" ? !!ev.deathCertifierId || ev.externalDeath === true : undefined,
     } satisfies AdmissionEvent);
     const r = firstOrThrow(
       await tx
@@ -1718,12 +1724,17 @@ export function createDbAdmissionRouteService(
                 // `dischargeType === "death"`, and `checkDischargeNarrative` already refused the
                 // discharge request upstream if `deathCertifierId` was absent for that reason — so
                 // this is a real, already-verified fact at this point, never a guess.
+                // F-227 — absent (by design) for an external death: the sending facility pronounced it.
                 deathCertifierId:
                   ev.dischargeType === "death"
                     ? (ev.deathCertifierId ??
-                      (() => {
-                        throw conflict("m6.discharge.death cannot be emitted without deathCertifierId");
-                      })())
+                      (ev.externalDeath
+                        ? undefined
+                        : (() => {
+                            throw conflict(
+                              "m6.discharge.death cannot be emitted without deathCertifierId",
+                            );
+                          })()))
                     : undefined,
               },
             }
@@ -5144,11 +5155,18 @@ export function createDbAdmissionRouteService(
       return withOrgContext(db, { organizationId, userId: actorUserId }, async (tx) => {
         // §6.3 — the per-reason narrative gates (for_cause needs a forCauseReason; D11 tightens
         // no_longer_terminal/other). The reason→permission key is enforced at the route preHandler.
+        if (input.externalSource && input.reason !== "death")
+          throw new AdmissionStateError(
+            "DEATH_CERTIFIER_INVALID",
+            "an external-source discharge is only ever a death",
+          );
+        // F-227 — an external (M29-accepted) death names no pronouncing certifier at intake (R-DC-01's
+        // capture is the medical-director cosign's job, M6 §4.8.4); every other gate still applies.
         const issue = checkDischargeNarrative(
           input.reason,
           input.narrative,
           input.forCauseReason,
-          input.deathCertifierId,
+          input.externalSource ? "external-facility" : input.deathCertifierId,
         );
         if (issue) throw new AdmissionStateError(issue.code, issue.message);
         const requiresMedicalDirectorCosign = dischargeRequiresCosign(input.reason);
@@ -5166,6 +5184,7 @@ export function createDbAdmissionRouteService(
                 admissionId,
                 dischargeType: dbType,
                 status: "pending_cosign",
+                cosignRequired: true, // D11 — `medical_director_cosign_required`
                 effectiveAt: input.dischargeDate,
                 narrative: input.narrative,
                 forCauseReason: input.forCauseReason ?? null,
@@ -5223,6 +5242,14 @@ export function createDbAdmissionRouteService(
               deathAt: input.reason === "death" ? new Date(input.dischargeDate) : null,
               deathCertifierId: input.reason === "death" ? (input.deathCertifierId ?? null) : null,
               bereavementEligible: input.reason === "death",
+              // F-227 — W-M6-31 provenance: completed NOW, flagged for the after-the-fact cosign.
+              ...(input.externalSource
+                ? {
+                    source: "hl7_external" as const,
+                    sourceProposalId: input.externalSource.proposalId,
+                    cosignRequired: true,
+                  }
+                : {}),
             })
             .returning({ id: DE.id, status: DE.status, version: DE.version }),
           "discharge insert returned no row",
@@ -5234,6 +5261,7 @@ export function createDbAdmissionRouteService(
           deathCertifierId: input.reason === "death" ? input.deathCertifierId : undefined,
           dischargeEventId: de.id,
           reason: input.reason,
+          externalDeath: input.externalSource !== undefined,
         });
         return {
           id: de.id,
@@ -5259,12 +5287,76 @@ export function createDbAdmissionRouteService(
             version: DE.version,
             admissionId: DE.admissionId,
             effectiveAt: DE.effectiveAt,
+            source: DE.source,
+            sourceProposalId: DE.sourceProposalId,
+            cosignedAt: DE.cosignedAt,
           })
           .from(DE)
           .where(eq(DE.id, id))
           .limit(1);
         if (!cur) throw new ResourceNotFoundError(id);
         assertVersion(id, Number(cur.version), ifVersion);
+        // F-227 (#248) — W-M6-31: an EXTERNAL-source death is already `completed` (admission discharged at
+        // intake); the director's cosign is the after-the-fact attestation, not the completion.
+        if (cur.source === "hl7_external") {
+          if (cur.status !== "completed" || cur.cosignedAt !== null)
+            throw conflict(
+              cur.cosignedAt !== null
+                ? `discharge ${id} was already cosigned`
+                : `discharge ${id} is not awaiting a medical-director cosign (state '${cur.status}')`,
+            );
+          const cosignedAt = now();
+          const r = firstOrThrow(
+            await tx
+              .update(DE)
+              .set({
+                cosignedAt,
+                medicalDirectorMembershipId: actorUserId,
+                version: sql`${DE.version} + 1`,
+                updatedAt: cosignedAt,
+              })
+              .where(and(eq(DE.id, id), eq(DE.version, ifVersion), isNull(DE.cosignedAt)))
+              .returning({ id: DE.id, status: DE.status, version: DE.version }),
+            "discharge not found",
+          );
+          // Close the W-M6-31 `external_discharge_notice` prompt that asked for exactly this attestation.
+          await tx
+            .update(CW)
+            .set({
+              status: "closed",
+              closedAt: cosignedAt,
+              closeReason: "external_death_cosigned",
+              closedBy: actorUserId,
+              version: sql`${CW.version} + 1`,
+              updatedAt: cosignedAt,
+            })
+            .where(
+              and(
+                eq(CW.admissionId, cur.admissionId),
+                eq(CW.windowKind, "external_discharge_notice"),
+                ne(CW.status, "closed"),
+                sql`${CW.payload} ->> 'dischargeEventId' = ${id}`,
+              ),
+            );
+          await outbox.publish(tx, {
+            eventName: "m6.discharge.cosigned",
+            payload: {
+              dischargeEventId: id,
+              medicalDirectorCosignedAt: cosignedAt.toISOString(),
+              admissionId: cur.admissionId,
+              patientId: await patientForAdmission(tx, cur.admissionId),
+              dischargeDate: cur.effectiveAt,
+              reason: "death",
+              // F-227 — everything M16's D18 gate-release (`decideCosignReceipt`) correlates on.
+              sourceProposalId: cur.sourceProposalId ?? undefined,
+              medicalDirectorMembershipId: actorUserId,
+            },
+            organizationId,
+            aggregateKind: "discharge_event",
+            aggregateId: id,
+          });
+          return { id: r.id, state: r.status, version: Number(r.version) };
+        }
         if (cur.status !== "pending_cosign")
           throw conflict(
             `discharge ${id} is not awaiting a medical-director cosign (state '${cur.status}')`,
@@ -5277,6 +5369,9 @@ export function createDbAdmissionRouteService(
             .update(DE)
             .set({
               status: outcome.dischargeState,
+              // F-227 — record the director's cosign facts on the row too (columns exist since 0300).
+              cosignedAt: now(),
+              medicalDirectorMembershipId: actorUserId,
               version: sql`${DE.version} + 1`,
               updatedAt: now(),
             })
