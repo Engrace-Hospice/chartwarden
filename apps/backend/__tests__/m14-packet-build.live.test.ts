@@ -616,6 +616,10 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         [meetingId],
       );
       expect(readyRows[0].payload.builtPacketCount).toBeGreaterThanOrEqual(1);
+      // the M36 T-24h reminder consumer's inputs (it derives the expected attendees from the location itself)
+      expect(readyRows[0].payload.locationId).toEqual(expect.any(String));
+      expect(readyRows[0].payload.scheduledStart).toEqual(expect.any(String));
+      expect(readyRows[0].payload.coordinatorMembershipId).toEqual(expect.any(String));
     });
 
     it("active-org enumeration: the TENANT pool (wardenx_app) sees ZERO orgs under `organization` RLS; the PLATFORM pool " +

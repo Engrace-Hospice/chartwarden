@@ -106,10 +106,17 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     payloadSchema: Type.Object({
       meetingId: id,
       builtPacketCount: Type.Integer({ minimum: 0 }),
+      // Honestly 0: M14 has no invitee roster (idg_attendance rows are check-ins from START on). M36 resolves the
+      // expected attendees itself at consume time from `locationId` (members holding idg.attend / idg.coordinate
+      // scoped to that location, plus the coordinator).
       scheduledAttendees: Type.Integer({ minimum: 0 }),
+      // Additive + optional (the M36 alert consumer's inputs; absent on pre-fix events).
+      locationId: Type.Optional(id),
+      scheduledStart: Type.Optional(isoInstant),
+      coordinatorMembershipId: Type.Optional(id),
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m33", "m36"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -167,9 +174,13 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
       wasQuorate: Type.Boolean(),
       recordedByMembershipId: id,
       recordedAt: isoInstant,
+      // Additive + optional — the non-quorate notice's inputs (M36 raises `m14.decision.non_quorate` only when
+      // `wasQuorate` is false): the meeting's coordinator and the quorum slots that were unmet.
+      coordinatorMembershipId: Type.Optional(id),
+      missingDisciplines: Type.Optional(Type.Array(Type.String())),
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m33", "m36"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -188,8 +199,8 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
        *  even have learned the link from the announcement. */
       linkedArtifactId: nullableId,
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m33", "m36"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   {
@@ -335,9 +346,9 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     // aspirational: `apps/backend/src/modules/30-quality/jobs/m30-jobs.ts` calls
     // `getSeam("IdgScheduleProvider")`, feeding `idg_cadence_adherence`, one of the currently-registered
     // `OPERATIONAL_BOUND_MEASURE_CODES`. Never an outbox push, matching M30's own blanket §1.1
-    // principle.
-    declaredConsumers: [],
-    seamConsumers: ["m30", "m33", "m36"],
+    // principle. M36 is a real PUSH consumer (the compliance audit alert — `m36.idg-review-floor-override-alert`).
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
@@ -357,11 +368,14 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
         Type.Literal("t_plus_1"),
       ]),
       severity: Type.Union([Type.Literal("clinical_routine"), Type.Literal("critical")]),
+      // Additive + optional — the location's IDG coordinator (next upcoming meeting's, else the active recurring
+      // policy's default) for the M36 alert's coordinator tier; absent when the location has neither.
+      coordinatorMembershipId: Type.Optional(id),
     }),
     // F-149 (#248) — m30 MOVED to seamConsumers: same active `IdgScheduleProvider` seam — see
-    // `review_floor.override_recorded` above.
-    declaredConsumers: [],
-    seamConsumers: ["m30", "m33", "m36"],
+    // `review_floor.override_recorded` above. M36 is a real PUSH consumer (`m36.idg-review-clock-alert`).
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   // ── minutes finalize + amendment + packet freeze (§2.2 / §4.4) ──────────────────────────────────────────

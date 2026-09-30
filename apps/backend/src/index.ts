@@ -923,10 +923,12 @@ import {
 } from "./modules/35-subscription/index";
 import {
   M36_OUTBOX_EVENTS,
+  buildIdgAlertConsumers,
   buildIdgCarryForwardComplianceConsumer,
   buildM36ClinicalAlertConsumer,
   createDbMessagingProvider,
   createDrizzleAlertEmitter,
+  createDrizzleIdgAttendeeLookup,
   createDrizzleMembershipUserLookup,
   createDrizzleMessagingEraseStore,
   mountMessagingRoutes,
@@ -5915,6 +5917,23 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               alerts: getSeam("AlertEmitter") as AlertEmitter,
               catalog: m14AlertCatalog.build(),
               membershipUserId: createDrizzleMembershipUserLookup(dbHandle.db),
+            });
+          })(),
+          // M14 §4.10 — the REMAINING typed IDG alerts (packets ready / action item assigned / non-quorate decision /
+          // review-clock escalation / review-floor override), one M36 consumer each, same catalog validation and
+          // correlation-id idempotency; recipients = platform `alert_rule` role_set + resolved user ids.
+          ...(() => {
+            const m14AlertCatalog = createAlertPayloadRegistry();
+            m14AlertCatalog.register(M14_ALERT_PAYLOADS);
+            m14AlertCatalog.assertValid();
+            return buildIdgAlertConsumers({
+              alerts: getSeam("AlertEmitter") as AlertEmitter,
+              catalog: m14AlertCatalog.build(),
+              membershipUserId: createDrizzleMembershipUserLookup(dbHandle.db),
+              meetingAttendees: createDrizzleIdgAttendeeLookup(
+                dbHandle.db,
+                createMembershipsHoldingPermissionReader(dbHandle.db),
+              ),
             });
           })(),
           buildM10AdmissionWorkflowConsumer({

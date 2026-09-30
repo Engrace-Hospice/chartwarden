@@ -17,6 +17,8 @@ const snapshots = vi.hoisted(() => ({ byOrg: new Map<string, unknown[]>() }));
 vi.mock("../src/modules/14-idg/jobs/cron-store", () => ({
   reviewClockPatientsForOrg: async (_tx: unknown, organizationId: string) =>
     snapshots.byOrg.get(organizationId) ?? [],
+  // the M36 alert's coordinator tier read (not under test here)
+  locationCoordinatorsForOrg: async () => new Map<string, string>(),
 }));
 
 const { runReviewClockSweepCron } = await import("../src/modules/14-idg/jobs/cron-workers");

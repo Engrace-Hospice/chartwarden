@@ -977,11 +977,11 @@ Every state change emits one event row into the M1 outbox table inside the same 
 | `m14.meeting.scheduled` | route + schedule worker | `meetingId, locationId, scheduledStart, scheduledEnd` | M33 |
 | `m14.packets.build_started` | `BUILD_PACKETS` transition | `meetingId, includedPatientCount` | M33 |
 | `m14.packets.build_failed_for_patient` | packet builder catch path | `meetingId, patientId, reason, willRetry` | M36 (warn), M33 |
-| `m14.packets.ready` | `PACKETS_READY` transition | `meetingId, builtPacketCount, scheduledAttendees` | M36 (T-24h reminder fanout), M33 |
+| `m14.packets.ready` | `PACKETS_READY` transition | `meetingId, builtPacketCount, scheduledAttendees` (+ optional `locationId, scheduledStart, coordinatorMembershipId` — the M36 reminder's inputs; `scheduledAttendees` is honestly `0`, M14 has no invitee roster) | M36 (T-24h reminder fanout), M33 |
 | `m14.packet.render_requested` | mirror of `packets.ready` for M22 | `meetingId, patientId, packetId, renderPayload` | M22 |
 | `m14.meeting.started` | `START` transition | `meetingId, startedByMembershipId, startedAt` | M36, M33 |
 | `m14.attendance.checked_in` | `POST /attendance` | `meetingId, attendanceId, membershipId, discipline, checkedInAt, isTardy` | M33 |
-| `m14.decision.recorded_open` | `POST /decisions` | `decisionId, meetingId, patientId, decisionKind, wasQuorate, recordedByMembershipId, recordedAt` | M36 (if `was_quorate=false`, low-severity notice to coordinator), M33 |
+| `m14.decision.recorded_open` | `POST /decisions` | `decisionId, meetingId, patientId, decisionKind, wasQuorate, recordedByMembershipId, recordedAt` (+ optional `coordinatorMembershipId, missingDisciplines`, set only when `wasQuorate=false`) | M36 (if `was_quorate=false`, low-severity notice to coordinator), M33 |
 | `m14.action_item.created` | `POST /action-items` | `actionItemId, meetingId, decisionId, patientId, assignedToMembershipId, dueDate, linkedArtifactKind` | M36 (DM to assignee), M33 |
 | `m14.action_item.status_changed` | `PATCH /action-items/:id` | `actionItemId, fromStatus, toStatus, actorMembershipId` | M36 (if completed), M33 |
 | `m14.action_item.auto_closed` | auto-close consumer | `actionItemId, linkedArtifactKind, linkedArtifactId, closeTrigger` | M36 (info to assignee), M33 |
@@ -991,7 +991,7 @@ Every state change emits one event row into the M1 outbox table inside the same 
 | `m14.meeting.cancelled` | `CANCEL` transition | `meetingId, cancelledBy, cancellationReason, cancelledAt` | M36 (warn to attendees), M33 |
 | `m14.meeting.rescheduled` | `RESCHEDULE` transition | `priorMeetingId, newMeetingId, newScheduledStart, reason` | M36, M33 |
 | `m14.review_floor.override_recorded` | CANCEL/RESCHEDULE override path (M14-F01 / ADR-0018 D2) | `meetingId, actorMembershipId, reason, breachingPatients: {patientId, floorAt}[], overriddenAt` | M36 (warn to Compliance), M30 (cadence-adherence measure), M33 |
-| `m14.review_clock.escalated` | `idg.review-clock-sweep` cron (M14-F01 / ADR-0018 D2) | `admissionId, patientId, locationId, lastIdgReviewedAt, floorAt, stage: 't_minus_3'\|'t_zero'\|'t_plus_1', severity` | M36 (clinical_routine → critical), M30, M33 |
+| `m14.review_clock.escalated` | `idg.review-clock-sweep` cron (M14-F01 / ADR-0018 D2) | `admissionId, patientId, locationId, lastIdgReviewedAt, floorAt, stage: 't_minus_3'\|'t_zero'\|'t_plus_1', severity` (+ optional `coordinatorMembershipId` — the location's next upcoming meeting's coordinator, else its active recurring policy's default) | M36 (clinical_routine → critical), M30, M33 |
 | `m14.minutes.signed` | adjournment-time (mirror of `meeting.adjourned` for M22) | `minutesId, meetingId, finalizedByMembershipId, renderPayload` | M22 |
 | `m14.minutes.amended` | `POST /amendments` approved | `amendmentId, minutesId, requestedByMembershipId, approvedByMembershipId, amendmentReasonHash` | M22 (re-render), M28, M33 |
 | `m14.packet.frozen` | `ADJOURN` transition (per packet) | `meetingId, patientId, packetId, frozenAt` | M33 |
@@ -1302,6 +1302,33 @@ export type IdgReviewFloorOverrideAlert = {
   bodyTemplate: string
 }
 ```
+
+#### 4.10.1 As built: the remaining typed alerts (M36 consumers)
+
+> Every payload above has a live M36 consumer (`36-messaging/outbox-consumers/idg-alerts.ts`, sibling of the
+> carry-forward consumer; M36 never imports M14 — the composition root hands each consumer the registered catalog
+> entry). Each validates its payload against this catalog entry before emitting through the real `AlertEmitter` and
+> **throws** (relay retry → DLQ) on a malformed event or a catalog failure; a legitimately empty audience raises nothing.
+> The catalog's resolver names are **not** values of the closed `alert_recipient_resolver` enum — each is realised as a
+> platform `alert_rule` (`role_set` + `userIdPaths` / `roleKeysPath`; no migration).
+>
+> | Alert | Source event | Audience | Emit severity / channels | Correlation id (idempotency) |
+> |---|---|---|---|---|
+> | `m14.packets.ready` | `m14.packets.ready` | the meeting's **expected attendees** — M14 has no invitee roster, so M36 derives it: active members whose unexpired enabled role grants `idg.attend` or `idg.coordinate` and whose location scope (`membership.default_location_ids`) contains the meeting's location, plus the coordinator | info / in-app + push | `m14.packets.ready:<meetingId>` (one per **meeting**, never per packet) |
+> | `m14.action_item.created` | `m14.action_item.created` | the assignee (`assignedToMembershipId` → active user) | info / in-app | `m14.action_item.created:<actionItemId>` |
+> | `m14.decision.non_quorate` | `m14.decision.recorded_open` with `wasQuorate=false` | the meeting's coordinator (§4.10: the notice is to the coordinator) | info (`low`) / in-app | `m14.decision.non_quorate:<decisionId>` |
+> | `m14.review_clock.escalated` | `m14.review_clock.escalated` | tiered by stage: T-3 the coordinator; T-0 + `clinical_supervisor`; T+1 + `compliance_officer` (+ `org_admin` backstop) | warn at T-3, critical at T-0/T+1 / in-app + email | `m14.review_clock:<patientId>:<stage>:<floorAt>` (per patient, tier and clock cycle — a new review moves `floorAt`) |
+> | `m14.review_floor.override_recorded` | `m14.review_floor.override_recorded` | `compliance_officer`, `clinical_supervisor`, `org_admin` (backstop) | warn / in-app + email | `m14.review_floor.override_recorded:<meetingId>` |
+>
+> Notes. (1) `decision.non_quorate` fires from the recorded decision's `wasQuorate=false`; in practice the
+> `quorate_decision` ABAC refuses a non-quorate `POST /decisions` (403) **before** any write, so the refusal emits no
+> event and the alert is only reachable when quorum changes between the predicate and the write — the spec's
+> "alert on the refused attempt" (§7.5) has no emit site (`idg.non_quorate_attempt` is likewise unwritten). (2) The
+> override `reason` is free text and is **not** carried onto the alert (catalog `reason` is optional); it lives in the
+> audit record. (3) Catalog loosening (all backwards-compatible): `review_clock.recipients.idgCoordinatorMembershipId`,
+> `override_recorded.recipients.clinicalSupervisorMembershipId` and `override_recorded.reason` are optional.
+> (4) No action-item due/overdue reminder alert exists in the catalog (only the carry-forward compliance alert, §2.7) —
+> none is built.
 
 ### 4.11 Notification-Composition Consumers — Superseded by ADR-0024
 

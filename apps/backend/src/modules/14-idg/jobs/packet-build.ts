@@ -420,6 +420,9 @@ interface DueMeeting {
   readonly locationId: string;
   readonly status: "scheduled" | "packets_building";
   readonly version: number;
+  /** Carried onto `m14.packets.ready` for the M36 T-24h reminder (the expected-attendee roster is resolved there). */
+  readonly scheduledStart: Date;
+  readonly coordinatorMembershipId: string;
 }
 
 async function dueMeetingsForOrg(
@@ -428,7 +431,14 @@ async function dueMeetingsForOrg(
   now: Date,
 ): Promise<readonly DueMeeting[]> {
   const rows = await tx
-    .select({ id: MTG.id, locationId: MTG.locationId, status: MTG.status, version: MTG.version })
+    .select({
+      id: MTG.id,
+      locationId: MTG.locationId,
+      status: MTG.status,
+      version: MTG.version,
+      scheduledStart: MTG.scheduledStart,
+      coordinatorMembershipId: MTG.coordinatorMembershipId,
+    })
     .from(MTG)
     .where(
       and(
@@ -442,6 +452,8 @@ async function dueMeetingsForOrg(
     locationId: r.locationId,
     status: r.status as "scheduled" | "packets_building",
     version: r.version,
+    scheduledStart: r.scheduledStart,
+    coordinatorMembershipId: r.coordinatorMembershipId,
   }));
 }
 
@@ -979,6 +991,10 @@ async function processDueMeeting(
         // written only from `START` onward — after packets are already ready); honestly 0 rather than
         // guessed, matching the M23/M26 "honest absence" convention this arc uses throughout.
         scheduledAttendees: 0,
+        // The M36 reminder consumer's inputs (it resolves the expected attendees from the location itself).
+        locationId: meeting.locationId,
+        scheduledStart: meeting.scheduledStart.toISOString(),
+        coordinatorMembershipId: meeting.coordinatorMembershipId,
       },
       organizationId,
       aggregateKind: "idg_meeting",

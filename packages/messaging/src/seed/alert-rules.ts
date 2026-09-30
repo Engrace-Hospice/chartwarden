@@ -492,6 +492,74 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // ── M14 typed IDG alerts (alerts-by-m14.ts). The catalog names its resolvers `idg_meeting_attendees`,
+  // `idg_action_item_assignee`, `idg_meeting_coordinator` and `idg_compliance_inbox`; none is a value of the closed
+  // `alert_recipient_resolver` enum — M36 owns what they mean (ADR-0024) and realises each as a `role_set` over the
+  // audience the producer-side consumer resolved onto the payload (ACTIVE org members' USER ids, ids only):
+  //   attendees  -> `attendeeUserIds` (array)  |  assignee -> `assigneeUserId`  |  coordinator -> `coordinatorUserId`.
+  // M14 §4.10: the T-24h "packets ready" reminder to the meeting's expected attendees (per MEETING, not per packet).
+  {
+    eventType: "m14.packets.ready",
+    category: "operational",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [], userIdPaths: ["attendeeUserIds"] },
+    channelsOverride: ["in_app", "push"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // M14 §4.10: an action item was assigned — the DM-style notice to the assignee (with its due date).
+  {
+    eventType: "m14.action_item.created",
+    category: "operational",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [], userIdPaths: ["assigneeUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // M14 §4.10: a decision was recorded without quorum — the low-severity notice to the IDG coordinator.
+  {
+    eventType: "m14.decision.non_quorate",
+    category: "operational",
+    severityFloor: "info",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: [], userIdPaths: ["coordinatorUserId"] },
+    channelsOverride: ["in_app"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // M14-F01 / ADR-0018 D2 — the per-patient 15-day review-clock escalation. The audience is TIERED by stage (spec §4.9
+  // / §7.14): T-3 the coordinator; T-0 + the clinical supervisor; T+1 + the compliance inbox. The consumer puts the
+  // tier's extra role keys on the payload (`audienceRoleKeys`) and the coordinator's user id (`coordinatorUserId`);
+  // one rule serves all three tiers. The emit severity carries the tier (warn at T-3, critical at T-0/T+1).
+  {
+    eventType: "m14.review_clock.escalated",
+    category: "clinical_routine",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: {
+      roleKeys: [],
+      roleKeysPath: "audienceRoleKeys",
+      userIdPaths: ["coordinatorUserId"],
+    },
+    channelsOverride: ["in_app", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
+  // M14-F01: an audited CANCEL/RESCHEDULE override of the review-floor guard — the compliance audit alert
+  // (compliance inbox + clinical supervisor, `org_admin` backstop for a tenant that assigns neither).
+  {
+    eventType: "m14.review_floor.override_recorded",
+    category: "administrative",
+    severityFloor: "warn",
+    recipientResolver: "role_set",
+    resolverArgs: { roleKeys: ["compliance_officer", "clinical_supervisor", "org_admin"] },
+    channelsOverride: ["in_app", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
 ];
 
 /** The event types of the three `system_locked` platform rules (§7.4) — the always-on floor a

@@ -283,6 +283,17 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     });
     expect(actionable.status).toBe("open");
     expect(await eventsFor(actionable.id)).toContain("m14.decision.recorded_open");
+    // The M36 non-quorate notice's inputs ride the event only when the decision was recorded without quorum
+    // (no attendance is seeded for `m`, so this one was): the meeting's coordinator + the unmet quorum slots.
+    {
+      const { rows: ro } = await admin.query(
+        "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m14.decision.recorded_open'",
+        [actionable.id],
+      );
+      expect(ro[0].payload).toMatchObject({ wasQuorate: false, coordinatorMembershipId: MEMBER });
+      expect(Array.isArray(ro[0].payload.missingDisciplines)).toBe(true);
+      expect(ro[0].payload.missingDisciplines.length).toBeGreaterThan(0);
+    }
     // A patient-less team note is recorded but carries no recorded_open event (strict payload needs a patient).
     const note = await svc.recordDecision(ORG_A, MEMBER, m, {
       patientId: null,
@@ -696,7 +707,13 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       ["m14.review_clock.escalated", patientId],
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0].payload).toMatchObject({ patientId, stage: "t_zero", severity: "critical" });
+    expect(rows[0].payload).toMatchObject({
+      patientId,
+      stage: "t_zero",
+      severity: "critical",
+      // the M36 alert's coordinator tier: the location's upcoming meeting's coordinator (`laterUnreviewed`)
+      coordinatorMembershipId: MEMBER,
+    });
   });
 
   it("idg.review-clock-sweep does not escalate a patient whose floor is not at T-3/T-0/T+1 today", async () => {

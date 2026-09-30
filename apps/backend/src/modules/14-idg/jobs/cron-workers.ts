@@ -11,7 +11,7 @@ import type Redis from "ioredis";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";
 import type { IdgMembershipDisplayPort, IdgSiteDisplayPort } from "../routes/idg-enrichment";
 import { runCarryForwardCron } from "./carry-forward";
-import { reviewClockPatientsForOrg } from "./cron-store";
+import { locationCoordinatorsForOrg, reviewClockPatientsForOrg } from "./cron-store";
 import type { ActiveOrgListPort } from "./index";
 import {
   M14_JOB_SCHEDULES,
@@ -210,7 +210,18 @@ export async function runReviewClockSweepCron(
           const t = tx as unknown as DbClient;
           const patients = await reviewClockPatientsForOrg(t, organizationId);
           const escalations = planReviewClockSweep(patients, now);
+          // The coordinator tier of the M36 alert (only read when something escalates; one batched read).
+          const coordinators =
+            escalations.length === 0
+              ? new Map<string, string>()
+              : await locationCoordinatorsForOrg(
+                  t,
+                  organizationId,
+                  [...new Set(escalations.map((e) => e.locationId))],
+                  now,
+                );
           for (const e of escalations) {
+            const coordinatorMembershipId = coordinators.get(e.locationId);
             await deps.outbox.publish(t, {
               eventName: "m14.review_clock.escalated",
               payload: {
@@ -221,6 +232,7 @@ export async function runReviewClockSweepCron(
                 floorAt: e.floorAt,
                 stage: e.stage,
                 severity: e.severity,
+                ...(coordinatorMembershipId === undefined ? {} : { coordinatorMembershipId }),
               },
               organizationId,
               aggregateKind: "idg_patient_packet",

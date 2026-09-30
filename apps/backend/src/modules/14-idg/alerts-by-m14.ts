@@ -114,8 +114,10 @@ export const M14_ALERT_PAYLOADS: ModuleAlertContribution = [
         Type.Literal("t_plus_1"),
       ]),
       severity: Type.Union([Type.Literal("clinical_routine"), Type.Literal("critical")]),
+      // `idgCoordinatorMembershipId` is OPTIONAL: the location may have no scheduled meeting and no active recurring
+      // policy to name a coordinator (the supervisor / compliance tiers are role audiences and must still fire).
       recipients: Type.Object({
-        idgCoordinatorMembershipId: id,
+        idgCoordinatorMembershipId: Type.Optional(id),
         clinicalSupervisorMembershipId: Type.Optional(id),
         complianceInbox: Type.Optional(Type.Boolean()),
       }),
@@ -135,12 +137,15 @@ export const M14_ALERT_PAYLOADS: ModuleAlertContribution = [
       organizationId: orgId,
       meetingId: id,
       actorMembershipId: id,
-      reason: Type.String(),
+      // OPTIONAL and deliberately OMITTED by M36's consumer: the override reason is free text (PHI risk) and lives in
+      // the audit_event / outbox event; the alert carries ids + the breaching floor dates only.
+      reason: Type.Optional(Type.String()),
       breachingPatients: Type.Array(Type.Object({ patientId: id, floorAt: isoInstant })),
       severity: Type.Literal("attention"),
+      // The supervisor is a ROLE audience (role_set), not a single membership — optional, informational.
       recipients: Type.Object({
         complianceInbox: Type.Literal(true),
-        clinicalSupervisorMembershipId: id,
+        clinicalSupervisorMembershipId: Type.Optional(id),
       }),
       bodyTemplate: Type.String(),
     }),

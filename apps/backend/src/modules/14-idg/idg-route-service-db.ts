@@ -1754,6 +1754,13 @@ export function createDbIdgBackend(
             wasQuorate: plan.wasQuorate,
             recordedByMembershipId: userId,
             recordedAt: new Date().toISOString(),
+            // The M36 non-quorate notice's inputs (only meaningful when `wasQuorate` is false).
+            ...(plan.wasQuorate
+              ? {}
+              : {
+                  coordinatorMembershipId: m.coordinatorMembershipId,
+                  missingDisciplines: [...plan.quorumSnapshot.missingDisciplines],
+                }),
           });
         return toDecisionView(row!);
       });

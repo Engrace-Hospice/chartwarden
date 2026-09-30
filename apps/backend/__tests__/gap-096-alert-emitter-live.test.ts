@@ -23,11 +23,14 @@ import { createDbClient } from "@wardenx/db";
 import { createAlertPayloadRegistry } from "@wardenx/messaging";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createMembershipsHoldingPermissionReader } from "../src/modules/03-authorization/index";
 import { createDrizzleCareTeamStore, registerPatientSeams } from "../src/modules/05-patient/index";
 import { M14_ALERT_PAYLOADS } from "../src/modules/14-idg/index";
 import {
+  buildIdgAlertConsumers,
   buildIdgCarryForwardComplianceConsumer,
   createDrizzleAlertEmitter,
+  createDrizzleIdgAttendeeLookup,
   createDrizzleMembershipUserLookup,
   getAlertEmitter,
   registerMessagingSeams,
@@ -446,5 +449,317 @@ describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
       (await admin.query("SELECT count(*)::int AS n FROM alert WHERE organization_id=$1", [ORG2]))
         .rows[0].n,
     ).toBe(0);
+  });
+
+  // ── M14 §4.10 — the REMAINING typed IDG alerts through the REAL emitter + RLS as wardenx_app ────────────────
+  it("m14 typed alerts (packets ready / action item / non-quorate / review clock / override): real derived attendee roster + tiered audience, tenant-isolated, idempotent, PHI-free", async () => {
+    const P = "77777777-7777-7777-7777-777777777777"; // primary tenant for this test (fresh: no roles from earlier tests)
+    const O = "66666666-6666-6666-6666-666666666666"; // the OTHER tenant (isolation twin)
+    const LOC = "10c00000-0000-4000-8000-000000000001";
+    const OTHER_LOC = "10c00000-0000-4000-8000-000000000002";
+    for (const [id, slug] of [
+      [P, "org-gap096-p"],
+      [O, "org-gap096-o"],
+    ]) {
+      await admin.query(
+        "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,$2,$2,$2)",
+        [id, slug],
+      );
+    }
+    for (const k of ["idg.attend", "idg.coordinate"]) {
+      await admin.query(
+        "INSERT INTO permission (key,resource,action,category) VALUES ($1,'idg_meeting','x','clinical') ON CONFLICT DO NOTHING",
+        [k],
+      );
+    }
+    const roleIn = async (org: string, key: string, perms: string[]): Promise<string> => {
+      const existing = await admin.query(
+        "SELECT id FROM role WHERE organization_id=$1 AND key=$2",
+        [org, key],
+      );
+      const roleId: string =
+        existing.rows[0]?.id ??
+        (
+          await admin.query(
+            "INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,'admin_executive') RETURNING id",
+            [org, key],
+          )
+        ).rows[0].id;
+      for (const k of perms) {
+        await admin.query(
+          "INSERT INTO role_permission (organization_id, role_id, permission_key) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING",
+          [org, roleId, k],
+        );
+      }
+      return roleId;
+    };
+    const member = async (
+      org: string,
+      email: string,
+      opts: {
+        role?: string | null;
+        perms?: string[];
+        locations?: string[];
+        status?: string;
+        expired?: boolean;
+      } = {},
+    ): Promise<{ userId: string; membershipId: string }> => {
+      const userId = (
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [email])
+      ).rows[0].id as string;
+      const membershipId = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status, default_location_ids) VALUES ($1,$2,$3,$4::jsonb) RETURNING id`,
+          [userId, org, opts.status ?? "active", JSON.stringify(opts.locations ?? [])],
+        )
+      ).rows[0].id as string;
+      if (opts.role) {
+        const roleId = await roleIn(org, opts.role, opts.perms ?? []);
+        await admin.query(
+          "INSERT INTO membership_role (organization_id, membership_id, role_id, expires_at) VALUES ($1,$2,$3,$4)",
+          [org, membershipId, roleId, opts.expired ? new Date(Date.now() - 3600_000) : null],
+        );
+      }
+      return { userId, membershipId };
+    };
+    const rn = await member(P, "idg2-rn@x.test", {
+      role: "rn",
+      perms: ["idg.attend"],
+      locations: [LOC],
+    });
+    const md = await member(P, "idg2-md@x.test", {
+      role: "md",
+      perms: ["idg.coordinate"],
+      locations: [LOC, OTHER_LOC],
+    });
+    const coordinator = await member(P, "idg2-coord@x.test", { locations: [LOC] }); // no role: coordinator id only
+    const wrongLocation = await member(P, "idg2-wrongloc@x.test", {
+      role: "rn",
+      perms: ["idg.attend"],
+      locations: [OTHER_LOC],
+    });
+    const noIdgKey = await member(P, "idg2-nokey@x.test", {
+      role: "billing_manager",
+      locations: [LOC],
+    });
+    const revoked = await member(P, "idg2-revoked@x.test", {
+      role: "rn",
+      perms: ["idg.attend"],
+      locations: [LOC],
+      status: "revoked",
+    });
+    const expiredRole = await member(P, "idg2-expired@x.test", {
+      role: "lapsed_rn",
+      perms: ["idg.attend"],
+      locations: [LOC],
+      expired: true,
+    });
+    const assignee = await member(P, "idg2-assignee@x.test");
+    const supervisor = await member(P, "idg2-sup@x.test", { role: "clinical_supervisor" });
+    const compliance = await member(P, "idg2-comp@x.test", { role: "compliance_officer" });
+    const orgAdmin = await member(P, "idg2-admin@x.test", { role: "org_admin" });
+    // a twin in ANOTHER tenant holding every key for the same location id: must never be reached
+    const other = await member(O, "idg2-c-rn@x.test", {
+      role: "rn",
+      perms: ["idg.attend"],
+      locations: [LOC],
+    });
+    const otherCompliance = await member(O, "idg2-c-comp@x.test", {
+      role: "compliance_officer",
+    });
+
+    await wireAlertRuleSeed(handle.db);
+    const registry = createAlertPayloadRegistry();
+    registry.register(M14_ALERT_PAYLOADS);
+    registry.assertValid();
+    const consumers = buildIdgAlertConsumers({
+      alerts: createDrizzleAlertEmitter(handle.db),
+      catalog: registry.build(),
+      membershipUserId: createDrizzleMembershipUserLookup(handle.db),
+      meetingAttendees: createDrizzleIdgAttendeeLookup(
+        handle.db,
+        createMembershipsHoldingPermissionReader(handle.db),
+      ),
+    });
+    const by = (name: string) => consumers.find((c) => c.eventTypes[0] === name)!;
+    const ev = (eventType: string, payload: Record<string, unknown>, id: string) => ({
+      id,
+      eventType,
+      aggregateKind: "x",
+      aggregateId: "agg",
+      organizationId: P,
+      attemptCount: 0,
+      createdAt: new Date(),
+      payload,
+    });
+    const alertsOf = async (type: string) =>
+      (
+        await admin.query(
+          "SELECT id, organization_id, severity, payload, correlation_id FROM alert WHERE event_type=$1",
+          [type],
+        )
+      ).rows;
+    const recipientsOf = async (alertId: string): Promise<string[]> =>
+      (
+        await admin.query(
+          "SELECT DISTINCT recipient_user_id FROM notification_delivery WHERE alert_id=$1 AND channel='in_app'",
+          [alertId],
+        )
+      ).rows
+        .map((r) => r.recipient_user_id as string)
+        .sort();
+    const MTG = "e7700000-0000-4000-8000-000000000001";
+
+    // 1. packets ready — the derived roster (idg.attend / idg.coordinate + location scope + active + unexpired) + coordinator
+    const ready = {
+      meetingId: MTG,
+      builtPacketCount: 3,
+      scheduledAttendees: 0,
+      locationId: LOC,
+      scheduledStart: "2026-10-01T15:00:00.000Z",
+      coordinatorMembershipId: coordinator.membershipId,
+    };
+    await by("m14.packets.ready").handle(ev("m14.packets.ready", ready, "e-ready-1"));
+    await by("m14.packets.ready").handle(ev("m14.packets.ready", ready, "e-ready-1")); // redelivery
+    await by("m14.packets.ready").handle(
+      ev("m14.packets.ready", { ...ready, builtPacketCount: 7 }, "e-ready-2"),
+    ); // per MEETING, not per packet / event
+    const readyAlerts = await alertsOf("m14.packets.ready");
+    expect(readyAlerts).toHaveLength(1);
+    expect(readyAlerts[0].correlation_id).toBe(`m14.packets.ready:${MTG}`);
+    expect(readyAlerts[0].severity).toBe("info");
+    const readyGot = await recipientsOf(readyAlerts[0].id);
+    expect(readyGot).toEqual([rn.userId, md.userId, coordinator.userId].sort());
+    for (const nope of [wrongLocation, noIdgKey, revoked, expiredRole, other]) {
+      expect(readyGot).not.toContain(nope.userId);
+    }
+    expect(readyAlerts[0].payload.recipients.attendeesByMembershipId.sort()).toEqual(
+      [rn.membershipId, md.membershipId, coordinator.membershipId].sort(),
+    );
+
+    // 2. action item assigned — the assignee only
+    const act = {
+      actionItemId: "ac700000-0000-4000-8000-000000000001",
+      meetingId: MTG,
+      decisionId: null,
+      patientId: null,
+      assignedToMembershipId: assignee.membershipId,
+      dueDate: "2026-10-08T00:00:00.000Z",
+      linkedArtifactKind: null,
+      linkedArtifactId: null,
+    };
+    await by("m14.action_item.created").handle(ev("m14.action_item.created", act, "e-act-1"));
+    await by("m14.action_item.created").handle(ev("m14.action_item.created", act, "e-act-1"));
+    const actAlerts = await alertsOf("m14.action_item.created");
+    expect(actAlerts).toHaveLength(1);
+    expect(await recipientsOf(actAlerts[0].id)).toEqual([assignee.userId]);
+
+    // 3. non-quorate — a quorate decision raises nothing; the non-quorate one notifies the coordinator
+    const dec = {
+      decisionId: "dec00000-0000-4000-8000-000000000001",
+      meetingId: MTG,
+      patientId: "a7100000-0000-4000-8000-000000000001",
+      decisionKind: "care_plan_update",
+      wasQuorate: true,
+      recordedByMembershipId: md.membershipId,
+      recordedAt: "2026-10-01T15:00:00.000Z",
+    };
+    await by("m14.decision.recorded_open").handle(ev("m14.decision.recorded_open", dec, "e-d-0"));
+    expect(await alertsOf("m14.decision.non_quorate")).toHaveLength(0);
+    const nonQ = {
+      ...dec,
+      wasQuorate: false,
+      coordinatorMembershipId: coordinator.membershipId,
+      missingDisciplines: ["msw"],
+    };
+    await by("m14.decision.recorded_open").handle(ev("m14.decision.recorded_open", nonQ, "e-d-1"));
+    await by("m14.decision.recorded_open").handle(ev("m14.decision.recorded_open", nonQ, "e-d-1"));
+    const nqAlerts = await alertsOf("m14.decision.non_quorate");
+    expect(nqAlerts).toHaveLength(1);
+    expect(await recipientsOf(nqAlerts[0].id)).toEqual([coordinator.userId]);
+
+    // 4. review clock — tiered audience, per (patient, tier, cycle)
+    const clock = (stage: string, severity: string, floorAt = "2026-09-16T00:00:00.000Z") => ({
+      admissionId: "ad700000-0000-4000-8000-000000000001",
+      patientId: "a7100000-0000-4000-8000-000000000001",
+      locationId: LOC,
+      lastIdgReviewedAt: "2026-09-01T00:00:00.000Z",
+      floorAt,
+      stage,
+      severity,
+      coordinatorMembershipId: coordinator.membershipId,
+    });
+    for (const [stage, sev] of [
+      ["t_minus_3", "clinical_routine"],
+      ["t_zero", "critical"],
+      ["t_plus_1", "critical"],
+    ] as const) {
+      await by("m14.review_clock.escalated").handle(
+        ev("m14.review_clock.escalated", clock(stage, sev), `e-clk-${stage}`),
+      );
+      await by("m14.review_clock.escalated").handle(
+        ev("m14.review_clock.escalated", clock(stage, sev), `e-clk-${stage}`),
+      ); // redelivery
+    }
+    const clkAlerts = await alertsOf("m14.review_clock.escalated");
+    expect(clkAlerts).toHaveLength(3);
+    const tier = async (stage: string) =>
+      recipientsOf(clkAlerts.find((a) => a.payload.stage === stage)!.id as string);
+    expect(await tier("t_minus_3")).toEqual([coordinator.userId]);
+    expect(await tier("t_zero")).toEqual([coordinator.userId, supervisor.userId].sort());
+    expect(await tier("t_plus_1")).toEqual(
+      [coordinator.userId, supervisor.userId, compliance.userId, orgAdmin.userId].sort(),
+    );
+    expect(clkAlerts.find((a) => a.payload.stage === "t_minus_3")!.severity).toBe("warn");
+    expect(clkAlerts.find((a) => a.payload.stage === "t_plus_1")!.severity).toBe("critical");
+    // a NEW clock cycle (a review moved the floor) for the same patient+tier alerts again
+    await by("m14.review_clock.escalated").handle(
+      ev(
+        "m14.review_clock.escalated",
+        clock("t_zero", "critical", "2026-10-20T00:00:00.000Z"),
+        "e-clk-n",
+      ),
+    );
+    expect(await alertsOf("m14.review_clock.escalated")).toHaveLength(4);
+
+    // 5. review-floor override — compliance + supervisor (+ org_admin), the free-text reason never stored
+    const ovr = {
+      meetingId: MTG,
+      actorMembershipId: md.membershipId,
+      reason: "PHI-ish reason: family of Jane Doe",
+      breachingPatients: [
+        { patientId: "a7100000-0000-4000-8000-000000000001", floorAt: "2026-09-16T00:00:00.000Z" },
+      ],
+      overriddenAt: "2026-09-15T00:00:00.000Z",
+    };
+    await by("m14.review_floor.override_recorded").handle(
+      ev("m14.review_floor.override_recorded", ovr, "e-ovr-1"),
+    );
+    await by("m14.review_floor.override_recorded").handle(
+      ev("m14.review_floor.override_recorded", ovr, "e-ovr-1"),
+    );
+    const ovrAlerts = await alertsOf("m14.review_floor.override_recorded");
+    expect(ovrAlerts).toHaveLength(1);
+    expect(await recipientsOf(ovrAlerts[0].id)).toEqual(
+      [compliance.userId, supervisor.userId, orgAdmin.userId].sort(),
+    );
+    expect(JSON.stringify(ovrAlerts[0].payload)).not.toMatch(/Jane|Doe|reason/);
+
+    // tenant isolation + PHI-free across the whole family
+    const all = await admin.query(
+      "SELECT event_type, organization_id, payload FROM alert WHERE event_type LIKE 'm14.%' AND event_type <> 'm14.action_item.carry_forward.compliance'",
+    );
+    expect(all.rows.every((r) => r.organization_id === P)).toBe(true);
+    const leaked = await admin.query(
+      "SELECT count(*)::int AS n FROM notification_delivery WHERE recipient_user_id = ANY($1::uuid[])",
+      [[other.userId, otherCompliance.userId]],
+    );
+    expect(leaked.rows[0].n).toBe(0);
+    expect(
+      (await admin.query("SELECT count(*)::int AS n FROM alert WHERE organization_id=$1", [O]))
+        .rows[0].n,
+    ).toBe(0);
+    for (const r of all.rows)
+      expect(JSON.stringify(r.payload)).not.toMatch(/Casey|Careteam|http|title/i);
   });
 });
