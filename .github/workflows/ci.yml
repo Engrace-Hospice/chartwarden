@@ -552,6 +552,8 @@ jobs:
           # F-171 (#248) — the real §4.3 M5 direct patient-merge write path: POST /patients/:id/merge,
           # field resolution, satellite-table preservation, m5.patient.merged emission.
           - { name: "M5 patient merge", scripts: "test:m5:patient-merge:live" }
+          # F-229 (#248) — M5 `PatientAddressReader.primaryAddress` (full street address seam).
+          - { name: "M5 address reader", scripts: "test:m5:address-reader:live" }
           - {
               name: "M25 Remittance",
               scripts: "test:m25:835-ingestion:live test:m25:interim-payments-seam:live",
