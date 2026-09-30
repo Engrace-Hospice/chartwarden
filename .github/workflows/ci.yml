@@ -546,6 +546,9 @@ jobs:
           # F-167 (#248) — the m5 `handlers-unbound` group's `m39.consent.{signed,revoked,supersedes,
           # renewed}` privacy-flag-snapshot recompute (§7.6/D10).
           - { name: "M5 consent privacy-flag recompute", scripts: "test:m5:consent-privacy:live" }
+          # F-216 (#248) — M39's hourly consent-expiration/expiration-reminder crons (the producer of
+          # `m39.consent.expired`/`.expiring_soon`) + the `m5 <- m39.consent.expired` snapshot binding.
+          - { name: "M39 consent expiration crons", scripts: "test:m39:consent-expiration:live" }
           # F-171 (#248) — the real §4.3 M5 direct patient-merge write path: POST /patients/:id/merge,
           # field resolution, satellite-table preservation, m5.patient.merged emission.
           - { name: "M5 patient merge", scripts: "test:m5:patient-merge:live" }

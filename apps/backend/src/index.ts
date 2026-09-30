@@ -976,7 +976,12 @@ import {
 } from "./modules/38-terminology/index";
 import {
   M39_OUTBOX_EVENTS,
+  M39_PLATFORM_JOB_ID,
   buildM39ConsentRenderConsumer,
+  buildM39WorkerDeps,
+  registerM39CronWorkers,
+  scheduleM39Jobs,
+  wireM39Tenancy,
   createConsentInternalNotesCipher,
   createDbConsentStore,
   createDrizzleConsentEraseStore,
@@ -1657,6 +1662,7 @@ export function wireModuleSeams(
   wireM10Tenancy();
   wireM14Tenancy(); // GAP-092 — allowlist the cron job id so idg.review-clock-sweep may enter withPlatformContext
   wireM20Tenancy(); // F-111 (#249) — allowlist the cron job id so the SOS SLA watchdog may enter withPlatformContext
+  wireM39Tenancy(); // F-216 — allowlist the cron job id so the consent expiration/reminder crons may enter withPlatformContext
   registerPlatformJob(M11_PLATFORM_JOB_ID);
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
   registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
@@ -5439,6 +5445,41 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     app.log.info(
       { queues: m14Workers.length },
       "M14 §4.8 BullMQ review-clock-sweep cron constructed",
+    );
+
+    // ── M39 §4.9 crons: `m39.consent_expiration` + `m39.expiration_reminder` (F-216) — the ONLY producers
+    // of `m39.consent.expired` / `m39.consent.expiring_soon` (M5's §7.6 privacy snapshot consumes `.expired`).
+    // Hourly, per-org, org-explicit: each tick enumerates active orgs under the audited platform context and
+    // opens one `withOrgContext` tx per page, flipping the row and publishing through the REAL catalog-
+    // validating M39 publisher in that same tx. First-run backlog is bounded by `M39_CRON_BOUNDS`.
+    const m39ActiveOrgs = buildActiveOrgEnumerator({
+      platformDb: platformDbHandle?.db,
+      auditBypass: m34PlatformBypassAuditor,
+      jobId: M39_PLATFORM_JOB_ID,
+      reason: "M39 §4.9 consent-expiration / expiration-reminder cron fan-out (active-org enumeration)",
+    });
+    const m39WorkerDeps = buildM39WorkerDeps({
+      connection: queueConnection,
+      db: dbHandle.db,
+      outbox: m39OutboxPublisher,
+      activeOrgs: m39ActiveOrgs,
+    });
+    const m39Workers = registerM39CronWorkers(m39WorkerDeps);
+    attachDlqAlertsToAll(m39Workers, "m39");
+    app.addHook("onClose", async () => {
+      await Promise.all(m39Workers.map((w) => w.close()));
+    });
+    try {
+      const m39ScheduleQueues = await scheduleM39Jobs(queueConnection);
+      app.addHook("onClose", async () => {
+        await Promise.all(m39ScheduleQueues.map((q) => q.close()));
+      });
+    } catch (err) {
+      app.log.error(err, "M39 cron-schedule registration failed");
+    }
+    app.log.info(
+      { queues: m39Workers.length },
+      "M39 §4.9 BullMQ consent-expiration + expiration-reminder crons constructed",
     );
 
     // M11 D5 — one repeatable hourly trigger enumerates active org ids under the audited platform

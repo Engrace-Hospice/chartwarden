@@ -135,6 +135,7 @@
     "test:m5:admission-siting:live": "vitest run apps/backend/__tests__/m5-admission-siting.live.test.ts",
     "test:m5:visit-assignment-cache:live": "vitest run apps/backend/__tests__/m5-visit-assignment-cache.live.test.ts",
     "test:m5:consent-privacy:live": "vitest run apps/backend/__tests__/m39-consent-privacy.live.test.ts",
+    "test:m39:consent-expiration:live": "vitest run apps/backend/__tests__/m39-consent-expiration-cron.live.test.ts",
     "test:m5:patient-merge:live": "vitest run apps/backend/__tests__/m5-patient-merge.live.test.ts",
     "test:m11:m9-m21-consumers:live": "vitest run apps/backend/__tests__/m11-m9-m21-outbox-consumers.live.test.ts",
     "test:m11:supply-cancelled:live": "vitest run apps/backend/__tests__/m11-supply-cancelled.live.test.ts",

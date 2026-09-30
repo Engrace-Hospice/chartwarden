@@ -19,7 +19,7 @@
 // comparison against the untyped payload's `typeKey` field — DATA, not a cross-module code import,
 // the `m6-admission-activated.ts` precedent one file over.
 //
-// FOUR of the six catalogued events are bound:
+// FIVE of the six catalogued events are bound:
 //   - `m39.consent.signed`     → the consent is newly active (§4.3.1's decisive trigger, verbatim).
 //   - `m39.consent.revoked`    → the consent is no longer active (§4.3.1's decisive trigger, verbatim).
 //   - `m39.consent.supersedes` → treated identically to `signed`: `consent-store-db.ts`'s `supersede`
@@ -31,14 +31,18 @@
 //     trigger — the identical grouping, applied here to M5's recompute instead.
 //   - `m39.consent.renewed`    → treated identically to `signed`, for the same reason: the `renew`
 //     route (~line 1224) also writes the new record `status: "active"` in the same transaction.
+//   - `m39.consent.expired`    → (F-216) the consent is no longer active, exactly like `revoked` — with
+//     one renewal-safety exception: `renew` leaves the PRIOR record active until its expires_at passes, so
+//     a renewed Part-2 consent ticks to `expired` while its successor is live. M39's expiration cron stamps
+//     `remainingActiveConsentRecordId` on the payload when another active consent of the same patient+type
+//     exists, and that delivery recomputes as ACTIVE (flag stays lifted) rather than re-restricting SUD.
+//     Until F-216 NO PRODUCTION CODE PATH EMITTED this event (`M39_QUEUES`/`shouldExpire` had zero callers
+//     under apps/backend), so the pair was deliberately unbound; the hourly `m39.consent_expiration` cron
+//     (`39-consent/jobs/`) is now its producer, and without this binding a lapsed Part-2 consent left M5's
+//     persisted `sud` flag lifted indefinitely.
 //
-// TWO events stay deliberately UNBOUND (see `scripts/outbox-deferred-consumers.ts`'s m5 group for the
-// full finding):
-//   - `m39.consent.expired` — NO PRODUCTION CODE PATH EMITS IT. `packages/consent/src/jobs/index.ts`'s
-//     own header says the cron Worker/Queue construction "lives in the composition root once a Valkey
-//     connection … exist[s]"; `apps/backend/src/index.ts` has zero references to `M39_QUEUES`,
-//     `shouldExpire`, or any M39 cron wiring. Binding a consumer to a name nothing publishes would be
-//     dead code (the F-150 `m18.evv.visit_verified` shape) — not built here.
+// ONE event stays deliberately UNBOUND (see `scripts/outbox-deferred-consumers.ts` for the full finding,
+// and the catalog correction that dropped `m5` from it):
 //   - `m39.consent.recipient_removed` — its own catalog description says the fact is for
 //     "disclosure-subsetter caches" (M22/M28's per-signed-URL cache), NOT M5's categorical,
 //     patient-level snapshot (`packages/db/src/schema/patient/patient-privacy-flag-snapshots.ts` has
@@ -90,6 +94,7 @@ export const M5_CONSENT_PRIVACY_CONSUMER = {
     "m39.consent.revoked",
     "m39.consent.supersedes",
     "m39.consent.renewed",
+    "m39.consent.expired",
   ],
   consumerName: "m5.m39-consent-privacy",
 } as const;
@@ -126,6 +131,17 @@ function factsOf(
     case "m39.consent.renewed": {
       const id = stringField(payload, "newConsentRecordId");
       return id === null ? null : { patientId, typeKey, active: true, sourceConsentVersion: id };
+    }
+    case "m39.consent.expired": {
+      const id = stringField(payload, "consentRecordId");
+      if (id === null) return null;
+      // A consent that merely lapsed while ANOTHER active consent of the same patient+type outlives it
+      // (the normal renewal flow — `renew` leaves the prior record active until expires_at passes) does
+      // not re-restrict SUD: the lifted state is still true, so recompute as active against that record.
+      const remaining = stringField(payload, "remainingActiveConsentRecordId");
+      return remaining === null
+        ? { patientId, typeKey, active: false, sourceConsentVersion: id }
+        : { patientId, typeKey, active: true, sourceConsentVersion: remaining };
     }
     default:
       return null;
