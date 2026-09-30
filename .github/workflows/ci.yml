@@ -723,6 +723,9 @@ jobs:
           # F-120 — M21's other two bound M11 cascade deciders (§7.7 cancellation, the DME rental
           # close-out), both already live-emitted by the M6/M11 discharge cascade above.
           - { name: "M21 order cascade", scripts: "test:m21:order-cascade:live" }
+          # F-232 (#248) — the §7.1 fulfillment intake (`m11.order.supply_fulfillment_requested`, dme/supply),
+          # the third M11 decider; dme.v2/supply.v2 + the M5 address pull.
+          - { name: "M21 supply-fulfillment intake", scripts: "test:m21:supply-fulfillment-intake:live" }
           # F-153 (#248) — M13's §2.5 deployment-ack link + §2.6 return-required chain-of-custody open.
           - { name: "M21 comfort-kit cascade", scripts: "test:m21:comfort-kit-cascade:live" }
           # F-161 (#248) — §2.1 comfort-kit replenishment intake, the third of the four

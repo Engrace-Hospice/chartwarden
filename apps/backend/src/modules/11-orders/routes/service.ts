@@ -15,6 +15,7 @@ import {
   DEFAULT_COSIGN_POLICY,
   type LevelOfCare,
   ORDER_KIND_VERSION,
+  resolveOrderKindVersion,
   type OrderCosignPolicy,
   assertSpawnAllowed,
   computeNextSpawnAt,
@@ -303,6 +304,8 @@ export interface CreateOrderArgs {
   readonly triggeringAssessmentId?: string;
   readonly triggeringHopeAssessmentId?: string;
   readonly replacesOrderId?: string;
+  /** F-232 — payload contract version to stamp (default `<kind>.v1`); see `ORDER_KIND_SUPPORTED_VERSIONS`. */
+  readonly kindVersion?: string;
 }
 export interface RequestSignatureArgs {
   readonly signerDiscipline: string;
@@ -677,6 +680,17 @@ export interface OrderRouteSeed {
 }
 
 let idCounter = 0x110a0000;
+/** F-232 — a create/correct named a `kindVersion` M11 does not publish for the kind. */
+function unsupportedKindVersion(kind: string, requested: string | undefined): ValidationError {
+  return new ValidationError("Unsupported order payload version", [
+    {
+      field: "kindVersion",
+      code: "INVALID",
+      message: `'${requested ?? ""}' is not a supported ${kind} payload version.`,
+    },
+  ]);
+}
+
 function nextId(): string {
   idCounter += 1;
   const hex = idCounter.toString(16).padStart(12, "0");
@@ -851,6 +865,8 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         throw new NotFoundError(
           `discipline '${args.drafterDiscipline}' may not author a '${args.kind}' order`,
         );
+      const kindVersion = resolveOrderKindVersion(args.kind, args.kindVersion);
+      if (kindVersion === null) throw unsupportedKindVersion(args.kind, args.kindVersion);
       await bindCrossModuleRefs(organizationId, args);
       // Drafts may retain partial clinical details; signature request is the completion gate.
       const id = nextId();
@@ -880,7 +896,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         signedBy: null,
         completedAt: null,
         createdAt: now(),
-        kindVersion: `${args.kind}.v1`,
+        kindVersion,
         data: args.data,
         verbalOrder: null,
       };
@@ -904,8 +920,11 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         throw new NotFoundError(
           `discipline '${args.order.drafterDiscipline}' may not author a '${args.order.kind}' order`,
         );
+      const verbalKindVersion = resolveOrderKindVersion(args.order.kind, args.order.kindVersion);
+      if (verbalKindVersion === null)
+        throw unsupportedKindVersion(args.order.kind, args.order.kindVersion);
       await bindCrossModuleRefs(organizationId, args.order);
-      const findings = validateOrderData(args.order.kind, `${args.order.kind}.v1`, args.order.data);
+      const findings = validateOrderData(args.order.kind, verbalKindVersion, args.order.data);
       if (findings.length)
         throw new ValidationError(
           "Order is not ready for signature",
@@ -951,7 +970,7 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         patientId: args.order.patientId,
         admissionId: args.order.admissionId,
         kind: args.order.kind,
-        kindVersion: `${args.order.kind}.v1`,
+        kindVersion: verbalKindVersion,
         data: args.order.data,
         status: "verbal_pending",
         priority: args.order.priority ?? "routine",
@@ -1189,7 +1208,9 @@ export function createInMemoryOrderBackend(seed: OrderRouteSeed = {}): OrderRout
         reason: "replaced_by_corrected_order",
         fulfillmentInFlight: false,
       });
-      const findings = validateOrderData(args.kind, ORDER_KIND_VERSION[args.kind], args.data);
+      const correctedVersion = resolveOrderKindVersion(args.kind, args.kindVersion);
+      if (correctedVersion === null) throw unsupportedKindVersion(args.kind, args.kindVersion);
+      const findings = validateOrderData(args.kind, correctedVersion, args.data);
       if (findings.length)
         throw new ValidationError(
           "Corrected order clinical details are invalid",

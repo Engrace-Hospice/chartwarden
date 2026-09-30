@@ -45,7 +45,12 @@ import {
   createInMemorySuppliesSeamStore,
 } from "./store";
 
-export { getAdmissionStatusReader, getDeathDischargeReader, getOrderProvider } from "./consumed";
+export {
+  getAdmissionStatusReader,
+  getDeathDischargeReader,
+  getOrderProvider,
+  getPatientAddressReader,
+} from "./consumed";
 export {
   EMPTY_SUPPLY_COST_TOTALS,
   type InMemorySuppliesSeamStore,

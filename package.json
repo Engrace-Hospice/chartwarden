@@ -118,6 +118,7 @@
     "test:m2:organization-lifecycle:live": "vitest run apps/backend/__tests__/m2-organization-lifecycle.live.test.ts",
     "test:m34:lifecycle-outbox:live": "vitest run apps/backend/__tests__/m34-lifecycle-outbox.live.test.ts",
     "test:m21:order-cascade:live": "vitest run apps/backend/__tests__/m21-order-cascade.live.test.ts",
+    "test:m21:supply-fulfillment-intake:live": "vitest run apps/backend/__tests__/m21-supply-fulfillment-intake.live.test.ts",
     "test:m22:write:live": "vitest run apps/backend/__tests__/m22-documents-write.live.test.ts",
     "test:m22:read:live": "vitest run apps/backend/__tests__/m22-documents-read-service.live.test.ts",
     "test:m4:read-audit:live": "vitest run apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts",

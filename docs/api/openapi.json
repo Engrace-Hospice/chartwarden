@@ -130148,6 +130148,11 @@
                   "replacesOrderId": {
                     "format": "uuid",
                     "type": "string"
+                  },
+                  "kindVersion": {
+                    "minLength": 1,
+                    "maxLength": 64,
+                    "type": "string"
                   }
                 }
               }
@@ -131951,6 +131956,11 @@
                   },
                   "replacesOrderId": {
                     "format": "uuid",
+                    "type": "string"
+                  },
+                  "kindVersion": {
+                    "minLength": 1,
+                    "maxLength": 64,
                     "type": "string"
                   }
                 }
@@ -227128,6 +227138,11 @@
                       },
                       "replacesOrderId": {
                         "format": "uuid",
+                        "type": "string"
+                      },
+                      "kindVersion": {
+                        "minLength": 1,
+                        "maxLength": 64,
                         "type": "string"
                       }
                     }

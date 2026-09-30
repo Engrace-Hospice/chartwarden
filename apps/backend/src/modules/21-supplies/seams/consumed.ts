@@ -12,7 +12,12 @@
 //
 // The seams M21 PUBLISHES (§4.8 `SupplyFulfillmentProvider`, `ComfortKitInventoryReader`, …) land in
 // M21-T05.
-import type { AdmissionStatusReader, DeathDischargeReader, OrderProvider } from "@wardenx/types";
+import type {
+  AdmissionStatusReader,
+  DeathDischargeReader,
+  OrderProvider,
+  PatientAddressReader,
+} from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
 
 /**
@@ -53,4 +58,18 @@ export function getAdmissionStatusReader(): AdmissionStatusReader {
  */
 export function getDeathDischargeReader(): DeathDischargeReader {
   return getSeam("DeathDischargeReader");
+}
+
+/**
+ * M21 CONSUMES M5's `PatientAddressReader.primaryAddress` (F-229 built it; F-232 is its first consumer) — the
+ * delivery-address SNAPSHOT a `dme`/`supply` `supply_request.data.deliveryAddress` carries (§2.1 / D7).
+ *
+ * PULLED at consume time, never pushed: `m11.order.supply_fulfillment_requested` carries ids + `supplyDetail`
+ * only, and a street address is PHI that must not ride the outbox. Org-explicit (RLS + an explicit
+ * `organization_id` predicate), so it is safe from a relay tick. It opens its OWN org context, so the intake
+ * consumer calls it OUTSIDE its own transaction (a second pooled connection held from inside one would
+ * self-deadlock the pool under concurrency).
+ */
+export function getPatientAddressReader(): PatientAddressReader {
+  return getSeam("PatientAddressReader");
 }

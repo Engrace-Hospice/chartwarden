@@ -561,6 +561,7 @@ import {
   buildM21OrderDiscontinuedConsumer,
   buildM21PharmacyDispenseConsumer,
   buildM21SupplyCancellationConsumer,
+  buildM21SupplyFulfillmentIntakeConsumer,
   decideDispatcherEligible,
   denyStubSuppliesAbacResolver,
   mountM21Routes,
@@ -6335,10 +6336,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // M21-T05 service layer" — the service layer landed, nothing ever bound them). Both events are
           // ALREADY emitted in production by the M11 discharge cascade (F-102) — every death/discharge on
           // an admission with an open supply_request has been cancelling the M11 order while leaving the
-          // DME rental or comfort-kit request standing. The THIRD decider (`decideSupplyFulfillmentIntake`)
-          // stays unbound: its own resolver says no platform seam answers "which Location serves this
-          // patient", and `supply_request.location_id` is NOT NULL — see the file header.
+          // DME rental or comfort-kit request standing.
           buildM21SupplyCancellationConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
+          // F-232 (#248) — the THIRD decider, `decideSupplyFulfillmentIntake` (§7.1): a signed `dme`/`supply`
+          // order (`dme.v2`/`supply.v2`) now opens a `supply_request`, pulling the delivery address through
+          // M5's `PatientAddressReader.primaryAddress` at consume time (never on the outbox). `comfort_kit`
+          // settles, unbound — see the file header.
+          buildM21SupplyFulfillmentIntakeConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
           buildM21OrderDiscontinuedConsumer({ db: dbHandle.db, outbox: m21OutboxPublisher }),
           // F-153 (#248) — M13's §2.5 deployment-ack link (resolved by patient+admission, since the
           // whole point of the ack is that the link does not exist yet) and §2.6 return-required

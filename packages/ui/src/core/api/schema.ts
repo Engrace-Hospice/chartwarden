@@ -54100,6 +54100,7 @@ export interface operations {
                     triggeringHopeAssessmentId?: string;
                     /** Format: uuid */
                     replacesOrderId?: string;
+                    kindVersion?: string;
                 };
             };
         };
@@ -54383,6 +54384,7 @@ export interface operations {
                     triggeringHopeAssessmentId?: string;
                     /** Format: uuid */
                     replacesOrderId?: string;
+                    kindVersion?: string;
                 };
             };
         };
@@ -75540,6 +75542,7 @@ export interface operations {
                         triggeringHopeAssessmentId?: string;
                         /** Format: uuid */
                         replacesOrderId?: string;
+                        kindVersion?: string;
                     };
                     verbal: {
                         recorderDiscipline: string;

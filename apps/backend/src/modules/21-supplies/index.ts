@@ -95,6 +95,15 @@ export {
   buildM21OrderDiscontinuedConsumer,
   buildM21SupplyCancellationConsumer,
 } from "./outbox-consumers/m11-order-cascade";
+// F-232 (#248) — the §7.1 fulfillment intake (`m11.order.supply_fulfillment_requested`), the third M11 decider.
+export {
+  M21_SUPPLY_FULFILLMENT_INTAKE_CONSUMER,
+  type M21SupplyFulfillmentIntakeDeps,
+  type SupplyIntakeOutcome,
+  type SupplyIntakeSettleReason,
+  buildM21SupplyFulfillmentIntakeConsumer,
+  runSupplyFulfillmentIntake,
+} from "./outbox-consumers/m11-supply-fulfillment-intake";
 // F-153 (#248) — M13's §2.5 deployment-ack link + §2.6 return-required chain-of-custody open.
 // F-172 (#248) — the §4.5.1 controlled-substance re-emit joins them.
 export {
