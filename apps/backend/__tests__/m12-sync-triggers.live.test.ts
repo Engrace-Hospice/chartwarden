@@ -28,12 +28,12 @@ import { isDegradedError } from "@wardenx/dosespot";
 import { withOrgContext } from "@wardenx/tenancy";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { dosespotSyncDemographicsForOrg } from "../src/modules/05-patient/index";
 import {
-  DosespotSyncQueueRepository,
   type EnqueueInput,
   type EnqueueResult,
+  DosespotSyncQueueRepository,
 } from "../src/modules/12-dosespot/jobs/repository";
+import { dosespotSyncDemographicsForOrg } from "../src/modules/05-patient/index";
 import { M12DosespotPatientIdUnbound } from "../src/modules/12-dosespot/jobs/vendor-boundary";
 import {
   type ActiveOrgListPort,
@@ -262,7 +262,7 @@ describe.skipIf(!DB_URL)(
       expect(after?.last_error).toBeNull();
     });
 
-    it("medhx_fetch: fails honestly at the genuinely-unbuilt DoseSpot-patient-id resolver", async () => {
+    it("medhx_fetch: fails honestly when no DoseSpot-side patient id has been recorded (F-230: the real resolver, no mapping yet)", async () => {
       const patientId = await seedPatient(ORG_A);
       const admissionId = randomUUID();
       const { row } = await enqueueAs(ORG_A, {

@@ -261,6 +261,9 @@ jobs:
           # (dosespot_sync_queue) draining the six m5.patient.*/m6.{admission.activated,cti.signed}
           # triggers.
           - { name: "M12 sync triggers", scripts: "test:m12:sync-triggers:live" }
+          # F-230 (#248) — OUR side of the DoseSpot vendor boundary (MedHx ingest + `POST /webhooks/dosespot`
+          # dispense path + the M14 slot's seam), against a clearly-labelled vendor TEST DOUBLE.
+          - { name: "M12 vendor boundary", scripts: "test:m12:vendor-boundary:live" }
           - {
               name: "M13 eMAR",
               scripts: "test:m13:read:live test:m13:write:live test:m13:rn-case-manager:live",

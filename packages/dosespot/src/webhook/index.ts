@@ -13,3 +13,21 @@ export {
   type WebhookVerifyInput,
   type WebhookVerifyResult,
 } from "./verify";
+// F-230 — the inbound body contract (§4.2 envelope is spec-defined; the script_status_update inner payload is
+// PROVISIONAL pending vendor documentation — see payloads.ts).
+export {
+  DOSESPOT_DISPENSE_STATUSES,
+  DOSESPOT_WEBHOOK_EVENT_TYPES,
+  DOSESPOT_WIRE_MAPPING_VERIFIED,
+  DoseSpotScriptStatusUpdatePayloadSchema,
+  DoseSpotWebhookEnvelopeSchema,
+  isDispenseStatus,
+  parseScriptStatusUpdate,
+  parseWebhookEnvelope,
+  type DoseSpotDispenseStatus,
+  type DoseSpotScriptStatusUpdatePayload,
+  type DoseSpotWebhookEnvelope,
+  type DoseSpotWebhookEventType,
+  type ScriptStatusParseResult,
+  type WebhookEnvelopeParseResult,
+} from "./payloads";

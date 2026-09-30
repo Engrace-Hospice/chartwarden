@@ -49,6 +49,8 @@ export {
   type MedicationOrderScheduleContext,
   medicationOrderPatientAndDrugForOrg,
   medicationOrderScheduleContextForOrg,
+  idgMedicationHistoryForOrg,
+  type IdgMedicationHistoryState,
   registerDoseSpotSeams,
 } from "./seams/index";
 // M12-T08 — the §4.7 ABAC predicates M12 owns (`prescriber_eligible` / `dea_schedule_authorized` /
@@ -219,3 +221,36 @@ export {
   M12_DOCUMENT_BACKREF_CONSUMER,
   buildM12DocumentBackrefConsumer,
 } from "./outbox-consumers/m22-document-rendered";
+
+// F-230 (#248) — the DoseSpot vendor-boundary tier (OUR side only; credentials do not exist here): the MedHx
+// pull ingest (`ingestPullResult`), the `dosespot_patient_sync` mapping, and the `POST /webhooks/dosespot`
+// route (HMAC + replay window + dedup + DEK-encrypted receipt + Dispensed/PickedUp -> dispense row + event),
+// fail-closed (503) until an operator binds per-tenant webhook secrets.
+export {
+  type IngestMedHistoryInput,
+  type IngestMedHistoryOutcome,
+  ingestMedicationHistoryPull,
+} from "./history/ingest";
+export {
+  createDrizzleDosespotPatientIdResolver,
+  recordPatientSyncFailure,
+  recordPatientSyncSuccess,
+} from "./jobs/patient-sync-store";
+export {
+  type DoseSpotWebhookKeyProvider,
+  type WebhookBodyCipher,
+  createWebhookBodyCipher,
+} from "./webhooks/body-crypto";
+export {
+  DOSESPOT_WEBHOOK_SECRETS_ENV,
+  type DoseSpotWebhookSecretResolver,
+  createEnvWebhookSecretResolver,
+  createUnboundWebhookSecretResolver,
+} from "./webhooks/secrets";
+export {
+  type DoseSpotWebhookIngestDeps,
+  type DoseSpotWebhookRequest,
+  type DoseSpotWebhookVerdict,
+  ingestDoseSpotWebhook,
+} from "./webhooks/ingest";
+export { DOSESPOT_WEBHOOK_PATH, registerDoseSpotWebhookRoute } from "./webhooks/webhook-route";

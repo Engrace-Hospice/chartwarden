@@ -376,7 +376,11 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
     }),
     // F-139 (#248) — m31 removed: same seam-pull redundancy — the portal medication list is read via
     // `getPortalMedicationSummary`, never invalidated by this event.
-    declaredConsumers: ["m14"],
+    // F-230 (#248) — m14 moved to `seamConsumers` (the F-218 / M19 precedent): the F-101 rule — M14's own spec
+    // builds the packet by seam reads and never names this event — makes the binding a PULL
+    // (`idgMedicationHistoryForOrg` -> `PacketSnapshot.medicationHistory`), not an outbox consumer.
+    declaredConsumers: [],
+    seamConsumers: ["m14"],
     isOutboxOnly: true,
   },
   {

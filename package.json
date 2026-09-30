@@ -168,6 +168,7 @@
     "test:m11:verbal-order-expiry:live": "vitest run apps/backend/__tests__/m11-verbal-order-expiry.live.test.ts",
     "test:m11:m12-verbal-expiry:live": "vitest run apps/backend/__tests__/m11-m12-verbal-expiry.live.test.ts",
     "test:m12:sync-triggers:live": "vitest run apps/backend/__tests__/m12-sync-triggers.live.test.ts",
+    "test:m12:vendor-boundary:live": "vitest run apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
     "test:m13:m12-draft-order-requested:live": "vitest run apps/backend/__tests__/m13-m12-draft-order-requested.live.test.ts",
     "test:m13:comfort-kit-deployment:live": "vitest run apps/backend/__tests__/m13-comfort-kit-deployment.live.test.ts",
     "test:m21:comfort-kit-replenishment:live": "vitest run apps/backend/__tests__/m21-comfort-kit-replenishment.live.test.ts",

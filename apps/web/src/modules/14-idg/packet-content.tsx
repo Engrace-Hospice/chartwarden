@@ -404,6 +404,55 @@ function ChangePanel<T>({
 
 const when = (v: string): ReactNode => <span className="wx-nums">{fmtDateTime(v)}</span>;
 
+/**
+ * F-230 — the external (DoseSpot/Surescripts MedHx) medication-history STATE, shown explicitly (M12 §5.5).
+ * `captured: false` (not captured by this build) and `not_pulled` (no pull was ever ingested) are NEVER worded
+ * as "no external history"; only a pull that ran and returned zero entries is (`none_available`).
+ */
+function ExternalMedicationHistoryPanel({
+  history,
+}: {
+  history: PacketContent["externalMedicationHistory"];
+}): JSX.Element {
+  return (
+    <Panel title="External medication history" icon="pill">
+      {!history.captured ? (
+        <p className="wx-row-sub" data-testid="ext-med-history-not-captured">
+          External medication history is not captured by this build.
+        </p>
+      ) : history.state === "none_available" ? (
+        <p className="wx-row-sub" data-testid="ext-med-history-none">
+          {history.message}
+          {history.lastPulledAt ? <> (last pulled {when(history.lastPulledAt)})</> : null}
+        </p>
+      ) : history.state === "available" ? (
+        <InfoRows
+          labelWidth="9rem"
+          rows={[
+            {
+              label: "Entries (latest pull)",
+              value:
+                history.recordCount === null ? (
+                  "Not available"
+                ) : (
+                  <span className="wx-nums">{history.recordCount}</span>
+                ),
+            },
+            {
+              label: "Last pulled",
+              value: history.lastPulledAt ? when(history.lastPulledAt) : "—",
+            },
+          ]}
+        />
+      ) : (
+        <p className="wx-row-sub" data-testid="ext-med-history-not-pulled">
+          {history.message ?? "External medication history has not been pulled for this patient."}
+        </p>
+      )}
+    </Panel>
+  );
+}
+
 /** HOPE timepoints — `captured: false` means "not captured by this build", never "none due". */
 function HopePanel({ hope }: { hope: PacketContent["hopeTimepoints"] }): JSX.Element {
   if (!hope.captured) {
@@ -502,6 +551,7 @@ export function PacketChanges({
           { id: "at", header: "When", cell: (r) => when(r.occurredAt) },
         ]}
       />
+      <ExternalMedicationHistoryPanel history={content.externalMedicationHistory} />
       <HopePanel hope={content.hopeTimepoints} />
       <ChangePanel
         title="Order changes"

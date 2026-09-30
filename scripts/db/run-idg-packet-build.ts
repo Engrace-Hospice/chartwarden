@@ -40,6 +40,7 @@ import {
   registerEncounterSeams,
 } from "../../apps/backend/src/modules/08-encounters/index";
 import { idgHopeContextForOrg } from "../../apps/backend/src/modules/10-hope/index";
+import { idgMedicationHistoryForOrg } from "../../apps/backend/src/modules/12-dosespot/index";
 import { idgMissedDosesForOrg } from "../../apps/backend/src/modules/13-emar/index";
 import type { IdgWriteOutboxPort } from "../../apps/backend/src/modules/14-idg/idg-route-service-db";
 import { M14_OUTBOX_EVENTS, runPacketBuildCron } from "../../apps/backend/src/modules/14-idg/index";
@@ -103,6 +104,9 @@ async function main(): Promise<void> {
         },
       ],
       hope: { hopeContextForOrg: (o, ids) => idgHopeContextForOrg(handle.db, o, ids) },
+      medicationHistory: {
+        medicationHistoryForOrg: (o, ids) => idgMedicationHistoryForOrg(handle.db, o, ids),
+      },
       siteDisplay: { displayForSite: (o, ids) => siteDisplayForOrg(handle.db, o, ids) },
       membershipDisplay: {
         displayForMemberships: (o, ids) => membershipDisplayForOrg(handle.db, o, ids),

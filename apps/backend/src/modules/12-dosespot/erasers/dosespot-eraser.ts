@@ -35,6 +35,14 @@ export interface MedicationOrderEraseCounts {
   readonly refillRequests: number;
   /** `epcs_signing_attempt` rows deleted (cascaded from the deleted orders). */
   readonly epcsSigningAttempts: number;
+  /** F-230 — `medication_history_record` rows (external MedHx entries, PHI) deleted for the patient. */
+  readonly medicationHistoryRecords?: number;
+  /** F-230 — `medication_history_pull` ledger rows deleted for the patient. */
+  readonly medicationHistoryPulls?: number;
+  /** F-230 — `medication_order_dispense` rows deleted for the patient. */
+  readonly dispenses?: number;
+  /** F-230 — `dosespot_patient_sync` (patient -> vendor patient id) rows deleted for the patient. */
+  readonly patientSyncRows?: number;
   /** Whole `medication_order` partitions DETACHed + DROPped (the partition-drop path). */
   readonly partitionsDropped: number;
   /**
@@ -99,6 +107,10 @@ export async function eraseMedicationOrderRecord(
     counts.transmissions +
     counts.refillRequests +
     counts.epcsSigningAttempts +
+    (counts.medicationHistoryRecords ?? 0) +
+    (counts.medicationHistoryPulls ?? 0) +
+    (counts.dispenses ?? 0) +
+    (counts.patientSyncRows ?? 0) +
     counts.orderSignatures +
     counts.orderVerbalOrders;
   return { erased, counts };
@@ -122,6 +134,10 @@ export function createInMemoryMedicationOrderEraseStore(
     transmissions: 0,
     refillRequests: 0,
     epcsSigningAttempts: 0,
+    medicationHistoryRecords: 0,
+    medicationHistoryPulls: 0,
+    dispenses: 0,
+    patientSyncRows: 0,
     partitionsDropped: 0,
     orderSignatures: 0,
     orderVerbalOrders: 0,
@@ -180,6 +196,10 @@ export function createDrizzleMedicationOrderEraseStore(
   const TRANS = schema.medicationOrderTransmissions;
   const REFILL = schema.refillRequests;
   const EPCS = schema.epcsSigningAttempts;
+  const HIST = schema.medicationHistoryRecords;
+  const PULL = schema.medicationHistoryPulls;
+  const DISP = schema.medicationOrderDispenses;
+  const SYNC = schema.dosespotPatientSync;
 
   /** The patient's erasable medication-order ids (`created_at < boundary`) — the cascade key. */
   const orderIdsFor = async (tx: Tx, patientId: string, boundary: Date): Promise<string[]> =>
@@ -253,6 +273,34 @@ export function createDrizzleMedicationOrderEraseStore(
                   .returning({ id: EPCS.id }),
               );
 
+        // F-230 — the vendor-boundary PHI tables, keyed on the patient (no order FK): the external MedHx
+        // entries first (FK -> their pull ledger row), then the ledger, the dispense rows, and the
+        // patient -> DoseSpot-patient-id mapping. `dosespot_webhook_event` (org-scoped encrypted receipt) stays.
+        const medicationHistoryRecords = await del(() =>
+          tx
+            .delete(HIST)
+            .where(and(eq(HIST.patientId, patientId), lt(HIST.createdAt, boundary)))
+            .returning({ id: HIST.id }),
+        );
+        const medicationHistoryPulls = await del(() =>
+          tx
+            .delete(PULL)
+            .where(and(eq(PULL.patientId, patientId), lt(PULL.createdAt, boundary)))
+            .returning({ id: PULL.id }),
+        );
+        const dispenses = await del(() =>
+          tx
+            .delete(DISP)
+            .where(and(eq(DISP.patientId, patientId), lt(DISP.createdAt, boundary)))
+            .returning({ id: DISP.id }),
+        );
+        const patientSyncRows = await del(() =>
+          tx
+            .delete(SYNC)
+            .where(and(eq(SYNC.patientId, patientId), lt(SYNC.createdAt, boundary)))
+            .returning({ id: SYNC.id }),
+        );
+
         // The partitioned parent, via the partition-key predicate (row-delete arm).
         const medicationOrders = await del(() =>
           tx
@@ -269,6 +317,10 @@ export function createDrizzleMedicationOrderEraseStore(
           transmissions,
           refillRequests,
           epcsSigningAttempts,
+          medicationHistoryRecords,
+          medicationHistoryPulls,
+          dispenses,
+          patientSyncRows,
           partitionsDropped: 0,
           orderSignatures,
           orderVerbalOrders,

@@ -25,6 +25,7 @@ import type {
   Idg6RecertWindowPort,
   Idg7PacketPort,
   Idg10HopeContextPort,
+  Idg12MedicationHistoryPort,
   IdgFlaggedEventSourcePort,
 } from "./packet-build";
 import { runPacketBuildCron } from "./packet-build";
@@ -54,6 +55,8 @@ export interface M14WorkerDeps {
   readonly flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
   /** §2.4 `hopeContext` (M10 `idgHopeContextForOrg`); unbound ⇒ `null` (not captured). */
   readonly hope?: Idg10HopeContextPort;
+  /** F-230 `medicationHistory` (M12 `idgMedicationHistoryForOrg`); unbound ⇒ `null` (not captured). */
+  readonly medicationHistory?: Idg12MedicationHistoryPort;
   /** M1 `siteDisplayForOrg` (org + location NAMES) for the packet PDF header; unbound ⇒ header omits the names. */
   readonly siteDisplay?: IdgSiteDisplayPort;
   /** M2 `membershipDisplayForOrg` (names only) for the carry-forward assignees; unbound ⇒ "Member xxxxxxxx". */
@@ -140,6 +143,7 @@ export function buildM14WorkerDeps(deps: {
   recertWindows?: Idg6RecertWindowPort;
   flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
   hope?: Idg10HopeContextPort;
+  medicationHistory?: Idg12MedicationHistoryPort;
   siteDisplay?: IdgSiteDisplayPort;
   membershipDisplay?: IdgMembershipDisplayPort;
   locationTimezone?: Idg1LocationTimezonePort;
@@ -155,6 +159,7 @@ export function buildM14WorkerDeps(deps: {
     recertWindows: deps.recertWindows,
     flaggedEventSources: deps.flaggedEventSources,
     hope: deps.hope,
+    medicationHistory: deps.medicationHistory,
     siteDisplay: deps.siteDisplay,
     membershipDisplay: deps.membershipDisplay,
     locationTimezone: deps.locationTimezone,
@@ -358,6 +363,7 @@ export function registerM14CronWorkers(deps: M14WorkerDeps): Worker[] {
           recertWindows: deps.recertWindows,
           flaggedEventSources: deps.flaggedEventSources,
           hope: deps.hope,
+          medicationHistory: deps.medicationHistory,
           siteDisplay: deps.siteDisplay,
           membershipDisplay: deps.membershipDisplay,
           now: deps.now,

@@ -357,6 +357,7 @@ export * from "./dosespot/epcs-signing-attempts";
 export * from "./dosespot/medication-order-idg-decision-applications";
 export * from "./dosespot/medication-order-reconciliation-decision-applications";
 export * from "./dosespot/dosespot-sync-queue";
+export * from "./dosespot/dosespot-vendor-boundary";
 
 // ---------------------------------------------------------------------------
 // M13 owns 12 tables (M13-T02): the central `administration_record` (one row per recorded medication

@@ -22,7 +22,11 @@
 //     `dosespotSyncDemographicsForOrg` seam (`../../05-patient/index`), the `bereavementPlanSitingForOrg`
 //     / `admissionSchedulingContextForOrg` port-injection shape — the composition root imports M5's seam
 //     function directly (it may; only feature modules are boundary-restricted) and passes it in.
-//   • `DosespotPatientIdResolver` — genuinely deferred. `DoseSpotMedHistoryPayload.dosespotPatientId` is
+//   • `DosespotPatientIdResolver` — F-230 UPDATE: no longer deferred. Migration 0303 added
+//     `dosespot_patient_sync` (written only from a real `upsertPatient` response) and the worker's DEFAULT is
+//     now `createDrizzleDosespotPatientIdResolver` (`./patient-sync-store.ts`); the unbound stub below is kept
+//     only as the explicit fail-closed option and for its own test. The original finding, for the record:
+//     `DoseSpotMedHistoryPayload.dosespotPatientId` is
 //     the VENDOR-side patient id a prior successful `upsertPatient` call would have returned. No table
 //     anywhere in M12's schema (`dosespot_prescriber`, `dosespot_webhook_event`, `epcs_signing_attempt`,
 //     `medication_order`, `medication_order_transmission`, `medication_order_idg_decision_application`,
