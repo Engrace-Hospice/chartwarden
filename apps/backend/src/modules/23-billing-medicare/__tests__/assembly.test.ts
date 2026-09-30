@@ -39,6 +39,13 @@ const ACTOR: ClaimAssemblyActor = {
   actorKind: "user",
 };
 
+/** F-214 — a diagnosis read with nothing withheld for Part 2 consent. */
+const NO_WITHHOLD = <T>(sequence: T) => ({
+  sequence,
+  withheldForConsentCount: 0,
+  terminalWithheldForConsent: false,
+});
+
 const RATE_TABLE = {
   // TODO(CMS-fixture): the published FY per-diem amounts replace these representative values.
   rhcDays1to60PerDiemCents: 20_000,
@@ -123,7 +130,7 @@ function buildSeams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblyS
         },
       ],
     },
-    diagnoses: { forRange: async () => [] },
+    diagnoses: { forRange: async () => NO_WITHHOLD([]) },
     signedEncounters: { inWindow: async () => [] },
     evvCompliance: { bracketsForEncounters: async () => [] },
     mdm: {
@@ -379,7 +386,7 @@ describe("F-209 (#251) — the claim carries the real M7 diagnosis sequence", ()
     });
     registry.freeze();
     const terminologyCalls: Array<readonly string[] | undefined> = [];
-    const forRange = vi.fn(async () => SEQ);
+    const forRange = vi.fn(async () => NO_WITHHOLD(SEQ));
     const seams = buildSeams({
       ruleRegistry: registry,
       diagnoses: { forRange },
@@ -407,6 +414,38 @@ describe("F-209 (#251) — the claim carries the real M7 diagnosis sequence", ()
     const seams = buildSeams();
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
     await svc.assemble(ACTOR, REQUEST);
+    for (const line of store.lines) expect(line.icdPointerPositions).toEqual([]);
+  });
+
+  it("F-214: threads the withheld-for-consent summary (count + terminal flag, never codes) into the validation context", async () => {
+    let seen: unknown = null;
+    const registry = new BillingRuleRegistry();
+    registry.registerRule({
+      ...trivialPassRule,
+      key: "test.capture_withheld",
+      check: (ctx) => {
+        seen = {
+          n: ctx.claim.diagnosesWithheldForConsent,
+          t: ctx.claim.terminalDiagnosisWithheldForConsent,
+        };
+        return pass("test.capture_withheld", "error", "ok");
+      },
+    });
+    registry.freeze();
+    const seams = buildSeams({
+      ruleRegistry: registry,
+      diagnoses: {
+        forRange: async () => ({
+          sequence: [{ position: 1, code: "J44.9", relationship: "related" as const }],
+          withheldForConsentCount: 1,
+          terminalWithheldForConsent: true,
+        }),
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    expect(seen).toEqual({ n: 1, t: true });
+    // The withheld terminal is not replaced: a `related` diagnosis is never promoted, so no line points at it.
     for (const line of store.lines) expect(line.icdPointerPositions).toEqual([]);
   });
 

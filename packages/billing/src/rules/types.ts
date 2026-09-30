@@ -160,6 +160,12 @@ export interface ClaimSnapshot {
   /** Set on TOB 817/818 (D14) — the predecessor claim being replaced/voided. */
   readonly replacesClaimId: ClaimId | null;
   readonly icd10Sequence: readonly Icd10Pointer[];
+  /** F-214 (#251) — how many diagnosis codes M7 WITHHELD from `icd10Sequence` because they are 42 CFR Part 2
+   *  (`sud_related`) and no valid release covers disclosure for billing. A count only: NEVER the codes. Required
+   *  (not optional) so a context producer cannot silently omit it and let a short sequence pass. */
+  readonly diagnosesWithheldForConsent: number;
+  /** True when the withheld set included the terminal (principal) diagnosis. */
+  readonly terminalDiagnosisWithheldForConsent: boolean;
   readonly totalChargeCents: Cents;
   /** Prior-period claim continuity facts for the `tob_and_dates_consistency` rule (null if none). */
   readonly priorClaimTob: TypeOfBill | null;

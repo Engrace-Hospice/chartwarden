@@ -70,15 +70,34 @@ describe("buildM23TerminologyAdapter — icd10Billable (F-209)", () => {
 
 describe("buildM23DiagnosesAdapter (F-209)", () => {
   it("passes the M7 rows through as position/code/relationship only", async () => {
-    const forRange = vi.fn(async () => [
-      { position: 1, code: "C34.90", relationship: "terminal" as const },
-    ]);
+    const forRange = vi.fn(async () => ({
+      sequence: [{ position: 1, code: "C34.90", relationship: "terminal" as const }],
+      withheldForConsentCount: 0,
+      terminalWithheldForConsent: false,
+    }));
     const seam = buildM23DiagnosesAdapter({ forRange });
     const range = { from: "2026-06-01", to: "2026-06-07" };
-    expect(await seam.forRange("org", "pat", range)).toEqual([
-      { position: 1, code: "C34.90", relationship: "terminal" },
-    ]);
+    expect(await seam.forRange("org", "pat", range)).toEqual({
+      sequence: [{ position: 1, code: "C34.90", relationship: "terminal" }],
+      withheldForConsentCount: 0,
+      terminalWithheldForConsent: false,
+    });
     expect(forRange).toHaveBeenCalledWith("org", "pat", range);
+  });
+
+  it("F-214: carries the Part 2 withheld summary through unchanged (count + terminal flag only)", async () => {
+    const seam = buildM23DiagnosesAdapter({
+      forRange: async () => ({
+        sequence: [{ position: 1, code: "J44.9", relationship: "related" as const }],
+        withheldForConsentCount: 2,
+        terminalWithheldForConsent: true,
+      }),
+    });
+    expect(await seam.forRange("org", "pat", { from: "2026-06-01", to: "2026-06-07" })).toEqual({
+      sequence: [{ position: 1, code: "J44.9", relationship: "related" }],
+      withheldForConsentCount: 2,
+      terminalWithheldForConsent: true,
+    });
   });
 });
 
@@ -92,17 +111,28 @@ describe("buildM23BootDiagnosesSeam — m7ClaimDiagnoses port absent (F-209)", (
 
   it("delegates to the injected M7 port when bound", async () => {
     const seam = buildM23BootDiagnosesSeam({
-      forRange: async () => [{ position: 1, code: "C34.90", relationship: "terminal" }],
+      forRange: async () => ({
+        sequence: [{ position: 1, code: "C34.90", relationship: "terminal" as const }],
+        withheldForConsentCount: 0,
+        terminalWithheldForConsent: false,
+      }),
     });
-    expect(await seam.forRange("org", "pat", { from: "2026-06-01", to: "2026-06-07" })).toEqual([
-      { position: 1, code: "C34.90", relationship: "terminal" },
-    ]);
+    const res = await seam.forRange("org", "pat", { from: "2026-06-01", to: "2026-06-07" });
+    expect(res.sequence).toEqual([{ position: 1, code: "C34.90", relationship: "terminal" }]);
   });
 
   it("buildM23BootAssemblyService accepts the port optionally", () => {
     expect(() => buildM23BootAssemblyService({} as never, {})).not.toThrow();
     expect(() =>
-      buildM23BootAssemblyService({} as never, { m7ClaimDiagnoses: { forRange: async () => [] } }),
+      buildM23BootAssemblyService({} as never, {
+        m7ClaimDiagnoses: {
+          forRange: async () => ({
+            sequence: [],
+            withheldForConsentCount: 0,
+            terminalWithheldForConsent: false,
+          }),
+        },
+      }),
     ).not.toThrow();
   });
 });

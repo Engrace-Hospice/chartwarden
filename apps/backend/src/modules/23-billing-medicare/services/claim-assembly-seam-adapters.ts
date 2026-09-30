@@ -19,7 +19,6 @@ import type { LevelOfCare, NpiStatus, PhysicianResolution } from "@wardenx/billi
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
-import { type PlaceOfServicePorts, resolvePlaceOfService } from "./place-of-service-resolver";
 import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
 import { resolveWageIndexForOrg } from "../routes/wage-index-service";
 import type { ProviderCcnPort } from "../routes/write-service";
@@ -42,6 +41,7 @@ import type {
   SignedEncountersReader,
   TerminologyProvider,
 } from "./claim-assembly";
+import { type PlaceOfServicePorts, resolvePlaceOfService } from "./place-of-service-resolver";
 
 type BillingDb = repositories.BillingDb;
 
@@ -368,14 +368,20 @@ export function buildM23ReferenceDataAdapter(db: BillingDb): BillingReferenceDat
       if (!row) throw rateTableMissing(scope);
       if (row.laborShareChc === null) throw laborSharesMissing(row.id);
       // The wage index adjusts the CHC hourly rate's LABOR SHARE only (F-211), like every other rate.
-      return applyWageIndexToLaborShare(row.chcHourlyRateCents, wageIndexFactorDecimal, row.laborShareChc);
+      return applyWageIndexToLaborShare(
+        row.chcHourlyRateCents,
+        wageIndexFactorDecimal,
+        row.laborShareChc,
+      );
     },
     async wageIndexForCcn(ccn, fiscalYearStarting, orgId) {
       // F-211: the tenant's own `tenant_wage_index` row, else a platform AUTHORITATIVE `wage_index_factor` row; a
       // non-authoritative placeholder (migration 0080) never prices a claim, so this returns null and assembly fails
       // closed `WAGE_INDEX_UNAVAILABLE`.
       const resolved = await resolveWageIndexForOrg(db, orgId, ccn, fiscalYearStarting);
-      return resolved ? { factorDecimal: resolved.factorDecimal, cbsaCode: resolved.cbsaCode } : null;
+      return resolved
+        ? { factorDecimal: resolved.factorDecimal, cbsaCode: resolved.cbsaCode }
+        : null;
     },
     async activeSequestrationPolicy(orgId, providerEntityId, serviceFrom) {
       return withOrgContext(db, { organizationId: orgId, userId: "" }, async (tx) => {
@@ -650,13 +656,16 @@ export interface M7ClaimDiagnosesReader {
     orgId: string,
     patientId: string,
     range: DateRange,
-  ): Promise<
-    ReadonlyArray<{
+  ): Promise<{
+    readonly sequence: ReadonlyArray<{
       readonly position: number;
       readonly code: string;
       readonly relationship: "terminal" | "related" | "unrelated";
-    }>
-  >;
+    }>;
+    /** F-214 (#251) — Part 2 codes M7 withheld for want of consent: a COUNT, never the codes. */
+    readonly withheldForConsentCount: number;
+    readonly terminalWithheldForConsent: boolean;
+  }>;
 }
 
 /**
@@ -667,12 +676,16 @@ export interface M7ClaimDiagnosesReader {
 export function buildM23DiagnosesAdapter(reader: M7ClaimDiagnosesReader): DiagnosisSequenceReader {
   return {
     async forRange(orgId, patientId, range) {
-      const rows = await reader.forRange(orgId, patientId, range);
-      return rows.map((r) => ({
-        position: r.position,
-        code: r.code,
-        relationship: r.relationship,
-      }));
+      const res = await reader.forRange(orgId, patientId, range);
+      return {
+        sequence: res.sequence.map((r) => ({
+          position: r.position,
+          code: r.code,
+          relationship: r.relationship,
+        })),
+        withheldForConsentCount: res.withheldForConsentCount,
+        terminalWithheldForConsent: res.terminalWithheldForConsent,
+      };
     },
   };
 }

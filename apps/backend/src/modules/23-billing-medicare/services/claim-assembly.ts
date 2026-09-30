@@ -30,6 +30,7 @@ import {
   type CapProjectionProvider,
   type Cents,
   type CertificationSnapshot,
+  ChcHoursError,
   type ClaimAssembleRequest,
   type ClaimAssembleResponse,
   type ElectionPeriodSnapshot,
@@ -39,7 +40,6 @@ import {
   type Icd10Pointer,
   type IsoDate,
   type LevelOfCare,
-  ChcHoursError,
   type LevelOfCarePeriodSnapshot,
   type MdmResolution,
   POS_BY_QCODE,
@@ -223,9 +223,18 @@ export interface MdmEntityProvider {
  * M7 — the claim's ICD-10 diagnosis sequence over the service window (F-209, #251): position 1..12, code,
  * relationship. Code + relationship only (no free-text description). Empty when the patient has no active,
  * coded problem in the window — the `icd10_sequencing` rule then fails honestly ("no ICD-10 diagnosis sequence").
+ *
+ * F-214 (#251) — the owning module (M7) has ALREADY applied the 42 CFR Part 2 consent gate: a `sud_related`
+ * diagnosis with no valid release on file is absent from `sequence` (positions re-ranked contiguously) and
+ * reported only as a NON-PHI summary — a count + whether the principal was among them, never a code.
  */
+export interface DiagnosisSequenceResult {
+  readonly sequence: readonly Icd10Pointer[];
+  readonly withheldForConsentCount: number;
+  readonly terminalWithheldForConsent: boolean;
+}
 export interface DiagnosisSequenceReader {
-  forRange(orgId: string, patientId: string, range: DateRange): Promise<readonly Icd10Pointer[]>;
+  forRange(orgId: string, patientId: string, range: DateRange): Promise<DiagnosisSequenceResult>;
 }
 
 /**
@@ -559,7 +568,8 @@ export function buildClaimAssemblyService(
       );
       // F-209 (#251) — the claim's real diagnosis sequence (M7), read BEFORE terminology so M38 can resolve
       // `icd10Billable` for exactly these codes. Not persisted to a claim column (no such column exists).
-      const icd10Sequence = await seams.diagnoses.forRange(orgId, patientId, range);
+      const diagnosisRead = await seams.diagnoses.forRange(orgId, patientId, range);
+      const icd10Sequence = diagnosisRead.sequence;
       const terminology = await seams.terminology.resolveForClaim(
         orgId,
         serviceFrom,
@@ -829,6 +839,8 @@ export function buildClaimAssemblyService(
             serviceTo,
             replacesClaimId: null,
             icd10Sequence,
+            diagnosesWithheldForConsent: diagnosisRead.withheldForConsentCount,
+            terminalDiagnosisWithheldForConsent: diagnosisRead.terminalWithheldForConsent,
             totalChargeCents: grossCents,
             priorClaimTob: priorClaim?.tob ?? null,
             priorClaimServiceTo: priorClaim?.serviceTo ?? null,

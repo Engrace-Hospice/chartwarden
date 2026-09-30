@@ -23,6 +23,7 @@ export { type NowClock, createCarePlanReader } from "./reader";
 // `registerCarePlanSeams({ store: createDrizzleCarePlanReaderStore(db) })` (the M8 pattern).
 export {
   type ClaimDiagnosisRecord,
+  type ClaimDiagnosisResult,
   claimDiagnosesForOrg,
   createDrizzleCarePlanReaderStore,
   type IdgPacketCarePlanContext,

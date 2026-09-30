@@ -20,7 +20,39 @@ export const icd10Sequencing: Rule = {
   regulatoryRequired: true,
   overrideRoleRequired: "medical_director",
   check: (ctx) => {
+    // F-214 (#251) — 42 CFR Part 2. M7 withheld diagnosis code(s) because the patient has no valid Part 2
+    // release covering disclosure for billing. This is evaluated FIRST and is never skipped: a claim that would
+    // otherwise go out silently short of a diagnosis must be HELD (error severity) for a biller to resolve the
+    // consent. The message names a COUNT only — never a code or description (they are Part 2 protected).
+    const withheld = ctx.claim.diagnosesWithheldForConsent;
+    const withheldDefects: string[] = [];
+    if (withheld > 0) {
+      if (ctx.claim.terminalDiagnosisWithheldForConsent) {
+        withheldDefects.push(
+          "the principal (terminal) diagnosis is withheld pending 42 CFR Part 2 consent; it is not substituted",
+        );
+      }
+      withheldDefects.push(
+        `${withheld} diagnosis code(s) withheld pending 42 CFR Part 2 consent (not on the claim)`,
+      );
+    }
+    const heldFix = {
+      summary:
+        "A diagnosis was withheld pending 42 CFR Part 2 consent. Obtain/renew the patient's Part 2 release (M39), then reassemble the claim.",
+      blameTarget: "claim" as const,
+      blameTargetId: ctx.claim.claimId,
+      fixAction: "edit_in_m6" as const,
+    };
     if (!ctx.seams.terminologyBound) {
+      if (withheldDefects.length > 0) {
+        return fail(
+          KEY,
+          "error",
+          `ICD-10 sequencing has ${withheldDefects.length} defect(s).`,
+          heldFix,
+          { defectCount: withheldDefects.length, firstDefect: withheldDefects[0] ?? "" },
+        );
+      }
       return skip(
         KEY,
         "error",
@@ -29,6 +61,15 @@ export const icd10Sequencing: Rule = {
       );
     }
     const seq = [...ctx.claim.icd10Sequence].sort((a, b) => a.position - b.position);
+    if (seq.length === 0 && withheldDefects.length > 0) {
+      return fail(
+        KEY,
+        "error",
+        `ICD-10 sequencing has ${withheldDefects.length} defect(s).`,
+        heldFix,
+        { defectCount: withheldDefects.length, firstDefect: withheldDefects[0] ?? "" },
+      );
+    }
     if (seq.length === 0) {
       return fail(KEY, "error", "The claim has no ICD-10 diagnosis sequence.", {
         summary: "Add the principal terminal diagnosis and any related conditions (M6/M9).",
@@ -37,7 +78,7 @@ export const icd10Sequencing: Rule = {
         fixAction: "edit_in_m6",
       });
     }
-    const defects: string[] = [];
+    const defects: string[] = [...withheldDefects];
 
     // Position 1 must be the terminal diagnosis.
     const principal = seq[0];
@@ -46,7 +87,11 @@ export const icd10Sequencing: Rule = {
       principal.position !== 1 ||
       principal.relationship !== "terminal"
     ) {
-      defects.push("principal (position 1) is not the terminal diagnosis");
+      // When the terminal was withheld for consent the dedicated message above already says why; do not add a
+      // second, misleading "not the terminal" line — and never promote a related diagnosis to principal.
+      if (!ctx.claim.terminalDiagnosisWithheldForConsent) {
+        defects.push("principal (position 1) is not the terminal diagnosis");
+      }
     }
     // No secondary code may itself be terminal (only one terminal, sequenced first).
     for (let i = 1; i < seq.length; i++) {
@@ -72,7 +117,9 @@ export const icd10Sequencing: Rule = {
       `ICD-10 sequencing has ${defects.length} defect(s).`,
       {
         summary:
-          "Re-sequence diagnoses (terminal first) and replace any truncated/non-billable code.",
+          withheldDefects.length > 0
+            ? heldFix.summary
+            : "Re-sequence diagnoses (terminal first) and replace any truncated/non-billable code.",
         blameTarget: "claim",
         blameTargetId: ctx.claim.claimId,
         fixAction: "edit_in_m6",

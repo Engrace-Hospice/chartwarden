@@ -104,7 +104,6 @@ import { createDefaultBillingRegistry, type repositories } from "@wardenx/billin
 import { WardenXError } from "@wardenx/types";
 
 import type { ProviderCcnPort } from "../routes/write-service";
-import type { PlaceOfServicePorts } from "./place-of-service-resolver";
 import { buildM23CapProjectionAdapter } from "./cap-projection-adapter";
 import {
   type AssemblyOutboxPort,
@@ -131,6 +130,7 @@ import {
   buildM23SignedEncountersAdapter,
   buildM23TerminologyAdapter,
 } from "./claim-assembly-seam-adapters";
+import type { PlaceOfServicePorts } from "./place-of-service-resolver";
 
 type BillingDb = repositories.BillingDb;
 
@@ -240,11 +240,8 @@ export function buildM23BootAssemblyService(
       // port (extended, no new port) + M40's registered `MdmEntityProvider`; `placeOfService` via the injected
       // F-213 ports (null when unresolvable — `place-of-service-resolver.ts`).
       resolveClinicalParticipants: ports.m6ClaimRange
-        ? buildM23ClinicalParticipantsAdapter(
-            ports.m6ClaimRange,
-            undefined,
-            ports.placeOfService,
-          ).resolveClinicalParticipants
+        ? buildM23ClinicalParticipantsAdapter(ports.m6ClaimRange, undefined, ports.placeOfService)
+            .resolveClinicalParticipants
         : () => unbound("MdmEntityProvider"),
     },
     // REAL (#251, F-124) — over the registered M38 `TerminologyProvider` seam's bulk `expand()`; needs no

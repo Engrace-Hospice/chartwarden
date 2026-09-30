@@ -439,3 +439,44 @@ home address says nothing about it, and M6's range read does not yet carry the L
 (follow-up: extend it, as M24's `LevelOfCarePeriodReaderPort` does); (b) a range not covered end to end by primary
 address history; (c) a range spanning a move between DIFFERENT sites — one claim-level Q-code cannot be honest (splitting
 lines at the move date is the proper fix). Proven live on the real NOBYPASSRLS role in `m23-claim-assembly-seams.live.test.ts`.
+
+**F-214 (#251) — Part 2 (42 CFR Part 2) consent gate on the claim's diagnosis sequence.** F-209's
+`claimDiagnosesForOrg` did not exclude `problem.sud_related = true`, so a substance-use diagnosis code would have
+been put on the Medicare claim (a disclosure to the MAC/CMS) with no consent check. **Fix, at the point the rows are
+read (M7's org-explicit seam function — there is no ungated variant for a future caller to reach):** a `sud_related`
+code is included only when M39's `ConsentEvaluator.evaluate` (resolved opaquely via `getSeam`, no `@wardenx/consent`
+edge — the `part2ReleaseAllowed`/M22 F-197 `resolveSudConsentPresent` shape) says a `42_cfr_part_2_release` is
+effective, `active`, unexpired, unrevoked, has at least one active named recipient and the patient is not deceased
+(post-death scope) **as of now**; otherwise the code is WITHHELD. The pure rule set is
+`07-care-plan/seams/claim-diagnoses-gate.ts` (`applyPart2ClaimGate`). Fail-closed on an unbound seam, a throw, or any
+non-`allowed` verdict. The consent round-trip is skipped when no SUD-flagged code is in play.
+*As of when:* assembly time (now), NOT the service dates — the disclosure happens when the claim is assembled/sent,
+and the architecture's M39 cascade says a revoked Part 2 release blocks FUTURE disclosures (past ones are audited), so
+a release revoked last week must withhold a claim assembled today even for March service dates, and a release that
+only became effective after the service dates still covers today's disclosure.
+*Shape:* `claimDiagnosesForOrg` now returns `{ sequence, withheldForConsentCount, terminalWithheldForConsent }`
+(count + flag only — never a code or description). Withholding happens BEFORE ranking: positions are re-ranked
+contiguously, the 12-position cap applies after it, a same-code non-SUD twin cannot smuggle a withheld code out, and a
+withheld terminal is NOT replaced (the next diagnosis keeps its own `related`/`unrelated` relationship, so no
+promotion and the terminal-only line pointers are empty). M23's local structural port (`M7ClaimDiagnosesReader`)
+and `DiagnosisSequenceReader` carry the result; `ValidationContext.claim` gained the REQUIRED
+`diagnosesWithheldForConsent` / `terminalDiagnosisWithheldForConsent` (required so a context producer cannot silently
+omit them). `icd10_sequencing` (error, regulatory) now FAILS — it holds the claim — whenever any diagnosis was
+withheld, even if the remaining sequence is otherwise valid, never skips on it (not even with M38 unbound), names a
+withheld terminal first, and its message/`observed` values carry counts only.
+*Audit of the rest of M23 (grep):* the diagnoses seam is the ONLY place M23 reads problem/ICD/SUD data. No claim column
+stores an ICD code (`claim_line.icd_pointer_positions` are integers), NOE/NOTR drafts and the 837 build contain no
+diagnosis, and M23 reads no `sud_related` flag anywhere. The one thing NOT covered: `claim-validation-service`'s
+`ValidationContextPort` (re-validation) is still unbound in production and would need the same flag when bound.
+*Semantics chosen and what the repo does NOT define (compliance/counsel must confirm):* M39 has no payer/MAC recipient
+kind (`consent_recipient_kind` = physician/facility/pharmacy/irb/family/attorney/employer/researcher/free_text) and no
+structured payment/TPO purpose (`consent_record_recipient.purpose_code` is an unused free M38 reference,
+`purpose_of_disclosure` free text; `StoredRecipient` does not even carry it), so "release names the MAC for payment"
+cannot be checked. The gate therefore requires a valid patient-level Part 2 release (the same fact M22's F-197 mint gate
+and M7's clinician gate use), not one that names CMS/the MAC or payment. Post-death: the evaluator's D13 rule withholds
+on a deceased patient unless the release `survives_death`, which matters for final claims. Proven live on the real
+NOBYPASSRLS role with real `consent_record`/`consent_record_recipient` rows in `m23-claim-assembly-seams.live.test.ts`
+(active -> included; none/expired/revoked/wrong type/no active recipient/other patient/other org -> omitted + flagged;
+withheld terminal fails `icd10_sequencing`; evaluator throw fails closed), 5 mutations killed (drop gate, ignore
+revocation, ignore expiry, fail open on error, accept `hipaa_release`); pure gate + rule tests in
+`f214-claim-diagnoses-part2-gate.test.ts` and `packages/billing/__tests__/rules.test.ts`.
