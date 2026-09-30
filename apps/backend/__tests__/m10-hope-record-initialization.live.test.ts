@@ -9,6 +9,7 @@ import { registerSeam } from "../src/bootstrap/seams/registry";
 import { registerPatientSeams } from "../src/modules/05-patient/index";
 import { createDbHopeBackend } from "../src/modules/10-hope/hope-route-service-db";
 import { createHopeSpecRegistry } from "../src/modules/10-hope/hope-spec-registry";
+import { answerHopeForSign } from "./_hope-sign-ready";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 import { seedM5Patient } from "./_m6-admit";
 
@@ -18,7 +19,6 @@ const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audi
 const ORG = "11111111-1111-1111-1111-111111111111";
 const USER = "22222222-2222-2222-2222-222222222222";
 const PATIENT = "33333333-3333-3333-3333-333333333333";
-const WORKFLOW_ITEMS = /^(A0050|A0220|A0250|A0270|J2052[A-C]|J2053[A-H]|Z0350|Z0500B)$/;
 /** The drafts' target date, used for every date answer `answerForSign` fills. */
 const ANSWER_DATE = "2025-10-15";
 
@@ -100,59 +100,9 @@ describe.skipIf(!DB_URL)("M10 HOPE Phase 2A record initialization — LIVE Postg
     return Object.fromEntries(rows.map((r) => [r.item_code, r]));
   }
 
-  /**
-   * Answer a draft until the server's sign-readiness review passes (the same completion
-   * m10-hope-write.live.test.ts does): `signTimepoint` refuses (HopeAssessmentNotReadyToSignError) any
-   * record whose active, applicable items are unanswered or that carries an error finding. Every
-   * UNANSWERED_APPLICABLE_ITEM blocker gets its first CMS option (No / Not at all for gates, so skip
-   * branches resolve), a date, or text. A1400A (Medicare payer) is always set — CMS rule -3081.
-   */
-  async function answerForSign(id: string): Promise<void> {
-    const patch = async (changes: Record<string, string>) => {
-      const ws = await svc.getAssessmentWorkspace(ORG, id);
-      await svc.patchAssessmentAnswers(ORG, membershipId, id, {
-        ifVersion: ws.assessment.version,
-        changes: Object.entries(changes).map(([itemCode, value]) => ({
-          itemCode,
-          action: "set" as const,
-          value,
-        })),
-      });
-    };
-    await patch({ A1400A: "1" });
-    for (let round = 0; round < 6; round++) {
-      const review = await svc.getAssessmentReview(ORG, id);
-      if (review.readiness.readyToSign) return;
-      const ws = await svc.getAssessmentWorkspace(ORG, id);
-      const items = new Map(ws.sections.flatMap((s) => s.items).map((i) => [i.itemCode, i]));
-      const changes: Record<string, string> = {};
-      for (const b of review.readiness.blockers) {
-        if (b.code !== "UNANSWERED_APPLICABLE_ITEM" || !b.itemCode) continue;
-        if (WORKFLOW_ITEMS.test(b.itemCode)) continue;
-        const item = items.get(b.itemCode);
-        if (!item) continue;
-        const codes = [...item.options]
-          .sort((x, y) => x.sortOrder - y.sortOrder)
-          .map((o) => o.valueCode);
-        const real = codes.filter(
-          (c) => !["Text", "YYYYMMDD", "YYYYMM", "YYYY", "^", "-"].includes(c),
-        );
-        changes[b.itemCode] =
-          codes.includes("YYYYMMDD") || /date/i.test(item.cmsItemTypeCode)
-            ? ANSWER_DATE
-            : codes.includes("Text")
-              ? "Test"
-              : (real[0] ?? "0");
-      }
-      if (Object.keys(changes).length === 0) {
-        throw new Error(
-          `HOPE ${id} is not sign-ready: ${JSON.stringify(review.readiness.blockers)}`,
-        );
-      }
-      await patch(changes);
-    }
-    throw new Error(`HOPE ${id} did not reach sign readiness`);
-  }
+  /** Complete a draft until sign-ready — shared helper (_hope-sign-ready.ts), incl. the A1005/A1010 checklists. */
+  const answerForSign = (id: string): Promise<void> =>
+    answerHopeForSign({ svc, orgId: ORG, membershipId: membershipId, answerDate: ANSWER_DATE }, id);
 
   beforeAll(async () => {
     admin = new Client({ connectionString: DB_URL });

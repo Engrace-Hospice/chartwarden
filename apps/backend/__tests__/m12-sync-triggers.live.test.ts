@@ -33,6 +33,7 @@ import {
   type EnqueueResult,
   DosespotSyncQueueRepository,
 } from "../src/modules/12-dosespot/jobs/repository";
+import { dosespotSyncDemographicsForOrg } from "../src/modules/05-patient/index";
 import { M12DosespotPatientIdUnbound } from "../src/modules/12-dosespot/jobs/vendor-boundary";
 import {
   type ActiveOrgListPort,
@@ -164,6 +165,20 @@ describe.skipIf(!DB_URL)("M12 dosespot_sync_queue — jobs/repository + jobs/wor
     if (admin) await admin.end();
   });
 
+  /**
+   * The worker deps exactly as the composition root builds them (apps/backend/src/index.ts,
+   * `registerDoseSpotSyncQueueWorker`): M5's REAL org-explicit `dosespotSyncDemographicsForOrg` seam is
+   * injected as the `demographicsForOrg` port. The worker refuses to run `patient_sync` without it
+   * (M5's patient tables are not readable from M12 directly), so a drain without it never reaches the
+   * snapshot read this suite exists to prove. The vendor client stays the unbound deny-stub.
+   */
+  const workerDeps = (activeOrgs: ActiveOrgListPort): DoseSpotSyncWorkerDeps => ({
+    db: handle.db,
+    activeOrgs,
+    demographicsForOrg: (organizationId, patientId) =>
+      dosespotSyncDemographicsForOrg(handle.db, organizationId, patientId),
+  });
+
   it("enqueue() debounces — two triggers for the same patient close together collapse onto one pending row", async () => {
     const patientId = await seedPatient(ORG_A);
 
@@ -207,8 +222,7 @@ describe.skipIf(!DB_URL)("M12 dosespot_sync_queue — jobs/repository + jobs/wor
     });
 
     const orgs: ActiveOrgListPort = { listActiveOrgs: async () => [{ organizationId: ORG_A }] };
-    const deps: DoseSpotSyncWorkerDeps = { db: handle.db, activeOrgs: orgs };
-    await runDoseSpotSyncQueueDrain(deps);
+    await runDoseSpotSyncQueueDrain(workerDeps(orgs));
 
     const after = await queueRow(row.id);
     expect(after?.status).toBe("failed");
@@ -229,7 +243,7 @@ describe.skipIf(!DB_URL)("M12 dosespot_sync_queue — jobs/repository + jobs/wor
     });
 
     const orgs: ActiveOrgListPort = { listActiveOrgs: async () => [{ organizationId: ORG_A }] };
-    await runDoseSpotSyncQueueDrain({ db: handle.db, activeOrgs: orgs });
+    await runDoseSpotSyncQueueDrain(workerDeps(orgs));
 
     const after = await queueRow(row.id);
     expect(after?.status).toBe("completed");
@@ -249,7 +263,7 @@ describe.skipIf(!DB_URL)("M12 dosespot_sync_queue — jobs/repository + jobs/wor
     expect(row.admissionId).toBe(admissionId);
 
     const orgs: ActiveOrgListPort = { listActiveOrgs: async () => [{ organizationId: ORG_A }] };
-    await runDoseSpotSyncQueueDrain({ db: handle.db, activeOrgs: orgs });
+    await runDoseSpotSyncQueueDrain(workerDeps(orgs));
 
     const after = await queueRow(row.id);
     expect(after?.status).toBe("failed");
@@ -289,7 +303,7 @@ describe.skipIf(!DB_URL)("M12 dosespot_sync_queue — jobs/repository + jobs/wor
 
     // Drain ONLY org A.
     const orgs: ActiveOrgListPort = { listActiveOrgs: async () => [{ organizationId: ORG_A }] };
-    await runDoseSpotSyncQueueDrain({ db: handle.db, activeOrgs: orgs });
+    await runDoseSpotSyncQueueDrain(workerDeps(orgs));
 
     expect((await queueRow(rowA.id))?.status).toBe("failed"); // processed
     expect((await queueRow(rowB.id))?.status).toBe("pending"); // untouched
