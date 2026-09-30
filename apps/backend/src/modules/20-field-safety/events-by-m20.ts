@@ -387,7 +387,11 @@ export const M20_OUTBOX_EVENTS: ModuleEventContribution = [
       enteredAt: Iso,
       visitId: IdOrNull,
     }),
-    declaredConsumers: ["m17"],
+    // F-215 (#248) — m17 DROPPED: M17's own spec has zero mentions of high-risk areas (the producer-side
+    // claim in M20's "Consumed by" line is unsupported on the consumer side — F-101, the consumer's
+    // decisive text wins), M20's own banner is a read-time render, and nothing ever publishes this event
+    // (only the M36 alert builder exists). M36 stays via seam.
+    declaredConsumers: [],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },

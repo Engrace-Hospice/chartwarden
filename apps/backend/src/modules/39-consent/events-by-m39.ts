@@ -136,7 +136,9 @@ export const M39_OUTBOX_EVENTS: ModuleEventContribution = [
       expiresAt: Type.String(),
       reminderKind: Type.String(),
     }),
-    declaredConsumers: ["m14"],
+    // F-215 (#248) — m14 DROPPED: M14's own spec never mentions consent expiry; it reads consent only
+    // through `consent.evaluate` at packet-build time (a read-time seam pull, nothing for a push to act on).
+    declaredConsumers: [],
     seamConsumers: ["m36"],
     isOutboxOnly: true,
   },
