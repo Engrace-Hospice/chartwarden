@@ -257,7 +257,7 @@ const toOrderDetailView = (
     actor,
     cosignerRoleNeeded,
   ),
-  // F-199 — `readOrder` fills these for a lab order (a second read of the append-only ledger); everything else has none.
+  // F-202 — `readOrder` fills these for a lab order (a second read of the append-only ledger); everything else has none.
   transmissionAttestations: [],
   pendingRecovery: null,
 });
@@ -296,7 +296,7 @@ export function createDbOrderBackend(
   /** F-181 (#248) — the ports the outbound lab-ORM producer reads through. Omitted ⇒ a signed lab emits no ORM. */
   orm?: OrmRequestedPorts,
   /**
-   * F-199 — the two-person recovery control's knobs (compliance alert port, request TTL, repeat-attester window and
+   * F-202 — the two-person recovery control's knobs (compliance alert port, request TTL, repeat-attester window and
    * threshold, clock). Every one has a documented default in `./orm-request/orm-recovery-dual-control`; omitting the
    * alert port still files/co-signs/expires requests, it just raises no notification (unit tests, the workers).
    */
@@ -312,7 +312,7 @@ export function createDbOrderBackend(
 
   /**
    * The lab contact's NAME and the lab's reference are a third party's personal data — only the recovery authority sees
-   * them (F-200: `orders.transmission.recover`, or the high-trust co-signer's `orders.transmission.cosign_escalated`;
+   * them (F-203: `orders.transmission.recover`, or the high-trust co-signer's `orders.transmission.cosign_escalated`;
    * it was the broad `orders.amend`).
    */
   const canSeeRecoveryEvidence = (actor: OrderDetailActor): boolean =>
@@ -353,11 +353,11 @@ export function createDbOrderBackend(
   };
 
   /**
-   * F-200 — DURABLE compliance alerts. Each alert is published as an `m11.order.recovery_alert_requested` outbox event on
+   * F-203 — DURABLE compliance alerts. Each alert is published as an `m11.order.recovery_alert_requested` outbox event on
    * the recovery's OWN transaction, so it commits or rolls back WITH the recovery (an alert can never describe a recovery
    * that did not happen, and a recovery can never commit without its alert intent). `buildM11RecoveryAlertConsumer` hands
    * it to M36; a delivery failure is retried by the relay and the alert's correlation id makes a redelivery idempotent.
-   * (F-199 emitted after commit and swallowed a failure, so an emitter outage lost the notification.)
+   * (F-202 emitted after commit and swallowed a failure, so an emitter outage lost the notification.)
    */
   async function publishRecoveryAlerts(
     t: DbClient,
@@ -454,7 +454,7 @@ export function createDbOrderBackend(
         : null
       : null;
     const view = toOrderDetailView(row, actor, needed);
-    // F-199 — the attested-recovery history, for a lab order only (nothing else can have one).
+    // F-202 — the attested-recovery history, for a lab order only (nothing else can have one).
     if (row.kind !== "lab") return view;
     const attestations = await tx
       .select()
@@ -1372,7 +1372,7 @@ export function createDbOrderBackend(
      * (`dlq_exhausted`, including F-183's "held, delivery unverified", or `application_reject`). F-182's resend refuses
      * these on purpose: the lab MAY have the order, and re-emitting would order the test twice. The one fact the
      * system cannot know is what the lab actually holds, so a human establishes it by calling the lab and ATTESTS:
-     *   • `not_received_by_lab` → the DUPLICATE-RISK attestation. F-199: it no longer executes on the first call — it
+     *   • `not_received_by_lab` → the DUPLICATE-RISK attestation. F-202: it no longer executes on the first call — it
      *     FILES a `pending_cosign` request (`order_recovery_request`, expires in 24 h) that a DIFFERENT authorized person
      *     must co-sign (`cosignLabTransmissionRecovery`), which then re-runs the producer and publishes ONE
      *     `m11.order.hl7_orm_requested` carrying a fresh `redispatchAttestationId` (M29's worker treats that id as the
@@ -1491,7 +1491,7 @@ export function createDbOrderBackend(
           };
         }
 
-        // ── `not_received_by_lab`: FILE the request; a DIFFERENT person's co-signature executes it (F-199). ──────
+        // ── `not_received_by_lab`: FILE the request; a DIFFERENT person's co-signature executes it (F-202). ──────
         // The distinctness rule compares Better Auth USER ids, so an empty one (a non-HTTP caller) cannot file.
         if (!auditUserId) {
           throw new ConflictError(
@@ -1554,7 +1554,7 @@ export function createDbOrderBackend(
     },
 
     /**
-     * F-199 — the SECOND person of the two-person control. Mirrors M3 `BreakGlassStore.cosign`: the guards that make
+     * F-202 — the SECOND person of the two-person control. Mirrors M3 `BreakGlassStore.cosign`: the guards that make
      * it two-person live in the UPDATE's WHERE (still pending, not lapsed, co-signer ≠ requester) so two co-signers
      * racing cannot both win, with the `order_recovery_request_cosigner_distinct_chk` CHECK behind them; the friendly
      * 409s come from the pure `decideRecoveryCosign` (a settled or lapsed request reports THAT, never whether the caller
@@ -1611,7 +1611,7 @@ export function createDbOrderBackend(
           throw new ConflictError(`Transmission recovery not allowed (${cosign.code}): ${cosign.message}`);
         }
 
-        // F-200 — the COLLUSION BOUND. Serialize concurrent co-signs that involve either person (advisory locks, taken in
+        // F-203 — the COLLUSION BOUND. Serialize concurrent co-signs that involve either person (advisory locks, taken in
         // a fixed order so two co-signs cannot deadlock), then count the EXECUTED recoveries in the window for this
         // requester, for this exact pair (either way round) and for the whole org. At the bound, only a holder of
         // `orders.transmission.cosign_escalated` may co-sign. This raises the cost of two people agreeing to lie; it
@@ -1696,7 +1696,7 @@ export function createDbOrderBackend(
         const attemptId = randomUUID();
         const attestationId = randomUUID();
         // BOTH guards in the WHERE, not in a read-then-write (the break-glass shape): a concurrent co-signer, a lapse
-        // between the read above and now, a supersede, or the requester themselves all match no row. F-200 — this runs
+        // between the read above and now, a supersede, or the requester themselves all match no row. F-203 — this runs
         // BEFORE the order is moved: the order's own transition would otherwise fire the supersede trigger on this very
         // request. Anything that fails below rolls this back with the rest of the transaction.
         const executed = await t
@@ -1793,7 +1793,7 @@ export function createDbOrderBackend(
             escalatedCosign: escalation.required,
           }),
         );
-        // F-200 — the collusion / rate signals, each DEDUPLICATED per window by its own correlation id.
+        // F-203 — the collusion / rate signals, each DEDUPLICATED per window by its own correlation id.
         if (priorPair + 1 >= escalationThreshold) {
           alerts.push(
             buildRecoveryAnomalyAlert("repeat_pair", {
@@ -1828,7 +1828,7 @@ export function createDbOrderBackend(
       });
     },
 
-    /** F-199 — cancel a pending recovery (either person). The guard is the WHERE; a miss re-reads to say WHY. */
+    /** F-202 — cancel a pending recovery (either person). The guard is the WHERE; a miss re-reads to say WHY. */
     async cancelLabTransmissionRecovery(
       organizationId,
       membershipId,
@@ -1888,11 +1888,11 @@ export function createDbOrderBackend(
     },
 
     /**
-     * F-199 — the sweep. One UPDATE flips every pending request past its `expires_at` to `expired` (the guard is the
+     * F-202 — the sweep. One UPDATE flips every pending request past its `expires_at` to `expired` (the guard is the
      * WHERE, so a request co-signed a millisecond ago is not touched) and each raises the compliance alert. The system
      * actor is empty, so the audit trigger records no user — an expiry is not a person's act.
      *
-     * F-200 — the same tick is the BACKSTOP for stranded requests: any pending request whose order is no longer a failed
+     * F-203 — the same tick is the BACKSTOP for stranded requests: any pending request whose order is no longer a failed
      * lab order (or no longer exists) is superseded. The `order_record` trigger supersedes at the moment the order moves,
      * so this only ever catches a request that trigger could not see (an order row rewritten with triggers disabled, a
      * restore) — it is a net, not the mechanism. Its alerts are the expiry ones only: a supersede is not a compliance

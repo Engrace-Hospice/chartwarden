@@ -174,7 +174,7 @@ describe("M11 outbox subscriptions (§4.5)", () => {
       // F-187 (#248) — SELF-consumption: the lab-order supersession alert (T-29.08 defines no outbound cancel).
       { eventName: "m11.order.discontinued", consumerName: "m11.lab-cancellation-required" },
       { eventName: "m11.order.corrected", consumerName: "m11.lab-cancellation-required" },
-      // F-200 (#248) — SELF-consumption: the two-person lab-recovery control's DURABLE compliance alerts.
+      // F-203 (#248) — SELF-consumption: the two-person lab-recovery control's DURABLE compliance alerts.
       { eventName: "m11.order.recovery_alert_requested", consumerName: "m11.recovery-alert" },
     ]);
   });

@@ -76,7 +76,7 @@ export const M11_OUTBOX_SUBSCRIPTIONS = [
   // operator alert (T-29.08 defines no outbound cancel). `outbox-consumers/lab-cancellation-required.ts`.
   { eventName: "m11.order.discontinued", consumerName: "m11.lab-cancellation-required" },
   { eventName: "m11.order.corrected", consumerName: "m11.lab-cancellation-required" },
-  // F-200 (#248) — SELF-consumption: the two-person lab-recovery control's compliance alerts, published in the
+  // F-203 (#248) — SELF-consumption: the two-person lab-recovery control's compliance alerts, published in the
   // recovery's own transaction and delivered to M36 here, so an emitter failure after commit is retried, not lost.
   { eventName: "m11.order.recovery_alert_requested", consumerName: "m11.recovery-alert" },
 ] as const;

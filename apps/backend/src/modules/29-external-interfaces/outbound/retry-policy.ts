@@ -30,9 +30,9 @@ export interface RetryOutboundRow {
   /** Dispatch attempts already made and failed BEFORE this failure (0 on the first dispatch). */
   readonly retryCount: number;
   /**
-   * F-197 — `hl7_message_outbound.attempt_id`: the outbound attempt the row belongs to. Carried onto the terminal
+   * F-200 — `hl7_message_outbound.attempt_id`: the outbound attempt the row belongs to. Carried onto the terminal
    * `transmission_failed` event so M11 applies it only to the order's current attempt. Absent/null = a row from
-   * before F-197 (its event applies as it always did).
+   * before F-200 (its event applies as it always did).
    */
   readonly attemptId?: string | null;
 }

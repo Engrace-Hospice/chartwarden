@@ -221,7 +221,7 @@ async function emitAlert(
     const emitter = deps.alerts ?? (getSeam("AlertEmitter") as OutboundAlertPort);
     // F-188 — severity ladder translation + a windowed correlation id (see `alert-routing.ts`): the pass-through
     // this replaced threw at the `alert` INSERT on every call, and its per-feed id could only ever notify once.
-    // F-196 — counts absorbed repeats and escalates once per window at the storm threshold (`emitOutboundAlert`).
+    // F-199 — counts absorbed repeats and escalates once per window at the storm threshold (`emitOutboundAlert`).
     await emitOutboundAlert(emitter, organizationId, alert, deps.now());
   } catch (err) {
     // Alerting failure must never block or crash the dispatch pipeline itself.
@@ -248,8 +248,8 @@ function isOrmRequestedPayload(payload: unknown): payload is OrmRequestedPayload
   );
 }
 
-/** F-197 — `hl7_message_outbound.attempt_id` is a `uuid`; every attempt id is a `randomUUID()`, but the request field is
- *  only typed `string`, so anything else is stored as NULL (its events then apply as pre-F-197 ones) instead of
+/** F-200 — `hl7_message_outbound.attempt_id` is a `uuid`; every attempt id is a `randomUUID()`, but the request field is
+ *  only typed `string`, so anything else is stored as NULL (its events then apply as pre-F-200 ones) instead of
  *  throwing at the INSERT and stranding the claim. */
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function asUuidOrNull(value: string | undefined): string | null {
@@ -266,7 +266,7 @@ interface TransmitContext {
   readonly messageControlId: string;
   /** Attempts already made and failed BEFORE this attempt (0 on the very first dispatch). */
   readonly retryCount: number;
-  /** F-197 — the row's `attempt_id` (the request's `attemptId`), carried onto every terminal event built from it. */
+  /** F-200 — the row's `attempt_id` (the request's `attemptId`), carried onto every terminal event built from it. */
   readonly attemptId: string | null;
   readonly host: string;
   readonly port: number;
@@ -824,8 +824,8 @@ async function handleOrmRequested(deps: ResolvedDeps, event: DispatchableOutboxE
         // F-182 — `next_retry_at` on an `in_flight` row is its LEASE EXPIRY: the reclaim sweep only takes a
         // row back once this has passed, so a live worker mid-send is never mistaken for a crashed one.
         nextRetryAt: leaseExpiresAt,
-        // F-197 — the request's attempt, so every terminal event built from this row names it (a malformed id is
-        // stored as NULL — the event then applies as a pre-F-197 one — rather than failing the claim).
+        // F-200 — the request's attempt, so every terminal event built from this row names it (a malformed id is
+        // stored as NULL — the event then applies as a pre-F-200 one — rather than failing the claim).
         attemptId: asUuidOrNull(payload.attemptId),
       })
       .returning();

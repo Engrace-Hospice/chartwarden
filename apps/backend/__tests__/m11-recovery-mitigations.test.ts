@@ -1,4 +1,4 @@
-// apps/backend/__tests__/m11-recovery-mitigations.test.ts — F-200 (#248): the PURE half of the mitigations for the
+// apps/backend/__tests__/m11-recovery-mitigations.test.ts — F-203 (#248): the PURE half of the mitigations for the
 // two-person lab-recovery control's residual risks. The database half (superseding on the order's transitions, the
 // bound under real counts, durable alert delivery) is `m11-orm-recovery.live.test.ts`.
 import { describe, expect, it, vi } from "vitest";
@@ -21,7 +21,7 @@ import {
 const NOW = new Date("2026-06-08T12:00:00.000Z");
 const HOUR = 3_600_000;
 
-describe("F-200 — decideRecoveryEscalation: the collusion bound", () => {
+describe("F-203 — decideRecoveryEscalation: the collusion bound", () => {
   it("below the bound nothing is required; AT the bound a high-trust co-signer is", () => {
     expect(decideRecoveryEscalation({ requesterExecuted: 0, pairExecuted: 0 })).toEqual({ required: false });
     expect(decideRecoveryEscalation({ requesterExecuted: RECOVERY_ESCALATION_THRESHOLD - 1, pairExecuted: 0 })).toEqual({
@@ -47,7 +47,7 @@ describe("F-200 — decideRecoveryEscalation: the collusion bound", () => {
   });
 });
 
-describe("F-200 — parseRecoveryBound: an invalid env value falls back, it never disables the bound", () => {
+describe("F-203 — parseRecoveryBound: an invalid env value falls back, it never disables the bound", () => {
   it.each([
     [undefined, 3],
     ["", 3],
@@ -68,7 +68,7 @@ describe("F-200 — parseRecoveryBound: an invalid env value falls back, it neve
   });
 });
 
-describe("F-200 — decideRecoveryCosign names a SUPERSEDED request and its reason", () => {
+describe("F-203 — decideRecoveryCosign names a SUPERSEDED request and its reason", () => {
   const base = { requestedByUserId: "u-req", expiresAt: new Date(NOW.getTime() + HOUR) };
 
   it("a superseded request is refused as `superseded`, carrying the fixed reason token", () => {
@@ -91,7 +91,7 @@ describe("F-200 — decideRecoveryCosign names a SUPERSEDED request and its reas
   });
 });
 
-describe("F-200 — buildRecoveryAnomalyAlert: critical, deduplicated per window, ids and counts only", () => {
+describe("F-203 — buildRecoveryAnomalyAlert: critical, deduplicated per window, ids and counts only", () => {
   const facts = {
     orderId: "0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a",
     at: NOW,
@@ -142,7 +142,7 @@ describe("F-200 — buildRecoveryAnomalyAlert: critical, deduplicated per window
   });
 });
 
-describe("F-200 — the executed alert turns critical for a repeated PAIR and says when the bound forced a high-trust co-signer", () => {
+describe("F-203 — the executed alert turns critical for a repeated PAIR and says when the bound forced a high-trust co-signer", () => {
   const facts = {
     orderId: "0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a",
     requestId: "1b1b1b1b-1b1b-4b1b-8b1b-1b1b1b1b1b1b",
@@ -166,7 +166,7 @@ describe("F-200 — the executed alert turns critical for a repeated PAIR and sa
   });
 });
 
-describe("F-200 — buildM11RecoveryAlertConsumer: durable delivery of the alert intent", () => {
+describe("F-203 — buildM11RecoveryAlertConsumer: durable delivery of the alert intent", () => {
   const alert = buildRecoveryAlert("m11.order.recovery_executed", {
     orderId: "0a0a0a0a-0a0a-4a0a-8a0a-0a0a0a0a0a0a",
     requestId: "1b1b1b1b-1b1b-4b1b-8b1b-1b1b1b1b1b1b",
@@ -193,7 +193,7 @@ describe("F-200 — buildM11RecoveryAlertConsumer: durable delivery of the alert
     });
   });
 
-  it("an emitter failure THROWS, so the relay retries — the F-199 swallow is gone", async () => {
+  it("an emitter failure THROWS, so the relay retries — the F-202 swallow is gone", async () => {
     const emit = vi.fn(async () => {
       throw new Error("emitter down");
     });

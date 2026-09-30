@@ -51,7 +51,7 @@ describe("M11-T08 — order_record eraser (§7.7, D12, D7/D8)", () => {
     expect(counts.orders).toBe(3);
   });
 
-  it("F-199: the attested-recovery ledger and the two-person requests count toward what was erased", async () => {
+  it("F-202: the attested-recovery ledger and the two-person requests count toward what was erased", async () => {
     // Both tables hold the lab contact's NAME and reference for a patient's order; a destruction certificate that
     // omitted them would report success while leaving them behind.
     const { store } = makeEraseStore({

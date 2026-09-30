@@ -16,9 +16,9 @@ export interface LabOrderTransmittedPayload {
   readonly messageControlId: string;
   readonly ackReceivedAt: string;
   /**
-   * F-197 — the outbound attempt the acked row belongs to (`hl7_message_outbound.attempt_id`, copied from the request's
+   * F-200 — the outbound attempt the acked row belongs to (`hl7_message_outbound.attempt_id`, copied from the request's
    * `attemptId`). M11's applier applies the event only to the order's CURRENT attempt. Absent for a row queued before
-   * F-197 or for a request that carried none; such an event applies as it always did.
+   * F-200 or for a request that carried none; such an event applies as it always did.
    */
   readonly attemptId?: string;
 }
@@ -41,7 +41,7 @@ export interface LabOrderTransmissionFailedPayload {
   /** The number of dispatch attempts made before the terminal state (1 for `AR`, 5 for a DLQ exhaustion). */
   readonly attemptCount: number;
   /**
-   * F-197 — the outbound attempt the failed row belongs to (see {@link LabOrderTransmittedPayload.attemptId}). A late or
+   * F-200 — the outbound attempt the failed row belongs to (see {@link LabOrderTransmittedPayload.attemptId}). A late or
    * redelivered failure from an EARLIER attempt names a stale id and M11 ignores it — before this, the terminal-state
    * check was the only guard, and it stops protecting an order the moment a recovery sets it `pending` again.
    */
@@ -103,7 +103,7 @@ export const OUTBOUND_ALERT_KINDS = [
   "hl7_outbound.transmission_failed",
   "external_feed.baa_expired",
   "external_feed.baa_missing",
-  // F-196 — the ESCALATION raised once per window when a feed's failures cross the storm threshold
+  // F-199 — the ESCALATION raised once per window when a feed's failures cross the storm threshold
   // (`alert-routing.ts` `emitOutboundAlert`). Its own kind, so it is a SECOND alert row (its own correlation id)
   // with its own seeded rule — the first alert of the window has already paged and cannot be re-paged.
   "hl7_outbound.transmission_storm",

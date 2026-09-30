@@ -96,8 +96,8 @@ describe("F-188 — the correlation id is a window, not a permanent key", () => 
   });
 });
 
-// ── F-196 — failure storms: the count, the escalation, and the threshold ─────────────────────────────────────────
-describe("F-196 — resolveStormThreshold", () => {
+// ── F-199 — failure storms: the count, the escalation, and the threshold ─────────────────────────────────────────
+describe("F-199 — resolveStormThreshold", () => {
   it("defaults to the documented threshold when unset or blank", () => {
     expect(resolveStormThreshold({})).toBe(DEFAULT_STORM_THRESHOLD);
     expect(resolveStormThreshold({ M29_ALERT_STORM_THRESHOLD: "  " })).toBe(DEFAULT_STORM_THRESHOLD);
@@ -115,7 +115,7 @@ describe("F-196 — resolveStormThreshold", () => {
   );
 });
 
-describe("F-196 — buildStormEscalationEmit", () => {
+describe("F-199 — buildStormEscalationEmit", () => {
   const now = new Date("2026-06-01T03:00:00Z");
   it("is a critical, PHI-free alert of its OWN kind and correlation id, carrying the count and the feed", () => {
     const e = buildStormEscalationEmit(alert(), 10, now);
@@ -137,7 +137,7 @@ describe("F-196 — buildStormEscalationEmit", () => {
   });
 });
 
-describe("F-196 — emitOutboundAlert (over a fake emitter that counts like M36)", () => {
+describe("F-199 — emitOutboundAlert (over a fake emitter that counts like M36)", () => {
   const now = new Date("2026-06-01T03:00:00Z");
   /** Counts per correlationId exactly as the Drizzle persist does; records every emit call. */
   function fakeEmitter() {

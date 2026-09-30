@@ -1,4 +1,4 @@
-// @wardenx/db — `order_recovery_request` (F-199, #248; migration 0271). A PENDING attested recovery of a lab order —
+// @wardenx/db — `order_recovery_request` (F-202, #248; migration 0272). A PENDING attested recovery of a lab order —
 // the two-person control on the duplicate-risk `not_received_by_lab` attestation (M3 break-glass's shape,
 // `bge_cosigner_distinct`, migration 0210): a first person files it, a DIFFERENT person co-signs it (which executes the
 // re-dispatch), or either cancels it, or its 24 h `expires_at` lapses. At most one pending request per order (partial
@@ -46,7 +46,7 @@ export const orderRecoveryRequests = pgTable(
     priorFailureReason: text("prior_failure_reason").notNull(),
     /**
      * `pending_cosign` | `executed` | `cancelled` | `expired` | `superseded` (CHECK-constrained; agrees with the
-     * resolution columns). `superseded` (F-200, migration 0272) = the ORDER moved on (discontinued, corrected, delivered,
+     * resolution columns). `superseded` (F-203, migration 0273) = the ORDER moved on (discontinued, corrected, delivered,
      * recovered another way) so the request could never execute; a trigger on `order_record` sets it.
      */
     status: text("status").notNull().default("pending_cosign"),
@@ -61,9 +61,9 @@ export const orderRecoveryRequests = pgTable(
     resolvedAt: timestamp("resolved_at", { withTimezone: true }),
     /** The `order_transmission_attestation` row this request produced (`executed` only). */
     attestationId: uuid("attestation_id"),
-    /** F-200 — a fixed token (`order_discontinued`, `transmission_transmitted`, …) — set exactly when `status = 'superseded'`. */
+    /** F-203 — a fixed token (`order_discontinued`, `transmission_transmitted`, …) — set exactly when `status = 'superseded'`. */
     supersededReason: text("superseded_reason"),
-    /** F-200 — the co-signature came from a holder of `orders.transmission.cosign_escalated` (the recovery bound was reached). */
+    /** F-203 — the co-signature came from a holder of `orders.transmission.cosign_escalated` (the recovery bound was reached). */
     cosignedEscalated: boolean("cosigned_escalated").notNull().default(false),
   },
   (t) => ({

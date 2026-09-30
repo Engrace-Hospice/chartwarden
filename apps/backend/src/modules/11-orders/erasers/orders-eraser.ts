@@ -36,9 +36,9 @@ export interface OrderEraseCounts {
   readonly standingInstances: number;
   /** `order_discontinuation` rows deleted (cascaded from the deleted orders). */
   readonly discontinuations: number;
-  /** F-199 — `order_transmission_attestation` rows deleted (the append-only recovery ledger; cascaded from the orders). */
+  /** F-202 — `order_transmission_attestation` rows deleted (the append-only recovery ledger; cascaded from the orders). */
   readonly transmissionAttestations: number;
-  /** F-199 — `order_recovery_request` rows deleted (the two-person recovery requests; cascaded from the orders). */
+  /** F-202 — `order_recovery_request` rows deleted (the two-person recovery requests; cascaded from the orders). */
   readonly recoveryRequests: number;
   /** `standing_order` templates deleted for the patient. */
   readonly standingOrders: number;
@@ -235,7 +235,7 @@ export function createDrizzleOrderEraseStore(db: DbClient): OrderEraseStore {
                   .returning({ id: DISC.id }),
               );
 
-        // F-199 — the attested-recovery ledger and its two-person requests. Both carry the lab-contact NAME and the lab's
+        // F-202 — the attested-recovery ledger and its two-person requests. Both carry the lab-contact NAME and the lab's
         // reference for a patient's order, so a destruction certificate must reach them (they were missing from the
         // destruction role's grants, so erasing an order left them behind). Runs as `wardenx_destruction`: the ledger's
         // append-only trigger admits a DELETE from a member of that role and from nobody else.

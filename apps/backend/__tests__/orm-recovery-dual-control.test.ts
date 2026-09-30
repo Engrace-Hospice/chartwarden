@@ -1,4 +1,4 @@
-// F-199 (#248) — the PURE half of the two-person control on the attested lab-transmission recovery: who may co-sign,
+// F-202 (#248) — the PURE half of the two-person control on the attested lab-transmission recovery: who may co-sign,
 // what counts as a repeat attester, and what the compliance alert says (and, as importantly, does not say). The live
 // half (the requests table, the ledger CHECKs, the single-dispatch guards, destruction) is `m11-orm-recovery.live.test.ts`.
 import { PLATFORM_DEFAULT_ALERT_RULES } from "@wardenx/messaging";
@@ -25,7 +25,7 @@ const pending = (over: Partial<{ status: string; requestedByUserId: string; expi
   ...over,
 });
 
-describe("F-199 — the documented defaults", () => {
+describe("F-202 — the documented defaults", () => {
   it("a request waits 24 h, and the repeat-attester window is 24 h with a threshold of 3", () => {
     expect(RECOVERY_REQUEST_TTL_MS).toBe(24 * 3_600_000);
     expect(RECOVERY_ANOMALY_WINDOW_MS).toBe(24 * 3_600_000);
@@ -33,7 +33,7 @@ describe("F-199 — the documented defaults", () => {
   });
 });
 
-describe("F-199 — decideRecoveryCosign: who may co-sign a pending recovery", () => {
+describe("F-202 — decideRecoveryCosign: who may co-sign a pending recovery", () => {
   it("a DIFFERENT person may co-sign a pending, unexpired request", () => {
     expect(decideRecoveryCosign(pending(), OTHER, NOW)).toEqual({ ok: true });
   });
@@ -61,7 +61,7 @@ describe("F-199 — decideRecoveryCosign: who may co-sign a pending recovery", (
   });
 });
 
-describe("F-199 — isRepeatAttester", () => {
+describe("F-202 — isRepeatAttester", () => {
   it("counts the request at hand: with the default threshold of 3, the third in the window is a repeat", () => {
     expect(isRepeatAttester(0)).toBe(false);
     expect(isRepeatAttester(1)).toBe(false);
@@ -74,7 +74,7 @@ describe("F-199 — isRepeatAttester", () => {
   });
 });
 
-describe("F-199 — buildRecoveryAlert: what compliance is told, and nothing else", () => {
+describe("F-202 — buildRecoveryAlert: what compliance is told, and nothing else", () => {
   const facts = {
     orderId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
     requestId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
@@ -144,7 +144,7 @@ describe("F-199 — buildRecoveryAlert: what compliance is told, and nothing els
   });
 });
 
-describe("F-199 — every alert kind the recovery control can emit has an ENABLED platform-default rule (an alert with no rule reaches nobody — F-188's lesson)", () => {
+describe("F-202 — every alert kind the recovery control can emit has an ENABLED platform-default rule (an alert with no rule reaches nobody — F-188's lesson)", () => {
   it.each([...RECOVERY_ALERT_KINDS])("%s", (kind) => {
     const rules = PLATFORM_DEFAULT_ALERT_RULES.filter((r) => r.eventType === kind);
     expect(rules).toHaveLength(1);

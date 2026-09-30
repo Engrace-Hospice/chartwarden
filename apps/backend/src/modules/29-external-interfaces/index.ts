@@ -425,7 +425,7 @@ export {
 } from "./outbound/feed-resolver";
 // F-188 — the read-only outbound/inbound evidence M11's attested recovery checks a `not_received_by_lab` against.
 export { ormOutboundEvidenceForOrder } from "./outbound/order-dispatch-dedupe";
-// F-198 — the two M29 facts M11's stuck-order recovery is injected with (BAA gate + the feed a held order went to).
+// F-201 — the two M29 facts M11's stuck-order recovery is injected with (BAA gate + the feed a held order went to).
 export { outboundBaaCleared, ormOutboundFeedsForOrders } from "./outbound/stuck-order-support";
 export { type FeedRateLimiter, createFeedRateLimiter } from "./outbound/rate-limiter";
 export { resolveOutboundBaaResult } from "./outbound/resolve-baa";

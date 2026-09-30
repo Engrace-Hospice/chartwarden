@@ -1,5 +1,5 @@
 // apps/backend/src/modules/11-orders/orm-request/stuck-recovery.ts — the PURE rules for getting a lab order out of a
-// stuck state without waiting for a human to notice (F-198, #248). No I/O: the DB shell is
+// stuck state without waiting for a human to notice (F-201, #248). No I/O: the DB shell is
 // `../stuck-transmission-recovery.ts`, this file is what makes its decisions unit-testable.
 //
 // TWO DIFFERENT KINDS OF STUCK, WITH OPPOSITE ANSWERS.
@@ -128,7 +128,7 @@ export function isHeldReason(reason: string | null): boolean {
 /** Where a held order is in the escalation ladder. `none` = still inside the grace period. */
 export type HeldStage = "none" | "warn" | "critical";
 
-/** Defaults (documented in the F-198 history entry): a held order pages at 4 h, again — more loudly — at 24 h. */
+/** Defaults (documented in the F-201 history entry): a held order pages at 4 h, again — more loudly — at 24 h. */
 export const HELD_WARN_AFTER_MS = 4 * HOUR_MS;
 export const HELD_CRITICAL_AFTER_MS = 24 * HOUR_MS;
 

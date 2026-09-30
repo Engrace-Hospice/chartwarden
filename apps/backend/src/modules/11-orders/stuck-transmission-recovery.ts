@@ -1,5 +1,5 @@
 // apps/backend/src/modules/11-orders/stuck-transmission-recovery.ts — get a stuck lab order out of that state without
-// waiting for a human to notice (F-198, #248). The DB shell; the rules are the pure `orm-request/stuck-recovery.ts`.
+// waiting for a human to notice (F-201, #248). The DB shell; the rules are the pure `orm-request/stuck-recovery.ts`.
 //
 // THREE JOBS, one service, each an org-explicit method (a worker tick is not a request — the sweeps run under
 // `withOrgContext` per tenant, and the org list comes from the platform-context enumerator, never from this file):

@@ -64,7 +64,7 @@ interface TransmittedFacts {
   readonly orderId: string;
   readonly outboundMessageId: string;
   readonly ackReceivedAt: string;
-  /** F-197 — the attempt of the acked row; `null` = a row queued before F-197 (applies as it always did). */
+  /** F-200 — the attempt of the acked row; `null` = a row queued before F-200 (applies as it always did). */
   readonly attemptId: string | null;
 }
 
@@ -74,7 +74,7 @@ interface TransmissionFailedFacts {
   readonly outboundMessageId: string;
   readonly reason: "application_reject" | "dlq_exhausted";
   readonly attemptCount: number;
-  /** F-197 — the attempt of the failed row; `null` = a row queued before F-197 (applies as it always did). */
+  /** F-200 — the attempt of the failed row; `null` = a row queued before F-200 (applies as it always did). */
   readonly attemptId: string | null;
 }
 
@@ -185,9 +185,9 @@ export function buildM11LabTransmissionApplierConsumer(deps: LabTransmissionAppl
         if (fromStatus === "transmitted" || fromStatus === "failed") return;
         // F-187 — a worker refusal only ever applies to an order still awaiting its first transmission.
         if (facts.kind === "dispatch_refused" && fromStatus !== "pending") return;
-        // F-188 / F-197 — and only to the attempt the event concerns: an event from a PREVIOUS attempt (redelivered, or
+        // F-188 / F-200 — and only to the attempt the event concerns: an event from a PREVIOUS attempt (redelivered, or
         // simply late, after the operator resent / recovered — which minted a new attempt and set the order `pending`
-        // again) is stale. F-188 bound `dispatch_refused`; F-197 binds the two events that come off an outbound ROW too
+        // again) is stale. F-188 bound `dispatch_refused`; F-200 binds the two events that come off an outbound ROW too
         // (`transmitted` / `transmission_failed` — the row now stores the attempt), because the terminal-state check
         // above stops protecting the order the instant a recovery sets it `pending` again. An event with NO attempt id
         // (a row queued before the migration, or one already in the outbox) applies exactly as it always did.

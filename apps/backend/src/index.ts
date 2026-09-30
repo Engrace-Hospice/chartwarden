@@ -1633,7 +1633,7 @@ export function wireModuleSeams(
   wireM20Tenancy(); // F-111 (#249) — allowlist the cron job id so the SOS SLA watchdog may enter withPlatformContext
   registerPlatformJob(M11_PLATFORM_JOB_ID);
   registerPlatformJob(M11_VERBAL_TIMER_PLATFORM_JOB_ID); // §2.3 D3 — the verbal-order-expiry hourly sweep fan-out
-  registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-198 — the stuck lab-order recovery tick's org enumeration
+  registerPlatformJob(M11_STUCK_TRANSMISSION_PLATFORM_JOB_ID); // F-201 — the stuck lab-order recovery tick's org enumeration
   wireM12Tenancy(); // F-164 (#248) — allowlist the cron job id so the dosespot_sync_queue drain may enter withPlatformContext
   wireM19Tenancy(); // F-155 (#248) — allowlist the cron job id so the on_call_roster_sync_queue drain + catch-up-seed workers may enter withPlatformContext
   // F-071/#174 — allowlist M37's cron job id so ipu.rn-coverage-watchdog may enter withPlatformContext.
@@ -2820,7 +2820,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
   const m40OutboxPublisher = bindCallerModule(txOutboxPublisher, "m40");
   const m28OutboxPublisher = bindCallerModule(txOutboxPublisher, "m28");
   const m2OutboxPublisher = bindCallerModule(txOutboxPublisher, "m2");
-  // F-199/F-200 (#248) — M11's two-person lab-recovery control. Its compliance alerts are DURABLE (F-200): the service
+  // F-202/F-203 (#248) — M11's two-person lab-recovery control. Its compliance alerts are DURABLE (F-203): the service
   // publishes `m11.order.recovery_alert_requested` in the recovery's own transaction and
   // `buildM11RecoveryAlertConsumer` (registered with the outbox consumers below) delivers it to M36's AlertEmitter, so
   // there is no alert port here. The bound that forces a high-trust co-signer, and the org-rate alert threshold, are
@@ -3286,11 +3286,11 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               // F-188 — the evidence the attested recovery checks a `not_received_by_lab` against.
               outboundEvidence: ormOutboundEvidenceForOrder,
             }),
-            // F-199 — the two-person recovery control's compliance alerts. The seam is resolved LAZILY (at emit time):
+            // F-202 — the two-person recovery control's compliance alerts. The seam is resolved LAZILY (at emit time):
             // it is registered during boot, after the routes mount.
             m11RecoveryControls,
           );
-          // F-198 (#248) — the held-order worklist: lab orders waiting on a human's verification with the lab.
+          // F-201 (#248) — the held-order worklist: lab orders waiting on a human's verification with the lab.
           registerHeldTransmissionRoutes(app, { recovery: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher) });
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
           mountEmarRoutes(app, dbHandle.db, m13OutboxPublisher); // M13 — reads + the write lifecycle over Drizzle+RLS, m13.* transactional outbox
@@ -5348,7 +5348,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     const m11VerbalTimerWorker = registerM11VerbalOrderExpiryWorker({
       connection: queueConnection,
       activeOrgs: m11VerbalTimerActiveOrgs,
-      // F-199 — the same tick lapses stale two-person recovery requests, so the backend needs the alert port too.
+      // F-202 — the same tick lapses stale two-person recovery requests, so the backend needs the alert port too.
       service: createDbOrderBackend(dbHandle.db, m11OutboxPublisher, undefined, m11RecoveryControls),
     });
     attachDlqAlertsToAll([m11VerbalTimerWorker], "m11");
@@ -5363,7 +5363,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
     } catch (err) {
       app.log.error(err, "M11 verbal-order-expiry schedule registration failed");
     }
-    // F-198 (#248) — the stuck lab-order recovery tick (every 15 minutes): auto-retry of orders refused before any
+    // F-201 (#248) — the stuck lab-order recovery tick (every 15 minutes): auto-retry of orders refused before any
     // outbound row existed (bounded — attempts, backoff, window) and the held-order aging escalation (warn, then
     // critical). Fans out over active orgs like the two M11 sweeps above; each service call opens its own tenant/RLS
     // transaction. Grep this factory: a worker that is bound but never constructed is dead code.
@@ -6128,7 +6128,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             db: dbHandle.db,
             alerts: getSeam("AlertEmitter") as AlertEmitter,
           }),
-          // F-200 (#248) — the two-person lab-recovery control's compliance alerts, DURABLE: the recovery's own
+          // F-203 (#248) — the two-person lab-recovery control's compliance alerts, DURABLE: the recovery's own
           // transaction publishes the intent, this hands it to M36, a failure is retried by the relay and the alert's
           // correlation id makes the redelivery idempotent.
           buildM11RecoveryAlertConsumer({ alerts: getSeam("AlertEmitter") as AlertEmitter }),
@@ -6692,7 +6692,7 @@ if ((import.meta as { main?: boolean }).main) {
 }
 
 /**
- * F-198 (#248) — M11's stuck lab-order recovery, wired over the real ports. The composition root is the only place that
+ * F-201 (#248) — M11's stuck lab-order recovery, wired over the real ports. The composition root is the only place that
  * may see M11, M29 and M36 together (M11 has no `dependsOn` edge to either): the re-emission is F-182's OWN
  * `resendLabTransmission` (so a sweep and an operator's click share one row lock, one conditional update and one attempt
  * id), the BAA pre-check is M29's own gate, and the alert goes out through the M36 `AlertEmitter` seam. `resend` passes no

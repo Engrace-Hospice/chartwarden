@@ -248,7 +248,7 @@ const PHYS = "44444444-4444-4444-8444-444444444444";
 const NOW = "2026-06-08T12:00:00.000Z";
 
 const PERMISSION_SEED = [
-  // F-200 — the recovery authority is `orders.transmission.recover`, NOT `orders.amend` (which nearly every clinical role holds).
+  // F-203 — the recovery authority is `orders.transmission.recover`, NOT `orders.amend` (which nearly every clinical role holds).
   {
     userId: "rn_1",
     permissions: ["orders.read", "orders.draft", "orders.sign", "orders.amend", "orders.transmission.recover"],
@@ -326,7 +326,7 @@ describe("F-187 — POST /api/v1/orders/:id/recover-transmission", () => {
   }
   const url = (id: string) => `/api/v1/orders/${id}/recover-transmission`;
 
-  it("is gated on orders.transmission.recover: read-only, clinician-without-amend AND a holder of `orders.amend` alone are 403 (F-200)", async () => {
+  it("is gated on orders.transmission.recover: read-only, clinician-without-amend AND a holder of `orders.amend` alone are 403 (F-203)", async () => {
     const { app } = makeServer();
     const id = await draft(app);
     for (const headers of [VIEWER, RN_NO_AMEND, AMEND_ONLY, ESCALATED_ONLY]) {
@@ -415,8 +415,8 @@ describe("F-187 — POST /api/v1/orders/:id/recover-transmission", () => {
   });
 });
 
-// ── F-199 — the two-person control's routes: co-sign (`orders.amend` + step-up) and cancel (`orders.amend`) ───────────
-describe("F-199 — POST /api/v1/orders/:id/recover-transmission/:requestId/{cosign,cancel}", () => {
+// ── F-202 — the two-person control's routes: co-sign (`orders.amend` + step-up) and cancel (`orders.amend`) ───────────
+describe("F-202 — POST /api/v1/orders/:id/recover-transmission/:requestId/{cosign,cancel}", () => {
   async function draft(app: ReturnType<typeof makeServer>["app"]): Promise<string> {
     const res = await app.inject({ method: "POST", url: "/api/v1/orders", headers: RN, payload: labBody });
     expect(res.statusCode).toBe(201);
@@ -429,7 +429,7 @@ describe("F-199 — POST /api/v1/orders/:id/recover-transmission/:requestId/{cos
   it.each([
     ["cosign", cosignUrl],
     ["cancel", cancelUrl],
-  ])("%s is gated on orders.transmission.recover: read-only, clinician-without-amend and `orders.amend` ALONE are 403 (F-200)", async (_name, urlOf) => {
+  ])("%s is gated on orders.transmission.recover: read-only, clinician-without-amend and `orders.amend` ALONE are 403 (F-203)", async (_name, urlOf) => {
     const { app } = makeServer();
     const id = await draft(app);
     for (const headers of [VIEWER, RN_NO_AMEND, AMEND_ONLY]) {
@@ -439,7 +439,7 @@ describe("F-199 — POST /api/v1/orders/:id/recover-transmission/:requestId/{cos
     await app.close();
   });
 
-  // F-200 — the high-trust co-signer holds ONLY `cosign_escalated`: it may co-sign (the recovery bound requires exactly
+  // F-203 — the high-trust co-signer holds ONLY `cosign_escalated`: it may co-sign (the recovery bound requires exactly
   // that person) but it can neither file nor cancel — those need `orders.transmission.recover`.
   it("co-sign ALSO admits a holder of orders.transmission.cosign_escalated alone; cancel does not", async () => {
     const { app } = makeServer();
