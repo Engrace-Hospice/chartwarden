@@ -338,6 +338,16 @@ import {
   UpdateRuleConfigBodySchema,
   UpsertMacCredentialBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/billing-typebox";
+import {
+  CreateRateTableBodySchema,
+  RateTableEffectiveQuerySchema,
+  RateTableEffectiveResponseSchema,
+  RateTableGetQuerySchema,
+  RateTableListQuerySchema,
+  RateTableListResponseSchema,
+  RateTableViewSchema,
+  SupersedeRateTableBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/rate-table-typebox";
 // M24 Billing — Medicaid — the §4.2 request bodies / list queries / response DTOs for the state-Medicaid
 // claim, R&B, rule-overlay, eligibility, and trading-partner surfaces (modules/24-billing-medicaid/routes).
 import {
@@ -9310,6 +9320,40 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "The active-on-now sequestration policy for a ProviderEntity (or null, §4.1)",
     query: RequiredProviderEntityQuerySchema,
     response: M23SequestrationPolicyActiveResponse,
+  },
+  // ── F-210: the tenant-entered hospice per-diem rate table (rate-table.routes.ts) ──
+  "GET /api/v1/billing/rate-tables": {
+    summary:
+      "List a ProviderEntity's hospice rate-table versions, newest window first (F-210; includeSuperseded=true adds history)",
+    query: RateTableListQuerySchema,
+    response: RateTableListResponseSchema,
+  },
+  "GET /api/v1/billing/rate-tables/effective": {
+    summary:
+      "The live hospice rate table claim assembly would price a service date from, or null (F-210)",
+    query: RateTableEffectiveQuerySchema,
+    response: RateTableEffectiveResponseSchema,
+  },
+  "GET /api/v1/billing/rate-tables/:id": {
+    summary: "Read one hospice rate-table version (F-210)",
+    query: RateTableGetQuerySchema,
+    response: RateTableViewSchema,
+  },
+  "POST /api/v1/billing/rate-tables": {
+    summary:
+      "Enter a hospice rate-table version - whole-cent PRE-wage-index per-diems for a fiscal year; non-overlapping (F-210)",
+    body: CreateRateTableBodySchema,
+    response: RateTableViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/rate-tables/:id/supersede": {
+    summary:
+      "Supersede a live rate-table version with a corrected one; the old version is kept as history (F-210)",
+    body: SupersedeRateTableBodySchema,
+    response: RateTableViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
   },
   "GET /api/v1/claims/:id/validation-runs": {
     summary: "List a claim's validation runs, most recent first (§4.1 #14)",

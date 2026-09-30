@@ -575,6 +575,7 @@ import {
   M23_OUTBOX_EVENTS,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
+  buildDrizzleRateTableService,
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
   buildM23NoeDraftConsumer,
@@ -3536,6 +3537,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             },
           };
           mountM23Routes(app, {
+            // F-210 — the tenant-entered hospice rate table (`/billing/rate-tables`); the SAME table the
+            // assembly service's `referenceData.hippsRateTable`/`chcHourlyRateCents` read (M23-owned, so
+            // the boot assembly reads it over `dbHandle.db` directly — no injected port).
+            rateTableService: buildDrizzleRateTableService(dbHandle.db),
             readService: buildDrizzleM23ReadService(dbHandle.db),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
               outbox: m23OutboxPublisher,

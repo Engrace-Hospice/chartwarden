@@ -205,6 +205,19 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_billing_scope",
   },
+  // --- hospice rate-table surface (F-210: tenant-entered CMS per-diem rates) ---
+  "billing.rate_table.read": {
+    resource: "billing_rate_table",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.rate_table.admin": {
+    resource: "billing_rate_table",
+    action: "admin",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
 /** Union of every §4.6 permission key M23 owns. Kept in lock-step with `@wardenx/billing` (P3 reconcile). */
@@ -240,6 +253,8 @@ export const M23_PERMISSION_KEY_LIST: readonly M23PermissionKey[] = [
   "billing.sequestration_policy.edit",
   "billing.mac_credential.read",
   "billing.mac_credential.admin",
+  "billing.rate_table.read",
+  "billing.rate_table.admin",
 ];
 
 export type M23ContributedPermissionKey = keyof typeof M23_CONTRIBUTED_PERMISSIONS;

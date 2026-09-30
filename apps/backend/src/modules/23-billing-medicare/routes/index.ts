@@ -9,6 +9,7 @@ import type { ClaimAssemblyService } from "../services/claim-assembly";
 // The read + write surfaces share no method name (the M27 combined-service precedent); the assembly service
 // is a THIRD dep (route #1 `POST /claims/assemble` resolves its M5/M6/M8/M18/M38/M40 reader seams + the
 // HIPPS/SIA/sequestration math through it, NOT the write service's low-level persistence path).
+import type { RateTableRouteService } from "./rate-table-service";
 import type { M23ReadRouteService } from "./read-service";
 import type { M23WriteRouteService } from "./write-service";
 
@@ -71,4 +72,12 @@ export interface M23RouteServices {
   readonly readService: M23ReadRouteService;
   readonly writeService: M23WriteRouteService;
   readonly assemblyService: ClaimAssemblyService;
+  /** F-210 — the tenant-entered hospice rate-table service (absent ⇒ the /billing/rate-tables routes are not mounted). */
+  readonly rateTableService?: RateTableRouteService;
 }
+
+export {
+  type RateTableRouteService,
+  buildDrizzleRateTableService,
+  hospiceRateTableEffectiveForOrg,
+} from "./rate-table-service";

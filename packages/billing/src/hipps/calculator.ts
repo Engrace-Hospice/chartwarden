@@ -50,9 +50,9 @@ export function levelOfCareToCode(loc: LevelOfCare): "RHC" | "CHC" | "IRC" | "GI
 
 /**
  * The INJECTED CMS base per-diem rate table for the claim's FY (whole cents, PRE-wage-index). The caller
- * resolves these from the loaded annual CMS hospice rate file — they are NOT hard-coded here.
- * TODO(CMS-fixture): the published FY per-diem amounts (RHC two-tier, CHC full-day, IRC, GIP) populate
- * this structure at the service layer from the rate file; the calculator applies the wage index to them.
+ * resolves these from the TENANT-ENTERED `hospice_rate_table` (F-210: a billing administrator keys the
+ * published FY amounts via `POST /billing/rate-tables`; there is no bundled CMS file) — they are NOT
+ * hard-coded here. The calculator applies the wage index to them.
  */
 export interface HippsRateTable {
   /** RHC-High per-diem for election days 1-60 (ADR-0001). */

@@ -8,10 +8,17 @@
 // (or a sibling M23 table) already owns and already has a repository for. The FIVE M6 seams below (F-121,
 // #251) needed exactly that owning-module read-surface addition — `claimAssemblyRangeContextForOrg`
 // (`06-admission/seams/drizzle-store.ts`) — and this file is the adapter over it, not the read itself.
-import { CMS_HOSPICE_MODIFIER_VALUE_SET, repositories } from "@wardenx/billing";
+import {
+  CMS_HOSPICE_MODIFIER_VALUE_SET,
+  applyWageIndexFactor,
+  repositories,
+  toHippsRateTable,
+} from "@wardenx/billing";
 import type { LevelOfCare, NpiStatus, PhysicianResolution } from "@wardenx/billing";
 import { withOrgContext } from "@wardenx/tenancy";
+import { WardenXError } from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
+import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
 import type { ProviderCcnPort } from "../routes/write-service";
 import type {
   AdmissionContextReader,
@@ -27,6 +34,7 @@ import type {
   MedicarePrimaryResolution,
   PatientPayerReader,
   ProviderEntityDirectoryEntry,
+  RateLookupScope,
   SignedEncountersReader,
   TerminologyProvider,
 } from "./claim-assembly";
@@ -278,17 +286,21 @@ export function buildM23AdmissionRangeAdapters(reader: M6ClaimRangeReader): {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
-// 4 & 5. referenceData.{wageIndexForCcn,activeSequestrationPolicy} — real, over M23's own tables.
+// 4 & 5. referenceData.{wageIndexForCcn,activeSequestrationPolicy,hippsRateTable,chcHourlyRateCents} — real,
+//        over M23's own tables (the last two are the TENANT-ENTERED `hospice_rate_table`, F-210).
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
 /**
  * `BillingReferenceDataReader` was documented as a single unit of "genuine new infrastructure" (#250's
  * scoping). Checked per method rather than accepted as a bundle (the F-099/F-101 lesson): two of its four
- * methods DO have a real, already-migrated, already-repositoried backing table and are bound here for
- * real; the other two (`hippsRateTable`, `chcHourlyRateCents`) stay `unbound()` in `boot-assembly.ts` —
- * `packages/billing/src/hipps/calculator.ts`'s own `HippsRateTable` doc carries a `TODO(CMS-fixture)`
- * admitting no CMS per-diem rate file has ever been loaded anywhere in this repository, and no table
- * exists to load one into. That absence is real and is NOT papered over by this file.
+ * methods had a real, already-migrated, already-repositoried backing table (#250); the other two
+ * (`hippsRateTable`, `chcHourlyRateCents`) had none — no CMS per-diem rate file has ever been loaded anywhere in
+ * this repository — and were `SEAM_UNBOUND` until F-210 decided rates are TENANT-ENTERED (no bundled CMS data file
+ * to go stale): a billing administrator keys each fiscal year's national base per-diems per provider entity through
+ * `POST /billing/rate-tables`, into the M23-owned, effective-dated, append-only `hospice_rate_table`. Both methods
+ * now read the version covering the claim's service-from date, org-explicitly (`hospiceRateTableEffectiveForOrg`),
+ * and fail CLOSED with the typed, actionable `RATE_TABLE_MISSING` (422) — never a guess, never `SEAM_UNBOUND` —
+ * when no table covers the date. The CHC hourly rate is wage-adjusted here with the SAME factor the per-diems get.
  *
  * `wageIndexForCcn` reads `wage_index_factor` — a real, migrated, PLATFORM-SHARED table
  * (`WageIndexFactorRepository.findByCcnAndFiscalYear`) whose own doc comment already names the exact
@@ -316,14 +328,38 @@ export function buildM23AdmissionRangeAdapters(reader: M6ClaimRangeReader): {
 // there is a fixed platform-reads sentinel since the read is not actually org-scoped.
 const PLATFORM_READ_ORG = "00000000-0000-0000-0000-000000000000";
 
-export function buildM23ReferenceDataAdapter(
-  db: BillingDb,
-  unboundHipps: BillingReferenceDataReader["hippsRateTable"],
-  unboundChc: BillingReferenceDataReader["chcHourlyRateCents"],
-): BillingReferenceDataReader {
+/** F-210 — the fail-closed error when no tenant-entered rate table covers the claim's service date. */
+function rateTableMissing(scope: RateLookupScope): WardenXError {
+  return new WardenXError(
+    "RATE_TABLE_MISSING",
+    `no hospice rate table covers service date ${scope.serviceFrom} for provider entity ${scope.providerEntityId}; ` +
+      "enter the CMS hospice per-diem rates for that fiscal year (POST /api/v1/billing/rate-tables, permission billing.rate_table.admin) and retry",
+    422,
+  );
+}
+
+export function buildM23ReferenceDataAdapter(db: BillingDb): BillingReferenceDataReader {
   return {
-    hippsRateTable: unboundHipps,
-    chcHourlyRateCents: unboundChc,
+    async hippsRateTable(_macJurisdiction, _fiscalYearStarting, scope) {
+      const row = await hospiceRateTableEffectiveForOrg(
+        db,
+        scope.orgId,
+        scope.providerEntityId,
+        scope.serviceFrom,
+      );
+      if (!row) throw rateTableMissing(scope);
+      return toHippsRateTable(row);
+    },
+    async chcHourlyRateCents(_fiscalYearStarting, wageIndexFactorDecimal, scope) {
+      const row = await hospiceRateTableEffectiveForOrg(
+        db,
+        scope.orgId,
+        scope.providerEntityId,
+        scope.serviceFrom,
+      );
+      if (!row) throw rateTableMissing(scope);
+      return applyWageIndexFactor(row.chcHourlyRateCents, wageIndexFactorDecimal);
+    },
     async wageIndexForCcn(ccn, fiscalYearStarting) {
       return withOrgContext(db, { organizationId: PLATFORM_READ_ORG, userId: "" }, async (tx) => {
         const wageIndexFactors = new repositories.WageIndexFactorRepository(tx);

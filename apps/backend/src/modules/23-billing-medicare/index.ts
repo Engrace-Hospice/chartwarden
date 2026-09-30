@@ -63,6 +63,7 @@ export {
   type WriteOutboxPort,
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
+  buildDrizzleRateTableService,
 } from "./routes/index";
 export { mountM23Routes } from "./routes/mount";
 export { buildM23BootAssemblyService } from "./services/boot-assembly";

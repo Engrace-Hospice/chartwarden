@@ -17,19 +17,24 @@
 // and `terminology` (F-124, #251: over M38's registered `TerminologyProvider.expand()`). `mdm` is
 // PARTIALLY bound — `resolveProviderEntity` (#250) and, as of F-127 (#251), the physician-IDENTITY half of
 // `resolveClinicalParticipants`; `placeOfService` stays unbound (see below) — so it counts toward neither
-// the bound nor the fully-stub tally cleanly. Two of `referenceData`'s four methods are also real
-// (`wageIndexForCcn`, `activeSequestrationPolicy`, #250). Each is individually live-tested against real rows
+// the bound nor the fully-stub tally cleanly. All four of `referenceData`'s methods are also real:
+// `wageIndexForCcn`, `activeSequestrationPolicy` (#250) and — F-210 — the TENANT-ENTERED `hippsRateTable`/
+// `chcHourlyRateCents` over the M23-owned `hospice_rate_table` (see the "RATE TABLE" note below).
+// Each is individually live-tested against real rows
 // under RLS (`m23-claim-assembly-seams.live.test.ts`). Binding all this is NOT "the route works end to end"
 // — see NET EFFECT ON REACHABILITY below.
 //
 // EVERY OTHER READER STAYS A DENY-STUB, and per-seam, not as one blanket "not ready yet" — each reason
 // below was checked against the owning module's actual published seam shape, not assumed from this file's
 // prior header:
-//   * referenceData.hippsRateTable / .chcHourlyRateCents — `packages/billing/src/hipps/calculator.ts`'s
-//     own `HippsRateTable` doc carries an explicit `TODO(CMS-fixture)`: no CMS per-diem rate file has
-//     ever been loaded anywhere in this repository, and no table exists to load one into. Genuine new
-//     infrastructure, confirmed by absence of any backing table (unlike `wageIndexForCcn`'s table, which
-//     exists and is simply unloaded).
+//     (referenceData.hippsRateTable / .chcHourlyRateCents were the last two stubs here — see RATE TABLE.)
+//
+// RATE TABLE (F-210): the CMS per-diem rates are TENANT-ENTERED (no bundled CMS file). A billing administrator
+// keys each fiscal year's national base per-diems per provider entity via `POST /api/v1/billing/rate-tables`
+// (permission `billing.rate_table.admin`), into the M23-owned, effective-dated, append-only `hospice_rate_table`;
+// `buildM23ReferenceDataAdapter` reads the version covering the claim's service-from date and throws the typed
+// `RATE_TABLE_MISSING` (422) when none does. This removed the `SEAM_UNBOUND` wall at `hippsRateTable` — it is NOT
+// "the route works": see NET EFFECT ON REACHABILITY for what still stops `POST /claims/assemble`.
 //
 // `mdm.resolveClinicalParticipants` (M40) was recorded as ONE "genuinely unbuilt" verdict (#250/#251);
 // checked precisely rather than left at that (F-127, #251), it splits into two independent facts with
@@ -82,8 +87,18 @@
 // sit LATER in the call order than `hippsRateTable`/`activeSequestrationPolicy`, so they stay unreachable
 // by a real request until the CMS rate-table gap closes. This is real, individually-verified progress on
 // five more seam steps, not a further unblock of the live boundary — stated precisely rather than implied,
-// the exact discipline the #250/#251 issues themselves established. `POST /claims/assemble` remains
-// unreachable end-to-end for every real caller today.
+// the exact discipline the #250/#251 issues themselves established.
+//
+// F-210 UPDATE — the rate-table gap is closed by CODE + TENANT DATA (not by a bundled CMS file): the
+// `SEAM_UNBOUND` wall at `hippsRateTable` is gone, and a tenant that has keyed its rate table reaches every seam
+// step above. What can STILL stop `POST /claims/assemble` is now DATA, each with a typed, actionable 4xx (none is
+// `SEAM_UNBOUND`): `WAGE_INDEX_UNAVAILABLE` (`wage_index_factor` is platform-shared and has NO loader — only the
+// five non-authoritative migration-0080 placeholder CCNs exist, FY starting 2026), `RATE_TABLE_MISSING` (the tenant
+// has not entered rates for the service date), `SEQUESTRATION_POLICY_UNAVAILABLE` (no active policy row for the
+// provider entity), plus the clinical preconditions the earlier seams enforce. `placeOfService` is NOT a wall:
+// the adapter returns `null` and the line Q-code falls back to Q5009 ("place N.O.S.") — an honest but imprecise
+// value until a site-of-care producer exists. A real end-to-end assembly has not been exercised against a real
+// provider entity CCN in any environment.
 //
 // Per RULE 4 (fail-closed-unbound), every method that stays a stub still throws the typed `SEAM_UNBOUND`
 // (503) only when an assemble request actually reaches it — boot stays green, and the route never
@@ -213,13 +228,10 @@ export function buildM23BootAssemblyService(
     // degrades to status:"unavailable" when M26 is db-unbound (D8). Unlike the other boot seams it does NOT
     // throw — the cap rules warn-skip while degraded, never block.
     capProjection: buildM23CapProjectionAdapter(),
-    // REAL for wageIndexForCcn / activeSequestrationPolicy (#250); hippsRateTable / chcHourlyRateCents stay
-    // unbound — see this file's header for why the four are not one bundle.
-    referenceData: buildM23ReferenceDataAdapter(
-      db,
-      () => unbound("BillingReferenceDataReader"),
-      () => unbound("BillingReferenceDataReader"),
-    ),
+    // REAL for all four methods: wageIndexForCcn / activeSequestrationPolicy (#250) and, as of F-210, the
+    // TENANT-ENTERED hippsRateTable / chcHourlyRateCents (M23-owned `hospice_rate_table`, read org-explicitly
+    // over `db` — no injected port; `RATE_TABLE_MISSING`/422 when no table covers the service date).
+    referenceData: buildM23ReferenceDataAdapter(db),
     ruleRegistry: createDefaultBillingRegistry(),
     outbox,
   };
