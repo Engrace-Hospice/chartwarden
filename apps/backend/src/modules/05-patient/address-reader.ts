@@ -12,7 +12,7 @@
 import { type DbClient, schema } from "@wardenx/db";
 import { withOrgContext } from "@wardenx/tenancy";
 import type { PatientAddressReader } from "@wardenx/types";
-import { and, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, lte, or } from "drizzle-orm";
 
 export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
   const ADDRESS = schema.patientAddresses;
@@ -57,6 +57,36 @@ export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
         return row
           ? { kind: row.kind, facilityId: row.facilityId, postalCode: row.postalCode ?? null }
           : null;
+      });
+    },
+    async residencesBetween(organizationId, patientId, from, to) {
+      // Org-explicit predicate on top of RLS (a second wall — the F-209 `claimDiagnosesForOrg` posture).
+      // Projects kind + facility id + the effective window only; never a street/city/postal/state.
+      return withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
+        const rows = await tx
+          .select({
+            kind: ADDRESS.kind,
+            facilityId: ADDRESS.facilityId,
+            effectiveFrom: ADDRESS.effectiveFrom,
+            effectiveTo: ADDRESS.effectiveTo,
+          })
+          .from(ADDRESS)
+          .where(
+            and(
+              eq(ADDRESS.organizationId, organizationId),
+              eq(ADDRESS.patientId, patientId),
+              eq(ADDRESS.isPrimary, true),
+              lte(ADDRESS.effectiveFrom, to),
+              or(isNull(ADDRESS.effectiveTo), gte(ADDRESS.effectiveTo, from)),
+            ),
+          )
+          .orderBy(asc(ADDRESS.effectiveFrom), asc(ADDRESS.createdAt));
+        return rows.map((r) => ({
+          kind: r.kind,
+          facilityId: r.facilityId,
+          effectiveFrom: r.effectiveFrom,
+          effectiveTo: r.effectiveTo ?? null,
+        }));
       });
     },
   };

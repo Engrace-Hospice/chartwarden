@@ -56,6 +56,8 @@ export {
 // `BaaStatusProvider` seams (injected in `registerMdmSeams`); `createDbMdmRouteService` backs the
 // write/admin route surface. The entity-directory read surface (apps/web/src/modules/40-mdm) reads
 // live through these.
+// F-213 (#252) - merge-resolved facility.kind read for the M23 place-of-service binding.
+export { type FacilityKindValue, facilityKindsForIds } from "./facility-kind-reader";
 export { createDbBaaStore, createDbMdmRouteService, createDbMdmStore } from "./mdm-store-db";
 // GAP-045 — the distinct-NPI read M29's D11 platform NPPES sync runs over. Exposed as a value-returning
 // reader because `external_physician` is M40's table and `arch:tables` forbids M29 reading it directly.

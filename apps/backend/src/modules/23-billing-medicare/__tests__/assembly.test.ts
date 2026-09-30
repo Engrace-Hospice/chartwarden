@@ -445,3 +445,35 @@ describe("F-212 - no sequestration policy fails CLOSED with an actionable error 
     expect(store.claims.size).toBe(0);
   });
 });
+
+describe("F-213 (#252) — placeOfService is resolved over the whole claim range and drives the line Q-code", () => {
+  it.each([
+    ["home", "Q5001"],
+    ["alf", "Q5002"],
+    ["ltc", "Q5003"],
+    ["snf", "Q5004"],
+    ["hospital", "Q5005"],
+    ["ipu", "Q5006"],
+    ["ltch", "Q5007"],
+    ["psych", "Q5008"],
+    [null, "Q5009"],
+  ] as const)("resolved placeOfService %s -> every line Q-code %s", async (pos, qCode) => {
+    const resolve = vi.fn(async () => ({
+      attending: null,
+      hospicePhysician: null,
+      placeOfService: pos,
+    }));
+    const seams = buildSeams({
+      mdm: { ...buildSeams().mdm, resolveClinicalParticipants: resolve },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    // The resolver gets the WHOLE service range (a range can span a move), not just serviceFrom.
+    expect(resolve).toHaveBeenCalledWith(ORG, "pat-1", REQUEST.serviceFrom, {
+      from: REQUEST.serviceFrom,
+      to: REQUEST.serviceTo,
+    });
+    expect(store.lines.length).toBeGreaterThan(0);
+    for (const line of store.lines) expect(line.qCode).toBe(qCode);
+  });
+});

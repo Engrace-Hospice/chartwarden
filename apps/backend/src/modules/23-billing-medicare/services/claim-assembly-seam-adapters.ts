@@ -19,6 +19,7 @@ import type { LevelOfCare, NpiStatus, PhysicianResolution } from "@wardenx/billi
 import { withOrgContext } from "@wardenx/tenancy";
 import { WardenXError } from "@wardenx/types";
 import { getSeam } from "../../../bootstrap/index";
+import { type PlaceOfServicePorts, resolvePlaceOfService } from "./place-of-service-resolver";
 import { hospiceRateTableEffectiveForOrg } from "../routes/rate-table-service";
 import { resolveWageIndexForOrg } from "../routes/wage-index-service";
 import type { ProviderCcnPort } from "../routes/write-service";
@@ -743,25 +744,20 @@ async function toPhysicianResolution(
  * unbuilt" verdict. Physician IDENTITY is real: `admission.hospice_physician_id` /
  * (a SIGNED) `election_statement.attending_physician_id` are both M40 physician ids the M6 range read now
  * carries (extended alongside the F-121 shapes, over the SAME `m6ClaimRange` port — no new
- * `boot-assembly.ts` port needed), resolved through M40's real `resolvePhysician`. `placeOfService` stays
- * honestly `null` — checked against the whole schema, not assumed: no table anywhere (not `patient_address`,
- * whose `kind` enum distinguishes only `home`/`facility`/`mailing`/`temporary`/`prior` with no facility-type
- * taxonomy beneath `facility`; not M40's `CanonicalFacilityFields`, which carries `ccn`/`npi`/
- * `sendingFacilityCodes` and no site-type field) records which of home/ALF/SNF/hospital/IPU a patient is
- * currently receiving care in. That is genuine new infrastructure — a producer decision comparable to
- * `referenceData.hippsRateTable`'s CMS-fixture gap, not a wiring task — and is NOT invented here; guessing
- * a heuristic off `patient_address.kind` (`facility` could mean any of five different Q-code sites) would
- * be exactly the "guessed provider entity is a mis-stated cost report" mistake F-102 already named for a
- * different module. `place_of_service_consistency` (§4.5) therefore fails, honestly, for every claim until
- * a real producer exists — the rule's own `documentedPos === null` branch is the designed path for exactly
- * this, not a new blocker.
+ * `boot-assembly.ts` port needed), resolved through M40's real `resolvePhysician`. `placeOfService` was
+ * `null` here through F-127 (which wrongly concluded no producer existed); F-213 (#252) binds it over
+ * M5's effective-dated address history + M40 `facility.kind` (migration 0183) - the mapping, the
+ * RHC/CHC-only rule and every reason it still returns `null` live in `place-of-service-resolver.ts`. With
+ * the `placeOfServicePorts` argument absent it stays `null` and the line Q-code falls to Q5009.
  */
 export function buildM23ClinicalParticipantsAdapter(
   m6ClaimRange: M6ClaimRangeReader,
   resolveM40: () => M40PhysicianReader = () => getSeam("MdmEntityProvider") as M40PhysicianReader,
+  /** F-213 (#252) — the M5 residence + M40 facility-kind ports. Absent, `placeOfService` stays `null`. */
+  placeOfServicePorts?: PlaceOfServicePorts,
 ): Pick<MdmEntityProvider, "resolveClinicalParticipants"> {
   return {
-    async resolveClinicalParticipants(orgId, patientId, asOf) {
+    async resolveClinicalParticipants(orgId, patientId, asOf, range) {
       const ctx = await m6ClaimRange.forRange(orgId, patientId, { from: asOf, to: asOf });
       const hospicePhysicianId = ctx?.admission.hospicePhysicianId ?? null;
       const attendingPhysicianId = ctx?.electionPeriods[0]?.attendingPhysicianId ?? null;
@@ -770,7 +766,21 @@ export function buildM23ClinicalParticipantsAdapter(
         toPhysicianResolution(m40Physicians, orgId, hospicePhysicianId),
         toPhysicianResolution(m40Physicians, orgId, attendingPhysicianId),
       ]);
-      return { attending, hospicePhysician, placeOfService: null };
+      // F-213 (#252) — placeOfService from the M5 address history + M40 `facility.kind` (see
+      // `place-of-service-resolver.ts` for the mapping and every reason it returns null).
+      const claimRange = range ?? { from: asOf, to: asOf };
+      let placeOfService: string | null = null;
+      if (placeOfServicePorts) {
+        const rangeCtx = await m6ClaimRange.forRange(orgId, patientId, claimRange);
+        placeOfService = await resolvePlaceOfService(
+          placeOfServicePorts,
+          orgId,
+          patientId,
+          claimRange,
+          (rangeCtx?.levelOfCarePeriods ?? []).map((p) => p.levelOfCare),
+        );
+      }
+      return { attending, hospicePhysician, placeOfService };
     },
   };
 }
