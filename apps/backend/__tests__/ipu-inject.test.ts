@@ -65,6 +65,7 @@ import type {
   BedView,
   EquipmentView,
   GipCriteriaView,
+  GipProposalView,
   IpuRouteService,
   RestraintView,
   RoomView,
@@ -111,6 +112,10 @@ const SEED_ACTOR: IpuWriteActor = {
 const READ_ACTOR: IpuReadActor = { organizationId: ORG, userId: "seed_user", roles: [] };
 void READ_ACTOR;
 
+/** F-219 — set by `createIpuTestBackend` so a test can seed the M19 proposals the stub reads. */
+let seedGipProposals: (rows: Array<GipProposalView & { organizationId: string }>) => void =
+  () => {};
+
 /** Build a minimal in-memory `IpuRouteService` this file exercises over HTTP (the M37 module ships no
  *  module-exported `createInMemory*Backend`, unlike M11/M14/M17/M18). Org-scoped Maps, keyed by id; the
  *  gip-criteria/irc-episode/body-release tables are keyed by admissionId (one active row per admission, as
@@ -118,6 +123,8 @@ void READ_ACTOR;
  *  wiring/schema smoke test, not a domain-logic test (the pure §2 machines are already covered by
  *  `@wardenx/inpatient`'s own suite + `m37-ipu-write.live.test.ts`). */
 function createIpuTestBackend(): IpuRouteService {
+  const gipProposals: Array<GipProposalView & { organizationId: string }> = [];
+  seedGipProposals = (rows) => gipProposals.push(...rows);
   const units = new Map<string, UnitView & { organizationId: string }>();
   const rooms = new Map<string, RoomView & { organizationId: string }>();
   const beds = new Map<string, BedView & { organizationId: string }>();
@@ -281,6 +288,13 @@ function createIpuTestBackend(): IpuRouteService {
     },
     async listAdmissions(actor) {
       return [...admissions.values()].filter((a) => a.organizationId === actor.organizationId);
+    },
+    async listGipProposals(actor) {
+      // F-219 — the M19 proposal pull is proven on real Postgres in f217-f219-m19-triage-pairs.live.test.ts;
+      // this stub only lets the ROUTE (permission, audit config, response shape) be exercised over HTTP.
+      return gipProposals
+        .filter((p) => p.organizationId === actor.organizationId)
+        .map(({ organizationId: _o, ...view }) => view);
     },
     async getAdmission(actor, id) {
       const row = admissions.get(id);
@@ -1147,6 +1161,52 @@ describe("M37-T11 §4.1 admission-adjacent routes (routes 9, 10, 12, 15, 17-21)"
 
 // ── routes 23-24 — restraint reassess/release, using a directly-seeded restraint (apply is covered in the
 //    admission lifecycle test above) ─────────────────────────────────────────────────────────────────────
+
+describe("F-219 — GET /ipu-intake/gip-proposals (the intake worklist's M19 proposal entries)", () => {
+  const PROPOSAL = {
+    triageCallId: "6a6a6a6a-0000-4000-8000-000000000001",
+    patientId: "7b7b7b7b-0000-4000-8000-000000000002",
+    admissionId: null,
+    providerEntityId: "8c8c8c8c-0000-4000-8000-000000000003",
+    locationId: null,
+    proposedAt: "2026-09-30T02:00:00.000Z",
+    preferredFacility: "Sunrise IPU",
+    callState: "documented_pending_encounter",
+  };
+
+  it("serves the org's proposals to a reader, scoped to the caller's org", async () => {
+    const { app } = makeServer();
+    seedGipProposals([
+      { ...PROPOSAL, organizationId: ORG },
+      {
+        ...PROPOSAL,
+        triageCallId: "6a6a6a6a-0000-4000-8000-00000000ffff",
+        organizationId: "org_b",
+      },
+    ]);
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/v1/ipu-intake/gip-proposals",
+      headers: SUPER,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toEqual([PROPOSAL]);
+    await app.close();
+  });
+
+  it("is gated on the admissions read key: no permission -> 403, no auth -> 401", async () => {
+    const { app } = makeServer();
+    const denied = await app.inject({
+      method: "GET",
+      url: "/api/v1/ipu-intake/gip-proposals",
+      headers: NOBODY,
+    });
+    expect(denied.statusCode).toBe(403);
+    const anon = await app.inject({ method: "GET", url: "/api/v1/ipu-intake/gip-proposals" });
+    expect(anon.statusCode).toBe(401);
+    await app.close();
+  });
+});
 
 describe("M37-T11 §4.1 restraint reassess/release (routes 23-24)", () => {
   it("reassesses then releases a directly-seeded restraint", async () => {

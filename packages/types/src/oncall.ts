@@ -561,7 +561,7 @@ export interface M19TriageCallVisitNeededPayload extends M19TriageCallEventBase 
   readonly visitKind: "dispatch_now" | "first_light" | "pronouncement";
 }
 
-/** `m19.triage_call.gip_admission_proposed` → M37 when M37 locks. */
+/** `m19.triage_call.gip_admission_proposed` → M37's intake worklist PULLS it (F-219, `gipProposalsForOrg`). */
 export interface M19TriageCallGipAdmissionProposedPayload extends M19TriageCallEventBase {
   readonly patientId: PatientId;
   readonly gipCriteriaSummary: string;

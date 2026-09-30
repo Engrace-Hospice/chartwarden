@@ -8441,6 +8441,7 @@ import {
   EquipmentViewSchema as M37EquipmentViewSchema,
   GipCriteriaListSchema as M37GipCriteriaListSchema,
   GipCriteriaViewSchema as M37GipCriteriaViewSchema,
+  GipProposalListSchema as M37GipProposalListSchema,
   InitiateTransferBodySchema as M37InitiateTransferBodySchema,
   InvokeRnBreakGlassBodySchema as M37InvokeRnBreakGlassBodySchema,
   IrcEpisodeListSchema as M37IrcEpisodeListSchema,
@@ -8528,6 +8529,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/ipu-admissions": {
     response: M37AdmissionListSchema,
     summary: "List IPU admissions (§4.1)",
+  },
+  "GET /api/v1/ipu-intake/gip-proposals": {
+    response: M37GipProposalListSchema,
+    summary:
+      "F-219 intake worklist — pending M19 GIP admission PROPOSALS (a pull; never an ipu_admission row)",
   },
   "POST /api/v1/ipu-admissions": {
     body: M37OpenAdmissionBodySchema,

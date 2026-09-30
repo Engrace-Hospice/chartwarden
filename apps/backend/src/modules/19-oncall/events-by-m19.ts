@@ -165,7 +165,14 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
     // `m19.triage_call.gip_admission_proposed` at M37 lock"). M6's own advisory role on this
     // disposition is a SEAM (line 401: "M11 `level_of_care_change` order draft via M11 seam"), not an
     // outbox subscription; M6 never subscribes to this event.
-    declaredConsumers: ["m37"],
+    // F-219 (#248) — m37 MOVED from `declaredConsumers` to `seamConsumers`. The user decided M37's intake
+    // worklist PULLS these proposals (`gipProposalsForOrg`, `seams/gip-proposals-for-org.ts`, the M37
+    // `GET /api/v1/ipu-intake/gip-proposals` route) rather than binding an outbox consumer: no
+    // `ipu_admission` row can exist at proposal time (`admission_id`/`level_of_care_period_id`/
+    // `provider_entity_id` are NOT NULL and the LOC period comes later, from M11's order draft), so there is
+    // nothing for a push consumer to write, and the durable fact is the `triage_call` row itself.
+    declaredConsumers: [],
+    seamConsumers: ["m37"],
     isOutboxOnly: true,
   },
   {
