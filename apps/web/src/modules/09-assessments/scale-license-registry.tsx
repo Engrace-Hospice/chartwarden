@@ -14,7 +14,8 @@ import {
 // Spec: docs/design/screens/clinical/WARDENX_UI_CLINICAL_ASSESSMENTS_SUITE.md — "Use Patient Workspace + Documentation Workspace."
 // One row per (org × scale): status chip (active / pending_renewal / expired), vendor, effective/expiry dates,
 // seats. Expired licensed scales are auto-disabled for new writes (D3) — historical reads are preserved. The
-// The Record license action uses POST /api/v1/admin/scales/licenses; the server enforces org-admin scope
+// Record uses POST; Edit and Renew update the existing (org × scale) row through PATCH. The server
+// enforces org-admin scope
 // (ADR-0030 — no authz on the frontend). Leaves only.
 import { useEffect, useState } from "react";
 import type { JSX } from "react";
@@ -40,6 +41,8 @@ type LicenseDraft = {
   expiresAt: string;
 };
 
+type LicenseAction = "edit" | "renew";
+
 const today = (): string => new Date().toISOString().slice(0, 10);
 const newDraft = (): LicenseDraft => ({
   scaleType: "fast",
@@ -60,6 +63,7 @@ export function ScaleLicenseRegistry(): JSX.Element {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [recording, setRecording] = useState(false);
+  const [editing, setEditing] = useState<{ license: LicenseRow; action: LicenseAction } | null>(null);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<LicenseDraft>(newDraft);
 
@@ -98,26 +102,54 @@ export function ScaleLicenseRegistry(): JSX.Element {
 
   async function saveLicense(): Promise<void> {
     if (!draft.vendor.trim() || !draft.expiresAt || invalidDates) return;
+    if (!editing && items.some((license) => license.scaleType === draft.scaleType)) {
+      setError("A license already exists for this scale. Use Edit or Renew on the existing row.");
+      return;
+    }
     setSaving(true);
     setError(null);
-    const { data, error: err } = await client.POST("/api/v1/admin/scales/licenses", {
-      body: {
-        scaleType: draft.scaleType,
-        vendor: draft.vendor.trim(),
-        effectiveDate: draft.effectiveDate,
-        expiresAt: draft.expiresAt,
-      },
-    });
+    const body = {
+      vendor: draft.vendor.trim(),
+      effectiveDate: draft.effectiveDate,
+      expiresAt: draft.expiresAt,
+    };
+    const result = editing
+      ? await client.PATCH("/api/v1/admin/scales/licenses/{id}", {
+          params: { path: { id: editing.license.id } },
+          body,
+        })
+      : await client.POST("/api/v1/admin/scales/licenses", {
+          body: { ...body, scaleType: draft.scaleType },
+        });
+    const { data, error: err } = result;
     setSaving(false);
     if (err || !data) {
       setError(
-        "Could not record the license. Confirm the vendor, dates, and your administrator access.",
+        `Could not ${editing ? "update" : "record"} the license. Confirm the vendor, dates, and your administrator access.`,
       );
       return;
     }
-    setItems((current) => [...current, data as LicenseRow]);
+    const saved = data as LicenseRow;
+    setItems((current) =>
+      editing
+        ? current.map((license) => (license.id === saved.id ? saved : license))
+        : [...current, saved],
+    );
     setRecording(false);
+    setEditing(null);
     setDraft(newDraft());
+  }
+
+  function beginLicenseAction(license: LicenseRow, action: LicenseAction): void {
+    setError(null);
+    setDraft({
+      scaleType: license.scaleType as LicenseDraft["scaleType"],
+      vendor: license.vendor,
+      effectiveDate: action === "renew" ? today() : license.effectiveDate.slice(0, 10),
+      expiresAt: action === "renew" ? "" : license.expiresAt.slice(0, 10),
+    });
+    setEditing({ license, action });
+    setRecording(true);
   }
 
   return (
@@ -132,6 +164,7 @@ export function ScaleLicenseRegistry(): JSX.Element {
               <Button
                 onClick={() => {
                   setError(null);
+                  setEditing(null);
                   setDraft(newDraft());
                   setRecording(true);
                 }}
@@ -260,6 +293,7 @@ export function ScaleLicenseRegistry(): JSX.Element {
                     <th style={{ ...thStyle, width: "14%" }}>Expires</th>
                     <th style={{ ...thStyle, width: "10%" }}>Seats</th>
                     <th style={{ ...thStyle, width: "14%" }}>Status</th>
+                    <th style={{ ...thStyle, width: "12%" }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -292,6 +326,24 @@ export function ScaleLicenseRegistry(): JSX.Element {
                           tone={LICENSE_TONE[license.status] ?? "neutral"}
                         />
                       </td>
+                      <td style={tdStyle}>
+                        <div style={{ display: "flex", gap: "0.35rem", whiteSpace: "nowrap" }}>
+                          <Button
+                            size="sm"
+                            tone="tertiary"
+                            onClick={() => beginLicenseAction(license, "edit")}
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            size="sm"
+                            tone="secondary"
+                            onClick={() => beginLicenseAction(license, "renew")}
+                          >
+                            Renew
+                          </Button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -318,19 +370,29 @@ export function ScaleLicenseRegistry(): JSX.Element {
         <Modal
           open
           onClose={saving ? undefined : () => setRecording(false)}
-          ariaLabel="Record scale license"
+          ariaLabel={`${editing ? (editing.action === "renew" ? "Renew" : "Edit") : "Record"} scale license`}
           width="34rem"
         >
           <div style={modalBodyStyle}>
-            <h2 style={{ margin: 0, fontSize: "1.1rem" }}>Record scale license</h2>
+            <h2 style={{ margin: 0, fontSize: "1.1rem" }}>
+              {editing
+                ? editing.action === "renew"
+                  ? "Renew license"
+                  : "Edit license"
+                : "Record scale license"}
+            </h2>
             <p style={modalHintStyle}>
-              Record the agency’s vendor licence before clinicians capture this proprietary
-              instrument.
+              {editing?.action === "renew"
+                ? "Enter the renewed term. This updates the existing license row for the scale."
+                : editing
+                  ? "Update the vendor or license term for this scale."
+                  : "Record the agency’s vendor licence before clinicians capture this proprietary instrument."}
             </p>
             <label style={fieldStyle}>
               Scale
               <select
                 value={draft.scaleType}
+                disabled={editing !== null}
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
@@ -339,7 +401,11 @@ export function ScaleLicenseRegistry(): JSX.Element {
                 }
               >
                 {LICENSED_SCALES.map((scaleType) => (
-                  <option key={scaleType} value={scaleType}>
+                  <option
+                    key={scaleType}
+                    value={scaleType}
+                    disabled={!editing && items.some((license) => license.scaleType === scaleType)}
+                  >
                     {formatScale(scaleType)}
                   </option>
                 ))}
@@ -390,7 +456,13 @@ export function ScaleLicenseRegistry(): JSX.Element {
                 disabled={saving || !draft.vendor.trim() || !draft.expiresAt || invalidDates}
                 onClick={() => void saveLicense()}
               >
-                {saving ? "Recording…" : "Record license"}
+                {saving
+                  ? "Saving…"
+                  : editing?.action === "renew"
+                    ? "Renew license"
+                    : editing
+                      ? "Save changes"
+                      : "Record license"}
               </Button>
             </div>
           </div>

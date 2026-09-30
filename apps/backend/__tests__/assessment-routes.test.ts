@@ -153,6 +153,14 @@ function makeServer(extra: ExtraSeed = {}, options: { isInCaseload?: IsInCaseloa
         recordedByUserId: "rn_1",
         cosignRequired: true,
         score: 60,
+        data: {
+          ambulation: "full",
+          activity: "normal",
+          selfCare: "full",
+          intake: "normal",
+          consciousness: "full",
+          notes: "Patient walked independently during the visit.",
+        },
         capturedAt: "2026-06-17T10:00:00.000Z",
       },
       {
@@ -495,6 +503,38 @@ describe("M9-T05 — correction-of-record (§2.3 If-Match → STALE_VERSION)", (
 });
 
 describe("M9-T05 — reads, trends, significant-change ack, admin", () => {
+  it("GET detail projects persisted responses through the scale registry", async () => {
+    const { app } = makeServer();
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/assessments/${PPS_BY_RN}`,
+      headers: RN,
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().items).toEqual([
+      { key: "ambulation", label: "Ambulation", value: "full", displayValue: "Full" },
+      {
+        key: "activity",
+        label: "Activity & evidence of disease",
+        value: "normal",
+        displayValue: "Normal activity, no evidence of disease",
+      },
+      { key: "selfCare", label: "Self-care", value: "full", displayValue: "Full" },
+      { key: "intake", label: "Intake", value: "normal", displayValue: "Normal" },
+      { key: "consciousness", label: "Conscious level", value: "full", displayValue: "Full" },
+    ]);
+    expect(res.json().notes).toBe("Patient walked independently during the visit.");
+
+    const legacy = await app.inject({
+      method: "GET",
+      url: `/api/v1/patients/${PATIENT}/assessments/${PPS_BY_LPN}`,
+      headers: RN,
+    });
+    expect(legacy.statusCode).toBe(200);
+    expect(legacy.json().items).toEqual([]);
+    expect(legacy.json().notes).toBeNull();
+  });
+
   it("GET latest returns the active row; cross-tenant id is a non-leaking 404", async () => {
     const { app } = makeServer();
     const ok = await app.inject({
@@ -618,6 +658,8 @@ describe("M9-T08 — §9.3 SUD Part-2 disclosure-read gate (D10 / M09-F05)", () 
     expect(row.data).toEqual({});
     expect(row.score).toBeNull();
     expect(row.scoreInterpretation).toBeNull();
+    expect(row.items).toEqual([]);
+    expect(row.notes).toBeNull();
   });
 
   it("an active 42 CFR Part 2 release discloses the AIMS in full (redacted=false)", async () => {

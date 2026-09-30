@@ -12,6 +12,7 @@
 // The Part 2 SUD enforcement lives on the READ path (`redacted` projection); the disclosure HARD-deny
 // (`SUD_DISCLOSURE_DENIED`) is for FHIR/portal egress, not these chart routes (§4.4).
 import {
+  canRecordUnderLicense,
   computeScaleLicenseStatus,
   cosignRequiredFor,
   disciplineCanRecordScale,
@@ -19,6 +20,7 @@ import {
   planCorrection,
   planCosignAttest,
   require_,
+  scaleResponseDetail,
   scoreAssessment,
   transitionSignificantChange,
 } from "@wardenx/assessments";
@@ -97,6 +99,16 @@ export interface AssessmentView {
   readonly version: number;
 }
 
+export interface AssessmentDetailView extends AssessmentView {
+  readonly items: ReadonlyArray<{
+    readonly key: string;
+    readonly label: string;
+    readonly value: string | number | boolean;
+    readonly displayValue: string;
+  }>;
+  readonly notes: string | null;
+}
+
 export interface SignificantChangeView {
   readonly id: string;
   readonly assessmentId: string;
@@ -140,7 +152,11 @@ export interface AssessmentRouteService {
     organizationId: string,
     patientId: string,
   ): Promise<{ assessments: AssessmentView[] }>;
-  getAssessment(organizationId: string, patientId: string, id: string): Promise<AssessmentView>;
+  getAssessment(
+    organizationId: string,
+    patientId: string,
+    id: string,
+  ): Promise<AssessmentDetailView>;
   summary(
     organizationId: string,
     patientId: string,
@@ -460,10 +476,11 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
       `Scale '${args.scaleType}' is disabled for this tenant.`,
     );
     if (isLicensedScale(args.scaleType)) {
+      const licenseStatus = licenseStatusFor(organizationId, args.scaleType);
       require_(
-        licenseStatusFor(organizationId, args.scaleType) === "active",
+        licenseStatus !== null && canRecordUnderLicense(licenseStatus),
         "SCALE_LICENSE_MISSING",
-        `Scale '${args.scaleType}' requires an active license.`,
+        `Scale '${args.scaleType}' requires a current license.`,
       );
     }
     // discipline gate (D8) — defense-in-depth behind the route's `discipline_can_record_scale` predicate.
@@ -572,7 +589,8 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
     async getAssessment(organizationId, patientId, id) {
       const r = findRow(organizationId, id);
       if (r.patientId !== patientId) throw new NotFoundError("assessment");
-      return toView(r, sudRedacted(r));
+      const view = toView(r, sudRedacted(r));
+      return { ...view, ...scaleResponseDetail(view.scaleType, view.data) };
     },
 
     async summary(organizationId, patientId) {

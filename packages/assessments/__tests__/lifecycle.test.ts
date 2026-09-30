@@ -116,9 +116,9 @@ describe("§2.2.3 scale-license status (computeScaleLicenseStatus)", () => {
     expect(computeScaleLicenseStatus(lic, "2025-12-15")).toBe("pending_renewal");
   });
 
-  it("gates recording on active status only", () => {
+  it("allows recording while active or pending renewal", () => {
     expect(canRecordUnderLicense("active")).toBe(true);
-    expect(canRecordUnderLicense("pending_renewal")).toBe(false);
+    expect(canRecordUnderLicense("pending_renewal")).toBe(true);
     expect(canRecordUnderLicense("expired")).toBe(false);
     expect(() => assertLicenseAllowsRecording("pps", "expired")).toThrowError(
       expect.objectContaining({ code: "SCALE_LICENSE_MISSING", statusCode: 403 }),
