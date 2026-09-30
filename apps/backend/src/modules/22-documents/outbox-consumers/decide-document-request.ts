@@ -193,6 +193,9 @@ export const M22_DOCUMENT_REQUEST_EVENTS = [
   // call site, a separate producer-side defect), but the re-rendered minutes now carry real content
   // rather than nothing.
   "m14.minutes.amended", // idg_minutes (append)
+  // M14 spec §13 — a late discipline-note addendum on an adjourned meeting: a NEW VERSION of the SAME
+  // `minutesId` document, carrying the 'Addenda' appendix built from live addendum rows at emit time.
+  "m14.discipline_note.addendum_recorded", // idg_minutes (append)
   // M12 §4.4 — the transmit-to-pharmacy confirmation. Reuses `medication_order` on the SAME `orderId`
   // `.document_requested` renders at sign; the transmitted PDF is a new version carrying the pharmacy
   // transmission facts.

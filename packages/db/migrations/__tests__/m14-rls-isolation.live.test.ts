@@ -327,12 +327,12 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
     expect(r.rows[0].n).toBeGreaterThan(0);
   });
 
-  // 0283 — late addenda on idg_discipline_note, judged as the real NOBYPASSRLS wardenx_app role.
-  describe("idg_discipline_note late addenda (0283)", () => {
+  // 0283/0284 — late addenda + optional `reason` on idg_discipline_note, judged as the real NOBYPASSRLS wardenx_app role.
+  describe("idg_discipline_note late addenda + reason (0283/0284)", () => {
     const insertAddendum = (org: string, ids: SeedIds, reason: string | null, flag = true) =>
       db.query(
         `INSERT INTO idg_discipline_note (organization_id, idg_meeting_id, discipline, body_text,
-           author_membership_id, is_addendum, addendum_recorded_at, addendum_reason)
+           author_membership_id, is_addendum, addendum_recorded_at, reason)
          VALUES ($1,$2,'rn','late text',$3,$4,$5,$6) RETURNING id`,
         [org, ids.meeting, MEMBERSHIP, flag, flag ? new Date() : null, reason],
       );
@@ -347,19 +347,37 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
       await expect(withOrg(ORG_B, () => insertAddendum(ORG_A, a, "forged"))).rejects.toThrow();
     });
 
-    it("the addendum CHECK refuses an addendum without a reason and an original carrying one", async () => {
+    it("0284 renamed addendum_reason to reason (one column; existing values kept)", async () => {
+      const cols = await db.query(
+        `SELECT column_name FROM information_schema.columns
+          WHERE table_name='idg_discipline_note' AND column_name IN ('reason','addendum_reason')`,
+      );
+      expect(cols.rows.map((r) => r.column_name)).toEqual(["reason"]);
+    });
+
+    it("the addendum CHECK refuses an addendum without a (non-blank, <=500) reason and an original with a blank/oversized one", async () => {
       await expect(withOrg(ORG_A, () => insertAddendum(ORG_A, a, null))).rejects.toThrow(
         /idg_discipline_note_addendum_chk/,
       );
       await expect(withOrg(ORG_A, () => insertAddendum(ORG_A, a, "   "))).rejects.toThrow(
         /idg_discipline_note_addendum_chk/,
       );
-      await expect(withOrg(ORG_A, () => insertAddendum(ORG_A, a, "sneaky", false))).rejects.toThrow(
+      await expect(withOrg(ORG_A, () => insertAddendum(ORG_A, a, "x".repeat(501)))).rejects.toThrow(
         /idg_discipline_note_addendum_chk/,
       );
+      // an ORIGINAL note (flag false, no recorded-at) may carry a non-blank reason, or none...
+      await withOrg(ORG_A, () => insertAddendum(ORG_A, a, "context on an original", false));
+      await withOrg(ORG_A, () => insertAddendum(ORG_A, a, null, false));
+      // ...but not a blank/oversized one, and never a recorded-at without the flag
+      await expect(withOrg(ORG_A, () => insertAddendum(ORG_A, a, "   ", false))).rejects.toThrow(
+        /idg_discipline_note_addendum_chk/,
+      );
+      await expect(
+        withOrg(ORG_A, () => insertAddendum(ORG_A, a, "x".repeat(501), false)),
+      ).rejects.toThrow(/idg_discipline_note_addendum_chk/);
     });
 
-    it("the app role still has no DELETE on the table; the audit trigger scrubs addendum_reason", async () => {
+    it("the app role still has no DELETE on the table; the audit trigger scrubs reason (addendum AND original)", async () => {
       await expect(
         withOrg(ORG_A, () =>
           db.query("DELETE FROM idg_discipline_note WHERE id=$1", [a.disciplineNote]),
@@ -375,6 +393,15 @@ describe.skipIf(!DB_URL)("M14 IDG — RLS cross-tenant denial — LIVE Postgres 
         expect(r.after).not.toContain("REASON-PHI-PROBE");
         expect(r.after).not.toContain("late text");
       }
+      const orig = await withOrg(ORG_A, () =>
+        insertAddendum(ORG_A, a, "ORIGINAL-REASON-PHI-PROBE", false),
+      );
+      const audit2 = await db.query(
+        "SELECT after::text AS after FROM audit_event WHERE resource_kind='idg_discipline_note' AND resource_id=$1",
+        [orig.rows[0].id],
+      );
+      expect(audit2.rows.length).toBeGreaterThan(0);
+      for (const r of audit2.rows) expect(r.after).not.toContain("ORIGINAL-REASON-PHI-PROBE");
     });
   });
 });

@@ -41,6 +41,7 @@ const OTHER_LOC = "55555555-5555-4555-8555-555555555555";
 const MTG = "11111111-1111-4111-8111-111111111111";
 const IDLE = "11111111-1111-4111-8111-1111111111ff"; // packets_ready — not live
 const CANCELLED = "11111111-1111-4111-8111-1111111111cc";
+const NEWER = "11111111-1111-4111-8111-1111111111dd"; // a later IDG that includes P_CLEAR (adjourned on demand)
 const P_CLEAR = "22222222-2222-4222-8222-222222222221";
 const P_SUD = "22222222-2222-4222-8222-222222222222";
 const P_OFF = "22222222-2222-4222-8222-2222222222ff";
@@ -103,6 +104,15 @@ async function makeServer(sudAllowed: boolean) {
             disciplineViews: {},
           },
         },
+      },
+      {
+        id: NEWER,
+        organizationId: ORG,
+        locationId: LOC,
+        status: "live",
+        scheduledStart: "2026-06-29T14:00:00.000Z",
+        scheduledEnd: "2026-06-29T16:00:00.000Z",
+        includedPatientIds: [P_CLEAR],
       },
       {
         id: IDLE,
@@ -381,13 +391,167 @@ describe("M14 discipline notes — late addenda (post-adjournment)", () => {
     await app.close();
   });
 
-  it("a reason on a LIVE meeting is refused (NOTE_REASON_NOT_APPLICABLE); live notes are not addenda", async () => {
+  it("a reason on a LIVE meeting is OPTIONAL context: kept when given, blank/whitespace/null => absent", async () => {
     const app = await makeServer(false);
-    const res = await post(app, COORD, { discipline: "rn", bodyText: "x", reason: "why" });
+    const withReason = await post(app, COORD, {
+      discipline: "rn",
+      bodyText: "x",
+      reason: "  why  ",
+    });
+    expect(withReason.statusCode).toBe(201);
+    expect(withReason.json()).toMatchObject({
+      isAddendum: false,
+      addendumRecordedAt: null,
+      reason: "why",
+    });
+    for (const reason of ["", "   ", null, undefined]) {
+      const ok = await post(app, COORD, { discipline: "rn", bodyText: "x", reason });
+      expect(ok.statusCode).toBe(201);
+      expect(ok.json()).toMatchObject({
+        isAddendum: false,
+        addendumRecordedAt: null,
+        reason: null,
+      });
+    }
+    const tooLong = await post(app, COORD, {
+      discipline: "rn",
+      bodyText: "x",
+      reason: "r".repeat(501),
+    });
+    expect(tooLong.statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("PATCH may edit the reason (and/or text) of a live original; null/blank clears it; empty body refused", async () => {
+    const app = await makeServer(false);
+    const created = (
+      await post(app, RN, { discipline: "rn", bodyText: "v0", reason: "first" })
+    ).json();
+    const patch = (ifMatch: string, payload: unknown) =>
+      app.inject({
+        method: "PATCH",
+        url: `/api/v1/idg/discipline-notes/${created.id}`,
+        headers: { ...hdr(RN), "if-match": ifMatch },
+        payload: payload as object,
+      });
+    const r1 = await patch("0", { reason: "second" });
+    expect(r1.statusCode).toBe(200);
+    expect(r1.json()).toMatchObject({ bodyText: "v0", reason: "second", version: 1 });
+    const r2 = await patch("1", { bodyText: "v2", reason: "third" });
+    expect(r2.json()).toMatchObject({ bodyText: "v2", reason: "third", version: 2 });
+    const r3 = await patch("2", { reason: "   " });
+    expect(r3.json()).toMatchObject({ bodyText: "v2", reason: null, version: 3 });
+    expect((await patch("3", {})).statusCode).toBe(422);
+    expect((await patch("3", { reason: "r".repeat(501) })).statusCode).toBe(422);
+    await app.close();
+  });
+
+  it("an original note's reason is withheld with its body under Part 2 (list)", async () => {
+    const app = await makeServer(false);
+    await post(app, COORD, {
+      patientId: P_SUD,
+      discipline: "msw",
+      bodyText: "B",
+      reason: "SUD-ORIG-REASON",
+    });
+    await post(app, COORD, {
+      patientId: P_CLEAR,
+      discipline: "rn",
+      bodyText: "C",
+      reason: "clear reason",
+    });
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/v1/idg/meetings/${MTG}/discipline-notes`,
+      headers: hdr(READER),
+    });
+    expect(res.body).not.toContain("SUD-ORIG-REASON");
+    const notes = res.json() as Array<{ patientId: string; reason: string | null }>;
+    expect(notes.find((n) => n.patientId === P_SUD)?.reason).toBeNull();
+    expect(notes.find((n) => n.patientId === P_CLEAR)?.reason).toBe("clear reason");
+    await app.close();
+  });
+
+  it("WINDOW B: a patient-scoped addendum is refused once a NEWER adjourned IDG included the patient; meeting-level and other patients still work", async () => {
+    const app = await adjournedServer();
+    // the newer IDG (includes P_CLEAR only) is adjourned LATER
+    clock.iso = new Date(Date.parse("2026-06-22T15:00:00.000Z") + 2 * DAY_MS).toISOString();
+    const minutesBefore = (
+      await app.inject({
+        method: "GET",
+        url: `/api/v1/idg/meetings/${MTG}/minutes`,
+        headers: hdr(READER),
+      })
+    ).json();
+    expect(minutesBefore.addendumState).toMatchObject({
+      open: true,
+      closedReason: null,
+      supersededPatientIds: [],
+    });
+    await lastBackend.adjournMeeting(ORG, COORD, NEWER, true);
+    const superseded = await late(app, COORD, {
+      patientId: P_CLEAR,
+      discipline: "rn",
+      bodyText: "x",
+      reason: "r",
+    });
+    expect(superseded.statusCode).toBe(422);
+    expect(code(superseded)).toBe("ADDENDUM_SUPERSEDED_BY_NEWER_IDG");
+    // P_SUD was not in the newer meeting => still open; meeting-level keeps the 14-day rule only
+    expect(
+      (await late(app, COORD, { patientId: P_SUD, discipline: "msw", bodyText: "x", reason: "r" }))
+        .statusCode,
+    ).toBe(201);
+    expect(
+      (await late(app, COORD, { discipline: "rn", bodyText: "x", reason: "r" })).statusCode,
+    ).toBe(201);
+    const minutes = (
+      await app.inject({
+        method: "GET",
+        url: `/api/v1/idg/meetings/${MTG}/minutes`,
+        headers: hdr(READER),
+      })
+    ).json();
+    expect(minutes.addendumState).toMatchObject({
+      open: true,
+      closedReason: null,
+      supersededPatientIds: [P_CLEAR],
+    });
+    expect(minutes.addendumState.closesAt).toBe(
+      new Date(Date.parse("2026-06-22T15:00:00.000Z") + 14 * DAY_MS).toISOString(),
+    );
+    // past the window the whole thing is closed for time
+    clock.iso = new Date(Date.parse("2026-06-22T15:00:00.000Z") + 15 * DAY_MS).toISOString();
+    const closed = (
+      await app.inject({
+        method: "GET",
+        url: `/api/v1/idg/meetings/${MTG}/minutes`,
+        headers: hdr(READER),
+      })
+    ).json();
+    expect(closed.addendumState).toMatchObject({
+      open: false,
+      closedReason: "window_elapsed",
+      supersededPatientIds: [],
+    });
+    await app.close();
+  });
+
+  it("an EARLIER adjourned IDG (or a live one) does not supersede", async () => {
+    const app = await adjournedServer();
+    // NEWER stays live: not adjourned => no supersession
+    expect(
+      (await late(app, COORD, { patientId: P_CLEAR, discipline: "rn", bodyText: "x", reason: "r" }))
+        .statusCode,
+    ).toBe(201);
+    await app.close();
+  });
+
+  it("addendum without a reason is still ADDENDUM_REASON_REQUIRED (window/superseded checked first)", async () => {
+    const app = await adjournedServer();
+    const res = await late(app, COORD, { discipline: "rn", bodyText: "x" });
     expect(res.statusCode).toBe(422);
-    expect(code(res)).toBe("NOTE_REASON_NOT_APPLICABLE");
-    const ok = await post(app, COORD, { discipline: "rn", bodyText: "x" });
-    expect(ok.json()).toMatchObject({ isAddendum: false, addendumRecordedAt: null, reason: null });
+    expect(code(res)).toBe("ADDENDUM_REASON_REQUIRED");
     await app.close();
   });
 
@@ -481,6 +645,13 @@ describe("M14 discipline notes — late addenda (post-adjournment)", () => {
       })
     ).json() as Array<{ isAddendum: boolean }>;
     expect(list.map((n) => n.isAddendum)).toEqual([false, true, true]);
+    // each addendum recorded `m14.discipline_note.addendum_recorded` (M22 appends a minutes version); the
+    // live original note and the adjournment itself never do.
+    const addendumEvents = lastBackend
+      .drainEvents()
+      .filter((e) => e.eventName === "m14.discipline_note.addendum_recorded");
+    expect(addendumEvents.map((e) => e.payload.addendumCount)).toEqual([1, 2]);
+    expect(addendumEvents[0]?.payload).toMatchObject({ minutesId: after.id, meetingId: MTG });
     await app.close();
   });
 

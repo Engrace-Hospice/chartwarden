@@ -4886,7 +4886,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "POST /api/v1/idg/meetings/:id/discipline-notes": {
     summary:
-      "Write a discipline note during a LIVE meeting (patientId omitted = meeting-level), or — once the meeting is ADJOURNED, within the addendum window and with a required `reason` — a LATE ADDENDUM (new append-only row; the frozen minutes are not modified). Coordinator: any discipline; otherwise the caller must be present for that discipline. 422 MEETING_NOT_LIVE / ADDENDUM_WINDOW_CLOSED / ADDENDUM_REASON_REQUIRED / NOTE_REASON_NOT_APPLICABLE",
+      "Write a discipline note during a LIVE meeting (patientId omitted = meeting-level), or — once the meeting is ADJOURNED, within the addendum window and with a required `reason` — a LATE ADDENDUM (new append-only row; the frozen minutes are not modified). `reason` (≤500) is OPTIONAL context on a live note (blank = absent). A patient-scoped addendum is refused once a NEWER ADJOURNED IDG has included that patient. Coordinator: any discipline; otherwise the caller must be present for that discipline. 422 MEETING_NOT_LIVE / ADDENDUM_WINDOW_CLOSED / ADDENDUM_SUPERSEDED_BY_NEWER_IDG / ADDENDUM_REASON_REQUIRED; 503 ADDENDUM_ELIGIBILITY_UNAVAILABLE (retryable)",
     body: M14CreateDisciplineNoteRequest,
     response: M14DisciplineNoteViewSchema,
     headers: IDEMPOTENCY_KEY_HEADER,
@@ -4894,7 +4894,7 @@ Object.assign(ROUTE_ENRICHMENTS, {
   },
   "PATCH /api/v1/idg/discipline-notes/:id": {
     summary:
-      "Edit a discipline note's text (live meeting only; author or coordinator; If-Match = version). No delete. Frozen notes of an adjourned meeting => 422 MEETING_NOT_LIVE; late addenda are append-only => 422 ADDENDUM_IMMUTABLE",
+      "Edit a discipline note's text and/or reason (at least one; live meeting only; author or coordinator; If-Match = version). No delete. Frozen notes of an adjourned meeting => 422 MEETING_NOT_LIVE; late addenda are append-only => 422 ADDENDUM_IMMUTABLE",
     body: M14UpdateDisciplineNoteRequest,
     response: M14DisciplineNoteViewSchema,
     headers: IDEMPOTENCY_AND_IF_MATCH_HEADERS,

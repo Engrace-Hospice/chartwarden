@@ -182,7 +182,11 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     outbox = {
       publish: (tx, e) => txPublisher.publish(tx as never, { ...e, callerModule: "m14" }),
     };
-    svc = createDbIdgBackend(handle.db, outbox);
+    svc = createDbIdgBackend(handle.db, outbox, {
+      // Deterministic stand-in for M2's batched name-only display seam (the addenda appendix's `authorName`).
+      displayForMemberships: async (_org, ids) =>
+        new Map(ids.map((i) => [i, { displayName: `Name-${i.slice(0, 8)}` }])),
+    });
   }, 120_000);
 
   afterAll(async () => {
@@ -836,8 +840,15 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       patientId: PATIENT_CLEAR,
       discipline: "rn",
       bodyText: "RN: pain controlled on current regimen",
+      reason: "  RN-CLEAR-REASON  ", // optional context on a LIVE note: trimmed
     });
-    expect(clear).toMatchObject({ discipline: "rn", authorMembershipId: RN, version: 0 });
+    expect(clear).toMatchObject({
+      discipline: "rn",
+      authorMembershipId: RN,
+      version: 0,
+      isAddendum: false,
+      reason: "RN-CLEAR-REASON",
+    });
     expect(
       await err(svc.createDisciplineNote(ORG_A, rn, m, { discipline: "msw", bodyText: "x" })),
     ).toMatchObject({
@@ -852,11 +863,14 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       patientId: PATIENT_FLAGGED,
       discipline: "msw",
       bodyText: "MSW: SUD history discussed with family",
+      reason: "FLAGGED-LIVE-REASON-SECRET",
     });
     const meetingLevel = await svc.createDisciplineNote(ORG_A, rn, m, {
       discipline: "rn",
       bodyText: "RN: census reviewed",
+      reason: "   ", // blank => absent
     });
+    expect(meetingLevel.reason).toBeNull();
     expect(meetingLevel.patientId).toBeNull();
     // patient not on the agenda -> 422 (URL-tamper defence)
     expect(
@@ -870,18 +884,57 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     ).toMatchObject({ statusCode: 422, code: "INCLUSION_CRITERIA_FAILED" });
 
     // Edit: If-Match. Stale -> 412; right version bumps; another discipline's non-coordinator -> 403.
-    expect(await err(svc.updateDisciplineNote(ORG_A, rn, clear.id, "edit", 5))).toMatchObject({
+    expect(
+      await err(svc.updateDisciplineNote(ORG_A, rn, clear.id, { bodyText: "edit" }, 5)),
+    ).toMatchObject({
       statusCode: 412,
       code: "STALE_VERSION",
     });
-    const edited = await svc.updateDisciplineNote(ORG_A, rn, clear.id, "RN: pain now 2/10", 0);
-    expect(edited).toMatchObject({ version: 1, bodyText: "RN: pain now 2/10" });
-    expect(await err(svc.updateDisciplineNote(ORG_A, msw, clear.id, "hijack", 1))).toMatchObject({
+    const edited = await svc.updateDisciplineNote(
+      ORG_A,
+      rn,
+      clear.id,
+      { bodyText: "RN: pain now 2/10" },
+      0,
+    );
+    expect(edited).toMatchObject({
+      version: 1,
+      bodyText: "RN: pain now 2/10",
+      reason: "RN-CLEAR-REASON",
+    });
+    // PATCH may edit the reason alone (text untouched); blank clears it; then restore for the snapshot checks below.
+    const reasonOnly = await svc.updateDisciplineNote(
+      ORG_A,
+      rn,
+      clear.id,
+      { reason: "RN-EDITED-REASON" },
+      1,
+    );
+    expect(reasonOnly).toMatchObject({
+      version: 2,
+      bodyText: "RN: pain now 2/10",
+      reason: "RN-EDITED-REASON",
+    });
+    const cleared = await svc.updateDisciplineNote(ORG_A, rn, clear.id, { reason: "  " }, 2);
+    expect(cleared).toMatchObject({ version: 3, reason: null });
+    const restored = await svc.updateDisciplineNote(
+      ORG_A,
+      rn,
+      clear.id,
+      { reason: "RN-CLEAR-REASON" },
+      3,
+    );
+    expect(restored.version).toBe(4);
+    expect(
+      await err(svc.updateDisciplineNote(ORG_A, msw, clear.id, { bodyText: "hijack" }, 4)),
+    ).toMatchObject({
       statusCode: 403,
     });
     expect(await svc.disciplineNoteMeetingId(ORG_A, clear.id)).toBe(m);
     expect(await svc.disciplineNoteMeetingId(ORG_B, clear.id)).toBeNull();
-    expect(await err(svc.updateDisciplineNote(ORG_B, COORD, clear.id, "x", 1))).toMatchObject({
+    expect(
+      await err(svc.updateDisciplineNote(ORG_B, COORD, clear.id, { bodyText: "x" }, 4)),
+    ).toMatchObject({
       statusCode: 404,
     });
     expect(await err(svc.listDisciplineNotes(ORG_B, m, {}))).toMatchObject({ statusCode: 404 });
@@ -894,6 +947,10 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       [flagged.id, true, true],
       [meetingLevel.id, false, false],
     ]);
+    // the original note's reason is withheld with its body (Part 2), shown otherwise
+    expect(denied.find((n) => n.id === flagged.id)?.reason).toBeNull();
+    expect(JSON.stringify(denied)).not.toContain("FLAGGED-LIVE-REASON-SECRET");
+    expect(denied.find((n) => n.id === clear.id)?.reason).toBe("RN-CLEAR-REASON");
     const allowed = await svc.listDisciplineNotes(
       ORG_A,
       m,
@@ -902,6 +959,7 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     );
     expect(allowed).toHaveLength(1);
     expect(allowed[0]?.bodyText).toBe("MSW: SUD history discussed with family");
+    expect(allowed[0]?.reason).toBe("FLAGGED-LIVE-REASON-SECRET");
     const throwing = await svc.listDisciplineNotes(
       ORG_A,
       m,
@@ -920,7 +978,16 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       [clear.id],
     );
     expect(audits.length).toBeGreaterThanOrEqual(2); // insert + update
-    for (const a of audits) expect(a.after).not.toContain("pain");
+    for (const a of audits) {
+      expect(a.after).not.toContain("pain");
+      expect(a.after).not.toContain("RN-CLEAR-REASON"); // the (now general) reason column is scrubbed too
+      expect(a.after).not.toContain("RN-EDITED-REASON");
+    }
+    const { rows: audFlagged } = await admin.query(
+      "SELECT after::text AS after FROM audit_event WHERE resource_kind='idg_discipline_note' AND resource_id=$1",
+      [flagged.id],
+    );
+    for (const a of audFlagged) expect(a.after).not.toContain("FLAGGED-LIVE-REASON-SECRET");
 
     // The app role has NO delete grant (append/edit-only).
     const app = new Client({ connectionString: appRoleUrl(DB_URL as string) });
@@ -952,25 +1019,40 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       [minutes.id],
     );
     const byId = new Map(
-      (snap[0].s as Array<{ noteId: string; bodyText: string | null; bodyWithheld: boolean }>).map(
-        (n) => [n.noteId, n],
-      ),
+      (
+        snap[0].s as Array<{
+          noteId: string;
+          bodyText: string | null;
+          reason: string | null;
+          bodyWithheld: boolean;
+        }>
+      ).map((n) => [n.noteId, n]),
     );
     expect(byId.get(clear.id)).toMatchObject({
       bodyText: "RN: pain now 2/10",
+      reason: "RN-CLEAR-REASON",
       bodyWithheld: false,
     });
     expect(byId.get(meetingLevel.id)?.bodyText).toBe("RN: census reviewed");
-    expect(byId.get(flagged.id)).toMatchObject({ bodyText: null, bodyWithheld: true });
+    expect(byId.get(flagged.id)).toMatchObject({
+      bodyText: null,
+      reason: null,
+      bodyWithheld: true,
+    });
+    expect(byId.get(meetingLevel.id)?.reason).toBeNull();
     const { rows: ev } = await admin.query(
       "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m14.minutes.signed'",
       [minutes.id],
     );
     expect(ev[0].payload.renderPayload.disciplineNoteSnapshot).toHaveLength(3);
     expect(JSON.stringify(ev[0].payload)).not.toContain("SUD history");
+    expect(JSON.stringify(ev[0].payload)).not.toContain("FLAGGED-LIVE-REASON-SECRET");
+    expect(ev[0].payload.renderPayload.disciplineNoteSnapshot).toEqual(snap[0].s); // reason rides in the render payload
 
     // Final minutes are frozen for ORIGINAL notes: no edit once the meeting is no longer live...
-    expect(await err(svc.updateDisciplineNote(ORG_A, COORD, clear.id, "late", 1))).toMatchObject({
+    expect(
+      await err(svc.updateDisciplineNote(ORG_A, COORD, clear.id, { bodyText: "late" }, 4)),
+    ).toMatchObject({
       statusCode: 422,
       code: "MEETING_NOT_LIVE",
     });
@@ -1003,7 +1085,9 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       ),
     ).toMatchObject({ statusCode: 403 });
     // append-only: PATCH of an addendum is refused; PATCH of an original stays MEETING_NOT_LIVE
-    expect(await err(svc.updateDisciplineNote(ORG_A, COORD, addendum.id, "x", 0))).toMatchObject({
+    expect(
+      await err(svc.updateDisciplineNote(ORG_A, COORD, addendum.id, { reason: "x" }, 0)),
+    ).toMatchObject({
       statusCode: 422,
       code: "ADDENDUM_IMMUTABLE",
     });
@@ -1036,7 +1120,38 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       bodyText: "ADDENDUM-BODY-SECRET",
       reason: "ADDENDUM-REASON-SECRET missed vitals",
     });
-    // audit: the INSERT is audited, and neither body_text nor addendum_reason lands in audit_event
+    // The addendum emitted `m14.discipline_note.addendum_recorded` in ITS transaction (M22 appends a minutes
+    // version): live rows -> `disciplineAddenda`, Part 2 elision identical to the frozen snapshot, name only.
+    const { rows: aev } = await admin.query(
+      `SELECT payload FROM outbox_event
+        WHERE aggregate_id=$1 AND event_type='m14.discipline_note.addendum_recorded' ORDER BY created_at`,
+      [minutes.id],
+    );
+    expect(aev).toHaveLength(1);
+    expect(aev[0].payload).toMatchObject({
+      minutesId: minutes.id,
+      meetingId: m,
+      addendumId: addendum.id,
+      addendumCount: 1,
+      recordedByMembershipId: rn.membershipId,
+    });
+    const rp = aev[0].payload.renderPayload;
+    expect(rp.disciplineNoteSnapshot).toEqual(snap[0].s); // frozen snapshot rides along, untouched
+    expect(rp.disciplineAddenda).toEqual([
+      {
+        noteId: addendum.id,
+        patientId: PATIENT_FLAGGED,
+        discipline: "rn",
+        authorMembershipId: rn.membershipId,
+        authorName: `Name-${rn.membershipId.slice(0, 8)}`,
+        recordedAt: addendum.addendumRecordedAt,
+        reason: null,
+        bodyText: null,
+        bodyWithheld: true,
+      },
+    ]);
+    expect(JSON.stringify(aev[0].payload)).not.toContain("ADDENDUM-");
+    // audit: the INSERT is audited, and neither body_text nor reason lands in audit_event
     const { rows: aaud } = await admin.query(
       "SELECT after::text AS after FROM audit_event WHERE resource_kind='idg_discipline_note' AND resource_id=$1",
       [addendum.id],
@@ -1066,6 +1181,22 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
         })
       ).isAddendum,
     ).toBe(true);
+    // A second addendum re-emits with the FULL live set (count 2, oldest first) — the newest event always
+    // carries every addendum, so the last appended document version is complete.
+    const { rows: aev2 } = await admin.query(
+      `SELECT payload FROM outbox_event
+        WHERE aggregate_id=$1 AND event_type='m14.discipline_note.addendum_recorded' ORDER BY created_at`,
+      [minutes.id],
+    );
+    expect(aev2).toHaveLength(2);
+    expect(aev2[1].payload.addendumCount).toBe(2);
+    expect(aev2[1].payload.renderPayload.disciplineAddenda).toHaveLength(2);
+    expect(aev2[1].payload.renderPayload.disciplineAddenda[1]).toMatchObject({
+      bodyText: "in window",
+      reason: "r",
+      bodyWithheld: false,
+      patientId: null,
+    });
     // DB CHECK as the real NOBYPASSRLS app role: an addendum without a reason / a non-addendum with one is refused.
     const app2 = new Client({ connectionString: appRoleUrl(DB_URL as string) });
     await app2.connect();
@@ -1073,20 +1204,32 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       for (const [flag, reason] of [
         [true, null],
         [true, "  "],
-        [false, "sneaky"],
+        [false, "  "],
+        [false, "x".repeat(501)],
+        [true, "x".repeat(501)],
       ] as const) {
         await app2.query("BEGIN");
         await app2.query("SELECT set_config('app.org_id',$1,true)", [ORG_A]);
         await expect(
           app2.query(
             `INSERT INTO idg_discipline_note (organization_id, idg_meeting_id, discipline, body_text,
-               author_membership_id, is_addendum, addendum_recorded_at, addendum_reason)
+               author_membership_id, is_addendum, addendum_recorded_at, reason)
              VALUES ($1,$2,'rn','x',$3,$4,$5,$6)`,
             [ORG_A, m, COORD.membershipId, flag, flag ? new Date() : null, reason],
           ),
         ).rejects.toThrow(/idg_discipline_note_addendum_chk/);
         await app2.query("ROLLBACK");
       }
+      // an ORIGINAL note may now carry a (non-blank) reason...
+      await app2.query("BEGIN");
+      await app2.query("SELECT set_config('app.org_id',$1,true)", [ORG_A]);
+      await app2.query(
+        `INSERT INTO idg_discipline_note (organization_id, idg_meeting_id, discipline, body_text,
+           author_membership_id, is_addendum, addendum_recorded_at, reason)
+         VALUES ($1,$2,'rn','x',$3,false,NULL,'context')`,
+        [ORG_A, m, COORD.membershipId],
+      );
+      await app2.query("ROLLBACK");
       // still no DELETE on an addendum
       await app2.query("BEGIN");
       await app2.query("SELECT set_config('app.org_id',$1,true)", [ORG_A]);
@@ -1097,12 +1240,75 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     } finally {
       await app2.end();
     }
-    // ...and the amendment below re-renders WITH the frozen notes only (addenda are not in the snapshot).
+    // ...and the amendment below re-renders the frozen notes (addenda are not IN the snapshot) PLUS the live
+    // 'Addenda' appendix, so the newest document version never drops addenda an earlier version showed.
     await svc.submitAmendment(ORG_A, MEMBER, minutes.id, "typo");
     const { rows: amended } = await admin.query(
       "SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m14.minutes.amended'",
       [minutes.id],
     );
     expect(amended[0].payload.renderPayload.disciplineNoteSnapshot).toHaveLength(3);
+    expect(amended[0].payload.renderPayload.disciplineAddenda).toHaveLength(2);
+    expect(JSON.stringify(amended[0].payload)).not.toContain("ADDENDUM-");
+
+    // WINDOW B — supersession by a NEWER ADJOURNED IDG. `m` was adjourned 13 days ago (actual_end set above).
+    const newer = await seedMeeting(ORG_A, "live");
+    await svc.addAgendaItem(ORG_A, MEMBER, newer, {
+      kind: "patient_review",
+      patientId: PATIENT_CLEAR,
+    });
+    // a LIVE newer meeting supersedes nothing
+    expect((await svc.getMinutes(ORG_A, m)).addendumState).toMatchObject({
+      open: true,
+      closedReason: null,
+      supersededPatientIds: [],
+    });
+    await admin.query(
+      "UPDATE idg_meeting SET status='adjourned', actual_end = now() - interval '1 day' WHERE id=$1",
+      [newer],
+    );
+    // patient reached through a patient-scoped AGENDA item of the newer adjourned meeting
+    expect(
+      await err(
+        svc.createDisciplineNote(ORG_A, COORD, m, {
+          patientId: PATIENT_CLEAR,
+          discipline: "rn",
+          bodyText: "too late for this patient",
+          reason: "r",
+        }),
+      ),
+    ).toMatchObject({ statusCode: 422, code: "ADDENDUM_SUPERSEDED_BY_NEWER_IDG" });
+    // ...and through a stored PACKET of the newer adjourned meeting
+    await seedPacket(ORG_A, newer, PATIENT_FLAGGED, new Date().toISOString());
+    expect(
+      await err(
+        svc.createDisciplineNote(ORG_A, COORD, m, {
+          patientId: PATIENT_FLAGGED,
+          discipline: "msw",
+          bodyText: "too late",
+          reason: "r",
+        }),
+      ),
+    ).toMatchObject({ statusCode: 422, code: "ADDENDUM_SUPERSEDED_BY_NEWER_IDG" });
+    // ORG isolation of the lookup: org B's meetings are never consulted (RLS under wardenx_app); the read model:
+    const st = (await svc.getMinutes(ORG_A, m)).addendumState;
+    expect(st).toMatchObject({ open: true, closedReason: null });
+    expect([...st.supersededPatientIds].sort()).toEqual([PATIENT_CLEAR, PATIENT_FLAGGED].sort());
+    expect(st.closesAt).not.toBeNull();
+    // a meeting-level addendum keeps the 14-day rule only
+    expect(
+      (
+        await svc.createDisciplineNote(ORG_A, COORD, m, {
+          discipline: "rn",
+          bodyText: "meeting-level still ok",
+          reason: "r",
+        })
+      ).isAddendum,
+    ).toBe(true);
+    // the newer meeting does not supersede ITSELF nor an EARLIER one: `m` is not newer than `newer`
+    expect(
+      (await svc.getMinutes(ORG_A, newer).catch(() => null))?.addendumState?.supersededPatientIds ??
+        [],
+    ).toEqual([]);
   });
 });

@@ -73,6 +73,15 @@ function bodyFor(method: string, path: string): unknown {
         actionItemCount: minutesStatus === "final" ? 1 : null,
         disciplineNoteCount: minutesStatus === "final" ? 7 : null,
         disciplineAddendumCount: minutesStatus === "final" ? 3 : 0,
+        addendumState:
+          minutesStatus === "final"
+            ? {
+                open: true,
+                closesAt: "2026-09-10T11:00:00.000Z",
+                closedReason: null,
+                supersededPatientIds: [],
+              }
+            : { open: false, closesAt: null, closedReason: null, supersededPatientIds: [] },
       };
     return {
       id: MEETING,
@@ -509,6 +518,8 @@ describe("#91 — the minutes are the §418.56(d) evidence", () => {
     // The live late-addenda count sits beside the frozen note count and links back to the panel.
     expect(screen.getByText("Late addenda")).toBeTruthy();
     expect(screen.getByText("3")).toBeTruthy();
+    // The window state from `addendumState` sits in the stat caption.
+    expect(screen.getByText(/addenda open until Sep 10, 2026/)).toBeTruthy();
     expect(
       screen
         .getByRole("link", { name: "Read the addenda in the notes panel" })

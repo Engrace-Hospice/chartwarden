@@ -388,6 +388,11 @@ button.wx-idg-pick:focus-visible {
   resize: vertical;
   box-sizing: border-box;
 }
+.wx-idg-note-edit input[type="text"],
+.wx-idg-note-composer input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+}
 .wx-idg-note-label {
   font-size: 0.8125rem;
   font-weight: 600;

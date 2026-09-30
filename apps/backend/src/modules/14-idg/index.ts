@@ -20,7 +20,7 @@ export function mountIdgRoutes(
   outbox?: IdgWriteOutboxPort,
   enrichment?: IdgRouteEnrichmentPorts,
 ): void {
-  const backend = createDbIdgBackend(db, outbox);
+  const backend = createDbIdgBackend(db, outbox, enrichment?.membershipDisplay);
   _registerM14Abac({ resolver: backend });
   _registerM14Routes(app, { service: backend, enrichment });
 }

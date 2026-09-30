@@ -8993,7 +8993,7 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Edit a discipline note's text (live meeting only; author or coordinator; If-Match = version). No delete. Frozen notes of an adjourned meeting => 422 MEETING_NOT_LIVE; late addenda are append-only => 422 ADDENDUM_IMMUTABLE */
+        /** Edit a discipline note's text and/or reason (at least one; live meeting only; author or coordinator; If-Match = version). No delete. Frozen notes of an adjourned meeting => 422 MEETING_NOT_LIVE; late addenda are append-only => 422 ADDENDUM_IMMUTABLE */
         patch: operations["patchApiV1IdgDisciplinenotesById"];
         trace?: never;
     };
@@ -9146,7 +9146,7 @@ export interface paths {
         /** The meeting's per-discipline notes, oldest first (optionally one patient) — readable in any status; text withheld (`bodyWithheld`) for a 42 CFR Part 2 patient the caller has no release for */
         get: operations["getApiV1IdgMeetingsByIdDisciplinenotes"];
         put?: never;
-        /** Write a discipline note during a LIVE meeting (patientId omitted = meeting-level), or — once the meeting is ADJOURNED, within the addendum window and with a required `reason` — a LATE ADDENDUM (new append-only row; the frozen minutes are not modified). Coordinator: any discipline; otherwise the caller must be present for that discipline. 422 MEETING_NOT_LIVE / ADDENDUM_WINDOW_CLOSED / ADDENDUM_REASON_REQUIRED / NOTE_REASON_NOT_APPLICABLE */
+        /** Write a discipline note during a LIVE meeting (patientId omitted = meeting-level), or — once the meeting is ADJOURNED, within the addendum window and with a required `reason` — a LATE ADDENDUM (new append-only row; the frozen minutes are not modified). `reason` (≤500) is OPTIONAL context on a live note (blank = absent). A patient-scoped addendum is refused once a NEWER ADJOURNED IDG has included that patient. Coordinator: any discipline; otherwise the caller must be present for that discipline. 422 MEETING_NOT_LIVE / ADDENDUM_WINDOW_CLOSED / ADDENDUM_SUPERSEDED_BY_NEWER_IDG / ADDENDUM_REASON_REQUIRED; 503 ADDENDUM_ELIGIBILITY_UNAVAILABLE (retryable) */
         post: operations["postApiV1IdgMeetingsByIdDisciplinenotes"];
         delete?: never;
         options?: never;
@@ -44656,7 +44656,8 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    bodyText: string;
+                    bodyText?: string;
+                    reason?: string | null;
                 };
             };
         };
@@ -45415,6 +45416,12 @@ export interface operations {
                         actionItemCount: number | null;
                         disciplineNoteCount: number | null;
                         disciplineAddendumCount: number;
+                        addendumState: {
+                            open: boolean;
+                            closesAt: string | null;
+                            closedReason: "window_elapsed" | null;
+                            supersededPatientIds: string[];
+                        };
                     };
                 };
             };

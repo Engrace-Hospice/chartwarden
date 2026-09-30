@@ -148,6 +148,46 @@ export interface MinutesView {
    * through `GET .../discipline-notes` with the same Part 2 redaction. 0 while `in_progress`.
    */
   readonly disciplineAddendumCount: number;
+  /**
+   * Whether a LATE ADDENDUM can still be recorded on this meeting, so a UI can show why not without provoking a 422.
+   * See {@link AddendumState}. Derived per read (server clock + live meeting data), never stored.
+   */
+  readonly addendumState: AddendumState;
+}
+/**
+ * Late-addendum eligibility of a meeting (WINDOW B). `open` = the meeting is ADJOURNED and within
+ * {@link DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS} days of `actual_end` (`closesAt` = that boundary; null when not adjourned).
+ * `closedReason` is `window_elapsed` exactly when the adjourned meeting is past the window, else null (a meeting that is
+ * not adjourned takes ordinary notes/none, so it has no closed reason). `supersededPatientIds` are the patients of THIS
+ * meeting for whom a later ADJOURNED IDG exists: patient-scoped addenda for them are refused
+ * (`ADDENDUM_SUPERSEDED_BY_NEWER_IDG`) even while `open`; meeting-level addenda are unaffected. Empty unless `open`.
+ */
+export interface AddendumState {
+  readonly open: boolean;
+  readonly closesAt: string | null;
+  readonly closedReason: "window_elapsed" | null;
+  readonly supersededPatientIds: readonly string[];
+}
+/** Pure derivation of {@link AddendumState} from the meeting facts. */
+export function deriveAddendumState(input: {
+  readonly status: string;
+  readonly adjournedAt: Date | null;
+  readonly now: Date;
+  readonly supersededPatientIds: readonly string[];
+}): AddendumState {
+  if (input.status !== "adjourned" || input.adjournedAt === null) {
+    return { open: false, closesAt: null, closedReason: null, supersededPatientIds: [] };
+  }
+  const closes = new Date(
+    input.adjournedAt.getTime() + DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  );
+  const open = input.now.getTime() <= closes.getTime();
+  return {
+    open,
+    closesAt: closes.toISOString(),
+    closedReason: open ? null : "window_elapsed",
+    supersededPatientIds: open ? [...input.supersededPatientIds].sort() : [],
+  };
 }
 /**
  * One per-discipline meeting note (`idg_discipline_note`). `patientId` null = a meeting-level note for that
@@ -171,7 +211,10 @@ export interface DisciplineNoteView {
   readonly isAddendum: boolean;
   /** Server time the addendum was recorded (== `createdAt`); null for an original (live) note. */
   readonly addendumRecordedAt: string | null;
-  /** The addendum's required reason (free-text PHI): withheld (null) under Part 2 exactly like `bodyText`; null for originals. */
+  /**
+   * The note's `reason` (free-text PHI, ≤500): OPTIONAL context on any note, REQUIRED on a late addendum. Withheld
+   * (null) under Part 2 exactly when `bodyText` is; null when none was given.
+   */
   readonly reason: string | null;
 }
 /** The acting principal of a note write: the membership + whether it holds `idg.coordinate` (any-discipline). */
@@ -184,7 +227,7 @@ export interface CreateDisciplineNoteArgs {
   readonly patientId?: string | null;
   readonly discipline: string;
   readonly bodyText: string;
-  /** REQUIRED (non-blank, ≤500) when the meeting is adjourned (=> the note is a late addendum); refused on a live meeting. */
+  /** Optional context (≤500; blank/whitespace = absent) on a live note; REQUIRED non-blank when the meeting is adjourned (=> a late addendum). */
   readonly reason?: string | null;
 }
 /** The per-discipline notes a meeting's minutes froze at adjournment (only for the M22 render payload). */
@@ -194,10 +237,35 @@ export interface DisciplineNoteSnapshotEntry {
   readonly discipline: string;
   readonly bodyText: string | null;
   readonly bodyWithheld: boolean;
+  /** Optional per-note reason; elided (null) exactly when `bodyText` is (same fail-closed Part 2 rule). */
+  readonly reason: string | null;
   readonly authorMembershipId: string;
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+/** Partial edit of a live original note: at least one of the two. `reason: null` (or blank) clears it. */
+export interface DisciplineNotePatch {
+  readonly bodyText?: string;
+  readonly reason?: string | null;
+}
+
+/**
+ * One entry of the minutes render's 'Addenda' appendix (`renderPayload.disciplineAddenda` on
+ * `m14.discipline_note.addendum_recorded` / `m14.minutes.amended`), built from live addendum rows. Text and
+ * reason are null + `bodyWithheld` for a patient whose text must be withheld (42 CFR Part 2), exactly like
+ * {@link DisciplineNoteSnapshotEntry}. `authorName` is the M2 display name only (null when unresolvable).
+ */
+export interface DisciplineAddendumRenderEntry {
+  readonly noteId: string;
+  readonly patientId: string | null;
+  readonly discipline: string;
+  readonly authorMembershipId: string;
+  readonly authorName: string | null;
+  readonly recordedAt: string;
+  readonly reason: string | null;
+  readonly bodyText: string | null;
+  readonly bodyWithheld: boolean;
 }
 
 /** Statuses of an attendance row that count as "in the room" for writing a discipline note. */
@@ -243,12 +311,20 @@ export function addendumWindowClosedError(): WardenXError {
 export function addendumReasonRequiredError(): WardenXError {
   return new WardenXError("ADDENDUM_REASON_REQUIRED", "a late addendum requires a reason", 422);
 }
-/** The 422 for a reason supplied on a note of a LIVE meeting (reasons belong to late addenda only). */
-export function noteReasonNotApplicableError(): WardenXError {
+/** The 422 for a patient-scoped addendum when a NEWER ADJOURNED IDG meeting has included that patient (WINDOW B). */
+export function addendumSupersededError(): WardenXError {
   return new WardenXError(
-    "NOTE_REASON_NOT_APPLICABLE",
-    "a reason is only accepted on a late addendum (after adjournment)",
+    "ADDENDUM_SUPERSEDED_BY_NEWER_IDG",
+    "a late addendum for this patient is no longer accepted: a more recent IDG meeting that included the patient has since been adjourned; record the note in the patient's current IDG instead",
     422,
+  );
+}
+/** The retryable 503 when the WINDOW B eligibility lookup itself fails (fail-closed: never allow on error). */
+export function addendumEligibilityUnavailableError(): WardenXError {
+  return new WardenXError(
+    "ADDENDUM_ELIGIBILITY_UNAVAILABLE",
+    "could not verify whether a newer IDG meeting supersedes this addendum; please retry",
+    503,
   );
 }
 /** Result of {@link planDisciplineNoteCreate}. */
@@ -258,29 +334,46 @@ export interface DisciplineNoteCreatePlan {
   readonly reason: string | null;
 }
 /**
- * Pure state matrix for creating a discipline note: `live` => an ordinary note (no reason); `adjourned` =>
- * a late ADDENDUM iff within {@link DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS} days of `adjournedAt` (inclusive) and
- * a non-blank reason is given (server clock `now` is the recorded-at); any other status => MEETING_NOT_LIVE.
- * An adjourned meeting with no recorded end time is treated as out of window (fail-closed).
+ * Pure state matrix for creating a discipline note: `live` => an ordinary note whose `reason` is OPTIONAL context
+ * (blank/whitespace => absent => null); `adjourned` => a late ADDENDUM iff (1) within
+ * {@link DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS} days of `adjournedAt` (inclusive), (2) for a PATIENT-scoped note, no
+ * NEWER ADJOURNED IDG has included that patient (`newerAdjournedIdgForPatient`, WINDOW B; ignored for meeting-level
+ * notes, which keep the 14-day rule only) and (3) a non-blank reason is given (server clock `now` is the
+ * recorded-at). Any other status => MEETING_NOT_LIVE. An adjourned meeting with no recorded end time is treated as
+ * out of window (fail-closed). Check order: window, superseded, reason.
  */
 export function planDisciplineNoteCreate(input: {
   readonly status: string;
   readonly adjournedAt: Date | null;
   readonly now: Date;
   readonly reason?: string | null;
+  readonly patientId?: string | null;
+  /** True iff another ADJOURNED IDG (same org) with a later `actual_end` included `patientId`. */
+  readonly newerAdjournedIdgForPatient?: boolean;
 }): DisciplineNoteCreatePlan {
   const reason = input.reason?.trim() ?? "";
   if (input.status === "live") {
-    if (reason.length > 0) throw noteReasonNotApplicableError();
-    return { isAddendum: false, addendumRecordedAt: null, reason: null };
+    return {
+      isAddendum: false,
+      addendumRecordedAt: null,
+      reason: reason.length > 0 ? reason : null,
+    };
   }
   if (input.status !== "adjourned") throw noteMeetingNotLiveError();
   const windowMs = DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS * 24 * 60 * 60 * 1000;
   if (input.adjournedAt === null || input.now.getTime() > input.adjournedAt.getTime() + windowMs) {
     throw addendumWindowClosedError();
   }
+  if (input.patientId != null && input.newerAdjournedIdgForPatient === true) {
+    throw addendumSupersededError();
+  }
   if (reason.length === 0) throw addendumReasonRequiredError();
   return { isAddendum: true, addendumRecordedAt: input.now, reason };
+}
+/** Normalise an optional reason: trim, blank => null. */
+export function normalizeNoteReason(reason: string | null | undefined): string | null {
+  const t = reason?.trim() ?? "";
+  return t.length > 0 ? t : null;
 }
 /** The 422 for a note about a patient who is not on the meeting's caseload (URL-tamper defense, §2.3 D9). */
 export function noteInclusionError(): WardenXError {
@@ -655,12 +748,13 @@ export interface IdgRouteService {
     meetingId: string,
     args: CreateDisciplineNoteArgs,
   ): Promise<DisciplineNoteView>;
-  /** Edit a note's text (same guards; a non-coordinator may edit only their OWN note; 412 on stale `If-Match`). */
+  /** Edit a live original note's text and/or reason (same guards; a non-coordinator may edit only their OWN note;
+   * 412 on stale `If-Match`). Addenda are immutable. */
   updateDisciplineNote(
     orgId: string,
     actor: DisciplineNoteActor,
     id: string,
-    bodyText: string,
+    patch: DisciplineNotePatch,
     ifMatchVersion: number,
   ): Promise<DisciplineNoteView>;
   /** The owning meeting id of a note (null when absent/cross-tenant) — for the route's per-meeting ABAC. */
@@ -768,7 +862,7 @@ interface NoteRow {
   updatedAt: string;
   isAddendum: boolean;
   addendumRecordedAt: string | null;
-  addendumReason: string | null;
+  reason: string | null;
 }
 interface MinutesRow {
   id: string;
@@ -870,6 +964,19 @@ export function createInMemoryIdgBackend(
       coordinatorMembershipId: m.coordinatorMembershipId,
     };
   }
+  /** WINDOW B: another ADJOURNED meeting of the org, ending later than `m`, that included the patient. */
+  function newerAdjournedFor(m: MeetingRow, patientId: string): boolean {
+    if (m.adjournedAt === null) return false;
+    return [...meetings.values()].some(
+      (o) =>
+        o.id !== m.id &&
+        o.organizationId === m.organizationId &&
+        o.status === "adjourned" &&
+        o.adjournedAt !== null &&
+        o.adjournedAt > (m.adjournedAt as string) &&
+        o.includedPatientIds.has(patientId),
+    );
+  }
   function toNoteView(n: NoteRow, withheld: boolean): DisciplineNoteView {
     return {
       id: n.id,
@@ -884,7 +991,7 @@ export function createInMemoryIdgBackend(
       updatedAt: n.updatedAt,
       isAddendum: n.isAddendum,
       addendumRecordedAt: n.addendumRecordedAt,
-      reason: withheld ? null : n.addendumReason,
+      reason: withheld ? null : n.reason,
     };
   }
   /** The disciplines PRESENT (present/tardy/partial) at the meeting right now (the quorum present-set). */
@@ -1451,13 +1558,15 @@ export function createInMemoryIdgBackend(
     async createDisciplineNote(orgId, actor, meetingId, args) {
       const m = meetingOf(orgId, meetingId);
       const at = now();
+      const patientId = args.patientId ?? null;
       const plan = planDisciplineNoteCreate({
         status: m.status,
         adjournedAt: m.adjournedAt === null ? null : new Date(m.adjournedAt),
         now: new Date(at),
         reason: args.reason,
+        patientId,
+        newerAdjournedIdgForPatient: patientId !== null && newerAdjournedFor(m, patientId),
       });
-      const patientId = args.patientId ?? null;
       if (patientId !== null && !m.includedPatientIds.has(patientId)) throw noteInclusionError();
       assertMayWriteDisciplineNote(
         actor,
@@ -1477,12 +1586,26 @@ export function createInMemoryIdgBackend(
         updatedAt: at,
         isAddendum: plan.isAddendum,
         addendumRecordedAt: plan.addendumRecordedAt === null ? null : at,
-        addendumReason: plan.reason,
+        reason: plan.reason,
       };
       notes.set(row.id, row);
+      const min = plan.isAddendum ? minutes.get(meetingId) : undefined;
+      if (min) {
+        // Slice parity with the DB backend's `m14.discipline_note.addendum_recorded` (the render appendix is
+        // built from live rows there; the slice records only the identity fields).
+        emit("m14.discipline_note.addendum_recorded", {
+          minutesId: min.id,
+          meetingId,
+          addendumId: row.id,
+          addendumCount: [...notes.values()].filter(
+            (n) => n.meetingId === meetingId && n.isAddendum,
+          ).length,
+          recordedByMembershipId: actor.membershipId,
+        });
+      }
       return toNoteView(row, false);
     },
-    async updateDisciplineNote(orgId, actor, id, bodyText, ifMatchVersion) {
+    async updateDisciplineNote(orgId, actor, id, patch, ifMatchVersion) {
       const row = notes.get(id);
       if (!row) throw new NotFoundError("idg_discipline_note");
       const m = meetingOf(orgId, row.meetingId);
@@ -1497,7 +1620,8 @@ export function createInMemoryIdgBackend(
         throw new ForbiddenError("only the note's author or a coordinator may edit it");
       }
       assertNoteVersion(ifMatchVersion, row.version);
-      row.bodyText = bodyText;
+      if (patch.bodyText !== undefined) row.bodyText = patch.bodyText;
+      if (patch.reason !== undefined) row.reason = normalizeNoteReason(patch.reason);
       row.version += 1;
       row.updatedAt = now();
       return toNoteView(row, false);
@@ -1511,7 +1635,7 @@ export function createInMemoryIdgBackend(
 
     // ── minutes ──────────────────────────────────────────────────────────────────────────────────────────
     async getMinutes(orgId, meetingId) {
-      meetingOf(orgId, meetingId);
+      const mtg = meetingOf(orgId, meetingId);
       const row = ensureMinutes(meetingId);
       const finalizerAttendance =
         row.finalizedByMembershipId === null
@@ -1524,6 +1648,14 @@ export function createInMemoryIdgBackend(
         disciplineAddendumCount: [...notes.values()].filter(
           (n) => n.meetingId === meetingId && n.isAddendum,
         ).length,
+        addendumState: deriveAddendumState({
+          status: mtg.status,
+          adjournedAt: mtg.adjournedAt === null ? null : new Date(mtg.adjournedAt),
+          now: new Date(now()),
+          supersededPatientIds: [...mtg.includedPatientIds].filter((p) =>
+            newerAdjournedFor(mtg, p),
+          ),
+        }),
         renderStatus: minutesRenderStatus(row.status, row.minutesDocumentId),
         finalizedByDiscipline: finalizerAttendance?.discipline ?? null,
       };

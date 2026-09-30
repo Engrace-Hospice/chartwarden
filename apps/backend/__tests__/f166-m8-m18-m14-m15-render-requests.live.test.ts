@@ -67,19 +67,17 @@ import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
 import { M13_OUTBOX_EVENTS } from "../src/modules/13-emar/index";
-import { M14_OUTBOX_EVENTS, buildM14DocumentBackrefConsumer } from "../src/modules/14-idg/index";
+import {
+  M14_OUTBOX_EVENTS,
+  buildM14DocumentBackrefConsumer,
+  createDbIdgBackend,
+} from "../src/modules/14-idg/index";
 import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
 import { M16_OUTBOX_EVENTS } from "../src/modules/16-bereavement/index";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
 import { M20_OUTBOX_EVENTS } from "../src/modules/20-field-safety/index";
 import { M21_OUTBOX_EVENTS } from "../src/modules/21-supplies/index";
-import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
-import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
-import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
-import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
-import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
-import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import {
   M22_DOCUMENT_RENDERED_EVENT,
   M22_OUTBOX_EVENTS,
@@ -92,6 +90,12 @@ import {
 // symbol at module scope); kept here so the remaining `alreadyRendered: false` assertion can run
 // synchronously.
 import { decideDocumentRequest } from "../src/modules/22-documents/outbox-consumers/decide-document-request";
+import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
+import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
+import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
+import { M27_OUTBOX_EVENTS } from "../src/modules/27-cost-report/index";
+import { M33_OUTBOX_EVENTS } from "../src/modules/33-reporting/index";
+import { M37_OUTBOX_EVENTS } from "../src/modules/37-ipu/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
@@ -108,6 +112,7 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
   let dispatcher: ReturnType<typeof createOutboxDispatcher>;
   let publisher: ReturnType<typeof buildTxOutboxPublisher>;
   const renderedKeys: string[] = [];
+  const renderedPayloads: { templateKey: string; payload: unknown }[] = [];
 
   async function resetSchema() {
     await admin.query("DROP SCHEMA IF EXISTS public CASCADE");
@@ -216,6 +221,7 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
       renderer: () => ({
         render: (scope, templateKey, payload) => {
           renderedKeys.push(templateKey);
+          renderedPayloads.push({ templateKey, payload });
           return renderer.render(scope, templateKey, payload);
         },
       }),
@@ -223,14 +229,17 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
       // publisher): what M14's back-ref consumer below is delivered.
       emitRendered: ({ organizationId, ...payload }) =>
         withOrgContext(handle.db, { organizationId, userId: "" }, (tx) =>
-          publisher.publish(tx as never, {
-            eventName: M22_DOCUMENT_RENDERED_EVENT,
-            payload,
-            organizationId,
-            aggregateKind: "document",
-            aggregateId: payload.documentId,
-            callerModule: "m22",
-          } as never),
+          publisher.publish(
+            tx as never,
+            {
+              eventName: M22_DOCUMENT_RENDERED_EVENT,
+              payload,
+              organizationId,
+              aggregateKind: "document",
+              aggregateId: payload.documentId,
+              callerModule: "m22",
+            } as never,
+          ),
         ),
     });
 
@@ -428,7 +437,14 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
         kind: "aide_poc",
         versionKind: "initial",
         snapshot: { tasks: ["bathing", "ambulation"] },
-        signers: [{ membershipId: MEMBER, role: "rn", signedAt: new Date().toISOString(), isAcknowledgment: false }],
+        signers: [
+          {
+            membershipId: MEMBER,
+            role: "rn",
+            signedAt: new Date().toISOString(),
+            isAcknowledgment: false,
+          },
+        ],
       },
     });
 
@@ -447,7 +463,14 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
         kind: "msw_plan",
         versionKind: "initial",
         snapshot: { goals: ["counseling"] },
-        signers: [{ membershipId: MEMBER, role: "msw", signedAt: new Date().toISOString(), isAcknowledgment: false }],
+        signers: [
+          {
+            membershipId: MEMBER,
+            role: "msw",
+            signedAt: new Date().toISOString(),
+            isAcknowledgment: false,
+          },
+        ],
       },
     });
 
@@ -497,7 +520,8 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
 
   /** Seed one meeting + its minutes + one packet for `org` as superuser (FK order); returns their ids. */
   async function seedMeetingChain(org: string, tag: string) {
-    const q = async (sql: string, params: unknown[]) => (await admin.query(sql, params)).rows[0].id as string;
+    const q = async (sql: string, params: unknown[]) =>
+      (await admin.query(sql, params)).rows[0].id as string;
     const providerEntity = await q(
       `INSERT INTO provider_entity (organization_id, ccn, legal_name, npi, tax_id_encrypted, fiscal_year_end)
        VALUES ($1,$2,$3,$4,'enc','12-31') RETURNING id`,
@@ -551,7 +575,11 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
         minutesId,
         meetingId,
         finalizedByMembershipId: MEMBER,
-        renderPayload: { attendanceSnapshot: [], decisionListSnapshot: [], actionItemListSnapshot: [] },
+        renderPayload: {
+          attendanceSnapshot: [],
+          decisionListSnapshot: [],
+          actionItemListSnapshot: [],
+        },
       },
     });
     await publish({
@@ -588,7 +616,11 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
         requestedByMembershipId: MEMBER,
         approvedByMembershipId: MEMBER,
         amendmentReasonHash: "a".repeat(64),
-        renderPayload: { attendanceSnapshot: [], decisionListSnapshot: [], actionItemListSnapshot: [] },
+        renderPayload: {
+          attendanceSnapshot: [],
+          decisionListSnapshot: [],
+          actionItemListSnapshot: [],
+        },
       },
     });
     await dispatcher.tick();
@@ -607,6 +639,123 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
       [ORG_A],
     );
     expect(failed[0].n).toBe(0);
+  });
+
+  // M14 spec §13 — a late discipline-note ADDENDUM on an adjourned meeting appends a NEW VERSION of the SAME
+  // minutes document carrying the 'Addenda' appendix. The producer is the REAL `createDbIdgBackend` write path
+  // (real catalog-validating publisher, same tx as the addendum insert), the consumer the real dispatcher + M22
+  // render consumer + M14 back-ref, all as the NOBYPASSRLS `wardenx_app` role.
+  it("m14.discipline_note.addendum_recorded (real producer) appends a minutes version with the Addenda appendix; stamp stable; Part 2 elided; frozen snapshot untouched", async () => {
+    const { meetingId, minutesId, packetId, patientId } = await seedMeetingChain(ORG_A, "ADD1");
+    const frozen = [{ noteId: randomUUID(), bodyText: "FROZEN-BODY", bodyWithheld: false }];
+    await admin.query("UPDATE idg_minutes SET discipline_note_snapshot=$2::jsonb WHERE id=$1", [
+      minutesId,
+      JSON.stringify(frozen),
+    ]);
+    await admin.query("UPDATE idg_meeting SET actual_end = now() WHERE id=$1", [meetingId]);
+    const svc = createDbIdgBackend(
+      handle.db,
+      {
+        publish: (tx, e) => publisher.publish(tx as never, { ...e, callerModule: "m14" } as never),
+      },
+      {
+        displayForMemberships: async (_org, ids) =>
+          new Map(ids.map((i) => [i, { displayName: "Nora Nurse" }])),
+      },
+    );
+    const actor = { membershipId: MEMBER, isCoordinator: true };
+
+    // First render (genesis), so the back-ref is stamped before any addendum.
+    await publish({
+      eventName: "m14.minutes.signed",
+      organizationId: ORG_A,
+      aggregateKind: "idg_minutes",
+      aggregateId: minutesId,
+      callerModule: "m14",
+      payload: {
+        minutesId,
+        meetingId,
+        finalizedByMembershipId: MEMBER,
+        renderPayload: { disciplineNoteSnapshot: frozen },
+      },
+    });
+    await dispatcher.tick();
+    await dispatcher.tick();
+    const genesis = await documentsFor(minutesId);
+    expect(genesis).toHaveLength(1);
+    const stampBefore = (await backrefs(minutesId, packetId)).minutes_doc;
+    expect(stampBefore).toBe(genesis[0].id);
+
+    // Addendum 1: meeting-level (text carried). The packet snapshot is `{}` => no SUD verdict for the patient
+    // => fail-closed, so addendum 2 (about that patient) is metadata-only.
+    const a1 = await svc.createDisciplineNote(ORG_A, actor, meetingId, {
+      discipline: "rn",
+      bodyText: "ADD-BODY-ONE",
+      reason: "ADD-REASON-ONE",
+    });
+    const a2 = await svc.createDisciplineNote(ORG_A, actor, meetingId, {
+      patientId,
+      discipline: "msw",
+      bodyText: "ADD-BODY-SECRET",
+      reason: "ADD-REASON-SECRET",
+    });
+    const events = await outboxFor(minutesId);
+    expect(events.filter((e) => e.type === "m14.discipline_note.addendum_recorded")).toHaveLength(
+      2,
+    );
+
+    renderedPayloads.length = 0;
+    await dispatcher.tick();
+    await dispatcher.tick();
+
+    // ONE document, THREE versions (genesis + one append per addendum); the back-ref stamp never moved.
+    const docs = await documentsFor(minutesId);
+    expect(docs).toHaveLength(3);
+    expect(new Set(docs.map((d) => d.id)).size).toBe(1);
+    expect((await backrefs(minutesId, packetId)).minutes_doc).toBe(stampBefore);
+
+    const minutesRenders = renderedPayloads.filter((r) => r.templateKey === "idg_minutes");
+    expect(minutesRenders).toHaveLength(2);
+    const appendix = (r: { payload: unknown }) =>
+      ((r.payload as { renderPayload?: unknown }).renderPayload ?? r.payload) as {
+        disciplineAddenda: Array<Record<string, unknown>>;
+        disciplineNoteSnapshot: unknown;
+      };
+    // Versions are cumulative: 1 addendum, then 2 (built from live rows at each emit).
+    const bodies = minutesRenders.map((r) => appendix(r).disciplineAddenda.length).sort();
+    expect(bodies).toEqual([1, 2]);
+    const latest = minutesRenders.map(appendix).find((p) => p.disciplineAddenda.length === 2)!;
+    expect(latest.disciplineNoteSnapshot).toEqual(frozen); // frozen snapshot rides through unmodified
+    expect(latest.disciplineAddenda[0]).toMatchObject({
+      noteId: a1.id,
+      discipline: "rn",
+      authorName: "Nora Nurse",
+      reason: "ADD-REASON-ONE",
+      bodyText: "ADD-BODY-ONE",
+      bodyWithheld: false,
+    });
+    expect(latest.disciplineAddenda[1]).toMatchObject({
+      noteId: a2.id,
+      patientId,
+      discipline: "msw",
+      authorName: "Nora Nurse",
+      reason: null,
+      bodyText: null,
+      bodyWithheld: true,
+    });
+    expect(JSON.stringify(minutesRenders)).not.toContain("ADD-BODY-SECRET");
+    expect(JSON.stringify(minutesRenders)).not.toContain("ADD-REASON-SECRET");
+
+    // The frozen snapshot column itself was never touched by any addendum.
+    const { rows: snap } = await admin.query(
+      "SELECT discipline_note_snapshot AS s FROM idg_minutes WHERE id=$1",
+      [minutesId],
+    );
+    expect(snap[0].s).toEqual(frozen);
+
+    // Redelivery is idempotent: another tick renders nothing further.
+    await dispatcher.tick();
+    expect(await documentsFor(minutesId)).toHaveLength(3);
   });
 
   it("tenant-safe: an org B render request naming org A's minutes id never stamps org A's row", async () => {
@@ -661,7 +810,10 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
           ...over,
         },
       });
-    await rendered({ sourceModule: "m13", sourceEvent: "m13.administration_record.document_requested" });
+    await rendered({
+      sourceModule: "m13",
+      sourceEvent: "m13.administration_record.document_requested",
+    });
     await rendered({ aggregateType: "encounter", aggregateId: chain.packetId });
     await dispatcher.tick();
     expect(await backrefs(chain.minutesId, chain.packetId)).toEqual({

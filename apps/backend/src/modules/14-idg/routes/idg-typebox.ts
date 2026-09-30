@@ -170,12 +170,21 @@ export const CreateDisciplineNoteRequest = Type.Object({
   discipline: Type.String({ minLength: 1, maxLength: 64 }),
   bodyText: NOTE_BODY,
   /**
-   * REQUIRED (non-blank, ≤500) when the meeting is ADJOURNED — the note is then recorded as a late addendum and
-   * needs a reason (422 ADDENDUM_REASON_REQUIRED); refused on a live meeting (422 NOTE_REASON_NOT_APPLICABLE).
+   * Optional context (≤500; blank/whitespace = absent) on a note of a LIVE meeting. REQUIRED non-blank when the meeting
+   * is ADJOURNED — the note is then a late addendum (422 ADDENDUM_REASON_REQUIRED).
    */
   reason: Type.Optional(Nullable(Type.String({ maxLength: DISCIPLINE_NOTE_ADDENDUM_REASON_MAX }))),
 });
-export const UpdateDisciplineNoteRequest = Type.Object({ bodyText: NOTE_BODY });
+/** PATCH a live original note: `bodyText` and/or `reason` (`null`/blank clears it); at least one. */
+export const UpdateDisciplineNoteRequest = Type.Object(
+  {
+    bodyText: Type.Optional(NOTE_BODY),
+    reason: Type.Optional(
+      Nullable(Type.String({ maxLength: DISCIPLINE_NOTE_ADDENDUM_REASON_MAX })),
+    ),
+  },
+  { minProperties: 1 },
+);
 export const DisciplineNoteListQuerySchema = Type.Object({
   patientId: Type.Optional(Type.String({ format: "uuid" })),
 });
@@ -503,6 +512,18 @@ export const MinutesViewSchema = Type.Object({
   disciplineNoteCount: Nullable(Type.Integer({ minimum: 0 })),
   /** LIVE count of late addenda recorded after adjournment (not from the frozen snapshot; text via GET .../discipline-notes). */
   disciplineAddendumCount: Type.Integer({ minimum: 0 }),
+  /**
+   * Late-addendum eligibility (WINDOW B), derived per read: `open` = adjourned and within 14 days of `actual_end`
+   * (`closesAt` = that boundary, null when not adjourned); `closedReason` = `window_elapsed` once past it, else null;
+   * `supersededPatientIds` = this meeting's patients a NEWER ADJOURNED IDG has since included — patient-scoped addenda
+   * for them are refused (422 ADDENDUM_SUPERSEDED_BY_NEWER_IDG) even while `open`; meeting-level addenda are not.
+   */
+  addendumState: Type.Object({
+    open: Type.Boolean(),
+    closesAt: Nullable(Type.String({ format: "date-time" })),
+    closedReason: Nullable(Type.Literal("window_elapsed")),
+    supersededPatientIds: Type.Array(Type.String({ format: "uuid" })),
+  }),
 });
 
 /** A recurring-policy view (POST/PATCH /idg/recurring-policies). */
@@ -556,7 +577,7 @@ export const DisciplineNoteViewSchema = Type.Object({
   isAddendum: Type.Boolean(),
   /** Server time the addendum was recorded; null for an original (live) note. */
   addendumRecordedAt: Nullable(Type.String({ format: "date-time" })),
-  /** The addendum's reason; null for originals and withheld (null) under 42 CFR Part 2 exactly like `bodyText`. */
+  /** Optional context on any note (required on an addendum); null when absent, and withheld (null) under 42 CFR Part 2 exactly like `bodyText`. */
   reason: Nullable(Type.String()),
   patient: PatientDisplayField,
 });

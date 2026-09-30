@@ -77,5 +77,7 @@ export const DISCIPLINE_VIEW_POLICY: { readonly [K in DisciplineKey]: Discipline
  * is a separate append-only row. Beyond the window the write is refused (`ADDENDUM_WINDOW_CLOSED`) so late edits
  * cannot undermine survey reconstruction. Inclusive of the boundary instant. */
 export const DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS = 14 as const;
-/** Max length of the required addendum reason (free text; denylisted in the audit trigger). */
+/** Max length of a note's `reason` (optional on live notes, REQUIRED on late addenda; free text, denylisted in the audit trigger).
+ * WINDOW B: beyond the {@link DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS} time window, a PATIENT-scoped addendum is also refused
+ * (`ADDENDUM_SUPERSEDED_BY_NEWER_IDG`) once a later ADJOURNED IDG meeting has included that patient. */
 export const DISCIPLINE_NOTE_ADDENDUM_REASON_MAX = 500 as const;

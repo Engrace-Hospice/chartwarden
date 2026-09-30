@@ -1859,7 +1859,7 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
    M36 (SD-017). Refinements on locale support, template versioning, and composer surfaces are
    tracked in M36's spec, not M14's.
 
-2. **Per-discipline meeting notes and late addenda (implementation extension; migrations 0282 / 0283).** The
+2. **Per-discipline meeting notes and late addenda (implementation extension; migrations 0282 / 0283 / 0284).** The
    spec records only agenda-item body text and the minutes closing note; a live IDG is run by disciplines that
    each keep their own notes, so the implementation adds `idg_discipline_note` (M14-owned; org-scoped `app.org_id`
    RLS ENABLED + FORCED; `wardenx_app` SELECT/INSERT/UPDATE, no DELETE; `body_text` denylisted in the M4 audit
@@ -1870,15 +1870,45 @@ All structural and policy decisions for Module 14 are resolved at lock time. The
    meeting is `live` and are frozen at adjournment into `idg_minutes.discipline_note_snapshot` (D10).
    **Late addenda.** After adjournment the frozen snapshot and final minutes are never modified. A note POSTed to an
    `adjourned` meeting is instead recorded as an **addendum**: a new append-only row with `is_addendum = true`,
-   `addendum_recorded_at` (server clock) and a REQUIRED `addendum_reason` (non-blank, at most 500 characters; free
-   text, so denylisted in the audit trigger and withheld under Part 2 like the body; a DB CHECK ties the three
-   columns together). Addenda are accepted only within `DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS` (14, `@wardenx/idg`
-   policy) of adjournment (`ADDENDUM_WINDOW_CLOSED` beyond it), cannot be edited (`ADDENDUM_IMMUTABLE`; a correction
+   `addendum_recorded_at` (server clock) and a REQUIRED `reason` (non-blank, at most 500 characters; a DB CHECK ties
+   the three columns together).
+   **`reason` is optional context on every note (migration 0284).** The single `reason` column (0283's
+   `addendum_reason`, renamed) may also be set on a live note (at most 500 characters; blank/whitespace is treated as
+   absent, stored as NULL), and a live original's `reason` may be edited with the text (`PATCH` body
+   `{bodyText?, reason?}`, at least one; `reason: null`/blank clears it; If-Match/Idempotency-Key unchanged). Only an
+   addendum REQUIRES it (`ADDENDUM_REASON_REQUIRED`); the old `NOTE_REASON_NOT_APPLICABLE` rejection is gone. It is free
+   text, so it is denylisted in the M4 audit trigger (redefined in 0284), withheld (`null`) under Part 2 exactly when
+   `bodyText` is (`bodyWithheld`), and frozen into `discipline_note_snapshot` with the same elision as the body, so the
+   `m14.minutes.signed` / `.amended` / `addendum_recorded` render payloads carry it consistently.
+   **Addendum window (window B).** An addendum is accepted only while ALL hold: (1) the meeting is `adjourned`;
+   (2) within `DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS` (14, `@wardenx/idg` policy) of the meeting's `actual_end`
+   (`ADDENDUM_WINDOW_CLOSED` beyond it); (3) for a PATIENT-scoped note, no NEWER ADJOURNED IDG of the org (another
+   `idg_meeting` with `status = 'adjourned'` and a later `actual_end`) included the patient, judged by that meeting's
+   stored `idg_patient_packet` rows or patient-scoped agenda items (the same two signals as D9 inclusion) —
+   otherwise `422 ADDENDUM_SUPERSEDED_BY_NEWER_IDG`. Meeting-level addenda keep the 14-day rule only. The lookup is
+   one batched read under the org context and fails closed (`503 ADDENDUM_ELIGIBILITY_UNAVAILABLE`, retryable). The
+   minutes read exposes `addendumState {open, closesAt, closedReason, supersededPatientIds}` so a UI can show why an
+   addendum is unavailable. Addenda cannot be edited (`ADDENDUM_IMMUTABLE`; a correction
    is a further addendum) and original notes of an adjourned meeting stay frozen (`MEETING_NOT_LIVE`). Other
-   states give `MEETING_NOT_LIVE`; a missing reason gives `ADDENDUM_REASON_REQUIRED`. The minutes read exposes
+   states give `MEETING_NOT_LIVE`; a missing addendum reason gives `ADDENDUM_REASON_REQUIRED`. The minutes read exposes
    `disciplineAddendumCount` (a live count, separate from the frozen `disciplineNoteCount`; text is read through
-   the notes route). No outbox event is emitted and the minutes PDF is not re-rendered automatically; the M4 write
-   audit records every addendum insert.
+   the notes route). The M4 write audit records every addendum insert.
+   **Minutes re-render (Addenda appendix).** Recording an addendum emits `m14.discipline_note.addendum_recorded`
+   (declared consumer `m22`) through the transactional outbox in the SAME transaction as the addendum insert.
+   Payload: `{minutesId, meetingId, addendumId, addendumCount, recordedByMembershipId, renderPayload}`, where
+   `renderPayload` is the same shape `m14.minutes.signed` / `.amended` send (the three frozen snapshot columns plus
+   `disciplineNoteSnapshot`, re-read and unchanged) plus `disciplineAddenda`: every live addendum of the meeting,
+   oldest first, as `{noteId, patientId, discipline, authorMembershipId, authorName, recordedAt, reason, bodyText,
+   bodyWithheld}`. It is built from live rows at emit time under the org context (minutes row locked so concurrent
+   addenda serialise and the newest event always carries the full set), and author names come from M2's batched,
+   name-only membership display seam, resolved before the write transaction (an unresolvable name is `null`). 42 CFR
+   Part 2 handling is the frozen snapshot's: for a patient whose text must be withheld (active SUD flag, or no packet
+   to vouch for them) `bodyText` AND `reason` are `null` with `bodyWithheld: true`, metadata only. M22 maps the event
+   to template `idg_minutes` on aggregate `minutesId` with `appends: true`, so each addendum appends a NEW VERSION of
+   the SAME minutes document (M22 idempotency is keyed by the delivered outbox event id, so a redelivery renders
+   nothing and one addendum is exactly one render); `idg_minutes.minutes_document_id` is stable and the frozen
+   snapshot is never mutated. `m14.minutes.amended` re-renders also carry `disciplineAddenda`, so the newest version
+   never drops addenda an earlier version showed.
 
 -----
 

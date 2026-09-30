@@ -45,6 +45,7 @@ let adjournedAt: string | null = null;
 let patchStatus = 200;
 let postResponse: (() => Response) | null = null;
 let noteGets = 0;
+let addendumState: Record<string, unknown> | null = null;
 
 const json = (v: unknown, code = 200) =>
   new Response(JSON.stringify(v), {
@@ -71,9 +72,8 @@ async function stubFetch(input: RequestInfo | URL): Promise<Response> {
         patientId: body.patientId ?? null,
         discipline: body.discipline,
         bodyText: body.bodyText,
-        ...(status === "adjourned"
-          ? { isAddendum: true, addendumRecordedAt: at, reason: body.reason ?? null }
-          : {}),
+        reason: body.reason ?? null,
+        ...(status === "adjourned" ? { isAddendum: true, addendumRecordedAt: at } : {}),
       });
       notes = [...notes, row];
       return json(row, 201);
@@ -83,10 +83,17 @@ async function stubFetch(input: RequestInfo | URL): Promise<Response> {
     }
     const id = path.split("/").pop();
     const row = notes.find((n) => n.id === id) as Record<string, unknown>;
-    const next = { ...row, bodyText: body.bodyText, version: (row.version as number) + 1 };
+    const next = {
+      ...row,
+      ...("bodyText" in body ? { bodyText: body.bodyText } : {}),
+      ...("reason" in body ? { reason: body.reason } : {}),
+      version: (row.version as number) + 1,
+    };
     notes = notes.map((n) => (n.id === id ? next : n));
     return json(next);
   }
+  if (path.endsWith("/minutes"))
+    return addendumState ? json({ id: "min-1", meetingId: MEETING, addendumState }) : json({}, 404);
   if (path.endsWith("/recert-windows")) return json({ items: [] });
   if (path.endsWith("/attendance"))
     return json([
@@ -162,6 +169,7 @@ beforeEach(() => {
   patchStatus = 200;
   postResponse = null;
   noteGets = 0;
+  addendumState = null;
 });
 afterEach(cleanup);
 
@@ -233,8 +241,81 @@ describe("Discipline notes", () => {
       discipline: "msw",
       bodyText: "Family meeting held",
     });
+    expect(post?.body).not.toHaveProperty("reason"); // blank reason is omitted
     expect(post?.headers.get("Idempotency-Key")).toBeTruthy();
     expect(composer(p).value).toBe("");
+  });
+
+  it("live note with a reason: optional field, counter, sends the trimmed reason, renders it", async () => {
+    mount();
+    const p = await panel();
+    await waitFor(() => expect(tab(p, /MSW/).getAttribute("aria-selected")).toBe("true"));
+    const reasonInput = within(p).getByLabelText("Context / reason (optional)") as HTMLInputElement;
+    expect(within(p).getByText("0 / 500")).toBeTruthy();
+    fireEvent.change(composer(p), { target: { value: "Caregiver strain noted" } });
+    expect(
+      (within(p).getByRole("button", { name: "Save note" }) as HTMLButtonElement).disabled,
+    ).toBe(false); // text alone is enough
+    fireEvent.change(reasonInput, { target: { value: "  Follow-up to Tuesday  " } });
+    expect(within(p).getByText("24 / 500")).toBeTruthy();
+    fireEvent.click(within(p).getByRole("button", { name: "Save note" }));
+    expect(await within(p).findByText("Reason: Follow-up to Tuesday")).toBeTruthy();
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+      patientId: P1,
+      discipline: "msw",
+      bodyText: "Caregiver strain noted",
+      reason: "Follow-up to Tuesday",
+    });
+    expect(reasonInput.value).toBe("");
+  });
+
+  it("whitespace-only live reason is omitted", async () => {
+    mount();
+    const p = await panel();
+    fireEvent.change(within(p).getByLabelText("Context / reason (optional)"), {
+      target: { value: "   " },
+    });
+    fireEvent.change(composer(p), { target: { value: "Only text" } });
+    fireEvent.click(within(p).getByRole("button", { name: "Save note" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect(calls[0]?.body).not.toHaveProperty("reason");
+  });
+
+  it("renders the reason on an original note, and edit sends only what changed (text, reason, clear)", async () => {
+    notes = [
+      note({
+        id: "n-2",
+        discipline: "msw",
+        bodyText: "Old text",
+        reason: "Old reason",
+        version: 1,
+      }),
+    ];
+    mount();
+    const p = await panel();
+    expect(await within(p).findByText("Reason: Old reason")).toBeTruthy();
+    // Reason only.
+    fireEvent.click(within(p).getByRole("button", { name: "Edit" }));
+    const save = () => within(p).getByRole("button", { name: "Save changes" }) as HTMLButtonElement;
+    expect(save().disabled).toBe(true); // nothing changed
+    fireEvent.change(within(p).getByLabelText("Edit note reason"), {
+      target: { value: "New reason" },
+    });
+    fireEvent.click(save());
+    expect(await within(p).findByText("Reason: New reason")).toBeTruthy();
+    expect(calls.filter((c) => c.method === "PATCH")[0]?.body).toEqual({ reason: "New reason" });
+    // Text only.
+    fireEvent.click(within(p).getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(p).getByLabelText("Edit note text"), { target: { value: "New text" } });
+    fireEvent.click(save());
+    await within(p).findByText("New text");
+    expect(calls.filter((c) => c.method === "PATCH")[1]?.body).toEqual({ bodyText: "New text" });
+    // Clear the reason.
+    fireEvent.click(within(p).getByRole("button", { name: "Edit" }));
+    fireEvent.change(within(p).getByLabelText("Edit note reason"), { target: { value: "  " } });
+    fireEvent.click(save());
+    await waitFor(() => expect(within(p).queryByText(/^Reason:/)).toBeNull());
+    expect(calls.filter((c) => c.method === "PATCH")[2]?.body).toEqual({ reason: null });
   });
 
   it("writes a meeting-level note with patientId null", async () => {
@@ -325,6 +406,7 @@ describe("Discipline notes", () => {
     const p = await panel();
     expect(await within(p).findByText("Withheld — Part 2")).toBeTruthy();
     expect(p.textContent).not.toContain("SECRET-SUD-TEXT");
+    expect(p.textContent).not.toContain("Reason:");
     expect(within(p).queryByRole("button", { name: "Edit" })).toBeNull();
   });
 
@@ -488,14 +570,75 @@ describe("Discipline notes", () => {
       expect(p.textContent).not.toContain("Reason:");
     });
 
-    it("a live meeting never sends a reason and shows no reason field", async () => {
+    it("a live meeting shows the optional reason field, not the addendum one", async () => {
       mount();
       const p = await panel();
       expect(within(p).queryByLabelText("Reason for the late addendum")).toBeNull();
-      fireEvent.change(composer(p), { target: { value: "Live note" } });
-      fireEvent.click(within(p).getByRole("button", { name: "Save note" }));
-      await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
-      expect(calls[0]?.body).not.toHaveProperty("reason");
+      expect(within(p).getByLabelText("Context / reason (optional)")).toBeTruthy();
+    });
+
+    it("addendumState.closesAt drives the open notice and a closed state overrides the date", async () => {
+      status = "adjourned";
+      adjournedAt = daysAgo(2); // date maths would say open
+      addendumState = {
+        open: false,
+        closesAt: "2026-09-01T00:00:00.000Z",
+        closedReason: "window_elapsed",
+        supersededPatientIds: [],
+      };
+      mount();
+      const p = await panel();
+      expect(
+        await within(p).findByText(/Addendum window closed Aug 31, 2026|Sep 1, 2026/),
+      ).toBeTruthy();
+      expect(composer(p).disabled).toBe(true);
+    });
+
+    it("superseded patient: composer disabled with the explanation; meeting-level scope stays open", async () => {
+      status = "adjourned";
+      adjournedAt = daysAgo(2);
+      addendumState = {
+        open: true,
+        closesAt: daysAgo(-12),
+        closedReason: null,
+        supersededPatientIds: [P1],
+      };
+      mount();
+      const p = await panel();
+      expect(await within(p).findByText(/A newer IDG has adjourned for this patient/)).toBeTruthy();
+      expect(addComposer(p).disabled).toBe(true);
+      expect(
+        (within(p).getByRole("button", { name: "Save addendum" }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+      fireEvent.click(within(p).getByRole("button", { name: /Meeting-level/ }));
+      expect(within(p).queryByText(/A newer IDG has adjourned/)).toBeNull();
+      expect(addComposer(p).disabled).toBe(false);
+    });
+
+    it("maps 422 ADDENDUM_SUPERSEDED_BY_NEWER_IDG inline and 503 ADDENDUM_ELIGIBILITY_UNAVAILABLE as retryable, keeping the draft", async () => {
+      status = "adjourned";
+      adjournedAt = daysAgo(2);
+      mount();
+      const p = await panel();
+      await within(p).findByText(/No MSW notes yet/);
+      fireEvent.change(addComposer(p), { target: { value: "draft" } });
+      fireEvent.change(reasonBox(p), { target: { value: "why" } });
+      postResponse = () =>
+        json({ error: { code: "ADDENDUM_SUPERSEDED_BY_NEWER_IDG", message: "x" } }, 422);
+      fireEvent.click(within(p).getByRole("button", { name: "Save addendum" }));
+      expect((await within(p).findByRole("alert")).textContent).toContain(
+        "A newer IDG has adjourned for this patient",
+      );
+      postResponse = () =>
+        json({ error: { code: "ADDENDUM_ELIGIBILITY_UNAVAILABLE", message: "x" } }, 503);
+      fireEvent.click(within(p).getByRole("button", { name: "Save addendum" }));
+      await waitFor(() =>
+        expect(within(p).getByRole("alert").textContent).toContain(
+          "Could not verify addendum eligibility — try again.",
+        ),
+      );
+      expect(addComposer(p).value).toBe("draft");
+      expect(reasonBox(p).value).toBe("why");
     });
   });
 });

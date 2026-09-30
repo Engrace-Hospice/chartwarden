@@ -60,6 +60,7 @@ import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/t
 import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import { and, asc, desc, eq, gt, gte, inArray, lt, lte, ne, notInArray, sql } from "drizzle-orm";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "./abac-predicates";
+import type { IdgMembershipDisplayPort } from "./routes/idg-enrichment";
 import { mapPacketContent } from "./routes/packet-content";
 import type {
   ActionItemPatchStatus,
@@ -67,6 +68,7 @@ import type {
   AgendaItemView,
   AttendanceView,
   DecisionView,
+  DisciplineAddendumRenderEntry,
   DisciplineNoteSnapshotEntry,
   DisciplineNoteView,
   IdgRouteService,
@@ -80,11 +82,14 @@ import type {
 } from "./routes/service";
 import {
   NOTE_PRESENT_STATUSES,
+  addendumEligibilityUnavailableError,
   addendumImmutableError,
   assertMayWriteDisciplineNote,
   assertNoteVersion,
+  deriveAddendumState,
   invalidCoordinatorError,
   minutesRenderStatus,
+  normalizeNoteReason,
   noteFrozenError,
   noteInclusionError,
   planDisciplineNoteCreate,
@@ -178,6 +183,11 @@ const toMeetingView = (m: MeetingRow): MeetingView => ({
 export function createDbIdgBackend(
   db: DbClient,
   outbox: IdgWriteOutboxPort = NOOP_OUTBOX,
+  /**
+   * M2's identity-owned batched staff display read (name only), the SAME port the routes use to enrich views.
+   * Used ONLY to put `authorName` on the minutes re-render's addenda appendix; absent (slice/tests) => null names.
+   */
+  membershipDisplay?: IdgMembershipDisplayPort,
 ): IdgRouteService & IdgAbacResolver {
   const withOrg = <T>(orgId: string, fn: (tx: DbClient) => Promise<T>): Promise<T> =>
     withOrgContext(db, { organizationId: orgId, userId: "" }, (tx) => fn(tx as DbClient));
@@ -244,6 +254,45 @@ export function createDbIdgBackend(
       .where(and(eq(AGD.idgMeetingId, meetingId), eq(AGD.patientId, patientId)))
       .limit(1);
     return !!ag;
+  }
+  /**
+   * WINDOW B — which of `patientIds` were included by a NEWER ADJOURNED IDG meeting than `meetingId`: another meeting of
+   * the org (RLS-scoped) with `status = 'adjourned'` and a LATER `actual_end` whose stored packet set (`idg_patient_packet`,
+   * the authoritative inclusion signal, frozen once adjourned) OR patient-scoped agenda items contain the patient — the same
+   * two signals {@link patientIncluded} uses. One batched read per signal (two queries total, never per patient).
+   * FAIL-CLOSED: any error is a retryable 503 (`ADDENDUM_ELIGIBILITY_UNAVAILABLE`), never a silent allow.
+   */
+  async function patientsSupersededByNewerIdg(
+    tx: DbClient,
+    meetingId: string,
+    actualEnd: Date,
+    patientIds: readonly string[],
+  ): Promise<Set<string>> {
+    if (patientIds.length === 0) return new Set();
+    try {
+      const newer = and(
+        ne(MTG.id, meetingId),
+        eq(MTG.status, "adjourned"),
+        gt(MTG.actualEnd, actualEnd),
+      );
+      const viaPackets = await tx
+        .selectDistinct({ patientId: PKT.patientId })
+        .from(PKT)
+        .innerJoin(MTG, eq(MTG.id, PKT.idgMeetingId))
+        .where(and(newer, inArray(PKT.patientId, [...patientIds])));
+      const viaAgenda = await tx
+        .selectDistinct({ patientId: AGD.patientId })
+        .from(AGD)
+        .innerJoin(MTG, eq(MTG.id, AGD.idgMeetingId))
+        .where(and(newer, inArray(AGD.patientId, [...patientIds])));
+      return new Set(
+        [...viaPackets, ...viaAgenda]
+          .map((r) => r.patientId)
+          .filter((p): p is string => p !== null),
+      );
+    } catch {
+      throw addendumEligibilityUnavailableError();
+    }
   }
   const FIFTEEN_DAYS_MS = 15 * 24 * 60 * 60 * 1000;
   /** The `idg_meeting_status` values a meeting can hold and STILL deliver a review that covers a patient's
@@ -375,6 +424,78 @@ export function createDbIdgBackend(
     }
     return needs;
   }
+  /**
+   * Author display names for the addenda appendix of a minutes re-render. Resolved BEFORE (never inside) the
+   * write transaction — the M2 port opens its own tenant tx, and nesting it would re-enter the pool mid-
+   * transaction. Only an ADJOURNED meeting can have addenda, so a live one costs a single status read. A port
+   * failure degrades to null names (an unresolvable name must never block an addendum), logged nowhere here:
+   * the appendix simply shows the discipline without a name.
+   */
+  async function resolveAddendumAuthorNames(
+    orgId: string,
+    meetingId: string,
+    extraMembershipIds: readonly string[],
+  ): Promise<ReadonlyMap<string, string | null>> {
+    if (!membershipDisplay) return new Map();
+    try {
+      const ids = await withOrg(orgId, async (tx) => {
+        const [m] = await tx
+          .select({ status: MTG.status })
+          .from(MTG)
+          .where(eq(MTG.id, meetingId))
+          .limit(1);
+        if (m?.status !== "adjourned") return null;
+        const rows = await tx
+          .selectDistinct({ authorMembershipId: NOTE.authorMembershipId })
+          .from(NOTE)
+          .where(and(eq(NOTE.idgMeetingId, meetingId), eq(NOTE.isAddendum, true)));
+        return rows.map((r) => r.authorMembershipId);
+      });
+      if (ids === null) return new Map();
+      const all = [...new Set([...ids, ...extraMembershipIds])];
+      if (all.length === 0) return new Map();
+      const byId = await membershipDisplay.displayForMemberships(orgId, all);
+      return new Map(all.map((id) => [id, byId.get(id)?.displayName ?? null]));
+    } catch {
+      return new Map();
+    }
+  }
+
+  /**
+   * The 'Addenda' appendix of the minutes render, built from the LIVE addendum rows (never the frozen
+   * snapshot) inside the caller's tenant tx, in one batched read. 42 CFR Part 2 handling is the frozen
+   * snapshot's, verbatim: for a patient whose text must be withheld (active SUD flag, or no packet to vouch
+   * for them) the body AND the free-text reason are elided (`bodyWithheld`) and only metadata is kept.
+   */
+  async function buildDisciplineAddenda(
+    tx: DbClient,
+    meetingId: string,
+    names: ReadonlyMap<string, string | null>,
+  ): Promise<DisciplineAddendumRenderEntry[]> {
+    const rows = await tx
+      .select()
+      .from(NOTE)
+      .where(and(eq(NOTE.idgMeetingId, meetingId), eq(NOTE.isAddendum, true)))
+      .orderBy(asc(NOTE.addendumRecordedAt), asc(NOTE.createdAt));
+    const releaseNeeded = await patientsNeedingRelease(tx, meetingId, [
+      ...new Set(rows.map((n) => n.patientId).filter((p): p is string => p !== null)),
+    ]);
+    return rows.map((n) => {
+      const withheld = n.patientId !== null && releaseNeeded.has(n.patientId);
+      return {
+        noteId: n.id,
+        patientId: n.patientId,
+        discipline: n.discipline,
+        authorMembershipId: n.authorMembershipId,
+        authorName: names.get(n.authorMembershipId) ?? null,
+        recordedAt: isoReq(n.addendumRecordedAt ?? n.createdAt),
+        reason: withheld ? null : n.reason,
+        bodyText: withheld ? null : n.bodyText,
+        bodyWithheld: withheld,
+      };
+    });
+  }
+
   const toNoteView = (r: typeof NOTE.$inferSelect, withheld: boolean): DisciplineNoteView => ({
     id: r.id,
     meetingId: r.idgMeetingId,
@@ -388,8 +509,8 @@ export function createDbIdgBackend(
     updatedAt: isoReq(r.updatedAt),
     isAddendum: r.isAddendum,
     addendumRecordedAt: iso(r.addendumRecordedAt),
-    // The addendum reason is free-text PHI: withheld exactly when the body is.
-    reason: withheld ? null : r.addendumReason,
+    // The reason is free-text PHI (optional on originals, required on addenda): withheld exactly when the body is.
+    reason: withheld ? null : r.reason,
   });
   /** The attendance rows the note-write authorization reads (present/tardy/partial for the discipline). */
   async function attendanceForNotes(tx: DbClient, meetingId: string) {
@@ -750,6 +871,40 @@ export function createDbIdgBackend(
           .select({ n: sql<number>`count(*)::int` })
           .from(NOTE)
           .where(and(eq(NOTE.idgMeetingId, meetingId), eq(NOTE.isAddendum, true)));
+        // WINDOW B read model: closes-at + which of this meeting's patients a newer adjourned IDG has superseded.
+        const [mtg] = await tx
+          .select({ status: MTG.status, actualEnd: MTG.actualEnd })
+          .from(MTG)
+          .where(eq(MTG.id, meetingId))
+          .limit(1);
+        const nowAt = new Date();
+        const base = deriveAddendumState({
+          status: mtg?.status ?? "",
+          adjournedAt: mtg?.actualEnd ?? null,
+          now: nowAt,
+          supersededPatientIds: [],
+        });
+        let superseded: string[] = [];
+        if (base.open && mtg?.actualEnd) {
+          // Read-model only: a failed supersession lookup must NOT take the finalized-minutes read down. It runs
+          // in a savepoint (a failed statement would otherwise abort the whole tx) and degrades to "none
+          // superseded" — the addendum WRITE re-checks and stays fail-closed (503 ADDENDUM_ELIGIBILITY_UNAVAILABLE).
+          const actualEnd = mtg.actualEnd;
+          try {
+            superseded = await tx.transaction(async (sp) => {
+              const [pk, ag] = await Promise.all([
+                sp.select({ p: PKT.patientId }).from(PKT).where(eq(PKT.idgMeetingId, meetingId)),
+                sp.select({ p: AGD.patientId }).from(AGD).where(eq(AGD.idgMeetingId, meetingId)),
+              ]);
+              const included = [
+                ...new Set([...pk, ...ag].map((x) => x.p).filter((p): p is string => p !== null)),
+              ];
+              return [...(await patientsSupersededByNewerIdg(sp, meetingId, actualEnd, included))];
+            });
+          } catch {
+            superseded = [];
+          }
+        }
         // Null (rather than 0) while `in_progress`: nothing is frozen yet, and "no decisions were
         // recorded" and "the snapshot has not been taken" are different facts about a meeting.
         const size = (v: unknown): number | null => (Array.isArray(v) ? v.length : null);
@@ -772,6 +927,12 @@ export function createDbIdgBackend(
           actionItemCount: size(r.actionItemListSnapshot),
           disciplineNoteCount: size(r.disciplineNoteSnapshot),
           disciplineAddendumCount: addenda?.n ?? 0,
+          addendumState: deriveAddendumState({
+            status: mtg?.status ?? "",
+            adjournedAt: mtg?.actualEnd ?? null,
+            now: nowAt,
+            supersededPatientIds: superseded,
+          }),
         };
       });
     },
@@ -1132,6 +1293,8 @@ export function createDbIdgBackend(
             discipline: n.discipline,
             bodyText: withheld ? null : n.bodyText,
             bodyWithheld: withheld,
+            // Same fail-closed Part 2 elision as the text: the reason is free-text PHI too.
+            reason: withheld ? null : n.reason,
             authorMembershipId: n.authorMembershipId,
             version: n.version,
             createdAt: isoReq(n.createdAt),
@@ -1319,18 +1482,30 @@ export function createDbIdgBackend(
       );
     },
     async createDisciplineNote(orgId, actor, meetingId, args): Promise<DisciplineNoteView> {
+      const addendumAuthorNames = await resolveAddendumAuthorNames(orgId, meetingId, [
+        actor.membershipId,
+      ]);
       return withOrg(orgId, async (tx) => {
         const m = await loadMeeting(tx, meetingId);
         // live => an ordinary note; adjourned + in-window + reason => a LATE ADDENDUM (a new row — the frozen
         // minutes snapshot is never touched); anything else => 422. The server clock is the recorded-at.
         const nowAt = new Date();
+        const patientId = args.patientId ?? null;
+        // WINDOW B fact — only looked up for a patient-scoped note on an adjourned meeting (fail-closed 503).
+        const newerAdjournedIdgForPatient =
+          m.status === "adjourned" && patientId !== null && m.actualEnd
+            ? (await patientsSupersededByNewerIdg(tx, meetingId, m.actualEnd, [patientId])).has(
+                patientId,
+              )
+            : false;
         const plan = planDisciplineNoteCreate({
           status: m.status,
           adjournedAt: m.actualEnd ?? null,
           now: nowAt,
           reason: args.reason,
+          patientId,
+          newerAdjournedIdgForPatient,
         });
-        const patientId = args.patientId ?? null;
         let providerEntityId: string | null = null;
         if (patientId !== null) {
           // Inclusion is the packet set (authoritative) OR a patient-scoped agenda item — the same rule the
@@ -1361,14 +1536,53 @@ export function createDbIdgBackend(
             authorMembershipId: actor.membershipId,
             isAddendum: plan.isAddendum,
             addendumRecordedAt: plan.addendumRecordedAt,
-            addendumReason: plan.reason,
+            reason: plan.reason,
             createdAt: nowAt,
             updatedAt: nowAt,
           })
           .returning();
-        // The M4 write-audit trigger records the INSERT (body_text + addendum_reason denylisted); no catalog
-        // event — nothing downstream consumes a live note until it is frozen into the minutes at adjournment, and
-        // an addendum deliberately does NOT re-open or re-render the frozen minutes.
+        // The M4 write-audit trigger records the INSERT (body_text + reason denylisted). A LIVE note
+        // emits nothing — nothing downstream consumes it until it is frozen into the minutes at adjournment.
+        // A LATE ADDENDUM emits `m14.discipline_note.addendum_recorded` in this SAME transaction: M22 appends a
+        // new VERSION of the minutes document carrying the 'Addenda' appendix. It never re-opens or mutates the
+        // frozen minutes snapshot (the snapshot columns are re-read here only to ride the render payload).
+        if (plan.isAddendum) {
+          // Lock the minutes row so concurrent addenda serialize: each emit then reads the full committed
+          // addendum set, and the last event in outbox order always carries every addendum.
+          const [min] = await tx
+            .select({
+              id: MIN.id,
+              attendanceSnapshot: MIN.attendanceSnapshot,
+              decisionListSnapshot: MIN.decisionListSnapshot,
+              actionItemListSnapshot: MIN.actionItemListSnapshot,
+              disciplineNoteSnapshot: MIN.disciplineNoteSnapshot,
+            })
+            .from(MIN)
+            .where(eq(MIN.idgMeetingId, meetingId))
+            .limit(1)
+            .for("update");
+          if (min) {
+            const disciplineAddenda = await buildDisciplineAddenda(
+              tx,
+              meetingId,
+              addendumAuthorNames,
+            );
+            await emit(tx, orgId, "m14.discipline_note.addendum_recorded", "idg_minutes", min.id, {
+              minutesId: min.id,
+              meetingId,
+              addendumId: row!.id,
+              addendumCount: disciplineAddenda.length,
+              recordedByMembershipId: actor.membershipId,
+              renderPayload: {
+                attendanceSnapshot: min.attendanceSnapshot,
+                decisionListSnapshot: min.decisionListSnapshot,
+                actionItemListSnapshot: min.actionItemListSnapshot,
+                disciplineNoteSnapshot: min.disciplineNoteSnapshot,
+                disciplineAddenda,
+              },
+            });
+          }
+        }
         return toNoteView(row!, false);
       });
     },
@@ -1376,7 +1590,7 @@ export function createDbIdgBackend(
       orgId,
       actor,
       id,
-      bodyText,
+      patch,
       ifMatchVersion,
     ): Promise<DisciplineNoteView> {
       return withOrg(orgId, async (tx) => {
@@ -1399,7 +1613,12 @@ export function createDbIdgBackend(
         // matches no row (=> 412), so the If-Match precondition holds under the race too.
         const [row] = await tx
           .update(NOTE)
-          .set({ bodyText, version: cur.version + 1, updatedAt: at })
+          .set({
+            ...(patch.bodyText !== undefined ? { bodyText: patch.bodyText } : {}),
+            ...(patch.reason !== undefined ? { reason: normalizeNoteReason(patch.reason) } : {}),
+            version: cur.version + 1,
+            updatedAt: at,
+          })
           .where(and(eq(NOTE.id, id), eq(NOTE.version, cur.version)))
           .returning();
         if (!row) assertNoteVersion(ifMatchVersion, cur.version + 1);
@@ -1613,10 +1832,25 @@ export function createDbIdgBackend(
       minutesId,
       amendmentReason,
     ): Promise<{ amendmentId: string; minutesId: string }> {
+      // A re-render after an amendment must keep the 'Addenda' appendix, or the newest document version would
+      // silently drop addenda the previous version showed.
+      const meetingIdForNames = await withOrg(orgId, async (tx) => {
+        const [r] = await tx
+          .select({ meetingId: MIN.idgMeetingId })
+          .from(MIN)
+          .where(eq(MIN.id, minutesId))
+          .limit(1);
+        return r?.meetingId ?? null;
+      });
+      const addendumAuthorNames =
+        meetingIdForNames === null
+          ? new Map<string, string | null>()
+          : await resolveAddendumAuthorNames(orgId, meetingIdForNames, []);
       return withOrg(orgId, async (tx) => {
         const [min] = await tx
           .select({
             id: MIN.id,
+            meetingId: MIN.idgMeetingId,
             status: MIN.status,
             // F-168 (#248) — the exact `renderPayload` shape `.signed` already sends, re-read
             // post-amendment: M22 re-renders through the SAME `idg_minutes` template, and until now this
@@ -1660,6 +1894,7 @@ export function createDbIdgBackend(
             decisionListSnapshot: min.decisionListSnapshot,
             actionItemListSnapshot: min.actionItemListSnapshot,
             disciplineNoteSnapshot: min.disciplineNoteSnapshot,
+            disciplineAddenda: await buildDisciplineAddenda(tx, min.meetingId, addendumAuthorNames),
           },
           amendmentReasonHash: createHash("sha256").update(amendmentReason, "utf8").digest("hex"),
         });

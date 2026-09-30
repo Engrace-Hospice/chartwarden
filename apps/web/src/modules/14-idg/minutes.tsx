@@ -212,7 +212,9 @@ export function Minutes(): JSX.Element {
             icon="clock"
             label="Late addenda"
             value={minutes.disciplineAddendumCount ?? null}
-            caption="live count — recorded after adjournment"
+            caption={addendumCaption(
+              minutes.status === "final" ? minutes.addendumState : undefined,
+            )}
             footer={
               id ? (
                 <Link to={`/idg/meetings/${id}/live#discipline-notes`}>
@@ -384,6 +386,19 @@ export function Minutes(): JSX.Element {
 }
 
 /** One frozen-snapshot count. `null` means "adjournment has not frozen it", which is not zero. */
+/** Late-addenda sub-label: the live count, plus when the addendum window closes (or that it has). */
+function addendumCaption(state: MinutesView["addendumState"] | undefined): string {
+  const base = "live count — recorded after adjournment";
+  if (!state) return base;
+  const closes = state.closesAt ? new Date(state.closesAt) : null;
+  const day =
+    closes && !Number.isNaN(closes.getTime())
+      ? closes.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
+      : null;
+  if (state.open) return day ? `${base} · addenda open until ${day}` : `${base} · addenda open`;
+  return day ? `${base} · addenda closed ${day}` : `${base} · addenda closed`;
+}
+
 function FrozenStat({
   icon,
   label,

@@ -63,6 +63,8 @@ export type AgendaItemView = Ok<operations["getApiV1IdgMeetingsByIdAgenda"]>[num
 export type DecisionView = Ok<operations["getApiV1IdgMeetingsByIdDecisions"]>[number];
 export type ActionItemView = Ok<operations["getApiV1IdgActionitems"]>[number];
 export type MinutesView = Ok<operations["getApiV1IdgMeetingsByIdMinutes"]>;
+/** Whether late addenda are still open on an adjourned meeting, and which patients a newer IDG now supersedes. */
+export type AddendumState = MinutesView["addendumState"];
 export type PacketDigestView = Ok<operations["getApiV1IdgMeetingsByIdPackets"]>[number];
 export type DisciplineNoteView = Ok<operations["getApiV1IdgMeetingsByIdDisciplinenotes"]>[number];
 
@@ -446,8 +448,9 @@ function noteFailure(status: number | undefined, body: unknown): WriteResult<nev
     MEETING_NOT_LIVE: "This meeting is no longer live, so notes can no longer be added or edited.",
     ADDENDUM_REASON_REQUIRED: "A reason is required for a late addendum.",
     ADDENDUM_WINDOW_CLOSED: "The window for late addenda on this meeting has closed.",
-    NOTE_REASON_NOT_APPLICABLE:
-      "A reason applies only to late addenda, not to notes on a live meeting.",
+    ADDENDUM_SUPERSEDED_BY_NEWER_IDG:
+      "A newer IDG has adjourned for this patient; its record now supersedes this meeting — add your note there.",
+    ADDENDUM_ELIGIBILITY_UNAVAILABLE: "Could not verify addendum eligibility — try again.",
     ADDENDUM_IMMUTABLE: "A late addendum cannot be edited once recorded.",
     INCLUSION_CRITERIA_FAILED:
       "That patient is not on this meeting's agenda, so a note cannot be recorded for them.",
@@ -477,9 +480,10 @@ export async function loadDisciplineNotes(
 }
 
 /**
- * Write a note (`patientId` null/omitted = meeting-level). A `live` meeting takes an ordinary note (NEVER send
- * `reason` — the server answers 422 NOTE_REASON_NOT_APPLICABLE); an `adjourned` one takes a LATE ADDENDUM, which
- * requires a non-blank `reason` and only opens for a bounded window after adjournment.
+ * Write a note (`patientId` null/omitted = meeting-level). A `live` meeting takes an ordinary note whose `reason`
+ * is optional context (omit it when blank); an `adjourned` one takes a LATE ADDENDUM, which requires a non-blank
+ * `reason`, only opens for a bounded window after adjournment, and only while no newer IDG has adjourned for the
+ * patient (422 ADDENDUM_SUPERSEDED_BY_NEWER_IDG; 503 ADDENDUM_ELIGIBILITY_UNAVAILABLE is retryable).
  */
 export async function createDisciplineNote(
   client: ApiClient,
@@ -497,19 +501,22 @@ export async function createDisciplineNote(
   return ok(data as DisciplineNoteView);
 }
 
-/** Edit a note's text. `version` is the row version the caller last read (sent as `If-Match`). */
+/**
+ * Edit a note. `patch` carries only the changed fields (at least one): `bodyText` and/or `reason` (`null` clears
+ * it). `version` is the row version the caller last read (sent as `If-Match`).
+ */
 export async function updateDisciplineNote(
   client: ApiClient,
   noteId: string,
   version: number,
-  bodyText: string,
+  patch: { bodyText?: string; reason?: string | null },
 ): Promise<WriteResult<DisciplineNoteView>> {
   const { data, error, response } = await client.PATCH("/api/v1/idg/discipline-notes/{id}", {
     params: {
       path: { id: noteId },
       header: { "Idempotency-Key": globalThis.crypto.randomUUID(), "If-Match": String(version) },
     },
-    body: { bodyText },
+    body: patch,
   });
   if (error || !data) return noteFailure(response?.status, error);
   return ok(data as DisciplineNoteView);

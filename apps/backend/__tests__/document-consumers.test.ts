@@ -109,6 +109,7 @@ describe("M22-T06 — §4.11 outbox subscriptions catalog", () => {
       // aggregate its own GENESIS sibling above already rendered.
       "m8.encounter.addendum_signed",
       "m14.minutes.amended",
+      "m14.discipline_note.addendum_recorded",
       "m12.medication_order.transmitted",
       // F-208 (#248) — M9's printable assessment summary. No per-request id on the payload, so
       // `patientId` is the aggregate; every request (chart-open auto-refresh or the explicit

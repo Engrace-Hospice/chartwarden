@@ -725,8 +725,9 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
 
   // 24d — write a discipline note. A `live` meeting takes ordinary notes; an `adjourned` one (within the addendum
   // window, with a required `reason`) takes a LATE ADDENDUM — a new append-only row that never touches the frozen
-  // minutes snapshot; other states => 422 MEETING_NOT_LIVE, out of window => 422 ADDENDUM_WINDOW_CLOSED, missing
-  // reason => 422 ADDENDUM_REASON_REQUIRED. A coordinator may write any
+  // minutes snapshot; other states => 422 MEETING_NOT_LIVE, out of window => 422 ADDENDUM_WINDOW_CLOSED, a patient
+  // already included by a NEWER adjourned IDG => 422 ADDENDUM_SUPERSEDED_BY_NEWER_IDG (503 ADDENDUM_ELIGIBILITY_UNAVAILABLE
+  // if that lookup fails), missing reason => 422 ADDENDUM_REASON_REQUIRED. On a live meeting `reason` is optional context. A coordinator may write any
   // discipline, everyone else only for a discipline they are recorded present for (403); a patient must be on
   // the meeting's agenda/packet set (422). Idempotency-Key required.
   app.post(
@@ -753,7 +754,7 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     },
   );
 
-  // 24e — edit a note's text (If-Match = the version read; 412 on skew; no delete). Only while the meeting is
+  // 24e — edit a note's text and/or reason (If-Match = the version read; 412 on skew; no delete). Only while the meeting is
   // `live`: original notes of an adjourned meeting are frozen (422 MEETING_NOT_LIVE) and addenda are append-only
   // (422 ADDENDUM_IMMUTABLE — a correction is a further addendum). The note id carries no
   // meeting id, so the SAME `idg_meeting_scope` predicate is evaluated here against the note's OWNING meeting
@@ -787,7 +788,10 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
         organizationId,
         { membershipId: userId, isCoordinator },
         id,
-        b.bodyText,
+        {
+          ...(b.bodyText !== undefined ? { bodyText: b.bodyText } : {}),
+          ...(b.reason !== undefined ? { reason: b.reason } : {}),
+        },
         ifMatchVersionOf(request),
       );
       const [out] = await withAuthorNames(membershipDisplay, organizationId, [note], request.log);

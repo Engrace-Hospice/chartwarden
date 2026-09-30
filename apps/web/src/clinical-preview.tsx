@@ -1376,6 +1376,8 @@ const idgStatus =
 const idgAddWindowClosed = idgQ.get("addwindow") === "closed";
 const idgAdjournedHoursAgo = idgAddWindowClosed ? 20 * 24 : 24.6;
 const idgCf = Math.max(0, Number(idgQ.get("cf") ?? 2) || 0);
+// &superseded=1 = a newer IDG adjourned for the selected patient (Henry N.): addendum composer disabled there.
+const idgSuperseded = idgQ.has("superseded");
 const idgNoQuorum = idgQ.has("noquorum");
 const idgMeeting = {
   id: IDG_MEET,
@@ -1809,7 +1811,7 @@ const idgPacketBody = (pid: string) => {
 };
 // Discipline notes (?idg=live): default = a few notes across disciplines/patients; &notes=0 = none;
 // ADJOURNED (late addenda): &adjourned=1 (or &status=adjourned) = frozen originals + 2 addenda, composer becomes
-// "Add late addendum"; add &addwindow=closed for the closed window; add &notes=sud for a withheld Part 2 note+addendum.
+// "Add late addendum"; add &addwindow=closed for the closed window; &superseded=1 = Henry N. superseded by a newer IDG (composer disabled on his tab, meeting-level still open); add &notes=sud for a withheld Part 2 note+addendum.
 // &notes=sud = one Part 2 withheld note (text hidden) on Barbara P.; &note412=1 makes every edit return 412.
 // POST/PATCH mutate this in-memory list so the composer / edit flows can be exercised without a backend.
 const idgNoteRow = (
@@ -1823,6 +1825,7 @@ const idgNoteRow = (
   version = 1,
   withheld = false,
   addendumReason: string | null = null,
+  liveReason: string | null = null,
 ) => ({
   id: idgUuid(1300 + n),
   meetingId: IDG_MEET,
@@ -1832,7 +1835,7 @@ const idgNoteRow = (
   bodyWithheld: withheld,
   isAddendum: addendumReason !== null,
   addendumRecordedAt: addendumReason !== null ? hoursFromNow(-ago) : null,
-  reason: addendumReason !== null && !withheld ? addendumReason : null,
+  reason: withheld ? null : (addendumReason ?? liveReason),
   authorMembershipId: membershipId,
   authorName,
   version,
@@ -1853,6 +1856,10 @@ const idgNotes: ReturnType<typeof idgNoteRow>[] =
           "Sarah Bennett, RN",
           "Pain controlled on scheduled morphine; two PRN doses in 72h. Skin intact. Daughter present at last visit and engaged in care.",
           0.6,
+          1,
+          false,
+          null,
+          "Follow-up to Tuesday's symptom review.",
         ),
         idgNoteRow(
           2,
@@ -1881,6 +1888,10 @@ const idgNotes: ReturnType<typeof idgNoteRow>[] =
           "Sarah Bennett, RN",
           "New wound on left heel, stage 2. Offloading in place.",
           0.3,
+          1,
+          false,
+          null,
+          "Wound found at this morning's visit.",
         ),
         idgNoteRow(
           5,
@@ -1933,7 +1944,12 @@ const idgNoteWrite = (
   p: string,
   o?: {
     params?: { path?: { id?: string } };
-    body?: { patientId?: string | null; discipline?: string; bodyText?: string; reason?: string };
+    body?: {
+      patientId?: string | null;
+      discipline?: string;
+      bodyText?: string;
+      reason?: string | null;
+    };
   },
 ) => {
   if (p === "/api/v1/idg/meetings/{id}/discipline-notes" && method === "POST") {
@@ -1950,6 +1966,7 @@ const idgNoteWrite = (
       1,
       false,
       isAdd ? (b.reason ?? "") : null,
+      !isAdd && b.reason ? b.reason : null,
     );
     idgNotes.push(row);
     return Promise.resolve({
@@ -1968,6 +1985,7 @@ const idgNoteWrite = (
     const row = idgNotes.find((n) => n.id === o?.params?.path?.id);
     if (row) {
       row.bodyText = o?.body?.bodyText ?? row.bodyText;
+      if (o?.body && "reason" in o.body) row.reason = o.body.reason ?? null;
       row.version += 1;
       row.updatedAt = hoursFromNow(0);
     }
@@ -2017,6 +2035,15 @@ const idgGet = (p: string, o?: { params?: { path?: Record<string, string> } }): 
         disciplineNoteCount:
           idgStatus === "adjourned" ? idgNotes.filter((n) => !n.isAddendum).length : null,
         disciplineAddendumCount: idgNotes.filter((n) => n.isAddendum).length,
+        addendumState:
+          idgStatus === "adjourned"
+            ? {
+                open: !idgAddWindowClosed,
+                closesAt: hoursFromNow(-idgAdjournedHoursAgo + 14 * 24),
+                closedReason: idgAddWindowClosed ? ("window_elapsed" as const) : null,
+                supersededPatientIds: idgSuperseded && !idgAddWindowClosed ? [idgPid(0)] : [],
+              }
+            : { open: false, closesAt: null, closedReason: null, supersededPatientIds: [] },
       };
     case "/api/v1/idg/schedule":
       return idgSchedule;

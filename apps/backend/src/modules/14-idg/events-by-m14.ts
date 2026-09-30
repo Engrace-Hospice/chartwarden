@@ -399,6 +399,27 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     isOutboxOnly: true,
   },
   {
+    eventName: "m14.discipline_note.addendum_recorded",
+    moduleOwner: "m14",
+    description:
+      "A late discipline-note ADDENDUM was recorded on an ADJOURNED meeting; asks M22 to append a new version of the minutes PDF carrying the 'Addenda' appendix (the frozen minutes snapshot is never touched).",
+    payloadSchema: Type.Object({
+      minutesId: id,
+      meetingId: id,
+      // The addendum that triggered this render and the live addendum count at emit time — together the
+      // request identity (M22 keys idempotency on the delivered outbox event id, one event per addendum).
+      addendumId: id,
+      addendumCount: Type.Integer({ minimum: 1 }),
+      recordedByMembershipId: id,
+      // The same `renderPayload` shape `.signed`/`.amended` send (the frozen snapshot columns, unchanged)
+      // PLUS `disciplineAddenda` built from the LIVE addendum rows at emit time (42 CFR Part 2: text and
+      // reason are elided for withheld patients exactly like `disciplineNoteSnapshot`).
+      renderPayload: Type.Unknown(),
+    }),
+    declaredConsumers: ["m22"],
+    isOutboxOnly: true,
+  },
+  {
     eventName: "m14.packet.frozen",
     moduleOwner: "m14",
     description: "The `ADJOURN` transition froze each patient packet against rebuild (W-PKT-02).",

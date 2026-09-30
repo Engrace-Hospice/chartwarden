@@ -565,6 +565,7 @@ describe("GAP-023/024/038 — the render consumer executes the decided action", 
       // rendered.
       "m8.encounter.addendum_signed",
       "m14.minutes.amended",
+      "m14.discipline_note.addendum_recorded",
       "m12.medication_order.transmitted",
       // F-208 (#248) — the printable M9 assessment summary. No per-request id on the payload, so
       // `patientId` is the aggregate (the first patientId-keyed render this table binds) and every

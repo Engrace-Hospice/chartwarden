@@ -171,6 +171,7 @@ export const M14_EVENT_NAMES = [
   "m14.review_clock.escalated",
   "m14.minutes.signed",
   "m14.minutes.amended",
+  "m14.discipline_note.addendum_recorded",
   "m14.packet.frozen",
 ] as const;
 

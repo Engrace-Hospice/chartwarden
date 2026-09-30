@@ -78,7 +78,18 @@ describe("m22.document.rendered — the event that did not exist", () => {
     // bound consumers — proven generally by `clinical-consumer-contracts.test.ts`'s
     // "fully binds the three M17 visit-publication command consumers, with m31 still deferred" and by
     // `outbox-dispatcher.live.test.ts`'s partial-fan-out coverage.
-    expect(entry?.declaredConsumers).toEqual(["m6", "m11", "m12", "m13", "m21", "m27", "m31", "m33"]);
+    // m14 — on the commit that bound `m14.m22-document-backref` (stamps idg_minutes/idg_patient_packet document ids).
+    expect(entry?.declaredConsumers).toEqual([
+      "m6",
+      "m11",
+      "m12",
+      "m13",
+      "m14",
+      "m21",
+      "m27",
+      "m31",
+      "m33",
+    ]);
   });
 
   it("announces the render with the routing the requesting module keys on", async () => {
@@ -171,7 +182,9 @@ describe("M6's back-ref map covers exactly what M22 renders for M6", () => {
     // Distinct: F-176's `m6.discharge.cosigned` files under the SAME `discharge_summary` aggregate as `.created`.
     const rendered = [
       ...new Set(
-        Object.values(M6_TEMPLATE_BY_EVENT).map((key) => PLATFORM_TEMPLATE_TABLE[key]?.aggregateType),
+        Object.values(M6_TEMPLATE_BY_EVENT).map(
+          (key) => PLATFORM_TEMPLATE_TABLE[key]?.aggregateType,
+        ),
       ),
     ].sort();
     expect([...M6_BACKREF_AGGREGATE_TYPES].sort()).toEqual(rendered);

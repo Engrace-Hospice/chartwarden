@@ -393,6 +393,16 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     contentField: "renderPayload",
     appends: true,
   },
+  // M14 spec §13 — a late discipline-note ADDENDUM on an adjourned meeting. A dedicated event (not a
+  // re-use of `.amended`, which carries an approver/amendment id and an M33 seam consumer and would
+  // mislabel an addendum as an amendment) that appends a new version of the SAME `minutesId` document,
+  // carrying the frozen snapshots plus the live `disciplineAddenda` appendix.
+  "m14.discipline_note.addendum_recorded": {
+    aggregateIdFields: ["minutesId"],
+    templateKey: "idg_minutes",
+    contentField: "renderPayload",
+    appends: true,
+  },
   // M12 §4.4 — the transmit-to-pharmacy confirmation. Appends onto the SAME `orderId`
   // `.document_requested` genesis-rendered. NOTE (reported, not fixed): this event is CATALOGUED with
   // no producer anywhere in `12-dosespot/` — the `dosespot.transmit_newrx` worker its own catalog

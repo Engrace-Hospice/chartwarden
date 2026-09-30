@@ -15,11 +15,17 @@
 // addendum window the composer becomes an "Add late addendum" composer (reason required); an addendum is a
 // separate append-only row shown with a "Late addendum" pill, its recorded-at time and its reason.
 //
+// REASON: every note may carry an optional context `reason` (live notes: blank is omitted; addenda: required).
+// The author may edit text and reason while live (only changed fields are sent; clearing sends null).
+// WINDOW B: an addendum for a patient is refused once a newer IDG has adjourned for them (`addendumState`
+// from the minutes view); the 422/503 codes are still handled inline when that state is stale.
+//
 // PART 2 (42 CFR): a note the server withheld (`bodyWithheld`) renders a pill, never text or reason.
 import { Button, CountBadge, EmptyState, Panel, StatusPill, useApiClient } from "@wardenx/ui";
 import { useMemo, useState } from "react";
 import type { JSX } from "react";
 import {
+  type AddendumState,
   type AttendanceView,
   type DisciplineNoteView,
   createDisciplineNote,
@@ -33,6 +39,8 @@ import {
 } from "./idg-disciplines";
 
 export const NOTE_MAX = 4000;
+const SUPERSEDED_MESSAGE =
+  "A newer IDG has adjourned for this patient; its record now supersedes this meeting — add your note there.";
 export { ADDENDUM_REASON_MAX };
 
 /** `unavailable` = the read failed and there is nothing to show — one quiet line, not a broken pane. */
@@ -63,10 +71,24 @@ interface EditState {
   /** The row version this edit started from — what `If-Match` carries. */
   readonly baseVersion: number;
   readonly text: string;
+  readonly reason: string;
+  /** What the row held when the edit opened — only fields that differ are sent. */
+  readonly baseText: string;
+  readonly baseReason: string;
   readonly busy: boolean;
   readonly error: string | null;
   /** After a 412: the text the other writer saved, so it can be compared before saving again. */
   readonly latest: string | null;
+}
+
+/** Only the fields the author changed; `reason: null` clears it. Null when nothing changed. */
+function editPatch(e: EditState): { bodyText?: string; reason?: string | null } | null {
+  const text = e.text.trim();
+  const reason = e.reason.trim();
+  const patch: { bodyText?: string; reason?: string | null } = {};
+  if (text !== e.baseText.trim()) patch.bodyText = text;
+  if (reason !== e.baseReason.trim()) patch.reason = reason.length > 0 ? reason : null;
+  return Object.keys(patch).length > 0 ? patch : null;
 }
 
 export interface DisciplineNotesPanelProps {
@@ -77,6 +99,8 @@ export interface DisciplineNotesPanelProps {
   adjourned?: boolean;
   /** The meeting's actual end (the view's `adjournedAt`); the addendum window is measured from it. */
   adjournedAt?: string | null;
+  /** The minutes view's addendum eligibility (adjourned meetings); null/undefined = unknown → the server decides. */
+  addendumState?: AddendumState | null;
   /** Human status for the not-live explanation ("Adjourned", "Scheduled", …). */
   statusLabel: string;
   notes: NotesState;
@@ -95,9 +119,18 @@ export interface DisciplineNotesPanelProps {
 export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Element {
   const { meetingId, live, statusLabel, notes, onReload, patientId, patientName, roster } = props;
   const adjourned = props.adjourned === true;
-  const windowEnd = adjourned ? addendumWindowEnd(props.adjournedAt) : null;
+  const addendumState = adjourned ? (props.addendumState ?? null) : null;
+  const stateEnd = addendumState?.closesAt ? new Date(addendumState.closesAt) : null;
+  const windowEnd =
+    stateEnd && !Number.isNaN(stateEnd.getTime())
+      ? stateEnd
+      : adjourned
+        ? addendumWindowEnd(props.adjournedAt)
+        : null;
   // Unknown adjournment time → leave the composer open; the server owns the window (422 ADDENDUM_WINDOW_CLOSED).
-  const windowOpen = adjourned && (windowEnd === null || windowEnd.getTime() >= Date.now());
+  const windowOpen =
+    adjourned &&
+    (addendumState ? addendumState.open : windowEnd === null || windowEnd.getTime() >= Date.now());
   const mode: "note" | "addendum" | "closed" | "off" = live
     ? "note"
     : adjourned
@@ -106,6 +139,7 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
         : "closed"
       : "off";
   const composerOpen = mode === "note" || mode === "addendum";
+  const supersededIds = addendumState?.supersededPatientIds ?? [];
   const client = useApiClient();
   const [scopeChoice, setScopeChoice] = useState<"patient" | "meeting">("patient");
   const [tabChoice, setTabChoice] = useState<string | null>(null);
@@ -155,6 +189,9 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
   const meetingLevelCount = allNotes.filter((n) => n.patientId === null).length;
   const patientCount = patientId ? allNotes.filter((n) => n.patientId === patientId).length : 0;
 
+  // Patient-scoped only: the meeting-level scope is never superseded.
+  const superseded =
+    mode === "addendum" && scopePatientId !== null && supersededIds.includes(scopePatientId);
   const draftKey = `${scopePatientId ?? "meeting"}|${tab?.key ?? ""}`;
   const draft = drafts[draftKey] ?? "";
   const reason = reasons[draftKey] ?? "";
@@ -162,6 +199,7 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
     composerOpen &&
     !composerBusy &&
     tab !== null &&
+    !superseded &&
     draft.trim().length > 0 &&
     (mode !== "addendum" || reason.trim().length > 0);
 
@@ -174,8 +212,8 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
       patientId: scopePatientId,
       discipline: tab.value,
       bodyText: draft.trim(),
-      // Only an addendum carries a reason — the server rejects one on a live meeting's ordinary note.
-      ...(mode === "addendum" ? { reason: reason.trim() } : {}),
+      // Addendum: required (non-blank, trimmed). Live note: optional context — omitted when blank.
+      ...(reason.trim().length > 0 ? { reason: reason.trim() } : {}),
     });
     setComposerBusy(false);
     if (!res.ok) {
@@ -192,8 +230,10 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
 
   async function saveEdit(): Promise<void> {
     if (!edit || edit.busy || edit.text.trim().length === 0) return;
+    const patch = editPatch(edit);
+    if (!patch) return;
     setEdit({ ...edit, busy: true, error: null });
-    const res = await updateDisciplineNote(client, edit.id, edit.baseVersion, edit.text.trim());
+    const res = await updateDisciplineNote(client, edit.id, edit.baseVersion, patch);
     if (res.ok) {
       setEdit(null);
       setSaved("Note updated.");
@@ -347,6 +387,9 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
                                 id: n.id,
                                 baseVersion: n.version,
                                 text: n.bodyText ?? "",
+                                reason: n.reason ?? "",
+                                baseText: n.bodyText ?? "",
+                                baseReason: n.reason ?? "",
                                 busy: false,
                                 error: null,
                                 latest: null,
@@ -371,6 +414,18 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
                             value={editing.text}
                             disabled={editing.busy}
                             onChange={(e) => setEdit({ ...editing, text: e.target.value })}
+                          />
+                          <label className="wx-idg-note-label" htmlFor={`idg-edit-reason-${n.id}`}>
+                            Context / reason (optional)
+                          </label>
+                          <input
+                            id={`idg-edit-reason-${n.id}`}
+                            type="text"
+                            aria-label="Edit note reason"
+                            maxLength={ADDENDUM_REASON_MAX}
+                            value={editing.reason}
+                            disabled={editing.busy}
+                            onChange={(e) => setEdit({ ...editing, reason: e.target.value })}
                           />
                           {editing.error ? (
                             <p className="wx-idg-alert" data-tone="warning" role="alert">
@@ -397,7 +452,11 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
                             </Button>
                             <Button
                               size="sm"
-                              disabled={editing.busy || editing.text.trim().length === 0}
+                              disabled={
+                                editing.busy ||
+                                editing.text.trim().length === 0 ||
+                                editPatch(editing) === null
+                              }
                               onClick={() => void saveEdit()}
                             >
                               {editing.busy ? "Saving…" : "Save changes"}
@@ -407,7 +466,7 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
                       ) : (
                         <>
                           <p className="wx-idg-note-text">{n.bodyText}</p>
-                          {n.isAddendum && n.reason ? (
+                          {n.reason ? (
                             <p className="wx-row-sub wx-idg-note-reason">Reason: {n.reason}</p>
                           ) : null}
                         </>
@@ -440,6 +499,11 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
                   </span>
                 </p>
               ) : null}
+              {superseded ? (
+                <output className="wx-idg-alert" data-tone="warning">
+                  <span>{SUPERSEDED_MESSAGE}</span>
+                </output>
+              ) : null}
               {mode === "off" ? (
                 <p className="wx-idg-alert" data-tone="warning">
                   <span>
@@ -458,6 +522,34 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
                     rows={2}
                     maxLength={ADDENDUM_REASON_MAX}
                     placeholder="Why is this being recorded after the meeting?"
+                    value={reason}
+                    disabled={composerBusy || tab === null || superseded}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setSaved(null);
+                      setReasons((r) => ({ ...r, [draftKey]: v }));
+                    }}
+                  />
+                  <div className="wx-idg-note-actions">
+                    <span
+                      className="wx-row-sub wx-nums"
+                      data-over={reason.length >= ADDENDUM_REASON_MAX}
+                    >
+                      {reason.length} / {ADDENDUM_REASON_MAX}
+                    </span>
+                  </div>
+                </>
+              ) : null}
+              {mode === "note" ? (
+                <>
+                  <label className="wx-idg-note-label" htmlFor="idg-note-reason">
+                    Context / reason (optional)
+                  </label>
+                  <input
+                    id="idg-note-reason"
+                    type="text"
+                    maxLength={ADDENDUM_REASON_MAX}
+                    placeholder="Why this note, or what it relates to"
                     value={reason}
                     disabled={composerBusy || tab === null}
                     onChange={(e) => {
@@ -488,7 +580,7 @@ export function DisciplineNotesPanel(props: DisciplineNotesPanelProps): JSX.Elem
                       : "Notes are closed."
                 }
                 value={draft}
-                disabled={!composerOpen || composerBusy || tab === null}
+                disabled={!composerOpen || composerBusy || tab === null || superseded}
                 onChange={(e) => {
                   const v = e.target.value;
                   setSaved(null);

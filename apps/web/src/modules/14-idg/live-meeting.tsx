@@ -51,6 +51,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { DisciplineNotesPanel, type NotesState } from "./discipline-notes";
 import {
   type ActionItemView,
+  type AddendumState,
   type AgendaItemView,
   type AttendanceStatus,
   type AttendanceView,
@@ -216,6 +217,8 @@ export function LiveMeeting(): JSX.Element {
   const [recert, setRecert] = useState<RecertState>({ state: "loading" });
   const [loadedAt, setLoadedAt] = useState<number | null>(null);
   const [notes, setNotes] = useState<NotesState>({ state: "loading" });
+  /** Addendum eligibility from the minutes view (adjourned meetings only); null = unknown → the server decides. */
+  const [addendumState, setAddendumState] = useState<AddendumState | null>(null);
 
   const loadRecert = useCallback(
     async (signal?: AbortSignal) => {
@@ -260,6 +263,21 @@ export function LiveMeeting(): JSX.Element {
     },
     [client, id],
   );
+
+  const loadAddendumState = useCallback(async () => {
+    if (!id) return;
+    try {
+      const r = await client.GET("/api/v1/idg/meetings/{id}/minutes", { params: { path: { id } } });
+      const st = (r.data as { addendumState?: AddendumState } | undefined)?.addendumState;
+      if (st) setAddendumState(st);
+    } catch {
+      // Keep the last known state; the server still enforces eligibility on every write.
+    }
+  }, [client, id]);
+  const meetingStatus = meeting?.status;
+  useEffect(() => {
+    if (meetingStatus === "adjourned") void loadAddendumState();
+  }, [meetingStatus, loadAddendumState]);
 
   const loadActionItems = useCallback(async () => {
     if (!id) return;
@@ -864,9 +882,13 @@ export function LiveMeeting(): JSX.Element {
                     live={isLive}
                     adjourned={meeting?.status === "adjourned"}
                     adjournedAt={meeting?.adjournedAt ?? null}
+                    addendumState={addendumState}
                     statusLabel={meeting ? stateLabel(meeting.status) : ""}
                     notes={notes}
-                    onReload={() => loadNotes()}
+                    onReload={() => {
+                      if (meetingStatus === "adjourned") void loadAddendumState();
+                      return loadNotes();
+                    }}
                     patientId={activePatient}
                     patientName={
                       activePatient
