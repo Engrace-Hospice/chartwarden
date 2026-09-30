@@ -92,6 +92,7 @@ export function createDrizzleBereavementSeamStore(db: DbClient): BereavementSeam
   const OUTREACH = schema.bereavementOutreach;
   const SCORE = schema.bereavementRiskScore;
   const CLOSURE = schema.bereavementPlanClosure;
+  const COP_CREDIT = schema.bereavementCopOptOutCredit;
 
   type Tx = Parameters<Parameters<DbClient["transaction"]>[0]>[0];
 
@@ -313,9 +314,35 @@ export function createDrizzleBereavementSeamStore(db: DbClient): BereavementSeam
         const counts = await statusCountsFor(tx, scope);
         const sumOf = (statuses: readonly BereavementOutreachStatus[]): number =>
           statuses.reduce((total, s) => total + counts[s], 0);
+
+        // F-206 (#248) — a pre-death patient bereavement opt-out (`m16.bereavement.plan_skipped_per_
+        // patient_opt_out`, recorded in `bereavement_cop_opt_out_credit`) counts as CoP 418.64(d) coverage
+        // SATISFIED: added to BOTH the numerator and the denominator, the same "the agency reached the
+        // family and a choice was exercised" shape `declined` already gets in `COP_NUMERATOR_STATUSES`
+        // above — a patient's own pre-death directive not to be contacted is that same choice, exercised
+        // earlier. Windowed on `death_date` (the only field common to both `bereavement_outreach.due_at`'s
+        // "obligation window" concept and this table's payload-only shape), same org/PE/location walls.
+        const creditFilters = [
+          ...scopeWalls(
+            {
+              org: COP_CREDIT.organizationId,
+              pe: COP_CREDIT.providerEntityId,
+              loc: COP_CREDIT.locationId,
+            },
+            scope,
+          ),
+          scope.fromIso !== undefined ? gte(COP_CREDIT.deathDate, scope.fromIso.slice(0, 10)) : undefined,
+          scope.toIso !== undefined ? lte(COP_CREDIT.deathDate, scope.toIso.slice(0, 10)) : undefined,
+        ].filter((f): f is NonNullable<typeof f> => f !== undefined);
+        const [creditRow] = await tx
+          .select({ n: sql<number>`count(*)::int` })
+          .from(COP_CREDIT)
+          .where(and(...creditFilters));
+        const credits = creditRow?.n ?? 0;
+
         return {
-          numerator: sumOf(COP_NUMERATOR_STATUSES),
-          denominator: sumOf(COP_DENOMINATOR_STATUSES),
+          numerator: sumOf(COP_NUMERATOR_STATUSES) + credits,
+          denominator: sumOf(COP_DENOMINATOR_STATUSES) + credits,
         };
       });
     },

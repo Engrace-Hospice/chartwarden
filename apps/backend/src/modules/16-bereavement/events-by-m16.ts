@@ -138,11 +138,15 @@ export const M16_OUTBOX_EVENTS: ModuleEventContribution = [
     description:
       "M6 declared the admission bereavement-eligible but the M5 patient-level directive said no (D9). Carries NO planId: nothing opened, and no M36 channel was created.",
     payloadSchema: Type.Object({ patientId: Id, admissionId: Id, deathDate: Str }),
-    // F-115 (#248) — m30 stays declared: whether an opt-out-skipped case belongs in
-    // `copOutreachCounts`'s denominator is a real product question (F-099 shape), not a settled seam
-    // relationship — left as a genuine gap rather than guessed.
-    declaredConsumers: ["m30"],
-    seamConsumers: ["m33"],
+    // F-206 (#248) — the F-115 open question is settled: the user decided an opt-out-skipped death counts
+    // as CoP 418.64(d) coverage SATISFIED. `copOutreachCounts` is a PULL (M30's nightly recompute calls it
+    // directly, no push registered anywhere for `bereavement_coverage_rate`) — this is a seam relationship,
+    // not an outbox-bound one, corrected here rather than left mis-declared. M16 records the fact durably
+    // in `bereavement_cop_opt_out_credit` at its one live emit site
+    // (`outbox-consumers/m5-patient-opt-out-changed.ts`'s `skip` branch) and `copOutreachCounts` sums it
+    // into both the numerator and denominator.
+    declaredConsumers: [],
+    seamConsumers: ["m30", "m33"],
     isOutboxOnly: true,
   },
   {
