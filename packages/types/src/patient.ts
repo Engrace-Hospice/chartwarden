@@ -445,7 +445,32 @@ export interface PatientResidenceSpan {
   readonly effectiveTo: string | null;
 }
 
+/**
+ * The patient's CURRENT PRIMARY street address, for a consumer that must snapshot a delivery/service
+ * address onto its own row (F-229 — M21 supply-request `deliveryAddress`). PHI: hold it in memory only;
+ * never put it in an outbox payload (consumers PULL it through the seam at consume time).
+ */
+export interface PatientPrimaryAddress {
+  readonly kind: PatientAddressKind;
+  /** M40 Facility id, set only when `kind === "facility"`. */
+  readonly facilityId: string | null;
+  readonly line1: string;
+  readonly line2: string | null;
+  readonly city: string;
+  /** 2-letter for a US address; null for a non-US one. */
+  readonly state: string | null;
+  readonly postalCode: string;
+  readonly country: string;
+  readonly county: string | null;
+}
+
 export interface PatientAddressReader {
+  /**
+   * The patient's current (effective_to IS NULL) PRIMARY address in full, or null when none is on file.
+   * Org-explicit: the tenant is the `organizationId` argument (RLS + an explicit predicate), so it is
+   * safe from an outbox relay tick with no request context. The one seam that returns street-level PHI.
+   */
+  primaryAddress(organizationId: string, patientId: string): Promise<PatientPrimaryAddress | null>;
   /** The 2-letter state code of the patient's current (effective_to IS NULL) PRIMARY address, or null
    *  (no primary address, or its state is unset — e.g. a non-US address). */
   primaryResidenceState(organizationId: string, patientId: string): Promise<string | null>;

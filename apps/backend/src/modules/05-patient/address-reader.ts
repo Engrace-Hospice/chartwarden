@@ -18,6 +18,48 @@ export function buildPatientAddressReader(db: DbClient): PatientAddressReader {
   const ADDRESS = schema.patientAddresses;
 
   return {
+    async primaryAddress(organizationId, patientId) {
+      // F-229 — the full current PRIMARY address (street-level PHI). Org-explicit predicate on top of RLS;
+      // the caller is typically an outbox consumer with no request context, hence its own withOrgContext.
+      return withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
+        const [row] = await tx
+          .select({
+            kind: ADDRESS.kind,
+            facilityId: ADDRESS.facilityId,
+            line1: ADDRESS.line1,
+            line2: ADDRESS.line2,
+            city: ADDRESS.city,
+            state: ADDRESS.state,
+            postalCode: ADDRESS.postalCode,
+            country: ADDRESS.country,
+            county: ADDRESS.county,
+          })
+          .from(ADDRESS)
+          .where(
+            and(
+              eq(ADDRESS.organizationId, organizationId),
+              eq(ADDRESS.patientId, patientId),
+              eq(ADDRESS.isPrimary, true),
+              isNull(ADDRESS.effectiveTo),
+            ),
+          )
+          .orderBy(desc(ADDRESS.effectiveFrom), desc(ADDRESS.createdAt))
+          .limit(1);
+        return row
+          ? {
+              kind: row.kind,
+              facilityId: row.facilityId ?? null,
+              line1: row.line1,
+              line2: row.line2 ?? null,
+              city: row.city,
+              state: row.state ?? null,
+              postalCode: row.postalCode,
+              country: row.country,
+              county: row.county ?? null,
+            }
+          : null;
+      });
+    },
     async primaryResidenceState(organizationId, patientId) {
       return withOrgContext(db, { organizationId, userId: "system" }, async (tx) => {
         const [row] = await tx
