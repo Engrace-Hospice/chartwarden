@@ -738,6 +738,9 @@ jobs:
               name: "M21 caregiver-signature capture",
               scripts: "test:m21:caregiver-signature:live",
             }
+          # F-233 (#248) — M21's Option-B consumer of `m12.medication_order.dispensed_at_pharmacy`
+          # (records "dispensed at T" on the correlated comfort-kit request; creates no dispatch).
+          - { name: "M21 pharmacy dispense fact", scripts: "test:m21:pharmacy-dispense:live" }
           - { name: "M15 plan bootstrap", scripts: "test:m15:plan-bootstrap:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
           # F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers (M9/M10/M11/M12).

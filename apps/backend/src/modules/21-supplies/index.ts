@@ -109,3 +109,12 @@ export {
   type M21ComfortKitReplenishmentDeps,
   buildM21ComfortKitReplenishmentIntakeConsumer,
 } from "./outbox-consumers/m13-comfort-kit-replenishment";
+// F-233 (#248) — `m12.medication_order.dispensed_at_pharmacy` -> `supply_request_pharmacy_dispense` fact
+// (Option B: correlates by `contents[].medicationOrderId`; creates no dispatch).
+export {
+  M12_DISPENSED_AT_PHARMACY_EVENT,
+  M21_PHARMACY_DISPENSE_CONSUMER_NAME,
+  NO_CORRELATING_REQUEST_REASON,
+  type M21PharmacyDispenseDeps,
+  buildM21PharmacyDispenseConsumer,
+} from "./outbox-consumers/m12-pharmacy-dispense";

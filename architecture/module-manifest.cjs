@@ -678,6 +678,7 @@ exports.MODULES = [
       "comfort_kit_dispatched_content",
       "comfort_kit_return",
       "comfort_kit_returned_content",
+      "supply_request_pharmacy_dispense",
     ],
   }, // M21-F06
   {

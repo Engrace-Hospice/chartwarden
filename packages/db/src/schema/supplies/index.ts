@@ -61,3 +61,4 @@ export * from "./comfort-kit-dispatches"; // comfort_kit_dispatch (PARTITIONED, 
 export * from "./comfort-kit-dispatched-contents"; // comfort_kit_dispatched_content
 export * from "./comfort-kit-returns"; // comfort_kit_return
 export * from "./comfort-kit-returned-contents"; // comfort_kit_returned_content
+export * from "./supply-request-pharmacy-dispenses"; // supply_request_pharmacy_dispense (F-233, migration 0306)

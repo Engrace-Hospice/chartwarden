@@ -559,6 +559,7 @@ import {
   buildM21ComfortKitReturnRequiredConsumer,
   buildM21DocumentBackrefConsumer,
   buildM21OrderDiscontinuedConsumer,
+  buildM21PharmacyDispenseConsumer,
   buildM21SupplyCancellationConsumer,
   decideDispatcherEligible,
   denyStubSuppliesAbacResolver,
@@ -6351,6 +6352,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             db: dbHandle.db,
             outbox: m21OutboxPublisher,
           }),
+          // F-233 (#248) — `m12.medication_order.dispensed_at_pharmacy` (Option B): records "dispensed at T"
+          // on the correlated comfort-kit request (by `contents[].medicationOrderId`); creates no dispatch.
+          buildM21PharmacyDispenseConsumer({ db: dbHandle.db }),
           // F-172 (#248) — §4.5.1 controlled-substance re-emit, the fourth and last of the
           // `consumers/m13-comfort-kit.ts` deciders. Joins M13's bedside discrepancy signal to M21's
           // dispatch/return custody chain via the `returnId` M13's payload now carries.

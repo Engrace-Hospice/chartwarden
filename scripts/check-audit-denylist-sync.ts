@@ -175,6 +175,8 @@ const MODULES: ReadonlyArray<{
       "packages/db/migrations/0106_supplies_m21_rls_audit_triggers.sql",
       // F-193 (#248) — extends supply_request's denylist with caregiver_signature_evidence_jsonb.
       "packages/db/migrations/0268_m21_caregiver_signature_capture.sql",
+      // F-233 (#248) — `supply_request_pharmacy_dispense` (structural, empty denylist).
+      "packages/db/migrations/0306_m21_supply_request_pharmacy_dispense.sql",
     ],
   },
   {
