@@ -9,6 +9,7 @@ import { withOrgContext } from "@wardenx/tenancy";
 import { type ConnectionOptions, type Job, Queue, Worker } from "bullmq";
 import type Redis from "ioredis";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";
+import { runCarryForwardCron } from "./carry-forward";
 import { reviewClockPatientsForOrg } from "./cron-store";
 import type { ActiveOrgListPort } from "./index";
 import {
@@ -295,7 +296,7 @@ function bullmqCheckpoint(job: Job): ReviewClockSweepCheckpoint {
   };
 }
 
-/** Construct all THREE M14 crons (the caller owns lifecycle — `close()` on shutdown): the pre-existing
+/** Construct all FOUR M14 crons (+ `idg.carry-forward`, §2.7) (the caller owns lifecycle — `close()` on shutdown): the pre-existing
  * `idg.review-clock-sweep`, plus F-171's `idg.schedule-materialise` (§7.1) and `idg.packets-cron` (§4.9.1
  * `tminus-24h-build`) — the real T-24h packet-build worker. `m6`/`m7`/`redis` resolve through the same
  * fail-closed-thunk pattern `activeOrgs` already uses, so an unwired port throws loudly on first USE
@@ -340,6 +341,17 @@ export function registerM14CronWorkers(deps: M14WorkerDeps): Worker[] {
         }),
       { connection, concurrency: M14_QUEUE_PARAMS.packetsBuild.concurrency },
     ),
+    new Worker(
+      M14_QUEUES.carryForward,
+      async () =>
+        runCarryForwardCron({
+          db: deps.db,
+          outbox: deps.outbox,
+          activeOrgs: activeOrgsOf(deps),
+          now: deps.now,
+        }),
+      { connection, concurrency: M14_QUEUE_PARAMS.carryForward.concurrency },
+    ),
   ];
 }
 
@@ -367,6 +379,11 @@ export async function scheduleM14Jobs(connection: ConnectionOptions): Promise<Qu
       queue: M14_QUEUES.packetsBuild,
       pattern: M14_JOB_SCHEDULES.packetsBuild,
       params: M14_QUEUE_PARAMS.packetsBuild,
+    },
+    {
+      queue: M14_QUEUES.carryForward,
+      pattern: M14_JOB_SCHEDULES.carryForward,
+      params: M14_QUEUE_PARAMS.carryForward,
     },
   ];
   const queues: Queue[] = [];

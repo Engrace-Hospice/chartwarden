@@ -90,6 +90,7 @@ import {
 // symbol at module scope); kept here so the remaining `alreadyRendered: false` assertion can run
 // synchronously.
 import { decideDocumentRequest } from "../src/modules/22-documents/outbox-consumers/decide-document-request";
+import { renderRegisteredPdf } from "../src/modules/22-documents/render-pdf";
 import { M23_OUTBOX_EVENTS } from "../src/modules/23-billing-medicare/index";
 import { M24_OUTBOX_EVENTS } from "../src/modules/24-billing-medicaid/index";
 import { M25_OUTBOX_EVENTS } from "../src/modules/25-remittance/index";
@@ -745,6 +746,21 @@ describe.skipIf(!DB_URL)("F-166 — M8/M18/M14/M15 render requests, LIVE Postgre
     });
     expect(JSON.stringify(minutesRenders)).not.toContain("ADD-BODY-SECRET");
     expect(JSON.stringify(minutesRenders)).not.toContain("ADD-REASON-SECRET");
+
+    // End to end into the REAL PDF path: the payload M14 actually emitted (context block included) renders
+    // to a valid PDF with the Addenda appendix, the resolved author name, the Part 2 line — and the
+    // withheld addendum's text/reason are absent from the bytes.
+    const latestRender = minutesRenders.find((r) => appendix(r).disciplineAddenda.length === 2)!;
+    const pdf = Buffer.from(
+      renderRegisteredPdf("idg_minutes", latestRender.payload) as Uint8Array,
+    ).toString("latin1");
+    expect(pdf.startsWith("%PDF-1.4")).toBe(true);
+    expect(pdf).toContain("Appendix: Addenda");
+    expect(pdf).toContain("Nora Nurse");
+    expect(pdf).toContain("Reason: ADD-REASON-ONE");
+    expect(pdf).toContain("Withheld \\227 42 CFR Part 2"); // em dash is WinAnsi 0x97 = octal 227
+    expect(pdf).not.toContain("ADD-BODY-SECRET");
+    expect(pdf).not.toContain("ADD-REASON-SECRET");
 
     // The frozen snapshot column itself was never touched by any addendum.
     const { rows: snap } = await admin.query(

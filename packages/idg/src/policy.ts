@@ -81,3 +81,75 @@ export const DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS = 14 as const;
  * WINDOW B: beyond the {@link DISCIPLINE_NOTE_ADDENDUM_WINDOW_DAYS} time window, a PATIENT-scoped addendum is also refused
  * (`ADDENDUM_SUPERSEDED_BY_NEWER_IDG`) once a later ADJOURNED IDG meeting has included that patient. */
 export const DISCIPLINE_NOTE_ADDENDUM_REASON_MAX = 500 as const;
+
+// ── attendance trust (M14 spec extension) ─────────────────────────────────────────────────────────────────────
+//
+// `idg_attendance.discipline` used to be free text a caller typed. Quorum (`IDG_REQUIRED_QUORUM`) and the per-
+// discipline note authorization both TRUST that string, so it is now a CLOSED vocabulary the server validates
+// against the person's AUTHORITATIVE role keys (M3 `membership_role` → `role.key`, the same source
+// `request.context.roles` and M17's `resolveDisciplinesTx` derive from). PURE DATA — no IO.
+
+/** The closed vocabulary an attendance row's `discipline` may take. The first four quorum seats are the strings
+ * `IDG_REQUIRED_QUORUM` matches on; `administrator` is the non-clinical seat that NEVER counts toward quorum. */
+export const IDG_ATTENDANCE_DISCIPLINES = [
+  "rn_case_manager",
+  "hospice_physician",
+  "medical_director",
+  "msw",
+  "chaplain",
+  "np",
+  "lpn",
+  "hospice_aide",
+  "volunteer",
+  "volunteer_coordinator",
+  "bereavement_coordinator",
+  "administrator",
+] as const;
+export type IdgAttendanceDiscipline = (typeof IDG_ATTENDANCE_DISCIPLINES)[number];
+
+/** The `discipline` an attendee with no clinical seat (admins, supervisors) is recorded under. Not a quorum seat. */
+export const IDG_ADMINISTRATIVE_DISCIPLINE: IdgAttendanceDiscipline = "administrator";
+
+/** M3 role key → the attendance discipline(s) holding that role lets a person attest. Role keys absent here
+ * (e.g. `clinician`, `auditor`, `platform_*`) confer NO attendable discipline. An `rn` (staff RN) and an
+ * `rn_case_manager` both fill the RN quorum seat; `md`/`hospice_physician` fill the physician seat. */
+export const IDG_ATTENDANCE_DISCIPLINES_BY_ROLE_KEY: Readonly<
+  Record<string, readonly IdgAttendanceDiscipline[]>
+> = {
+  rn_case_manager: ["rn_case_manager"],
+  rn: ["rn_case_manager"],
+  hospice_physician: ["hospice_physician"],
+  md: ["hospice_physician"],
+  medical_director: ["medical_director"],
+  msw: ["msw"],
+  chaplain: ["chaplain"],
+  np: ["np"],
+  lpn: ["lpn"],
+  chha: ["hospice_aide"],
+  aide: ["hospice_aide"],
+  hospice_aide: ["hospice_aide"],
+  volunteer: ["volunteer"],
+  volunteer_coordinator: ["volunteer_coordinator"],
+  bereavement_coordinator: ["bereavement_coordinator"],
+  administrator: ["administrator"],
+  org_admin: ["administrator"],
+  director_of_nursing: ["administrator"],
+  clinical_supervisor: ["administrator"],
+  compliance_officer: ["administrator"],
+} as const;
+
+/** Whether `value` is in the closed attendance-discipline vocabulary. */
+export function isIdgAttendanceDiscipline(value: string): value is IdgAttendanceDiscipline {
+  return (IDG_ATTENDANCE_DISCIPLINES as readonly string[]).includes(value);
+}
+
+/** The attendance disciplines a set of M3 role keys entitles its holder to attest (deduplicated, vocabulary order). */
+export function attendableDisciplinesForRoleKeys(
+  roleKeys: readonly string[],
+): IdgAttendanceDiscipline[] {
+  const held = new Set<IdgAttendanceDiscipline>();
+  for (const key of roleKeys) {
+    for (const d of IDG_ATTENDANCE_DISCIPLINES_BY_ROLE_KEY[key] ?? []) held.add(d);
+  }
+  return IDG_ATTENDANCE_DISCIPLINES.filter((d) => held.has(d));
+}

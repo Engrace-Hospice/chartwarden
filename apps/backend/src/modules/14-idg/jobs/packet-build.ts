@@ -25,9 +25,10 @@
 //                             `open`/`in_progress` items from OTHER meetings whose `due_date` is past (spec §2.7:
 //                             "open action items past `due_date`"). `carryForwardCount` is the row's stored
 //                             `meeting_carry_forward_count`. This is the packet's READ of carry-forward state; the
-//                             §2.7/§7.6 `compute-carry-forward` cron (agenda items of `kind='carry_forward'`, count
-//                             increment, the ≥3 Compliance alert) is a SEPARATE, still-unbuilt concern this build
-//                             deliberately does not perform (an on-demand rebuild must never double-increment).
+//                             §2.7/§7.6 `compute-carry-forward` cron (`./carry-forward.ts` — agenda items of
+//                             `kind='carry_forward'`, the once-per-(item,meeting) count increment, the ≥3 Compliance
+//                             alert) is a SEPARATE concern this build deliberately does not perform (an on-demand
+//                             rebuild must never double-increment; it only READS the stored count).
 //   • `activeDpoa`          — null. Needs an M39 DPOA seam this pass does not build. Display-only cover
 //                             fact (feeds a discussion FLAG, never D9 inclusion), so an honest `null` is the
 //                             safe direction — never a fabricated compliance judgment.
@@ -486,8 +487,8 @@ async function priorIdgAdjournedAtForPatients(
 
 /** §2.4 `carryForwardActionItems` / §2.7 — per patient, the `open`/`in_progress` action items from OTHER
  *  meetings whose `due_date` is past `asOf` (an item with no due date cannot be overdue). M14's own table, ONE
- *  query for the batch. `carryForwardCount` is the stored `meeting_carry_forward_count` (the compute-carry-
- *  forward cron that increments it is a separate concern — see the file header). Oldest due first. */
+ *  query for the batch. `carryForwardCount` is the stored `meeting_carry_forward_count` (the `idg.carry-forward`
+ *  cron, `./carry-forward.ts`, is the only writer). Oldest due first. */
 export async function carryForwardForPatients(
   tx: DbClient,
   organizationId: string,

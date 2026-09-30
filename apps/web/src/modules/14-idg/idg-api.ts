@@ -66,6 +66,8 @@ export type MinutesView = Ok<operations["getApiV1IdgMeetingsByIdMinutes"]>;
 /** Whether late addenda are still open on an adjourned meeting, and which patients a newer IDG now supersedes. */
 export type AddendumState = MinutesView["addendumState"];
 export type PacketDigestView = Ok<operations["getApiV1IdgMeetingsByIdPackets"]>[number];
+/** What the caller may attest at the check-in (held disciplines + a coordinator's attestable vocabulary). */
+export type AttendanceEligibility = Ok<operations["getApiV1IdgMeetingsByIdAttendanceeligibility"]>;
 export type DisciplineNoteView = Ok<operations["getApiV1IdgMeetingsByIdDisciplinenotes"]>[number];
 
 export type RecordAttendanceBody = ReqBody<operations["postApiV1IdgMeetingsByIdAttendance"]>;
@@ -108,6 +110,27 @@ export type WriteResult<T> =
  * is not on this meeting's agenda. 409 is the §2.2 machine — the meeting moved under the caller, which
  * on a surface several people share is ordinary.
  */
+/**
+ * Attendance-trust refusals (M14 0286), by server error code. Each is a different next step: `ATTENDANCE_SELF_ONLY` and
+ * `DISCIPLINE_NOT_HELD` are the controls working (the caller asked to record someone else / a discipline their roles do
+ * not confer), the attestation codes name who may override, and `..._UNAVAILABLE` is retryable. Keyed by CODE, not status,
+ * because a 403 here must not read as the generic "your role is not permitted".
+ */
+export const ATTENDANCE_ERROR_COPY: Readonly<Record<string, string>> = {
+  ATTENDANCE_SELF_ONLY:
+    "You can only check yourself in. Ask the meeting coordinator to record someone else.",
+  DISCIPLINE_NOT_HELD:
+    "That discipline is not one of the member's roles. Choose a discipline they hold, or have a coordinator attest it.",
+  UNKNOWN_DISCIPLINE: "That is not a recognised IDG discipline.",
+  ATTESTATION_REQUIRES_COORDINATOR:
+    "Only a coordinator can attest a discipline the member's roles do not confer.",
+  ATTESTATION_SELF_FORBIDDEN:
+    "A coordinator cannot attest a discipline for themself. Ask another coordinator to record it.",
+  ATTENDANCE_MEMBERSHIP_NOT_FOUND: "That person is not an active member of this organization.",
+  ATTENDANCE_AUTHORITY_UNAVAILABLE:
+    "Could not verify the attendee's disciplines just now. Try again in a moment.",
+};
+
 function failure(status: number | undefined, body: unknown): WriteResult<never> {
   const code = typeof status === "number" ? status : null;
   const err =
@@ -116,18 +139,21 @@ function failure(status: number | undefined, body: unknown): WriteResult<never> 
       : undefined;
   const detail = typeof err?.message === "string" ? err.message : null;
   const errCode = typeof err?.code === "string" ? err.code : null;
+  const attendanceCopy = errCode ? ATTENDANCE_ERROR_COPY[errCode] : undefined;
   const message =
-    errCode === "STEP_UP_REQUIRED" || code === 412
-      ? "Adjourning is a commit point and needs a fresh re-authentication (§2.2 D13). Re-authenticate, then adjourn again."
-      : code === 403
-        ? (detail ?? "Your role is not permitted to take this action on this meeting.")
-        : code === 409
-          ? (detail ?? "This meeting changed before your action was applied. Reload the surface.")
-          : code === 404
-            ? "That meeting is no longer available to you."
-            : code === 422
-              ? (detail ?? "The server rejected the details supplied.")
-              : (detail ?? "The action could not be completed.");
+    attendanceCopy !== undefined
+      ? attendanceCopy
+      : errCode === "STEP_UP_REQUIRED" || code === 412
+        ? "Adjourning is a commit point and needs a fresh re-authentication (§2.2 D13). Re-authenticate, then adjourn again."
+        : code === 403
+          ? (detail ?? "Your role is not permitted to take this action on this meeting.")
+          : code === 409
+            ? (detail ?? "This meeting changed before your action was applied. Reload the surface.")
+            : code === 404
+              ? "That meeting is no longer available to you."
+              : code === 422
+                ? (detail ?? "The server rejected the details supplied.")
+                : (detail ?? "The action could not be completed.");
   return { ok: false, status: code, message };
 }
 
@@ -173,6 +199,23 @@ export async function recordAttendance(
   });
   if (error || !data) return failure(response?.status, error);
   return ok(data as AttendanceView);
+}
+
+/**
+ * What may be attested at the check-in. With no `membershipId` it is the CALLER's own held disciplines (from their real
+ * roles); a coordinator may name another member and also receives the vocabulary they may attest for them.
+ */
+export async function loadAttendanceEligibility(
+  client: ApiClient,
+  id: string,
+  membershipId?: string,
+): Promise<WriteResult<AttendanceEligibility>> {
+  const { data, error, response } = await client.GET(
+    "/api/v1/idg/meetings/{id}/attendance-eligibility",
+    { params: { path: { id }, query: membershipId ? { membershipId } : {} } },
+  );
+  if (error || !data) return failure(response?.status, error);
+  return ok(data as AttendanceEligibility);
 }
 
 /** Amend a participation status (present ↔ tardy ↔ partial ↔ absent ↔ excused). */

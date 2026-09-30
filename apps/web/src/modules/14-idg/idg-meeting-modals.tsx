@@ -20,6 +20,7 @@ import {
   type ActionItemView,
   type AgendaItemView,
   type AgendaKind,
+  type AttendanceEligibility,
   type AttendanceStatus,
   type AttendanceView,
   type MeetingView,
@@ -28,10 +29,12 @@ import {
   adjournMeeting,
   cancelMeeting,
   createActionItem,
+  loadAttendanceEligibility,
   recordAttendance,
   rescheduleMeeting,
   submitAmendment,
 } from "./idg-api";
+import { attendanceDisciplineLabel } from "./idg-disciplines";
 
 const ATTENDANCE_STATUSES = [
   "present",
@@ -48,23 +51,6 @@ const AGENDA_KINDS = [
   "family_meeting_setup",
   "other",
 ] as const satisfies readonly AgendaKind[];
-
-/**
- * The four disciplines §2.7's `IDG_REQUIRED_QUORUM` looks for, plus the ones that routinely attend.
- * These are M3 ROLE KEYS. Offering them is not a claim about who may attend — the server decides
- * nothing about attendance from this list; it is the vocabulary the roster records.
- */
-const DISCIPLINES = [
-  "rn_case_manager",
-  "hospice_physician",
-  "medical_director",
-  "msw",
-  "chaplain",
-  "np",
-  "hospice_aide",
-  "bereavement_coordinator",
-  "volunteer_coordinator",
-] as const;
 
 const humanize = (k: string): string =>
   k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
@@ -117,28 +103,110 @@ export interface AttendanceModalProps {
   readonly meetingId: string;
   readonly onClose: () => void;
   readonly onRecorded: (row: AttendanceView) => void;
+  /** The org's staff, for a coordinator's "who is checking in" picker (id + display label). Empty => a raw id field. */
+  readonly members?: readonly { readonly id: string; readonly label: string }[];
+  /** The signed-in caller's membership id (the picker's default subject). */
+  readonly callerMembershipId?: string | null;
 }
 
+/**
+ * ATTENDANCE TRUST (M14 0286). The roster is what §4.7's `quorate_decision` counts and what the per-discipline note
+ * authorization trusts, so the discipline is no longer typed: the SERVER says which disciplines the subject's real roles
+ * confer (`GET .../attendance-eligibility`) and this modal offers only those. A non-coordinator checks THEMSELF in; a
+ * coordinator picks the member and, for a discipline that member's roles do not confer, must tick an explicit
+ * attestation (recorded, flagged "Attested by coordinator", never for themself). The server re-validates all of it.
+ */
 export function AttendanceModal({
   open,
   meetingId,
   onClose,
   onRecorded,
+  members = [],
+  callerMembershipId = null,
 }: AttendanceModalProps): JSX.Element | null {
   const client = useApiClient();
   const { busy, error, run } = useCeremony<AttendanceView>(open, onRecorded, onClose);
   const [membershipId, setMembershipId] = useState("");
-  const [discipline, setDiscipline] = useState<string>(DISCIPLINES[0]);
+  const [discipline, setDiscipline] = useState<string>("");
   const [status, setStatus] = useState<AttendanceStatus>("present");
+  const [attest, setAttest] = useState(false);
+  const [self, setSelf] = useState<AttendanceEligibility | null>(null);
+  const [subject, setSubject] = useState<AttendanceEligibility | null>(null);
+  const [eligibilityError, setEligibilityError] = useState<string | null>(null);
 
+  // The caller's own eligibility (also reveals whether they are a coordinator) — once per open.
   useEffect(() => {
     if (!open) return;
     setMembershipId("");
-    setDiscipline(DISCIPLINES[0]);
+    setDiscipline("");
     setStatus("present");
-  }, [open]);
+    setAttest(false);
+    setSelf(null);
+    setSubject(null);
+    setEligibilityError(null);
+    let active = true;
+    void loadAttendanceEligibility(client, meetingId).then((res) => {
+      if (!active) return;
+      if (!res.ok) {
+        setEligibilityError(res.message);
+        return;
+      }
+      setSelf(res.value);
+      setSubject(res.value);
+      setMembershipId(res.value.membershipId);
+    });
+    return () => {
+      active = false;
+    };
+  }, [open, client, meetingId]);
+
+  const isCoordinator = self?.isCoordinator === true;
+  const callerId = self?.membershipId ?? callerMembershipId;
+  const isSelf = membershipId === "" || membershipId === callerId;
+
+  // A coordinator re-asks the server about whoever they picked (the caller's own answer is already in hand).
+  useEffect(() => {
+    if (!open || !isCoordinator || membershipId === "" || self === null) return;
+    if (membershipId === self.membershipId) {
+      setSubject(self);
+      return;
+    }
+    let active = true;
+    setSubject(null);
+    setEligibilityError(null);
+    void loadAttendanceEligibility(client, meetingId, membershipId).then((res) => {
+      if (!active) return;
+      if (!res.ok) {
+        setEligibilityError(res.message);
+        return;
+      }
+      setSubject(res.value);
+    });
+    return () => {
+      active = false;
+    };
+  }, [open, isCoordinator, membershipId, self, client, meetingId]);
+
+  const offered: readonly string[] =
+    subject === null
+      ? []
+      : attest && !isSelf
+        ? subject.attestableDisciplines
+        : subject.heldDisciplines;
+  // Keep the selection inside what is currently offered (first option by default).
+  useEffect(() => {
+    if (offered.length === 0) {
+      if (discipline !== "") setDiscipline("");
+    } else if (!offered.includes(discipline)) {
+      setDiscipline(offered[0] ?? "");
+    }
+  }, [offered, discipline]);
 
   if (!open) return null;
+
+  const held = subject?.heldDisciplines ?? [];
+  const attesting = attest && !isSelf && discipline !== "" && !held.includes(discipline);
+  const canSubmit = !busy && subject !== null && discipline !== "" && membershipId.trim() !== "";
 
   return (
     <Modal
@@ -148,18 +216,65 @@ export function AttendanceModal({
       width="28rem"
     >
       <div style={shell}>
-        <h2 style={title}>Check in an attendee</h2>
-        <TextField
-          label="Membership id"
-          value={membershipId}
-          onChange={(e) => setMembershipId(e.target.value)}
-        />
+        <h2 style={title}>{isCoordinator ? "Check in an attendee" : "Check yourself in"}</h2>
+        {isCoordinator ? (
+          members.length > 0 ? (
+            <SelectField
+              label="Attendee"
+              value={membershipId}
+              onChange={(e) => {
+                setMembershipId(e.target.value);
+                setAttest(false);
+              }}
+              options={members.map((m) => ({
+                value: m.id,
+                label: m.id === callerId ? `${m.label} (you)` : m.label,
+              }))}
+            />
+          ) : (
+            <TextField
+              label="Membership id"
+              value={membershipId}
+              onChange={(e) => {
+                setMembershipId(e.target.value);
+                setAttest(false);
+              }}
+            />
+          )
+        ) : null}
         <SelectField
           label="Discipline"
           value={discipline}
           onChange={(e) => setDiscipline(e.target.value)}
-          options={DISCIPLINES.map((d) => ({ value: d, label: humanize(d) }))}
+          options={
+            offered.length > 0
+              ? offered.map((d) => ({ value: d, label: attendanceDisciplineLabel(d) }))
+              : [{ value: "", label: subject === null ? "Loading…" : "No discipline available" }]
+          }
         />
+        {subject !== null && held.length === 0 ? (
+          <p style={meta}>
+            {isSelf
+              ? "None of your roles carries an IDG discipline, so you cannot check in as one. Ask the meeting coordinator."
+              : "This member's roles carry no IDG discipline. A coordinator may attest one below."}
+          </p>
+        ) : null}
+        {isCoordinator && !isSelf ? (
+          <label
+            style={{ display: "flex", gap: "0.5rem", alignItems: "flex-start", fontSize: "0.8rem" }}
+          >
+            <input
+              type="checkbox"
+              checked={attest}
+              onChange={(e) => setAttest(e.target.checked)}
+              aria-label="Attest a discipline this member does not hold"
+            />
+            <span>
+              Attest a discipline this member does not hold. It is recorded under your name and
+              shown on the roster as "Attested by coordinator".
+            </span>
+          </label>
+        ) : null}
         <SelectField
           label="Participation"
           value={status}
@@ -167,13 +282,12 @@ export function AttendanceModal({
           options={ATTENDANCE_STATUSES.map((s) => ({ value: s, label: humanize(s) }))}
         />
         <p style={meta}>
-          The roster is what §4.7's `quorate_decision` counts. Recording an attendee never grants
-          them anything — the server decides quorum from these rows, and refuses a non-quorate
-          decision.
+          The roster is what §4.7's `quorate_decision` counts. The server checks the discipline
+          against the attendee's real roles; recording an attendee never grants them anything.
         </p>
-        {error ? (
+        {eligibilityError || error ? (
           <p role="alert" style={errorText}>
-            {error}
+            {error ?? eligibilityError}
           </p>
         ) : null}
         <div style={footer}>
@@ -182,9 +296,16 @@ export function AttendanceModal({
           </Button>
           <Button
             onClick={() =>
-              run(() => recordAttendance(client, meetingId, { membershipId, discipline, status }))
+              run(() =>
+                recordAttendance(client, meetingId, {
+                  membershipId,
+                  discipline,
+                  status,
+                  ...(attesting ? { coordinatorAttested: true } : {}),
+                }),
+              )
             }
-            disabled={busy || membershipId.trim() === ""}
+            disabled={!canSubmit}
           >
             {busy ? "Checking in…" : "Check in"}
           </Button>

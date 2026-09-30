@@ -60,6 +60,7 @@ import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/t
 import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import { and, asc, desc, eq, gt, gte, inArray, lt, lte, ne, notInArray, sql } from "drizzle-orm";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "./abac-predicates";
+import { loadMinutesMemberIds, loadMinutesRenderContext } from "./minutes-render-context";
 import type { IdgMembershipDisplayPort } from "./routes/idg-enrichment";
 import { mapPacketContent } from "./routes/packet-content";
 import type {
@@ -445,17 +446,35 @@ export function createDbIdgBackend(
           .where(eq(MTG.id, meetingId))
           .limit(1);
         if (m?.status !== "adjourned") return null;
-        const rows = await tx
-          .selectDistinct({ authorMembershipId: NOTE.authorMembershipId })
-          .from(NOTE)
-          .where(and(eq(NOTE.idgMeetingId, meetingId), eq(NOTE.isAddendum, true)));
-        return rows.map((r) => r.authorMembershipId);
+        // Every membership the minutes render names (a superset of the addendum authors): the same map
+        // feeds the addenda appendix AND the render context's `memberNames`.
+        return loadMinutesMemberIds(tx, meetingId);
       });
       if (ids === null) return new Map();
       const all = [...new Set([...ids, ...extraMembershipIds])];
       if (all.length === 0) return new Map();
       const byId = await membershipDisplay.displayForMemberships(orgId, all);
       return new Map(all.map((id) => [id, byId.get(id)?.displayName ?? null]));
+    } catch {
+      return new Map();
+    }
+  }
+
+  /**
+   * Display names for EVERY membership a minutes render names (attendees, recorders, assignees, note authors),
+   * resolved BEFORE the write transaction for the same reason as {@link resolveAddendumAuthorNames}. A port
+   * failure degrades to no names — the PDF then falls back to the discipline label.
+   */
+  async function resolveMinutesMemberNames(
+    orgId: string,
+    meetingId: string,
+  ): Promise<ReadonlyMap<string, string | null>> {
+    if (!membershipDisplay) return new Map();
+    try {
+      const ids = await withOrg(orgId, (tx) => loadMinutesMemberIds(tx, meetingId));
+      if (ids.length === 0) return new Map();
+      const byId = await membershipDisplay.displayForMemberships(orgId, ids);
+      return new Map(ids.map((id) => [id, byId.get(id)?.displayName ?? null]));
     } catch {
       return new Map();
     }
@@ -556,6 +575,8 @@ export function createDbIdgBackend(
     discipline: r.discipline,
     status: r.status,
     checkedInAt: iso(r.checkInAt) ?? "",
+    disciplineAttested: r.disciplineAttested,
+    recordedByMembershipId: r.recordedByMembershipId,
   });
   const toAgendaItemView = (r: typeof AGD.$inferSelect): AgendaItemView => ({
     id: r.id,
@@ -1171,6 +1192,7 @@ export function createDbIdgBackend(
       });
     },
     async adjournMeeting(orgId, userId, id, stepUpFresh): Promise<MeetingView> {
+      const minutesMemberNames = await resolveMinutesMemberNames(orgId, id);
       return withOrg(orgId, async (tx) => {
         const m = await loadMeeting(tx, id);
         // `transitionMeeting` raises STEP_UP_REQUIRED (412) when the fresh step-up is absent (§2.2 D13).
@@ -1334,6 +1356,11 @@ export function createDbIdgBackend(
             decisionListSnapshot,
             actionItemListSnapshot,
             disciplineNoteSnapshot,
+            ...(await loadMinutesRenderContext(tx, {
+              meetingId: id,
+              minutesId,
+              names: minutesMemberNames,
+            })),
           },
         });
         return toMeetingView({ ...m, status: "adjourned", actualEnd: at });
@@ -1355,6 +1382,8 @@ export function createDbIdgBackend(
             discipline: args.discipline,
             status,
             checkInAt,
+            recordedByMembershipId: args.recordedByMembershipId ?? null,
+            disciplineAttested: args.disciplineAttested ?? false,
           })
           .returning({ id: ATT.id });
         await emit(tx, orgId, "m14.attendance.checked_in", "idg_meeting", meetingId, {
@@ -1372,6 +1401,8 @@ export function createDbIdgBackend(
           discipline: args.discipline,
           status,
           checkedInAt: checkInAt.toISOString(),
+          disciplineAttested: args.disciplineAttested ?? false,
+          recordedByMembershipId: args.recordedByMembershipId ?? null,
         };
       });
     },
@@ -1387,6 +1418,8 @@ export function createDbIdgBackend(
           discipline: row.discipline,
           status,
           checkedInAt: iso(row.checkInAt) ?? "",
+          disciplineAttested: row.disciplineAttested,
+          recordedByMembershipId: row.recordedByMembershipId,
         };
       });
     },
@@ -1567,6 +1600,11 @@ export function createDbIdgBackend(
               meetingId,
               addendumAuthorNames,
             );
+            const renderContext = await loadMinutesRenderContext(tx, {
+              meetingId,
+              minutesId: min.id,
+              names: addendumAuthorNames,
+            });
             await emit(tx, orgId, "m14.discipline_note.addendum_recorded", "idg_minutes", min.id, {
               minutesId: min.id,
               meetingId,
@@ -1579,6 +1617,7 @@ export function createDbIdgBackend(
                 actionItemListSnapshot: min.actionItemListSnapshot,
                 disciplineNoteSnapshot: min.disciplineNoteSnapshot,
                 disciplineAddenda,
+                ...renderContext,
               },
             });
           }
@@ -1895,6 +1934,11 @@ export function createDbIdgBackend(
             actionItemListSnapshot: min.actionItemListSnapshot,
             disciplineNoteSnapshot: min.disciplineNoteSnapshot,
             disciplineAddenda: await buildDisciplineAddenda(tx, min.meetingId, addendumAuthorNames),
+            ...(await loadMinutesRenderContext(tx, {
+              meetingId: min.meetingId,
+              minutesId,
+              names: addendumAuthorNames,
+            })),
           },
           amendmentReasonHash: createHash("sha256").update(amendmentReason, "utf8").digest("hex"),
         });

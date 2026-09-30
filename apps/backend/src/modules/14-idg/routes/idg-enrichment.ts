@@ -77,7 +77,21 @@ export interface IdgMembershipDisplayPort {
   ): Promise<ReadonlyMap<string, IdgMembershipDisplay>>;
 }
 
+/**
+ * The authorization-owned (M3) batched role-key read, injected. Used to validate an attendance row's discipline against
+ * the TARGET member's authoritative roles when a coordinator records someone else (a caller's OWN roles come from the
+ * session context). A live membership with no role maps to `[]`; an unknown / cross-tenant / revoked membership is
+ * ABSENT from the map. M14 imports no authorization code/schema — the composition root binds `membershipRoleKeysForOrg`.
+ */
+export interface IdgMembershipRolesPort {
+  roleKeysForMemberships(
+    organizationId: string,
+    membershipIds: readonly string[],
+  ): Promise<ReadonlyMap<string, readonly string[]>>;
+}
+
 export interface IdgRouteEnrichmentPorts {
+  readonly membershipRoles?: IdgMembershipRolesPort;
   readonly patientDisplay?: IdgPatientDisplayPort;
   readonly recertWindows?: IdgRecertWindowPort;
   readonly membershipDisplay?: IdgMembershipDisplayPort;

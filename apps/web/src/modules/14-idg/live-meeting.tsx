@@ -1004,6 +1004,11 @@ export function LiveMeeting(): JSX.Element {
                         <span style={{ minWidth: 0 }}>
                           <strong className="wx-row-title">{who(r.membershipId)}</strong>
                           <small className="wx-row-sub">{disciplineLabel(r.discipline)}</small>
+                          {r.disciplineAttested ? (
+                            <small className="wx-row-sub">
+                              <StatusPill label="Attested by coordinator" tone="warning" />
+                            </small>
+                          ) : null}
                         </span>
                         <StatusPill
                           label={humanize(r.status)}
@@ -1136,6 +1141,8 @@ export function LiveMeeting(): JSX.Element {
               <AttendanceModal
                 open={dialog.kind === "attendance"}
                 meetingId={id}
+                members={[...names].map(([memberId, label]) => ({ id: memberId, label }))}
+                callerMembershipId={session?.membershipId ?? null}
                 onClose={() => setDialog({ kind: "none" })}
                 onRecorded={() => void load()}
               />

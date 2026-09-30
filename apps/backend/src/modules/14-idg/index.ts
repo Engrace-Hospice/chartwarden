@@ -196,6 +196,19 @@ export {
 // F-171 (#248) — the LIVE §7.1 `idg.schedule-materialise` + §4.9.1 `idg.packets-cron` (`tminus-24h-build`)
 // T-24h packet-build worker: the real "does the worker exist" answer to the m14 `handlers-unbound`
 // group's standing F-129/F-164/F-167/F-169 finding.
+// §2.7 / D8 `idg.carry-forward` (`compute-carry-forward`) — overdue action items → next meeting's agenda + count.
+export {
+  CARRY_FORWARD_LOOKAHEAD_MS,
+  type CarryForwardOrgResult,
+  type CarryForwardPlan,
+  type CarryForwardWorkerDeps,
+  type CarryTargetMeeting,
+  type OverdueActionItem,
+  carryForwardForOrg,
+  pickTargetMeetings,
+  planCarryForwards,
+  runCarryForwardCron,
+} from "./jobs/carry-forward";
 export {
   type Idg1LocationTimezonePort,
   type MaterialisePolicyRow,

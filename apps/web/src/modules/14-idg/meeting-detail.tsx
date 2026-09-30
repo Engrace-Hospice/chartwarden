@@ -581,6 +581,9 @@ export function MeetingDetail(): JSX.Element {
                   <span style={{ textTransform: "capitalize" }}>
                     {r.discipline.replace(/_/g, " ")}
                   </span>
+                  {r.disciplineAttested ? (
+                    <StatusPill label="Attested by coordinator" tone="warning" />
+                  ) : null}
                   <StatusPill
                     label={r.status}
                     tone={PRESENT_STATUSES.has(r.status) ? "success" : "neutral"}

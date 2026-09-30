@@ -55,6 +55,7 @@ import type { IdgWriteOutboxPort } from "../src/modules/14-idg/idg-route-service
 import {
   M14_OUTBOX_EVENTS,
   M14_PLATFORM_JOB_ID,
+  runCarryForwardCron,
   runPacketBuildCron,
   runScheduleMaterialiseCron,
 } from "../src/modules/14-idg/index";
@@ -74,6 +75,7 @@ const ROLES = [
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
+const ORG_C = "44444444-4444-4444-4444-444444444444"; // carry-forward tests: isolated so sibling tests' meetings/items never interfere
 const MEMBER = "33333333-3333-3333-3333-33333333aaaa"; // idg tables carry no membership FK — literal is fine
 
 function parseRedisUrl(url: string): { host: string; port: number } {
@@ -816,6 +818,246 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
 
       expect(await packetFor(meetingId, orgAPatient)).not.toBeNull();
       expect(await packetFor(meetingId, orgBPatient)).toBeNull();
+    });
+
+    // ── §2.7 / D8 / §7.6 `idg.carry-forward` (`compute-carry-forward`) ──────────────────────────────────────
+    describe("idg.carry-forward — agenda carry + once-per-(item,meeting) count + compliance alert", () => {
+      const carryDeps = (orgs: readonly string[]) => ({
+        db: handle.db,
+        outbox,
+        activeOrgs: {
+          listActiveOrgs: async () => orgs.map((organizationId) => ({ organizationId })),
+        },
+      });
+      async function seedItem(
+        orgId: string,
+        meetingId: string,
+        patientId: string,
+        title: string,
+        dueSql: string,
+        status: string,
+        count: number,
+      ): Promise<string> {
+        const { rows } = await admin.query(
+          `INSERT INTO idg_action_item (organization_id, provider_entity_id, location_id, idg_meeting_id, patient_id,
+              assigned_to_membership_id, title, due_date, status, meeting_carry_forward_count)
+           VALUES ($1,$2,$3,$4,$5,$6,$7, ${dueSql}, $8, $9) RETURNING id`,
+          [
+            orgId,
+            peOf[orgId],
+            locationOf[orgId],
+            meetingId,
+            patientId,
+            MEMBER,
+            title,
+            status,
+            count,
+          ],
+        );
+        return rows[0].id as string;
+      }
+      async function countOf(id: string): Promise<number> {
+        const { rows } = await admin.query(
+          "SELECT meeting_carry_forward_count AS n FROM idg_action_item WHERE id=$1",
+          [id],
+        );
+        return rows[0].n as number;
+      }
+      async function carryRows(meetingId: string) {
+        const { rows } = await admin.query(
+          `SELECT carried_from_action_item_id AS item, location_id, patient_id, kind, added_by_membership_id
+             FROM idg_agenda_item WHERE idg_meeting_id=$1 AND kind='carry_forward' ORDER BY carried_from_action_item_id`,
+          [meetingId],
+        );
+        return rows as {
+          item: string;
+          location_id: string;
+          patient_id: string;
+          kind: string;
+          added_by_membership_id: string;
+        }[];
+      }
+      async function carryEvents(itemId: string) {
+        const { rows } = await admin.query(
+          `SELECT payload FROM outbox_event WHERE aggregate_id=$1 AND event_type='m14.action_item.carry_forward'
+            ORDER BY created_at`,
+          [itemId],
+        );
+        return rows.map((r) => r.payload as Record<string, unknown>);
+      }
+
+      it("carries overdue open/in_progress items onto the next meeting ONCE, is idempotent under re-runs, " +
+        "concurrent ticks and packet rebuilds, and the packet shows the real count", async () => {
+        await seedOrgProviderLocation(ORG_C, "org-c");
+        const patientId = await seedPatient(ORG_C, "Carry", "Fwd");
+        const admissionId = await seedAdmission(ORG_C, patientId, "active", 60);
+        await seedLocPeriod(ORG_C, admissionId);
+        await seedSignedCarePlan(ORG_C, patientId, admissionId);
+        const oldMeeting = await seedMeeting(ORG_C, "adjourned", -24 * 14);
+        await seedMeeting(ORG_C, "cancelled", 10); // ignored: cancelled
+        const target = await seedMeeting(ORG_C, "scheduled", 20); // inside BOTH the 36h carry and 24h build windows
+        const later = await seedMeeting(ORG_C, "scheduled", 20 + 24 * 14); // beyond lookahead
+        const open = await seedItem(
+          ORG_C,
+          oldMeeting,
+          patientId,
+          "call family",
+          "now() - interval '8 days'",
+          "open",
+          0,
+        );
+        const inProg = await seedItem(
+          ORG_C,
+          oldMeeting,
+          patientId,
+          "get order",
+          "now() - interval '2 days'",
+          "in_progress",
+          1,
+        );
+        const done = await seedItem(
+          ORG_C,
+          oldMeeting,
+          patientId,
+          "done",
+          "now() - interval '8 days'",
+          "completed",
+          0,
+        );
+        const notDue = await seedItem(
+          ORG_C,
+          oldMeeting,
+          patientId,
+          "future",
+          "now() + interval '5 days'",
+          "open",
+          0,
+        );
+        const undated = await seedItem(ORG_C, oldMeeting, patientId, "undated", "NULL", "open", 0);
+
+        // Cross-tenant: an overdue item in ORG_A is untouched by a tick for ORG_C only.
+        const aBefore = (
+          await admin.query(
+            "SELECT coalesce(sum(meeting_carry_forward_count),0)::int AS n FROM idg_action_item WHERE organization_id=$1",
+            [ORG_A],
+          )
+        ).rows[0].n as number;
+
+        await runCarryForwardCron(carryDeps([ORG_C]));
+
+        const rows = await carryRows(target);
+        expect(rows.map((r) => r.item).sort()).toEqual([open, inProg].sort());
+        // three-column rule: location from the meeting; patient from the item; kind carry_forward
+        expect(
+          rows.every((r) => r.location_id === locationOf[ORG_C] && r.patient_id === patientId),
+        ).toBe(true);
+        expect(await carryRows(later)).toEqual([]);
+        expect(await countOf(open)).toBe(1);
+        expect(await countOf(inProg)).toBe(2);
+        for (const untouched of [done, notDue, undated]) expect(await countOf(untouched)).toBe(0);
+        const ev = await carryEvents(open);
+        expect(ev).toHaveLength(1);
+        expect(ev[0]).toMatchObject({
+          priorActionItemId: open,
+          carryForwardCount: 1,
+          isComplianceAlert: false,
+        });
+        expect(Object.keys(ev[0] as object).sort()).toEqual([
+          "carryForwardCount",
+          "isComplianceAlert",
+          "newAgendaItemId",
+          "priorActionItemId",
+        ]); // id-only, PHI-free
+
+        // Re-run + two CONCURRENT ticks: nothing changes.
+        await runCarryForwardCron(carryDeps([ORG_C]));
+        await Promise.all([
+          runCarryForwardCron(carryDeps([ORG_C])),
+          runCarryForwardCron(carryDeps([ORG_C])),
+        ]);
+        expect(await countOf(open)).toBe(1);
+        expect(await countOf(inProg)).toBe(2);
+        expect((await carryRows(target)).length).toBe(2);
+        expect(await carryEvents(open)).toHaveLength(1);
+
+        // The packet build (the on-demand/T-24h path) READS the count and never increments it.
+        await runPacketBuildCron({
+          db: handle.db,
+          outbox,
+          activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_C }] },
+          redis,
+          ...m6m7Ports(),
+        });
+        const snap = (await packetFor(target, patientId)).built_snapshot as {
+          carryForwardActionItems: { actionItemId: string; carryForwardCount: number }[];
+        };
+        const byId = new Map(
+          snap.carryForwardActionItems.map((c) => [c.actionItemId, c.carryForwardCount]),
+        );
+        expect(byId.get(open)).toBe(1);
+        expect(byId.get(inProg)).toBe(2);
+        await runCarryForwardCron(carryDeps([ORG_C]));
+        expect(await countOf(open)).toBe(1);
+
+        // Tenant isolation.
+        const aAfter = (
+          await admin.query(
+            "SELECT coalesce(sum(meeting_carry_forward_count),0)::int AS n FROM idg_action_item WHERE organization_id=$1",
+            [ORG_A],
+          )
+        ).rows[0].n as number;
+        expect(aAfter).toBe(aBefore);
+      });
+
+      it("fires the compliance alert when the count reaches 3 (once per carry), and the next meeting carries again", async () => {
+        const patientId = await seedPatient(ORG_C, "Third", "Carry");
+        const oldMeeting = await seedMeeting(ORG_C, "adjourned", -24 * 30);
+        const item3 = await seedItem(
+          ORG_C,
+          oldMeeting,
+          patientId,
+          "stale",
+          "now() - interval '20 days'",
+          "open",
+          2,
+        );
+        // The earlier tests' 20h meeting is already `scheduled` and will be the target; carry into it.
+        await runCarryForwardCron(carryDeps([ORG_C]));
+        expect(await countOf(item3)).toBe(3);
+        const ev = await carryEvents(item3);
+        expect(ev).toHaveLength(1);
+        expect(ev[0]).toMatchObject({ carryForwardCount: 3, isComplianceAlert: true });
+        await runCarryForwardCron(carryDeps([ORG_C])); // re-run: no second alert
+        expect(await carryEvents(item3)).toHaveLength(1);
+        expect(await countOf(item3)).toBe(3);
+
+        // That meeting is adjourned; the next upcoming one carries it a 4th time (still critical).
+        await admin.query(
+          "UPDATE idg_meeting SET status='adjourned', scheduled_start = now() - interval '1 hour' " +
+            "WHERE organization_id=$1 AND status='scheduled' AND scheduled_start < now() + interval '36 hours'",
+          [ORG_C],
+        );
+        const next = await seedMeeting(ORG_C, "packets_ready", 5);
+        await runCarryForwardCron(carryDeps([ORG_C]));
+        expect((await carryRows(next)).map((r) => r.item)).toContain(item3);
+        expect(await countOf(item3)).toBe(4);
+        expect((await carryEvents(item3)).map((e) => e.carryForwardCount)).toEqual([3, 4]);
+      });
+
+      it("the DB unique index itself refuses a duplicate (item, meeting) carry row", async () => {
+        const { rows } = await admin.query(
+          `SELECT carried_from_action_item_id AS item, idg_meeting_id AS meeting FROM idg_agenda_item
+            WHERE kind='carry_forward' AND organization_id=$1 LIMIT 1`,
+          [ORG_C],
+        );
+        await expect(
+          admin.query(
+            `INSERT INTO idg_agenda_item (organization_id, idg_meeting_id, title, kind, carried_from_action_item_id,
+                added_by_membership_id) VALUES ($1,$2,'dup','carry_forward',$3,$4)`,
+            [ORG_C, rows[0].meeting, rows[0].item, MEMBER],
+          ),
+        ).rejects.toThrow(/idg_agenda_item_carry_forward_uq/);
+      });
     });
   },
 );

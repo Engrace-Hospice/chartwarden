@@ -112,3 +112,24 @@ export function addendumWindowEnd(adjournedAt: string | null | undefined): Date 
   const t = new Date(adjournedAt).getTime();
   return Number.isNaN(t) ? null : new Date(t + ADDENDUM_WINDOW_DAYS * 86_400_000);
 }
+
+/** Display labels for the closed ATTENDANCE vocabulary the server validates (`IDG_ATTENDANCE_DISCIPLINES`). */
+const ATTENDANCE_LABEL: Record<string, string> = {
+  rn_case_manager: "RN case manager",
+  hospice_physician: "Hospice physician",
+  medical_director: "Medical director",
+  msw: "MSW",
+  chaplain: "Chaplain",
+  np: "Nurse practitioner",
+  lpn: "LPN",
+  hospice_aide: "Hospice aide",
+  volunteer: "Volunteer",
+  volunteer_coordinator: "Volunteer coordinator",
+  bereavement_coordinator: "Bereavement coordinator",
+  administrator: "Administrator (does not count toward quorum)",
+};
+
+/** Label for an attendance discipline string as the check-in offers it. */
+export function attendanceDisciplineLabel(raw: string): string {
+  return ATTENDANCE_LABEL[raw] ?? humanize(raw);
+}

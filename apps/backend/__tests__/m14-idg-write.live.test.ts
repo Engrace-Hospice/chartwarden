@@ -20,6 +20,7 @@ import { createDbClient } from "@wardenx/db";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
+import { membershipRoleKeysForOrg } from "../src/modules/03-authorization/membership-role-keys-for-org";
 import {
   type IdgWriteOutboxPort,
   createDbIdgBackend,
@@ -1150,6 +1151,12 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
         bodyWithheld: true,
       },
     ]);
+    // The render CONTEXT the M22 PDF needs rides the payload (dates, names, status) — never stored.
+    expect(rp.minutesStatus).toBe("final");
+    expect(rp.amendmentCount).toBe(0);
+    expect(rp.meeting).toMatchObject({ meetingId: m });
+    expect(rp.meeting.actualEnd).toEqual(expect.any(String));
+    expect(rp.memberNames[rn.membershipId]).toBe(`Name-${rn.membershipId.slice(0, 8)}`);
     expect(JSON.stringify(aev[0].payload)).not.toContain("ADDENDUM-");
     // audit: the INSERT is audited, and neither body_text nor reason lands in audit_event
     const { rows: aaud } = await admin.query(
@@ -1310,5 +1317,92 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
       (await svc.getMinutes(ORG_A, newer).catch(() => null))?.addendumState?.supersededPatientIds ??
         [],
     ).toEqual([]);
+  });
+  it("attendance trust (0286): the recorder + attestation flag persist; a legacy write defaults to null/false and still counts toward quorum", async () => {
+    const m = await seedMeeting(ORG_A, "live");
+    const coordinator = await seedMembership(ORG_A, "active");
+    const chaplain = await seedMembership(ORG_A, "active");
+    const attested = await svc.recordAttendance(ORG_A, coordinator, m, {
+      membershipId: chaplain,
+      discipline: "chaplain",
+      recordedByMembershipId: coordinator,
+      disciplineAttested: true,
+    });
+    expect(attested).toMatchObject({
+      recordedByMembershipId: coordinator,
+      disciplineAttested: true,
+    });
+    const legacy = await svc.recordAttendance(ORG_A, coordinator, m, {
+      membershipId: coordinator,
+      discipline: "msw",
+    });
+    expect(legacy).toMatchObject({ recordedByMembershipId: null, disciplineAttested: false });
+    const { rows } = await admin.query(
+      "SELECT discipline, recorded_by_membership_id, discipline_attested FROM idg_attendance WHERE idg_meeting_id=$1 ORDER BY discipline",
+      [m],
+    );
+    expect(rows).toEqual([
+      {
+        discipline: "chaplain",
+        recorded_by_membership_id: coordinator,
+        discipline_attested: true,
+      },
+      { discipline: "msw", recorded_by_membership_id: null, discipline_attested: false },
+    ]);
+    // The roster read surfaces the flag; the quorum present-set is unchanged (attested + legacy rows both count).
+    const roster = await svc.listAttendance(ORG_A, m);
+    expect(roster.map((r) => [r.discipline, r.disciplineAttested])).toEqual([
+      ["chaplain", true],
+      ["msw", false],
+    ]);
+    expect((await svc.loadPresentDisciplines(ORG_A, m))?.slice().sort()).toEqual([
+      "chaplain",
+      "msw",
+    ]);
+  });
+
+  it("membershipRoleKeysForOrg (M3 seam, as wardenx_app): live enabled+unexpired role keys only; unknown / revoked / cross-tenant are ABSENT", async () => {
+    const mk = async (org: string, key: string, enabled = true): Promise<string> =>
+      (
+        await admin.query(
+          `INSERT INTO role (organization_id, key, name, category, scope_level, enabled)
+           VALUES ($1,$2,$2,'clinical_staff','organization',$3) RETURNING id`,
+          [org, key, enabled],
+        )
+      ).rows[0].id as string;
+    const grant = (org: string, membership: string, role: string, expires: string | null) =>
+      admin.query(
+        `INSERT INTO membership_role (organization_id, membership_id, role_id, expires_at) VALUES ($1,$2,$3,$4)`,
+        [org, membership, role, expires],
+      );
+    const rn = await mk(ORG_A, "rn_seam");
+    const chaplain = await mk(ORG_A, "chaplain_seam");
+    const disabled = await mk(ORG_A, "msw_seam", false);
+    const expired = await mk(ORG_A, "np_seam");
+    const otherOrgRole = await mk(ORG_B, "rn_seam");
+    const staff = await seedMembership(ORG_A, "active");
+    const bare = await seedMembership(ORG_A, "active");
+    const revoked = await seedMembership(ORG_A, "revoked");
+    const foreign = await seedMembership(ORG_B, "active");
+    await grant(ORG_A, staff, rn, null);
+    await grant(ORG_A, staff, chaplain, "2999-01-01T00:00:00Z");
+    await grant(ORG_A, staff, disabled, null);
+    await grant(ORG_A, staff, expired, "2000-01-01T00:00:00Z");
+    await grant(ORG_A, revoked, rn, null);
+    await grant(ORG_B, foreign, otherOrgRole, null);
+
+    const got = await membershipRoleKeysForOrg(handle.db, ORG_A, [
+      staff,
+      bare,
+      revoked,
+      foreign,
+      randomUUID(),
+    ]);
+    expect(got.get(staff)).toEqual(["chaplain_seam", "rn_seam"]);
+    expect(got.get(bare)).toEqual([]);
+    expect(got.has(revoked)).toBe(false);
+    expect(got.has(foreign)).toBe(false);
+    expect(got.size).toBe(2);
+    expect((await membershipRoleKeysForOrg(handle.db, ORG_A, [])).size).toBe(0);
   });
 });

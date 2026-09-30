@@ -33,6 +33,9 @@ let meetingStatus = "live";
 let roster: Record<string, unknown>[] = [];
 let decisions: Record<string, unknown>[] = [];
 let minutesStatus = "in_progress";
+/** The server's attendance-eligibility answer (who the caller is + what the subject's roles confer). */
+let eligibility: Record<string, unknown> = {};
+const eligibilityQueries: string[] = [];
 
 const packet = { packetId: PACKET, meetingId: MEETING, patientId: PATIENT, frozenAt: null };
 const agendaItem = {
@@ -56,6 +59,7 @@ function requestOf(input: RequestInfo | URL, init?: RequestInit): { url: string;
 
 function bodyFor(method: string, path: string): unknown {
   if (method === "GET") {
+    if (path.endsWith("/attendance-eligibility")) return eligibility;
     if (path.endsWith("/attendance")) return roster;
     if (path.endsWith("/agenda")) return [agendaItem];
     if (path.endsWith("/decisions")) return decisions;
@@ -143,6 +147,17 @@ async function stubFetch(input: RequestInfo | URL, init?: RequestInit): Promise<
   const { url, method } = requestOf(input, init);
   const path = new URL(url, "http://localhost").pathname;
   calls.push(`${method} ${path}`);
+  if (path.endsWith("/attendance-eligibility")) {
+    eligibilityQueries.push(
+      new URL(url, "http://localhost").searchParams.get("membershipId") ?? "",
+    );
+    const asked = new URL(url, "http://localhost").searchParams.get("membershipId");
+    if (asked && eligibility.isCoordinator === true)
+      return new Response(
+        JSON.stringify({ ...eligibility, membershipId: asked, heldDisciplines: ["msw"] }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+  }
   if (method !== "GET") {
     const req = typeof input === "object" && "clone" in input ? (input as Request) : null;
     const raw = req ? await req.clone().text() : typeof init?.body === "string" ? init.body : "";
@@ -207,6 +222,13 @@ beforeEach(() => {
   minutesStatus = "in_progress";
   roster = [];
   decisions = [];
+  eligibilityQueries.length = 0;
+  eligibility = {
+    membershipId: "membership-1",
+    isCoordinator: true,
+    heldDisciplines: ["rn_case_manager"],
+    attestableDisciplines: [],
+  };
 });
 afterEach(() => {
   writeFailure = null;
@@ -220,13 +242,49 @@ describe("#91 — the meeting can be conducted", () => {
     fireEvent.change(await waitFor(() => screen.getByLabelText(/Membership id/i)), {
       target: { value: "m-1" },
     });
+    // The discipline is whatever the SERVER says the picked member's roles confer — the modal asked about m-1.
+    await waitFor(() => expect(eligibilityQueries).toContain("m-1"));
+    await waitFor(() =>
+      expect(
+        (screen.getAllByRole("button", { name: "Check in" })[1] as HTMLButtonElement).disabled,
+      ).toBe(false),
+    );
     fireEvent.click(screen.getAllByRole("button", { name: "Check in" })[1] as HTMLElement);
     await waitFor(() =>
       expect(writes()).toContain(`POST /api/v1/idg/meetings/${MEETING}/attendance`),
     );
     expect(bodies[0]?.membershipId).toBe("m-1");
-    expect(bodies[0]?.discipline).toBe("rn_case_manager");
+    expect(bodies[0]?.discipline).toBe("msw");
     expect(bodies[0]?.status).toBe("present");
+    // No attestation unless the coordinator ticked it.
+    expect(bodies[0]?.coordinatorAttested).toBeUndefined();
+  });
+
+  it("the roster flags a coordinator-attested discipline with an 'Attested by coordinator' pill (and only that row)", async () => {
+    roster = [
+      {
+        id: ATT_ROW,
+        meetingId: MEETING,
+        membershipId: "m-1",
+        discipline: "chaplain",
+        status: "present",
+        checkedInAt: "2026-08-27T09:05:00.000Z",
+        disciplineAttested: true,
+        recordedByMembershipId: "membership-1",
+      },
+      {
+        id: "dddddddd-4444-4444-8444-dddddddddd99",
+        meetingId: MEETING,
+        membershipId: "m-2",
+        discipline: "msw",
+        status: "present",
+        checkedInAt: "2026-08-27T09:06:00.000Z",
+        disciplineAttested: false,
+        recordedByMembershipId: null,
+      },
+    ];
+    mountLive();
+    await waitFor(() => expect(screen.getAllByText("Attested by coordinator")).toHaveLength(1));
   });
 
   it("Add agenda item POSTs the kind and the patient it is about", async () => {

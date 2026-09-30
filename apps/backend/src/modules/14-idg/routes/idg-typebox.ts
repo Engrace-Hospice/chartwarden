@@ -154,6 +154,12 @@ export const RecordAttendanceRequest = Type.Object({
   discipline: Type.String({ minLength: 1, maxLength: 64 }),
   status: Type.Optional(ATTENDANCE_STATUS),
   checkedInAt: Type.Optional(Type.String({ format: "date-time" })),
+  /**
+   * Coordinator-only. `true` = "I attest this member attends as this discipline although their roles do not confer it";
+   * the row is stored flagged (`disciplineAttested`). Without it, a discipline the member does not hold is 422
+   * DISCIPLINE_NOT_HELD. A non-coordinator sending it is 403 ATTESTATION_REQUIRES_COORDINATOR.
+   */
+  coordinatorAttested: Type.Optional(Type.Boolean()),
 });
 export const UpdateAttendanceRequest = Type.Object({ status: ATTENDANCE_STATUS });
 
@@ -542,6 +548,27 @@ export const AttendanceViewSchema = Type.Object({
   discipline: Type.String(),
   status: ATTENDANCE_STATUS,
   checkedInAt: Type.String({ format: "date-time" }),
+  /** True when a coordinator ATTESTED a discipline the member's roles do not confer (flagged in the roster UI). */
+  disciplineAttested: Type.Boolean(),
+  /** Who wrote the row; null for a legacy (pre-0286) row. */
+  recordedByMembershipId: Type.Union([Type.String({ format: "uuid" }), Type.Null()]),
+});
+
+/** GET /idg/meetings/:id/attendance-eligibility query: a coordinator may ask about another member. */
+export const AttendanceEligibilityQuerySchema = Type.Object({
+  membershipId: Type.Optional(Type.String({ format: "uuid" })),
+});
+
+/** What the caller may attest at the check-in (GET /idg/meetings/:id/attendance-eligibility). */
+export const AttendanceEligibilitySchema = Type.Object({
+  /** The membership the answer is about (the caller's own unless a coordinator passed `?membershipId=`). */
+  membershipId: Type.String({ format: "uuid" }),
+  /** The caller holds `idg.coordinate`: may record others and attest overrides. */
+  isCoordinator: Type.Boolean(),
+  /** The attendance disciplines that membership's roles confer (the validated choices). */
+  heldDisciplines: Type.Array(Type.String()),
+  /** Coordinator-only: the full closed vocabulary a coordinator may ATTEST for another member (empty otherwise). */
+  attestableDisciplines: Type.Array(Type.String()),
 });
 
 /** The meeting's attendance roster (GET /idg/meetings/:id/attendance). */

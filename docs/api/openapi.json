@@ -96248,7 +96248,9 @@
                     "membershipId",
                     "discipline",
                     "status",
-                    "checkedInAt"
+                    "checkedInAt",
+                    "disciplineAttested",
+                    "recordedByMembershipId"
                   ],
                   "properties": {
                     "id": {
@@ -96293,6 +96295,20 @@
                     "checkedInAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "disciplineAttested": {
+                      "type": "boolean"
+                    },
+                    "recordedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -98553,7 +98569,9 @@
                       "membershipId",
                       "discipline",
                       "status",
-                      "checkedInAt"
+                      "checkedInAt",
+                      "disciplineAttested",
+                      "recordedByMembershipId"
                     ],
                     "properties": {
                       "id": {
@@ -98598,6 +98616,20 @@
                       "checkedInAt": {
                         "format": "date-time",
                         "type": "string"
+                      },
+                      "disciplineAttested": {
+                        "type": "boolean"
+                      },
+                      "recordedByMembershipId": {
+                        "anyOf": [
+                          {
+                            "format": "uuid",
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
                       }
                     }
                   }
@@ -98618,7 +98650,7 @@
         "tags": [
           "14-idg"
         ],
-        "summary": "Self check-in attendance for a meeting",
+        "summary": "Record attendance. A non-coordinator may record ONLY themself (403 ATTENDANCE_SELF_ONLY); the discipline must be in the closed vocabulary (422 UNKNOWN_DISCIPLINE) and conferred by the member's authoritative roles (422 DISCIPLINE_NOT_HELD). A coordinator (idg.coordinate) may record others and, with `coordinatorAttested: true`, an unheld discipline as a FLAGGED override (`disciplineAttested`); attesting for themself => 403 ATTESTATION_SELF_FORBIDDEN, a non-coordinator sending it => 403 ATTESTATION_REQUIRES_COORDINATOR; unknown member => 422 ATTENDANCE_MEMBERSHIP_NOT_FOUND; roles unresolvable => 503 ATTENDANCE_AUTHORITY_UNAVAILABLE",
         "parameters": [
           {
             "name": "id",
@@ -98642,7 +98674,9 @@
                     "membershipId",
                     "discipline",
                     "status",
-                    "checkedInAt"
+                    "checkedInAt",
+                    "disciplineAttested",
+                    "recordedByMembershipId"
                   ],
                   "properties": {
                     "id": {
@@ -98687,6 +98721,20 @@
                     "checkedInAt": {
                       "format": "date-time",
                       "type": "string"
+                    },
+                    "disciplineAttested": {
+                      "type": "boolean"
+                    },
+                    "recordedByMembershipId": {
+                      "anyOf": [
+                        {
+                          "format": "uuid",
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
                     }
                   }
                 }
@@ -98747,10 +98795,86 @@
                   "checkedInAt": {
                     "format": "date-time",
                     "type": "string"
+                  },
+                  "coordinatorAttested": {
+                    "type": "boolean"
                   }
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/v1/idg/meetings/{id}/attendance-eligibility": {
+      "get": {
+        "operationId": "getApiV1IdgMeetingsByIdAttendanceeligibility",
+        "tags": [
+          "14-idg"
+        ],
+        "summary": "What the caller may attest at the check-in: the attendance disciplines their AUTHORITATIVE roles confer (`heldDisciplines`). A coordinator may pass `?membershipId=` for another member and also receives the closed vocabulary they may ATTEST (`attestableDisciplines`); a non-coordinator naming someone else => 403 ATTENDANCE_SELF_ONLY; unknown member => 422 ATTENDANCE_MEMBERSHIP_NOT_FOUND",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "membershipId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "membershipId",
+                    "isCoordinator",
+                    "heldDisciplines",
+                    "attestableDisciplines"
+                  ],
+                  "properties": {
+                    "membershipId": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "isCoordinator": {
+                      "type": "boolean"
+                    },
+                    "heldDisciplines": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "attestableDisciplines": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "4XX": {
+            "$ref": "#/components/responses/Error"
+          },
+          "5XX": {
+            "$ref": "#/components/responses/Error"
           }
         }
       }

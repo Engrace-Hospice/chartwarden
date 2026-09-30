@@ -60,6 +60,10 @@ export interface AttendanceView {
   readonly discipline: string;
   readonly status: IdgAttendanceStatus;
   readonly checkedInAt: string;
+  /** True when a coordinator ATTESTED a discipline the member's roles do not confer (0286). Legacy rows: false. */
+  readonly disciplineAttested: boolean;
+  /** Who wrote the row; null for a legacy (pre-0286) row. */
+  readonly recordedByMembershipId: string | null;
 }
 export interface AgendaItemView {
   readonly id: string;
@@ -556,6 +560,10 @@ export interface RecordAttendanceArgs {
   readonly discipline: string;
   readonly status?: IdgAttendanceStatus;
   readonly checkedInAt?: string;
+  /** The acting membership (the route's caller). Absent (service-level callers/tests) => stored null, like a legacy row. */
+  readonly recordedByMembershipId?: string;
+  /** The route's verdict ({@link planAttendanceRecord}): a coordinator's flagged override of an unheld discipline. */
+  readonly disciplineAttested?: boolean;
 }
 export interface AddAgendaItemArgs {
   readonly kind: IdgAgendaItemKind;
@@ -818,6 +826,8 @@ interface AttendanceRow {
   discipline: string;
   status: IdgAttendanceStatus;
   checkedInAt: string;
+  disciplineAttested: boolean;
+  recordedByMembershipId: string | null;
 }
 interface AgendaRow {
   id: string;
@@ -1247,6 +1257,8 @@ export function createInMemoryIdgBackend(
         discipline: args.discipline,
         status: args.status ?? "present",
         checkedInAt: args.checkedInAt ?? now(),
+        disciplineAttested: args.disciplineAttested ?? false,
+        recordedByMembershipId: args.recordedByMembershipId ?? null,
       };
       attendance.set(id, row);
       emit("m14.attendance.checked_in", {

@@ -17,11 +17,23 @@ import {
   requirePermission,
   resolveActorPermissions,
 } from "@wardenx/auth";
+import { IDG_ATTENDANCE_DISCIPLINES, attendableDisciplinesForRoleKeys } from "@wardenx/idg";
 import type { IdgActionItemStatus, IdgAttendanceStatus } from "@wardenx/types";
-import { ForbiddenError, NotFoundError, UnauthorizedError, ValidationError } from "@wardenx/types";
+import {
+  ForbiddenError,
+  NotFoundError,
+  UnauthorizedError,
+  ValidationError,
+  WardenXError,
+} from "@wardenx/types";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { requestStepUpFresh } from "../../../bootstrap/index";
 import { REVIEW_FLOOR_OVERRIDE_ATTRIBUTE } from "../abac-predicates";
+import {
+  type AttendanceTargetFacts,
+  attendanceSelfOnlyError,
+  planAttendanceRecord,
+} from "./attendance-authority";
 import { ifMatchVersionOf, requireIdempotencyKey, requireIfMatch } from "./concurrency";
 import {
   type IdgRecertWindowFact,
@@ -34,6 +46,7 @@ import {
   ActionItemListQuerySchema,
   AddAgendaItemRequest,
   AdjournMeetingRequest,
+  AttendanceEligibilityQuerySchema,
   CancelMeetingRequest,
   CreateActionItemRequest,
   CreateDisciplineNoteRequest,
@@ -300,7 +313,40 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
     },
   );
 
-  // 10 — self check-in attendance.
+  // ATTENDANCE TRUST (0286): what a member's AUTHORITATIVE roles let them attend as. The caller's own roles come from
+  // the session context (the same authority every ABAC predicate reads); another member's come from M3's role-key seam,
+  // called BEFORE any transaction opens (the seam takes its own connection). `unavailable` fails CLOSED.
+  const membershipRoles = deps.enrichment?.membershipRoles;
+  async function attendanceTargetFacts(
+    request: FastifyRequest,
+    organizationId: string,
+    actorMembershipId: string,
+    targetMembershipId: string,
+  ): Promise<AttendanceTargetFacts> {
+    if (targetMembershipId === actorMembershipId) {
+      return {
+        kind: "held",
+        disciplines: attendableDisciplinesForRoleKeys(request.context?.roles ?? []),
+      };
+    }
+    if (!membershipRoles) return { kind: "unavailable" };
+    try {
+      const byId = await membershipRoles.roleKeysForMemberships(organizationId, [
+        targetMembershipId,
+      ]);
+      const keys = byId.get(targetMembershipId);
+      return keys === undefined
+        ? { kind: "not_found" }
+        : { kind: "held", disciplines: attendableDisciplinesForRoleKeys(keys) };
+    } catch (err) {
+      request.log.warn({ err }, "idg: member role lookup failed; refusing the attendance write");
+      return { kind: "unavailable" };
+    }
+  }
+
+  // 10 — attendance check-in. A non-coordinator records ONLY themself (403 ATTENDANCE_SELF_ONLY); the discipline is
+  // validated against the target's authoritative roles (422 DISCIPLINE_NOT_HELD); a coordinator may record others and,
+  // with `coordinatorAttested`, an unheld discipline as a flagged override (see `planAttendanceRecord`).
   app.post(
     "/api/v1/idg/meetings/:id/attendance",
     { preHandler: [ATTEND, SCOPE("idg.attend")] },
@@ -308,13 +354,73 @@ export function registerIdgRoutes(app: FastifyInstance, deps: IdgRouteDeps): voi
       const { organizationId, userId } = actorOf(request);
       const { id } = parse(IdParamsSchema, request.params);
       const b = parse(RecordAttendanceRequest, request.body);
+      const actorIsCoordinator = (await resolveActorPermissions(request.context!)).has(
+        "idg.coordinate",
+      );
+      // A non-coordinator recording someone else is refused BEFORE any role lookup (no oracle on other members' roles).
+      if (!actorIsCoordinator && b.membershipId !== userId) throw attendanceSelfOnlyError();
+      const plan = planAttendanceRecord({
+        actorMembershipId: userId,
+        actorIsCoordinator,
+        targetMembershipId: b.membershipId,
+        discipline: b.discipline,
+        coordinatorAttested: b.coordinatorAttested === true,
+        target: await attendanceTargetFacts(request, organizationId, userId, b.membershipId),
+      });
       const res = await service.recordAttendance(organizationId, userId, id, {
         membershipId: b.membershipId,
         discipline: b.discipline,
         status: b.status as IdgAttendanceStatus | undefined,
         checkedInAt: b.checkedInAt,
+        recordedByMembershipId: userId,
+        disciplineAttested: plan.disciplineAttested,
       });
       return reply.code(201).send(res);
+    },
+  );
+
+  // 10b — what may the caller attest at the check-in? The caller's own held disciplines (from the session's roles), or,
+  // for a coordinator passing `?membershipId=`, another member's (from the M3 seam) plus the vocabulary they may attest.
+  app.get(
+    "/api/v1/idg/meetings/:id/attendance-eligibility",
+    {
+      preHandler: [ATTEND, SCOPE("idg.attend")],
+      config: {
+        auditRead: {
+          none: "staff role-derived attendance eligibility (discipline vocabulary), not patient data",
+        },
+      },
+    },
+    async (request) => {
+      const { organizationId, userId } = actorOf(request);
+      parse(IdParamsSchema, request.params);
+      const q = parse(AttendanceEligibilityQuerySchema, request.query);
+      const isCoordinator = (await resolveActorPermissions(request.context!)).has("idg.coordinate");
+      const subject = q.membershipId ?? userId;
+      if (subject !== userId && !isCoordinator) throw attendanceSelfOnlyError();
+      const facts = await attendanceTargetFacts(request, organizationId, userId, subject);
+      if (facts.kind === "not_found") {
+        throw new WardenXError(
+          "ATTENDANCE_MEMBERSHIP_NOT_FOUND",
+          "that membership is not an active member of this organization",
+          422,
+        );
+      }
+      if (facts.kind === "unavailable") {
+        throw new WardenXError(
+          "ATTENDANCE_AUTHORITY_UNAVAILABLE",
+          "could not verify the attendee's disciplines; please retry",
+          503,
+        );
+      }
+      return {
+        membershipId: subject,
+        isCoordinator,
+        heldDisciplines: [...facts.disciplines],
+        // A coordinator may attest anything in the vocabulary for ANOTHER member, never for themself.
+        attestableDisciplines:
+          isCoordinator && subject !== userId ? [...IDG_ATTENDANCE_DISCIPLINES] : [],
+      };
     },
   );
 

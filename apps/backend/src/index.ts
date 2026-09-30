@@ -161,6 +161,7 @@ import {
 import {
   createMembershipsHoldingPermissionReader,
   createDbProposedRoleAttacher,
+  membershipRoleKeysForOrg,
   mountAuthorizationRoutes,
   registerAuthorizationAbacPredicates,
 } from "./modules/03-authorization/index";
@@ -3334,6 +3335,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             membershipDisplay: {
               displayForMemberships: (organizationId, membershipIds) =>
                 membershipDisplayForOrg(dbHandle.db, organizationId, membershipIds),
+            },
+            // M3's authorization-owned batched role-key read (keys only) — the authoritative basis M14 validates an
+            // attendance row's discipline against when a coordinator records SOMEONE ELSE (attendance trust, 0286).
+            membershipRoles: {
+              roleKeysForMemberships: (organizationId, membershipIds) =>
+                membershipRoleKeysForOrg(dbHandle.db, organizationId, membershipIds),
             },
           }); // M14 — reads + the write lifecycle over Drizzle+RLS, m14.*/idg.decision_recorded transactional outbox
           mountSchedulingRoutes(app, dbHandle.db, m17OutboxPublisher); // M17 — reads + the write lifecycle over Drizzle+RLS, m17.* transactional outbox

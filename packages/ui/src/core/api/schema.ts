@@ -9093,8 +9093,25 @@ export interface paths {
         /** The meeting's attendance roster in check-in order — the §2.7 participation the quorate_decision predicate evaluates (F-062: the three attendance writes shipped with no reader) */
         get: operations["getApiV1IdgMeetingsByIdAttendance"];
         put?: never;
-        /** Self check-in attendance for a meeting */
+        /** Record attendance. A non-coordinator may record ONLY themself (403 ATTENDANCE_SELF_ONLY); the discipline must be in the closed vocabulary (422 UNKNOWN_DISCIPLINE) and conferred by the member's authoritative roles (422 DISCIPLINE_NOT_HELD). A coordinator (idg.coordinate) may record others and, with `coordinatorAttested: true`, an unheld discipline as a FLAGGED override (`disciplineAttested`); attesting for themself => 403 ATTESTATION_SELF_FORBIDDEN, a non-coordinator sending it => 403 ATTESTATION_REQUIRES_COORDINATOR; unknown member => 422 ATTENDANCE_MEMBERSHIP_NOT_FOUND; roles unresolvable => 503 ATTENDANCE_AUTHORITY_UNAVAILABLE */
         post: operations["postApiV1IdgMeetingsByIdAttendance"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/idg/meetings/{id}/attendance-eligibility": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** What the caller may attest at the check-in: the attendance disciplines their AUTHORITATIVE roles confer (`heldDisciplines`). A coordinator may pass `?membershipId=` for another member and also receives the closed vocabulary they may ATTEST (`attestableDisciplines`); a non-coordinator naming someone else => 403 ATTENDANCE_SELF_ONLY; unknown member => 422 ATTENDANCE_MEMBERSHIP_NOT_FOUND */
+        get: operations["getApiV1IdgMeetingsByIdAttendanceeligibility"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -44422,6 +44439,8 @@ export interface operations {
                         status: "present" | "tardy" | "partial" | "absent" | "excused";
                         /** Format: date-time */
                         checkedInAt: string;
+                        disciplineAttested: boolean;
+                        recordedByMembershipId: string | null;
                     };
                 };
             };
@@ -44982,6 +45001,8 @@ export interface operations {
                         status: "present" | "tardy" | "partial" | "absent" | "excused";
                         /** Format: date-time */
                         checkedInAt: string;
+                        disciplineAttested: boolean;
+                        recordedByMembershipId: string | null;
                     }[];
                 };
             };
@@ -45007,6 +45028,7 @@ export interface operations {
                     status?: "present" | "tardy" | "partial" | "absent" | "excused";
                     /** Format: date-time */
                     checkedInAt?: string;
+                    coordinatorAttested?: boolean;
                 };
             };
         };
@@ -45028,6 +45050,40 @@ export interface operations {
                         status: "present" | "tardy" | "partial" | "absent" | "excused";
                         /** Format: date-time */
                         checkedInAt: string;
+                        disciplineAttested: boolean;
+                        recordedByMembershipId: string | null;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1IdgMeetingsByIdAttendanceeligibility: {
+        parameters: {
+            query?: {
+                membershipId?: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        membershipId: string;
+                        isCoordinator: boolean;
+                        heldDisciplines: string[];
+                        attestableDisciplines: string[];
                     };
                 };
             };

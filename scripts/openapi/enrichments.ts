@@ -1417,6 +1417,8 @@ import {
   AgendaItemViewSchema as M14AgendaItemViewSchema,
   AgendaListResponseSchema as M14AgendaListResponseSchema,
   AmendmentResponseSchema as M14AmendmentResponseSchema,
+  AttendanceEligibilityQuerySchema as M14AttendanceEligibilityQuerySchema,
+  AttendanceEligibilitySchema as M14AttendanceEligibilitySchema,
   AttendanceListResponseSchema as M14AttendanceListResponseSchema,
   AttendanceViewSchema as M14AttendanceViewSchema,
   CancelMeetingRequest as M14CancelMeetingRequest,
@@ -4788,8 +4790,15 @@ Object.assign(ROUTE_ENRICHMENTS, {
     summary: "Adjourn the meeting (commit point; fresh step-up, D13)",
     body: M14AdjournMeetingRequest,
   },
+  "GET /api/v1/idg/meetings/:id/attendance-eligibility": {
+    summary:
+      "What the caller may attest at the check-in: the attendance disciplines their AUTHORITATIVE roles confer (`heldDisciplines`). A coordinator may pass `?membershipId=` for another member and also receives the closed vocabulary they may ATTEST (`attestableDisciplines`); a non-coordinator naming someone else => 403 ATTENDANCE_SELF_ONLY; unknown member => 422 ATTENDANCE_MEMBERSHIP_NOT_FOUND",
+    query: M14AttendanceEligibilityQuerySchema,
+    response: M14AttendanceEligibilitySchema,
+  },
   "POST /api/v1/idg/meetings/:id/attendance": {
-    summary: "Self check-in attendance for a meeting",
+    summary:
+      "Record attendance. A non-coordinator may record ONLY themself (403 ATTENDANCE_SELF_ONLY); the discipline must be in the closed vocabulary (422 UNKNOWN_DISCIPLINE) and conferred by the member's authoritative roles (422 DISCIPLINE_NOT_HELD). A coordinator (idg.coordinate) may record others and, with `coordinatorAttested: true`, an unheld discipline as a FLAGGED override (`disciplineAttested`); attesting for themself => 403 ATTESTATION_SELF_FORBIDDEN, a non-coordinator sending it => 403 ATTESTATION_REQUIRES_COORDINATOR; unknown member => 422 ATTENDANCE_MEMBERSHIP_NOT_FOUND; roles unresolvable => 503 ATTENDANCE_AUTHORITY_UNAVAILABLE",
     body: M14RecordAttendanceRequest,
     response: M14AttendanceViewSchema,
   },
