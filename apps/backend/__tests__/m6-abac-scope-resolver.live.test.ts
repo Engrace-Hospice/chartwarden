@@ -28,7 +28,7 @@ const CTI_CLINICAL = {
   prognosisStatement:
     "Life expectancy of 6 months or less if the terminal illness runs its normal course.",
   narrative:
-    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care.",
+    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care. The prognosis of six months or less is supported by serial decline in functional status, nutritional intake and symptom burden.",
   clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
 };
 

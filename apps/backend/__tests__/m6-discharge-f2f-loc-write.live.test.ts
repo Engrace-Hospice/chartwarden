@@ -27,7 +27,7 @@ const CTI_CLINICAL = {
   prognosisStatement:
     "Life expectancy of 6 months or less if the terminal illness runs its normal course.",
   narrative:
-    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care.",
+    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care. The prognosis of six months or less is supported by serial decline in functional status, nutritional intake and symptom burden.",
   clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
 };
 
@@ -638,18 +638,39 @@ describe.skipIf(!DB_URL)(
 
       await admin.query(
         `INSERT INTO face_to_face_encounter (organization_id, election_period_id, performed_by_user_id,
-                                             performer_role, encounter_date, status,
+                                             performer_role, encounter_date, within_window, status,
                                              attestation_signed_at, attestation_narrative)
-         VALUES ($1,$2,$3,'hospice_md', now()::date, 'attested', now(), $4)`,
+         VALUES ($1,$2,$3,'hospice_md', now()::date, true, 'attested', now(), $4)`,
         [ORG_A, seqs.rows[1].id, MD, "x".repeat(120)],
       );
-      // Now the same call signs AND activates the period.
-      const signed = await svc.signCtiHospiceMd(
+      // F-217 — the F2F is now in place, but the skeleton CTI `transferIn` drafts carries NO narrative
+      // (and no route edits one), so the adequacy gate refuses it: 42 CFR 418.22(b)(3) requires the
+      // narrative on every recertification. The refusal is typed and rolls the signature back.
+      await expect(
+        svc.signCtiHospiceMd(ORG_A, ctis.rows[0].id, Number(ctis.rows[0].version), USER),
+      ).rejects.toMatchObject({
+        code: "ELECTION_PERIOD_ADEQUACY_FAILED",
+        statusCode: 409,
+        details: [{ code: "CTI_NARRATIVE_MISSING" }],
+      });
+      // Correction path: void the skeleton and draft the real CTI (with its narrative) for the period.
+      const skeleton = await admin.query(
+        "SELECT version FROM certification_of_terminal_illness WHERE id=$1",
+        [ctis.rows[0].id],
+      );
+      await svc.voidCti(ORG_A, ctis.rows[0].id, "redraft with narrative", Number(skeleton.rows[0].version));
+      const redraft = await svc.draftCti(
         ORG_A,
-        ctis.rows[0].id,
-        Number(ctis.rows[0].version),
+        {
+          electionPeriodId: seqs.rows[1].id,
+          hospiceMedicalDirectorId: MD,
+          ...CTI_CLINICAL,
+          isRecert: true,
+        },
         USER,
       );
+      // Now the same call signs AND activates the period.
+      const signed = await svc.signCtiHospiceMd(ORG_A, redraft.id, redraft.version, USER);
       expect(signed.state).toBe("signed");
       const nextStatus = await admin.query("SELECT status FROM election_period WHERE id=$1", [
         seqs.rows[1].id,

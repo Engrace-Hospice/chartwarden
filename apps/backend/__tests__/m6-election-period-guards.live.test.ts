@@ -36,7 +36,7 @@ const CTI_CLINICAL = {
   prognosisStatement:
     "Life expectancy of 6 months or less if the terminal illness runs its normal course.",
   narrative:
-    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care.",
+    "Metastatic non-small-cell lung cancer with progressive functional decline despite treatment; patient has elected comfort-focused care. The prognosis of six months or less is supported by serial decline in functional status, nutritional intake and symptom burden.",
   clinicalFindings: { ppsScore: 40, weightLossPercent6mo: 12, dyspneaAtRest: true },
 };
 
@@ -154,9 +154,9 @@ describe.skipIf(!DB_URL)("F-062 — the election-period guards, LIVE Postgres", 
   async function attestF2f(periodId: string) {
     await admin.query(
       `INSERT INTO face_to_face_encounter (organization_id, election_period_id, performed_by_user_id,
-                                           performer_role, encounter_date, status, attestation_signed_at,
+                                           performer_role, encounter_date, within_window, status, attestation_signed_at,
                                            attestation_narrative)
-       VALUES ($1,$2,$3,'hospice_md', now()::date, 'attested', now(), $4)`,
+       VALUES ($1,$2,$3,'hospice_md', now()::date, true, 'attested', now(), $4)`,
       [ORG_A, periodId, MD, "x".repeat(120)],
     );
   }

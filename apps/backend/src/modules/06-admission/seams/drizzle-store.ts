@@ -34,6 +34,7 @@ import type {
   LevelOfCarePeriodSummary,
 } from "@wardenx/types";
 import { and, asc, desc, eq, inArray, isNotNull, ne } from "drizzle-orm";
+import { pickCertification, pickFaceToFace } from "../certification/adequacy";
 import type { AdmissionReaderStore, ElectionPeriodRecord } from "./store";
 
 const ADM = schema.admissions;
@@ -431,8 +432,10 @@ export async function claimAssemblyRangeContextForOrg(
           .orderBy(asc(CTI.createdAt));
         for (const periodId of overlappingIds) {
           const rows = ctiRows.filter((r) => r.electionPeriodId === periodId);
-          const pick =
-            rows.find((r) => r.status !== "voided" && r.status !== "superseded") ?? rows.at(-1);
+          // F-217 — the SAME row-selection the adequacy predicate uses (`pickCertification`), so the
+          // claim-assembly facts M23 rules read and the activation gate's verdict cannot pick different
+          // CTIs for one period.
+          const pick = pickCertification(rows);
           if (!pick) continue;
           certifications.push({
             electionPeriodSequence: bySequence.get(periodId)!,
@@ -455,7 +458,7 @@ export async function claimAssemblyRangeContextForOrg(
           .orderBy(asc(F2F.createdAt));
         for (const periodId of overlappingIds) {
           const rows = f2fRows.filter((r) => r.electionPeriodId === periodId);
-          const pick = rows.find((r) => r.status === "attested") ?? rows[0];
+          const pick = pickFaceToFace(rows); // F-217 — shared with the adequacy predicate
           if (!pick) continue;
           faceToFace.push({
             electionPeriodSequence: bySequence.get(periodId)!,

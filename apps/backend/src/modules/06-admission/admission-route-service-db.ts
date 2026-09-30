@@ -25,6 +25,7 @@ import {
   type AnyColumn,
   type SQL,
   and,
+  asc,
   desc,
   eq,
   ilike,
@@ -48,6 +49,11 @@ import {
   requirementsForUploadedElectionStatement,
   requirementsForUploadedNoticeOfRights,
 } from "./admission-uploaded-evidence";
+import {
+  type AdequacyResult,
+  evaluatePeriodAdequacy,
+  summarizeAdequacy,
+} from "./certification/adequacy";
 import {
   computeCtiSignatureDueAt,
   computeWrittenCertDeadline,
@@ -689,6 +695,86 @@ export function createDbAdmissionRouteService(
       )
       .limit(1);
     return !!row;
+  }
+
+  /**
+   * F-217 — load every fact the F2F/CTI adequacy predicate (`certification/adequacy.ts`) needs for one
+   * election period, org-scoped (RLS via the caller's `withOrgContext`), and evaluate it. `startDate` is
+   * the org-local start the period is ABOUT to be stamped with (the recert path activates "today").
+   * `windowBasis: 'recorded'` — `completeF2f` does not yet capture the real encounter/period dates (it
+   * stamps a placeholder), so the persisted R-F2F-02 `within_window` is the only honest window evidence.
+   */
+  async function evaluateAdequacyForPeriod(
+    tx: DbClient,
+    periodId: string,
+    startDate: string,
+  ): Promise<AdequacyResult | null> {
+    const [ep] = await tx
+      .select({
+        id: EP.id,
+        sequenceNumber: EP.sequenceNumber,
+        periodKind: EP.periodKind,
+        admissionId: EP.admissionId,
+      })
+      .from(EP)
+      .where(eq(EP.id, periodId))
+      .limit(1);
+    if (!ep) return null;
+    const [adm] = await tx
+      .select({ hospicePhysicianId: ADM.hospicePhysicianId })
+      .from(ADM)
+      .where(eq(ADM.id, ep.admissionId))
+      .limit(1);
+    const ctis = await tx
+      .select({
+        electionPeriodId: CTI.electionPeriodId,
+        status: CTI.status,
+        hospiceMdId: CTI.hospiceMdId,
+        hospiceMdSignedAt: CTI.hospiceMdSignedAt,
+        attendingMdId: CTI.attendingMdId,
+        attendingMdSignedAt: CTI.attendingMdSignedAt,
+        narrative: CTI.narrative,
+        signedLate: CTI.signedLate,
+        lateReason: CTI.lateReason,
+      })
+      .from(CTI)
+      .where(eq(CTI.electionPeriodId, periodId))
+      .orderBy(asc(CTI.createdAt));
+    const f2fs = await tx
+      .select({
+        electionPeriodId: F2F.electionPeriodId,
+        status: F2F.status,
+        performerRole: F2F.performerRole,
+        encounterDate: F2F.encounterDate,
+        withinWindow: F2F.withinWindow,
+        windowOverride: F2F.windowOverride,
+        windowOverrideReason: F2F.windowOverrideReason,
+        windowOverrideBy: F2F.windowOverrideBy,
+        attestationSignedAt: F2F.attestationSignedAt,
+      })
+      .from(F2F)
+      .where(eq(F2F.electionPeriodId, periodId))
+      .orderBy(asc(F2F.createdAt));
+    return evaluatePeriodAdequacy({
+      period: {
+        electionPeriodId: ep.id,
+        sequenceNumber: Number(ep.sequenceNumber),
+        periodKind: ep.periodKind,
+        startDate,
+      },
+      admissionHospicePhysicianId: adm?.hospicePhysicianId ?? null,
+      timeZone: DEFAULT_ORG_TZ,
+      windowBasis: "recorded",
+      ctis: ctis.map((c) => ({
+        ...c,
+        hospiceMdSignedAt: c.hospiceMdSignedAt ? c.hospiceMdSignedAt.toISOString() : null,
+        attendingMdSignedAt: c.attendingMdSignedAt ? c.attendingMdSignedAt.toISOString() : null,
+      })),
+      f2fs: f2fs.map((f) => ({
+        ...f,
+        attestationSignedAt: f.attestationSignedAt ? f.attestationSignedAt.toISOString() : null,
+      })),
+    });
   }
 
   /** A `Date` → the UTC `YYYY-MM-DD` string M6's `date` columns store. */
@@ -4101,6 +4187,23 @@ export function createDbAdmissionRouteService(
               effectiveAt: isoDay(now()),
             });
           }
+          // F-217 — M11 D10 / R-F2F-04 / §2.3.3: the F2F + CTI ADEQUACY gate. `transitionElectionPeriod`
+          // above only asks "is there an attested F2F?"; the predicate also requires the performer role,
+          // the prior-to window (or a valid override), the signer, the narrative minimum and — for every
+          // recert — that the CTI is actually signed. FAIL-CLOSED: the whole tx (including the CTI
+          // signature just written) rolls back and the period stays `pending`. Late CTI / overridden window
+          // are FLAGS (R-CTI-01, D4), never a refusal. Period 1 is NOT routed here (R-AC-01's
+          // `evaluateAdmissionReadiness` governs it, incl. the D3 attending-co-sign / verbal-cert grace).
+          const adequacy = await evaluateAdequacyForPeriod(tx as DbClient, cti.epId, isoDay(now()));
+          if (adequacy && adequacy.verdict === "inadequate") {
+            throw new WardenXError(
+              "ELECTION_PERIOD_ADEQUACY_FAILED",
+              "The election period cannot start: its certification of terminal illness and/or " +
+                `face-to-face encounter is not adequate (${adequacy.reasonCodes.join(", ")}).`,
+              409,
+              adequacy.reasonCodes.map((code) => ({ code, message: code })),
+            );
+          }
           await tx
             .update(EP)
             .set({
@@ -4119,6 +4222,7 @@ export function createDbAdmissionRouteService(
               electionPeriodId: cti.epId,
               sequence: period?.seq ?? 1,
               ...(period?.admissionId ? { admissionId: period.admissionId } : {}),
+              ...(adequacy ? { adequacy: summarizeAdequacy(adequacy) } : {}),
             },
             organizationId,
             aggregateKind: "election_period",
