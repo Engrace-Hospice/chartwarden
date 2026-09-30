@@ -42,3 +42,11 @@ export {
   pickFaceToFace,
   summarizeAdequacy,
 } from "./adequacy";
+// F-226 — real F2F dates: expected period start, window-start resolution, encounter-date sanity.
+export {
+  F2F_MAX_ENCOUNTER_AGE_DAYS,
+  type F2fWindowStartSource,
+  assertPlausibleEncounterDate,
+  expectedStartFromPriorEnd,
+  resolveF2fWindowStart,
+} from "./f2f-window";

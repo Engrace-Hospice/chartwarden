@@ -129,7 +129,7 @@ describe.skipIf(!DB_URL)(
       (
         await admin.query(
           `SELECT id, sequence_number AS seq, period_kind AS kind, status, source_order_id AS "sourceOrderId",
-                  scheduled_end_at::text AS "end"
+                  scheduled_end_at::text AS "end", expected_start::text AS "expectedStart"
              FROM election_period WHERE admission_id=$1 ORDER BY sequence_number`,
           [admissionId],
         )
@@ -140,6 +140,7 @@ describe.skipIf(!DB_URL)(
         status: string;
         sourceOrderId: string | null;
         end: string | null;
+        expectedStart: string | null;
       }[];
     const startedEvents = async (admissionId: string) =>
       (
@@ -176,10 +177,14 @@ describe.skipIf(!DB_URL)(
         USER,
       );
       if (sequence >= 3) {
+        // F-226 - realistic: the encounter is 10 days before the period's (consumer-stamped) EXPECTED START
+        // and `within_window` is the honest verdict for that. Raw insert because the production completion
+        // path (correctly) refuses an encounter date in the future and this period starts ~90 days out.
         await admin.query(
           `INSERT INTO face_to_face_encounter (organization_id, election_period_id, performed_by_user_id,
              performer_role, encounter_date, within_window, status, attestation_signed_at)
-           VALUES ($1,$2,$3,'hospice_np', now()::date, true, 'attested', now())`,
+           SELECT $1, ep.id, $3, 'hospice_np', ep.expected_start - 10, true, 'attested', now()
+             FROM election_period ep WHERE ep.id = $2 AND ep.expected_start IS NOT NULL`,
           [ORG_A, periodId, MD],
         );
       }
@@ -241,6 +246,11 @@ describe.skipIf(!DB_URL)(
         status: "pending",
         sourceOrderId: orderId,
       });
+      // F-226 - the auto-opened period carries its EXPECTED START = the preceding period's end + 1 day.
+      const dayAfter = (d: string) =>
+        new Date(Date.parse(`${d}T00:00:00Z`) + 86_400_000).toISOString().slice(0, 10);
+      expect(rows[1]?.expectedStart).toBe(dayAfter(p1?.end as string));
+      expect(rows[0]?.expectedStart).toBeNull();
       const events = await startedEvents(a.admissionId);
       expect(events.map((e) => e.sequence)).toEqual([1, 2]);
       expect(events[1]?.electionPeriodId).toBe(rows[1]?.id);

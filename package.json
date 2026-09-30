@@ -191,6 +191,7 @@
     "test:m25:denial-seed-consumers:live": "vitest run apps/backend/__tests__/m25-denial-seed-consumers.live.test.ts",
     "test:m6:loc-change-signed:live": "vitest run apps/backend/__tests__/m6-loc-change-signed.live.test.ts",
     "test:m6:adequacy-gate:live": "vitest run apps/backend/__tests__/m6-adequacy-gate.live.test.ts",
+    "test:m6:f2f-real-dates:live": "vitest run apps/backend/__tests__/m6-f2f-real-dates.live.test.ts",
     "test:m6:recertification-signed:live": "vitest run apps/backend/__tests__/m6-recertification-signed.live.test.ts",
     "test:m16:consent-signed:live": "vitest run apps/backend/__tests__/m16-consent-signed.live.test.ts",
     "test:m16:opt-out-changed:live": "vitest run apps/backend/__tests__/m16-opt-out-changed.live.test.ts",

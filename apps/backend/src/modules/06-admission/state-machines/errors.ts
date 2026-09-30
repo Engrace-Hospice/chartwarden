@@ -31,6 +31,10 @@ export const M6_ERROR_STATUS = {
   F2F_OVERRIDE_FORBIDDEN: 403,
   F2F_OVERRIDE_REASON_TOO_SHORT: 422,
   F2F_REQUIRED_FOR_RECERT: 409,
+  // F-226 - the real encounter date is captured at completion: a future / absurdly old date is malformed
+  // input (422); a period whose start cannot be derived yet cannot have its window computed (409).
+  F2F_ENCOUNTER_DATE_INVALID: 422,
+  F2F_PERIOD_START_UNKNOWN: 409,
   F2F_ATTESTATION_TOO_SHORT: 422,
   // Admission (§2.4.1 R-ADM-*)
   NOTICE_OF_RIGHTS_REQUIRED: 409,
