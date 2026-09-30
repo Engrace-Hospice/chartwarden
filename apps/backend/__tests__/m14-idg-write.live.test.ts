@@ -445,6 +445,46 @@ describe.skipIf(!DB_URL)("M14 IDG write lifecycle — LIVE Postgres (M14L)", () 
     expect(await meetingStatus(r)).toBe("rescheduled");
   });
 
+  it("cancel / reschedule re-derive meeting_carry_forward_count in the same tx (a cancelled meeting is not counted — D8)", async () => {
+    const origin = await seedMeeting(ORG_A, "adjourned");
+    const item = (
+      await admin.query(
+        `INSERT INTO idg_action_item (organization_id, provider_entity_id, location_id, idg_meeting_id,
+            assigned_to_membership_id, title, due_date, status, meeting_carry_forward_count)
+         VALUES ($1,$2,$3,$4,$5,'t', now() - interval '3 days','open',3) RETURNING id`,
+        [ORG_A, peOf[ORG_A], locationOf[ORG_A], origin, MEMBER],
+      )
+    ).rows[0].id as string;
+    const carried = async (meetingId: string) =>
+      admin.query(
+        `INSERT INTO idg_agenda_item (organization_id, location_id, idg_meeting_id, title, kind,
+            carried_from_action_item_id, added_by_membership_id)
+         VALUES ($1,$2,$3,'Carried-forward action item','carry_forward',$4,$5)`,
+        [ORG_A, locationOf[ORG_A], meetingId, item, MEMBER],
+      );
+    const adj = await seedMeeting(ORG_A, "adjourned");
+    const toCancel = await seedMeeting(ORG_A, "scheduled");
+    const toMove = await seedMeeting(ORG_A, "scheduled");
+    for (const m of [adj, toCancel, toMove]) await carried(m);
+    const countOf = async () =>
+      (
+        await admin.query(
+          "SELECT meeting_carry_forward_count AS n FROM idg_action_item WHERE id=$1",
+          [item],
+        )
+      ).rows[0].n as number;
+    expect(await countOf()).toBe(3); // seeded stored count agrees with the 3 carry rows
+
+    await svc.cancelMeeting(ORG_A, MEMBER, toCancel, "location closed");
+    expect(await countOf()).toBe(2);
+    await svc.rescheduleMeeting(ORG_A, MEMBER, toMove, {
+      reason: "quorum unavailable",
+      newScheduledStart: new Date(Date.now() + 86400000).toISOString(),
+      newScheduledEnd: new Date(Date.now() + 90000000).toISOString(),
+    });
+    expect(await countOf()).toBe(1);
+  });
+
   it("adjourn stamps last_idg_reviewed_at on each included patient's packet (GAP-020)", async () => {
     const m = await seedMeeting(ORG_A, "live");
     const patientId = randomUUID();

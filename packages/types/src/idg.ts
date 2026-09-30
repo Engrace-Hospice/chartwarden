@@ -539,8 +539,8 @@ export type M14AlertPayload =
       readonly severity: "critical";
       readonly recipients: {
         readonly complianceInbox: true;
-        readonly idgCoordinatorMembershipId: MembershipId;
-        readonly clinicalSupervisorMembershipId: MembershipId;
+        readonly idgCoordinatorMembershipId?: MembershipId;
+        readonly clinicalSupervisorMembershipId?: MembershipId;
       };
       readonly bodyTemplate: string;
     }

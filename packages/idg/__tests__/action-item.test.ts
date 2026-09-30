@@ -81,7 +81,7 @@ describe("§2.7 D8 carry-forward", () => {
     expect(outboxEvents(r.effects)).toEqual(["m14.action_item.carry_forward"]);
   });
 
-  it("emits the critical Compliance alert when the count reaches the threshold (≥ 3)", () => {
+  it("emits the critical Compliance alert when the count CROSSES the threshold (2 → 3)", () => {
     const r = planCarryForward({
       priorCarryForwardCount: CARRY_FORWARD_COMPLIANCE_THRESHOLD - 1,
       isOpenAndOverdue: true,
@@ -92,6 +92,17 @@ describe("§2.7 D8 carry-forward", () => {
       kind: "alert",
       alert: "m14.action_item.carry_forward.compliance",
     });
+  });
+
+  it("does NOT re-alert on later carries once at/above the threshold (alert on the crossing only)", () => {
+    for (const prior of [3, 4, 7]) {
+      const r = planCarryForward({ priorCarryForwardCount: prior, isOpenAndOverdue: true });
+      expect(r.isComplianceAlert).toBe(false);
+      expect(r.effects).not.toContainEqual({
+        kind: "alert",
+        alert: "m14.action_item.carry_forward.compliance",
+      });
+    }
   });
 
   it("refuses carry-forward of an item that is not open + overdue", () => {

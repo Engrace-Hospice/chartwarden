@@ -20,6 +20,10 @@ export interface ResolverArgs {
   readonly disciplines?: readonly string[];
   readonly roleKeys?: readonly string[];
   readonly userIds?: readonly string[];
+  /** `role_set` only — payload keys that each hold ONE user id to add to the role audience (a per-event
+   *  audience member the role set cannot express, e.g. an IDG meeting's coordinator). Absent/non-string values
+   *  are skipped; the producer-side consumer is responsible for putting only an active org member's user id there. */
+  readonly userIdPaths?: readonly string[];
   /** Payload key holding the patient id for `care_team` (default `patientId`). */
   readonly patientIdPath?: string;
   /** Payload key holding the provider entity id for `on_call` (default `providerEntityId`). */
@@ -99,7 +103,14 @@ export function createRecipientResolverRegistry(
       return providerEntityId === null ? [] : ports.onCallMembers(orgId, providerEntityId);
     },
     discipline: async (orgId, args) => ports.disciplineMembers(orgId, args.disciplines ?? []),
-    role_set: async (orgId, args) => ports.roleSetMembers(orgId, args.roleKeys ?? []),
+    role_set: async (orgId, args, payload) => {
+      const fromRoles = await ports.roleSetMembers(orgId, args.roleKeys ?? []);
+      const fromPayload = (args.userIdPaths ?? []).flatMap((k) => {
+        const v = readPath(payload, k);
+        return v === null ? [] : [v];
+      });
+      return [...fromRoles, ...fromPayload];
+    },
     tenant_admins: async (orgId) => ports.tenantAdmins(orgId),
     // user_list is fully static — the one resolver with no source-of-truth port (§3.6 userIds).
     user_list: async (_orgId, args) => args.userIds ?? [],

@@ -226,15 +226,17 @@ const M14_OUTBOX_ENTRIES: readonly M14OutboxEntry[] = [
     eventName: "m14.action_item.carry_forward",
     moduleOwner: "m14",
     description:
-      "The T-24h cron of the next meeting carried an open action item forward; ≥3 carries is a compliance alert.",
+      "The T-24h cron of the next meeting carried an open action item forward; `isComplianceAlert` is true only on the CROSSING to the third distinct non-cancelled meeting (M36 raises the critical compliance alert once per item).",
     payloadSchema: Type.Object({
       priorActionItemId: id,
       newAgendaItemId: id,
       carryForwardCount: Type.Integer({ minimum: 1 }),
       isComplianceAlert: Type.Boolean(),
+      // The target meeting's coordinator — the compliance alert's meeting-scoped audience (additive, optional).
+      coordinatorMembershipId: Type.Optional(id),
     }),
-    declaredConsumers: [],
-    seamConsumers: ["m33", "m36"],
+    declaredConsumers: ["m36"],
+    seamConsumers: ["m33"],
     isOutboxOnly: true,
   },
   // ── the canonical cross-module decision seam (§4.4; locked legacy name, M7 D4) ───────────────────────────

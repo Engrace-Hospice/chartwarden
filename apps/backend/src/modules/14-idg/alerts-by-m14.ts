@@ -55,7 +55,7 @@ export const M14_ALERT_PAYLOADS: ModuleAlertContribution = [
   {
     payloadType: "m14.action_item.carry_forward.compliance",
     moduleOwner: "m14",
-    severity: "CRITICAL", // carry-forward count >= 3 (D8 / §2.7)
+    severity: "CRITICAL", // the carry-forward count CROSSING 3 (D8 / §2.7) — once per action item
     defaultChannels: ["inbox", "socket_push", "email"],
     defaultRecipientResolver: "idg_compliance_inbox",
     payloadSchema: Type.Object({
@@ -63,10 +63,13 @@ export const M14_ALERT_PAYLOADS: ModuleAlertContribution = [
       priorActionItemId: id,
       carryForwardCount: Type.Integer({ minimum: 3 }),
       severity: Type.Literal("critical"),
+      // The audience is RESOLVED by M36 (role_set: compliance_officer + clinical_supervisor + org_admin, plus the
+      // target meeting's coordinator via `coordinatorUserId`); the membership ids here are informational and
+      // optional — the supervisor is a role audience, not a single membership.
       recipients: Type.Object({
         complianceInbox: Type.Literal(true),
-        idgCoordinatorMembershipId: id,
-        clinicalSupervisorMembershipId: id,
+        idgCoordinatorMembershipId: Type.Optional(id),
+        clinicalSupervisorMembershipId: Type.Optional(id),
       }),
       bodyTemplate: Type.String(),
     }),

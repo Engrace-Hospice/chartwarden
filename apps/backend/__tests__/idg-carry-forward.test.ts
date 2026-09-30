@@ -113,12 +113,12 @@ describe("planCarryForwards", () => {
 });
 
 describe("planCarryForward (packages/idg) — the count / compliance threshold the cron reuses", () => {
-  it("count 0→1, 1→2 are not alerts; 2→3 and beyond are compliance alerts", () => {
+  it("count 0→1, 1→2 are not alerts; only the 2→3 crossing is a compliance alert", () => {
     const of = (prior: number) =>
       planCarryForward({ priorCarryForwardCount: prior, isOpenAndOverdue: true });
     expect(of(0)).toMatchObject({ newCarryForwardCount: 1, isComplianceAlert: false });
     expect(of(1)).toMatchObject({ newCarryForwardCount: 2, isComplianceAlert: false });
     expect(of(2)).toMatchObject({ newCarryForwardCount: 3, isComplianceAlert: true });
-    expect(of(3)).toMatchObject({ newCarryForwardCount: 4, isComplianceAlert: true });
+    expect(of(3)).toMatchObject({ newCarryForwardCount: 4, isComplianceAlert: false });
   });
 });

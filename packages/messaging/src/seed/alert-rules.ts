@@ -472,6 +472,26 @@ export const PLATFORM_DEFAULT_ALERT_RULES: readonly PlatformAlertRuleSeed[] = [
     systemLocked: false,
     enabled: true,
   },
+  // M14 §2.7 / D8 — an IDG action item was carried forward into its THIRD distinct non-cancelled meeting (the
+  // count CROSSING 3; the producer flags the crossing, the consumer raises ONE alert per action item). The catalog
+  // names the resolver `idg_compliance_inbox` (alerts-by-m14.ts); M36 resolves it as a `role_set` — the compliance
+  // inbox (`compliance_officer`), the clinical supervisor (`clinical_supervisor`), the `org_admin` backstop for a
+  // tenant that assigns neither — plus the target meeting's coordinator off the payload (`coordinatorUserId`).
+  // Always critical (the floor); ids and counts only in the payload. Channels follow the catalog's defaults
+  // (inbox -> in_app, socket_push -> push, email).
+  {
+    eventType: "m14.action_item.carry_forward.compliance",
+    category: "administrative",
+    severityFloor: "critical",
+    recipientResolver: "role_set",
+    resolverArgs: {
+      roleKeys: ["compliance_officer", "clinical_supervisor", "org_admin"],
+      userIdPaths: ["coordinatorUserId"],
+    },
+    channelsOverride: ["in_app", "push", "email"],
+    systemLocked: false,
+    enabled: true,
+  },
 ];
 
 /** The event types of the three `system_locked` platform rules (§7.4) — the always-on floor a

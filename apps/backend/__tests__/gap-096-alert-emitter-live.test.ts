@@ -20,11 +20,15 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
+import { createAlertPayloadRegistry } from "@wardenx/messaging";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDrizzleCareTeamStore, registerPatientSeams } from "../src/modules/05-patient/index";
+import { M14_ALERT_PAYLOADS } from "../src/modules/14-idg/index";
 import {
+  buildIdgCarryForwardComplianceConsumer,
   createDrizzleAlertEmitter,
+  createDrizzleMembershipUserLookup,
   getAlertEmitter,
   registerMessagingSeams,
   wireAlertRuleSeed,
@@ -312,5 +316,135 @@ describe.skipIf(!DB_URL)("GAP-096 — M36 AlertEmitter, LIVE Postgres", () => {
     const backupDelivery = deliveryRows.find((r) => r.recipient_user_id === backupUserId);
     expect(backupDelivery?.forwarded_from_user_id).toBe(orgAdminUserId);
     expect(backupDelivery?.channel).toBe("email");
+  });
+
+  // ── M14 §2.7/D8 — the carry-forward COMPLIANCE alert through the REAL emitter + RLS as wardenx_app ──────────
+  it("m14.action_item.carry_forward (the crossing) raises ONE critical typed alert to the real compliance/supervisor/admin/coordinator audience, tenant-isolated, PHI-free, idempotent on redelivery", async () => {
+    const ORG2 = "88888888-8888-8888-8888-888888888888";
+    await admin.query(
+      "INSERT INTO organization (id,slug,legal_name,display_name) VALUES ($1,'org-gap096-b','B','B')",
+      [ORG2],
+    );
+    const seedUser = async (
+      org: string,
+      email: string,
+      roleKey: string | null,
+    ): Promise<{ userId: string; membershipId: string }> => {
+      const userId = (
+        await admin.query(`INSERT INTO "user" (email) VALUES ($1) RETURNING id`, [email])
+      ).rows[0].id as string;
+      const membershipId = (
+        await admin.query(
+          `INSERT INTO membership (user_id, organization_id, status) VALUES ($1,$2,'active') RETURNING id`,
+          [userId, org],
+        )
+      ).rows[0].id as string;
+      if (roleKey !== null) {
+        const existing = await admin.query(
+          "SELECT id FROM role WHERE organization_id=$1 AND key=$2",
+          [org, roleKey],
+        );
+        const roleId =
+          existing.rows[0]?.id ??
+          (
+            await admin.query(
+              "INSERT INTO role (organization_id, key, name, category) VALUES ($1,$2,$2,'admin_executive') RETURNING id",
+              [org, roleKey],
+            )
+          ).rows[0].id;
+        await admin.query(
+          "INSERT INTO membership_role (organization_id, membership_id, role_id) VALUES ($1,$2,$3)",
+          [org, membershipId, roleId],
+        );
+      }
+      return { userId, membershipId };
+    };
+    const compliance = await seedUser(ORG, "idg-compliance@x.test", "compliance_officer");
+    const supervisor = await seedUser(ORG, "idg-supervisor@x.test", "clinical_supervisor");
+    const coordinator = await seedUser(ORG, "idg-coordinator@x.test", null); // no role: reached ONLY via coordinatorUserId
+    const bystander = await seedUser(ORG, "idg-bystander@x.test", "billing_manager");
+    const otherOrgCompliance = await seedUser(
+      ORG2,
+      "idg-b-compliance@x.test",
+      "compliance_officer",
+    );
+
+    await wireAlertRuleSeed(handle.db);
+    const registry = createAlertPayloadRegistry();
+    registry.register(M14_ALERT_PAYLOADS);
+    registry.assertValid();
+    const consumer = buildIdgCarryForwardComplianceConsumer({
+      alerts: createDrizzleAlertEmitter(handle.db),
+      catalog: registry.build(),
+      membershipUserId: createDrizzleMembershipUserLookup(handle.db),
+    });
+    const itemId = "7e57ed17-0000-4000-8000-00000000c0de";
+    const event = (payload: Record<string, unknown>) => ({
+      id: "evt-cf-1",
+      eventType: "m14.action_item.carry_forward",
+      aggregateKind: "idg_action_item",
+      aggregateId: itemId,
+      organizationId: ORG,
+      attemptCount: 0,
+      createdAt: new Date(),
+      payload,
+    });
+    const crossing = {
+      priorActionItemId: itemId,
+      newAgendaItemId: "agd-1",
+      carryForwardCount: 3,
+      isComplianceAlert: true,
+      coordinatorMembershipId: coordinator.membershipId,
+    };
+
+    // A non-crossing carry raises nothing.
+    await consumer.handle(event({ ...crossing, carryForwardCount: 2, isComplianceAlert: false }));
+    expect(
+      (
+        await admin.query(
+          "SELECT count(*)::int AS n FROM alert WHERE event_type='m14.action_item.carry_forward.compliance'",
+        )
+      ).rows[0].n,
+    ).toBe(0);
+
+    await consumer.handle(event(crossing));
+    await consumer.handle(event(crossing)); // relay redelivery
+    await consumer.handle(event({ ...crossing, newAgendaItemId: "agd-2" })); // dipped below 3 and re-crossed
+    const { rows: alerts } = await admin.query(
+      "SELECT id, organization_id, severity, payload, correlation_id FROM alert WHERE event_type='m14.action_item.carry_forward.compliance'",
+    );
+    expect(alerts).toHaveLength(1); // one alert per action item, ever
+    expect(alerts[0].organization_id).toBe(ORG);
+    expect(alerts[0].severity).toBe("critical");
+    expect(alerts[0].correlation_id).toBe(`m14.carry_forward.compliance:${itemId}`);
+    expect(Object.keys(alerts[0].payload).sort()).toEqual(
+      [
+        "bodyTemplate",
+        "carryForwardCount",
+        "coordinatorUserId",
+        "organizationId",
+        "priorActionItemId",
+        "recipients",
+        "severity",
+      ].sort(),
+    );
+    expect(JSON.stringify(alerts[0].payload)).not.toMatch(/patient|title|http/i);
+
+    const { rows: deliveries } = await admin.query(
+      "SELECT DISTINCT recipient_user_id FROM notification_delivery WHERE alert_id=$1 AND channel='in_app'",
+      [alerts[0].id],
+    );
+    const got = deliveries.map((r) => r.recipient_user_id).sort();
+    // compliance_officer + clinical_supervisor + org_admin (seeded earlier in this ORG) + the coordinator; NOT the
+    // billing_manager bystander, and NOTHING from the other tenant.
+    expect(got).toEqual(
+      [compliance.userId, supervisor.userId, coordinator.userId, orgAdminUserId].sort(),
+    );
+    expect(got).not.toContain(bystander.userId);
+    expect(got).not.toContain(otherOrgCompliance.userId);
+    expect(
+      (await admin.query("SELECT count(*)::int AS n FROM alert WHERE organization_id=$1", [ORG2]))
+        .rows[0].n,
+    ).toBe(0);
   });
 });

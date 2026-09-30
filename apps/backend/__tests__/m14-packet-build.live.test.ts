@@ -27,7 +27,8 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { createDbClient } from "@wardenx/db";
-import { registerPlatformJob } from "@wardenx/tenancy";
+import { registerPlatformJob, withOrgContext } from "@wardenx/tenancy";
+import { sql } from "drizzle-orm";
 import IORedis from "ioredis";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -61,6 +62,7 @@ import {
   runPacketBuildCron,
   runScheduleMaterialiseCron,
 } from "../src/modules/14-idg/index";
+import { recomputeCarryForwardCountsForMeeting } from "../src/modules/14-idg/jobs/carry-forward-count";
 import { idgQualityFlaggedEventsForOrg } from "../src/modules/30-quality/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -966,7 +968,30 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
             count,
           ],
         );
-        return rows[0].id as string;
+        const id = rows[0].id as string;
+        // The count is DERIVED (distinct non-cancelled meetings carried into), so a seeded prior count is backed by
+        // that many real carry-forward agenda rows on distinct past, adjourned meetings.
+        for (let i = 0; i < count; i += 1) {
+          await carryInto(orgId, id, await seedMeeting(orgId, "adjourned", -24 * (40 + i)));
+        }
+        return id;
+      }
+      /** Retire every upcoming (carry-eligible) meeting of the org so the NEXT seeded one is the sole target. */
+      async function quiesceUpcoming(orgId: string): Promise<void> {
+        await admin.query(
+          "UPDATE idg_meeting SET status='adjourned', scheduled_start = now() - interval '1 hour' " +
+            "WHERE organization_id=$1 AND status IN ('scheduled','packets_building','packets_ready') " +
+            "AND scheduled_start < now() + interval '36 hours'",
+          [orgId],
+        );
+      }
+      async function carryInto(orgId: string, itemId: string, meetingId: string): Promise<void> {
+        await admin.query(
+          `INSERT INTO idg_agenda_item (organization_id, location_id, idg_meeting_id, title, kind,
+              carried_from_action_item_id, added_by_membership_id)
+           VALUES ($1,$2,$3,'Carried-forward action item','carry_forward',$4,$5)`,
+          [orgId, locationOf[orgId], meetingId, itemId, MEMBER],
+        );
       }
       async function countOf(id: string): Promise<number> {
         const { rows } = await admin.query(
@@ -1076,6 +1101,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         });
         expect(Object.keys(ev[0] as object).sort()).toEqual([
           "carryForwardCount",
+          "coordinatorMembershipId",
           "isComplianceAlert",
           "newAgendaItemId",
           "priorActionItemId",
@@ -1121,7 +1147,7 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         expect(aAfter).toBe(aBefore);
       });
 
-      it("fires the compliance alert when the count reaches 3 (once per carry), and the next meeting carries again", async () => {
+      it("fires the compliance flag ONLY on the crossing to 3 — the 4th carry does not re-alert", async () => {
         const patientId = await seedPatient(ORG_C, "Third", "Carry");
         const oldMeeting = await seedMeeting(ORG_C, "adjourned", -24 * 30);
         const item3 = await seedItem(
@@ -1138,12 +1164,16 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         expect(await countOf(item3)).toBe(3);
         const ev = await carryEvents(item3);
         expect(ev).toHaveLength(1);
-        expect(ev[0]).toMatchObject({ carryForwardCount: 3, isComplianceAlert: true });
+        expect(ev[0]).toMatchObject({
+          carryForwardCount: 3,
+          isComplianceAlert: true,
+          coordinatorMembershipId: MEMBER,
+        });
         await runCarryForwardCron(carryDeps([ORG_C])); // re-run: no second alert
         expect(await carryEvents(item3)).toHaveLength(1);
         expect(await countOf(item3)).toBe(3);
 
-        // That meeting is adjourned; the next upcoming one carries it a 4th time (still critical).
+        // That meeting is adjourned; the next upcoming one carries it a 4th time — NOT a crossing, no flag.
         await admin.query(
           "UPDATE idg_meeting SET status='adjourned', scheduled_start = now() - interval '1 hour' " +
             "WHERE organization_id=$1 AND status='scheduled' AND scheduled_start < now() + interval '36 hours'",
@@ -1153,7 +1183,101 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         await runCarryForwardCron(carryDeps([ORG_C]));
         expect((await carryRows(next)).map((r) => r.item)).toContain(item3);
         expect(await countOf(item3)).toBe(4);
-        expect((await carryEvents(item3)).map((e) => e.carryForwardCount)).toEqual([3, 4]);
+        expect(
+          (await carryEvents(item3)).map((e) => [e.carryForwardCount, e.isComplianceAlert]),
+        ).toEqual([
+          [3, true],
+          [4, false],
+        ]);
+      });
+
+      it("a CANCELLED / RESCHEDULED meeting is not counted: the cron derives the count, and cancel recomputes at cancel time", async () => {
+        const patientId = await seedPatient(ORG_C, "Cancel", "Count");
+        const origin = await seedMeeting(ORG_C, "adjourned", -24 * 60);
+        // Item has been carried into 2 earlier meetings: one adjourned (counts), one later CANCELLED (must not).
+        const it2 = await seedItem(
+          ORG_C,
+          origin,
+          patientId,
+          "cc",
+          "now() - interval '30 days'",
+          "open",
+          1,
+        );
+        const cancelledAfterCarry = await seedMeeting(ORG_C, "packets_ready", 90 * 24);
+        await carryInto(ORG_C, it2, cancelledAfterCarry);
+        await admin.query(
+          "UPDATE idg_action_item SET meeting_carry_forward_count = 2 WHERE id=$1",
+          [it2],
+        );
+        expect(await countOf(it2)).toBe(2);
+
+        // Cancel through the REAL app-role recompute (the same helper the cancel/reschedule service calls, in-tx).
+        await withOrgContext(handle.db, { organizationId: ORG_C, userId: "" }, async (tx) => {
+          await tx.execute(
+            sql`UPDATE idg_meeting SET status='cancelled' WHERE id=${cancelledAfterCarry}`,
+          );
+          await recomputeCarryForwardCountsForMeeting(
+            tx as never,
+            ORG_C,
+            cancelledAfterCarry,
+            new Date(),
+          );
+        });
+        expect(await countOf(it2)).toBe(1); // dropped the cancelled meeting; the adjourned one remains
+
+        // A rescheduled-away meeting behaves the same, and recompute is idempotent.
+        const moved = await seedMeeting(ORG_C, "rescheduled", 91 * 24);
+        await carryInto(ORG_C, it2, moved);
+        await withOrgContext(handle.db, { organizationId: ORG_C, userId: "" }, async (tx) => {
+          await recomputeCarryForwardCountsForMeeting(tx as never, ORG_C, moved, new Date());
+          await recomputeCarryForwardCountsForMeeting(tx as never, ORG_C, moved, new Date());
+        });
+        expect(await countOf(it2)).toBe(1);
+
+        // The cron then carries it into the next live meeting: 1 (adjourned) + 1 (new) = 2 — NOT 3 (old blind +1
+        // would have double-counted the cancelled meeting), so there is no crossing and no compliance flag.
+        await quiesceUpcoming(ORG_C);
+        const nextLive = await seedMeeting(ORG_C, "scheduled", 30);
+        await runCarryForwardCron(carryDeps([ORG_C]));
+        expect((await carryRows(nextLive)).map((r) => r.item)).toContain(it2);
+        expect(await countOf(it2)).toBe(2);
+        const ev = await carryEvents(it2);
+        expect(ev).toHaveLength(1);
+        expect(ev[0]).toMatchObject({ carryForwardCount: 2, isComplianceAlert: false });
+        // The packet builder's stored-count reader sees the derived number (2), never the cancelled meeting's.
+        const { rows } = await admin.query(
+          "SELECT meeting_carry_forward_count AS n FROM idg_action_item WHERE id=$1",
+          [it2],
+        );
+        expect(rows[0].n).toBe(2);
+      });
+
+      it("a cancelled meeting that had carried an item in a cron tick (stale stored count) is corrected by the next carry", async () => {
+        const patientId = await seedPatient(ORG_C, "Stale", "Count");
+        const origin = await seedMeeting(ORG_C, "adjourned", -24 * 70);
+        const it3 = await seedItem(
+          ORG_C,
+          origin,
+          patientId,
+          "sc",
+          "now() - interval '30 days'",
+          "open",
+          2,
+        );
+        // a third carry row into a meeting that is then cancelled OUT OF BAND (admin write, no recompute): stored 2
+        const ghost = await seedMeeting(ORG_C, "cancelled", 95 * 24);
+        await carryInto(ORG_C, it3, ghost);
+        expect(await countOf(it3)).toBe(2);
+        await quiesceUpcoming(ORG_C);
+        const live = await seedMeeting(ORG_C, "packets_ready", 8);
+        await runCarryForwardCron(carryDeps([ORG_C]));
+        // 2 real + 1 new = 3 (ghost excluded) -> this IS the crossing (prior stored 2 -> 3), flagged once.
+        expect(await countOf(it3)).toBe(3);
+        expect((await carryRows(live)).map((r) => r.item)).toContain(it3);
+        expect(
+          (await carryEvents(it3)).map((e) => [e.carryForwardCount, e.isComplianceAlert]),
+        ).toEqual([[3, true]]);
       });
 
       it("the DB unique index itself refuses a duplicate (item, meeting) carry row", async () => {

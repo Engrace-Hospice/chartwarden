@@ -222,7 +222,8 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
          RETURNING (payload->>'occurrences')::int AS occurrences
           `);
           const occurrences = Number(res.rows[0]?.occurrences);
-          if (!Number.isInteger(occurrences)) throw new Error("alert occurrence bump returned no row");
+          if (!Number.isInteger(occurrences))
+            throw new Error("alert occurrence bump returned no row");
           return { alertId, occurrences };
         };
 
@@ -290,4 +291,25 @@ export function createDrizzleAlertEmitterPorts(db: DbClient): AlertEmitterPorts 
 /** Build the real production {@link AlertEmitter} (GAP-096). */
 export function createDrizzleAlertEmitter(db: DbClient): AlertEmitter {
   return createAlertEmitter(createDrizzleAlertEmitterPorts(db));
+}
+
+/** Resolve a membership id to its ACTIVE user id within `orgId` (or null when unknown / not active). Used by outbox
+ *  consumers that must put a per-event audience member's USER id on an alert payload (the `role_set.userIdPaths`
+ *  audience, e.g. the IDG carry-forward compliance alert's meeting coordinator). Org-explicit + `withOrgContext`:
+ *  it runs in the relay, not a request. */
+export function createDrizzleMembershipUserLookup(
+  db: DbClient,
+): (organizationId: string, membershipId: string) => Promise<string | null> {
+  const M = schema.memberships;
+  return (organizationId, membershipId) =>
+    withOrgContext(db, { organizationId, userId: "" }, async (tx: Tx) => {
+      const [row] = await tx
+        .select({ userId: M.userId })
+        .from(M)
+        .where(
+          and(eq(M.id, membershipId), eq(M.organizationId, organizationId), eq(M.status, "active")),
+        )
+        .limit(1);
+      return row?.userId ?? null;
+    });
 }

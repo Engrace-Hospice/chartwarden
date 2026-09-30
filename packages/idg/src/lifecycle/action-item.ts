@@ -131,13 +131,23 @@ export interface CarryForwardResult {
  * Plan the §2.7 D8 carry-forward of a still-open, overdue action item onto the next meeting (the T-24h cron
  * of the next meeting build). A new `idg_agenda_item` of `kind='carry_forward'` is created with
  * `carried_from_action_item_id`; the item's `carry_forward_count` increments. When the resulting count
- * reaches the §2.7 threshold (≥ 3) a critical-severity Compliance alert is emitted. The action item's own
+ * CROSSES the §2.7 threshold (prior < 3 and new ≥ 3 — the alert fires on the crossing, NOT on every later
+ * carry) a critical-severity Compliance alert is emitted. The action item's own
  * status is unchanged — carry-forward surfaces it for discussion, it does not close or reopen it.
  *
  * `priorCarryForwardCount` is the item's current count; `isOpenAndOverdue` gates the projection (only an
  * `open`/`in_progress` item past its `due_date` carries forward — resolved upstream from the row + clock).
  */
 export const CARRY_FORWARD_COMPLIANCE_THRESHOLD = 3 as const;
+
+/** Pure — the compliance alert fires only when a carry moves the count ACROSS the threshold (2 → 3), never on
+ * a later carry at ≥ 3 (USER DECISION: alert on the crossing only). */
+export function isComplianceCrossing(priorCount: number, newCount: number): boolean {
+  return (
+    priorCount < CARRY_FORWARD_COMPLIANCE_THRESHOLD &&
+    newCount >= CARRY_FORWARD_COMPLIANCE_THRESHOLD
+  );
+}
 
 export function planCarryForward(input: {
   readonly priorCarryForwardCount: number;
@@ -149,7 +159,10 @@ export function planCarryForward(input: {
     "only an open, overdue action item may be carried forward",
   );
   const newCarryForwardCount = input.priorCarryForwardCount + 1;
-  const isComplianceAlert = newCarryForwardCount >= CARRY_FORWARD_COMPLIANCE_THRESHOLD;
+  const isComplianceAlert = isComplianceCrossing(
+    input.priorCarryForwardCount,
+    newCarryForwardCount,
+  );
   const effects: IdgSideEffect[] = [
     { kind: "audit" },
     { kind: "outbox", event: "m14.action_item.carry_forward" },

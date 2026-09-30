@@ -23,6 +23,7 @@ import type { RbacEngineHandle, SessionContextStore } from "@wardenx/auth";
 import { type DbClient, createDbClient, schema } from "@wardenx/db";
 import { createUnboundIqiesAdapter } from "@wardenx/iqies-client";
 import type { AlertEmitter } from "@wardenx/messaging";
+import { createAlertPayloadRegistry } from "@wardenx/messaging";
 import type { PlatformBypassAuditor } from "@wardenx/tenancy";
 import {
   registerPlatformJob,
@@ -391,6 +392,7 @@ import {
   idgMissedDosesForOrg,
 } from "./modules/13-emar/index";
 import {
+  M14_ALERT_PAYLOADS,
   M14_OUTBOX_EVENTS,
   M14_PLATFORM_JOB_ID,
   buildM14ActionItemAutoCloseConsumer,
@@ -921,9 +923,11 @@ import {
 } from "./modules/35-subscription/index";
 import {
   M36_OUTBOX_EVENTS,
+  buildIdgCarryForwardComplianceConsumer,
   buildM36ClinicalAlertConsumer,
   createDbMessagingProvider,
   createDrizzleAlertEmitter,
+  createDrizzleMembershipUserLookup,
   createDrizzleMessagingEraseStore,
   mountMessagingRoutes,
   registerMessagingErasers,
@@ -5900,6 +5904,19 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM36ClinicalAlertConsumer(
             getSeam("AlertEmitter") as AlertEmitter,
           ),
+          // M14 §2.7/D8 — the carry-forward COMPLIANCE alert (the count crossing 3): validated against the
+          // typed alert-payload catalog (M14's contribution registered on the Foundation registry here, in the
+          // composition root — M36 never imports M14), one alert per action item.
+          (() => {
+            const m14AlertCatalog = createAlertPayloadRegistry();
+            m14AlertCatalog.register(M14_ALERT_PAYLOADS);
+            m14AlertCatalog.assertValid();
+            return buildIdgCarryForwardComplianceConsumer({
+              alerts: getSeam("AlertEmitter") as AlertEmitter,
+              catalog: m14AlertCatalog.build(),
+              membershipUserId: createDrizzleMembershipUserLookup(dbHandle.db),
+            });
+          })(),
           buildM10AdmissionWorkflowConsumer({
             db: dbHandle.db,
             outbox: m10OutboxPublisher,

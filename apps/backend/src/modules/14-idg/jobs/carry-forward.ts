@@ -11,11 +11,14 @@
 //     `location_id`, falling back to the ORIGIN meeting's location (caseload-wide items carry none).
 //     The origin meeting itself, and any meeting that does not start after the origin, is never a target.
 //   • For each (item, target): INSERT one `idg_agenda_item` (kind `carry_forward`, `carried_from_action_item_id`,
-//     three-column location from the meeting, patient from the item) and INCREMENT
-//     `meeting_carry_forward_count` — iff the insert actually created the row.
-//   • Count ≥ 3 (`CARRY_FORWARD_COMPLIANCE_THRESHOLD`, via the pure `planCarryForward`) ⇒ `isComplianceAlert`
-//     on the `m14.action_item.carry_forward` outbox event (M36/M33 consume it as a seam; M36 resolves the
-//     compliance-inbox / coordinator / supervisor recipients — M14 emits a PHI-free id-only payload).
+//     three-column location from the meeting, patient from the item) and RE-DERIVE
+//     `meeting_carry_forward_count` (distinct NON-cancelled meetings carried into — carry-forward-count.ts; a
+//     cancelled/rescheduled meeting is never counted) — iff the insert actually created the row.
+//   • The count CROSSING the threshold (`isComplianceCrossing`: stored prior < 3 and derived count ≥ 3) ⇒
+//     `isComplianceAlert` on the `m14.action_item.carry_forward` outbox event. The alert fires on the crossing
+//     only, not on every later carry. M36's `m36.idg-carry-forward-compliance-alert` consumer turns it into the
+//     typed alert (one per action item, ever — correlation id), resolving compliance / supervisor / coordinator
+//     recipients in M36; M14 emits a PHI-free id-only payload.
 //
 // IDEMPOTENCY (the reason this cron was deferred: the double-increment risk). The `idg_agenda_item` row IS the
 // "item X was carried into meeting Y" marker. Migration 0285's partial UNIQUE index on
@@ -23,7 +26,7 @@
 // `ON CONFLICT DO NOTHING`; the count is incremented, and the outbox event published, ONLY when that insert
 // returned a row, inside the same tx. So re-runs, retries, concurrent ticks and on-demand packet rebuilds
 // (`packet-build.ts` only READS the count) can never increment twice for one (item, meeting) pair, and the
-// alert fires exactly once per carry that reaches ≥ 3. Agenda rows have no DELETE grant, so the marker cannot
+// alert fires on the crossing only. Agenda rows have no DELETE grant, so the marker cannot
 // vanish and re-arm the increment.
 //
 // AUDIT ACTOR: the tx runs with `userId: ""` (like `packet-build.ts` / `schedule-materialise.ts`) — the M4
@@ -31,10 +34,11 @@
 // pseudo-user id (`M14_WORKER_SYSTEM_USER_ID`) has no `user` row, so a PHI write under it fails the FK
 // (proven live). An empty actor records a system write (actor NULL).
 import { type DbClient, schema } from "@wardenx/db";
-import { planCarryForward } from "@wardenx/idg";
+import { isComplianceCrossing } from "@wardenx/idg";
 import { withOrgContext } from "@wardenx/tenancy";
 import { and, eq, gt, inArray, isNotNull, lt, lte, sql } from "drizzle-orm";
 import type { IdgWriteOutboxPort } from "../idg-route-service-db";
+import { recomputeCarryForwardCounts } from "./carry-forward-count";
 import type { ActiveOrgListPort } from "./index";
 
 const MTG = schema.idgMeeting;
@@ -230,34 +234,31 @@ export async function carryForwardForOrg(
     if (!agenda) continue; // already carried into this meeting (a concurrent/earlier tick) — NO increment
     nextSort.set(target.meetingId, sortOrder + 1);
 
-    const [bumped] = await tx
-      .update(ACT)
-      .set({
-        meetingCarryForwardCount: sql`${ACT.meetingCarryForwardCount} + 1`,
-        version: sql`${ACT.version} + 1`,
-        updatedAt: now,
-      })
-      .where(and(eq(ACT.id, item.id), eq(ACT.organizationId, organizationId)))
-      .returning({ count: ACT.meetingCarryForwardCount });
-    if (!bumped) throw new Error(`M14_CARRY_FORWARD: action item ${item.id} vanished mid-tick`);
-    const plan = planCarryForward({
-      priorCarryForwardCount: bumped.count - 1,
-      isOpenAndOverdue: true,
-    });
+    // The count is RE-DERIVED (distinct non-cancelled meetings carried into), not blindly incremented — see
+    // carry-forward-count.ts. `previous` is the stored count the crossing is judged against.
+    const change = (await recomputeCarryForwardCounts(tx, organizationId, [item.id], now)).get(
+      item.id,
+    );
+    if (!change) throw new Error(`M14_CARRY_FORWARD: action item ${item.id} vanished mid-tick`);
+    // Judge the crossing on the derived values (prior stored → derived) so the flag and the stored count can
+    // never disagree, even when a cancelled meeting dropped out of the count.
+    const isComplianceAlert = isComplianceCrossing(change.previous, change.current);
     await outbox.publish(tx, {
       eventName: "m14.action_item.carry_forward",
       payload: {
         priorActionItemId: item.id,
         newAgendaItemId: agenda.id,
-        carryForwardCount: bumped.count,
-        isComplianceAlert: plan.isComplianceAlert,
+        carryForwardCount: change.current,
+        isComplianceAlert,
+        // The target meeting's coordinator — the compliance alert's meeting-scoped audience (M36 resolves it to a user).
+        coordinatorMembershipId: target.coordinatorMembershipId,
       },
       organizationId,
       aggregateKind: "idg_action_item",
       aggregateId: item.id,
     });
     carried += 1;
-    if (plan.isComplianceAlert) complianceAlerts += 1;
+    if (isComplianceAlert) complianceAlerts += 1;
   }
   return { carried, complianceAlerts };
 }

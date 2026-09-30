@@ -60,6 +60,7 @@ import type { IdgActionItemStatus, IdgDecisionKind, PatientId } from "@wardenx/t
 import { ForbiddenError, NotFoundError, WardenXError } from "@wardenx/types";
 import { and, asc, desc, eq, gt, gte, inArray, lt, lte, ne, notInArray, sql } from "drizzle-orm";
 import type { IdgAbacResolver, MeetingScopeFacts, ReviewFloorBreachFact } from "./abac-predicates";
+import { recomputeCarryForwardCountsForMeeting } from "./jobs/carry-forward-count";
 import {
   type MinutesSiteNames,
   loadMinutesMemberIds,
@@ -1110,6 +1111,9 @@ export function createDbIdgBackend(
             updatedAt: at,
           })
           .where(eq(MTG.id, id));
+        // D8 — a cancelled meeting no longer counts toward any action item's carry-forward count: re-derive the
+        // count of every item it had carried, in this same tx (cheap: one indexed read + ≤1 UPDATE per item).
+        await recomputeCarryForwardCountsForMeeting(tx, orgId, id, at);
         await emit(tx, orgId, "m14.meeting.cancelled", "idg_meeting", id, {
           meetingId: id,
           cancelledBy: userId,
@@ -1153,6 +1157,8 @@ export function createDbIdgBackend(
           .update(MTG)
           .set({ status: "rescheduled", version: prior.version + 1, updatedAt: at })
           .where(eq(MTG.id, id));
+        // D8 — a rescheduled-away meeting does not count either (its successor counts once if it carries the item).
+        await recomputeCarryForwardCountsForMeeting(tx, orgId, id, at);
         const [next] = await tx
           .insert(MTG)
           .values({

@@ -2140,6 +2140,23 @@ async function composeAndDispatch(input: {
 > (recipient resolution + template render) is generic alert-engine work M36 already owns — so the
 > resolvers live in M36's registry, not M14 (ADR-0024 Decision).
 
+#### 4.11.1 As built: M14 carry-forward compliance alert (`m14.action_item.carry_forward.compliance`)
+
+> M14's own typed alert (M14 §2.7 / D8) is delivered by an M36 outbox consumer —
+> `m36.idg-carry-forward-compliance-alert` (`36-messaging/outbox-consumers/idg-carry-forward-compliance.ts`) —
+> bound to `m14.action_item.carry_forward` (`declaredConsumers: ["m36"]`). It acts only on the event's
+> `isComplianceAlert` crossing flag (count moved < 3 → ≥ 3), validates the payload against the registered
+> catalog entry before emit, and emits through the real `AlertEmitter` with correlation id
+> `m14.carry_forward.compliance:<actionItemId>` (one alert per action item, ever — the `alert` unique key
+> absorbs redelivery and a re-crossing; no repeat/escalation cadence). The catalog's
+> `defaultRecipientResolver: idg_compliance_inbox` is realised as the platform-default `alert_rule` for the event
+> type: a `role_set` over `compliance_officer`, `clinical_supervisor` and `org_admin` (backstop), plus the
+> meeting coordinator via the new **`role_set.userIdPaths`** resolver arg (payload keys that each hold one
+> already-verified user id to add to the role audience; here `coordinatorUserId`, resolved by the consumer from
+> the event's `coordinatorMembershipId` to an ACTIVE membership's user). No new `alert_recipient_resolver` enum
+> value was needed. Out-of-band push/email ride the rule's `channels_override` for recipients that have a
+> preferences row; every recipient gets the in-app floor.
+
 -----
 
 ## 5. Frontend Screens
