@@ -472,6 +472,23 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       " repeated/successive render requests against the same aggregate correctly produce new versions" +
       " instead of silently no-opping. `m12.medication_order.draft_created_from_extraction`," +
       " and `m5.patient.draft_created_from_extraction` stay deferred, unchanged — no producer." +
+      " **F-231 (#248) re-verified and STOPPED on the pair, deliberately — the blocker is now an AI-governance" +
+      " decision, not missing code.** Verified: the only emit of the M12 event is the in-memory reference" +
+      " service (`routes/service.ts`, `fromExtraction`; the real `dosespot-route-service-db.ts` emits only" +
+      " `draft_created`); the M5 event has a catalog entry and no emit site; nothing emits" +
+      " `m22.extraction.commit_requested` (and `m22.extraction.*` has no `events-by-m22.ts` catalog entry at" +
+      " all); the `documents.doclens` commit route feeds EMPTY candidates/chartTargets (a stub), and no code" +
+      " writes `extraction_job`/`extraction_candidate`/`extraction_provenance`. M32 is built but its four" +
+      " DocLens capabilities sit at `DESIGN_REVIEW` (governance promotion, AI Governance §5 Stage 1-4), its" +
+      " `projector` (§2.5 output schemas) and `actors` ports are unbound, and the ten inference seams are" +
+      " deny-stubs pending a per-tenant DEK cipher. Specs do NOT define: (a) whether a DocLens-extracted" +
+      " medication may become an M12 draft at all — M12 D12 / AI Governance §2.1.1 hard-block AI-introduced" +
+      " medication changes and M12 D12 explicitly rejects 'AI suggests, clinician approves' for" +
+      " `medication_order`, while M22 D4/D5 and Governance §7.3.2 route approved medications to an M12 draft;" +
+      " (b) the extraction-field -> `medication_order` mapping and who the draft's prescriber is (M12 has no" +
+      " `m22-extraction-commit` consumer spec beyond the event row); (c) what an M5 'draft created from" +
+      " extraction' is (new `prospective` patient vs. demographics change on an existing one) and its field" +
+      " mapping. No code was built; options and a recommendation are in docs/history/outbox-248-builds.md." +
       " **F-224 (#248) — `m19.triage.summary_requested` is BOUND, GONE from this group.** The user decided its" +
       " producer is an EXPLICIT staff action (not a policy/disposition trigger): `POST" +
       " /api/v1/triage-calls/:triageCallId/request-summary` (`requestSummary`, a new `triage.request_summary`" +
