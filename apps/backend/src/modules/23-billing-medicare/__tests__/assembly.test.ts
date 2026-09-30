@@ -118,6 +118,7 @@ function buildSeams(overrides: Partial<ClaimAssemblySeams> = {}): ClaimAssemblyS
         },
       ],
     },
+    diagnoses: { forRange: async () => [] },
     signedEncounters: { inWindow: async () => [] },
     evvCompliance: { bracketsForEncounters: async () => [] },
     mdm: {
@@ -350,5 +351,70 @@ describe("SIA add-on (D6) — a deceased patient's last-7-days RN/MSW care produ
     const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
     await svc.assemble(ACTOR, REQUEST);
     expect(store.sia).toHaveLength(0);
+  });
+});
+
+describe("F-209 (#251) — the claim carries the real M7 diagnosis sequence", () => {
+  const SEQ = [
+    { position: 1, code: "C34.90", relationship: "terminal" as const },
+    { position: 2, code: "J44.9", relationship: "related" as const },
+    { position: 3, code: "I10", relationship: "unrelated" as const },
+  ];
+
+  it("threads the sequence into the validation context, the terminology call, and terminal-only line pointers", async () => {
+    let seenSequence: unknown = null;
+    const registry = new BillingRuleRegistry();
+    registry.registerRule({
+      ...trivialPassRule,
+      key: "test.capture_sequence",
+      check: (ctx) => {
+        seenSequence = ctx.claim.icd10Sequence;
+        return pass("test.capture_sequence", "error", "ok");
+      },
+    });
+    registry.freeze();
+    const terminologyCalls: Array<readonly string[] | undefined> = [];
+    const forRange = vi.fn(async () => SEQ);
+    const seams = buildSeams({
+      ruleRegistry: registry,
+      diagnoses: { forRange },
+      terminology: {
+        resolveForClaim: async (_org, _asOf, codes) => {
+          terminologyCalls.push(codes);
+          return { valueSetMembership: {}, icd10Billable: {} };
+        },
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+
+    expect(forRange).toHaveBeenCalledWith(ORG, "pat-1", {
+      from: REQUEST.serviceFrom,
+      to: REQUEST.serviceTo,
+    });
+    expect(terminologyCalls).toEqual([["C34.90", "J44.9", "I10"]]);
+    expect(seenSequence).toEqual(SEQ);
+    expect(store.lines.length).toBeGreaterThan(0);
+    for (const line of store.lines) expect(line.icdPointerPositions).toEqual([1]);
+  });
+
+  it("with no diagnoses: empty sequence, empty pointers (the icd10_sequencing rule reports the gap honestly)", async () => {
+    const seams = buildSeams();
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await svc.assemble(ACTOR, REQUEST);
+    for (const line of store.lines) expect(line.icdPointerPositions).toEqual([]);
+  });
+
+  it("propagates an unbound diagnoses seam fail-closed (never reads as 'no diagnoses')", async () => {
+    const seams = buildSeams({
+      diagnoses: {
+        forRange: async () => {
+          throw new Error("SEAM_UNBOUND");
+        },
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    await expect(svc.assemble(ACTOR, REQUEST)).rejects.toThrow("SEAM_UNBOUND");
+    expect(store.claims.size).toBe(0);
   });
 });

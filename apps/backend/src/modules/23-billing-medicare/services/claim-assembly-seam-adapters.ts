@@ -19,6 +19,7 @@ import type {
   BillingReferenceDataReader,
   CertificationReader,
   DateRange,
+  DiagnosisSequenceReader,
   ElectionPeriodReader,
   EvvComplianceReader,
   FaceToFaceReader,
@@ -512,6 +513,17 @@ export interface M38TerminologyReader {
       readonly orgId?: string;
     },
   ): AsyncIterable<{ readonly code: string }>;
+  /** F-209 — the bulk ICD-10-CM concept lookup (`TerminologyProvider.lookupBatch`), as-of a date. */
+  lookupBatch(
+    system: "icd10cm",
+    codes: readonly string[],
+    asOf?: Date,
+  ): Promise<
+    ReadonlyMap<
+      string,
+      { readonly status: string; readonly properties: { readonly isBillableLeaf?: boolean } }
+    >
+  >;
 }
 
 /**
@@ -538,20 +550,20 @@ export interface M38TerminologyReader {
  * hospice modifiers (GV, GW) are now curated in `@wardenx/terminology`'s seed alongside the platform's
  * other small, fully-enumerated reference sets (`level_of_care`, `place_of_service_q_codes`).
  *
- * `icd10Billable` is honestly `{}`. Traced rather than assumed: `icd10_sequencing` is the only reader of
- * this map, over `ctx.claim.icd10Sequence` — and `claim-assembly.ts`'s own line-assembly hardcodes
- * `icd10Sequence: []` on every claim it assembles today (no seam anywhere populates a diagnosis sequence
- * at assembly time; a separate, real M23-side gap this pass did not create and did not fix — it is not
- * part of #251's M38 item). With no diagnosis code ever on the claim to ask about, there is nothing to
- * bulk-resolve; `{}` is what a per-code map looks like with zero codes asked about, not a placeholder for
- * unknown data.
+ * `icd10Billable` (F-209, #251) is now REAL. It used to be an honest `{}` because `claim-assembly.ts` hardcoded
+ * `icd10Sequence: []` (no diagnosis ever reached this call); assembly now reads M7's diagnosis sequence first
+ * and passes its codes as `icd10Codes`. Each is resolved through M38's bulk `lookupBatch("icd10cm", codes,
+ * asOf)` — as-of the claim's service-from, so a since-retired code still resolves at its service date — and is
+ * `true` iff the concept exists, is `active`, and `properties.isBillableLeaf === true` (a truncated
+ * non-leaf, a deprecated/retired-at-that-date, or an unknown code is `false`; a code never asked about is
+ * simply absent, which `icd10_sequencing` also treats as not billable). No codes ⇒ no M38 round trip.
  */
 export function buildM23TerminologyAdapter(
   resolve: () => M38TerminologyReader = () =>
     getSeam("TerminologyProvider") as M38TerminologyReader,
 ): TerminologyProvider {
   return {
-    async resolveForClaim(orgId, asOfDate) {
+    async resolveForClaim(orgId, asOfDate, icd10Codes = []) {
       const reader = resolve();
       const asOf = new Date(`${asOfDate}T00:00:00Z`);
       const members: string[] = [];
@@ -562,10 +574,61 @@ export function buildM23TerminologyAdapter(
       })) {
         members.push(m.code);
       }
+      const icd10Billable: Record<string, boolean> = {};
+      const distinct = [...new Set(icd10Codes)];
+      if (distinct.length > 0) {
+        const concepts = await reader.lookupBatch("icd10cm", distinct, asOf);
+        for (const code of distinct) {
+          const c = concepts.get(code);
+          icd10Billable[code] =
+            c !== undefined && c.status === "active" && c.properties.isBillableLeaf === true;
+        }
+      }
       return {
         valueSetMembership: { [CMS_HOSPICE_MODIFIER_VALUE_SET]: members },
-        icd10Billable: {},
+        icd10Billable,
       };
+    },
+  };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+// 9b. diagnoses.forRange (M7) — REAL (F-209, #251).
+// ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The exact shape of M7's `claimDiagnosesForOrg` (`07-care-plan/seams/drizzle-store.ts`), duplicated locally
+ * per the {@link M5CoverageSeam} no-package-import posture — M7 is NOT in M23's manifest `dependsOn`
+ * ([1, 6, 8, 22, 38, 40]), so the composition root injects the org-explicit function through this port.
+ */
+export interface M7ClaimDiagnosesReader {
+  forRange(
+    orgId: string,
+    patientId: string,
+    range: DateRange,
+  ): Promise<
+    ReadonlyArray<{
+      readonly position: number;
+      readonly code: string;
+      readonly relationship: "terminal" | "related" | "unrelated";
+    }>
+  >;
+}
+
+/**
+ * F-209 (#251) — `diagnoses.forRange`. M7 already projects to exactly the rule context's `Icd10Pointer`
+ * shape (position, code, relationship — never the free-text description), so this is a pass-through port
+ * that only re-freezes the rows into M23's own vocabulary.
+ */
+export function buildM23DiagnosesAdapter(reader: M7ClaimDiagnosesReader): DiagnosisSequenceReader {
+  return {
+    async forRange(orgId, patientId, range) {
+      const rows = await reader.forRange(orgId, patientId, range);
+      return rows.map((r) => ({
+        position: r.position,
+        code: r.code,
+        relationship: r.relationship,
+      }));
     },
   };
 }

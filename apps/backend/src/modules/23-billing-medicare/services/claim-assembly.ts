@@ -36,6 +36,7 @@ import {
   type EvvBracketSnapshot,
   type FaceToFaceSnapshot,
   type HippsRateTable,
+  type Icd10Pointer,
   type IsoDate,
   type LevelOfCare,
   type LevelOfCarePeriodSnapshot,
@@ -214,9 +215,25 @@ export interface MdmEntityProvider {
   ): Promise<MdmResolution>;
 }
 
-/** M38 — terminology resolution (value-set membership + ICD billability) as-of `claim.service_from`. */
+/**
+ * M7 — the claim's ICD-10 diagnosis sequence over the service window (F-209, #251): position 1..12, code,
+ * relationship. Code + relationship only (no free-text description). Empty when the patient has no active,
+ * coded problem in the window — the `icd10_sequencing` rule then fails honestly ("no ICD-10 diagnosis sequence").
+ */
+export interface DiagnosisSequenceReader {
+  forRange(orgId: string, patientId: string, range: DateRange): Promise<readonly Icd10Pointer[]>;
+}
+
+/**
+ * M38 — terminology resolution (value-set membership + ICD billability) as-of `claim.service_from`.
+ * `icd10Codes` (F-209) are the claim's diagnosis codes; `icd10Billable` is resolved for exactly these.
+ */
 export interface TerminologyProvider {
-  resolveForClaim(orgId: string, asOfDate: IsoDate): Promise<TerminologyResolution>;
+  resolveForClaim(
+    orgId: string,
+    asOfDate: IsoDate,
+    icd10Codes?: readonly string[],
+  ): Promise<TerminologyResolution>;
 }
 
 /** Platform reference-data resolution (the CMS rate file, wage index, sequestration schedule). */
@@ -273,6 +290,7 @@ export interface ClaimAssemblySeams {
   readonly certifications: CertificationReader; // M6
   readonly faceToFace: FaceToFaceReader; // M6
   readonly levelOfCare: LevelOfCareReader; // M6
+  readonly diagnoses: DiagnosisSequenceReader; // M7 (F-209)
   readonly billableEncounters: BillableEncounterReader; // M8
   readonly signedEncounters: SignedEncountersReader; // M8
   readonly evvCompliance: EvvComplianceReader; // M18
@@ -499,7 +517,21 @@ export function buildClaimAssemblyService(
         patientId,
         serviceFrom,
       );
-      const terminology = await seams.terminology.resolveForClaim(orgId, serviceFrom);
+      // F-209 (#251) — the claim's real diagnosis sequence (M7), read BEFORE terminology so M38 can resolve
+      // `icd10Billable` for exactly these codes. Not persisted to a claim column (no such column exists).
+      const icd10Sequence = await seams.diagnoses.forRange(orgId, patientId, range);
+      const terminology = await seams.terminology.resolveForClaim(
+        orgId,
+        serviceFrom,
+        icd10Sequence.map((d) => d.code),
+      );
+      // Line pointer policy (documented, deliberately simple): every line points at the TERMINAL diagnosis
+      // position(s) only. Hospice per-diem lines all bill the terminal illness; a related/unrelated
+      // condition is claim-level context, never a line-level pointer. No terminal ⇒ no pointer (the
+      // `icd10_sequencing` rule reports the missing principal).
+      const icdPointerPositions = icd10Sequence
+        .filter((d) => d.relationship === "terminal")
+        .map((d) => d.position);
       // M26 §11.A cap projection (D8). Cap year is the federal FY (Oct–Sep): a service date in Oct–Dec
       // belongs to the NEXT FY. The provider degrades to status:"unavailable" when M26 is unbound or has no
       // projection — the cap rules then warn-skip; a bound projection makes them live (warn-or-block, D8).
@@ -620,7 +652,7 @@ export function buildClaimAssemblyService(
             lineChargeCents: seg.ratePerDiemCents * seg.days,
             levelOfCarePeriodId: owningPeriod.levelOfCarePeriodId,
             backingEncounterIds,
-            icdPointerPositions: [],
+            icdPointerPositions: [...icdPointerPositions],
             modifiers: [],
           };
         });
@@ -745,7 +777,7 @@ export function buildClaimAssemblyService(
             serviceFrom,
             serviceTo,
             replacesClaimId: null,
-            icd10Sequence: [],
+            icd10Sequence,
             totalChargeCents: grossCents,
             priorClaimTob: priorClaim?.tob ?? null,
             priorClaimServiceTo: priorClaim?.serviceTo ?? null,
