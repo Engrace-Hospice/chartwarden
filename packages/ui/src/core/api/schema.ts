@@ -12854,7 +12854,7 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Read one assessment row */
+        /** Read one assessment with ordered per-item responses */
         get: operations["getApiV1PatientsByPatientIdAssessmentsById"];
         put?: never;
         post?: never;
@@ -55962,6 +55962,13 @@ export interface operations {
                         correctionReason: string | null;
                         redacted: boolean;
                         version: number;
+                        items: {
+                            key: string;
+                            label: string;
+                            value: string | number | boolean;
+                            displayValue: string;
+                        }[];
+                        notes: string | null;
                     };
                 };
             };

@@ -29,7 +29,10 @@ export { painadScorer } from "./scales/painad";
 export { esasrScorer } from "./scales/esas-r";
 export {
   scaleDefinitions,
+  scaleResponseDetail,
   type ScaleDefinition,
   type ScaleItemDefinition,
   type ScaleItemKind,
+  type ScaleResponseDetail,
+  type ScaleResponseItem,
 } from "./scales/definitions";

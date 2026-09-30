@@ -35,6 +35,7 @@
 // capture-siting.ts header). A correction REUSES its target's stored siting when present (faithful to
 // the original capture event) and only falls back to a fresh resolve for legacy-unsited targets.
 import {
+  canRecordUnderLicense,
   computeScaleLicenseStatus,
   cosignRequiredFor,
   detectSignificantChanges,
@@ -43,6 +44,7 @@ import {
   planCorrection,
   planCosignAttest,
   require_,
+  scaleResponseDetail,
   scoreAssessment,
   transitionSignificantChange,
 } from "@wardenx/assessments";
@@ -402,7 +404,7 @@ export function createDbAssessmentRouteService(
       "SCALE_NOT_ENABLED",
       `Scale '${args.scaleType}' is disabled for this tenant.`,
     );
-    // license gate (D3) — a licensed scale requires an active license row.
+    // license gate (D3) — active and pending-renewal licenses remain usable; expired/missing do not.
     if (isLicensedScale(args.scaleType)) {
       const [lic] = await tx
         .select({ effectiveDate: LIC.effectiveDate, expiresAt: LIC.expiresAt })
@@ -416,9 +418,9 @@ export function createDbAssessmentRouteService(
           )
         : null;
       require_(
-        status === "active",
+        status !== null && canRecordUnderLicense(status),
         "SCALE_LICENSE_MISSING",
-        `Scale '${args.scaleType}' requires an active license.`,
+        `Scale '${args.scaleType}' requires a current license.`,
       );
     }
     // discipline gate (D8) — defense-in-depth behind the route's `discipline_can_record_scale` predicate.
@@ -667,7 +669,8 @@ export function createDbAssessmentRouteService(
         if (!r || r.patientId !== patientId) throw new NotFoundError("assessment");
         const map = await cosignedMap(tx as DbClient, [r.id]);
         const redact = await redactionFor(organizationId, patientId, [r]);
-        return toView(r, map.get(r.id) ?? null, redact && sudRedactionCandidate(r));
+        const view = toView(r, map.get(r.id) ?? null, redact && sudRedactionCandidate(r));
+        return { ...view, ...scaleResponseDetail(view.scaleType, view.data) };
       });
     },
 

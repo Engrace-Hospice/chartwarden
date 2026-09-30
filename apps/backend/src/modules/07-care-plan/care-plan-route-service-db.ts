@@ -192,6 +192,10 @@ export function createDbCarePlanRouteService(
     code: "OPEN_VERSION_REQUIRED",
     message: "no draft or in-review version is open",
   } as const;
+  const idgProposalBlocker = {
+    code: "IDG_PROPOSAL_REQUIRED",
+    message: "Record an IDG decision with a proposed Care Plan change before sending this review for signature.",
+  } as const;
 
   /** Emit one `m7.*` event on the caller's tx (validated + persisted by the bound publisher; no-op default). */
   async function emit(
@@ -959,10 +963,14 @@ export function createDbCarePlanRouteService(
             signatures: { required: [], collected: [], missing: [] },
           };
         }
-        const blockers =
-          open.kind === "initial" && (await activeTerminalProblemCount(t, planId)) < 1
-            ? [terminalProblemBlocker]
-            : [];
+        const blockers = [] as Array<typeof terminalProblemBlocker | typeof idgProposalBlocker>;
+        if (open.kind === "initial" && (await activeTerminalProblemCount(t, planId)) < 1) {
+          blockers.push(terminalProblemBlocker);
+        }
+        if (open.kind === "idg_review") {
+          const { applications, changes } = await loadIdgProposalBundle(t, open.id);
+          if (applications.length === 0 || changes.length === 0) blockers.push(idgProposalBlocker);
+        }
         const collected = await sigsFor(t, open.id);
         const missing = missingSignerSlots(
           open.requiredSignerSet as RequiredSignerSet,

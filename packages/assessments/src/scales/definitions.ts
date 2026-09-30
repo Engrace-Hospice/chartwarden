@@ -54,6 +54,19 @@ export interface ScaleDefinition {
   readonly items: readonly ScaleItemDefinition[] | null;
 }
 
+/** One persisted response projected for the assessment-detail read surface. */
+export interface ScaleResponseItem {
+  readonly key: string;
+  readonly label: string;
+  readonly value: string | number | boolean;
+  readonly displayValue: string;
+}
+
+export interface ScaleResponseDetail {
+  readonly items: readonly ScaleResponseItem[];
+  readonly notes: string | null;
+}
+
 const choice = (
   key: string,
   label: string,
@@ -214,4 +227,36 @@ export function scaleDefinitions(): readonly ScaleDefinition[] {
       items: recordable ? (ITEMS_BY_SCALE[entry.scaleType] ?? null) : null,
     };
   });
+}
+
+/**
+ * Project a stored `clinical_assessment.data` payload through the same definition that built the
+ * capture form. Unknown/legacy properties are not exposed as raw JSON; missing properties simply
+ * produce no item. Free-text `notes` is returned separately from the ordered instrument responses.
+ */
+export function scaleResponseDetail(
+  scaleType: ScaleType,
+  data: Readonly<Record<string, unknown>>,
+): ScaleResponseDetail {
+  const definition = scaleDefinitions().find((entry) => entry.scaleType === scaleType);
+  const notes = typeof data.notes === "string" ? data.notes : null;
+  if (!definition?.items) return { items: [], notes };
+
+  const items: ScaleResponseItem[] = [];
+  for (const item of definition.items) {
+    if (item.key === "notes") continue;
+    const value = data[item.key];
+    if (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") {
+      continue;
+    }
+    const option = item.options?.find((candidate) => candidate.value === String(value));
+    items.push({
+      key: item.key,
+      label: item.label,
+      value,
+      displayValue:
+        option?.label ?? (typeof value === "boolean" ? (value ? "Yes" : "No") : String(value)),
+    });
+  }
+  return { items, notes };
 }

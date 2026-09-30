@@ -48,7 +48,8 @@ type ReqBody<Op> = Op extends { requestBody?: infer RB } ? Json<RB> : never;
 export type ScaleCatalog = Ok<operations["getApiV1Scales"]>;
 export type ScaleDefinition = ScaleCatalog["scales"][number];
 export type ScaleItem = NonNullable<ScaleDefinition["items"]>[number];
-export type AssessmentView = Ok<operations["getApiV1PatientsByPatientIdAssessmentsById"]>;
+export type AssessmentDetailView = Ok<operations["getApiV1PatientsByPatientIdAssessmentsById"]>;
+export type AssessmentView = Omit<AssessmentDetailView, "items" | "notes">;
 export type RecordAssessmentBody = ReqBody<operations["postApiV1PatientsByPatientIdAssessments"]>;
 export type CorrectAssessmentBody = ReqBody<
   operations["postApiV1PatientsByPatientIdAssessmentsByIdCorrections"]
