@@ -336,9 +336,6 @@ export function AssessmentTimeline(): JSX.Element {
                 title="No assessments recorded"
                 description="Once a clinician records a scale, its latest score, history, status and trend will appear here."
               />
-              {!admissionRequired ? (
-                <div style={{ marginTop: "1rem" }}>{recordControls}</div>
-              ) : null}
             </section>
           </main>
         </div>

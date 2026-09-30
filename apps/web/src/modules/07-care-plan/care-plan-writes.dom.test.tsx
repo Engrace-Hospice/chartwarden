@@ -420,6 +420,9 @@ describe("#91 — §7.7 optimistic concurrency is carried, in the dialect each r
 
 describe("#91 — the version lifecycle can be advanced", () => {
   it("a ready DRAFT is sent for signature, finalizing with the version it read", async () => {
+    // An `idg_review` draft additionally needs a recorded IDG proposed change before it can be sent, so this
+    // lifecycle test uses an interim revision (the plain ready-to-send path).
+    versions = [{ ...draftVersion, kind: "interim_revision" }];
     readiness = readinessFor({ canFinalize: true });
     mount();
     fireEvent.click(await screen.findByRole("tab", { name: /^Review & Sign/ }));
