@@ -66,6 +66,15 @@ export {
   createInMemoryOncallSeamStore,
 } from "./store";
 export { buildDrizzleOncallSeamStore } from "./store-drizzle";
+// F-218/F-219 — the one org-explicit GIP-proposal read M14 (flagged events) and M37 (intake worklist) share.
+export {
+  GIP_PROPOSALS_MAX_ROWS,
+  IDG_TRIAGE_CHANGES_MAX_PATIENTS,
+  type GipProposalFact,
+  type IdgTriageCarePlanChangeEvent,
+  gipProposalsForOrg,
+  idgTriageCarePlanChangesForOrg,
+} from "./gip-proposals-for-org";
 export {
   PORTAL_DISPOSITION_LAY_SUMMARY,
   PORTAL_IN_PROGRESS_LAY_SUMMARY,

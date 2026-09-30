@@ -181,6 +181,7 @@
     "test:f205:m12-medication-error-reported:live": "vitest run apps/backend/__tests__/f205-m12-medication-error-reported.live.test.ts",
     "test:f207:m27-vendor-invoice:live": "vitest run apps/backend/__tests__/f207-m27-vendor-invoice.live.test.ts",
     "test:f208:m9-assessment-summary-render:live": "vitest run apps/backend/__tests__/f208-m9-assessment-summary-render.live.test.ts",
+    "test:f218-f219-f224:m19-triage-pairs:live": "vitest run apps/backend/__tests__/f218-f219-f224-m19-triage-pairs.live.test.ts",
     "test:m17:evv-checkout-corrected:live": "vitest run apps/backend/__tests__/m17-evv-checkout-corrected.live.test.ts",
     "test:m17:volunteer-triage-consumers:live": "vitest run apps/backend/__tests__/m17-volunteer-triage-consumers.live.test.ts",
     "test:m2:consent-revoked:live": "vitest run apps/backend/__tests__/m2-consent-revoked.live.test.ts",

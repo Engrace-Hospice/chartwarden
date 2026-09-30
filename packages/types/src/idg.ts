@@ -420,9 +420,17 @@ export interface PacketMedicationChangeDigest {
   readonly changedAt: IsoInstant;
 }
 
-/** A derived flagged-event digest (hospitalisation / ER / missed dose / fall / infection). */
+/** A derived flagged-event digest (hospitalisation / ER / missed dose / fall / infection, plus — F-218 —
+ *  an after-hours triage call that indicated a care-plan change: today always a GIP admission proposal,
+ *  the only `changeKind` M19 emits). `sourceId` is the M19 `triage_call.id` for that last kind. */
 export interface PacketFlaggedEventDigest {
-  readonly kind: "hospitalisation" | "er_visit" | "missed_dose" | "fall" | "infection";
+  readonly kind:
+    | "hospitalisation"
+    | "er_visit"
+    | "missed_dose"
+    | "fall"
+    | "infection"
+    | "triage_care_plan_change";
   readonly sourceId: string;
   readonly occurredAt: IsoInstant;
   readonly severity: "info" | "attention" | "urgent";

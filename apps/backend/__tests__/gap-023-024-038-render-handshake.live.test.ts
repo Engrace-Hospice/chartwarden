@@ -39,6 +39,7 @@ import { M14_OUTBOX_EVENTS } from "../src/modules/14-idg/index";
 import { M15_OUTBOX_EVENTS } from "../src/modules/15-discipline-care-plans/index";
 import { M17_OUTBOX_EVENTS } from "../src/modules/17-scheduling/index";
 import { M18_OUTBOX_EVENTS } from "../src/modules/18-evv/index";
+import { M19_OUTBOX_EVENTS } from "../src/modules/19-oncall/index";
 import {
   type OrderWriteOutboxPort,
   createDbOrderBackend,
@@ -260,6 +261,7 @@ describe.skipIf(!DB_URL)("GAP-023/024/038 — §4.11 render handshake, LIVE Post
       M15_OUTBOX_EVENTS,
       M17_OUTBOX_EVENTS,
       M18_OUTBOX_EVENTS,
+      M19_OUTBOX_EVENTS,
     ]);
     const txPublisher = buildTxOutboxPublisher(catalog);
     publisher = txPublisher;

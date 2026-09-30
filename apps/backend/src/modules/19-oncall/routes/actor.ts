@@ -69,6 +69,22 @@ export function actorOf(request: FastifyRequest): M19ReadActor {
   };
 }
 
+/**
+ * F-224 — the D13 AI-BLOCK preHandler (the M24 `rejectAiActor` shape): refuse any request whose
+ * server-assembled `actor_kind` is an `ai_*` principal. `authenticate.ts` stamps `actorKind` on every
+ * interactive session (`"user"`), so absence is not the "allowed" path it once was.
+ */
+export function rejectAiActor(): PreHandler {
+  return async (request) => {
+    const kind = request.context?.attributes?.actorKind;
+    if (typeof kind === "string" && kind.startsWith("ai_")) {
+      throw new ForbiddenError(
+        "AI principals cannot request a caregiver/attending triage summary (D13)",
+      );
+    }
+  };
+}
+
 /** Is this an external triage VENDOR operator's session (§7.5 / D13)? */
 export function isVendorActor(actor: M19ReadActor): boolean {
   return (VENDOR_SESSION_CLASSES as readonly string[]).includes(actor.sessionClass);

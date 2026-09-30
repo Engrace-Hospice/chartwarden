@@ -4191,6 +4191,15 @@ export const M19_CONTRIBUTED_PERMISSIONS = {
     category: "triage",
     abac: "triage_call_owner_or_supervisor",
   },
+  // F-224 — the explicit staff action that requests the caregiver/attending summary document
+  // (`m19.triage.summary_requested` → M22). Granted to the same on-call clinician bands as
+  // `triage.disposition` (RN/NP, Clinical Supervisor/DON, Medical Director); NOT on the vendor list.
+  "triage.request_summary": {
+    resource: "triage_call",
+    action: "request_summary",
+    category: "triage",
+    abac: "triage_call_owner_or_supervisor",
+  },
   // ── escalations (§4.1 rows 15-18) ───────────────────────────────────────────────────────────────────
   "triage.escalate": {
     resource: "triage_escalation",

@@ -217,8 +217,38 @@ const UNBOUND_ADMISSIONS: AdmissionDischargeReader = {
  *  `bereavement`/`closed` are POST-discharge states, so an IPU stay may be closed out from them too. */
 const M6_DISCHARGED_STATES: ReadonlySet<string> = new Set(["discharged", "bereavement", "closed"]);
 
+/**
+ * F-219 — the M19 GIP-proposal read the intake worklist PULLS (`gipProposalsForOrg`, M19's org-explicit
+ * published read). A structural port, injected by the composition root: M37's manifest `dependsOn` has no
+ * edge to M19, so M37 never imports M19 code (the `AdmissionDischargeReader` posture).
+ */
+export interface GipProposalReader {
+  proposalsForOrg(organizationId: string): Promise<
+    ReadonlyArray<{
+      readonly triageCallId: string;
+      readonly patientId: string;
+      readonly admissionId: string | null;
+      readonly providerEntityId: string;
+      readonly locationId: string | null;
+      readonly proposedAt: string;
+      readonly preferredFacility: string | null;
+      readonly callState: string;
+    }>
+  >;
+}
+
+/** Unbound default: an EMPTY worklist section is a lie ("nothing proposed"), so this THROWS rather than
+ *  rendering a silently-empty list. */
+const UNBOUND_GIP_PROPOSALS: GipProposalReader = {
+  proposalsForOrg() {
+    throw new Error("M19 GIP proposal read is not bound");
+  },
+};
+
 export interface IpuRouteServiceDeps {
   readonly outbox?: WriteOutboxPort;
+  /** F-219 — M19's published GIP-proposal read (the intake worklist's proposal entries), thunk-or-value. */
+  readonly gipProposals?: GipProposalReader | (() => GipProposalReader);
   /** M5 `PatientPrivacyFlagReader` (GAP-061). Bound lazily — the composition root passes a thunk so
    *  the seam is resolved per call, after `wireModuleSeams()` has run. */
   readonly rooming?: RoomingFactsPort | (() => RoomingFactsPort);
@@ -254,6 +284,8 @@ export function buildDrizzleIpuRouteService(
   const admissionsDep = deps.admissions ?? UNBOUND_ADMISSIONS;
   const admissionReader = (): AdmissionDischargeReader =>
     typeof admissionsDep === "function" ? admissionsDep() : admissionsDep;
+  const gipDep = deps.gipProposals ?? UNBOUND_GIP_PROPOSALS;
+  const gipProposals = (): GipProposalReader => (typeof gipDep === "function" ? gipDep() : gipDep);
 
   /**
    * F-071 — the ONE §2.3 D3 coverage answer the four write paths share.
@@ -880,6 +912,22 @@ export function buildDrizzleIpuRouteService(
         const rows = await (tx as DbClient).select().from(A).orderBy(desc(A.openedAt));
         return rows.map(admissionView);
       });
+    },
+
+    async listGipProposals(actor) {
+      // The org comes from the server-assembled actor, never the wire; the M19 read is org-explicit
+      // (`withOrgContext` + an `organization_id` predicate) and projects ids/enums/instants only.
+      const rows = await gipProposals().proposalsForOrg(actor.organizationId);
+      return rows.map((r) => ({
+        triageCallId: r.triageCallId,
+        patientId: r.patientId,
+        admissionId: r.admissionId,
+        providerEntityId: r.providerEntityId,
+        locationId: r.locationId,
+        proposedAt: r.proposedAt,
+        preferredFacility: r.preferredFacility,
+        callState: r.callState,
+      }));
     },
 
     async getAdmission(actor, id) {

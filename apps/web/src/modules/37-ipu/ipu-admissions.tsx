@@ -33,6 +33,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { CSSProperties, JSX } from "react";
 import { useNavigate } from "react-router-dom";
 import { admissionActions } from "./ipu-api";
+import { IpuGipProposals } from "./ipu-gip-proposals";
 import { type AdmissionAction, AdmissionActionModal } from "./ipu-modals";
 
 interface Admission {
@@ -170,6 +171,8 @@ export function IpuAdmissions(): JSX.Element {
         }
         filters={
           <div style={filterShellStyle}>
+            {/* F-219 — the M19 GIP-proposed entries (a pull; proposals, not admissions). */}
+            <IpuGipProposals />
             {error ? (
               <div role="alert" style={errorBannerStyle}>
                 <div style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}>

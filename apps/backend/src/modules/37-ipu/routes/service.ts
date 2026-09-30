@@ -61,6 +61,18 @@ export interface AdmissionView {
   readonly version: number;
 }
 
+/** F-219 — a pending M19 GIP proposal as the intake worklist renders it (see `GipProposalViewSchema`). */
+export interface GipProposalView {
+  readonly triageCallId: string;
+  readonly patientId: string;
+  readonly admissionId: string | null;
+  readonly providerEntityId: string;
+  readonly locationId: string | null;
+  readonly proposedAt: string;
+  readonly preferredFacility: string | null;
+  readonly callState: string;
+}
+
 export interface BedView {
   readonly id: string;
   readonly roomId: string;
@@ -252,6 +264,8 @@ export interface IpuRouteService {
   updateBed(actor: IpuWriteActor, bedId: string, body: UpdateBedBody): Promise<BedView>;
   listAdmissions(actor: IpuReadActor): Promise<readonly AdmissionView[]>;
   getAdmission(actor: IpuReadActor, id: string): Promise<AdmissionView | null>;
+  /** F-219 — the intake worklist's M19 GIP-proposal entries (a PULL through the injected M19 read). */
+  listGipProposals(actor: IpuReadActor): Promise<readonly GipProposalView[]>;
   openAdmission(actor: IpuWriteActor, body: OpenAdmissionBody): Promise<AdmissionView>;
   requestBed(
     actor: IpuWriteActor,

@@ -431,6 +431,23 @@ const REQUEST_SHAPES: Readonly<Record<DocumentRequestEvent, RequestShape>> = {
     templateKey: "assessment_summary",
     appends: true,
   },
+  // F-224 (#248) — M19's caregiver/attending triage-call summary. The aggregate is the CALL
+  // (`triageCallId`), and `recipientKind` (added to the payload by this round — the catalogued payload had
+  // none while `M19TriageSummaryRequestedPayload` required it) discriminates the TWO artifacts: a
+  // value outside {caregiver, attending} is a malformed request (a throw), never a guess — rendering the
+  // attending variant for a caregiver is a disclosure error. `appends: true`: every explicit re-request is a
+  // NEW version of the same per-audience document (F-168), never an `idempotent_skip`.
+  "m19.triage.summary_requested": {
+    aggregateIdFields: ["triageCallId"],
+    templateKeyByField: {
+      field: "recipientKind",
+      map: {
+        caregiver: "triage_summary_caregiver",
+        attending: "triage_summary_attending",
+      },
+    },
+    appends: true,
+  },
 };
 
 /** Raised when a delivered render request cannot be read into M22's canonical shape (unknown event name,

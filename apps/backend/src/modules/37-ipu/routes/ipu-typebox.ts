@@ -68,6 +68,22 @@ export const AdmissionViewSchema = Type.Object({
 });
 export const AdmissionListSchema = Type.Object({ items: Type.Array(AdmissionViewSchema) });
 
+/** F-219 — one M19 GIP PROPOSAL on the intake worklist. A proposal, NOT an admission: `ipu_admission`
+ *  cannot exist yet (its `admission_id`/`level_of_care_period_id` are NOT NULL and the LOC period is created
+ *  later by M11's order draft). Ids + enums + instants only — the clinical criteria summary stays on the
+ *  M19 call (`triageCallId` is the back-reference, opened under M19's own gates). */
+export const GipProposalViewSchema = Type.Object({
+  triageCallId: id,
+  patientId: id,
+  admissionId: Type.Union([id, Type.Null()]),
+  providerEntityId: id,
+  locationId: Type.Union([id, Type.Null()]),
+  proposedAt: Type.String(),
+  preferredFacility: Type.Union([Type.String(), Type.Null()]),
+  callState: Type.String(),
+});
+export const GipProposalListSchema = Type.Object({ items: Type.Array(GipProposalViewSchema) });
+
 // ── unit update / rooms / beds (§4.1 routes 3–8) ───────────────────────────────────────────────────────
 export const UpdateUnitBodySchema = Type.Object({
   displayName: Type.Optional(Type.String({ minLength: 1, maxLength: 200 })),

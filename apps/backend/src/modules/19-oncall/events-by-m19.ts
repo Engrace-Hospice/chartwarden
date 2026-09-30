@@ -20,12 +20,11 @@
 // coverage_gap`'s schema mirrors `consumers/inbound-trigger.ts`'s `TriggerCoverageGap`, and at the time
 // nothing published it. `consumers/bindings.ts` (F-043/#103) now does — the D10 `no_coverage` outcome
 // publishes it INSTEAD of a call, since `triage_call.on_call_shift_id` is NOT NULL and a thrown DLQ entry
-// would park a patient-welfare check where no clinician would see it. `m19.triage.summary_requested`
-// still has no producer at all: reserved for the M22 caregiver/attending PDF-summary render request this
-// module's own spec names (F-142/#248 corrected the declared consumer from m32 to m22 — a prior
-// documentation error), its schema is the same conservative call-scoped base every other
-// `m19.triage_call.*` event carries — a future implementer may need to widen it, but a closed,
-// too-narrow schema here is strictly safer than an unregistered event name.
+// would park a patient-welfare check where no clinician would see it. `m19.triage.summary_requested` is
+// produced by an EXPLICIT staff action since F-224 (#248): `POST /api/v1/triage-calls/:id/request-summary`
+// (`triage.request_summary`), whose payload carries the `recipientKind` (caregiver | attending) the M22
+// render needs plus an allowlist of enumerated call facts — M22 renders it as `triage_summary_caregiver` /
+// `triage_summary_attending` (F-99/F-100/F-208 render-request pattern).
 import { Type } from "@sinclair/typebox";
 import type { ModuleEventContribution } from "@wardenx/types";
 
@@ -165,7 +164,14 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
     // `m19.triage_call.gip_admission_proposed` at M37 lock"). M6's own advisory role on this
     // disposition is a SEAM (line 401: "M11 `level_of_care_change` order draft via M11 seam"), not an
     // outbox subscription; M6 never subscribes to this event.
-    declaredConsumers: ["m37"],
+    // F-219 (#248) — m37 MOVED from `declaredConsumers` to `seamConsumers`. The user decided M37's intake
+    // worklist PULLS these proposals (`gipProposalsForOrg`, `seams/gip-proposals-for-org.ts`, the M37
+    // `GET /api/v1/ipu-intake/gip-proposals` route) rather than binding an outbox consumer: no
+    // `ipu_admission` row can exist at proposal time (`admission_id`/`level_of_care_period_id`/
+    // `provider_entity_id` are NOT NULL and the LOC period comes later, from M11's order draft), so there is
+    // nothing for a push consumer to write, and the durable fact is the `triage_call` row itself.
+    declaredConsumers: [],
+    seamConsumers: ["m37"],
     isOutboxOnly: true,
   },
   {
@@ -181,7 +187,14 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
     // F-142 (#248) — m7 corrected to m14: this module's own §11 D8-cascade table (line 117) is
     // decisive — "M19 emits `m19.triage_call.care_plan_change_indicated` consumed by M14's IDG packet
     // builder so the next IDG agenda includes it" — the real consumer was always M14, not M7.
-    declaredConsumers: ["m14"],
+    //
+    // F-218 (#248) — m14 MOVED from `declaredConsumers` to `seamConsumers`. The packet-build worker (F-171)
+    // already PULLS flagged events per patient at T-24h through `flaggedEventSources`; this event fires
+    // only alongside `gip_admission_proposed`, so M14 pulls it through the same M19 read
+    // (`idgTriageCarePlanChangesForOrg`, `seams/gip-proposals-for-org.ts`) as a `triage_care_plan_change`
+    // flagged event. A push consumer would need a per-patient cache with a reader; the pull needs neither.
+    declaredConsumers: [],
+    seamConsumers: ["m14"],
     isOutboxOnly: true,
   },
   {
@@ -254,8 +267,19 @@ export const M19_OUTBOX_EVENTS: ModuleEventContribution = [
     eventName: "m19.triage.summary_requested",
     moduleOwner: "m19",
     description:
-      "A triage call generated a patient-facing summary (caregiver/attending instructions); M22 renders the PDF, M19 has no PDF code. No producer exists yet. Schema kept to the conservative call-scoped base shared by every other `m19.triage_call.*` event.",
-    payloadSchema: Type.Object(callEventBase),
+      "A staff member explicitly requested a caregiver/attending summary of a documented or closed triage call (`POST /api/v1/triage-calls/:id/request-summary`, F-224); M22 renders the PDF, M19 has no PDF code. The payload is an ALLOWLIST of enumerated facts (disposition, discipline token, arrival instants/dates, transport enum) — never any free-text field, answer, transcript or medication (see `clinical/triage-summary.ts`).",
+    payloadSchema: Type.Object({
+      ...callEventBase,
+      recipientKind: Type.Union([Type.Literal("caregiver"), Type.Literal("attending")]),
+      patientId: id,
+      callOpenedAt: isoInstant,
+      requestedByMembershipId: id,
+      disposition: id,
+      requestedDiscipline: nullableStr,
+      requestedArrivalBy: nullableStr,
+      proposedForDate: nullableStr,
+      transportArrangedBy: nullableStr,
+    }),
     // F-142 (#248) — corrected m32 to m22: this file's own prior comment ("reserved for an M32 AI
     // call-summary request") was a documentation error, contradicted three separate ways by this
     // module's own locked spec — the §"Consumed by" table (module 22: "M19 emits

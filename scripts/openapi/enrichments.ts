@@ -232,6 +232,8 @@ import {
   PortalRecentQuery as M19PortalRecentQuery,
   ProtocolQuestionBody as M19ProtocolQuestionBody,
   RecordAnswerBody as M19RecordAnswerBody,
+  RequestSummaryBody as M19RequestSummaryBody,
+  RequestSummaryResponse as M19RequestSummaryResponse,
   ResolveEscalationBody as M19ResolveEscalationBody,
   SelectDispositionBody as M19SelectDispositionBody,
   ShiftTransitionBody as M19ShiftTransitionBody,
@@ -6255,6 +6257,12 @@ Object.assign(ROUTE_ENRICHMENTS, {
     body: M19AbandonCallBody,
     response: M19TriageCallResponse,
   },
+  "POST /api/v1/triage-calls/:triageCallId/request-summary": {
+    summary:
+      "F-224 explicit staff action — request the caregiver or attending summary document for a documented/closed call (emits m19.triage.summary_requested; M22 renders triage_summary_caregiver / triage_summary_attending)",
+    body: M19RequestSummaryBody,
+    response: M19RequestSummaryResponse,
+  },
   "GET /api/v1/triage-calls/:triageCallId/transcript-decrypt": {
     summary:
       "Decrypt the transcript — distinct permission + M2 step-up + a per-access M4 audit row; the plaintext never rides the detail DTO (§8.7.2 / §4.1 #14)",
@@ -8441,6 +8449,7 @@ import {
   EquipmentViewSchema as M37EquipmentViewSchema,
   GipCriteriaListSchema as M37GipCriteriaListSchema,
   GipCriteriaViewSchema as M37GipCriteriaViewSchema,
+  GipProposalListSchema as M37GipProposalListSchema,
   InitiateTransferBodySchema as M37InitiateTransferBodySchema,
   InvokeRnBreakGlassBodySchema as M37InvokeRnBreakGlassBodySchema,
   IrcEpisodeListSchema as M37IrcEpisodeListSchema,
@@ -8528,6 +8537,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/ipu-admissions": {
     response: M37AdmissionListSchema,
     summary: "List IPU admissions (§4.1)",
+  },
+  "GET /api/v1/ipu-intake/gip-proposals": {
+    response: M37GipProposalListSchema,
+    summary:
+      "F-219 intake worklist — pending M19 GIP admission PROPOSALS (a pull; never an ipu_admission row)",
   },
   "POST /api/v1/ipu-admissions": {
     body: M37OpenAdmissionBodySchema,

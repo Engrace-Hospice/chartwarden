@@ -195,6 +195,22 @@ export function registerIpuRoutes(app: FastifyInstance, deps: IpuRouteDeps): voi
     }),
   );
 
+  // 10b. GET /ipu-intake/gip-proposals — F-219 (#248). The intake worklist's "M19 GIP-proposed entries"
+  // (M37 §6.1 screen 3, §1.1/§4.4 D2). A PROPOSAL read pulled from M19 — never an `ipu_admission` row (none
+  // can exist at proposal time); the durable path stays M11 LOC order -> M6 `requires_ipu_bed` -> M37.
+  // Same key as the admissions list (it is the same worklist). The M19 read is PHI-minimal (ids/enums/
+  // instants).
+  app.get(
+    "/api/v1/ipu-intake/gip-proposals",
+    {
+      preHandler: [P("m37.ipu_admission.read")],
+      config: { auditRead: { resourceKind: "ipu_admission", list: true } },
+    },
+    async (request) => ({
+      items: await service.listGipProposals(actorOf(request)),
+    }),
+  );
+
   // 11. POST /ipu-admissions — open admission (GIP/IRC enforce RN-coverage service-side; §2.3 D3). §4.1.
   app.post(
     "/api/v1/ipu-admissions",

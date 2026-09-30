@@ -5,6 +5,10 @@ import type { DocModel } from "./doc-model";
 import { buildIdgMinutesDoc } from "./idg-minutes-doc";
 import { buildIdgPacketDoc } from "./idg-packet-doc";
 import { renderDocModelToPdf } from "./pdf-writer";
+import {
+  buildTriageSummaryAttendingDoc,
+  buildTriageSummaryCaregiverDoc,
+} from "./triage-summary-doc";
 
 /** Builds the document model (pure) for one template from its render payload. */
 export type DocModelBuilder = (payload: unknown) => DocModel;
@@ -14,6 +18,9 @@ export type PdfRendererRegistry = Readonly<Record<string, DocModelBuilder>>;
 export const DEFAULT_PDF_RENDERERS: PdfRendererRegistry = {
   idg_minutes: buildIdgMinutesDoc,
   idg_patient_packet: buildIdgPacketDoc,
+  // F-224 (#248) — M19's caregiver / attending triage-call summaries (two templates, one builder each).
+  triage_summary_caregiver: buildTriageSummaryCaregiverDoc,
+  triage_summary_attending: buildTriageSummaryAttendingDoc,
 };
 
 /** Real PDF bytes for `templateKey`, or `undefined` when no real renderer is registered for it. */

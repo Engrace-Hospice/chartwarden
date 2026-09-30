@@ -507,6 +507,8 @@ import {
   createDrizzleInboundTriggerPorts,
   createDrizzleTriageEraseStore,
   denyStubOncallAbacResolver,
+  gipProposalsForOrg,
+  idgTriageCarePlanChangesForOrg,
   mountM19Routes,
   registerM19CronWorkers,
   registerOncallAbacPredicates,
@@ -3560,6 +3562,13 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
               // F-070 — the §2.2 discharge gate's M6 admission-state read (same thunk reason). Without
               // it the "the M6 discharge has happened" precondition was a boolean the client sent.
               admissions: getIpuAdmissionStatusReader,
+              // F-219 — the intake worklist's M19 GIP-proposal entries: a SEAM PULL through M19's
+              // org-explicit published read (M37 has no `dependsOn` edge to M19, so the port is injected
+              // here). No outbox consumer and no M37 table — see `m19.triage_call.gip_admission_proposed`.
+              gipProposals: {
+                proposalsForOrg: (organizationId) =>
+                  gipProposalsForOrg(dbHandle.db, organizationId),
+              },
             }),
           });
           // M23 (Billing — Medicare) — mount the §4.1 route plugins over the Drizzle READ + WRITE services +
@@ -5390,7 +5399,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           idgRecertWindowsForOrg(dbHandle.db, organizationId, patientIds, new Date(asOfIso)),
       },
       // §2.4 `sinceLastIdg.flaggedEvents` — three org-explicit BATCHED source seams (M14 imports none of their code):
-      // M6 hospital/ER (ADT-derived windows), M13 missed doses, M30 falls + infections.
+      // M6 hospital/ER (ADT-derived windows), M13 missed doses, M30 falls + infections, M19 GIP-proposal triage calls (F-218).
       flaggedEventSources: [
         {
           source: "m6.hospital",
@@ -5406,6 +5415,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           source: "m30.fall_infection",
           flaggedEventsForOrg: (organizationId, patientIds, sinceIso) =>
             idgQualityFlaggedEventsForOrg(dbHandle.db, organizationId, patientIds, sinceIso),
+        },
+        // F-218 — M19 after-hours triage calls that proposed a GIP admission (`care_plan_change_indicated`).
+        {
+          source: "m19.triage_care_plan_change",
+          flaggedEventsForOrg: (organizationId, patientIds, sinceIso) =>
+            idgTriageCarePlanChangesForOrg(dbHandle.db, organizationId, patientIds, sinceIso),
         },
       ],
       // §2.4 `hopeContext` — M10's org-explicit batched open-timepoint + open-SFV read.

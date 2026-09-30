@@ -146,6 +146,15 @@ export const M19_ERROR_STATUS = {
    *  exist is the shape M13 cannot administer against. */
   PRN_TARGET_NOT_FOUND: 422,
 
+  // ── F-224 the explicit caregiver/attending triage SUMMARY request ──────────────────────────────────
+  /** F-224 — the call has no deliverable summary yet: it is not `documented_pending_encounter`/`documented`/
+   *  `closed` with a selected disposition, or it is an `abandoned`/`escalated_unresolved` end (no outcome
+   *  to hand a caregiver), or no patient has been identified (a summary is filed on a chart). */
+  TRIAGE_SUMMARY_NOT_AVAILABLE: 409,
+  /** F-224 — an external triage VENDOR operator may not request one: the summary is an in-agency
+   *  disclosure to the caregiver/attending, and a vendor holds no clinical identity (§8.3.1 / D13). */
+  TRIAGE_SUMMARY_ACTOR_FORBIDDEN: 403,
+
   // ── §2.7 / M19-F08 BCP paper re-entry ──────────────────────────────────────────────────────────────
   /** §2.7 step 2 — the original call time cannot be in the future; a re-entry that claims one would sort
    *  ahead of calls that really did happen later. */

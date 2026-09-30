@@ -14,7 +14,7 @@
 // audit declaration below is an EMISSION config rather than a waiver precisely because §8.7.2 gives the
 // decrypt its own business-event row.
 import type { FastifyInstance } from "fastify";
-import { actorOf, writeActorOf } from "./actor";
+import { actorOf, rejectAiActor, writeActorOf } from "./actor";
 import { ifMatchVersion, rejectOffsetPagination, requireIdempotencyKey } from "./concurrency";
 import {
   ABAC_CALL_ACTOR,
@@ -36,6 +36,7 @@ import {
   OpenTriageCallBody,
   PaperReentryBody,
   RecordAnswerBody,
+  RequestSummaryBody,
   SelectDispositionBody,
   TriageCallIdParams,
   parse,
@@ -50,6 +51,7 @@ export interface TriageCallRouteDeps {
 }
 
 const IDEMPOTENT = requireIdempotencyKey();
+const AI = rejectAiActor();
 const NO_OFFSET = rejectOffsetPagination();
 
 /** The M4 read-audit declaration every PHI triage-call read carries (§8.1 / M4 §2.5). */
@@ -250,6 +252,29 @@ export function registerTriageCallRoutes(app: FastifyInstance, deps: TriageCallR
         expectedVersion: ifMatchVersion(request, true),
         ...body,
       });
+    },
+  );
+
+  // F-224 — request the caregiver / attending summary document for a documented or closed call. An EXPLICIT
+  //      staff action (the decided trigger for `m19.triage.summary_requested`): permission-gated, the
+  //      per-call predicate, an Idempotency-Key (the platform replay cache returns the first answer for a
+  //      repeated key, so a double-click renders ONE document version), and the D13 AI-block — no AI
+  //      principal may put a disclosure in front of a caregiver. The body names only `recipientKind`; the
+  //      content is assembled server-side from the call's enumerated disposition (clinical/triage-summary).
+  app.post(
+    "/api/v1/triage-calls/:triageCallId/request-summary",
+    {
+      preHandler: [
+        AI,
+        P("triage.request_summary"),
+        ABAC_CALL_ACTOR("triage.request_summary"),
+        IDEMPOTENT,
+      ],
+    },
+    async (request) => {
+      const { triageCallId } = parse(TriageCallIdParams, request.params);
+      const body = parse(RequestSummaryBody, request.body);
+      return writeService.requestSummary(writeActorOf(request), triageCallId, body);
     },
   );
 

@@ -135,6 +135,9 @@ export type DocumentAggregateType =
   // Distinct from `hope_summary` (M10's per-assessment render): no per-request id on the wire, so this
   // renders as one evolving per-patient document, versioned via the F-168 append mechanism.
   | "assessment_summary"
+  // F-224 (#248, mig 0290) — the M19 caregiver / attending triage-call summaries (`recipientKind`).
+  | "triage_summary_caregiver"
+  | "triage_summary_attending"
   | "other";
 
 /** §3.2 / §2.2.1 — the document lifecycle (mirrors `document_status`). */
