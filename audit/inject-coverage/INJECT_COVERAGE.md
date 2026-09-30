@@ -15,7 +15,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 06-admission | 68 | ✅ | 68/68 | apps/backend/__tests__/admission-certification.test.ts, apps/backend/__tests__/admission-discharge.test.ts, apps/backend/__tests__/admission-intake.test.ts, apps/backend/__tests__/admission-routes.test.ts |
 | 07-care-plan | 22 | ✅ | 21/22 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/care-plan-conformance.live.test.ts, apps/backend/__tests__/care-plan-routes.test.ts, apps/backend/__tests__/gap-013-care-plan-consent-wiring.live.test.ts, apps/backend/__tests__/patient-routes.test.ts |
 | 08-encounters | 37 | ✅ | 33/37 | apps/backend/__tests__/encounter-authoring.test.ts, apps/backend/__tests__/encounter-routes.test.ts |
-| 09-assessments | 19 | ✅ | 14/19 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/m9-assessments-write.live.test.ts |
+| 09-assessments | 20 | ✅ | 15/20 | apps/backend/__tests__/assessment-routes.test.ts, apps/backend/__tests__/m9-assessments-write.live.test.ts |
 | 10-hope | 29 | ✅ | 27/29 | apps/backend/__tests__/hope-routes.test.ts |
 | 11-orders | 34 | ✅ | 27/34 | apps/backend/__tests__/orders-routes.test.ts, apps/backend/__tests__/orm-recovery.test.ts, apps/backend/__tests__/orm-resend.test.ts, apps/backend/__tests__/stuck-recovery.test.ts |
 | 12-dosespot | 32 | ✅ | 20/32 | apps/backend/__tests__/dosespot-routes.test.ts |

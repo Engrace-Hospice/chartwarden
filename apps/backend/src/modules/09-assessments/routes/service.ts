@@ -145,6 +145,10 @@ export interface AssessmentRouteService {
     organizationId: string,
     patientId: string,
   ): Promise<{ patientId: string; latest: AssessmentView[] }>;
+  /** F-208 (#248) — the explicit "download/print" trigger: unconditionally requests a fresh printable
+   *  assessment-summary render (`m9.assessment.summary_requested`, M22 renders `assessment_summary`).
+   *  Never throttled — the caller asked directly, unlike the auto-refresh side effect on {@link summary}. */
+  requestSummaryDocument(organizationId: string, patientId: string): Promise<{ requested: true }>;
   latestScale(
     organizationId: string,
     patientId: string,
@@ -584,6 +588,13 @@ export function createInMemoryAssessmentBackend(seed: AssessmentRouteSeed = {}):
         if (!cur || r.capturedAt > cur.capturedAt) latest.set(r.scaleType, r);
       }
       return { patientId, latest: [...latest.values()].map((r) => toView(r, sudRedacted(r))) };
+    },
+
+    // F-208 (#248) — the in-memory slice carries no outbox port (the M8/M9L NOOP_OUTBOX-default
+    // convention), so this acknowledges the request without a real emit; the production DB service is
+    // the one that actually publishes.
+    async requestSummaryDocument(_organizationId, _patientId) {
+      return { requested: true };
     },
 
     async latestScale(organizationId, patientId, scaleType) {

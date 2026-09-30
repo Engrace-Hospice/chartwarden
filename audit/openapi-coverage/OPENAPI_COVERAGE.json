@@ -81,10 +81,10 @@
     },
     {
       "module": "09-assessments",
-      "routes": 19,
-      "enriched": 19,
+      "routes": 20,
+      "enriched": 20,
       "deficit": 0,
-      "mutating": 7,
+      "mutating": 8,
       "mutatingNoBody": 0,
       "gets": 12,
       "getsNoResponse": 0

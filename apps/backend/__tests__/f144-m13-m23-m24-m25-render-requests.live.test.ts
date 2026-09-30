@@ -55,6 +55,7 @@ import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap
 import { M6_OUTBOX_EVENTS } from "../src/modules/06-admission/index";
 import { M7_OUTBOX_EVENTS } from "../src/modules/07-care-plan/index";
 import { M8_OUTBOX_EVENTS } from "../src/modules/08-encounters/index";
+import { M9_OUTBOX_EVENTS } from "../src/modules/09-assessments/index";
 import { M10_OUTBOX_EVENTS } from "../src/modules/10-hope/index";
 import { M11_OUTBOX_EVENTS } from "../src/modules/11-orders/index";
 import { M12_OUTBOX_EVENTS } from "../src/modules/12-dosespot/index";
@@ -216,6 +217,7 @@ describe.skipIf(!DB_URL)("F-144 — M13/M23/M24/M25 render-request producers, LI
       M6_OUTBOX_EVENTS,
       M7_OUTBOX_EVENTS,
       M8_OUTBOX_EVENTS,
+      M9_OUTBOX_EVENTS,
       M10_OUTBOX_EVENTS,
       M11_OUTBOX_EVENTS,
       M12_OUTBOX_EVENTS,

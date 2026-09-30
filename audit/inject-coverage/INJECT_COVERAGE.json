@@ -100,13 +100,13 @@
     },
     {
       "module": "09-assessments",
-      "routes": 19,
+      "routes": 20,
       "covered": true,
       "suiteFiles": [
         "apps/backend/__tests__/assessment-routes.test.ts",
         "apps/backend/__tests__/m9-assessments-write.live.test.ts"
       ],
-      "directRoutesReferenced": 14
+      "directRoutesReferenced": 15
     },
     {
       "module": "10-hope",

@@ -263,6 +263,11 @@ export const AssessmentSummaryResponseSchema = Type.Object({
   latest: Type.Array(AssessmentViewResponseSchema),
 });
 
+/** Route 19 — F-208 (#248) the explicit "download/print" summary-render trigger's ack. */
+export const RequestSummaryDocumentResponseSchema = Type.Object({
+  requested: Type.Literal(true),
+});
+
 /** One scored point in a series (§4.3 `SeriesPointDto`). */
 export const ScaleSeriesPointResponseSchema = Type.Object({
   assessmentId: Type.String(),

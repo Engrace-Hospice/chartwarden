@@ -313,6 +313,14 @@ export const PLATFORM_TEMPLATE_TABLE: Readonly<Record<string, TemplateDescriptor
     retentionClass: "clinical_record",
     defaultTitle: "Transfer Summary",
   },
+  // F-208 (#248) — M9's printable assessment summary. Distinct from `hope_summary` above (M10's own,
+  // per-assessment HOPE PDF); mig 0277 adds the `document_aggregate_type` value. `clinical_record`: the
+  // rendered summary is filed on the chart, one evolving document per patient.
+  assessment_summary: {
+    aggregateType: "assessment_summary",
+    retentionClass: "clinical_record",
+    defaultTitle: "Assessment Summary",
+  },
   // F-166 (#248) — M14's two IDG render requests. Both `document_aggregate_type` values have existed
   // since migration 0048 with no descriptor and no subscription — F-162's own precise finding
   // ("even a first-ever render would hit `unknown_template` today"). `clinical_record`: both are the

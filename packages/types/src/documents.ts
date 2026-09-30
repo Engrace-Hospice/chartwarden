@@ -131,6 +131,10 @@ export type DocumentAggregateType =
   // "discharge_summary (transfer variant)" — a distinct type from `discharge_summary`, never a second
   // version of it.
   | "discharge_summary_transfer"
+  // F-208 (#248, mig 0277) — the M9 printable assessment summary behind `m9.assessment.summary_requested`.
+  // Distinct from `hope_summary` (M10's per-assessment render): no per-request id on the wire, so this
+  // renders as one evolving per-patient document, versioned via the F-168 append mechanism.
+  | "assessment_summary"
   | "other";
 
 /** §3.2 / §2.2.1 — the document lifecycle (mirrors `document_status`). */

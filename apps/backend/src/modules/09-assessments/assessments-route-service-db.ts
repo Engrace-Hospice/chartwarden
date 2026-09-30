@@ -93,6 +93,11 @@ const COSIGN_ATTESTATION =
 
 const SCALE_VERSION = "v1";
 
+/** F-208 (#248) — the `summary()` auto-refresh throttle window: a chart-open re-requests the printable
+ *  assessment summary only while the most recent active assessment is this fresh. 24h errs toward "keep
+ *  refreshing while the picture may still be changing" over building new per-patient dedup state. */
+const SUMMARY_AUTO_REFRESH_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 /** The transactional-outbox port (§2.8): the bound publisher validates every emit against the boot
  * catalog and writes the `outbox_event` row on the CALLER'S tx. The no-op default lets the slice/tests
  * commit without a dispatcher. Mirrors M7/M8. */
@@ -273,6 +278,44 @@ export function createDbAssessmentRouteService(
       aggregateKind,
       aggregateId,
     });
+  }
+
+  /** F-208 (#248) — publish `m9.assessment.summary_requested` for the current active rows (or a no-op
+   *  when there is none — an empty chart has nothing to summarize). The aggregate is the PATIENT
+   *  (`aggregateKind: "patient"`, the M5 `merges-db.ts`/`deceased-db.ts` precedent): the payload carries
+   *  no per-request id, so M22 renders one evolving `assessment_summary` document per patient. */
+  async function emitSummaryRequested(
+    tx: DbClient,
+    org: string,
+    patientId: string,
+    rows: readonly AssessmentRow[],
+  ): Promise<void> {
+    if (rows.length === 0) return;
+    const scales = [...new Set(rows.map((r) => r.scaleType))];
+    await emit(tx, org, "m9.assessment.summary_requested", "patient", patientId, {
+      patientId,
+      asOfDate: await todayForOrganization(tx, org),
+      scales,
+      lang: "en",
+    });
+  }
+
+  /** F-208 (#248) — the chart-open auto-refresh gate: fire only when the most recent active assessment
+   *  was captured within {@link SUMMARY_AUTO_REFRESH_WINDOW_MS} of now. See {@link emitSummaryRequested}'s
+   *  own caller comment (in `summary`) for why this is a freshness gate rather than a new state table. */
+  async function maybeRequestSummaryRefresh(
+    tx: DbClient,
+    org: string,
+    patientId: string,
+    rows: readonly AssessmentRow[],
+  ): Promise<void> {
+    let mostRecentCapturedAtMs = -Infinity;
+    for (const r of rows) {
+      const ms = (r.capturedAt instanceof Date ? r.capturedAt : new Date(r.capturedAt)).getTime();
+      if (ms > mostRecentCapturedAtMs) mostRecentCapturedAtMs = ms;
+    }
+    if (Date.now() - mostRecentCapturedAtMs > SUMMARY_AUTO_REFRESH_WINDOW_MS) return;
+    await emitSummaryRequested(tx, org, patientId, rows);
   }
 
   /** Is a scale enabled for this tenant? — the explicit `scale_policy.enabled` flag; absent ⇒ enabled. */
@@ -634,11 +677,33 @@ export function createDbAssessmentRouteService(
           .select(assessmentCols)
           .from(CA)
           .where(and(eq(CA.patientId, patientId), eq(CA.status, "active")))) as AssessmentRow[];
+        // F-208 (#248) — the "auto-refresh on chart-open" trigger for `m9.assessment.summary_requested`
+        // (M22 renders `assessment_summary`, one evolving document per patient — F-168's append shape).
+        // No per-request identity exists on the payload to dedupe on the M9 side, so this pass throttles
+        // by DATA FRESHNESS rather than a new state table: only fire when the most recent active
+        // assessment was captured within `SUMMARY_AUTO_REFRESH_WINDOW_MS` of now, so repeated chart-opens
+        // of a long-settled patient do not mint a fresh document version on every read. A patient with no
+        // assessment activity at all, or none recent, is left exactly as the explicit download/print
+        // action (`requestSummaryDocument` below) already covers on demand.
+        await maybeRequestSummaryRefresh(tx as DbClient, organizationId, patientId, rows);
         return {
           patientId,
           latest: await viewsFor(tx as DbClient, organizationId, patientId, latestPerScale(rows)),
         };
       });
+    },
+
+    // F-208 (#248) — the explicit "download/print" trigger: unconditional, since the caller asked
+    // directly (unlike `summary`'s freshness-gated side effect above).
+    async requestSummaryDocument(organizationId, patientId) {
+      await withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
+        const rows = (await tx
+          .select(assessmentCols)
+          .from(CA)
+          .where(and(eq(CA.patientId, patientId), eq(CA.status, "active")))) as AssessmentRow[];
+        await emitSummaryRequested(tx as DbClient, organizationId, patientId, rows);
+      });
+      return { requested: true };
     },
 
     async latestScale(organizationId, patientId, scaleType) {
