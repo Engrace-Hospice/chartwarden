@@ -275,6 +275,12 @@ export {
   M6_LEVEL_OF_CARE_CHANGE_SIGNED_CONSUMER,
   buildM6LevelOfCareChangeSignedConsumer,
 } from "./outbox-consumers/m11-level-of-care-change-signed";
+// F-223 (#248) — a signed recertification order opens the next PENDING election period (M11 D10).
+export {
+  M6_RECERTIFICATION_SIGNED_CONSUMER,
+  applyRecertificationSigned,
+  buildM6RecertificationSignedConsumer,
+} from "./outbox-consumers/m11-recertification-signed";
 export {
   M6_QUEUES,
   M6_JOB_SCHEDULES,

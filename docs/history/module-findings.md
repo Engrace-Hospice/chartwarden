@@ -216,3 +216,34 @@ period can no longer bypass the CoP check, so the old blocker is gone; the remai
 decision whether a signed recert order should auto-open the next pending election period at all (M11 D10 / §1.3
 name M6 as subscriber; M6's own spec never names the event; there is no F2F/CTI to validate before the period
 exists).
+
+## F-223 — M6 binds `m11.order.recertification_signed`: a signed recert order opens the next PENDING period
+
+**Decision (user-approved, closing F-217's open question).** A signed `recertification` order (M11 D10 / §1.3)
+auto-opens the next election period, PENDING only. `outbox-consumers/m11-recertification-signed.ts`; migration
+0297 adds `election_period.source_order_id` (logical uuid, M6's `dependsOn` excludes M11) + plain
+`UNIQUE(organization_id, source_order_id)` (NULLS DISTINCT — the F-159 / 0250 / M25 0249 precedent).
+
+**Gate intact.** The consumer never activates, signs or touches CTI/F2F rows; adequacy stays enforced at
+activation (`signCtiHospiceMd` → `evaluatePeriodAdequacy`, F-217). The live suite proves an auto-opened period
+with an inadequate CTI still refuses activation (409 `ELECTION_PERIOD_ADEQUACY_FAILED`).
+
+**No duplicated insert logic.** `createElectionPeriod` now delegates to the exported `openNextElectionPeriodInTx`
+(next sequence, `electionPeriodKindForSequence` 90/90/60, row, `m6.election.period_started` on the same tx); the
+consumer passes `sourceOrderId`, which switches the insert to `ON CONFLICT DO NOTHING` so a racing manual open
+or redelivery loses quietly instead of aborting the tx with 23505.
+
+**Matching.** `periodEndDate` is the CURRENT period's end (M11 spec: `<curr period end>`); the consumer selects
+the highest-sequence `active` period whose `scheduled_end_at` equals it. Highest-sequence because activating
+period N+1 does not flip period N off `active`, and (pre-existing behaviour) period windows are stamped from the
+activation day, so two periods can share an end date.
+
+**Settle vs retry.** Settled (return, never throw): malformed payload, already applied (source_order_id),
+admission unknown / cross-tenant (RLS), admission not `active`/`on_hold`, no active period matching
+`periodEndDate`, a later period already exists (no duplicate pending period when staff opened it manually).
+Only db/publisher errors propagate for dispatcher retry (proven: the period rolls back).
+
+**Outbox pair.** `m6 <- m11.order.recertification_signed` removed from `scripts/outbox-deferred-consumers.ts`
+(group deleted). No `*_SUBSCRIBED_EVENT_NAMES` list exists for M6. Wired at `apps/backend/src/index.ts`
+(`buildM6RecertificationSignedConsumer`). Proof: `m6-recertification-signed.test.ts` (unit) and
+`m6-recertification-signed.live.test.ts` (`test:m6:recertification-signed:live`, CI row added).

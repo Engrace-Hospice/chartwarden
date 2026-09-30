@@ -214,6 +214,7 @@ import {
   idgRecertWindowsForOrg,
   buildM6DocumentBackrefConsumer,
   buildM6LevelOfCareChangeSignedConsumer,
+  buildM6RecertificationSignedConsumer,
   buildM6ProposalAcceptedConsumer,
   buildM6WorkerDeps,
   claimAssemblyRangeContextForOrg,
@@ -6306,6 +6307,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           // Migration 0250 adds the `source_order_id` idempotency key a genuine redelivery needs.
           buildM6LevelOfCareChangeSignedConsumer({
+            db: dbHandle.db,
+            outbox: m6OutboxPublisher,
+          }),
+          // F-223 (#248) — a signed recert order (M11 D10) opens the next PENDING election period via the
+          // route's own insert; F2F/CTI adequacy stays gated at activation. Migration 0297 is the key.
+          buildM6RecertificationSignedConsumer({
             db: dbHandle.db,
             outbox: m6OutboxPublisher,
           }),

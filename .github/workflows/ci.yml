@@ -689,6 +689,8 @@ jobs:
           # F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           - { name: "M6 LOC change signed", scripts: "test:m6:loc-change-signed:live" }
           - { name: "M6 F2F/CTI adequacy gate", scripts: "test:m6:adequacy-gate:live" }
+          # F-223 (#248) — a signed recert order opens the next PENDING election period (gate stays at activation).
+          - { name: "M6 recertification signed", scripts: "test:m6:recertification-signed:live" }
           # F-120 — M21's other two bound M11 cascade deciders (§7.7 cancellation, the DME rental
           # close-out), both already live-emitted by the M6/M11 discharge cascade above.
           - { name: "M21 order cascade", scripts: "test:m21:order-cascade:live" }

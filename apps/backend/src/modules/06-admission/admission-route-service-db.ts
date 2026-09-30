@@ -246,6 +246,63 @@ const RE = schema.revocationEvents;
 const RA = schema.referralActivities;
 const RN = schema.referralNotes;
 
+/**
+ * F-223 — the ONE place a PENDING election-period shell is opened: next `sequence_number`, the §418.21(a)
+ * `period_kind`, the row, and `m6.election.period_started`, all on the caller's tx. Shared by the HTTP
+ * route (`createElectionPeriod`) and the `m11.order.recertification_signed` consumer so the insert logic is
+ * never duplicated. It opens a PENDING shell only: the F2F/CTI adequacy gate is enforced at ACTIVATION
+ * (`signCtiHospiceMd` → `evaluatePeriodAdequacy`), never here, so calling this cannot bypass it.
+ *
+ * `sourceOrderId` (logical M11 order id, migration 0297) is stamped by the consumer. When it is given the
+ * insert is `ON CONFLICT DO NOTHING` (either `(admission, sequence)` — staff already opened the period —
+ * or `(org, source_order_id)` — a redelivery) and `null` is returned instead of a 23505 that would abort
+ * the transaction; the route (no `sourceOrderId`) keeps the plain, throwing insert.
+ */
+export async function openNextElectionPeriodInTx(
+  tx: DbClient,
+  outbox: AdmissionWriteOutboxPort,
+  args: { organizationId: string; admissionId: string; sourceOrderId?: string },
+): Promise<{ id: string; status: string; version: number; sequence: number } | null> {
+  const { organizationId, admissionId, sourceOrderId } = args;
+  const [adm] = await tx.select({ id: ADM.id }).from(ADM).where(eq(ADM.id, admissionId)).limit(1);
+  if (!adm) throw new ResourceNotFoundError(admissionId);
+  const [max] = await tx
+    .select({ seq: sql<number>`coalesce(max(${EP.sequenceNumber}), 0)` })
+    .from(EP)
+    .where(eq(EP.admissionId, admissionId));
+  const nextSequence = Number(max?.seq ?? 0) + 1;
+  const insert = tx.insert(EP).values({
+    organizationId,
+    admissionId,
+    sequenceNumber: nextSequence,
+    // 42 CFR 418.21(a): periods 1 and 2 are 90-day, every later period is 60-day. This was a
+    // hard-coded `ninety_day` at every insert site, which is right only for the two seeds that
+    // are always sequence 1 — a recert period and a transfer-in's carried sequence can be any
+    // number, and the kind is what `scheduled_end_at` is derived from.
+    periodKind: electionPeriodKindForSequence(nextSequence),
+    ...(sourceOrderId ? { sourceOrderId } : {}),
+  });
+  const returning = { id: EP.id, status: EP.status, version: EP.version };
+  let ep: { id: string; status: string; version: number } | undefined;
+  if (sourceOrderId) {
+    [ep] = await insert.onConflictDoNothing().returning(returning);
+    if (!ep) return null;
+  } else {
+    ep = firstOrThrow(await insert.returning(returning), "election period insert returned no row");
+  }
+  await outbox.publish(tx, {
+    eventName: "m6.election.period_started",
+    // F-100 — `sequence` is required and was omitted, so `POST /election-periods` raised
+    // `payload_schema_violation` and rolled back for every caller: no admission could open a
+    // benefit period past the one its activation seeds, which is 42 CFR 418.21(a) recertification.
+    payload: { electionPeriodId: ep.id, admissionId, sequence: nextSequence },
+    organizationId,
+    aggregateKind: "election_period",
+    aggregateId: ep.id,
+  });
+  return { id: ep.id, status: ep.status, version: Number(ep.version), sequence: nextSequence };
+}
+
 /** §4.2.7 discharge reason → the §2.3.1 `executeDischarge` discriminator the pure state machine reads. */
 const REASON_TO_SM_TYPE: Record<
   DischargeReason,
@@ -3916,45 +3973,9 @@ export function createDbAdmissionRouteService(
     },
     async createElectionPeriod(organizationId, admissionId): Promise<MutationResult> {
       return withOrgContext(db, { organizationId, userId: "" }, async (tx) => {
-        const [adm] = await tx
-          .select({ id: ADM.id })
-          .from(ADM)
-          .where(eq(ADM.id, admissionId))
-          .limit(1);
-        if (!adm) throw new ResourceNotFoundError(admissionId);
-        const [max] = await tx
-          .select({ seq: sql<number>`coalesce(max(${EP.sequenceNumber}), 0)` })
-          .from(EP)
-          .where(eq(EP.admissionId, admissionId));
-        const nextSequence = Number(max?.seq ?? 0) + 1;
-        const ep = firstOrThrow(
-          await tx
-            .insert(EP)
-            .values({
-              organizationId,
-              admissionId,
-              sequenceNumber: nextSequence,
-              // 42 CFR 418.21(a): periods 1 and 2 are 90-day, every later period is 60-day. This was a
-              // hard-coded `ninety_day` at every insert site, which is right only for the two seeds that
-              // are always sequence 1 — a recert period and a transfer-in's carried sequence can be any
-              // number, and the kind is what `scheduled_end_at` is derived from.
-              periodKind: electionPeriodKindForSequence(nextSequence),
-            })
-            .returning({ id: EP.id, status: EP.status, version: EP.version }),
-          "election period insert returned no row",
-        );
-        await outbox.publish(tx, {
-          eventName: "m6.election.period_started",
-          // F-100 — `sequence` is required and was omitted, so `POST /election-periods` raised
-          // `payload_schema_violation` and rolled back for every caller: no admission could open a
-          // benefit period past the one its activation seeds, which is 42 CFR 418.21(a) recertification.
-          // The value was already computed two statements up for the row's own `sequence_number`.
-          payload: { electionPeriodId: ep.id, admissionId, sequence: nextSequence },
-          organizationId,
-          aggregateKind: "election_period",
-          aggregateId: ep.id,
-        });
-        return { id: ep.id, state: ep.status, version: Number(ep.version) };
+        const ep = await openNextElectionPeriodInTx(tx, outbox, { organizationId, admissionId });
+        if (!ep) throw new WardenXError("NOT_FOUND", "election period insert returned no row", 404);
+        return { id: ep.id, state: ep.status, version: ep.version };
       });
     },
     async patchElectionPeriod(organizationId, id, ifVersion): Promise<MutationResult> {
