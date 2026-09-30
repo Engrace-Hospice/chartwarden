@@ -68,37 +68,19 @@ export interface DeferredConsumerGroup {
 }
 
 export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
-  {
-    module: "m30",
-    kind: "handlers-unbound",
-    reason:
-      "F-115 (#248) split this group in two — the blanket 'M30 is a producer, not a subscriber; no consumer directory exists' reason (M30-T… original) was FALSE for these four: `packages/quality/src/consumers/` is a real, unit-tested consumer directory (`handlers.ts` + `subscription-map.ts`, the §4.10 upstream fan-out — recompute enqueues, the mortality-review auto-draft, the CAHPS candidate seed, the medication-error incident auto-draft) that RULE 3(d) ships pure with no boot-wired binding, the same shape M23/M25/M26/M27 were already correctly classified `handlers-unbound` under. Two of `M30_OUTBOX_SUBSCRIPTIONS`'s six topics (`m6.discharge.death`, `m6.election.signed`) were already carried as a `handler-unbound` entry in outbox-subscription-exceptions.ts because the catalog never declared m30 on them; these four are the mirror case — the catalog DOES declare m30, and it is the binding that is missing. F-150 (#248) BOUND two of the four for real — `m10.hope.submission_accepted` (after widening its payload with `providerEntityId`, the fact the real consumer needs but the catalog never carried) and `m23.claim.adjudicated` (already carried everything needed) — both via the real `enqueueRecompute` port (`apps/backend/src/modules/30-quality/outbox-consumers/`), the first genuinely-bound relationship this whole registry has produced rather than a catalog correction. The other two stay unbound, for two DIFFERENT reasons, not the same one: `m12.medication.error_reported`'s handler (`createIncidentDraft`) needs a resolvable 'M30 service membership' for `incident_report.reported_by_membership_id` (NOT NULL) that no system-actor-membership convention anywhere in this codebase currently provides — genuinely blocked, not merely unwired. `m18.evv.visit_verified` is a DIFFERENT class of gap entirely, found while scoping this bind: M18's own `domain/event-lifecycle.ts` `recordEvent` decider declares the outbox effect, but the REAL production check-in/check-out write path (`evv-route-service-db.ts`) never calls that decider at all — it emits `check_in_recorded`/`check_out_recorded`/`at_patient_address`/`geofence_breach_recorded` inline and never `visit_verified`. This event is not merely unbound on M30's side, it is never PUBLISHED on M18's side — a producer-side gap in a different module, reported here rather than fixed, since it needs M18's own write path changed, not an M30 consumer. " +
-      "**F-165 (#248) re-checked `m12.medication.error_reported`'s own stated blocker rather than re-asserting it, and it was only half right — the actor half was wrong, and a deeper, previously-undocumented blocker sits underneath.** The 'no system-actor-membership convention' framing does not apply here at all: the catalogued payload (`events-by-m12.ts`) already carries a REAL `reportedByMembershipId` — the actual clinician who filed the medication-error report through M12, not a fictional 'M30 service membership' — so `incident_report.reported_by_membership_id` (NOT NULL, unchanged, no migration needed) can be populated honestly by passing that value straight through `buildIncidentDraftFromEvent`'s `IncidentTriggerBase.reportedByMembershipId`, exactly the way crediting the real reporter is MORE correct than any system-actor convention would be. What actually blocks this event is something F-150 never checked: **there is no producer anywhere in this codebase.** Exhaustively grepped across `12-dosespot/` and `13-emar/` (the two modules with any plausible medication-error write path) for `reportMedicationError`, `medicationErrorId`, and `error_reported` — the function the event's own catalog description names (`reportMedicationError`) does not exist; no route, write-service method, or consumer ever calls `outbox.publish` with this event name. `events-by-m13.ts`'s own comment independently confirms it from the M13 side: 'the only real M30 controlled-substance-discrepancy path is `m12.medication.error_reported`… no M13-sourced incident_draft mechanism exists.' This is the exact `m18.evv.visit_verified` shape this same group already documents for a sibling event — a catalogued, typed, payload-complete event that no production write path has ever emitted. Binding an M30 consumer for it would be dead code: correct, testable in isolation, and never invoked in any real deployment. Not built, for the same reason `m18.evv.visit_verified` was not built — the fix belongs in M12's (or M13's) write path, not in an M30 consumer, and inventing that producer (deciding which write action constitutes a 'medication error' worth auto-filing an incident over) is a real product/clinical-workflow decision this pass does not make unilaterally." +
-      " **F-174 (#248) re-checked both events fresh against current code; nothing in this round's other" +
-      " builds (M35/M24/M37/M21/M25, F-172; M1 system-status, F-173) touches either producer.**" +
-      " `m12.medication.error_reported` still has no producer anywhere — a repeat grep across" +
-      " `12-dosespot/` and `13-emar/` for `reportMedicationError`/`medicationErrorId` still matches only" +
-      " the two catalog files (`events-by-m12.ts`, `events-by-m13.ts`'s payload field), no write path." +
-      " `m18.evv.visit_verified` still has no caller of `recordEvent`" +
-      " (`apps/backend/src/modules/18-evv/domain/event-lifecycle.ts`) anywhere in the codebase, and" +
-      " `evv-route-service-db.ts` still emits only `check_in_recorded`/`check_out_recorded`/" +
-      "`at_patient_address`/`geofence_breach_recorded` inline. Both stay deferred, unchanged." +
-      " **F-194 (#248) — `m18.evv.visit_verified` is BOUND, not merely re-confirmed.** M18's check-out" +
-      " write path (`evv-route-service-db.ts`) never called the pure `recordEvent` decider that declared" +
-      " this event's effect; fixed by emitting it inline (mirroring the existing" +
-      " `check_out_recorded`/`geofence_breach_recorded` emits) when the check-out pairs with an" +
-      " in-geofence prior check-in and no `evv_missing_resolution` is still open. M30's own" +
-      " `hvldl_near_death_recompute` effect and pure handler (`handleEvvVisitVerified`) already existed," +
-      " fully unit-tested, unbound — the missing piece was purely the `OutboxConsumerBinding`" +
-      " (`outbox-consumers/m18-evv-visit-verified.ts`), resolving `providerEntityId` via a new" +
-      " org-explicit `evvVisitProviderEntityForOrg` M18 seam (M30's manifest excludes 18, port-injected" +
-      " per the established `CapConsumerStore` shape). `nearestDeathWithinDays` is deliberately left" +
-      " unresolved — the handler's own contract enqueues unconditionally when it's absent, so no new" +
-      " death-proximity seam was built this round. `m12.medication.error_reported` stays deferred: the" +
-      " user has since decided its trigger (a new explicit clinician-initiated report action in M12/M13," +
-      " not an auto-derived one), scoped as its own future build round, not yet built.",
-    events: ["m12.medication.error_reported"],
-  },
+  // F-205 (#248) — the m30 `handlers-unbound` group is GONE, not merely emptied. `m18.evv.visit_verified`
+  // was bound earlier by F-194 (M18's check-out write path never called the `recordEvent` decider that
+  // declared this event's effect; fixed by emitting it inline, then binding M30's pre-existing
+  // `hvldl_near_death_recompute` handler). `m12.medication.error_reported`, the group's last remaining
+  // pair, is now bound too. F-165/F-174 had found this event's real blocker was "no producer anywhere"
+  // (the actor-identity half F-150 originally blamed was wrong — the catalogued payload already carries a
+  // real `reportedByMembershipId`). The user has since decided the missing producer: a new explicit
+  // clinician-initiated "report error" action on the medication order (M12), not an auto-derived one.
+  // Built: `POST /api/v1/medication-orders/:id/report-error` (`reportMedicationError`), and
+  // `buildM30MedicationErrorReportedConsumer` binding the pre-existing pure
+  // `handleMedicationErrorReported`/`createIncidentDraft` handler (real since F-185), resolving
+  // `providerEntityId`/`locationId` via a new M12→M6 seam chain (`medicationOrderScheduleContextForOrg` →
+  // `admissionSchedulingContextForOrg`), the F-166 M13 dose-materializer precedent.
   {
     module: "m30",
     kind: "no-consumer-surface",
@@ -329,13 +311,19 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       " M6's spec (line 2983) describes, the F-179 REST-resolution shape M30 itself uses elsewhere." +
       " `m30` dropped from `declaredConsumers` on both events (`events-by-m6.ts`); no push consumer was" +
       " ever the right mechanism. `m15.volunteer.ratio_recomputed` and" +
-      " `m16.bereavement.plan_skipped_per_patient_opt_out` stay deferred: the latter's product question —" +
-      " does an opt-out skip count toward the CoP bereavement-coverage denominator — has since been" +
-      " decided (yes, counts as satisfied), scoped as its own future build round, not yet built.",
-    events: [
-      "m15.volunteer.ratio_recomputed",
-      "m16.bereavement.plan_skipped_per_patient_opt_out",
-    ],
+      " `m16.bereavement.plan_skipped_per_patient_opt_out` stayed deferred while the latter's product" +
+      " question — does an opt-out skip count toward the CoP bereavement-coverage denominator — was" +
+      " undecided. **F-206 (#248) — `m16.bereavement.plan_skipped_per_patient_opt_out` is BOUND, GONE" +
+      " from this group.** The user decided yes, it counts as CoP coverage SATISFIED. Recorded at the" +
+      " real live emit site (`m5-patient-opt-out-changed.ts`'s `skip` branch) as a new, idempotent" +
+      " `bereavement_cop_opt_out_credit` row (migration 0275), and `copOutreachCounts`" +
+      " (`16-bereavement/seams/drizzle-store.ts`) now sums matching credits into both the numerator and" +
+      " denominator of the `bereavement_coverage_rate` measure — the F-150 `enqueueRecompute` pattern," +
+      " a seam-pull relationship (`declaredConsumers` drops `m30`, `seamConsumers` gains it on" +
+      " `events-by-m16.ts`), not an outbox binding. `m15.volunteer.ratio_recomputed` stays deferred," +
+      " unchanged: a separate, still-undecided M27-hours seam gap the user's opt-out decision never" +
+      " touched.",
+    events: ["m15.volunteer.ratio_recomputed"],
   },
   {
     module: "m22",
@@ -714,16 +702,22 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
       " with a real database configured). Fixed as a mint-time PULL, not a push reaction to `.revoked` —" +
       " the identical reasoning already used to drop this event's siblings `.expired`/`.recipient_added`/" +
       "`.recipient_removed` in F-176. `declaredConsumers` corrected at the source (`events-by-m39.ts`);" +
-      " `m5`/`m16`/`m2`/`m31` are unaffected. **`m9.assessment.summary_requested`'s trigger has since been" +
-      " decided** (both an auto-refresh on chart-open AND an explicit download/print button), scoped as" +
-      " its own future build round, not yet built. `m12.medication_order.draft_created_from_extraction`," +
+      " `m5`/`m16`/`m2`/`m31` are unaffected. **F-208 (#248) — `m9.assessment.summary_requested` is BOUND," +
+      " GONE from this group.** Both user-decided triggers built: chart-open auto-refresh (freshness-" +
+      " throttled, not a new dedup table) and an explicit" +
+      " `POST /api/v1/patients/:patientId/assessments/summary/document` download/print action. Both emit" +
+      " the real event; M22 renders a new `assessment_summary` document type (migration 0277) as one" +
+      " evolving per-patient document — `patientId` is the aggregate, no per-request id on the payload —" +
+      " appending a new version per request via F-168's `document_version.source_event_id` idempotency-key" +
+      " mechanism, which is what makes the evolving-document interpretation (vs. one-per-snapshot) safe:" +
+      " repeated/successive render requests against the same aggregate correctly produce new versions" +
+      " instead of silently no-opping. `m12.medication_order.draft_created_from_extraction`," +
       " `m19.triage.summary_requested`, and `m5.patient.draft_created_from_extraction` stay deferred," +
       " unchanged — no producer.",
     events: [
       "m12.medication_order.draft_created_from_extraction",
       "m19.triage.summary_requested",
       "m5.patient.draft_created_from_extraction",
-      "m9.assessment.summary_requested",
     ],
   },
   {
@@ -765,15 +759,18 @@ export const DEFERRED_CONSUMERS: readonly DeferredConsumerGroup[] = [
   // new consumer that inserts the occurrence then dispatches the existing `WorkerAlertPort` → M36
   // `AlertEmitter` seam (the same mechanism M23's own cron alerts already use — no new alert-delivery
   // mechanism invented) once the org's rolling 30-day count for that CARC code exceeds 50.
-  {
-    module: "m27",
-    kind: "handlers-unbound",
-    reason:
-      "F-130 (#248) finished the per-event verification the prior pass's reason called for, against M27's own §1.1 relationship inventory and its manifest-patch dependsOn list ([1,2,3,4,6,8,12,13,22,23,26,36,38,40] — 21/24/37 conspicuously absent) — the F-101 rule that the CONSUMING module's own spec decides who consumes it, applied here at full group scale. 21 of the 23 pairs were dropped as misdeclared, redundant with a documented seam PULL M27's spec names explicitly by method: M6's `LevelOfCarePeriodReader`/`AdmissionCensusReader` (all 5 M6 events: `admission.activated`/`.discharged`, `election.period_started`/`.period_ended`, `loc.changed` — the last IS the exact table the reader pulls), M23's `PatientDaysProvider`/`ClaimSettlementProvider` (the 3 `m23.claim.*` events — M27's own text: \"forward-seam-deny-stubs at M27 lock and wire to live at M23 lock\"), M26's `CapAccrualReader`/`CapPeriodReader` (all 6 `m26.cap.*` events, same forward-seam-deny-stub framing). Three more had NO support anywhere in M27's spec, not even under deny-stub framing: the 3 `m24.medicaid_claim.*` events (Medicaid's billed-day contribution to the S-3 census arrives entirely through M23's PatientDaysProvider, by M27's own account of what that provider covers — \"by program (Medicare / Medicaid / other)\" — M24 itself is never named), the 3 `m37.*` events (M37 is named ONLY in the opposite direction — M37 consumes M27's `CostReportProvider.getInpatientCapPositionAtFiscalDate`, M27 never reads M37; GIP/IPU level of care is already covered via M6's LOC-period pull regardless of physical site), and `m8.mileage.captured` (M27's spec never mentions mileage; the event's own \"payroll/AP\" phrasing is Gusto-side, pulled by M27's separate `wage-data-pull` job, not this event). All 21 dropped at the source in each producing module's `events-by-mNN.ts`, not here. **The remaining 2 are a genuine, real, still-open forward seam, not a misdeclaration**: M21's own locked spec (§1.1, D16 — \"Does M21 own vendor invoice reconciliation?\") explicitly commits M21 to emitting `m21.supply_request.invoice_accrued`/`.invoice_reconciled` for an M27-side accrual/GL-reconciliation consumer, citing the precedent \"the M11 D6 / M13 D5 forward-seam precedent until M27 locks\" — a real cross-module decision on the PRODUCING side that M27's own spec simply never corroborates or builds a consumer for (M27's spec is silent on M21 entirely, the same asymmetry as M24/M37 above, but backed here by an explicit committed decision rather than an unsupported guess) — kept declared as the honest open question this asymmetry actually is, not dropped on the strength of M27's silence alone. **Re-checked (2026-09-28) and sharpened past \"M27's spec is silent\" into three concrete blockers, not merely re-asserted.** M27's expense-input model is GL-account-level and period-aggregated, not per-transaction: `trial_balance_import` holds one Xero-derived snapshot per pull, `cost_center_mapping` maps GL accounts to CMS cost centers, and Worksheet A (`packages/cost-report/src/worksheets/a.ts`) sums the mapped accounts into `suppliesCents` and asserts `tiesToTrialBalanceWithinDollar` against that imported total — a hard cross-check with no accommodation for a second, non-GL expense stream. (1) A DME/supply vendor invoice is almost certainly ALREADY posted to Xero and already flows into `suppliesCents` through the existing GL-mapping pipeline, so landing `invoice_accrued` into a new table and summing it in would double-count the expense against Worksheet A's own tie-out invariant — whether the M21 accrual should REPLACE the GL-mapped figure for those SKUs or merely RECONCILE against it is an undecided product question, and reconciling needs a matching key (vendor + amount + date window) since Xero and M21 share no invoice id. (2) The one real per-transaction, non-GL-sourced precedent in M27's schema, `bad_debt_record`, is `cost_report_id NOT NULL` — scoped to one already-created, human-entered cost report — while M21's two events fire continuously all year with NO `cost_report_id`/fiscal-year field in either payload at all, so a consumer would need a `(orgId, providerEntityId, accruedAt) → cost_report` fiscal-year resolver that exists nowhere in this codebase. (3) Which shape the new table should follow (`bad_debt_record`'s period-scoped shape vs. `trial_balance_import`'s GL-aggregate shape) depends on resolving (1) first. No files changed; this remains genuinely blocked on a design decision, not a wiring gap." +
-      " **F-167 (#248) re-verified all three blockers fresh against current code rather than re-asserting them, and all three hold unchanged.** `packages/cost-report/src/worksheets/a.ts` still asserts `tiesToTrialBalanceWithinDollar` for `suppliesCents` against the Xero-derived `trial_balance_import` snapshot with no accommodation for a parallel non-GL expense stream — confirmed by direct read. `bad_debt_record.cost_report_id` (`packages/db/src/schema/cost-report/bad-debt.ts`) is still `.notNull()`, the one real per-transaction precedent in M27's schema, and remains scoped to one already-created cost report. Both `m21.supply_request.invoice_accrued`/`.invoice_reconciled` payloads (`21-supplies/events-by-m21.ts`) still carry no `costReportId`/fiscal-year field of any kind — confirmed against the live `payloadSchema` definitions. No files changed; stays genuinely blocked on the same undecided product question (whether an M21 invoice accrual should REPLACE the GL-mapped Worksheet A figure for DME/supply SKUs or RECONCILE against it, which needs a shared vendor+amount+date matching key Xero and M21 do not share today)." +
-      " **F-174 (#248) re-verified all three blockers a third time and found the F-130/F-167 description of Worksheet A itself overstated against current code — corrected here, though it does not open a build path.** No live code anywhere computes or asserts `tiesToTrialBalanceWithinDollar` or sums GL accounts into `suppliesCents`: grep-confirmed tree-wide, the field is a bare `Type.Boolean()` in the schema (`packages/cost-report/src/worksheets/a.ts`) with no reader or writer; `packages/cost-report/src/validation/default-rules.ts` checks `bTiesToWorksheetA` (Worksheet B ties to A) but nothing ties A to the trial balance; `putWorksheet` (`27-cost-report/routes/write-service-drizzle.ts`) accepts Worksheet A's `data` wholesale from the caller with only TypeBox shape validation and no read of `trial_balance_import`/`cost_center_mapping`; `computeWorksheet`/`allocate` regenerate only the DERIVED worksheets B/C (`DERIVED_WORKSHEET_CODES`), never A; `applyCostCenterMapping`/`previewCostCenterMapping` touch only `cost_center_mapping` rows, never `cost_report_worksheet`. There is no automated GL-mapping-to-Worksheet-A pipeline in this codebase today, so there is no enforced invariant an M21 consumer could literally violate — the prior \"hard cross-check\" framing described the spec's intent, not an implemented mechanism. This still doesn't clear the blocker: M27's own locked spec (D17) already names the identical shape of problem — \"a vendor invoice not represented in the EHR\" — and answers it with a human-entered `manual_drug_cost_adjustment` line preserving source precedence (M13 → M12 → manual), not an automated per-transaction consumer table, and remains silent on M21 by name everywhere else (grep-confirmed, unchanged from F-130). `bad_debt_record.cost_report_id` (correcting the prior citation's filename — the file is `packages/db/src/schema/cost-report/bad-debt-record.ts`, not `bad-debt.ts`) is still `.notNull()`, still the only per-transaction precedent, and M21's `invoice_accrued`/`invoice_reconciled` `payloadSchema` (`21-supplies/events-by-m21.ts`) still carries no `costReportId`/fiscal-year field a fiscal-year resolver could use. No files changed; stays genuinely blocked on the same undecided product question F-130/F-167 named, now additionally informed by M27's own D17 precedent that its actual design answer to a vendor invoice the EHR doesn't already reflect is manual entry, not a push consumer — which one, for M21's case, is itself the decision nobody has made.",
-    events: ["m21.supply_request.invoice_accrued", "m21.supply_request.invoice_reconciled"],
-  },
+  // F-207 (#248) — the `m27` group is GONE, not merely emptied. `m21.supply_request.invoice_accrued`/
+  // `.invoice_reconciled`, the group's last remaining pair, are now bound. F-130/F-167/F-174 sharpened the
+  // real blocker over three passes: M27's expense-input model is GL-account-level and period-aggregated
+  // (`trial_balance_import`/`cost_center_mapping`/Worksheet A), with no per-transaction accrual precedent
+  // except `bad_debt_record` (scoped to one already-created cost report) and no fiscal-year field on
+  // either M21 payload. The user has since decided this as a 4th cost-basis precedence tier, additive to
+  // D17's M13 administration -> M12 ordered -> manual entry chain (M27 spec D17), not a replacement of the
+  // GL-mapped Worksheet A figure. Built: a new `vendor_invoice_line` table (migration 0276) and
+  // `buildM27VendorInvoiceConsumer`, which resolves the fiscal-year `cost_report` by
+  // `(providerEntityId, factDate)`, inserts an idempotent accrual row (`ON CONFLICT DO NOTHING`), and
+  // updates the same row on reconciliation guarded on `status = 'accrued'` — dead-lettering (not guessing)
+  // when a fact falls outside every open report's window.
   // F-164 (#248) — the `m26` group is GONE, not merely emptied. `m25.remittance.claim_recouped`, the
   // group's last remaining pair, is now bound. The real blocker was three missing facts, not the two the
   // prior reason named: `patientId` was genuinely absent from the payload; `priorPaidAmountCents` was

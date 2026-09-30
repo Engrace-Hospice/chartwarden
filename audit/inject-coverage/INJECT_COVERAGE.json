@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1310,
-    "coveredRoutes": 1310,
-    "directRoutesReferenced": 1252
+    "routes": 1311,
+    "coveredRoutes": 1311,
+    "directRoutesReferenced": 1253
   },
   "modules": [
     {

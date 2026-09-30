@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1310/1310 route defs sit behind a covered module · 1252/1310 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1311/1311 route defs sit behind a covered module · 1253/1311 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
