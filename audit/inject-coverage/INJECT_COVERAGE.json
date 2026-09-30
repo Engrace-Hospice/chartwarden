@@ -2,9 +2,9 @@
   "totals": {
     "modules": 39,
     "covered": 39,
-    "routes": 1311,
-    "coveredRoutes": 1311,
-    "directRoutesReferenced": 1253
+    "routes": 1316,
+    "coveredRoutes": 1316,
+    "directRoutesReferenced": 1258
   },
   "modules": [
     {
@@ -236,12 +236,13 @@
     },
     {
       "module": "23-billing-medicare",
-      "routes": 43,
+      "routes": 48,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/billing-medicare-inject.test.ts"
+        "apps/backend/__tests__/billing-medicare-inject.test.ts",
+        "apps/backend/__tests__/m23-rate-table-routes.test.ts"
       ],
-      "directRoutesReferenced": 43
+      "directRoutesReferenced": 48
     },
     {
       "module": "24-billing-medicaid",
