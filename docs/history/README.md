@@ -7,7 +7,7 @@ Moved out of the repo-root `CLAUDE.md` (which had reached ~436k chars). Not inst
 | [`status-overview.md`](./status-overview.md) | Point-in-time module-status narrative (incl. the M30 HCI resolution) and the security/compliance audit remediation summary. |
 | [`m28-fhir-gateway.md`](./m28-fhir-gateway.md) | Why the gateway 404'd every read, the three stacked dead ends, `SERVED_RESOURCES`, and the §164.528 disclosure ledger. |
 | [`module-findings.md`](./module-findings.md) | F-112 (M8 Layer-3 gate), F-114 (#106 E2E/a11y), F-116 (M33 seeded dashboards), F-118 (M20 SOS escalation caller). |
-| [`m23-claim-assembly-seams.md`](./m23-claim-assembly-seams.md) | F-119, F-121–F-128 and F-209: binding the `ClaimAssemblySeams` readers across M6/M8/M18/M38/M40, the Q-code defect, and M25's 835 pipeline scoping. |
+| [`m23-claim-assembly-seams.md`](./m23-claim-assembly-seams.md) | F-119, F-121–F-128, F-209 and F-210: binding the `ClaimAssemblySeams` readers across M6/M8/M18/M38/M40, the Q-code defect, M25's 835 pipeline scoping, and the tenant-entered hospice rate table (F-210). |
 | [`outbox-248-triage.md`](./outbox-248-triage.md) | Per-group, per-event checks of `outbox-deferred-consumers.ts`: F-115, F-117, F-129–F-149 (decide who really consumes each event; seam-pull vs push). |
 | [`outbox-248-builds.md`](./outbox-248-builds.md) | F-120 and F-150–F-171: building real bindings, verification catches, coordination hazards, and the running pair count. |
 | [`gates-tenancy-and-database.md`](./gates-tenancy-and-database.md) | Rationale and incident history for `check-tenancy` and `check-migration-numbering`, plus the kit overview. |

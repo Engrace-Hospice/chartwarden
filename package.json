@@ -319,6 +319,7 @@
     "test:m23:claim-submit-worker:live": "vitest run apps/backend/__tests__/m23-claim-submit-worker.live.test.ts",
     "test:m23:claim-match-seam:live": "vitest run apps/backend/__tests__/m23-m25-claim-match-seam.live.test.ts",
     "test:m23:claim-assembly-seams:live": "vitest run apps/backend/__tests__/m23-claim-assembly-seams.live.test.ts",
+    "test:m23:rate-table:live": "vitest run apps/backend/__tests__/m23-rate-table.live.test.ts",
     "test:m24:claim-line-assembly:live": "vitest run apps/backend/__tests__/m24-claim-line-assembly.live.test.ts",
     "test:m24:revalidate-medicare-primary:live": "vitest run apps/backend/__tests__/m24-revalidate-medicare-primary.live.test.ts",
     "test:m24:remittance-feedback:live": "vitest run apps/backend/__tests__/f172-m24-remittance-feedback.live.test.ts",

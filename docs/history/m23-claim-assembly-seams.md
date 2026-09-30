@@ -1,6 +1,6 @@
 # M23 claim-assembly seams (#250 / #251)
 
-> F-119 and F-121–F-128: binding the `ClaimAssemblySeams` readers across M6/M8/M18/M38/M40, the Q-code defect, and M25's 835 pipeline scoping. Moved verbatim from the repo-root `CLAUDE.md`; point-in-time narrative — generated reports under `audit/` are authoritative. Index: [`README.md`](./README.md).
+> F-119, F-121–F-128 and F-210: binding the `ClaimAssemblySeams` readers across M6/M8/M18/M38/M40, the Q-code defect, M25's 835 pipeline scoping, and the tenant-entered hospice rate table (F-210). Moved verbatim from the repo-root `CLAUDE.md`; point-in-time narrative — generated reports under `audit/` are authoritative. Index: [`README.md`](./README.md).
 
 **#250's own scoping investigation was itself checked rather than trusted, and it was wrong about M25
 and half-wrong about M23 (F-119).** A first-pass agent read `boot-assembly.ts`'s header and #250's issue
@@ -326,3 +326,52 @@ call order). Proven by `m23-claim-assembly-seams.live.test.ts` on the real NOBYP
 ordering, terminal first, resolved/inactive/null/blank-code exclusion, range overlap edges, the 12 cap,
 cross-org and cross-patient isolation, and M38 billability (leaf/non-leaf/retired/unknown/as-of) over real
 `concept_icd10cm` rows; unit coverage in `assembly.test.ts` and `diagnoses-seam.test.ts`.
+
+**The CMS rate-table wall is removed by CODE + TENANT DATA, not by a bundled CMS file (F-210).** Every earlier
+paragraph above that calls `referenceData.hippsRateTable`/`chcHourlyRateCents` "genuine new infrastructure" or the
+live `SEAM_UNBOUND` wall is point-in-time and now superseded: the decision is that the per-diem rates are
+**tenant-entered** (a bundled file would be a financial input that silently goes stale each October). Migration
+`0279_m23_hospice_rate_table.sql` adds the M23-owned, org-scoped (RLS enabled + FORCED), effective-dated,
+**append-only** `hospice_rate_table`: one row is one *version* of one provider entity's rates over
+`[effective_from, effective_to]` — exactly the six numbers the calculators read, all PRE-wage-index whole cents
+(`rhc_days_1_60`, `rhc_days_61_plus`, `chc_per_diem`, `irc`, `gip`, plus `chc_hourly_rate_cents` for the SIA add-on;
+no invented fields — the quality-reporting reduction and labor share are NOT modelled because no calculator reads
+them). A correction **supersedes** a row (`superseded_at`/`superseded_by_id`, the only app-updatable columns, by
+column-level GRANT plus a guard trigger; the app role can neither edit a rate nor delete a row; only the
+destruction role deletes, for org erasure). A btree_gist `EXCLUDE` constraint makes two *live* versions for one
+provider entity with overlapping dates impossible at the database, so the service's overlap pre-check (a 409 that
+names the clashing version) is a courtesy over a race-safe backstop. CHECKs guard the hand-keyed money: positive
+whole cents inside a plausibility band that catches dollars-keyed-as-cents (`215` for `$215.00`), RHC day 1-60
+>= day 61+ (ADR-0001), CHC hourly x 24 within 24 cents of the CHC per-diem, and the window inside its federal
+fiscal year (an omitted `effectiveTo` defaults to Sep 30, so a rate set never silently rolls into the next year).
+API: `GET/POST /api/v1/billing/rate-tables`, `GET .../effective?providerEntityId&onDate`, `GET .../:id`,
+`POST .../:id/supersede`, gated by the new `billing.rate_table.read` / `billing.rate_table.admin` keys
+(`provider_entity_billing_scope`; the migration and the catalog sync grant them to `administrator`/`org_admin`
+only, deliberately), AI-block + `Idempotency-Key` on writes, audit rows written by the M4 write trigger. TypeBox
+`Value.Convert` **truncates** a fractional number into an `Integer` field (215.5 became 215), so the route rejects a
+fractional `*Cents` on the raw body first. The binding needed no injected port (the table is M23's own):
+`buildM23ReferenceDataAdapter(db)` reads the live version covering the claim's **service-from** date through the
+org-explicit `hospiceRateTableEffectiveForOrg` (own `withOrgContext`, the F-121 pattern), which required widening
+the two port methods with a `RateLookupScope { orgId, providerEntityId, serviceFrom }` (the CMS-file design keyed on
+MAC + fiscal year only, which cannot address a tenant table). No covering version fails closed with
+`RATE_TABLE_MISSING` (422) naming the date, the provider entity, and the endpoint to enter rates — never
+`SEAM_UNBOUND`, never a guess. The CHC hourly is wage-adjusted with the same factor the per-diems get.
+
+**What this does NOT unblock, checked against the code (not assumed).** `POST /claims/assemble` no longer stops at
+`SEAM_UNBOUND`, and with a rate table + sequestration policy + wage-index row the live suite proves the call order
+moves past `hippsRateTable`/`activeSequestrationPolicy` (to the next stub only where a port is not injected). It
+can still be refused by DATA, each with a typed 4xx: `WAGE_INDEX_UNAVAILABLE` (`wage_index_factor` is
+platform-shared and has **no loader** — only the five non-authoritative migration-0080 placeholder CCNs, FY
+starting 2026, exist; a real provider CCN will not resolve — this is now the larger practical wall),
+`RATE_TABLE_MISSING`, `SEQUESTRATION_POLICY_UNAVAILABLE`, and the clinical preconditions. `placeOfService` is not a
+wall (null falls back to Q5009 "place N.O.S."), but the earlier claim that no producer exists is stale: M24's
+follow-up #2 built one (`PatientAddressReader.residenceAt`, `facility.kind`, migration 0183) that M23 does not use
+yet, so real claims carry the imprecise Q5009. Two pre-existing payment-math gaps from `audit/AUDIT_M23.md` M23-F02
+are untouched and matter once real rates flow: the wage index is applied to the **whole** per-diem (CMS applies it
+to the labor share only), and CHC is priced as per-diem days. Tenant-entered rates mean a wrong entry prices claims
+wrong; the guards above catch order-of-magnitude and internal-consistency slips, not a plausible-but-wrong number.
+A rate change never reprices an already-assembled claim (lines and `hipps_calculation.segments` snapshot the
+per-diem); it does affect a DRAFT that is re-assembled afterwards. Proven live: `m23-rate-table.live.test.ts` (real
+NOBYPASSRLS role, cross-tenant, overlap incl. the EXCLUDE backstop, append-only, lookup boundaries, adapter),
+`m23-claim-assembly-seams.live.test.ts` (wall now `RATE_TABLE_MISSING`, and moves past it with data), and the route
+smoke `m23-rate-table-routes.test.ts`.

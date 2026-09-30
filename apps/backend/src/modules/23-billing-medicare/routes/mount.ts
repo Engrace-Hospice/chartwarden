@@ -23,6 +23,7 @@ import { registerMacCredentialRoutes } from "./mac-credentials.routes";
 import { registerMetricsRoutes } from "./metrics.routes";
 import { registerNoeRoutes } from "./noe.routes";
 import { registerNotrRoutes } from "./notr.routes";
+import { registerRateTableRoutes } from "./rate-table.routes";
 import { registerRuleConfigRoutes } from "./rule-config.routes";
 import { registerSequestrationPolicyRoutes } from "./sequestration-policy.routes";
 import { registerValidationRoutes } from "./validation.routes";
@@ -38,6 +39,7 @@ export {
   type SequestrationPolicyRouteDeps,
 } from "./sequestration-policy.routes";
 export { registerMacCredentialRoutes, type MacCredentialRouteDeps } from "./mac-credentials.routes";
+export { registerRateTableRoutes, type RateTableRouteDeps } from "./rate-table.routes";
 export { registerMetricsRoutes, type MetricsRouteDeps } from "./metrics.routes";
 export {
   registerInternalSeamRoutes,
@@ -73,6 +75,10 @@ export function mountM23Routes(
   registerEligibilityRoutes(app, { readService, writeService });
   registerSequestrationPolicyRoutes(app, { readService, writeService });
   registerMacCredentialRoutes(app, { readService, writeService });
+  // F-210 — the tenant-entered hospice rate table (the per-diem input claim assembly prices from).
+  if (services.rateTableService) {
+    registerRateTableRoutes(app, { rateTableService: services.rateTableService });
+  }
   // Route group F — AR dashboard + metrics (read-only) + the system-principal internal seams (M25/M26/M27).
   registerMetricsRoutes(app, { readService });
   registerInternalSeamRoutes(app, internalSeam ? { internalSeam } : {});

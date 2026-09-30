@@ -3979,6 +3979,75 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/billing/rate-tables": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List a ProviderEntity's hospice rate-table versions, newest window first (F-210; includeSuperseded=true adds history) */
+        get: operations["getApiV1BillingRatetables"];
+        put?: never;
+        /** Enter a hospice rate-table version - whole-cent PRE-wage-index per-diems for a fiscal year; non-overlapping (F-210) */
+        post: operations["postApiV1BillingRatetables"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/rate-tables/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one hospice rate-table version (F-210) */
+        get: operations["getApiV1BillingRatetablesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/rate-tables/{id}/supersede": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Supersede a live rate-table version with a corrected one; the old version is kept as history (F-210) */
+        post: operations["postApiV1BillingRatetablesByIdSupersede"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/rate-tables/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The live hospice rate table claim assembly would price a service date from, or null (F-210) */
+        get: operations["getApiV1BillingRatetablesEffective"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/billing/rule-configs": {
         parameters: {
             query?: never;
@@ -30772,6 +30841,266 @@ export interface operations {
                             amountCents: number;
                         }[];
                     };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingRatetables: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                includeSuperseded?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rateTables: {
+                            rateTableId: string;
+                            organizationId: string;
+                            providerEntityId: string;
+                            fiscalYearStarting: number;
+                            effectiveFrom: string;
+                            effectiveTo: string | null;
+                            rhcDays1to60PerDiemCents: number;
+                            rhcDays61PlusPerDiemCents: number;
+                            chcPerDiemCents: number;
+                            ircPerDiemCents: number;
+                            gipPerDiemCents: number;
+                            chcHourlyRateCents: number;
+                            enteredByMembershipId: string;
+                            entryReason: string | null;
+                            supersededAt: string | null;
+                            supersededById: string | null;
+                            createdAt: string;
+                        }[];
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingRatetables: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** @description Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026). */
+                    fiscalYearStarting: number;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    rhcDays1to60PerDiemCents: number;
+                    rhcDays61PlusPerDiemCents: number;
+                    chcPerDiemCents: number;
+                    ircPerDiemCents: number;
+                    gipPerDiemCents: number;
+                    chcHourlyRateCents: number;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rateTableId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStarting: number;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rhcDays1to60PerDiemCents: number;
+                        rhcDays61PlusPerDiemCents: number;
+                        chcPerDiemCents: number;
+                        ircPerDiemCents: number;
+                        gipPerDiemCents: number;
+                        chcHourlyRateCents: number;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingRatetablesById: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rateTableId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStarting: number;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rhcDays1to60PerDiemCents: number;
+                        rhcDays61PlusPerDiemCents: number;
+                        chcPerDiemCents: number;
+                        ircPerDiemCents: number;
+                        gipPerDiemCents: number;
+                        chcHourlyRateCents: number;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingRatetablesByIdSupersede: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    /** @description Federal fiscal year's STARTING calendar year (Oct 1): 2025 = FY2026 (Oct 2025 - Sep 2026). */
+                    fiscalYearStarting: number;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    rhcDays1to60PerDiemCents: number;
+                    rhcDays61PlusPerDiemCents: number;
+                    chcPerDiemCents: number;
+                    ircPerDiemCents: number;
+                    gipPerDiemCents: number;
+                    chcHourlyRateCents: number;
+                    entryReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rateTableId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStarting: number;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rhcDays1to60PerDiemCents: number;
+                        rhcDays61PlusPerDiemCents: number;
+                        chcPerDiemCents: number;
+                        ircPerDiemCents: number;
+                        gipPerDiemCents: number;
+                        chcHourlyRateCents: number;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingRatetablesEffective: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                onDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        rateTableId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        fiscalYearStarting: number;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        rhcDays1to60PerDiemCents: number;
+                        rhcDays61PlusPerDiemCents: number;
+                        chcPerDiemCents: number;
+                        ircPerDiemCents: number;
+                        gipPerDiemCents: number;
+                        chcHourlyRateCents: number;
+                        enteredByMembershipId: string;
+                        entryReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    } | null;
                 };
             };
             "4XX": components["responses"]["Error"];

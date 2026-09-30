@@ -3014,9 +3014,22 @@ export const M23_CONTRIBUTED_PERMISSIONS = {
     category: "billing",
     abac: "provider_entity_billing_scope",
   },
+  // --- hospice rate-table surface (F-210: tenant-entered CMS per-diem rates) ---
+  "billing.rate_table.read": {
+    resource: "billing_rate_table",
+    action: "read",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
+  "billing.rate_table.admin": {
+    resource: "billing_rate_table",
+    action: "admin",
+    category: "billing",
+    abac: "provider_entity_billing_scope",
+  },
 } as const satisfies Record<string, PermissionDef>;
 
-/** Union of the M23 contributed permission keys (twenty-eight). */
+/** Union of the M23 contributed permission keys (twenty-eight + the two F-210 rate-table keys). */
 export type M23ContributedPermissionKey = keyof typeof M23_CONTRIBUTED_PERMISSIONS;
 
 /**

@@ -252,14 +252,33 @@ export interface SequestrationPolicyResolution {
   readonly effectiveTo: IsoDate | null;
 }
 
+/**
+ * F-210 — who/when the TENANT-ENTERED rate table is read for: the rate table is org + provider-entity scoped and
+ * effective-dated, so the reader needs more than the (MAC, fiscal year) the CMS-file design assumed.
+ */
+export interface RateLookupScope {
+  readonly orgId: string;
+  readonly providerEntityId: string;
+  /** The claim's service-from date; the rate version whose effective window covers it is the one priced from. */
+  readonly serviceFrom: IsoDate;
+}
+
 export interface BillingReferenceDataReader {
-  /** The CMS per-diem base rate table for the claim's MAC jurisdiction + hospice fiscal year (PRE-wage-index). */
+  /**
+   * The per-diem base rate table (PRE-wage-index) in effect on `scope.serviceFrom`, TENANT-ENTERED (F-210). Throws the
+   * typed `RATE_TABLE_MISSING` (422) when no table covers the date — never a guess and never `SEAM_UNBOUND`.
+   */
   hippsRateTable(
     macJurisdiction: MacJurisdiction,
     fiscalYearStarting: number,
+    scope: RateLookupScope,
   ): Promise<HippsRateTable>;
-  /** The wage-index-ADJUSTED CHC hourly rate (whole cents) the SIA add-on is priced at. */
-  chcHourlyRateCents(fiscalYearStarting: number, wageIndexFactorDecimal: string): Promise<Cents>;
+  /** The wage-index-ADJUSTED CHC hourly rate (whole cents) the SIA add-on is priced at (same `RATE_TABLE_MISSING`). */
+  chcHourlyRateCents(
+    fiscalYearStarting: number,
+    wageIndexFactorDecimal: string,
+    scope: RateLookupScope,
+  ): Promise<Cents>;
   wageIndexForCcn(ccn: string, fiscalYearStarting: number): Promise<WageIndexResolution | null>;
   activeSequestrationPolicy(
     orgId: string,
@@ -485,9 +504,11 @@ export function buildClaimAssemblyService(
           422,
         );
       }
+      const rateScope = { orgId, providerEntityId, serviceFrom };
       const rateTable = await seams.referenceData.hippsRateTable(
         pe.macJurisdiction,
         fiscalYearStarting,
+        rateScope,
       );
       const seqPolicy = await seams.referenceData.activeSequestrationPolicy(
         orgId,
@@ -665,6 +686,7 @@ export function buildClaimAssemblyService(
           const chcHourlyRateCents = await seams.referenceData.chcHourlyRateCents(
             fiscalYearStarting,
             wageIndex.factorDecimal,
+            rateScope,
           );
           const sia = calculateSia({
             deceasedDate: admission.deceasedDate,

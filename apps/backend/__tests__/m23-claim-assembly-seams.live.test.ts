@@ -20,10 +20,9 @@
  * two rows `@wardenx/terminology`'s own seed now curates.
  *
  * The end-to-end `POST /claims/assemble` reachability boundary is unmoved by F-122/F-123/F-124 (stated,
- * not implied): it still fails at `referenceData.hippsRateTable` (no CMS per-diem rate file has ever been
- * loaded), which sits BEFORE `billableEncounters`/`signedEncounters`/`evvCompliance`/`terminology` in call
- * order — binding them is real, individually-verified progress on four more seam steps, not a further
- * unblock of the live wall.
+ * not implied): as of F-210 the wall at `referenceData.hippsRateTable` is a typed, actionable
+ * `RATE_TABLE_MISSING` (422) until the tenant enters its rate table (the tenant-entered `hospice_rate_table`;
+ * its own suite is `m23-rate-table.live.test.ts`) — no longer `SEAM_UNBOUND`.
  *
  * Gated on a live DB so the default `bun run test` (no Postgres) stays green:
  *   WARDENX_TEST_DATABASE_URL=postgres://… bunx vitest run apps/backend/__tests__/m23-claim-assembly-seams.live.test.ts
@@ -578,15 +577,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
   describe("referenceData.wageIndexForCcn", () => {
     it("resolves a loaded CMS wage-index factor for (ccn, fiscal year)", async () => {
       await seedWageIndex("381237", 2026, "0.9234", "38900");
-      const adapter = buildM23ReferenceDataAdapter(
-        handle.db,
-        () => {
-          throw new WardenXError("SEAM_UNBOUND", "hipps", 503);
-        },
-        () => {
-          throw new WardenXError("SEAM_UNBOUND", "chc", 503);
-        },
-      );
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
       expect(await adapter.wageIndexForCcn("381237", 2026)).toEqual({
         factorDecimal: "0.9234",
         cbsaCode: "38900",
@@ -597,15 +588,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
       // NOTE: migration 0080_billing_m23_seed.sql pre-seeds 5 REPRESENTATIVE placeholder rows for
       // FY2026 (010001, 050002, 380001, 450003, 999999 — explicitly marked "not authoritative"), so a
       // real null-path proof must use a CCN/FY outside that fixed set, not assume the table is empty.
-      const adapter = buildM23ReferenceDataAdapter(
-        handle.db,
-        () => {
-          throw new Error("unreachable");
-        },
-        () => {
-          throw new Error("unreachable");
-        },
-      );
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
       expect(await adapter.wageIndexForCcn("777777", 2026)).toBeNull();
     });
   });
@@ -614,15 +597,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     it("resolves the policy in effect on the service date", async () => {
       const pe = await seedProviderEntity(ORG_A, "381238");
       await seedSequestrationPolicy(ORG_A, pe, "2.00", "2020-01-01");
-      const adapter = buildM23ReferenceDataAdapter(
-        handle.db,
-        () => {
-          throw new Error("unreachable");
-        },
-        () => {
-          throw new Error("unreachable");
-        },
-      );
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
       const resolved = await adapter.activeSequestrationPolicy(ORG_A, pe, "2026-06-01");
       expect(resolved?.percentage).toBe("2.00");
       expect(resolved?.effectiveTo).toBeNull();
@@ -631,15 +606,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
     it("never resolves another org's sequestration policy (cross-tenant RLS isolation)", async () => {
       const peOrgB = await seedProviderEntity(ORG_B, "381239");
       await seedSequestrationPolicy(ORG_B, peOrgB, "2.00", "2020-01-01");
-      const adapter = buildM23ReferenceDataAdapter(
-        handle.db,
-        () => {
-          throw new Error("unreachable");
-        },
-        () => {
-          throw new Error("unreachable");
-        },
-      );
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
       expect(await adapter.activeSequestrationPolicy(ORG_A, peOrgB, "2026-06-01")).toBeNull();
     });
   });
@@ -1412,7 +1379,7 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
   });
 
   describe("end-to-end boundary: POST /claims/assemble's real SEAM_UNBOUND wall today", () => {
-    it("progresses PAST the entire M6 block and fails at referenceData.hippsRateTable (F-121, #251)", async () => {
+    it("progresses PAST the entire M6 block and fails at referenceData.hippsRateTable with the typed RATE_TABLE_MISSING when the tenant has entered no rates (F-121 #251, F-210)", async () => {
       const patientId = await seedPatient(ORG_A);
       await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
       const pe = await seedProviderEntity(ORG_A, "381240");
@@ -1441,8 +1408,50 @@ describe.skipIf(!DB_URL)("M23 claim-assembly seam bindings — LIVE Postgres (#2
           },
         ),
       ).rejects.toMatchObject({
+        code: "RATE_TABLE_MISSING",
+        statusCode: 422,
+        message: expect.stringContaining("/api/v1/billing/rate-tables"),
+      });
+    });
+
+    it("with a tenant-entered rate table + sequestration policy the wall MOVES PAST hippsRateTable/activeSequestrationPolicy to billableEncounters (F-210)", async () => {
+      const patientId = await seedPatient(ORG_A);
+      await seedPatientPayer(ORG_A, patientId, 1, "medicare_ffs", "2020-01-01");
+      const pe = await seedProviderEntity(ORG_A, "381242");
+      await seedMacCredential(ORG_A, pe, "ngs_j6");
+      const { range, fiscalYearStarting } = futureClaimRange();
+      await seedWageIndex("381242", fiscalYearStarting, "0.9500", "12060");
+      await seedSequestrationPolicy(ORG_A, pe, "2.00", "2020-01-01");
+      await admin.query(
+        `INSERT INTO hospice_rate_table (organization_id, provider_entity_id, fiscal_year_starting, effective_from, effective_to,
+           rhc_days_1_60_per_diem_cents, rhc_days_61_plus_per_diem_cents, chc_per_diem_cents, irc_per_diem_cents,
+           gip_per_diem_cents, chc_hourly_rate_cents, entered_by_membership_id)
+         VALUES ($1,$2,$3,$4,$5, 21500, 17000, 105600, 49000, 118000, 4400, $6)`,
+        [ORG_A, pe, fiscalYearStarting, `${fiscalYearStarting}-10-01`, `${fiscalYearStarting + 1}-09-30`, U],
+      );
+      await activeAdmissionForRange(ORG_A, patientId, pe, "2026-01-01T00:00:00.000Z");
+
+      // No M8 port injected (unit-test default): the next stub the call order reaches is billableEncounters.
+      const service = buildM23BootAssemblyService(handle.db, {
+        providerCcn: testProviderCcnPort,
+        m6ClaimRange: {
+          forRange: (orgId, pid, r) => claimAssemblyRangeContextForOrg(handle.db, orgId, pid, r),
+        },
+      });
+      await expect(
+        service.assemble(
+          { organizationId: ORG_A, userId: M6_USER, membershipId: M6_USER, actorKind: "user" },
+          {
+            providerEntityId: pe,
+            patientId,
+            serviceFrom: range.from,
+            serviceTo: range.to,
+            tob: "811",
+          },
+        ),
+      ).rejects.toMatchObject({
         code: "SEAM_UNBOUND",
-        message: expect.stringContaining("BillingReferenceDataReader"),
+        message: expect.stringContaining("BillableEncounterReader"),
       });
     });
 
