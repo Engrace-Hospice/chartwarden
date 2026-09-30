@@ -64,6 +64,7 @@ const PLAN = schema.bereavementPlan;
 const CLOSURE = schema.bereavementPlanClosure;
 const OUTREACH = schema.bereavementOutreach;
 const CONTACT = schema.bereavedContact;
+const COP_CREDIT = schema.bereavementCopOptOutCredit;
 
 /** §3.3 — a consumer-driven write names no acting membership (the F-102 `CONSUMER_USER_ID` convention). */
 const CONSUMER_USER_ID = "";
@@ -103,6 +104,7 @@ export function buildM16PatientOptOutChangedConsumer(deps: PatientOptOutChangedD
     consumerModule: "m16" as const,
     eventTypes: [M16_PATIENT_OPT_OUT_CHANGED_CONSUMER.eventName] as const,
     async handle(event: {
+      readonly id: string;
       readonly organizationId: string;
       readonly payload: unknown;
     }): Promise<void> {
@@ -146,6 +148,22 @@ export function buildM16PatientOptOutChangedConsumer(deps: PatientOptOutChangedD
                 },
                 cancelOutreach: false,
               });
+              // F-206 (#248) — the user's own decision: a pre-death patient opt-out counts as CoP 418.64(d)
+              // coverage SATISFIED, not silently absent from `copOutreachCounts`'s denominator. Idempotent
+              // via the (organizationId, sourceEventId) unique index — a redelivery of this same outbox
+              // event inserts nothing a second time.
+              await tx
+                .insert(COP_CREDIT)
+                .values({
+                  organizationId: plan.organizationId,
+                  providerEntityId: plan.providerEntityId,
+                  locationId: plan.locationId,
+                  patientId: plan.patientId,
+                  admissionId: plan.admissionId,
+                  deathDate: plan.deathDate,
+                  sourceEventId: event.id,
+                })
+                .onConflictDoNothing();
               continue;
             }
 

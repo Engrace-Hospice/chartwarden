@@ -551,6 +551,7 @@ exports.MODULES = [
       "bereaved_contact",
       "bereavement_anniversary_reminder",
       "bereavement_contact_log",
+      "bereavement_cop_opt_out_credit",
       "bereavement_opt_out",
       "bereavement_outreach",
       "bereavement_plan",

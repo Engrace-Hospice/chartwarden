@@ -18,6 +18,8 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   M16_OUTBOX_EVENTS,
   buildM16PatientOptOutChangedConsumer,
+  createBereavementComplianceProvider,
+  createDrizzleBereavementSeamStore,
 } from "../src/modules/16-bereavement/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
@@ -140,6 +142,15 @@ describe.skipIf(!DB_URL)(
       return rows;
     }
 
+    async function copOptOutCreditRows(organizationId: string, sourceEventId: string) {
+      const { rows } = await admin.query(
+        `SELECT patient_id, admission_id, provider_entity_id, death_date
+         FROM bereavement_cop_opt_out_credit WHERE organization_id = $1 AND source_event_id = $2`,
+        [organizationId, sourceEventId],
+      );
+      return rows;
+    }
+
     beforeAll(async () => {
       admin = new Client({ connectionString: DB_URL });
       await admin.connect();
@@ -202,7 +213,9 @@ describe.skipIf(!DB_URL)(
         status: "eligible",
       });
 
+      const sourceEventId = crypto.randomUUID();
       await consumer.handle({
+        id: sourceEventId,
         organizationId: ORG_A,
         payload: { patientId, organizationId: ORG_A, optedOut: true },
       });
@@ -221,6 +234,23 @@ describe.skipIf(!DB_URL)(
       const events = await outboxRows(ORG_A, "m16.bereavement.plan_skipped_per_patient_opt_out");
       expect(events).toHaveLength(1);
       expect(events[0].payload).toMatchObject({ patientId });
+
+      // F-206 (#248) — the CoP-satisfied credit row is recorded, keyed on this event's own id.
+      const credits = await copOptOutCreditRows(ORG_A, sourceEventId);
+      expect(credits).toHaveLength(1);
+      expect(credits[0]).toMatchObject({
+        patient_id: patientId,
+        provider_entity_id: providerA,
+      });
+
+      // A redelivery of the identical event is a no-op on the credit table (idempotent via the
+      // (organizationId, sourceEventId) unique index) even though the plan is already closed.
+      await consumer.handle({
+        id: sourceEventId,
+        organizationId: ORG_A,
+        payload: { patientId, organizationId: ORG_A, optedOut: true },
+      });
+      expect(await copOptOutCreditRows(ORG_A, sourceEventId)).toHaveLength(1);
     });
 
     it("closes an active plan early (cosign-exempt) and cancels future outreach", async () => {
@@ -234,6 +264,7 @@ describe.skipIf(!DB_URL)(
       await scheduleOutreach(planId, ORG_A, providerA);
 
       await consumer.handle({
+        id: crypto.randomUUID(),
         organizationId: ORG_A,
         payload: { patientId, organizationId: ORG_A, optedOut: true },
       });
@@ -256,6 +287,14 @@ describe.skipIf(!DB_URL)(
         reason: "patient_opt_out_post_creation",
         cosignedByUserId: null,
       });
+
+      // F-206 (#248) — a post-creation close_early is a DIFFERENT closure reason from the pre-death
+      // `skip` branch; it never emits `plan_skipped_per_patient_opt_out`, so no credit row is written.
+      const { rows: credits } = await admin.query(
+        `SELECT 1 FROM bereavement_cop_opt_out_credit WHERE patient_id = $1`,
+        [patientId],
+      );
+      expect(credits).toHaveLength(0);
     });
 
     it("is a no-op for optedOut: false", async () => {
@@ -268,6 +307,7 @@ describe.skipIf(!DB_URL)(
       });
 
       await consumer.handle({
+        id: crypto.randomUUID(),
         organizationId: ORG_A,
         payload: { patientId, organizationId: ORG_A, optedOut: false },
       });
@@ -280,6 +320,7 @@ describe.skipIf(!DB_URL)(
     it("is a no-op for a patient with no bereavement plan at all", async () => {
       await expect(
         consumer.handle({
+          id: crypto.randomUUID(),
           organizationId: ORG_A,
           payload: { patientId: crypto.randomUUID(), organizationId: ORG_A, optedOut: true },
         }),
@@ -296,6 +337,7 @@ describe.skipIf(!DB_URL)(
       });
 
       await consumer.handle({
+        id: crypto.randomUUID(),
         organizationId: ORG_A,
         payload: { patientId, organizationId: ORG_A, optedOut: true },
       });
@@ -315,12 +357,45 @@ describe.skipIf(!DB_URL)(
       });
 
       await consumer.handle({
+        id: crypto.randomUUID(),
         organizationId: ORG_A,
         payload: { patientId: sharedPatientId, organizationId: ORG_A, optedOut: true },
       });
 
       const plan = await planRow(planB);
       expect(plan.status).toBe("active"); // org A's delivery never touched org B's plan
+    });
+
+    it("F-206 — a pre-death opt-out skip is counted as CoP 418.64(d) coverage SATISFIED by the real bereavement_coverage_rate measure input (copOutreachCounts)", async () => {
+      const store = createDrizzleBereavementSeamStore(handle.db);
+      const compliance = createBereavementComplianceProvider(store);
+      const scope = { orgId: ORG_A, providerEntityId: providerA };
+
+      const before = await compliance.copOutreachCounts(scope);
+
+      const patientId = crypto.randomUUID();
+      const planId = await seedPlan({
+        organizationId: ORG_A,
+        providerEntityId: providerA,
+        patientId,
+        status: "eligible",
+      });
+      await consumer.handle({
+        id: crypto.randomUUID(),
+        organizationId: ORG_A,
+        payload: { patientId, organizationId: ORG_A, optedOut: true },
+      });
+      // Sanity — this delivery really did take the `skip` branch (a real closure + credit row), not
+      // silently no-op through a different decider branch.
+      expect(await closureRow(planId)).toMatchObject({ reason: "patient_opt_out_pre_death" });
+
+      const after = await compliance.copOutreachCounts(scope);
+
+      // The credit is added to BOTH numerator and denominator — the same "reached, choice exercised"
+      // shape a `declined` outreach touchpoint already gets, per the user's own "counts as satisfied"
+      // decision, never merely excluded from the denominator (which would leave the rate unchanged).
+      expect(after.numerator).toBe(before.numerator + 1);
+      expect(after.denominator).toBe(before.denominator + 1);
     });
   },
 );
