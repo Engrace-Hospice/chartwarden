@@ -27,6 +27,7 @@
 
 export * from "./discipline-care-plans"; // discipline_care_plan
 export * from "./discipline-care-plan-versions"; // discipline_care_plan_version
+export * from "./discipline-plan-idg-decision-applications"; // discipline_plan_idg_decision_application (migration 0306)
 export * from "./discipline-care-plan-signatures"; // discipline_care_plan_signature
 export * from "./discipline-goals"; // discipline_goal
 export * from "./discipline-interventions"; // discipline_intervention

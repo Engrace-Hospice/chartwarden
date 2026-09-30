@@ -74,10 +74,71 @@ const carePlanMutation = Type.Union([
   }),
 ]);
 
+/**
+ * F-232 (#248) — the `discipline_plan_update` arm's element mutations (ADR-0023 / M15-F07; M15 spec §7.7).
+ * It targets one of the four M15 discipline plans (`planKind`), NOT the M7 IPOC: a goal hangs off an M7 IPOC
+ * problem (`parentProblemId`, M15 §2.1), an intervention references that plan's own goals (`goalRefs`), and a
+ * goal moves through M15's own §2.2.3 events rather than by writing a status. The op set is deliberately the
+ * four M15 can apply to a DRAFT version without a signature: add/revise/discontinue a goal, add/discontinue an
+ * intervention. `frequencyValue` carries the `<count>:<unit>:<period>` triple the DB CHECK enforces.
+ */
+const disciplinePlanMutation = Type.Union([
+  Type.Object({
+    op: Type.Literal("goal_add"),
+    parentProblemId: Type.String({ format: "uuid" }),
+    source: Type.Union([
+      Type.Literal("clinical"),
+      Type.Literal("patient_stated"),
+      Type.Literal("family_stated"),
+      Type.Literal("agent_stated"),
+    ]),
+    originalText: Type.String({ minLength: 1, maxLength: 4000 }),
+    measurableOutcome: nullableText,
+  }),
+  Type.Object({
+    op: Type.Literal("goal_update"),
+    goalId: Type.String({ format: "uuid" }),
+    event: Type.Union([
+      Type.Literal("start"),
+      Type.Literal("meet"),
+      Type.Literal("missTarget"),
+      Type.Literal("revise"),
+      Type.Literal("discontinue"),
+    ]),
+    revisedText: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
+    reason: Type.Optional(Type.String({ minLength: 1, maxLength: 4000 })),
+  }),
+  Type.Object({
+    op: Type.Literal("intervention_add"),
+    goalRefs: Type.Array(Type.String({ format: "uuid" })),
+    discipline: Type.String({ minLength: 1, maxLength: 64 }),
+    scopeText: Type.String({ minLength: 1, maxLength: 4000 }),
+    frequencyText: Type.String({ minLength: 1, maxLength: 1000 }),
+    frequencyValue: Type.String({
+      pattern: "^[0-9]+:(visit|day|week|month|prn|continuous):(day|week|month|episode|prn)$",
+    }),
+  }),
+  Type.Object({
+    op: Type.Literal("intervention_discontinue"),
+    interventionId: Type.String({ format: "uuid" }),
+    reason: Type.String({ minLength: 1, maxLength: 4000 }),
+  }),
+]);
+
 export const IDG_DECISION_PAYLOAD_SCHEMA = Type.Union([
   Type.Object({
     kind: Type.Literal("care_plan_update"),
     mutations: Type.Array(carePlanMutation, { minItems: 1 }),
+  }),
+  Type.Object({
+    kind: Type.Literal("discipline_plan_update"),
+    planKind: Type.Union([
+      Type.Literal("aide_poc"),
+      Type.Literal("msw_plan"),
+      Type.Literal("spiritual_plan"),
+      Type.Literal("volunteer_plan"),
+    ]),
+    mutations: Type.Array(disciplinePlanMutation, { minItems: 1 }),
   }),
   Type.Object({
     kind: Type.Literal("order_request"),

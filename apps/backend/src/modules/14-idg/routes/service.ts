@@ -71,6 +71,18 @@ export interface AgendaItemView {
   readonly kind: IdgAgendaItemKind;
   readonly patientId: string | null;
 }
+/**
+ * F-232 — a downstream module's acknowledgement that it APPLIED an emitted decision (`idg_decision_application_ack`).
+ * Metadata only: which module, the plan/version it landed on, how many mutations, when. Populated on the
+ * decision LIST read only; absent on the POST/PATCH echoes and null/empty until a module acknowledges.
+ */
+export interface DecisionApplicationView {
+  readonly module: "m15";
+  readonly planId: string | null;
+  readonly versionId: string | null;
+  readonly mutationsApplied: number;
+  readonly acknowledgedAt: string;
+}
 export interface DecisionView {
   readonly id: string;
   readonly meetingId: string;
@@ -82,6 +94,8 @@ export interface DecisionView {
   readonly recordedByMembershipId: string;
   readonly recordedAt: string;
   readonly supersededByDecisionId: string | null;
+  /** F-232 — downstream "applied" acknowledgements (list read only). */
+  readonly applications?: readonly DecisionApplicationView[];
 }
 export interface ActionItemView {
   readonly id: string;

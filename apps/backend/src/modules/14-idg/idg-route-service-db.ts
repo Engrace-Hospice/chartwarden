@@ -109,6 +109,7 @@ const ATT = schema.idgAttendance;
 const AGD = schema.idgAgendaItem;
 const NOTE = schema.idgDisciplineNote;
 const DEC = schema.idgDecision;
+const ACK = schema.idgDecisionApplicationAck;
 const ACT = schema.idgActionItem;
 const MIN = schema.idgMinutes;
 const AMD = schema.idgMinutesAmendment;
@@ -1024,7 +1025,35 @@ export function createDbIdgBackend(
           .from(DEC)
           .where(eq(DEC.idgMeetingId, meetingId))
           .orderBy(desc(DEC.recordedAt));
-        return rows.map(toDecisionView);
+        // F-232 — downstream "applied" acknowledgements (M15 today), metadata only, one query for the list.
+        const acks =
+          rows.length === 0
+            ? []
+            : await tx
+                .select()
+                .from(ACK)
+                .where(
+                  and(
+                    eq(ACK.idgMeetingId, meetingId),
+                    inArray(
+                      ACK.idgDecisionId,
+                      rows.map((r) => r.id),
+                    ),
+                  ),
+                )
+                .orderBy(asc(ACK.acknowledgedAt));
+        return rows.map((r) => ({
+          ...toDecisionView(r),
+          applications: acks
+            .filter((a) => a.idgDecisionId === r.id)
+            .map((a) => ({
+              module: "m15" as const,
+              planId: a.planId,
+              versionId: a.versionId,
+              mutationsApplied: a.mutationsApplied,
+              acknowledgedAt: isoReq(a.acknowledgedAt),
+            })),
+        }));
       });
     },
 

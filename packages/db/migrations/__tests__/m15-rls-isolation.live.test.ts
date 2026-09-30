@@ -44,6 +44,7 @@ type SeedIds = {
   gate: string;
   ledger: string;
   hourEntry: string;
+  idgApplication: string;
 };
 
 /** The 11 manifest-owned M15 tables, each with the seeded row the isolation case looks for. */
@@ -59,6 +60,8 @@ const COVERED: { table: string; key: keyof SeedIds }[] = [
   { table: "volunteer_compliance_gate", key: "gate" },
   { table: "volunteer_hour_ledger", key: "ledger" },
   { table: "volunteer_hour_entry", key: "hourEntry" },
+  // F-232 (0306) — the IDG-decision application record (its policy is in 0306, judged below).
+  { table: "discipline_plan_idg_decision_application", key: "idgApplication" },
 ];
 
 describe.skipIf(!DB_URL)(
@@ -216,6 +219,16 @@ describe.skipIf(!DB_URL)(
           [org, ledger, MEMBERSHIP],
         )
       ).rows[0].id as string;
+      const idgApplication = (
+        await db.query(
+          `INSERT INTO discipline_plan_idg_decision_application (organization_id, provider_entity_id,
+           location_id, patient_id, plan_id, version_id, idg_decision_id, idg_meeting_id,
+           source_outbox_event_id, status, mutations_applied)
+         VALUES ($1,$2,$3,$4,$5,$6,gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),'applied',1)
+         RETURNING id`,
+          [org, pe, location, patient, plan, version],
+        )
+      ).rows[0].id as string;
       return {
         pe,
         location,
@@ -230,6 +243,7 @@ describe.skipIf(!DB_URL)(
         gate,
         ledger,
         hourEntry,
+        idgApplication,
       };
     }
 
@@ -265,7 +279,15 @@ describe.skipIf(!DB_URL)(
       );
       const policyBlocks = rls.match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? [];
       expect(policyBlocks.length).toBe(11);
-      for (const block of policyBlocks) {
+      // 0306 (F-232) adds one more tenant policy (the wardenx_destruction one is a different role's).
+      const applicationPolicy = (
+        readFileSync(
+          join(MIGRATIONS_DIR, "0306_m15_discipline_plan_idg_decision_application.sql"),
+          "utf8",
+        ).match(/CREATE POLICY[\s\S]*?WITH CHECK \([^;]*\)/g) ?? []
+      ).filter((b) => b.includes("TO wardenx_app"));
+      expect(applicationPolicy).toHaveLength(1);
+      for (const block of [...policyBlocks, ...applicationPolicy]) {
         const vars = [...block.matchAll(/current_setting\(\s*'([^']+)'/g)].map((mm) => mm[1]);
         expect(new Set(vars)).toEqual(new Set(["app.org_id"]));
         expect(block).not.toMatch(/pg_has_role/i);

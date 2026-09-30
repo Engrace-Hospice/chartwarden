@@ -117,6 +117,34 @@ function carePlanMutationLine(m: Rec): string | undefined {
   }
 }
 
+/** F-232 — one line per `discipline_plan_update` mutation (an M15 discipline plan, not the M7 IPOC). */
+function disciplinePlanMutationLine(m: Rec): string | undefined {
+  switch (asStr(m.op)) {
+    case "goal_add":
+      return join([
+        `Add goal${asStr(m.source) ? ` (${words(m.source)})` : ""}`,
+        capText(m.originalText),
+        labelled("Measurable outcome", capText(m.measurableOutcome)),
+      ]);
+    case "goal_update":
+      return join([
+        `Goal: ${words(m.event) ?? "update"}`,
+        labelled("Revised", capText(m.revisedText)),
+        labelled("Reason", capText(m.reason)),
+      ]);
+    case "intervention_add":
+      return join([
+        `Add intervention${asStr(m.discipline) ? ` (${words(m.discipline)})` : ""}`,
+        capText(m.scopeText),
+        labelled("Frequency", capText(m.frequencyText, 200)),
+      ]);
+    case "intervention_discontinue":
+      return join(["Discontinue intervention", labelled("Reason", capText(m.reason))]);
+    default:
+      return undefined;
+  }
+}
+
 /** The plain-text lines for ONE decision payload (never throws; an unreadable payload yields no lines). */
 export function summarizeDecisionPayload(kind: string, payloadRaw: unknown): string[] {
   const p = asRec(payloadRaw);
@@ -128,6 +156,16 @@ export function summarizeDecisionPayload(kind: string, payloadRaw: unknown): str
     case "care_plan_update": {
       const ms = asArr(p.mutations);
       for (const m of ms.slice(0, DECISION_ITEM_CAP)) lines.push(carePlanMutationLine(asRec(m)));
+      more(ms.length);
+      break;
+    }
+    case "discipline_plan_update": {
+      const ms = asArr(p.mutations);
+      const plan = words(p.planKind);
+      if (plan) lines.push(`${plan} revision`);
+      for (const m of ms.slice(0, DECISION_ITEM_CAP)) {
+        lines.push(disciplinePlanMutationLine(asRec(m)));
+      }
       more(ms.length);
       break;
     }

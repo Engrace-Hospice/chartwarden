@@ -745,6 +745,8 @@ jobs:
           # (records "dispensed at T" on the correlated comfort-kit request; creates no dispatch).
           - { name: "M21 pharmacy dispense fact", scripts: "test:m21:pharmacy-dispense:live" }
           - { name: "M15 plan bootstrap", scripts: "test:m15:plan-bootstrap:live" }
+          # F-232 (#248) — the M14 <-> M15 IDG-decision loop (discipline_plan_update -> apply -> ack).
+          - { name: "M15 IDG decision loop", scripts: "test:m15:idg-decision:live" }
           - { name: "M14 action-item auto-close", scripts: "test:m14:autoclose:live" }
           # F-164 (#248) — 6 of the §4.5 "since last IDG" projection-cache consumers (M9/M10/M11/M12).
           - { name: "M14 since-last-IDG cache", scripts: "test:m14:since-last-idg-cache:live" }

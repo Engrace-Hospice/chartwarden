@@ -62,6 +62,7 @@ const DECISION_KIND = Type.Union([
   Type.Literal("bereavement_risk_flag"),
   Type.Literal("referral"),
   Type.Literal("team_note"),
+  Type.Literal("discipline_plan_update"),
 ]);
 
 /** §2.7 agenda-item taxonomy (mirrors `IdgAgendaItemKind`). */
@@ -639,6 +640,14 @@ const DECISION_STATUS = Type.Union([
  * deliberately absent, on the `PatientIdgHistoryView` precedent, so the meeting-conduct read surface
  * never has to answer W-SUD-01.
  */
+/** F-232 — one downstream module's "decision applied" acknowledgement (metadata only). */
+export const DecisionApplicationViewSchema = Type.Object({
+  module: Type.Literal("m15"),
+  planId: Nullable(Type.String({ format: "uuid" })),
+  versionId: Nullable(Type.String({ format: "uuid" })),
+  mutationsApplied: Type.Integer({ minimum: 0 }),
+  acknowledgedAt: Type.String({ format: "date-time" }),
+});
 export const DecisionViewSchema = Type.Object({
   id: Type.String({ format: "uuid" }),
   meetingId: Type.String({ format: "uuid" }),
@@ -651,6 +660,7 @@ export const DecisionViewSchema = Type.Object({
   recordedByMembershipId: Type.String({ format: "uuid" }),
   recordedAt: Type.String({ format: "date-time" }),
   supersededByDecisionId: Nullable(Type.String({ format: "uuid" })),
+  applications: Type.Optional(Type.Array(DecisionApplicationViewSchema)),
 });
 export const DecisionListResponseSchema = Type.Array(DecisionViewSchema);
 
