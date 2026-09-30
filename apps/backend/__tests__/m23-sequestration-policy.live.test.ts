@@ -578,6 +578,20 @@ describe.skipIf(!DB_URL)("M23 sequestration policy — LIVE Postgres (F-212)", (
       expect(await adapter.activeSequestrationPolicy(ORG_A, PE_A, "2022-06-30")).toBeNull();
     });
 
+    it("a superseded row never answers, even where the correction leaves a gap (fail closed, not stale)", async () => {
+      await reset();
+      const wrong = await svc().createPolicy(
+        actorA,
+        policy({ percentage: "1.00", setReason: "mis-keyed" }),
+      );
+      // The correction starts later than the mis-keyed row did: 2022-07-01..2022-12-31 is now uncovered on purpose.
+      await svc().supersedePolicy(actorA, wrong.policyId, policy({ effectiveFrom: "2023-01-01" }));
+      const adapter = buildM23ReferenceDataAdapter(handle.db);
+      expect(await adapter.activeSequestrationPolicy(ORG_A, PE_A, "2022-12-01")).toBeNull();
+      expect(await svc().effectivePolicy(actorA, PE_A, "2022-12-01")).toBeNull();
+      expect(await adapter.activeSequestrationPolicy(ORG_A, PE_A, "2023-01-01")).not.toBeNull();
+    });
+
     it("ignores a superseded row and follows the correction", async () => {
       await reset();
       const v1 = await svc().createPolicy(
