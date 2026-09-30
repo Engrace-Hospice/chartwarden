@@ -73,10 +73,11 @@ import type {
   NotrView,
   RuleConfigListFilter,
   RuleConfigView,
-  SequestrationPolicyView,
   ValidationRunDetailView,
   ValidationRunView,
 } from "../src/modules/23-billing-medicare/routes/read-service";
+import type { SequestrationPolicyRouteService } from "../src/modules/23-billing-medicare/routes/sequestration-policy-service";
+import type { SequestrationPolicyView } from "../src/modules/23-billing-medicare/routes/sequestration-policy-typebox";
 import type { M23WriteRouteService } from "../src/modules/23-billing-medicare/routes/write-service";
 import type {
   ClaimAssemblyActor,
@@ -137,6 +138,7 @@ function createM23TestBackend(): {
   readonly writeService: M23WriteRouteService;
   readonly assemblyService: ClaimAssemblyService;
   readonly internalSeam: M23InternalSeamProvider;
+  readonly sequestrationService: SequestrationPolicyRouteService;
   readonly abacResolver: ReadingM23AbacResolver;
 } {
   let ruleConfigSeq = 1;
@@ -384,11 +386,54 @@ function createM23TestBackend(): {
           effectiveTo: null,
           setByMembershipId: MEMBERSHIP,
           setReason: null,
+          supersededAt: null,
+          supersededById: null,
           createdAt: NOW,
         },
       ],
     ],
   ]);
+
+  const sequestrationService: SequestrationPolicyRouteService = {
+    async listPolicies(_actor, providerEntityId) {
+      return sequestrationPolicies.get(providerEntityId) ?? [];
+    },
+    async activePolicy(_actor, providerEntityId) {
+      return (sequestrationPolicies.get(providerEntityId) ?? [])[0] ?? null;
+    },
+    async effectivePolicy(_actor, providerEntityId) {
+      return (sequestrationPolicies.get(providerEntityId) ?? [])[0] ?? null;
+    },
+    async getPolicy(_actor, providerEntityId, id) {
+      const row = (sequestrationPolicies.get(providerEntityId) ?? []).find(
+        (r) => r.policyId === id,
+      );
+      if (!row) throw new NotFoundError("sequestration policy", id);
+      return row;
+    },
+    async createPolicy(actor, body) {
+      policySeq += 1;
+      const row: SequestrationPolicyView = {
+        policyId: `policy-${policySeq}`,
+        organizationId: ORG,
+        providerEntityId: body.providerEntityId,
+        percentage: body.percentage,
+        effectiveFrom: body.effectiveFrom,
+        effectiveTo: body.effectiveTo ?? null,
+        setByMembershipId: actor.membershipId,
+        setReason: body.setReason ?? null,
+        supersededAt: null,
+        supersededById: null,
+        createdAt: NOW,
+      };
+      const existing = sequestrationPolicies.get(body.providerEntityId) ?? [];
+      sequestrationPolicies.set(body.providerEntityId, [...existing, row]);
+      return row;
+    },
+    async supersedePolicy(actor, _id, body) {
+      return this.createPolicy(actor, body);
+    },
+  };
 
   const macCredentials = new Map<string, MacCredentialView>([
     [
@@ -477,13 +522,6 @@ function createM23TestBackend(): {
       const row = ruleConfigs.get(ruleConfigId);
       if (!row) throw new NotFoundError("rule_config", ruleConfigId);
       return row;
-    },
-    async listSequestrationPolicies(_actor, providerEntityId) {
-      return sequestrationPolicies.get(providerEntityId) ?? [];
-    },
-    async getActiveSequestrationPolicy(_actor, providerEntityId) {
-      const rows = sequestrationPolicies.get(providerEntityId) ?? [];
-      return rows[0] ?? null;
     },
     async listMacCredentials() {
       return page([...macCredentials.values()]);
@@ -631,23 +669,6 @@ function createM23TestBackend(): {
         asOfServiceDate: args.asOfServiceDate,
       };
     },
-    async forwardDateSequestrationPolicy(actor, args) {
-      policySeq += 1;
-      const row: SequestrationPolicyView = {
-        policyId: `policy-${policySeq}`,
-        organizationId: ORG,
-        providerEntityId: args.providerEntityId,
-        percentage: args.percentage,
-        effectiveFrom: args.effectiveFrom,
-        effectiveTo: null,
-        setByMembershipId: actor.membershipId,
-        setReason: args.setReason ?? null,
-        createdAt: NOW,
-      };
-      const existing = sequestrationPolicies.get(args.providerEntityId) ?? [];
-      sequestrationPolicies.set(args.providerEntityId, [...existing, row]);
-      return row;
-    },
     async upsertMacCredential(_actor, args) {
       credentialSeq += 1;
       const existing = macCredentials.get(args.providerEntityId);
@@ -767,7 +788,14 @@ function createM23TestBackend(): {
     },
   };
 
-  return { readService, writeService, assemblyService, internalSeam, abacResolver };
+  return {
+    readService,
+    writeService,
+    assemblyService,
+    internalSeam,
+    sequestrationService,
+    abacResolver,
+  };
 }
 
 // ── server assembly (the M11/M15/M19 `makeServer()` precedent) ──────────────────────────────────────────
@@ -825,6 +853,7 @@ function makeServer() {
     writeService: backend.writeService,
     assemblyService: backend.assemblyService,
     internalSeam: backend.internalSeam,
+    sequestrationService: backend.sequestrationService,
   });
   return { app, backend };
 }

@@ -4,7 +4,7 @@
 
 A module's pure-function permission/ABAC tests prove its DECISIONS are correct; they prove nothing about the route wiring, schema validation, or service composition around them (the M30 dead-`inOrg` class, the Claim Workbench 404). `covered` requires a real Fastify `.inject()` call through the module's route registrar.
 
-**Totals:** 39/39 modules covered (100%) · 1316/1316 route defs sit behind a covered module · 1258/1316 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
+**Totals:** 39/39 modules covered (100%) · 1319/1319 route defs sit behind a covered module · 1260/1319 route defs are directly referenced by path in a covering suite (TEST-002 — approximate, advisory, not ratcheted; see the directRoutesReferenced field's doc comment in this script for its limits)
 
 | Module | Routes | Covered | Direct refs | Suite file(s) |
 |---|--:|:--:|--:|---|
@@ -29,7 +29,7 @@ A module's pure-function permission/ABAC tests prove its DECISIONS are correct; 
 | 20-field-safety | 30 | ✅ | 30/30 | apps/backend/__tests__/field-safety-inject.test.ts |
 | 21-supplies | 38 | ✅ | 38/38 | apps/backend/__tests__/supplies-inject.test.ts |
 | 22-documents | 40 | ✅ | 35/40 | apps/backend/__tests__/document-doclens.test.ts, apps/backend/__tests__/document-routes.test.ts, apps/backend/__tests__/document-workflow-acceptance.test.ts |
-| 23-billing-medicare | 48 | ✅ | 48/48 | apps/backend/__tests__/billing-medicare-inject.test.ts, apps/backend/__tests__/m23-rate-table-routes.test.ts |
+| 23-billing-medicare | 51 | ✅ | 50/51 | apps/backend/__tests__/billing-medicare-inject.test.ts, apps/backend/__tests__/m23-rate-table-routes.test.ts, apps/backend/__tests__/m23-sequestration-policy-routes.test.ts |
 | 24-billing-medicaid | 39 | ✅ | 39/39 | apps/backend/__tests__/billing-medicaid-inject.test.ts |
 | 25-remittance | 32 | ✅ | 31/32 | apps/backend/__tests__/remittance-inject.test.ts |
 | 26-cap | 27 | ✅ | 27/27 | apps/backend/__tests__/cap-inject.test.ts, apps/backend/__tests__/gap-079-read-audit-emission.live.test.ts |

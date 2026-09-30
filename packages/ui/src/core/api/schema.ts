@@ -4111,8 +4111,42 @@ export interface paths {
         /** Per-ProviderEntity sequestration-percentage timeline - effective-dated rows (D11, §4.1 #32) */
         get: operations["getApiV1BillingSequestrationpolicies"];
         put?: never;
-        /** Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33) */
+        /** Enter a sequestration policy row - percentage a decimal string in 0-2 (reason required off 2), may start in the past, non-overlapping; an open-ended entry takes over from the prior open row (201, §4.1 #33, F-212) */
         post: operations["postApiV1BillingSequestrationpolicies"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/sequestration-policies/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read one sequestration policy row (F-212) */
+        get: operations["getApiV1BillingSequestrationpoliciesById"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/sequestration-policies/{id}/supersede": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Supersede a live sequestration policy row with a corrected one; the old row is kept as history (F-212) */
+        post: operations["postApiV1BillingSequestrationpoliciesByIdSupersede"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4126,8 +4160,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** The active-on-now sequestration policy for a ProviderEntity (or null, §4.1) */
+        /** The current open-ended sequestration policy for a ProviderEntity (or null, §4.1) */
         get: operations["getApiV1BillingSequestrationpoliciesActive"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/billing/sequestration-policies/effective": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The live sequestration policy claim assembly would apply on a service date, or null (F-212) */
+        get: operations["getApiV1BillingSequestrationpoliciesEffective"];
         put?: never;
         post?: never;
         delete?: never;
@@ -31313,6 +31364,7 @@ export interface operations {
         parameters: {
             query: {
                 providerEntityId: string;
+                includeSuperseded?: boolean;
             };
             header?: never;
             path?: never;
@@ -31336,6 +31388,8 @@ export interface operations {
                             effectiveTo: string | null;
                             setByMembershipId: string;
                             setReason: string | null;
+                            supersededAt: string | null;
+                            supersededById: string | null;
                             createdAt: string;
                         }[];
                     };
@@ -31348,7 +31402,10 @@ export interface operations {
     postApiV1BillingSequestrationpolicies: {
         parameters: {
             query?: never;
-            header?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
             path?: never;
             cookie?: never;
         };
@@ -31360,17 +31417,123 @@ export interface operations {
                     percentage: string;
                     /** Format: date */
                     effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
                     setReason?: string;
                 };
             };
         };
         responses: {
             /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingSequestrationpoliciesById: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content?: never;
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1BillingSequestrationpoliciesByIdSupersede: {
+        parameters: {
+            query?: never;
+            header: {
+                /** @description Client-generated key (1-128 chars). A retried request with the same key + body returns the cached result instead of re-executing (§4.1.1). */
+                "Idempotency-Key": string;
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    providerEntityId: string;
+                    percentage: string;
+                    /** Format: date */
+                    effectiveFrom: string;
+                    /** Format: date */
+                    effectiveTo?: string;
+                    setReason?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];
@@ -31402,6 +31565,45 @@ export interface operations {
                         effectiveTo: string | null;
                         setByMembershipId: string;
                         setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
+                        createdAt: string;
+                    } | null;
+                };
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    getApiV1BillingSequestrationpoliciesEffective: {
+        parameters: {
+            query: {
+                providerEntityId: string;
+                onDate: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        policyId: string;
+                        organizationId: string;
+                        providerEntityId: string;
+                        percentage: string;
+                        effectiveFrom: string;
+                        effectiveTo: string | null;
+                        setByMembershipId: string;
+                        setReason: string | null;
+                        supersededAt: string | null;
+                        supersededById: string | null;
                         createdAt: string;
                     } | null;
                 };

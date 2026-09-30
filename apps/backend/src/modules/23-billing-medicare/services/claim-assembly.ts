@@ -518,7 +518,7 @@ export function buildClaimAssemblyService(
       if (!seqPolicy) {
         throw new WardenXError(
           "SEQUESTRATION_POLICY_UNAVAILABLE",
-          "no active sequestration policy resolved for the service period (D11)",
+          `no sequestration policy covers service date ${serviceFrom} for provider entity ${providerEntityId} (D11); enter the Medicare sequestration schedule for that period (POST /api/v1/billing/sequestration-policies, permission billing.sequestration_policy.edit) and retry`,
           422,
         );
       }

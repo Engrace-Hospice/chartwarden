@@ -580,6 +580,7 @@ import {
   buildDrizzleM23ReadService,
   buildDrizzleM23WriteService,
   buildDrizzleRateTableService,
+  buildDrizzleSequestrationPolicyService,
   buildM23BootAssemblyService,
   buildM23LateCheckResolvedConsumer,
   buildM23NoeDraftConsumer,
@@ -3556,6 +3557,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             // assembly service's `referenceData.hippsRateTable`/`chcHourlyRateCents` read (M23-owned, so
             // the boot assembly reads it over `dbHandle.db` directly — no injected port).
             rateTableService: buildDrizzleRateTableService(dbHandle.db),
+            // F-212 — the tenant-entered sequestration policy (`/billing/sequestration-policies`); the SAME table the
+            // assembly service's `referenceData.activeSequestrationPolicy` reads (M23-owned, over `dbHandle.db`).
+            sequestrationService: buildDrizzleSequestrationPolicyService(dbHandle.db),
             readService: buildDrizzleM23ReadService(dbHandle.db),
             writeService: buildDrizzleM23WriteService(dbHandle.db, {
               outbox: m23OutboxPublisher,

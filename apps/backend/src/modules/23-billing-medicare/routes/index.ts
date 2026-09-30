@@ -11,6 +11,7 @@ import type { ClaimAssemblyService } from "../services/claim-assembly";
 // HIPPS/SIA/sequestration math through it, NOT the write service's low-level persistence path).
 import type { RateTableRouteService } from "./rate-table-service";
 import type { M23ReadRouteService } from "./read-service";
+import type { SequestrationPolicyRouteService } from "./sequestration-policy-service";
 import type { M23WriteRouteService } from "./write-service";
 
 export {
@@ -74,6 +75,8 @@ export interface M23RouteServices {
   readonly assemblyService: ClaimAssemblyService;
   /** F-210 — the tenant-entered hospice rate-table service (absent ⇒ the /billing/rate-tables routes are not mounted). */
   readonly rateTableService?: RateTableRouteService;
+  /** F-212 — the tenant-entered sequestration-policy service (absent ⇒ the /billing/sequestration-policies routes are not mounted). */
+  readonly sequestrationService?: SequestrationPolicyRouteService;
 }
 
 export {
@@ -81,3 +84,8 @@ export {
   buildDrizzleRateTableService,
   hospiceRateTableEffectiveForOrg,
 } from "./rate-table-service";
+
+export {
+  type SequestrationPolicyRouteService,
+  buildDrizzleSequestrationPolicyService,
+} from "./sequestration-policy-service";

@@ -328,12 +328,10 @@ import {
   ClaimListQuerySchema,
   ClaimPatchDraftBodySchema,
   CreateRuleConfigBodySchema,
-  ForwardDateSequestrationBodySchema,
   MacCredentialListQuerySchema,
   NoeListQuerySchema,
   NotrListQuerySchema,
   OverrideValidationResultBodySchema,
-  RequiredProviderEntityQuerySchema,
   RuleConfigListQuerySchema,
   UpdateRuleConfigBodySchema,
   UpsertMacCredentialBodySchema,
@@ -348,6 +346,16 @@ import {
   RateTableViewSchema,
   SupersedeRateTableBodySchema,
 } from "../../apps/backend/src/modules/23-billing-medicare/routes/rate-table-typebox";
+import {
+  CreateSequestrationPolicyBodySchema,
+  SequestrationPolicyEffectiveQuerySchema,
+  SequestrationPolicyGetQuerySchema,
+  SequestrationPolicyListQuerySchema,
+  SequestrationPolicyListResponseSchema,
+  SequestrationPolicyNullableResponseSchema,
+  SequestrationPolicyViewSchema,
+  SupersedeSequestrationPolicyBodySchema,
+} from "../../apps/backend/src/modules/23-billing-medicare/routes/sequestration-policy-typebox";
 // M24 Billing — Medicaid — the §4.2 request bodies / list queries / response DTOs for the state-Medicaid
 // claim, R&B, rule-overlay, eligibility, and trading-partner surfaces (modules/24-billing-medicaid/routes).
 import {
@@ -1300,12 +1308,17 @@ import {
   ValidationQuerySchema as M10ValidationQuerySchema,
 } from "../../apps/backend/src/modules/10-hope/routes/hope-typebox";
 import {
+  HeldTransmissionsQuerySchema as M11HeldTransmissionsQuerySchema,
+  HeldTransmissionsResponseSchema as M11HeldTransmissionsResponseSchema,
+} from "../../apps/backend/src/modules/11-orders/routes/held-transmissions-typebox";
+import {
+  CancelLabTransmissionRecoveryResponseSchema as M11CancelLabTransmissionRecoveryResponseSchema,
   CompleteOrderRequest as M11CompleteOrderRequest,
   CorrectOrderRequest as M11CorrectOrderRequest,
   CosignRequest as M11CosignRequest,
   CreateOrderRequest as M11CreateOrderRequest,
-  CreateVerbalOrderRequest as M11CreateVerbalOrderRequest,
   CreateStandingOrderRequest as M11CreateStandingOrderRequest,
+  CreateVerbalOrderRequest as M11CreateVerbalOrderRequest,
   DiscontinueRequest as M11DiscontinueRequest,
   DiscontinueStandingOrderRequest as M11DiscontinueStandingOrderRequest,
   OrderDetailResponseSchema as M11OrderDetailResponseSchema,
@@ -1313,11 +1326,10 @@ import {
   OrderListResponseSchema as M11OrderListResponseSchema,
   OrderViewResponseSchema as M11OrderViewResponseSchema,
   RecordVerbalRequest as M11RecordVerbalRequest,
+  RecoverLabTransmissionRequest as M11RecoverLabTransmissionRequest,
+  RecoverLabTransmissionResponseSchema as M11RecoverLabTransmissionResponseSchema,
   RegenerateVerbalTimerRequest as M11RegenerateVerbalTimerRequest,
   RequestSignatureRequest as M11RequestSignatureRequest,
-  RecoverLabTransmissionRequest as M11RecoverLabTransmissionRequest,
-  CancelLabTransmissionRecoveryResponseSchema as M11CancelLabTransmissionRecoveryResponseSchema,
-  RecoverLabTransmissionResponseSchema as M11RecoverLabTransmissionResponseSchema,
   ResendLabTransmissionResponseSchema as M11ResendLabTransmissionResponseSchema,
   SignOnBehalfRequest as M11SignOnBehalfRequest,
   SignOrderRequest as M11SignOrderRequest,
@@ -1332,10 +1344,6 @@ import {
   VerbalPolicyViewResponseSchema as M11VerbalPolicyViewResponseSchema,
 } from "../../apps/backend/src/modules/11-orders/routes/orders-typebox";
 import {
-  HeldTransmissionsQuerySchema as M11HeldTransmissionsQuerySchema,
-  HeldTransmissionsResponseSchema as M11HeldTransmissionsResponseSchema,
-} from "../../apps/backend/src/modules/11-orders/routes/held-transmissions-typebox";
-import {
   ApproveRefillRequest as M12ApproveRefillRequest,
   CompleteRequest as M12CompleteRequest,
   ControlledSubstancePolicyRequest as M12ControlledSubstancePolicyRequest,
@@ -1347,13 +1355,13 @@ import {
   DiscontinueRequest as M12DiscontinueRequest,
   EnrollPrescriberRequest as M12EnrollPrescriberRequest,
   HistoryRefreshResponseSchema as M12HistoryRefreshResponseSchema,
+  MedicationErrorReportResponseSchema as M12MedicationErrorReportResponseSchema,
   MedicationHistoryResponseSchema as M12MedicationHistoryResponseSchema,
   MedicationOrderListQuerySchema as M12MedicationOrderListQuerySchema,
   MedicationOrderListResponseSchema as M12MedicationOrderListResponseSchema,
   MedicationOrderResponseSchema as M12MedicationOrderResponseSchema,
   NewOrderIdResponseSchema as M12NewOrderIdResponseSchema,
   PrescriberRosterListResponseSchema as M12PrescriberRosterListResponseSchema,
-  MedicationErrorReportResponseSchema as M12MedicationErrorReportResponseSchema,
   ReconcileRequest as M12ReconcileRequest,
   RecordVerbalRequest as M12RecordVerbalRequest,
   RefillInboxPolicyRequest as M12RefillInboxPolicyRequest,
@@ -2739,8 +2747,19 @@ export const ROUTE_ENRICHMENTS: Record<string, RouteEnrichment> = {
   // ── sequestration policy (sequestration-policy.routes.ts) ──
   "POST /api/v1/billing/sequestration-policies": {
     summary:
-      "Forward-date a new sequestration policy row (percentage is a decimal string; 201, §4.1 #33)",
-    body: ForwardDateSequestrationBodySchema,
+      "Enter a sequestration policy row - percentage a decimal string in 0-2 (reason required off 2), may start in the past, non-overlapping; an open-ended entry takes over from the prior open row (201, §4.1 #33, F-212)",
+    body: CreateSequestrationPolicyBodySchema,
+    response: SequestrationPolicyViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
+  },
+  "POST /api/v1/billing/sequestration-policies/:id/supersede": {
+    summary:
+      "Supersede a live sequestration policy row with a corrected one; the old row is kept as history (F-212)",
+    body: SupersedeSequestrationPolicyBodySchema,
+    response: SequestrationPolicyViewSchema,
+    headers: IDEMPOTENCY_KEY_HEADER,
+    status: 201,
   },
   // ── MAC credentials (mac-credentials.routes.ts, §3.6) ──
   "POST /api/v1/billing/mac-credentials": {
@@ -9202,22 +9221,6 @@ const M23RuleConfigListResponse = Type.Object({
   hasMore: Type.Boolean(),
 });
 
-const M23SequestrationPolicyView = Type.Object({
-  policyId: Type.String(),
-  organizationId: Type.String(),
-  providerEntityId: Type.String(),
-  percentage: Type.String(),
-  effectiveFrom: Type.String(),
-  effectiveTo: Type.Union([Type.String(), Type.Null()]),
-  setByMembershipId: Type.String(),
-  setReason: Type.Union([Type.String(), Type.Null()]),
-  createdAt: Type.String(),
-});
-const M23SequestrationPolicyListResponse = Type.Object({
-  policies: Type.Array(M23SequestrationPolicyView),
-});
-const M23SequestrationPolicyActiveResponse = Type.Union([M23SequestrationPolicyView, Type.Null()]);
-
 const M23MacCredentialView = Type.Object({
   credentialId: Type.String(),
   organizationId: Type.String(),
@@ -9326,13 +9329,24 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "GET /api/v1/billing/sequestration-policies": {
     summary:
       "Per-ProviderEntity sequestration-percentage timeline - effective-dated rows (D11, §4.1 #32)",
-    query: RequiredProviderEntityQuerySchema,
-    response: M23SequestrationPolicyListResponse,
+    query: SequestrationPolicyListQuerySchema,
+    response: SequestrationPolicyListResponseSchema,
   },
   "GET /api/v1/billing/sequestration-policies/active": {
-    summary: "The active-on-now sequestration policy for a ProviderEntity (or null, §4.1)",
-    query: RequiredProviderEntityQuerySchema,
-    response: M23SequestrationPolicyActiveResponse,
+    summary: "The current open-ended sequestration policy for a ProviderEntity (or null, §4.1)",
+    query: SequestrationPolicyGetQuerySchema,
+    response: SequestrationPolicyNullableResponseSchema,
+  },
+  "GET /api/v1/billing/sequestration-policies/effective": {
+    summary:
+      "The live sequestration policy claim assembly would apply on a service date, or null (F-212)",
+    query: SequestrationPolicyEffectiveQuerySchema,
+    response: SequestrationPolicyNullableResponseSchema,
+  },
+  "GET /api/v1/billing/sequestration-policies/:id": {
+    summary: "Read one sequestration policy row (F-212)",
+    query: SequestrationPolicyGetQuerySchema,
+    response: SequestrationPolicyViewSchema,
   },
   // ── F-210: the tenant-entered hospice per-diem rate table (rate-table.routes.ts) ──
   "GET /api/v1/billing/rate-tables": {

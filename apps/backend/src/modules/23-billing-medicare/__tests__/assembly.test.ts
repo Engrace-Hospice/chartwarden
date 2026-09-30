@@ -418,3 +418,25 @@ describe("F-209 (#251) — the claim carries the real M7 diagnosis sequence", ()
     expect(store.claims.size).toBe(0);
   });
 });
+
+describe("F-212 - no sequestration policy fails CLOSED with an actionable error (never a silent 0% / 2% default)", () => {
+  it("names the service date, the provider entity, the route and the permission, and persists nothing", async () => {
+    const seams = buildSeams({
+      referenceData: {
+        hippsRateTable: async () => RATE_TABLE,
+        chcHourlyRateCents: async () => 6_000,
+        wageIndexForCcn: async () => ({ factorDecimal: "1.0000", cbsaCode: null }),
+        activeSequestrationPolicy: async () => null,
+      },
+    });
+    const svc = buildClaimAssemblyService(makeFakeDb() as never, seams);
+    const err = await svc.assemble(ACTOR, REQUEST).then(
+      () => null,
+      (e: unknown) => e as { code: string; statusCode: number; message: string },
+    );
+    expect(err).toMatchObject({ code: "SEQUESTRATION_POLICY_UNAVAILABLE", statusCode: 422 });
+    expect(err?.message).toContain("POST /api/v1/billing/sequestration-policies");
+    expect(err?.message).toContain("billing.sequestration_policy.edit");
+    expect(store.claims.size).toBe(0);
+  });
+});

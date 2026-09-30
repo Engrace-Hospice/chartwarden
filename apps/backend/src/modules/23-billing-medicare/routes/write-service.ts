@@ -19,7 +19,6 @@ import type {
   NotrView,
   OverrideRole,
   RuleConfigView,
-  SequestrationPolicyView,
   ValidationOverrideView,
   ValidationSeverity,
 } from "./read-service";
@@ -261,16 +260,6 @@ export interface CheckEligibilityArgs {
   readonly asOfServiceDate: string;
 }
 
-export interface ForwardDateSequestrationArgs {
-  readonly providerEntityId: string;
-  /** Decimal as text, e.g. `"2.00"`. */
-  readonly percentage: string;
-  /** YYYY-MM-DD — MUST be future-dated; `forwardDateSequestrationPolicy` rejects a non-future date at
-   *  write time (DB-005 — this is no longer a DB CHECK, see write-service-drizzle.ts). */
-  readonly effectiveFrom: string;
-  readonly setReason?: string;
-}
-
 export interface UpsertMacCredentialArgs {
   readonly providerEntityId: string;
   readonly macJurisdiction: string;
@@ -346,11 +335,7 @@ export interface M23WriteRouteService {
     args: CheckEligibilityArgs,
   ): Promise<EligibilityCheckAcceptedView>;
 
-  // ── sequestration policy (forward-only) ──
-  forwardDateSequestrationPolicy(
-    actor: M23WriteActor,
-    args: ForwardDateSequestrationArgs,
-  ): Promise<SequestrationPolicyView>;
+  // (sequestration policy writes moved to `SequestrationPolicyRouteService`, F-212)
 
   // ── MAC credentials (step-up; secret encrypted at the boundary) ──
   upsertMacCredential(
