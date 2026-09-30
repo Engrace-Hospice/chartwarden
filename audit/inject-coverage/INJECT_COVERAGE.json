@@ -58,6 +58,7 @@
         "apps/backend/__tests__/auth.live.test.ts",
         "apps/backend/__tests__/gap-030-visit-create-abac.live.test.ts",
         "apps/backend/__tests__/gap-093-membership-credential-live.test.ts",
+        "apps/backend/__tests__/m12-vendor-boundary.live.test.ts",
         "apps/backend/__tests__/m28-fhir-gateway.live.test.ts",
         "apps/backend/__tests__/patient-routes.test.ts"
       ],
@@ -134,7 +135,9 @@
       "routes": 32,
       "covered": true,
       "suiteFiles": [
-        "apps/backend/__tests__/dosespot-routes.test.ts"
+        "apps/backend/__tests__/dosespot-routes.test.ts",
+        "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts",
+        "apps/backend/__tests__/m12-vendor-boundary.live.test.ts"
       ],
       "directRoutesReferenced": 20
     },
@@ -158,7 +161,8 @@
         "apps/backend/__tests__/idg-inject.test.ts",
         "apps/backend/__tests__/idg-packet-content.test.ts",
         "apps/backend/__tests__/idg-routes.test.ts",
-        "apps/backend/__tests__/idg-schedule-meeting.test.ts"
+        "apps/backend/__tests__/idg-schedule-meeting.test.ts",
+        "apps/backend/__tests__/m12-f230-vendor-boundary-unit.test.ts"
       ],
       "directRoutesReferenced": 36
     },

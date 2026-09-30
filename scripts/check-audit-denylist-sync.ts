@@ -115,6 +115,7 @@ const MODULES: ReadonlyArray<{
     denylist: M12_AUDIT_DENYLIST,
     migrations: [
       "packages/db/migrations/0039_dosespot_m12_rls_audit_triggers.sql",
+      "packages/db/migrations/0303_m12_dosespot_history_dispense_patient_sync.sql",
       "packages/db/migrations/0168_idg_downstream_consumer_projections.sql",
     ],
   },

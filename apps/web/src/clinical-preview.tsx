@@ -1705,6 +1705,14 @@ const idgPacketBody = (pid: string) => {
             { hopeAssessmentId: idgUuid(1120), triggerKind: "pain_severe", firedAt: iso(-40) },
           ],
         },
+        // Preview fixture only — a real pull is ingested by M12's MedHx worker (F-230).
+        externalMedicationHistory: {
+          captured: true,
+          state: "available",
+          recordCount: sud ? null : 4,
+          lastPulledAt: iso(-26),
+          message: null,
+        },
         orderChanges: [
           {
             orderId: idgUuid(1130),
@@ -1801,6 +1809,13 @@ const idgPacketBody = (pid: string) => {
           upcoming: [],
           openSfvCount: null,
           symptomImpactTriggers: [],
+        },
+        externalMedicationHistory: {
+          captured: false,
+          state: null,
+          recordCount: null,
+          lastPulledAt: null,
+          message: null,
         },
         orderChanges: [],
         medicationChanges: [],

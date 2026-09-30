@@ -36,10 +36,16 @@
 // URL exists anywhere in this repository, so building a "working" transport here would fabricate an
 // integration that does not exist. Every processed row therefore fails closed with a `DegradedError`
 // (`retryable: false`, INT-009's own contract) and is marked `failed` with a clear, structured
-// `last_error` — never a fabricated success. ONE further edge (`./vendor-boundary.ts`'s
-// `DosespotPatientIdResolver`, for the `medhx_fetch` kind only) stays genuinely deferred — no table maps
-// a WardenX patient to its DoseSpot-side id anywhere in this schema. The OTHER edge that used to be
-// deferred (resolving the M5 demographic snapshot for a `patient_sync` job) is REAL:
+// `last_error` — never a fabricated success.
+//
+// F-230 (#248): everything on OUR side of that boundary is now real and runs only from a real vendor
+// response. A successful `upsertPatient` records the vendor id in `dosespot_patient_sync` (+ emits
+// `m12.dosespot_patient_synced`); a `medhx_fetch` resolves that id through the REAL
+// `createDrizzleDosespotPatientIdResolver` (null -> an honest "no DoseSpot-side patient id is recorded"
+// failure, vendor never called), pulls, and folds `ingestPullResult` (`../history/ingest.ts`) in: ledger +
+// records + `m12.medication_history_pulled`, one org-scoped tx, idempotent on the queue row id. With the
+// unbound client the vendor call rejects and none of that runs — no row, no event. The other edge that
+// used to be deferred (resolving the M5 demographic snapshot for a `patient_sync` job) is REAL:
 // `createDrizzlePatientSyncSnapshotResolver` is a thin adapter over M5's own org-explicit
 // `dosespotSyncDemographicsForOrg` seam, injected as a port (M5's `patient_address`/`patient_phone` are
 // not in `check-table-ownership.ts`'s cross-module-read exempt set, so a direct schema read here would
@@ -56,13 +62,18 @@ import { withOrgContext } from "@wardenx/tenancy";
 import type { ConnectionOptions } from "bullmq";
 import { Queue, Worker } from "bullmq";
 import type { DoseSpotWriteOutboxPort } from "../dosespot-route-service-db";
+import { ingestMedicationHistoryPull } from "../history/ingest";
+import {
+  createDrizzleDosespotPatientIdResolver,
+  recordPatientSyncFailure,
+  recordPatientSyncSuccess,
+} from "./patient-sync-store";
 import { DosespotSyncQueueRepository } from "./repository";
 import {
   type DosespotPatientIdResolver,
   type DosespotSyncDemographicsForOrg,
   type PatientSyncSnapshotResolver,
   createDrizzlePatientSyncSnapshotResolver,
-  createUnboundDosespotPatientIdResolver,
 } from "./vendor-boundary";
 
 type DosespotSyncQueueRow = schema.DosespotSyncQueueRow;
@@ -91,7 +102,8 @@ export interface DoseSpotSyncWorkerDeps {
   /** M5's org-explicit `dosespotSyncDemographicsForOrg` seam, injected as a port — see the file header
    *  for why this cannot be a direct schema read. Used only to build the default `snapshotResolver`. */
   readonly demographicsForOrg?: DosespotSyncDemographicsForOrg;
-  /** Defaults to the Phase-1 deny-stub (see `./vendor-boundary.ts`). */
+  /** Defaults to the REAL `dosespot_patient_sync`-backed resolver (F-230, migration 0303): `null` until a
+   *  successful `upsertPatient` has recorded the vendor-side id. */
   readonly dosespotPatientIdResolver?: DosespotPatientIdResolver;
   /** Publishes `m12.dosespot_patient_synced` on a real (future) successful upsert. Optional — a missing
    *  port just means the completion event is not announced; the row is still marked completed. */
@@ -117,10 +129,11 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
         }),
     );
   const dosespotPatientIdResolver =
-    deps.dosespotPatientIdResolver ?? createUnboundDosespotPatientIdResolver();
+    deps.dosespotPatientIdResolver ?? createDrizzleDosespotPatientIdResolver(deps.db);
   const now = deps.now ?? (() => new Date());
 
   let outcome: { kind: "completed" } | { kind: "failed"; error: string } | { kind: "requeue"; error: string };
+  let errorClass = "unknown";
   try {
     if (row.kind === "patient_sync") {
       const snapshot = await snapshotResolver.resolve(row.organizationId, row.patientId);
@@ -133,12 +146,20 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
         // Reached (past this point) only once the vendor client is real — today it always throws here.
         const response = await doseSpotClient.upsertPatient(row.organizationId, payload, idempotencyKey);
         const outboxPort = deps.outbox;
-        if (outboxPort) {
-          await withOrgContext(
-            deps.db,
-            { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
-            (tx) =>
-              outboxPort.publish(tx, {
+        // §2.6 "on success": record the vendor-returned id (the ONLY writer of `dosespot_patient_sync`'s
+        // id — reached only with a real `upsertPatient` response) and announce it in the SAME tx.
+        await withOrgContext(
+          deps.db,
+          { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
+          async (tx) => {
+            await recordPatientSyncSuccess(tx as DbClient, {
+              organizationId: row.organizationId,
+              patientId: row.patientId,
+              dosespotPatientId: response.dosespotPatientId,
+              syncedAt: new Date(response.upsertedAt),
+            });
+            if (outboxPort) {
+              await outboxPort.publish(tx, {
                 eventName: "m12.dosespot_patient_synced",
                 organizationId: row.organizationId,
                 aggregateKind: "patient",
@@ -148,9 +169,10 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
                   dosespotPatientId: response.dosespotPatientId,
                   syncedAt: response.upsertedAt,
                 },
-              }),
-          );
-        }
+              });
+            }
+          },
+        );
         if (row.invalidateRxBenefitCache) {
           // No RxBenefit cache exists anywhere in this repository (checked: no rxBenefitCache/
           // RxBenefitCache reference outside this decider's own boolean flag and the client's response
@@ -168,18 +190,51 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
       if (dosespotPatientId === null) {
         outcome = {
           kind: "failed",
-          error: "no DoseSpot-side patient id on file — the prior patient-sync has not succeeded yet",
+          error:
+            "no DoseSpot-side patient id is recorded for this patient — the prior patient-sync has not succeeded yet",
         };
       } else {
-        await doseSpotClient.pullMedicationHistory(row.organizationId, { dosespotPatientId });
-        // Persisting the pulled history (`m12.medication_history_pulled`) is the existing
-        // `ingestPullResult` write path (events-by-m12.ts) — a genuinely separate concern (parsing +
-        // storing `medication_history_record` rows) this pass does not fold in; reachable only once the
-        // vendor client is real.
+        if (!deps.outbox) {
+          // Persisting a pull without announcing it would leave `m12.medication_history_pulled` silent; the
+          // composition root always injects the publisher, so a missing port is a wiring error, not a skip.
+          throw new Error(
+            "DoseSpotSyncWorkerDeps.outbox is required to ingest a MedicationHistory pull (F-230)",
+          );
+        }
+        // §2.8 D10: pull the last 12 months. Reached only with a real vendor client; today the unbound
+        // deny-stub rejects here and nothing below runs (no row, no event).
+        const sinceDate = new Date(now());
+        sinceDate.setUTCMonth(sinceDate.getUTCMonth() - 12);
+        const result = await doseSpotClient.pullMedicationHistory(row.organizationId, {
+          dosespotPatientId,
+          sinceDate: sinceDate.toISOString().slice(0, 10),
+        });
+        // `ingestPullResult` (spec §4.3): persist ledger + records and emit `m12.medication_history_pulled`
+        // in one org-scoped tx — only from this REAL pull result; idempotent on the queue row id.
+        const outboxPort = deps.outbox;
+        await withOrgContext(
+          deps.db,
+          { organizationId: row.organizationId, userId: CONSUMER_USER_ID },
+          (tx) =>
+            ingestMedicationHistoryPull(tx as DbClient, outboxPort, {
+              organizationId: row.organizationId,
+              patientId: row.patientId,
+              dosespotPatientId,
+              sourceJobId: row.id,
+              result,
+            }),
+        );
         outcome = { kind: "completed" };
       }
     }
   } catch (error) {
+    errorClass = isDegradedError(error)
+      ? error.retryable
+        ? "degraded_retryable"
+        : "degraded_non_retryable"
+      : error instanceof Error
+        ? error.name
+        : "unknown";
     if (isDegradedError(error)) {
       outcome = error.retryable
         ? { kind: "requeue", error: error.customerMessage }
@@ -201,6 +256,15 @@ async function processRow(deps: DoseSpotSyncWorkerDeps, row: DosespotSyncQueueRo
       if (outcome.kind === "completed") await repo.markCompleted(row.id, now());
       else if (outcome.kind === "failed") await repo.markFailed(row.id, outcome.error, now());
       else await repo.requeue(row.id, outcome.error);
+      // §2.6 "on failure": record the sync outcome + bump `retry_count` (no id is ever invented).
+      if (row.kind === "patient_sync" && outcome.kind !== "completed") {
+        await recordPatientSyncFailure(tx as DbClient, {
+          organizationId: row.organizationId,
+          patientId: row.patientId,
+          errorClass,
+          at: now(),
+        });
+      }
     },
   );
 }

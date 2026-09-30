@@ -400,6 +400,20 @@ export const PacketContentViewSchema = Type.Object({
       }),
     ),
   }),
+  /** F-230 — external (DoseSpot MedHx) medication-history STATE; `captured:false`/`not_pulled` are NOT "none". */
+  externalMedicationHistory: Type.Object({
+    captured: Type.Boolean(),
+    state: Nullable(
+      Type.Union([
+        Type.Literal("not_pulled"),
+        Type.Literal("none_available"),
+        Type.Literal("available"),
+      ]),
+    ),
+    recordCount: Nullable(Type.Integer()),
+    lastPulledAt: Nullable(PacketDateTime),
+    message: Nullable(Type.String()),
+  }),
   orderChanges: Type.Array(
     Type.Object({
       orderId: Type.String(),

@@ -203,6 +203,21 @@ export interface Idg10HopeContextFact {
   readonly openSfvCount: number;
 }
 
+/** One patient's external medication-history state as M12's `idgMedicationHistoryForOrg` projects it (F-230). */
+export interface Idg12MedicationHistoryFact {
+  readonly state: "not_pulled" | "none_available" | "available";
+  readonly recordCount: number;
+  readonly lastPulledAt: string | null;
+}
+
+/** The M12 external-medication-history port (F-230 `medicationHistory` slot): BATCHED + org-explicit. */
+export interface Idg12MedicationHistoryPort {
+  medicationHistoryForOrg(
+    organizationId: string,
+    patientIds: readonly string[],
+  ): Promise<ReadonlyMap<string, Idg12MedicationHistoryFact>>;
+}
+
 /** The M10 HOPE-context port (§2.4 `hopeContext`): BATCHED + org-explicit + cron-callable. */
 export interface Idg10HopeContextPort {
   hopeContextForOrg(
@@ -320,6 +335,50 @@ export async function resolveHopeContext(
   return out;
 }
 
+/**
+ * F-230 — resolve the packet's `medicationHistory` slot for a meeting's candidate patients from M12's seam.
+ * Never throws: no port, a seam error, or a patient absent from the result ⇒ that patient's slot is ABSENT
+ * (the caller stores `null` = "not captured" — NEVER a fabricated `none_available`). Values are validated: an
+ * inconsistent fact (e.g. `available` with a zero count, a non-null instant on `not_pulled`) is dropped.
+ */
+export async function resolveMedicationHistory(
+  port: Idg12MedicationHistoryPort | undefined,
+  organizationId: string,
+  patientIds: readonly string[],
+  warn: PacketBuildWarn,
+): Promise<ReadonlyMap<string, NonNullable<PacketSnapshot["medicationHistory"]>>> {
+  const out = new Map<string, NonNullable<PacketSnapshot["medicationHistory"]>>();
+  const ids = [...new Set(patientIds)];
+  if (!port || ids.length === 0) return out;
+  try {
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = await port.medicationHistoryForOrg(organizationId, ids.slice(i, i + 500));
+      for (const [patientId, f] of chunk) {
+        if (!Number.isInteger(f.recordCount) || f.recordCount < 0) continue;
+        if (f.state === "not_pulled") {
+          if (f.recordCount !== 0 || f.lastPulledAt !== null) continue;
+          out.set(patientId, { state: "not_pulled", recordCount: 0, lastPulledAt: null });
+        } else if (f.state === "none_available" || f.state === "available") {
+          if (f.lastPulledAt === null || !validInstant(f.lastPulledAt)) continue;
+          if ((f.state === "available") !== f.recordCount > 0) continue;
+          out.set(patientId, {
+            state: f.state,
+            recordCount: f.recordCount,
+            lastPulledAt: new Date(f.lastPulledAt).toISOString(),
+          });
+        }
+      }
+    }
+  } catch (error) {
+    warn("m14.packet_build.medication_history_unavailable", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return new Map();
+  }
+  return out;
+}
+
 /** Cover facts resolved for one patient (both fields null = unknown). */
 export interface PacketRecertCoverFacts {
   readonly nextRecertDueAt: string | null;
@@ -392,6 +451,8 @@ export interface PacketBuildWorkerDeps {
   readonly flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
   /** §2.4 `hopeContext` (M10 `idgHopeContextForOrg`). Unbound ⇒ `null` (not captured). */
   readonly hope?: Idg10HopeContextPort;
+  /** F-230 `medicationHistory` (M12 `idgMedicationHistoryForOrg`). Unbound ⇒ `null` (not captured). */
+  readonly medicationHistory?: Idg12MedicationHistoryPort;
   /** M1 org/location display names for the packet PDF header. Unbound/failing ⇒ no names. */
   readonly siteDisplay?: IdgSiteDisplayPort;
   /** M2 batched staff display read (names only) for the carry-forward assignees. Unbound/failing ⇒ no names. */
@@ -610,6 +671,8 @@ interface PatientPacketExtras {
   readonly flaggedEvents: readonly PacketFlaggedEventDigest[];
   /** `null` ⇒ HOPE context not captured (unbound / failed seam). */
   readonly hopeContext: PacketSnapshot["hopeContext"];
+  /** F-230 — `null` ⇒ external medication history not captured (unbound / failed seam). */
+  readonly medicationHistory: PacketSnapshot["medicationHistory"];
   readonly carryForward: readonly PacketActionItemCarryForwardDigest[];
   /** Header names for the M22 render payload (per meeting, NOT stored in the snapshot). */
   readonly site: PacketSiteNames;
@@ -728,6 +791,7 @@ async function buildOnePatientPacket(
       sinceLastIdg,
       carePlanSummary,
       hopeContext: extras.hopeContext, // M10 seam, resolved per meeting — see file header
+      medicationHistory: extras.medicationHistory ?? null, // M12 seam (F-230), resolved per meeting
       carryForwardActionItems: extras.carryForward, // M14's own idg_action_item — see file header
     });
 
@@ -908,6 +972,12 @@ async function processDueMeeting(
     warn,
   );
   const hopeByPatient = await resolveHopeContext(deps.hope, organizationId, patientIds, warn);
+  const medHistoryByPatient = await resolveMedicationHistory(
+    deps.medicationHistory,
+    organizationId,
+    patientIds,
+    warn,
+  );
 
   // Display names for the PDF (org/location header + carry-forward assignees) — resolved here, ONCE per meeting,
   // outside any tenant tx (the ports open their own). Failures degrade to no names.
@@ -940,6 +1010,7 @@ async function processDueMeeting(
         priorIdgAdjournedAt: priorByPatient.get(candidate.patientId) ?? null,
         flaggedEvents: flaggedByPatient.get(candidate.patientId) ?? [],
         hopeContext: hopeByPatient.get(candidate.patientId) ?? null,
+        medicationHistory: medHistoryByPatient.get(candidate.patientId) ?? null,
         carryForward: carryForwardByPatient.get(candidate.patientId) ?? [],
         site,
         memberNames,

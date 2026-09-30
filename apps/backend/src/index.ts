@@ -359,6 +359,10 @@ import {
   buildM12VerbalExpiredConsumer,
   createDrizzleAdmissionIdForElectionPeriodPort,
   createDrizzleDoseSpotSeamStore,
+  createEnvWebhookSecretResolver,
+  createWebhookBodyCipher,
+  idgMedicationHistoryForOrg,
+  registerDoseSpotWebhookRoute,
   createDrizzleMedHxFetchEnqueuePort,
   createDrizzleMedicationOrderEraseStore,
   createDrizzlePatientSyncEnqueuePort,
@@ -3350,6 +3354,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // F-201 (#248) — the held-order worklist: lab orders waiting on a human's verification with the lab.
           registerHeldTransmissionRoutes(app, { recovery: buildM11StuckRecovery(dbHandle.db, m11OutboxPublisher) });
           mountDoseSpotRoutes(app, dbHandle.db, m12OutboxPublisher); // M12 — reads + the write lifecycle over Drizzle+RLS, m12.* transactional outbox
+          // F-230 (#248) — the public `POST /webhooks/dosespot` (HMAC + replay window + dedup + DEK-encrypted receipt;
+          // Dispensed/PickedUp -> `medication_order_dispense` + `m12.medication_order.dispensed_at_pharmacy`).
+          // FAIL-CLOSED: with no `DOSESPOT_WEBHOOK_SECRETS` bound (the default — no DoseSpot credentials exist)
+          // the route answers 503 to everything and logs one warning; it never verifies against a default.
+          registerDoseSpotWebhookRoute(app, {
+            db: dbHandle.db,
+            outbox: m12OutboxPublisher,
+            secrets: createEnvWebhookSecretResolver(),
+            cipher: createWebhookBodyCipher(getTenantKeyProvider()),
+          });
           mountEmarRoutes(app, dbHandle.db, m13OutboxPublisher); // M13 — reads + the write lifecycle over Drizzle+RLS, m13.* transactional outbox
           mountIdgRoutes(app, dbHandle.db, m14OutboxPublisher, {
             // M14 read enrichment — org-explicit BATCHED seams bound as locally-declared ports (M14 imports no M5/M6 code):
@@ -5482,6 +5496,12 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       hope: {
         hopeContextForOrg: (organizationId, patientIds) =>
           idgHopeContextForOrg(dbHandle.db, organizationId, patientIds),
+      },
+      // F-230 `medicationHistory` — M12's org-explicit batched external-medication-history STATE (the seam-pull
+      // binding of `m14 <- m12.medication_history_pulled`; reads the ingest ledger, counts/instants only).
+      medicationHistory: {
+        medicationHistoryForOrg: (organizationId, patientIds) =>
+          idgMedicationHistoryForOrg(dbHandle.db, organizationId, patientIds),
       },
       // The packet PDF's org/location header + named carry-forward assignees (M1 / M2 org-explicit seams; the
       // worker has no request, so both take the org id explicitly and open their own `withOrgContext`).

@@ -93,10 +93,23 @@ export interface DoseSpotMedHistoryPayload {
 
 /** §2.8 — one historical medication record (persisted as `medication_history_record`, never auto-linked). */
 export interface DoseSpotMedHistoryItem {
-  readonly rxnormRxcui: string;
+  /** `null` when the pharmacy's NDC did not match an RxNorm code (M12 §5.5 edge: the RN selects one manually). */
+  readonly rxnormRxcui: string | null;
   readonly drugName: string;
   readonly lastFillDate: string | null;
   readonly sourcePharmacy: string | null;
+  // §2.8 also lists these per-row fields (ndc, strength, dose_form, sig_text, prescribed_at, fill_dates[],
+  // pharmacy_ncpdp, prescriber_npi). They are OPTIONAL here because the wire mapping from the real DoseSpot
+  // MedicationHistory response is pending vendor documentation (F-230): the live transport fills whichever
+  // the vendor actually returns; nothing is defaulted or invented when absent.
+  readonly ndc?: string | null;
+  readonly strength?: string | null;
+  readonly doseForm?: string | null;
+  readonly sigText?: string | null;
+  readonly prescribedAt?: string | null;
+  readonly fillDates?: readonly string[];
+  readonly pharmacyNcpdp?: string | null;
+  readonly prescriberNpi?: string | null;
 }
 
 /** §2.8 — the MedicationHistory pull response. */
