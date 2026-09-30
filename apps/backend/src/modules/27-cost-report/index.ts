@@ -142,3 +142,11 @@ export {
   type M27DocumentBackrefDeps,
   buildM27DocumentBackrefConsumer,
 } from "./outbox-consumers/m22-document-backref";
+
+// F-207 (#248) — the M21 vendor-invoice forward seam (M21 spec §1.1 D16), the 4th cost-basis precedence
+// tier additive to D17's M13 administration ▸ M12 ordered ▸ manual entry chain.
+export {
+  M27_VENDOR_INVOICE_CONSUMER,
+  type M27VendorInvoiceDeps,
+  buildM27VendorInvoiceConsumer,
+} from "./outbox-consumers/m21-vendor-invoice";

@@ -717,6 +717,7 @@ import {
   buildM27DocumentBackrefConsumer,
   buildM27RecomputeEnqueue,
   buildM27ValidationContext,
+  buildM27VendorInvoiceConsumer,
   buildM27WorkerDeps,
   createDrizzleCostReportEraseStore,
   m27CapSeamResolver,
@@ -6363,6 +6364,10 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           // and the pure handler's declared payload named an `artifactKind` M22 does not publish, so a
           // binding written to its stated shape would have no-op'd on every delivery.
           buildM27DocumentBackrefConsumer({ db: dbHandle.db, outbox: m27OutboxPublisher }),
+          // F-207 (#248) — the M21 vendor-invoice forward seam (M21 spec §1.1 D16), the 4th cost-basis
+          // precedence tier additive to D17's M13 administration ▸ M12 ordered ▸ manual entry chain.
+          // No dependsOn edge to 21; both event names read structurally off the wire.
+          buildM27VendorInvoiceConsumer({ db: dbHandle.db }),
           // GAP-051 — M33's half. Unlike the four above it does more than stamp a column: a rendered
           // scheduled report settles its occurrence `delivered` and emits the §4.9 fan-out, which is why
           // it composes the package's own decider/applier rather than a one-line UPDATE. The ad-hoc

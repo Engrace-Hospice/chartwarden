@@ -657,6 +657,14 @@ jobs:
               name: "F-194 M18 visit verified",
               scripts: "test:f194:m18-visit-verified:live",
             }
+          # F-207 (#248) — the M21 vendor-invoice forward seam (M21 spec §1.1 D16), the 4th cost-basis
+          # precedence tier additive to D17's M13 administration ▸ M12 ordered ▸ manual entry chain: a
+          # real accrual/reconciliation through the catalog-validating publisher, the real dispatcher,
+          # into a real fiscal-year-resolved `vendor_invoice_line` row.
+          - {
+              name: "F-207 M27 vendor invoice",
+              scripts: "test:f207:m27-vendor-invoice:live",
+            }
           - { name: "M6 discharge cascade", scripts: "test:m6:discharge-cascade:live" }
           # F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           - { name: "M6 LOC change signed", scripts: "test:m6:loc-change-signed:live" }

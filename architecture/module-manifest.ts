@@ -916,6 +916,7 @@ export const MODULES: ModuleDef[] = [
       "ecr_submission",
       "statistic_data",
       "trial_balance_import",
+      "vendor_invoice_line",
       "wage_data_import",
     ],
   },
