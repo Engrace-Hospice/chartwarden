@@ -2197,7 +2197,7 @@ describe.skipIf(!DB_URL)("F-187 — recovery of lab orders that cannot reach the
 
     // The migration ran on an EMPTY role table here, so create the roles a real tenant would already have and replay ITS
     // backfill statement (the only one that touches `role_permission`).
-    const sqlText = readFileSync(join(MIGRATIONS_DIR, "0272_m11_recovery_mitigations.sql"), "utf8");
+    const sqlText = readFileSync(join(MIGRATIONS_DIR, "0273_m11_recovery_mitigations.sql"), "utf8");
     const backfill = sqlText.split("--> statement-breakpoint").find((s) => s.includes('INSERT INTO "role_permission"'))!;
     expect(backfill).toBeTruthy();
     const mkRole = async (key: string) =>
