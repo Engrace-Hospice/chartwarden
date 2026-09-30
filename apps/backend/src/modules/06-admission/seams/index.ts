@@ -89,6 +89,13 @@ export {
   idgHospitalEventsForOrg,
   projectHospitalEvent,
 } from "./idg-hospital-events-for-org";
+// M31 post-discharge grace sweep (F-222) — the org-explicit, BATCHED "discharged alive, past cutoff, not re-admitted" read.
+export {
+  PORTAL_DISCHARGE_GRACE_MAX_PATIENTS,
+  type PortalDischargedPastGrace,
+  isPastGraceAndNotReadmitted,
+  portalDischargedPastGraceForOrg,
+} from "./portal-discharge-grace-for-org";
 export {
   type AdmissionReaderStore,
   type AdmissionReaderSeed,

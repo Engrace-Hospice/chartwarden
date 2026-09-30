@@ -100,6 +100,7 @@ import {
   buildPortalAbacResolverFromStore,
   mountM31Routes,
 } from "../src/modules/31-portal/index";
+import type { M17VisitForRoom } from "../src/modules/31-portal/telehealth/room-mint";
 
 // ── the header-auth test shim (the M11 `orders-routes.test.ts` precedent), extended with the portal
 // session attributes M31's `actor.ts` reads (`bereavement-inject.test.ts`'s `x-test-portal-account`
@@ -295,6 +296,29 @@ function createFakePortalStore(): {
     async telehealthById(_orgId, id) {
       return visits.get(id) ?? null;
     },
+    async telehealthByM17VisitId(_orgId, m17VisitId) {
+      return [...visits.values()].find((v) => v.m17VisitId === m17VisitId) ?? null;
+    },
+    async insertTelehealthVisitIfAbsent(_orgId, _userId, row) {
+      if ([...visits.values()].some((v) => v.m17VisitId === row.m17VisitId)) return null;
+      const digest: TelehealthVisitDigest = {
+        telehealthVisitId: row.id as TelehealthVisitDigest["telehealthVisitId"],
+        m17VisitId: row.m17VisitId as TelehealthVisitDigest["m17VisitId"],
+        patientId: row.patientId as TelehealthVisitDigest["patientId"],
+        assignedMembershipId: row.assignedMembershipId as TelehealthVisitDigest["assignedMembershipId"],
+        lifecycleState: "room_minted",
+        vendor: row.vendor,
+        scheduledVisitSetting: row.scheduledVisitSetting,
+        audioOnlyFallbackActive: false,
+        visitStartedAt: null,
+        visitEndedAt: null,
+        totalDurationSec: null,
+        endReason: null,
+        linkedEncounterId: null,
+      };
+      visits.set(row.id, digest);
+      return digest;
+    },
     async telehealthList() {
       return [...visits.values()];
     },
@@ -372,6 +396,9 @@ function makeServer(
     /** Leave the #117 reason cipher UNBOUND, so suspend/reinstate refuse rather than record a status
      *  change with no reason. Bound by default — the composition root binds it. */
     readonly reasonCipherUnbound?: boolean;
+    /** F-220 — bind the lazy room mint: the M17 visit the published reader returns, and whether the vendor
+     *  adapter can `mintRoom` (absent ⇒ the fail-closed NOOP shape production has today). */
+    readonly lazyMint?: { readonly visit: M17VisitForRoom | null; readonly vendorCanMint: boolean };
   } = {},
 ) {
   const backend = createFakePortalStore();
@@ -530,14 +557,39 @@ function makeServer(
   registerAbacRegistry(reg);
 
   const app = buildServer({ authenticate: headerAuth, security: { rateLimitEnabled: false } });
-  const telehealth: TelehealthAdapterPort =
-    opts.telehealthWebhookSignatureValid === false
+  const mintedRooms: { telehealthVisitId: string }[] = [];
+  const telehealth: TelehealthAdapterPort = {
+    ...(opts.telehealthWebhookSignatureValid === false
       ? { ...FAKE_TELEHEALTH_ADAPTER, verifyWebhookSignature: () => false }
-      : FAKE_TELEHEALTH_ADAPTER;
+      : FAKE_TELEHEALTH_ADAPTER),
+    ...(opts.lazyMint?.vendorCanMint
+      ? {
+          async mintRoom(input: { telehealthVisitId: string }) {
+            mintedRooms.push({ telehealthVisitId: input.telehealthVisitId });
+            return { vendorRoomId: "room-xyz", vendorRoomUrl: "https://vendor.invalid/room-xyz" };
+          },
+        }
+      : {}),
+  };
   const deps: PortalRouteDeps = {
     store: backend.store,
     telehealth,
     now: () => new Date(NOW),
+    ...(opts.lazyMint
+      ? {
+          visitReader: {
+            async visitForOrg(orgId: string, visitId: string) {
+              const v = opts.lazyMint?.visit ?? null;
+              return v && v.id === visitId && v.organizationId === orgId ? v : null;
+            },
+          },
+          roomCipher: {
+            async encrypt(_org: string, column: string, plaintext: string) {
+              return `sealed:${column}:${plaintext}`;
+            },
+          },
+        }
+      : {}),
     ...(opts.reasonCipherUnbound
       ? {}
       : {
@@ -1274,5 +1326,76 @@ describe("M31 §4.1 — the account status-change reason is read, sealed and sto
     expect(res.json().error?.code).toBe("PORTAL_REASON_CIPHER_UNBOUND");
     // The account is untouched — a refusal, not a partial write.
     expect(backend.statusChangeReasons).toEqual([]);
+  });
+});
+
+// ── F-220 (#248) — the LAZY telehealth room mint on the first clinician join of a `telephonic` visit ────
+describe("M31 §4.1 — lazy telehealth room mint on clinician join (F-220)", () => {
+  const M17_VISIT = "33333333-3333-4333-8333-333333333333";
+  const telephonicVisit: M17VisitForRoom = {
+    id: M17_VISIT,
+    organizationId: ORG,
+    patientId: PATIENT,
+    providerEntityId: "44444444-4444-4444-8444-444444444444",
+    locationId: null,
+    assignedMembershipId: "55555555-5555-4555-8555-555555555555",
+    visitSetting: "telephonic",
+    scheduledStartedAt: NOW,
+    status: "published",
+  };
+  const join = (app: ReturnType<typeof makeServer>["app"], key: string, id = M17_VISIT) =>
+    app.inject({
+      method: "POST",
+      url: `/api/v1/telehealth/visits/${id}/join`,
+      headers: { ...STAFF, ...IDEMP(key) },
+    });
+
+  it("mints the room on the first join, seals both columns, and is idempotent on the second join", async () => {
+    const { app, backend } = makeServer({ lazyMint: { visit: telephonicVisit, vendorCanMint: true } });
+    const first = await join(app, "f220-a");
+    expect(first.statusCode).toBe(200);
+    const rooms = await backend.store.telehealthList("org_a");
+    expect(rooms.filter((r) => r.m17VisitId === M17_VISIT)).toHaveLength(1);
+    const minted = rooms.find((r) => r.m17VisitId === M17_VISIT);
+    expect(minted?.lifecycleState).toBe("clinician_joined");
+    expect(minted?.scheduledVisitSetting).toBe("telephonic");
+
+    // The second join — by the M17 id again, then by the now-existing telehealth id — mints nothing new.
+    expect((await join(app, "f220-b")).statusCode).toBe(200);
+    expect((await join(app, "f220-c", minted?.telehealthVisitId)).statusCode).toBe(200);
+    expect((await backend.store.telehealthList("org_a")).filter((r) => r.m17VisitId === M17_VISIT)).toHaveLength(1);
+  });
+
+  it("404s for a visit that is not telephonic, is terminal, or is unknown — and writes no row", async () => {
+    for (const visit of [
+      { ...telephonicVisit, visitSetting: "patient_home" },
+      { ...telephonicVisit, status: "cancelled" },
+      null,
+    ]) {
+      const { app, backend } = makeServer({ lazyMint: { visit, vendorCanMint: true } });
+      expect((await join(app, "f220-ne")).statusCode).toBe(404);
+      expect((await backend.store.telehealthList("org_a")).some((r) => r.m17VisitId === M17_VISIT)).toBe(false);
+    }
+  });
+
+  it("fails CLOSED with 503 when no vendor adapter can mint (production today) — no half-written row", async () => {
+    const { app, backend } = makeServer({ lazyMint: { visit: telephonicVisit, vendorCanMint: false } });
+    const res = await join(app, "f220-503");
+    expect(res.statusCode).toBe(503);
+    expect(res.json().error?.code).toBe("TELEHEALTH_VENDOR_UNAVAILABLE");
+    expect((await backend.store.telehealthList("org_a")).some((r) => r.m17VisitId === M17_VISIT)).toBe(false);
+  });
+
+  it("without the lazy-mint deps bound, an unknown id is still a plain 404 (behaviour unchanged)", async () => {
+    const { app } = makeServer();
+    expect((await join(app, "f220-legacy")).statusCode).toBe(404);
+  });
+
+  it("never mints for a visit of another tenant", async () => {
+    const { app, backend } = makeServer({
+      lazyMint: { visit: { ...telephonicVisit, organizationId: "org_b" }, vendorCanMint: true },
+    });
+    expect((await join(app, "f220-xorg")).statusCode).toBe(404);
+    expect((await backend.store.telehealthList("org_a")).some((r) => r.m17VisitId === M17_VISIT)).toBe(false);
   });
 });

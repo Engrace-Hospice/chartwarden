@@ -212,6 +212,7 @@ import {
   idgPacketInclusionForOrg,
   idgHospitalEventsForOrg,
   idgRecertWindowsForOrg,
+  portalDischargedPastGraceForOrg,
   buildM6DocumentBackrefConsumer,
   buildM6LevelOfCareChangeSignedConsumer,
   buildM6RecertificationSignedConsumer,
@@ -717,6 +718,13 @@ import { buildM31BereavementPlanOpenedConsumer } from "./modules/31-portal/outbo
 // real primary trigger." Fed by M16's new single-contact seam read (`bereavedContactFlipCandidateForOrg`).
 import { buildM31BereavementContactActiveConsumer } from "./modules/31-portal/outbox-consumers/m16-bereavement-contact-active";
 import { buildM31ConsentRevokedGrantCascadeConsumer } from "./modules/31-portal/outbox-consumers/m39-consent-revoked";
+// F-222 (#248) — M31's first cron: the daily post-discharge-grace sweep (replaces the unbuilt `m6.admission.discharged` push).
+import {
+  M31_PLATFORM_JOB_ID,
+  registerM31PostDischargeGraceWorker,
+  scheduleM31PostDischargeGraceJob,
+  wireM31Tenancy,
+} from "./modules/31-portal/jobs/index";
 // M27 (Cost Report) boot surface — the §4.10 outbox catalog, the §4.7 ABAC resolvers, the §4.1 route mount
 // over the Drizzle read/write services, the §3.7 `cost_report_class` eraser, and the §4.8 BullMQ workers
 // (the M30 precedent). WX-PR-013 bound the recompute-enqueue producer + the outbox/alerts/active-org worker
@@ -824,6 +832,7 @@ import {
   buildPortalAbacResolverFromStore,
   createM31PublishedSeamImpls,
   createPortalReasonCipher,
+  createPortalRoomCipher,
   denyStubPortalAbacResolver,
   mountM31Routes,
   registerM31PublishedSeams,
@@ -1658,6 +1667,7 @@ export function wireModuleSeams(
   wireM24Tenancy(); // F-172 (#248, m1 group) — allowlist the cron job id so state-channel-health may enter withPlatformContext
   wireM27Tenancy(); // M27 (WX-PR-013) — allowlist the cron job id so filing-deadline-scan may enter withPlatformContext
   wireM29Tenancy(); // F-175 (#248) — allowlist the cron job id so the outbound-dispatch retry sweep may enter withPlatformContext
+  wireM31Tenancy(); // F-222 (#248) — allowlist the cron job id so the post-discharge-grace sweep may enter withPlatformContext
   // TASK-040D — allowlist M7/M9/M10's cron platform job ids (same fail-closed posture as M25/M30/M33/M34).
   wireM6Tenancy();
   wireM7Tenancy();
@@ -3975,6 +3985,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           mountM31Routes(app, {
             store: buildDrizzlePortalStore(dbHandle.db),
             reasonCipher: createPortalReasonCipher(getTenantKeyProvider()),
+            // F-220 (#248) — the lazy telehealth room mint: M17's org-explicit published visit read + the
+            // per-tenant DEK envelope for the two vendor-room columns. The vendor adapter stays UNBOUND above,
+            // so a lazy mint fails closed (503) until a per-tenant vendor key vault exists.
+            visitReader: {
+              visitForOrg: (organizationId, visitId) =>
+                getSeam("VisitReader").visitForEncounter(organizationId, visitId),
+            },
+            roomCipher: createPortalRoomCipher(getTenantKeyProvider()),
           });
           // M32 (AI Platform) — mount the thirty-two §4.1 routes over the T03/T04/T05 command services
           // plus T07's read port. `ai.full` stays OFF: these routes GOVERN a platform that is not yet
@@ -5016,6 +5034,40 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       app.log.info("M29 outbound-dispatch retry-sweep cron worker constructed");
     } else {
       app.log.warn("M29 outbound-dispatch retry-sweep cron disabled: configure REDIS_URL");
+    }
+    // F-222 (#248) — M31 §4.8 `m31.post-discharge-grace.cron`: the daily sweep that ends care-time portal access
+    // for patients discharged alive past the 30-day grace FLOOR and not re-admitted. Reads M6 through the org-
+    // explicit published `portalDischargedPastGraceForOrg` (M31 imports no M6 code); bounded per org per run.
+    if (queueConnection) {
+      const m31ActiveOrgs = buildActiveOrgEnumerator({
+        platformDb: platformDbHandle?.db,
+        auditBypass: m34PlatformBypassAuditor,
+        jobId: M31_PLATFORM_JOB_ID,
+        reason: "M31 §4.8 post-discharge-grace sweep cron fan-out (active-org enumeration)",
+      });
+      const m31PostDischargeGraceWorker = registerM31PostDischargeGraceWorker({
+        connection: queueConnection,
+        db: dbHandle.db,
+        activeOrgs: m31ActiveOrgs,
+        m6: {
+          portalDischargedPastGraceForOrg: (organizationId, patientIds, cutoffDate) =>
+            portalDischargedPastGraceForOrg(dbHandle.db, organizationId, patientIds, cutoffDate),
+        },
+      });
+      app.addHook("onClose", async () => {
+        await m31PostDischargeGraceWorker.close();
+      });
+      try {
+        const m31PostDischargeGraceQueue = await scheduleM31PostDischargeGraceJob(queueConnection);
+        app.addHook("onClose", async () => {
+          await m31PostDischargeGraceQueue.close();
+        });
+      } catch (err) {
+        app.log.error(err, "M31 post-discharge-grace cron schedule registration failed");
+      }
+      app.log.info("M31 post-discharge-grace cron worker constructed");
+    } else {
+      app.log.warn("M31 post-discharge-grace cron disabled: configure REDIS_URL");
     }
     // ── M25 §4.8 Remittance crons (denial-aging rebucket + appeal-deadline watch) — same worker-runner
     // shape. buildM25WorkerDeps binds only the connection + db; the M2 active-org enumerator (the per-org

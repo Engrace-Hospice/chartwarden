@@ -99,7 +99,12 @@ const M17_OUTBOX_ENTRIES: readonly M17OutboxEntry[] = [
     // job — the reverse of every other F-139 drop in this pass, a real relationship the catalog never
     // declared at all. The stale "Phase 2" note in this event's OWN description above refers to M28's
     // SMART user-launch (M31's spec §9 D20), not this room-mint flow, which M31's spec treats as current.
-    declaredConsumers: ["m8", "m18", "m20", "m31"],
+    // F-220 (#248) — `m31` MOVED to `seamConsumers` (user-approved triage): M17 models no "video requested"
+    // flag and M31 has no jobs tier, so there is no push to bind. M31 mints the room LAZILY on the first
+    // clinician JOIN of a `telephonic` visit, by pulling the visit through M17's org-explicit published
+    // `VisitReader` (`31-portal/telehealth/room-mint.ts`) — a declared consumer would defer this event forever.
+    declaredConsumers: ["m8", "m18", "m20"],
+    seamConsumers: ["m31"],
     isOutboxOnly: true,
   },
   {

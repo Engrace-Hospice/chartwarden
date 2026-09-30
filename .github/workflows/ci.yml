@@ -584,7 +584,9 @@ jobs:
                 # INSERT half, re-checked past F-164's BLOCKED verdict.
                 # F-167 (#248) adds test:m31:bereavement-contact-active:live — the per-contact-exact
                 # trigger `plan_opened`'s own header names as the real primary mechanism.
-                "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live test:m31:bereavement-consent-consumers:live test:m31:bereavement-plan-opened:live test:m31:bereavement-contact-active:live",
+                # F-222 (#248) adds test:m31:post-discharge-grace:live — the daily post-discharge-grace sweep.
+                # F-220 (#248) adds test:m31:lazy-room-mint:live — the lazy telehealth room mint on first join.
+                "test:m31:portal-eraser:live test:m31:care-team-sync:live test:m31:portal-telehealth-consumers:live test:m31:bereavement-consent-consumers:live test:m31:bereavement-plan-opened:live test:m31:bereavement-contact-active:live test:m31:post-discharge-grace:live test:m31:lazy-room-mint:live",
             }
           - {
               name: "M36 Messaging alerts",

@@ -32,6 +32,7 @@ export {
 } from "./abac-predicates";
 export {
   type PortalReasonCipher,
+  type PortalRoomCipher,
   type PortalRouteDeps,
   type PortalStore,
   type PortalTenantKeyProvider,
@@ -39,5 +40,6 @@ export {
   buildDrizzlePortalStore,
   buildPortalAbacResolverFromStore,
   createPortalReasonCipher,
+  createPortalRoomCipher,
 } from "./routes/index";
 export { mountM31Routes } from "./routes/mount";
