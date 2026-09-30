@@ -40,6 +40,7 @@
     "db:idg:packet-build": "bun run scripts/db/run-idg-packet-build.ts",
     "db:seed:scenario-idg-meetings": "bun run scripts/db/seed-scenario-idg-meetings.ts",
     "db:seed:scenario-idg-packets": "bun run scripts/db/seed-scenario-idg-packets.ts",
+    "db:seed:scenario-idg-clinical": "bun run scripts/db/seed-scenario-idg-clinical.ts",
     "db:seed:scenario-field-ops": "bun run scripts/db/seed-scenario-field-ops.ts",
     "db:seed:scenario-billing": "bun run scripts/db/seed-scenario-billing.ts",
     "db:seed:scenario-remaining": "bun run scripts/db/seed-scenario-remaining.ts",

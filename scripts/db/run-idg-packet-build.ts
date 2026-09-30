@@ -28,6 +28,7 @@ import {
 } from "../../apps/backend/src/modules/05-patient/index";
 import {
   idgCurrentLevelOfCareForOrg,
+  idgHospitalEventsForOrg,
   idgPacketInclusionForOrg,
   idgRecertWindowsForOrg,
 } from "../../apps/backend/src/modules/06-admission/index";
@@ -36,8 +37,11 @@ import {
   createDrizzleEncounterReaderStore,
   registerEncounterSeams,
 } from "../../apps/backend/src/modules/08-encounters/index";
+import { idgHopeContextForOrg } from "../../apps/backend/src/modules/10-hope/index";
+import { idgMissedDosesForOrg } from "../../apps/backend/src/modules/13-emar/index";
 import type { IdgWriteOutboxPort } from "../../apps/backend/src/modules/14-idg/idg-route-service-db";
 import { M14_OUTBOX_EVENTS, runPacketBuildCron } from "../../apps/backend/src/modules/14-idg/index";
+import { idgQualityFlaggedEventsForOrg } from "../../apps/backend/src/modules/30-quality/index";
 
 void registerSeam;
 const ORG_ID = process.env.IDG_SEED_ORG_ID ?? "b991d9e6-c459-4831-9543-cc00fb4cf6e2"; // wardenx-demo
@@ -75,6 +79,22 @@ async function main(): Promise<void> {
         recertWindowsForOrg: (o, ids, asOf) =>
           idgRecertWindowsForOrg(handle.db, o, ids, new Date(asOf)),
       },
+      flaggedEventSources: [
+        {
+          source: "m6.hospital",
+          flaggedEventsForOrg: (o, ids, since) => idgHospitalEventsForOrg(handle.db, o, ids, since),
+        },
+        {
+          source: "m13.missed_dose",
+          flaggedEventsForOrg: (o, ids, since) => idgMissedDosesForOrg(handle.db, o, ids, since),
+        },
+        {
+          source: "m30.fall_infection",
+          flaggedEventsForOrg: (o, ids, since) =>
+            idgQualityFlaggedEventsForOrg(handle.db, o, ids, since),
+        },
+      ],
+      hope: { hopeContextForOrg: (o, ids) => idgHopeContextForOrg(handle.db, o, ids) },
     });
     console.log("✓ idg.packets-cron handler ran for the demo org");
   } finally {

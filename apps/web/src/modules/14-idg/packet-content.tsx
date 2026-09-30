@@ -87,8 +87,13 @@ export function usePacketDetail(
 
 // ── formatting ─────────────────────────────────────────────────────────────────────────────────────────
 
+const ACRONYMS = new Set(["dme", "hope", "iv", "prn", "rn", "lvn", "msw", "dpoa", "f2f"]);
 const humanize = (k: string): string =>
-  k.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  k
+    .replace(/_/g, " ")
+    .replace(/\b\w+/g, (w) =>
+      ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w.replace(/^\w/, (c) => c.toUpperCase()),
+    );
 
 /** Date-only strings (yyyy-mm-dd) are read as a local calendar day so no timezone shift moves them. */
 function fmtDate(v: string | null | undefined): string {

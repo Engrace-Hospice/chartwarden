@@ -207,6 +207,7 @@ import {
   admissionSchedulingContextForOrg,
   idgCurrentLevelOfCareForOrg,
   idgPacketInclusionForOrg,
+  idgHospitalEventsForOrg,
   idgRecertWindowsForOrg,
   buildM6DocumentBackrefConsumer,
   buildM6LevelOfCareChangeSignedConsumer,
@@ -296,6 +297,7 @@ import {
   hopeAssessmentPatientIdForOrg,
   scheduleM10Jobs,
   wireM10Tenancy,
+  idgHopeContextForOrg,
 } from "./modules/10-hope/index";
 import {
   M11_OUTBOX_EVENTS,
@@ -384,6 +386,7 @@ import {
   registerEmarErasers,
   registerEmarRoutes,
   registerEmarSeams,
+  idgMissedDosesForOrg,
 } from "./modules/13-emar/index";
 import {
   M14_OUTBOX_EVENTS,
@@ -805,6 +808,7 @@ import {
   registerQualityErasers,
   scheduleM30Jobs,
   wireM30Tenancy,
+  idgQualityFlaggedEventsForOrg,
 } from "./modules/30-quality/index";
 import {
   buildDrizzlePortalStore,
@@ -5336,6 +5340,30 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       recertWindows: {
         recertWindowsForOrg: (organizationId, patientIds, asOfIso) =>
           idgRecertWindowsForOrg(dbHandle.db, organizationId, patientIds, new Date(asOfIso)),
+      },
+      // §2.4 `sinceLastIdg.flaggedEvents` — three org-explicit BATCHED source seams (M14 imports none of their code):
+      // M6 hospital/ER (ADT-derived windows), M13 missed doses, M30 falls + infections.
+      flaggedEventSources: [
+        {
+          source: "m6.hospital",
+          flaggedEventsForOrg: (organizationId, patientIds, sinceIso) =>
+            idgHospitalEventsForOrg(dbHandle.db, organizationId, patientIds, sinceIso),
+        },
+        {
+          source: "m13.missed_dose",
+          flaggedEventsForOrg: (organizationId, patientIds, sinceIso) =>
+            idgMissedDosesForOrg(dbHandle.db, organizationId, patientIds, sinceIso),
+        },
+        {
+          source: "m30.fall_infection",
+          flaggedEventsForOrg: (organizationId, patientIds, sinceIso) =>
+            idgQualityFlaggedEventsForOrg(dbHandle.db, organizationId, patientIds, sinceIso),
+        },
+      ],
+      // §2.4 `hopeContext` — M10's org-explicit batched open-timepoint + open-SFV read.
+      hope: {
+        hopeContextForOrg: (organizationId, patientIds) =>
+          idgHopeContextForOrg(dbHandle.db, organizationId, patientIds),
       },
       locationTimezone: {
         locationTimezone: (organizationId, locationId) =>

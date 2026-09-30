@@ -106,6 +106,14 @@ export {
   scheduleM30Jobs,
 } from "./jobs/index";
 
+// M14 IDG packet `flaggedEvents` — the org-explicit, BATCHED fall + infection read.
+export {
+  IDG_QUALITY_EVENTS_MAX_PATIENTS,
+  type IdgQualityFlaggedEvent,
+  fallSeverity,
+  idgQualityFlaggedEventsForOrg,
+} from "./idg-flagged-events-for-org";
+
 // §4.3 — the FIVE published seams, registered into the M1 SeamRegistry at boot (the M23/M26 precedent).
 // M30's seam names are now members of the M1 `SeamContracts` / `REQUIRED_SEAMS`, so the measure ledger,
 // the incident register, QAPI, CoP status and the SRA posture are reachable through `getSeam` instead of

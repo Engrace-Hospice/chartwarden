@@ -18,7 +18,13 @@ import {
   M14_WORKER_SYSTEM_USER_ID,
   planReviewClockSweep,
 } from "./index";
-import type { Idg6PacketPort, Idg6RecertWindowPort, Idg7PacketPort } from "./packet-build";
+import type {
+  Idg6PacketPort,
+  Idg6RecertWindowPort,
+  Idg7PacketPort,
+  Idg10HopeContextPort,
+  IdgFlaggedEventSourcePort,
+} from "./packet-build";
 import { runPacketBuildCron } from "./packet-build";
 import type { Idg1LocationTimezonePort } from "./schedule-materialise";
 import { runScheduleMaterialiseCron } from "./schedule-materialise";
@@ -42,6 +48,10 @@ export interface M14WorkerDeps {
   readonly m7?: Idg7PacketPort;
   /** §2.4 cover recert/F2F facts (M6 `idgRecertWindowsForOrg`); unbound ⇒ the cover fields stay null. */
   readonly recertWindows?: Idg6RecertWindowPort;
+  /** §2.4 `sinceLastIdg.flaggedEvents` sources (M6 hospital/ER, M13 missed dose, M30 fall/infection); unbound ⇒ `[]`. */
+  readonly flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
+  /** §2.4 `hopeContext` (M10 `idgHopeContextForOrg`); unbound ⇒ `null` (not captured). */
+  readonly hope?: Idg10HopeContextPort;
   /** F-171 — the M1 `FoundationSiteReader.locationTimezone` org-explicit port (`schedule-materialise.ts`). */
   readonly locationTimezone?: Idg1LocationTimezonePort;
   now?: () => Date;
@@ -122,6 +132,8 @@ export function buildM14WorkerDeps(deps: {
   m6?: Idg6PacketPort;
   m7?: Idg7PacketPort;
   recertWindows?: Idg6RecertWindowPort;
+  flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
+  hope?: Idg10HopeContextPort;
   locationTimezone?: Idg1LocationTimezonePort;
 }): M14WorkerDeps {
   return {
@@ -133,6 +145,8 @@ export function buildM14WorkerDeps(deps: {
     m6: deps.m6,
     m7: deps.m7,
     recertWindows: deps.recertWindows,
+    flaggedEventSources: deps.flaggedEventSources,
+    hope: deps.hope,
     locationTimezone: deps.locationTimezone,
     now: () => new Date(),
   };
@@ -320,6 +334,8 @@ export function registerM14CronWorkers(deps: M14WorkerDeps): Worker[] {
           m6: m6Of(deps),
           m7: m7Of(deps),
           recertWindows: deps.recertWindows,
+          flaggedEventSources: deps.flaggedEventSources,
+          hope: deps.hope,
           now: deps.now,
         }),
       { connection, concurrency: M14_QUEUE_PARAMS.packetsBuild.concurrency },

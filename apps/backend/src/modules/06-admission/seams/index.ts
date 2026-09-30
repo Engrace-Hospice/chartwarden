@@ -82,6 +82,13 @@ export {
   idgRecertWindowsForOrg,
   projectIdgRecertWindow,
 } from "./idg-recert-windows-for-org";
+// M14 IDG packet `flaggedEvents` — the org-explicit, BATCHED hospital/ER event read (ADT-derived windows).
+export {
+  IDG_HOSPITAL_EVENTS_MAX_PATIENTS,
+  type IdgHospitalEvent,
+  idgHospitalEventsForOrg,
+  projectHospitalEvent,
+} from "./idg-hospital-events-for-org";
 export {
   type AdmissionReaderStore,
   type AdmissionReaderSeed,

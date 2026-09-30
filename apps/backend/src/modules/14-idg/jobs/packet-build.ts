@@ -10,15 +10,24 @@
 // SCOPE, decided conservatively per the user's explicit "a wrong guess here is a patient-safety-adjacent
 // defect" instruction — every field with no cheap, CORRECT cross-module source is left honestly absent
 // (`null` / `[]`), never guessed, and documented per-field below rather than silently:
-//   • `hopeContext`         — null. No org-explicit M9/M10 "current upcoming timepoints" seam exists; the
-//                             only M9/M10 facts this worker has are the F-164 cache's EVENT HISTORY
-//                             (significant changes / J2051 triggers), not a live "what's upcoming" snapshot.
-//   • `flaggedEvents`       — []. §2.4's "hospitalisation / ER / missed dose / fall / infection — derived"
-//                             needs event-tagging infrastructure (which M8 encounter types or outbox events
-//                             map to which flag kind) that does not exist anywhere in this codebase yet.
-//   • `carryForwardActionItems` — []. §2.7's carry-forward computation is a SEPARATE cron concern (its own
-//                             row in the §2.7 table, "T-24h cron on next meeting build") this pass does not
-//                             attempt — reported, not built.
+//   • `hopeContext`        — POPULATED from M10 (`idgHopeContextForOrg`, org-explicit + BATCHED, bound through
+//                             the `Idg10HopeContextPort`): the patient's still-open HOPE schedule windows
+//                             (`upcomingTimepoints`, due = window close) + the open/overdue SFV count. Seam
+//                             success ⇒ an entry for every patient (an empty context is a TRUE "nothing due");
+//                             unbound port / seam error / missing patient ⇒ `null` ("not captured"), never a guess.
+//   • `flaggedEvents`      — POPULATED from three org-explicit BATCHED seams behind `IdgFlaggedEventSourcePort`s:
+//                             M6 (`idgHospitalEventsForOrg` → `hospitalisation` / `er_visit`, from the ADT-derived
+//                             `concurrent_hospital_admission` windows), M13 (`idgMissedDosesForOrg` → `missed_dose`),
+//                             M30 (`idgQualityFlaggedEventsForOrg` → `fall` / `infection`). Each source is isolated —
+//                             one failing is logged and contributes nothing, never a guessed row. The builder applies
+//                             the per-patient `> cursor` filter.
+//   • `carryForwardActionItems` — POPULATED from M14's OWN `idg_action_item` (read directly, no seam): the patient's
+//                             `open`/`in_progress` items from OTHER meetings whose `due_date` is past (spec §2.7:
+//                             "open action items past `due_date`"). `carryForwardCount` is the row's stored
+//                             `meeting_carry_forward_count`. This is the packet's READ of carry-forward state; the
+//                             §2.7/§7.6 `compute-carry-forward` cron (agenda items of `kind='carry_forward'`, count
+//                             increment, the ≥3 Compliance alert) is a SEPARATE, still-unbuilt concern this build
+//                             deliberately does not perform (an on-demand rebuild must never double-increment).
 //   • `activeDpoa`          — null. Needs an M39 DPOA seam this pass does not build. Display-only cover
 //                             fact (feeds a discussion FLAG, never D9 inclusion), so an honest `null` is the
 //                             safe direction — never a fabricated compliance judgment.
@@ -65,9 +74,11 @@ import type {
   DisciplineKey,
   DisciplineViewBlock,
   IdgLevelOfCare,
+  PacketActionItemCarryForwardDigest,
+  PacketFlaggedEventDigest,
   PacketSnapshot,
 } from "@wardenx/types";
-import { and, eq, inArray, lte } from "drizzle-orm";
+import { and, eq, inArray, lt, lte, ne } from "drizzle-orm";
 import type Redis from "ioredis";
 import { getSeam } from "../../../bootstrap/index";
 import { readSinceLastIdgEntry } from "../consumers/since-last-idg-cache";
@@ -77,6 +88,7 @@ import type { ActiveOrgListPort } from "./index";
 const MTG = schema.idgMeeting;
 const PKT = schema.idgPatientPacket;
 const POL = schema.idgRecurringPolicy;
+const ACT = schema.idgActionItem;
 
 // ── ports (M6/M7 org-explicit reads injected by the composition root — a locally-declared structural
 // type, never an imported one, per `arch:boundaries`'s type-only-import rule, F-165's `m16-plan-closed.ts`
@@ -151,6 +163,153 @@ export interface Idg6RecertWindowPort {
   ): Promise<ReadonlyMap<string, Idg6RecertWindowFact>>;
 }
 
+/** One flagged-event fact as an owning module's org-explicit seam projects it (structural subset of
+ *  `PacketFlaggedEventDigest`; validated again on this side — an unrecognised kind/severity/instant is dropped). */
+export interface IdgFlaggedEventFact {
+  readonly kind: string;
+  readonly sourceId: string;
+  readonly occurredAt: string;
+  readonly severity: string;
+}
+
+/** One source of §2.4 flagged events (M6 hospital/ER, M13 missed dose, M30 fall/infection): BATCHED +
+ *  org-explicit + cron-callable. `sinceIso` is the EARLIEST §1.1 cursor in the batch (a lower bound — the
+ *  builder re-filters per patient). Patients with nothing are absent from the map. */
+export interface IdgFlaggedEventSourcePort {
+  /** Stable label for warnings (`m6.hospital`, `m13.missed_dose`, `m30.fall_infection`). */
+  readonly source: string;
+  flaggedEventsForOrg(
+    organizationId: string,
+    patientIds: readonly string[],
+    sinceIso: string,
+  ): Promise<ReadonlyMap<string, readonly IdgFlaggedEventFact[]>>;
+}
+
+/** One patient's HOPE context as M10's `idgHopeContextForOrg` projects it. */
+export interface Idg10HopeContextFact {
+  readonly upcomingTimepoints: ReadonlyArray<{
+    readonly timepoint: string;
+    readonly dueAt: string;
+  }>;
+  readonly openSfvCount: number;
+}
+
+/** The M10 HOPE-context port (§2.4 `hopeContext`): BATCHED + org-explicit + cron-callable. */
+export interface Idg10HopeContextPort {
+  hopeContextForOrg(
+    organizationId: string,
+    patientIds: readonly string[],
+  ): Promise<ReadonlyMap<string, Idg10HopeContextFact>>;
+}
+
+const FLAGGED_KINDS: ReadonlySet<string> = new Set([
+  "hospitalisation",
+  "er_visit",
+  "missed_dose",
+  "fall",
+  "infection",
+]);
+const FLAGGED_SEVERITIES: ReadonlySet<string> = new Set(["info", "attention", "urgent"]);
+const validInstant = (v: string): boolean => Number.isFinite(Date.parse(v));
+
+/**
+ * Resolve the flagged events for a meeting's candidate patients from every bound source. Never throws: a
+ * source failure is reported through `warn` and that source contributes nothing. Facts are validated (known
+ * kind + severity, a real instant, a non-empty id) and de-duplicated on `(kind, sourceId)`; each patient's
+ * list is ordered oldest → newest.
+ */
+export async function resolveFlaggedEvents(
+  sources: readonly IdgFlaggedEventSourcePort[] | undefined,
+  organizationId: string,
+  patientIds: readonly string[],
+  sinceIso: string,
+  warn: PacketBuildWarn,
+): Promise<ReadonlyMap<string, readonly PacketFlaggedEventDigest[]>> {
+  const out = new Map<string, PacketFlaggedEventDigest[]>();
+  const ids = [...new Set(patientIds)];
+  if (!sources || sources.length === 0 || ids.length === 0) return out;
+  const seen = new Set<string>();
+  for (const source of sources) {
+    try {
+      for (let i = 0; i < ids.length; i += 500) {
+        const chunk = await source.flaggedEventsForOrg(
+          organizationId,
+          ids.slice(i, i + 500),
+          sinceIso,
+        );
+        for (const [patientId, facts] of chunk) {
+          for (const f of facts) {
+            if (
+              !FLAGGED_KINDS.has(f.kind) ||
+              !FLAGGED_SEVERITIES.has(f.severity) ||
+              !validInstant(f.occurredAt) ||
+              f.sourceId.length === 0
+            )
+              continue;
+            const key = `${patientId}|${f.kind}|${f.sourceId}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const list = out.get(patientId) ?? [];
+            list.push({
+              kind: f.kind as PacketFlaggedEventDigest["kind"],
+              sourceId: f.sourceId,
+              occurredAt: new Date(f.occurredAt).toISOString(),
+              severity: f.severity as PacketFlaggedEventDigest["severity"],
+            });
+            out.set(patientId, list);
+          }
+        }
+      }
+    } catch (error) {
+      warn("m14.packet_build.flagged_events_unavailable", {
+        organizationId,
+        source: source.source,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  for (const list of out.values())
+    list.sort((a, b) => Date.parse(a.occurredAt) - Date.parse(b.occurredAt));
+  return out;
+}
+
+/**
+ * Resolve the §2.4 `hopeContext` for a meeting's candidate patients. Never throws: no port, a seam error, or a
+ * patient absent from the result ⇒ that patient's context is ABSENT (the caller stores `null` = "not captured").
+ * Values are validated — a bad timepoint row is dropped, a negative/non-integer count becomes absent context.
+ */
+export async function resolveHopeContext(
+  port: Idg10HopeContextPort | undefined,
+  organizationId: string,
+  patientIds: readonly string[],
+  warn: PacketBuildWarn,
+): Promise<ReadonlyMap<string, NonNullable<PacketSnapshot["hopeContext"]>>> {
+  const out = new Map<string, NonNullable<PacketSnapshot["hopeContext"]>>();
+  const ids = [...new Set(patientIds)];
+  if (!port || ids.length === 0) return out;
+  try {
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = await port.hopeContextForOrg(organizationId, ids.slice(i, i + 500));
+      for (const [patientId, ctx] of chunk) {
+        if (!Number.isInteger(ctx.openSfvCount) || ctx.openSfvCount < 0) continue;
+        out.set(patientId, {
+          upcomingTimepoints: ctx.upcomingTimepoints
+            .filter((t) => t.timepoint.length > 0 && validInstant(t.dueAt))
+            .map((t) => ({ timepoint: t.timepoint, dueAt: new Date(t.dueAt).toISOString() })),
+          openSfvCount: ctx.openSfvCount,
+        });
+      }
+    }
+  } catch (error) {
+    warn("m14.packet_build.hope_context_unavailable", {
+      organizationId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return new Map();
+  }
+  return out;
+}
+
 /** Cover facts resolved for one patient (both fields null = unknown). */
 export interface PacketRecertCoverFacts {
   readonly nextRecertDueAt: string | null;
@@ -219,6 +378,10 @@ export interface PacketBuildWorkerDeps {
   readonly m7: Idg7PacketPort;
   /** §2.4 cover recert/F2F facts (M6 `idgRecertWindowsForOrg`). Optional: unbound ⇒ the fields stay null. */
   readonly recertWindows?: Idg6RecertWindowPort;
+  /** §2.4 `sinceLastIdg.flaggedEvents` sources (M6 hospital/ER, M13 missed dose, M30 fall/infection). Unbound ⇒ `[]`. */
+  readonly flaggedEventSources?: readonly IdgFlaggedEventSourcePort[];
+  /** §2.4 `hopeContext` (M10 `idgHopeContextForOrg`). Unbound ⇒ `null` (not captured). */
+  readonly hope?: Idg10HopeContextPort;
   readonly activeOrgs: ActiveOrgListPort;
   now?: () => Date;
   readonly warn?: PacketBuildWarn;
@@ -293,25 +456,78 @@ async function wrapUpDaysForLocation(
     : POST_DISCHARGE_WRAP_UP_FLOOR_DAYS;
 }
 
-/** §1.1 — the prior IDG's `adjourned_at` for THIS patient: `MAX(last_idg_reviewed_at)` across every OTHER
- *  packet the patient has (M14-owned table, read directly — no seam needed). `null` ⇒ first IDG. */
-async function priorIdgAdjournedAtForPatient(
+/** §1.1 — the prior IDG's `adjourned_at` per patient: `MAX(last_idg_reviewed_at)` across every OTHER packet
+ *  the patient has (M14-owned table, read directly — no seam needed), ONE query for the whole batch. A patient
+ *  with no prior review is absent from the map (⇒ first IDG). */
+async function priorIdgAdjournedAtForPatients(
   tx: DbClient,
   organizationId: string,
-  patientId: string,
+  patientIds: readonly string[],
   excludeMeetingId: string,
-): Promise<string | null> {
+): Promise<ReadonlyMap<string, string>> {
+  const out = new Map<string, string>();
+  if (patientIds.length === 0) return out;
   const rows = await tx
-    .select({ meetingId: PKT.idgMeetingId, lastIdgReviewedAt: PKT.lastIdgReviewedAt })
+    .select({
+      patientId: PKT.patientId,
+      meetingId: PKT.idgMeetingId,
+      lastIdgReviewedAt: PKT.lastIdgReviewedAt,
+    })
     .from(PKT)
-    .where(and(eq(PKT.organizationId, organizationId), eq(PKT.patientId, patientId)));
-  let latest: Date | string | null = null;
+    .where(and(eq(PKT.organizationId, organizationId), inArray(PKT.patientId, [...patientIds])));
   for (const r of rows) {
     if (r.meetingId === excludeMeetingId || r.lastIdgReviewedAt === null) continue;
-    if (latest === null || new Date(r.lastIdgReviewedAt) > new Date(latest))
-      latest = r.lastIdgReviewedAt;
+    const iso = new Date(r.lastIdgReviewedAt).toISOString();
+    const prior = out.get(r.patientId);
+    if (prior === undefined || iso > prior) out.set(r.patientId, iso);
   }
-  return latest === null ? null : latest instanceof Date ? latest.toISOString() : latest;
+  return out;
+}
+
+/** §2.4 `carryForwardActionItems` / §2.7 — per patient, the `open`/`in_progress` action items from OTHER
+ *  meetings whose `due_date` is past `asOf` (an item with no due date cannot be overdue). M14's own table, ONE
+ *  query for the batch. `carryForwardCount` is the stored `meeting_carry_forward_count` (the compute-carry-
+ *  forward cron that increments it is a separate concern — see the file header). Oldest due first. */
+export async function carryForwardForPatients(
+  tx: DbClient,
+  organizationId: string,
+  patientIds: readonly string[],
+  excludeMeetingId: string,
+  asOf: Date,
+): Promise<ReadonlyMap<string, readonly PacketActionItemCarryForwardDigest[]>> {
+  const out = new Map<string, PacketActionItemCarryForwardDigest[]>();
+  if (patientIds.length === 0) return out;
+  const rows = await tx
+    .select({
+      id: ACT.id,
+      patientId: ACT.patientId,
+      assignedToMembershipId: ACT.assignedToMembershipId,
+      dueDate: ACT.dueDate,
+      count: ACT.meetingCarryForwardCount,
+    })
+    .from(ACT)
+    .where(
+      and(
+        eq(ACT.organizationId, organizationId),
+        inArray(ACT.patientId, [...patientIds]),
+        inArray(ACT.status, ["open", "in_progress"] as never),
+        ne(ACT.idgMeetingId, excludeMeetingId),
+        lt(ACT.dueDate, asOf),
+      ),
+    )
+    .orderBy(ACT.dueDate);
+  for (const r of rows) {
+    if (r.patientId === null || r.dueDate === null) continue;
+    const list = out.get(r.patientId) ?? [];
+    list.push({
+      actionItemId: r.id as never,
+      assignedToMembershipId: r.assignedToMembershipId as never,
+      dueDate: new Date(r.dueDate).toISOString(),
+      carryForwardCount: r.count,
+    });
+    out.set(r.patientId, list);
+  }
+  return out;
 }
 
 /** Whole-years age as of `asOf`, from an ISO `yyyy-mm-dd` date of birth (calendar-correct, not a flat
@@ -360,6 +576,17 @@ type PatientBuildResult =
     }
   | { readonly ok: false; readonly patientId: string; readonly reason: string };
 
+/** The per-patient facts `processDueMeeting` resolves for the WHOLE meeting in batched reads. */
+interface PatientPacketExtras {
+  /** The prior IDG's `adjourned_at` for this patient (`null` ⇒ first IDG). */
+  readonly priorIdgAdjournedAt: string | null;
+  /** Flagged events already fetched from every source (the builder applies the per-patient cursor filter). */
+  readonly flaggedEvents: readonly PacketFlaggedEventDigest[];
+  /** `null` ⇒ HOPE context not captured (unbound / failed seam). */
+  readonly hopeContext: PacketSnapshot["hopeContext"];
+  readonly carryForward: readonly PacketActionItemCarryForwardDigest[];
+}
+
 /** Build (or replace-in-place, D5) one patient's packet for one meeting. Every REQUIRED (non-nullable)
  *  §2.4 field this pass cannot honestly source is a build FAILURE for this one patient, never a fabricated
  *  value and never an abort of the meeting's other patients. */
@@ -371,6 +598,7 @@ async function buildOnePatientPacket(
   candidate: Idg6PacketInclusionCandidate,
   asOf: Date,
   recert: PacketRecertCoverFacts | undefined,
+  extras: PatientPacketExtras,
 ): Promise<PatientBuildResult> {
   const fail = (reason: string): PatientBuildResult => ({
     ok: false,
@@ -406,17 +634,7 @@ async function buildOnePatientPacket(
     const levelOfCare = locRaw !== null ? LOC_MAP[locRaw] : undefined;
     if (!levelOfCare) return fail("no_level_of_care");
 
-    const priorIdgAdjournedAt = await withOrgContext(
-      deps.db,
-      { organizationId, userId: "" },
-      (tx) =>
-        priorIdgAdjournedAtForPatient(
-          tx as unknown as DbClient,
-          organizationId,
-          candidate.patientId,
-          meetingId,
-        ),
-    );
+    const priorIdgAdjournedAt = extras.priorIdgAdjournedAt;
     const { sinceCursorIso } = resolveSinceCursor(priorIdgAdjournedAt, candidate.activatedAtIso);
 
     const cacheEntry = await readSinceLastIdgEntry(deps.redis, candidate.patientId);
@@ -437,7 +655,7 @@ async function buildOnePatientPacket(
       j2051Triggers: cacheEntry.j2051Triggers,
       ordersChanged: cacheEntry.orderChanges,
       medicationsChanged: cacheEntry.medicationChanges,
-      flaggedEvents: [], // §2.4 event-tagging infra unbuilt — see file header
+      flaggedEvents: extras.flaggedEvents, // M6/M13/M30 seams, resolved per meeting — see file header
     };
 
     const carePlanSummary: CarePlanSummaryInput = {
@@ -479,8 +697,8 @@ async function buildOnePatientPacket(
       cover,
       sinceLastIdg,
       carePlanSummary,
-      hopeContext: null, // see file header
-      carryForwardActionItems: [], // see file header
+      hopeContext: extras.hopeContext, // M10 seam, resolved per meeting — see file header
+      carryForwardActionItems: extras.carryForward, // M14's own idg_action_item — see file header
     });
 
     const packetId = await withOrgContext(
@@ -609,6 +827,46 @@ async function processDueMeeting(
     deps.warn ?? defaultWarn,
   );
 
+  // ── §2.4 batched per-meeting reads: the §1.1 cursor per patient (one M14 query), then flagged events (M6/M13/
+  // M30), HOPE context (M10) and carry-forward (M14) — each ONE round-trip per source for the whole caseload.
+  const warn = deps.warn ?? defaultWarn;
+  const patientIds = candidates.map((c) => c.patientId);
+  const [priorByPatient, carryForwardByPatient] = await withOrgContext(
+    deps.db,
+    { organizationId, userId: "" },
+    async (txRaw) => {
+      const tx = txRaw as unknown as DbClient;
+      const prior = await priorIdgAdjournedAtForPatients(
+        tx,
+        organizationId,
+        patientIds,
+        meeting.meetingId,
+      );
+      const carry = await carryForwardForPatients(
+        tx,
+        organizationId,
+        patientIds,
+        meeting.meetingId,
+        now,
+      );
+      return [prior, carry] as const;
+    },
+  );
+  const cursorOf = (c: Idg6PacketInclusionCandidate): string =>
+    resolveSinceCursor(priorByPatient.get(c.patientId) ?? null, c.activatedAtIso).sinceCursorIso;
+  const earliestCursor =
+    candidates.length === 0
+      ? now.toISOString()
+      : candidates.map(cursorOf).reduce((a, b) => (Date.parse(a) <= Date.parse(b) ? a : b));
+  const flaggedByPatient = await resolveFlaggedEvents(
+    deps.flaggedEventSources,
+    organizationId,
+    patientIds,
+    earliestCursor,
+    warn,
+  );
+  const hopeByPatient = await resolveHopeContext(deps.hope, organizationId, patientIds, warn);
+
   let builtCount = 0;
   for (const candidate of candidates) {
     const result = await buildOnePatientPacket(
@@ -619,6 +877,12 @@ async function processDueMeeting(
       candidate,
       now,
       recertFacts.get(candidate.patientId),
+      {
+        priorIdgAdjournedAt: priorByPatient.get(candidate.patientId) ?? null,
+        flaggedEvents: flaggedByPatient.get(candidate.patientId) ?? [],
+        hopeContext: hopeByPatient.get(candidate.patientId) ?? null,
+        carryForward: carryForwardByPatient.get(candidate.patientId) ?? [],
+      },
     );
     if (result.ok) {
       builtCount += 1;

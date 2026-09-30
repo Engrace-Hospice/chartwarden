@@ -179,6 +179,7 @@ export function allSnapshotSourceIds(snapshot: PacketSnapshot): ReadonlySet<stri
     ...s.ordersChanged.map((o) => o.orderId),
     ...s.medicationsChanged.map((m) => m.medicationOrderId),
     ...s.flaggedEvents.map((f) => f.sourceId),
+    ...snapshot.carryForwardActionItems.map((c) => c.actionItemId),
   ]);
 }
 
@@ -466,7 +467,8 @@ export async function mapPacketContent(
         timepoint: t.timepoint,
         dueAt: t.dueAt,
       })),
-      openSfvCount: snap.hopeContext?.openSfvCount ?? null,
+      // Under W-SUD-01 the count (derived from the elided J2051 triggers) is withheld — "not available".
+      openSfvCount: redact ? null : (snap.hopeContext?.openSfvCount ?? null),
       symptomImpactTriggers: s.j2051Triggers.map((h) => ({
         hopeAssessmentId: h.hopeAssessmentId,
         triggerKind: h.triggerKind,

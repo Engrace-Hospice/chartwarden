@@ -31,15 +31,16 @@ import { registerPlatformJob } from "@wardenx/tenancy";
 import IORedis from "ioredis";
 import { Client } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import { buildActiveOrgEnumerator } from "../src/bootstrap/active-org-enumerator";
 import { registerSeam } from "../src/bootstrap/index";
+import { buildBootOutboxCatalog, buildTxOutboxPublisher } from "../src/bootstrap/outbox-persister";
 import {
   createDrizzlePatientReaderStore,
   registerPatientSeams,
 } from "../src/modules/05-patient/index";
 import {
   idgCurrentLevelOfCareForOrg,
+  idgHospitalEventsForOrg,
   idgPacketInclusionForOrg,
   idgRecertWindowsForOrg,
 } from "../src/modules/06-admission/index";
@@ -48,6 +49,8 @@ import {
   createDrizzleEncounterReaderStore,
   registerEncounterSeams,
 } from "../src/modules/08-encounters/index";
+import { idgHopeContextForOrg } from "../src/modules/10-hope/index";
+import { idgMissedDosesForOrg } from "../src/modules/13-emar/index";
 import type { IdgWriteOutboxPort } from "../src/modules/14-idg/idg-route-service-db";
 import {
   M14_OUTBOX_EVENTS,
@@ -55,12 +58,19 @@ import {
   runPacketBuildCron,
   runScheduleMaterialiseCron,
 } from "../src/modules/14-idg/index";
+import { idgQualityFlaggedEventsForOrg } from "../src/modules/30-quality/index";
 import { LIVE_APP_ROLE_PASSWORD, appRoleUrl } from "./_live-app-role";
 
 const DB_URL = process.env.WARDENX_TEST_DATABASE_URL;
 const REDIS_URL = process.env.WARDENX_TEST_REDIS_URL;
 const MIGRATIONS_DIR = join(__dirname, "../../../packages/db/migrations");
-const ROLES = ["wardenx_app", "wardenx_admin", "wardenx_readonly", "wardenx_audit_writer", "wardenx_platform_live_test"];
+const ROLES = [
+  "wardenx_app",
+  "wardenx_admin",
+  "wardenx_readonly",
+  "wardenx_audit_writer",
+  "wardenx_platform_live_test",
+];
 
 const ORG_A = "11111111-1111-1111-1111-111111111111";
 const ORG_B = "22222222-2222-2222-2222-222222222222";
@@ -311,6 +321,120 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       };
     }
 
+    /** §2.4 flagged-event sources + HOPE context — the REAL org-explicit seams over the wardenx_app connection. */
+    function sectionPorts() {
+      return {
+        flaggedEventSources: [
+          {
+            source: "m6.hospital",
+            flaggedEventsForOrg: (o: string, ids: readonly string[], since: string) =>
+              idgHospitalEventsForOrg(handle.db, o, ids, since),
+          },
+          {
+            source: "m13.missed_dose",
+            flaggedEventsForOrg: (o: string, ids: readonly string[], since: string) =>
+              idgMissedDosesForOrg(handle.db, o, ids, since),
+          },
+          {
+            source: "m30.fall_infection",
+            flaggedEventsForOrg: (o: string, ids: readonly string[], since: string) =>
+              idgQualityFlaggedEventsForOrg(handle.db, o, ids, since),
+          },
+        ],
+        hope: {
+          hopeContextForOrg: (o: string, ids: readonly string[]) =>
+            idgHopeContextForOrg(handle.db, o, ids),
+        },
+      };
+    }
+
+    /** Seed every source the three §2.4 sections read, for one patient/admission (superuser inserts). */
+    async function seedSectionSources(
+      orgId: string,
+      patientId: string,
+      admissionId: string,
+      otherMeetingId: string,
+      thisMeetingId: string,
+    ): Promise<void> {
+      const pe = peOf[orgId];
+      const loc = locationOf[orgId];
+      // M6 — ADT-derived concurrent-hospital-admission windows: inpatient (open), ER (closed), outpatient (dropped).
+      await admin.query(
+        `INSERT INTO compliance_window (organization_id, admission_id, window_kind, severity, payload, starts_at,
+            must_complete_by, status)
+         VALUES ($1,$2,'concurrent_hospital_admission','info',
+                 jsonb_build_object('patientClass','I','eventTimestamp',(now() - interval '5 days')::text),
+                 now() - interval '4 days', now() + interval '3 days','open')`,
+        [orgId, admissionId],
+      );
+      await admin.query(
+        `INSERT INTO compliance_window (organization_id, admission_id, window_kind, severity, payload, starts_at,
+            must_complete_by, status, closed_at, close_reason)
+         VALUES ($1,$2,'concurrent_hospital_admission','info',
+                 jsonb_build_object('patientClass','E','eventTimestamp',(now() - interval '8 days')::text),
+                 now() - interval '8 days', now() - interval '5 days','closed', now() - interval '6 days','triaged'),
+                ($1,$2,'concurrent_hospital_admission','info',
+                 jsonb_build_object('patientClass','O','eventTimestamp',(now() - interval '9 days')::text),
+                 now() - interval '9 days', now() - interval '5 days','closed', now() - interval '6 days','triaged')`,
+        [orgId, admissionId],
+      );
+      // M13 — a sweep-detected controlled-substance miss (urgent) and a held dose (info); one BEFORE admission.
+      await admin.query(
+        `INSERT INTO missed_dose (organization_id, provider_entity_id, location_id, scheduled_dose_id, patient_id,
+            admission_id, medication_order_id, detected_at, missed_kind, is_controlled_substance)
+         VALUES ($1,$2,$3,gen_random_uuid(),$4,$5,gen_random_uuid(), now() - interval '2 days','detected_by_sweep',true),
+                ($1,$2,$3,gen_random_uuid(),$4,$5,gen_random_uuid(), now() - interval '3 days','intentionally_held',false),
+                ($1,$2,$3,gen_random_uuid(),$4,$5,gen_random_uuid(), now() - interval '120 days','detected_by_sweep',false)`,
+        [orgId, pe, loc, patientId, admissionId],
+      );
+      // M30 — a severe fall, a fall from before the admission (cursor-excluded), a non-fall incident, an infection.
+      await admin.query(
+        `INSERT INTO incident_report (organization_id, provider_entity_id, location_id, kind, kind_data, patient_id,
+            occurred_at, reported_by_membership_id, severity)
+         VALUES ($1,$2,$3,'fall','{"narrativeText":"free text must not cross"}'::jsonb,$4, now() - interval '6 days',$5,'severe'),
+                ($1,$2,$3,'fall','{}'::jsonb,$4, now() - interval '100 days',$5,'minor'),
+                ($1,$2,$3,'complaint','{}'::jsonb,$4, now() - interval '6 days',$5,'minor')`,
+        [orgId, pe, loc, patientId, MEMBER],
+      );
+      await admin.query(
+        `INSERT INTO infection_surveillance_event (organization_id, provider_entity_id, location_id, patient_id,
+            observed_at, pathogen, body_site, transmission_context, filed_by_membership_id)
+         VALUES ($1,$2,$3,$4, now() - interval '7 days','MRSA','wound','community',$5)`,
+        [orgId, pe, loc, patientId, MEMBER],
+      );
+      // M10 — two open windows (HUV1 due in 10d, HUV2 in 40d), a completed admission RFA, and three SFVs.
+      await admin.query(
+        `INSERT INTO hope_timepoint_schedule (organization_id, provider_entity_id, location_id, patient_id,
+            admission_id, rfa_kind, window_opens_at, window_closes_at, late_deadline_at, alert_cadence, status,
+            generated_by)
+         VALUES ($1,$2,$3,$4,$5,'03_huv2', now()+interval '30 days', now()+interval '40 days', now()+interval '45 days','{}'::jsonb,'open','auto_admission'),
+                ($1,$2,$3,$4,$5,'02_huv1', now()+interval '1 day',  now()+interval '10 days', now()+interval '15 days','{}'::jsonb,'open','auto_admission'),
+                ($1,$2,$3,$4,$5,'01_admission', now()-interval '39 days', now()-interval '35 days', now()-interval '30 days','{}'::jsonb,'completed','auto_admission')`,
+        [orgId, pe, loc, patientId, admissionId],
+      );
+      await admin.query(
+        `INSERT INTO symptom_follow_up_visit (organization_id, provider_entity_id, location_id, patient_id,
+            admission_id, triggering_assessment_id, triggered_at, due_at, status, alert_cadence)
+         VALUES ($1,$2,$3,$4,$5,gen_random_uuid(), now()-interval '1 day', now()+interval '1 day','open','{}'::jsonb),
+                ($1,$2,$3,$4,$5,gen_random_uuid(), now()-interval '6 days', now()-interval '4 days','overdue','{}'::jsonb),
+                ($1,$2,$3,$4,$5,gen_random_uuid(), now()-interval '20 days', now()-interval '18 days','completed','{}'::jsonb)`,
+        [orgId, pe, loc, patientId, admissionId],
+      );
+      // M14 — action items: overdue+open (carried 2x), overdue+in_progress, overdue+completed, not yet due, no due
+      // date, and an overdue one belonging to THIS meeting (never "carried" into its own packet).
+      await admin.query(
+        `INSERT INTO idg_action_item (organization_id, provider_entity_id, location_id, idg_meeting_id, patient_id,
+            assigned_to_membership_id, title, due_date, status, meeting_carry_forward_count)
+         VALUES ($1,$2,$3,$4,$5,$6,'overdue open', now()-interval '10 days','open',2),
+                ($1,$2,$3,$4,$5,$6,'overdue in progress', now()-interval '3 days','in_progress',0),
+                ($1,$2,$3,$4,$5,$6,'done', now()-interval '10 days','completed',0),
+                ($1,$2,$3,$4,$5,$6,'future', now()+interval '5 days','open',0),
+                ($1,$2,$3,$4,$5,$6,'undated', NULL,'open',0),
+                ($1,$2,$3,$7,$5,$6,'same meeting', now()-interval '10 days','open',0)`,
+        [orgId, pe, loc, otherMeetingId, patientId, MEMBER, thisMeetingId],
+      );
+    }
+
     beforeAll(async () => {
       admin = new Client({ connectionString: DB_URL });
       await admin.connect();
@@ -498,7 +622,10 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       );
       await admin.query("GRANT USAGE ON SCHEMA public TO wardenx_platform_live_test");
       await admin.query("GRANT SELECT ON organization TO wardenx_platform_live_test");
-      await admin.query("UPDATE organization SET status='active' WHERE id IN ($1,$2)", [ORG_A, ORG_B]);
+      await admin.query("UPDATE organization SET status='active' WHERE id IN ($1,$2)", [
+        ORG_A,
+        ORG_B,
+      ]);
       const platformUrl = new URL(DB_URL as string);
       platformUrl.username = "wardenx_platform_live_test";
       platformUrl.password = "platform_live_test";
@@ -516,10 +643,14 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
         // The defect: bound to the tenant pool, `organization` RLS hides every row -> zero orgs, cron builds nothing.
         expect(await enumeratorOn(handle.db).listActiveOrgs()).toEqual([]);
         // The fix: the platform pool enumerates both seeded active orgs.
-        const ids = (await enumeratorOn(platformHandle.db).listActiveOrgs()).map((o) => o.organizationId);
+        const ids = (await enumeratorOn(platformHandle.db).listActiveOrgs()).map(
+          (o) => o.organizationId,
+        );
         expect(ids).toEqual(expect.arrayContaining([ORG_A, ORG_B]));
         // Not bound at all -> loud, never a silent empty list.
-        await expect(enumeratorOn(undefined).listActiveOrgs()).rejects.toThrow(/DATABASE_PLATFORM_URL/);
+        await expect(enumeratorOn(undefined).listActiveOrgs()).rejects.toThrow(
+          /DATABASE_PLATFORM_URL/,
+        );
 
         // End-to-end: the cron with the REAL platform-bound enumerator (tenant pool for the org-scoped work).
         const patient = await seedPatient(ORG_A, "Enum", "Proof");
@@ -539,6 +670,127 @@ describe.skipIf(!DB_URL || !REDIS_URL)(
       } finally {
         await platformHandle.close();
       }
+    });
+
+    it("builds flaggedEvents (M6/M13/M30), hopeContext (M10) and carryForwardActionItems (M14) from REAL rows, " +
+      "under RLS, with the cursor + status filters applied", async () => {
+      const patientId = await seedPatient(ORG_A, "Sec", "Tions");
+      const admissionId = await seedAdmission(ORG_A, patientId, "active", 40);
+      await seedLocPeriod(ORG_A, admissionId);
+      await seedSignedCarePlan(ORG_A, patientId, admissionId);
+      const otherMeetingId = await seedMeeting(ORG_A, "scheduled", 900); // outside the 24h lookahead: never built here
+      const meetingId = await seedMeeting(ORG_A, "scheduled", 2);
+      await seedSectionSources(ORG_A, patientId, admissionId, otherMeetingId, meetingId);
+
+      await runPacketBuildCron({
+        db: handle.db,
+        outbox,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        redis,
+        ...m6m7Ports(),
+        ...sectionPorts(),
+      });
+
+      const pkt = await packetFor(meetingId, patientId);
+      expect(pkt).not.toBeNull();
+      const snap = pkt.built_snapshot as {
+        sinceLastIdg: { flaggedEvents: { kind: string; severity: string; sourceId: string }[] };
+        hopeContext: {
+          upcomingTimepoints: { timepoint: string; dueAt: string }[];
+          openSfvCount: number;
+        } | null;
+        carryForwardActionItems: {
+          actionItemId: string;
+          carryForwardCount: number;
+          assignedToMembershipId: string;
+        }[];
+        flagsForDiscussion: { kind: string }[];
+      };
+
+      // flaggedEvents: hospitalisation (I), er_visit (E, closed window still counts), 2 missed doses (the 120-day-old
+      // one predates the admission cursor), the severe fall (the 100-day-old one and the complaint are out), infection.
+      // The outpatient (`O`) window is not a hospitalisation.
+      const flagged = snap.sinceLastIdg.flaggedEvents;
+      expect(flagged.map((f) => f.kind).sort()).toEqual(
+        ["er_visit", "fall", "hospitalisation", "infection", "missed_dose", "missed_dose"].sort(),
+      );
+      const bySev = (k: string) =>
+        flagged
+          .filter((f) => f.kind === k)
+          .map((f) => f.severity)
+          .sort();
+      expect(bySev("missed_dose")).toEqual(["info", "urgent"]);
+      expect(bySev("fall")).toEqual(["urgent"]);
+      expect(bySev("infection")).toEqual(["attention"]);
+      expect(JSON.stringify(snap)).not.toContain("free text must not cross");
+      // The hospital event derives the §2.4 level-of-care-candidate discussion flag.
+      expect(snap.flagsForDiscussion.map((f) => f.kind)).toContain("level_of_care_candidate");
+
+      // hopeContext: open windows only (sorted by due), the completed RFA absent; SFV count = open + overdue.
+      expect(snap.hopeContext?.upcomingTimepoints.map((t) => t.timepoint)).toEqual([
+        "02_huv1",
+        "03_huv2",
+      ]);
+      expect(snap.hopeContext?.openSfvCount).toBe(2);
+
+      // carry-forward: only the two overdue, open/in_progress items from the OTHER meeting; stored counts.
+      expect(snap.carryForwardActionItems.map((c) => c.carryForwardCount).sort()).toEqual([0, 2]);
+      expect(snap.carryForwardActionItems.every((c) => c.assignedToMembershipId === MEMBER)).toBe(
+        true,
+      );
+      expect(pkt.cover_summary_layer1).toContain("2 carried-forward action item(s)");
+    });
+
+    it("the section seams are tenant-scoped under the real NOBYPASSRLS role: org A cannot read org B's rows", async () => {
+      const bPatient = await seedPatient(ORG_B, "Bee", "Tenant");
+      const bAdmission = await seedAdmission(ORG_B, bPatient, "active", 40);
+      const bMeeting = await seedMeeting(ORG_B, "scheduled", 900);
+      await seedSectionSources(ORG_B, bPatient, bAdmission, bMeeting, bMeeting);
+      const since = new Date(Date.now() - 200 * 86_400_000).toISOString();
+      // Sanity: the owning tenant DOES see them (so the empty results below are RLS, not missing data).
+      expect(
+        (await idgMissedDosesForOrg(handle.db, ORG_B, [bPatient], since)).get(bPatient),
+      ).toHaveLength(3);
+      expect(
+        (await idgHopeContextForOrg(handle.db, ORG_B, [bPatient])).get(bPatient)?.openSfvCount,
+      ).toBe(2);
+      // Org A asking for org B's patient id gets nothing from any source.
+      expect((await idgHospitalEventsForOrg(handle.db, ORG_A, [bPatient], since)).size).toBe(0);
+      expect((await idgMissedDosesForOrg(handle.db, ORG_A, [bPatient], since)).size).toBe(0);
+      expect((await idgQualityFlaggedEventsForOrg(handle.db, ORG_A, [bPatient], since)).size).toBe(
+        0,
+      );
+      expect((await idgHopeContextForOrg(handle.db, ORG_A, [bPatient])).get(bPatient)).toEqual({
+        upcomingTimepoints: [],
+        openSfvCount: 0,
+      });
+    });
+
+    it("fail-honest: with the section ports UNBOUND flaggedEvents is [] and hopeContext is null (never a guess), " +
+      "while carry-forward (M14's own table) still populates", async () => {
+      const patientId = await seedPatient(ORG_A, "Un", "Bound");
+      const admissionId = await seedAdmission(ORG_A, patientId, "active", 40);
+      await seedLocPeriod(ORG_A, admissionId);
+      await seedSignedCarePlan(ORG_A, patientId, admissionId);
+      const otherMeetingId = await seedMeeting(ORG_A, "scheduled", 901);
+      const meetingId = await seedMeeting(ORG_A, "scheduled", 2);
+      await seedSectionSources(ORG_A, patientId, admissionId, otherMeetingId, meetingId);
+
+      await runPacketBuildCron({
+        db: handle.db,
+        outbox,
+        activeOrgs: { listActiveOrgs: async () => [{ organizationId: ORG_A }] },
+        redis,
+        ...m6m7Ports(),
+      });
+      const snap = (await packetFor(meetingId, patientId)).built_snapshot as {
+        sinceLastIdg: { flaggedEvents: unknown[] };
+        hopeContext: unknown;
+        carryForwardActionItems: unknown[];
+      };
+      expect(snap.sinceLastIdg.flaggedEvents).toEqual([]);
+      expect(snap.hopeContext).toBeNull();
+      expect(snap.carryForwardActionItems).toHaveLength(2);
     });
 
     it("cross-tenant: org B's admission never appears in org A's meeting build", async () => {

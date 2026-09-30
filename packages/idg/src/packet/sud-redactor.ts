@@ -6,7 +6,7 @@
 // elision is a SQL `WHERE` over `built_snapshot`/`discipline_views` (the spec's "filtered before data leaves
 // the database"); this pure decider is the canonical projection the M14-T05 read service mirrors and the
 // unit tests assert against. It drops the SUD-flagged source ids from every `sinceLastIdg` block (encounters, assessment
-// changes, HOPE triggers, order/medication changes, flagged events) and every `disciplineViews[*].highlightedEntries`, and stamps `meta.appliedSudRedaction` so the response carries the
+// changes, HOPE triggers, order/medication changes, flagged events), the carry-forward action items, the derived HOPE open-SFV count, and every `disciplineViews[*].highlightedEntries`, and stamps `meta.appliedSudRedaction` so the response carries the
 // "Some content filtered per 42 CFR Part 2" banner.
 //
 // PURE — `@wardenx/types` only; the `consent.evaluate` call + the M4 sampled-audit row are the service's job.
@@ -71,6 +71,18 @@ export function applySudRedaction(built: BuiltPacket, ctx: SudRedactionContext):
           (f) => !flagged.has(f.sourceId),
         ),
       },
+      // Carry-forward action items are keyed by their own `actionItemId` (in the same id space).
+      carryForwardActionItems: built.snapshot.carryForwardActionItems.filter(
+        (c) => !flagged.has(c.actionItemId),
+      ),
+      // `hopeContext.openSfvCount` is DERIVED from J2051 symptom-impact triggers — the very rows elided from
+      // `sinceLastIdg.j2051Triggers` above — so a caller without a release must not read the count either
+      // (it would disclose how many were elided). Zeroed here; the read model publishes it as "not available".
+      // The upcoming-timepoint schedule is admission-calendar-driven (no clinical content) and stays.
+      hopeContext:
+        built.snapshot.hopeContext === null
+          ? null
+          : { ...built.snapshot.hopeContext, openSfvCount: 0 },
     },
     disciplineViews,
   };
