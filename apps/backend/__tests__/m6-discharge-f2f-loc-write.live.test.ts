@@ -174,8 +174,23 @@ describe.skipIf(!DB_URL)(
       if (admin) await admin.end();
     });
 
-    it("F2F: schedule → complete → attest (performer is the actor)", async () => {
-      const { periodId } = await activeAdmission(randomUUID());
+    /**
+     * F-226 - a PENDING period 2 whose expected start is 10 days out (the prior period is about to end), so a
+     * visit yesterday is a real in-window encounter. (Right after activation period 1 still has ~89 days to run
+     * and `completeF2f` correctly refuses an encounter that far before the window opens.)
+     */
+    async function pendingPeriodStartingSoon(): Promise<{ periodId: string; admissionId: string }> {
+      const { admissionId } = await activeAdmission(randomUUID());
+      const p = await svc.createElectionPeriod(ORG_A, admissionId);
+      await admin.query("UPDATE election_period SET expected_start = current_date + 10 WHERE id=$1", [
+        p.id,
+      ]);
+      return { periodId: p.id, admissionId };
+    }
+    const daysFromNow = (n: number) => new Date(Date.now() + n * 86_400_000).toISOString().slice(0, 10);
+
+    it("F2F: schedule → complete (real date, in window) → attest (performer is the actor)", async () => {
+      const { periodId } = await pendingPeriodStartingSoon();
       const f2f = await svc.scheduleF2f(ORG_A, {
         admissionId: "ignored",
         electionPeriodId: periodId,
@@ -183,8 +198,13 @@ describe.skipIf(!DB_URL)(
         clinicianRole: "hospice_md",
       });
       expect(f2f.state).toBe("scheduled");
-      const done = await svc.completeF2f(ORG_A, f2f.id, f2f.version);
+      const done = await svc.completeF2f(ORG_A, f2f.id, f2f.version, daysFromNow(-1));
       expect(done.state).toBe("completed");
+      const row = await admin.query(
+        "SELECT encounter_date::text AS d, within_window FROM face_to_face_encounter WHERE id=$1",
+        [f2f.id],
+      );
+      expect(row.rows[0]).toEqual({ d: daysFromNow(-1), within_window: true });
       // The attesting user must be the performer — a stranger is rejected (F2F_INVALID_PERFORMER → 422).
       await expect(svc.attestF2f(ORG_A, f2f.id, done.version, OTHER)).rejects.toMatchObject({
         statusCode: 422,
@@ -194,14 +214,14 @@ describe.skipIf(!DB_URL)(
     });
 
     it("F2F: complete → medical-director window override (stays completed)", async () => {
-      const { periodId } = await activeAdmission(randomUUID());
+      const { periodId } = await pendingPeriodStartingSoon();
       const f2f = await svc.scheduleF2f(ORG_A, {
         admissionId: "x",
         electionPeriodId: periodId,
         scheduledClinicianId: USER,
         clinicianRole: "hospice_np",
       });
-      const done = await svc.completeF2f(ORG_A, f2f.id, f2f.version);
+      const done = await svc.completeF2f(ORG_A, f2f.id, f2f.version, daysFromNow(-1));
       const over = await svc.overrideF2fWindow(
         ORG_A,
         f2f.id,
@@ -615,6 +635,12 @@ describe.skipIf(!DB_URL)(
       expect(seqs.rows.map((r: { sequence_number: number }) => r.sequence_number)).toEqual([3, 4]);
       expect(seqs.rows[0].status).toBe("active");
       expect(seqs.rows[1].status).toBe("pending");
+      // F-226 - the pending period starts the day after the inherited one ends (2026-01-01 + 60d - 1 = 2026-03-01).
+      const pendingStart = await admin.query(
+        "SELECT expected_start::text AS s FROM election_period WHERE id=$1",
+        [seqs.rows[1].id],
+      );
+      expect(pendingStart.rows[0].s).toBe("2026-03-02");
       // D9 — the inherited (active) period runs on the SENDING hospice's certification, so we draft NO
       // CTI against it; the next (pending) period DOES require our own CTI.
       const ctis = await admin.query(
@@ -640,7 +666,8 @@ describe.skipIf(!DB_URL)(
         `INSERT INTO face_to_face_encounter (organization_id, election_period_id, performed_by_user_id,
                                              performer_role, encounter_date, within_window, status,
                                              attestation_signed_at, attestation_narrative)
-         VALUES ($1,$2,$3,'hospice_md', now()::date, true, 'attested', now(), $4)`,
+         SELECT $1, ep.id, $3, 'hospice_md', ep.expected_start - 10, true, 'attested', now(), $4
+           FROM election_period ep WHERE ep.id = $2 AND ep.expected_start IS NOT NULL`,
         [ORG_A, seqs.rows[1].id, MD, "x".repeat(120)],
       );
       // F-217 — the F2F is now in place, but the skeleton CTI `transferIn` drafts carries NO narrative

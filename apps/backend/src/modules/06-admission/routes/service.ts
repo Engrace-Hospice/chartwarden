@@ -884,7 +884,13 @@ export interface AdmissionRouteService {
   // F2F (routes 28–32)
   scheduleF2f(organizationId: string, input: F2fScheduleInput): Promise<MutationResult>;
   getF2f(organizationId: string, id: string): Promise<SummaryRow | null>;
-  completeF2f(organizationId: string, id: string, ifVersion: number): Promise<MutationResult>;
+  /** F-226 - `encounterDate` (YYYY-MM-DD) is the clinician-reported encounter date; it is validated and the R-F2F-02 window is computed from it. */
+  completeF2f(
+    organizationId: string,
+    id: string,
+    ifVersion: number,
+    encounterDate: string,
+  ): Promise<MutationResult>;
   attestF2f(
     organizationId: string,
     id: string,
@@ -2198,7 +2204,8 @@ export function createInMemoryAdmissionBackend(seed: AdmissionBackendSeed = {}):
       const rec = get(organizationId, id, "f2f");
       return rec ? summary(rec) : null;
     },
-    async completeF2f(organizationId, id, ifVersion) {
+    async completeF2f(organizationId, id, ifVersion, encounterDate) {
+      void encounterDate;
       const rec = get(organizationId, id, "f2f") ?? notFound(id);
       return transition(rec, "completed", ifVersion);
     },
