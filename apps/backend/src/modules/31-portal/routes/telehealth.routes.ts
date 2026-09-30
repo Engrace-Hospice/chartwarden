@@ -10,6 +10,7 @@
 // (+ step-up), composed in `./mount`; the webhooks verify the vendor HMAC before touching the row.
 import { NotFoundError } from "@wardenx/types";
 import type { FastifyInstance } from "fastify";
+import { ensureTelehealthRoomForVisit } from "../telehealth/room-mint";
 import { deriveEndReason, endStateFor, foldParticipantJoin } from "../telehealth/visit-lifecycle";
 import { actorOf } from "./actor";
 import { requireIdempotencyKey } from "./concurrency";
@@ -46,24 +47,41 @@ export function registerTelehealthRoutes(app: FastifyInstance, deps: PortalRoute
     (who: "patient" | "clinician") => async (request: import("fastify").FastifyRequest) => {
       const actor = actorOf(request);
       const { visitId } = request.params as { visitId: string };
-      const visit = await store.telehealthById(actor.organizationId, visitId);
+      let visit = await store.telehealthById(actor.organizationId, visitId);
+      // F-220 (#248) — LAZY room mint. The staff join is the one path that can reach this point for an id that
+      // is not yet a `telehealth_visit` id (the patient join is ABAC-gated on an existing row): treat the param
+      // as an M17 visit id, pull the visit through M17's published reader and mint the room on this first join.
+      if (!visit && who === "clinician" && deps.visitReader && deps.roomCipher) {
+        visit = await ensureTelehealthRoomForVisit(
+          {
+            visits: deps.visitReader,
+            cipher: deps.roomCipher,
+            adapter,
+            store,
+          },
+          actor.organizationId,
+          actor.userId,
+          visitId,
+        );
+      }
       if (!visit) throw new NotFoundError("telehealth visit not found");
+      const telehealthVisitId = visit.telehealthVisitId;
       const nextState = foldParticipantJoin(visit.lifecycleState, who);
       if (nextState !== visit.lifecycleState) {
         const startsNow = visit.visitStartedAt === null && nextState === "in_progress";
-        await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, visitId, {
+        await store.updateTelehealthLifecycle(actor.organizationId, actor.userId, telehealthVisitId, {
           lifecycleState: nextState,
           firstParticipantJoinedAt: visit.visitStartedAt === null ? now() : undefined,
           ...(startsNow ? { visitStartedAt: now() } : {}),
         });
       }
       const token = await adapter.mintParticipantToken({
-        telehealthVisitId: visitId,
+        telehealthVisitId,
         role: who,
       });
       return {
         vendor: adapter.vendor,
-        vendorJoinUrl: `https://telehealth.invalid/${visitId}`,
+        vendorJoinUrl: `https://telehealth.invalid/${telehealthVisitId}`,
         vendorParticipantToken: token.token,
         tokenExpiresAt: token.expiresAt,
         audioOnlyFallbackActive: visit.audioOnlyFallbackActive,

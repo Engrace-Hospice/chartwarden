@@ -32,13 +32,16 @@ export {
 } from "./guards";
 export { parse, parseQuery } from "./portal-typebox";
 
-import type { PortalReasonCipher } from "../portal-crypto";
+import type { PortalReasonCipher, PortalRoomCipher } from "../portal-crypto";
+import type { M17VisitRoomReaderPort } from "../telehealth/room-mint";
 import type { PortalStore } from "./store";
 
 export {
   type PortalReasonCipher,
+  type PortalRoomCipher,
   type PortalTenantKeyProvider,
   createPortalReasonCipher,
+  createPortalRoomCipher,
 } from "../portal-crypto";
 
 /**
@@ -48,6 +51,12 @@ export {
  */
 export interface TelehealthAdapterPort {
   readonly vendor: "daily_co" | "twilio_video" | "native_webrtc";
+  /** F-220 — optional so a fail-closed NOOP adapter (no vendor key vault bound) simply cannot lazy-mint. */
+  mintRoom?(input: {
+    telehealthVisitId: string;
+    scheduledStartedAt: string;
+    recordingEnabled: boolean;
+  }): Promise<{ vendorRoomId: string; vendorRoomUrl: string }>;
   mintParticipantToken(input: {
     telehealthVisitId: string;
     role: "patient" | "clinician";
@@ -73,6 +82,14 @@ export interface PortalRouteDeps {
    * — the M32 R18 posture, for the same reason.
    */
   readonly reasonCipher?: PortalReasonCipher;
+  /**
+   * F-220 — M17's org-explicit published visit read (`VisitReader.visitForEncounter`) for the LAZY room mint: the
+   * first clinician join of a `telephonic` visit whose id is not yet a `telehealth_visit` id mints the room. ABSENT
+   * (either this or {@link roomCipher}) ⇒ the join route behaves exactly as before (404 for an unknown id).
+   */
+  readonly visitReader?: M17VisitRoomReaderPort;
+  /** F-220 — seals the two vendor-room columns at the lazy mint (per-tenant DEK envelope). */
+  readonly roomCipher?: PortalRoomCipher;
   /** Injected clock (every timestamp decision is reproducible in a unit test). */
   readonly now?: () => Date;
 }

@@ -213,7 +213,8 @@ export const M31_SUBSCRIBED_EVENT_NAMES = [
   // Catalogued AND declaring `m31`.
   "m17.visit.rescheduled",
   "m17.visit.cancelled",
-  "m17.visit.published",
+  // F-220 (#248) — `m17.visit.published` removed: the telehealth room is minted LAZILY on the first clinician join of a
+  // `telephonic` visit through M17's published `VisitReader` (`telehealth/room-mint.ts`); catalogued `seamConsumers`.
   "m8.encounter.signed",
   "m16.bereavement.contact_active",
   "m16.bereavement.plan_opened",

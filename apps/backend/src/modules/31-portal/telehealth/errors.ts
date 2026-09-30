@@ -26,6 +26,10 @@ export const TELEHEALTH_ERROR_STATUS = {
   /** §7.4 — recording was requested on a visit that is not in an active state (`room_minted` before anyone
    *  joined, or an already-ended visit). There is nothing to record. */
   TELEHEALTH_NOT_RECORDABLE: 409,
+  /** F-220 (#248) — the lazy room mint (first clinician join of a `telephonic` visit) could not reach a vendor:
+   *  no adapter is bound (production today — no per-tenant vendor key vault) or the vendor call failed. Fails
+   *  CLOSED: no `telehealth_visit` row is written without a real room behind it. */
+  TELEHEALTH_VENDOR_UNAVAILABLE: 503,
 } as const;
 
 /** A machine-readable telehealth failure code (§7.2–§7.4 / D8 / D9 / D14). */

@@ -829,6 +829,7 @@ import {
   buildPortalAbacResolverFromStore,
   createM31PublishedSeamImpls,
   createPortalReasonCipher,
+  createPortalRoomCipher,
   denyStubPortalAbacResolver,
   mountM31Routes,
   registerM31PublishedSeams,
@@ -3968,6 +3969,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           mountM31Routes(app, {
             store: buildDrizzlePortalStore(dbHandle.db),
             reasonCipher: createPortalReasonCipher(getTenantKeyProvider()),
+            // F-220 (#248) — the lazy telehealth room mint: M17's org-explicit published visit read + the
+            // per-tenant DEK envelope for the two vendor-room columns. The vendor adapter stays UNBOUND above,
+            // so a lazy mint fails closed (503) until a per-tenant vendor key vault exists.
+            visitReader: {
+              visitForOrg: (organizationId, visitId) =>
+                getSeam("VisitReader").visitForEncounter(organizationId, visitId),
+            },
+            roomCipher: createPortalRoomCipher(getTenantKeyProvider()),
           });
           // M32 (AI Platform) — mount the thirty-two §4.1 routes over the T03/T04/T05 command services
           // plus T07's read port. `ai.full` stays OFF: these routes GOVERN a platform that is not yet
