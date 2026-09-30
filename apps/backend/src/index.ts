@@ -784,6 +784,7 @@ import {
   buildM30BereavementPlanClosedConsumer,
   buildM30ClaimAdjudicatedConsumer,
   buildM30HopeSubmissionAcceptedConsumer,
+  buildM30MedicationErrorReportedConsumer,
   buildM30RecomputeEnqueue,
   buildM30RestraintAppliedConsumer,
   buildM30VisitVerifiedConsumer,
@@ -2834,7 +2835,7 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
       RECOVERY_ESCALATION_THRESHOLD,
     ),
     orgRateThreshold: parseRecoveryBound(process.env.M11_RECOVERY_ORG_RATE_THRESHOLD, RECOVERY_ORG_RATE_THRESHOLD),
-    // F-204 — refuse to file a recovery nobody else can co-sign. M11 does not own the membership/role tables, so the
+    // F-205 — refuse to file a recovery nobody else can co-sign. M11 does not own the membership/role tables, so the
     // count is answered here, in the composition root, under the caller's org context (RLS-scoped).
     countEligibleCosigners: dbHandle
       ? buildM11CosignerCounter(
@@ -5858,6 +5859,16 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM30VisitVerifiedConsumer({
             db: dbHandle.db,
             evvVisitProviderEntityForOrg,
+          }),
+          // F-205 (#248) — the M12 medication-error-reported consumer. Auto-files a `medication_error`
+          // incident draft (D8). `medicationOrderScheduleContextForOrg`/`admissionSchedulingContextForOrg`
+          // are M12's/M6's seams, injected as ports — M30's manifest `dependsOn` excludes both 12 and 6
+          // (the same F-160 `CapConsumerStore` shape), the identical two-step chain
+          // `buildM13MaterializeScheduleConsumer` (F-166) already uses at this same composition root.
+          buildM30MedicationErrorReportedConsumer({
+            db: dbHandle.db,
+            medicationOrderScheduleContextForOrg,
+            admissionSchedulingContextForOrg,
           }),
           // F-158 (#248) — M37's §4.5 "If patient has open `ipu_admission` → cascade-discharge", M37's
           // first outbox consumer. Death discharges are a deliberate no-op here (see the file header) —

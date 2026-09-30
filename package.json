@@ -170,6 +170,7 @@
     "test:f192:m6-transfer-render:live": "vitest run apps/backend/__tests__/f192-m6-transfer-render-request.live.test.ts",
     "test:f197:m22-mint-time-sud-consent:live": "vitest run apps/backend/__tests__/f197-m22-mint-time-sud-consent.live.test.ts",
     "test:f194:m18-visit-verified:live": "vitest run apps/backend/__tests__/f194-m18-visit-verified.live.test.ts",
+    "test:f205:m12-medication-error-reported:live": "vitest run apps/backend/__tests__/f205-m12-medication-error-reported.live.test.ts",
     "test:m17:evv-checkout-corrected:live": "vitest run apps/backend/__tests__/m17-evv-checkout-corrected.live.test.ts",
     "test:m17:volunteer-triage-consumers:live": "vitest run apps/backend/__tests__/m17-volunteer-triage-consumers.live.test.ts",
     "test:m2:consent-revoked:live": "vitest run apps/backend/__tests__/m2-consent-revoked.live.test.ts",

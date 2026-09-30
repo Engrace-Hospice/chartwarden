@@ -657,6 +657,13 @@ jobs:
               name: "F-194 M18 visit verified",
               scripts: "test:f194:m18-visit-verified:live",
             }
+          # F-205 (#248) — `m12.medication.error_reported` end to end: a real clinician-initiated
+          # report-error action through M12's real Drizzle write service into a real outbox row, then the
+          # real M30 auto-incident-draft consumer.
+          - {
+              name: "F-205 M12 medication error reported",
+              scripts: "test:f205:m12-medication-error-reported:live",
+            }
           - { name: "M6 discharge cascade", scripts: "test:m6:discharge-cascade:live" }
           # F-159 (#248) — the §2.3.5 LCP transition M11 D9's signed level-of-care-change order drives.
           - { name: "M6 LOC change signed", scripts: "test:m6:loc-change-signed:live" }

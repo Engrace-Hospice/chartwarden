@@ -499,6 +499,12 @@ const M12_OUTBOX_ENTRIES: readonly M12OutboxEntry[] = [
       errorCategory: Type.String(),
       reportedByMembershipId: id,
       reportedAt: isoInstant,
+      // F-205 (#248) — widened at the source: the new clinician-facing `reportMedicationError` route lets
+      // the filing clinician add a free-text one-line summary, which M30's auto-incident-draft consumer
+      // carries straight through to `incident_report.kind_data.narrativeText` (the F-185/`restraintKind`
+      // precedent — an additive, optional field, never denylisted since it was already clinician-authored
+      // free text at the API boundary, the same posture `m14.minutes.amended`'s `summary` already has).
+      summary: Type.Optional(Type.String({ maxLength: 2000 })),
     }),
     declaredConsumers: ["m30"],
     isOutboxOnly: true,

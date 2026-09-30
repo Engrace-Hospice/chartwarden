@@ -1342,12 +1342,14 @@ import {
   MedicationOrderResponseSchema as M12MedicationOrderResponseSchema,
   NewOrderIdResponseSchema as M12NewOrderIdResponseSchema,
   PrescriberRosterListResponseSchema as M12PrescriberRosterListResponseSchema,
+  MedicationErrorReportResponseSchema as M12MedicationErrorReportResponseSchema,
   ReconcileRequest as M12ReconcileRequest,
   RecordVerbalRequest as M12RecordVerbalRequest,
   RefillInboxPolicyRequest as M12RefillInboxPolicyRequest,
   RefillInboxPolicyResponseSchema as M12RefillInboxPolicyResponseSchema,
   RefillListResponseSchema as M12RefillListResponseSchema,
   RefillRequestResponseSchema as M12RefillRequestResponseSchema,
+  ReportMedicationErrorRequest as M12ReportMedicationErrorRequest,
   RequestSignatureRequest as M12RequestSignatureRequest,
   RevokePrescriberRequest as M12RevokePrescriberRequest,
   RxBenefitLookupRequest as M12RxBenefitLookupRequest,
@@ -4454,6 +4456,11 @@ Object.assign(ROUTE_ENRICHMENTS, {
   "POST /api/v1/medication-orders/:id/discontinue": {
     summary: "Discontinue a medication order",
     body: M12DiscontinueRequest,
+  },
+  "POST /api/v1/medication-orders/:id/report-error": {
+    summary: "File a clinician-initiated medication-error report against an order (F-205, #248)",
+    body: M12ReportMedicationErrorRequest,
+    response: M12MedicationErrorReportResponseSchema,
   },
   "POST /api/v1/medication-orders/:id/complete": {
     summary: "Complete a medication order (no-refills-no-renewal)",

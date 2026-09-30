@@ -165,3 +165,10 @@ export {
   type EvvVisitProviderEntityForOrg,
   buildM30VisitVerifiedConsumer,
 } from "./outbox-consumers/m18-evv-visit-verified";
+// F-205 (#248): the `m12.medication.error_reported` consumer — auto-files a `medication_error` incident
+// draft (D8). See the file header for why `providerEntityId` needs the two injected M12/M6 siting ports.
+export {
+  type AdmissionSchedulingContextForOrg,
+  type MedicationOrderScheduleContextForOrg,
+  buildM30MedicationErrorReportedConsumer,
+} from "./outbox-consumers/m12-medication-error-reported";

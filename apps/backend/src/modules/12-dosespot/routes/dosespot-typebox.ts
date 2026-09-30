@@ -135,6 +135,15 @@ export const CompleteRequest = Type.Object({
   reason: Type.Optional(Type.String({ maxLength: 2000 })),
 });
 
+/** F-205 (#248) — a clinician-initiated medication-error report (`reportMedicationError`, M12's own
+ *  §4.4 catalog description). `errorCategory` is deliberately a free string, not a closed enum: the
+ *  catalog's own `m12.medication.error_reported` payloadSchema (`events-by-m12.ts`) declares it as
+ *  `Type.String()` with no taxonomy, and no module spec names one either. */
+export const ReportMedicationErrorRequest = Type.Object({
+  errorCategory: Type.String({ minLength: 1, maxLength: 100 }),
+  summary: Type.Optional(Type.String({ maxLength: 2000 })),
+});
+
 export const CorrectMedicationOrderRequest = CreateMedicationOrderRequest;
 
 export const ApproveRefillRequest = Type.Object({
@@ -376,6 +385,13 @@ export const RxBenefitResponseSchema = Type.Object({
 
 /** Route 27 — the prescriber-revoke acknowledgment. */
 export const RevokePrescriberResponseSchema = Type.Object({ status: Type.Literal("revoked") });
+
+/** F-205 (#248) — the medication-error report acknowledgment (`reportMedicationError`). */
+export const MedicationErrorReportResponseSchema = Type.Object({
+  medicationErrorId: Type.String({ format: "uuid" }),
+  orderId: Type.String({ format: "uuid" }),
+  reportedAt: Type.String({ format: "date-time" }),
+});
 
 // Compile-time pins: `T` (what the schema publishes) must be assignable to `V` (what the service returns).
 type Conforms<T extends V, V> = T;

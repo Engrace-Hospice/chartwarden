@@ -11179,6 +11179,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/medication-orders/{id}/report-error": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** File a clinician-initiated medication-error report against an order (F-205, #248) */
+        post: operations["postApiV1MedicationordersByIdReporterror"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/medication-orders/{id}/request-signature": {
         parameters: {
             query?: never;
@@ -50403,6 +50420,44 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            "4XX": components["responses"]["Error"];
+            "5XX": components["responses"]["Error"];
+        };
+    };
+    postApiV1MedicationordersByIdReporterror: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    errorCategory: string;
+                    summary?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: uuid */
+                        medicationErrorId: string;
+                        /** Format: uuid */
+                        orderId: string;
+                        /** Format: date-time */
+                        reportedAt: string;
+                    };
+                };
             };
             "4XX": components["responses"]["Error"];
             "5XX": components["responses"]["Error"];

@@ -165,6 +165,17 @@ export interface DiscontinueArgs {
   readonly effectiveAt: string;
   readonly notes?: string;
 }
+/** F-205 (#248) — `reportMedicationError`'s args; `errorCategory` is a free string (no taxonomy anywhere
+ *  in the catalog or the module specs — see `dosespot-typebox.ts`'s `ReportMedicationErrorRequest`). */
+export interface ReportMedicationErrorArgs {
+  readonly errorCategory: string;
+  readonly summary?: string;
+}
+export interface MedicationErrorReport {
+  readonly medicationErrorId: string;
+  readonly orderId: string;
+  readonly reportedAt: string;
+}
 export interface ApproveRefillArgs {
   readonly refillsAuthorized: number;
   readonly responseChannel?: RefillResponseChannel;
@@ -282,6 +293,15 @@ export interface MedicationOrderRouteService extends DoseSpotAbacResolver {
     id: string,
     args: DiscontinueArgs,
   ): Promise<MedicationOrderView>;
+  /** F-205 (#248) — files a clinician-initiated medication-error report against an existing order.
+   *  Not a status transition (the order's lifecycle is untouched); emits `m12.medication.error_reported`
+   *  for M30's auto-incident-draft consumer. */
+  reportMedicationError(
+    organizationId: string,
+    userId: string,
+    id: string,
+    args: ReportMedicationErrorArgs,
+  ): Promise<MedicationErrorReport>;
   completeOrder(
     organizationId: string,
     userId: string,
@@ -830,6 +850,25 @@ export function createInMemoryDoseSpotBackend(
         effectiveAt: args.effectiveAt,
       });
       return view(r);
+    },
+    async reportMedicationError(organizationId, userId, id, args) {
+      const r = find(organizationId, id); // 404s if the order is unknown to this org.
+      const medicationErrorId = nextId();
+      const reportedAt = now();
+      emit(
+        "m12.medication.error_reported",
+        {
+          medicationErrorId,
+          orderId: id,
+          patientId: r.patientId,
+          errorCategory: args.errorCategory,
+          reportedByMembershipId: userId,
+          reportedAt,
+          ...(args.summary !== undefined ? { summary: args.summary } : {}),
+        },
+        `${id}:m12.medication.error_reported:${medicationErrorId}`,
+      );
+      return { medicationErrorId, orderId: id, reportedAt };
     },
     async completeOrder(organizationId, _userId, id, _reason) {
       const r = find(organizationId, id);
