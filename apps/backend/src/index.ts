@@ -447,6 +447,7 @@ import {
   buildM17EncounterSignedConsumer,
   buildM17EvvAtPatientAddressConsumer,
   buildM17EvvCheckInConsumer,
+  buildM17EvvLateCheckResolvedConsumer,
   buildM17EvvCheckOutConsumer,
   buildM17EvvEventCorrectedConsumer,
   buildM17SosVisitCancellationConsumer,
@@ -474,6 +475,9 @@ import {
   registerEvvRoutes,
   registerEvvSeams,
 } from "./modules/18-evv/index";
+// F-194 (#248) — M18's org-explicit EVV-visit-provider-entity seam, injected as a port into M30's
+// visit-verified consumer (M30's manifest `dependsOn` excludes 18, the F-160 `CapConsumerStore` shape).
+import { evvVisitProviderEntityForOrg } from "./modules/18-evv/seams/evv-visit-provider-entity-for-org";
 import {
   M19_OUTBOX_EVENTS,
   M19_PLATFORM_JOB_ID,
@@ -550,6 +554,7 @@ import {
   createS3ObjectStore,
   createS3TenantStorageProvisioner,
   createSignedUrlService,
+  createSudConsentEvaluatorPortalConsentPort,
   deriveTenantBucket,
   getDocumentRenderer,
   mountDocumentRoutes,
@@ -778,6 +783,7 @@ import {
   buildM30HopeSubmissionAcceptedConsumer,
   buildM30RecomputeEnqueue,
   buildM30RestraintAppliedConsumer,
+  buildM30VisitVerifiedConsumer,
   buildM30WorkerDeps,
   createDrizzleQualityEraseStore,
   mountM30Routes,
@@ -1499,6 +1505,11 @@ export function wireModuleSeams(
   // even when the S3 object write succeeded for real (MINIO_* present), the catalog row landed in a
   // private per-process Map no reader seam could ever see — not a restart-loses-data bug, a permanently
   // disconnected write path.
+  // F-197 (#248) — `portalConsent:` was NEVER passed here, even when `deps.db` is present, so it silently
+  // fell back to `registerDocumentSeams`'s in-memory default in every real deployment — `DocumentSeamDeps`'s
+  // own doc comment always said "M39 ConsentEvaluator in prod," but no production call site ever supplied
+  // one. Mirrors `registerConsentSeams`'s own adjacent, already-correct pattern immediately below: a
+  // real seam-backed port when `deps.db` is present, the in-memory default only in the slice/tests.
   const s3Config = deps.db ? s3ObjectStoreConfigFromEnv(process.env) : null;
   registerDocumentSeams(
     deps.db
@@ -1508,6 +1519,7 @@ export function wireModuleSeams(
           objects: s3Config
             ? createS3ObjectStore(s3Config)
             : createRefusingObjectStore(),
+          portalConsent: createSudConsentEvaluatorPortalConsentPort(),
         }
       : {},
   );
@@ -5756,6 +5768,9 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
             outbox: m17OutboxPublisher,
           }),
           buildM17EvvAtPatientAddressConsumer({ db: dbHandle.db }),
+          // F-196 (#248) — the §4.10 missing-EVV resolution stamp. Informational only; does not move
+          // `status` (the visit is already `completed` by the time this fires).
+          buildM17EvvLateCheckResolvedConsumer({ db: dbHandle.db }),
           // F-158 (#248) — the §3.3 EVV checkout/correction provenance pointers. `check_out_recorded`
           // stamps `evv_check_out_event_id` only (deliberately no lifecycle transition — completion is
           // `m8.encounter.signed`-only, per M17's own spec and `visit-machine.ts`'s `isSystemActor` guard);
@@ -5823,6 +5838,14 @@ export async function bootWardenX(role: ProcessRole = "all"): Promise<void> {
           buildM30RestraintAppliedConsumer({
             db: dbHandle.db,
             restraintAdmissionSitingForOrg,
+          }),
+          // F-194 (#248) — the M18 EVV visit-verified consumer. Enqueues an HVLDL recompute (the
+          // already-built `handleEvvVisitVerified`/`hvldl_near_death_recompute` pure logic, previously
+          // unwired). `evvVisitProviderEntityForOrg` is M18's seam, injected as a port — M30's manifest
+          // `dependsOn` excludes 18 (the same F-160 `CapConsumerStore` shape).
+          buildM30VisitVerifiedConsumer({
+            db: dbHandle.db,
+            evvVisitProviderEntityForOrg,
           }),
           // F-158 (#248) — M37's §4.5 "If patient has open `ipu_admission` → cascade-discharge", M37's
           // first outbox consumer. Death discharges are a deliberate no-op here (see the file header) —

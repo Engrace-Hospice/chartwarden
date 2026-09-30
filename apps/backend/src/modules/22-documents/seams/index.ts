@@ -102,6 +102,7 @@ export {
   type RenderedAggregateRow,
   createInMemoryDocumentReaderStore,
   createInMemoryPortalConsentPort,
+  createSudConsentEvaluatorPortalConsentPort,
 } from "./readers-store";
 export {
   createDocumentReader,

@@ -86,6 +86,12 @@ export {
   buildM17EvvAtPatientAddressConsumer,
   type EvvAtPatientAddressDeps,
 } from "./outbox-consumers/m18-evv-at-patient-address";
+// F-196 (#248) — the §4.10 missing-EVV resolution stamp, bound live.
+export {
+  M17_EVV_LATE_CHECK_RESOLVED_CONSUMER,
+  buildM17EvvLateCheckResolvedConsumer,
+  type EvvLateCheckResolvedDeps,
+} from "./outbox-consumers/m18-evv-late-check-resolved";
 export {
   M17_SOS_VISIT_CANCELLATION_CONSUMER,
   buildM17SosVisitCancellationConsumer,

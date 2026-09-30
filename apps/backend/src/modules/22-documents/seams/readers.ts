@@ -81,10 +81,7 @@ export function createPortalDocumentReader(deps: {
   readonly store: DocumentReaderStore;
   readonly objects: ObjectStorePort;
   readonly consent: PortalConsentPort;
-  /** The per-document-version SUD-class flag (D20/D23) the portal mint consults; default: nothing is SUD. */
-  readonly isSudVersion?: (documentVersionId: string) => boolean;
 }): PortalDocumentReader {
-  const isSudVersion = deps.isSudVersion ?? (() => false);
   return {
     async documentsForPatient({ patientId, organizationId, aggregateType, sinceCursor }) {
       const digests = await deps.store.documentsForPatient({
@@ -119,9 +116,14 @@ export function createPortalDocumentReader(deps: {
       if (!owner.patientFacing) {
         return { denied: true, reason: "not_patient_facing" } as const;
       }
+      // F-197 (#248) — `owner.isSudClass` (D20/D23, `document.metadata.sudRedacted`) replaces the PRIOR
+      // `isSudVersion` deps-injected lookup function, which had no real implementation anywhere and was
+      // never actually passed at the one production call site (`seams/index.ts`'s
+      // `createPortalDocumentReader` call) — this SUD-class fact is already loaded on `owner` above, off
+      // the exact same row, so no separate injection point is needed at all.
       if (
-        isSudVersion(documentVersionId) &&
-        !deps.consent.isSudPortalDisclosureConsented(patientId)
+        owner.isSudClass &&
+        !(await deps.consent.isSudPortalDisclosureConsented(patientId, organizationId))
       ) {
         return { denied: true, reason: "sud_consent_absent" } as const;
       }

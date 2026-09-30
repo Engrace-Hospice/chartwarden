@@ -17225,7 +17225,10 @@
                         "required": [
                           "id",
                           "state",
-                          "version"
+                          "version",
+                          "holdReason",
+                          "holdAt",
+                          "releasedAt"
                         ],
                         "properties": {
                           "id": {
@@ -17238,6 +17241,36 @@
                             "type": "integer"
                           },
                           "patientId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "holdReason": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "holdAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "releasedAt": {
                             "anyOf": [
                               {
                                 "type": "string"

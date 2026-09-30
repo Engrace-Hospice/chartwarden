@@ -19,6 +19,7 @@ import type {
   PortalDocumentDigest,
   ProvenanceRecord,
 } from "@wardenx/types";
+import { resolveSudConsentPresent } from "../outbox-consumers/consent-gate";
 
 /** The render-back-ref shape `RenderedDocumentProvider` returns (the active version per source aggregate). */
 export interface RenderedAggregateRow {
@@ -72,6 +73,11 @@ export interface DocumentReaderStore {
     readonly documentId: DocumentId;
     readonly patientId: PatientId | null;
     readonly patientFacing: boolean;
+    /** F-197 (#248) — §7.16, `document.metadata.sudRedacted`. Read off this same row rather than a
+     *  separately-injected `isSudVersion` lookup function (the portal mint's PRIOR shape) — that function
+     *  had no real implementation anywhere and was never actually passed at the one production call site;
+     *  reading it here, off data already being loaded, needs no new injection point at all. */
+    readonly isSudClass: boolean;
   } | null>;
 
   /** §4.3 IntakeMetricsProvider — the intake-throughput counts for an org over a window. */
@@ -195,7 +201,14 @@ export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {})
           (x) => x.activeVersionId === documentVersionId && x.organizationId === organizationId,
         );
         return d
-          ? { documentId: d.documentId, patientId: d.patientId, patientFacing: d.patientFacing }
+          ? {
+              documentId: d.documentId,
+              patientId: d.patientId,
+              patientFacing: d.patientFacing,
+              // F-197 (#248) — the seed's own `retentionClass` is the SUD signal here (no separate
+              // metadata field on `DocumentDigest`); a test seeds `compliance_42cfr_part2` to simulate one.
+              isSudClass: d.retentionClass === "compliance_42cfr_part2",
+            }
           : null;
       },
       async intakeMetrics({ organizationId }) {
@@ -224,10 +237,17 @@ export function createInMemoryDocumentReaderStore(seed: DocumentReaderSeed = {})
  * The per-patient SUD-portal-consent gate the {@link PortalDocumentReader} consults before exposing SUD-class
  * content or minting a download URL (§4.3 — "filters SUD content per consent"). In prod this resolves through
  * M39's ConsentEvaluator seam; the slice models it as a pure map so the portal reader is testable with no M39.
+ *
+ * F-197 (#248) — ASYNC, and takes `organizationId`: originally synchronous and org-implicit, which made a
+ * real M39-backed implementation impossible to wire at all (the doc comment above always said "in prod this
+ * resolves through M39's ConsentEvaluator seam," but no real implementation, and no production call site
+ * passing one, ever existed — confirmed by a full repo grep before this fix). Widened to match
+ * `resolveSudConsentPresent`'s own (org-scoped, async) shape exactly, since that is the real seam call this
+ * port now delegates to in production (see {@link createSudConsentEvaluatorPortalConsentPort} below).
  */
 export interface PortalConsentPort {
   /** Is SUD-class portal disclosure consented for this patient right now? */
-  isSudPortalDisclosureConsented(patientId: PatientId): boolean;
+  isSudPortalDisclosureConsented(patientId: PatientId, organizationId: OrgId): Promise<boolean>;
 }
 
 /** An in-memory {@link PortalConsentPort} from a per-patient consent map (default: not consented). */
@@ -235,8 +255,23 @@ export function createInMemoryPortalConsentPort(
   consentByPatient: Readonly<Record<string, boolean>> = {},
 ): PortalConsentPort {
   return {
-    isSudPortalDisclosureConsented(patientId: PatientId): boolean {
+    async isSudPortalDisclosureConsented(patientId: PatientId): Promise<boolean> {
       return consentByPatient[patientId] === true;
+    },
+  };
+}
+
+/**
+ * F-197 (#248) — the REAL {@link PortalConsentPort}: delegates to M39's `ConsentEvaluator` via
+ * `resolveSudConsentPresent` (`../outbox-consumers/consent-gate`), the SAME fail-closed seam call the
+ * render-time gate and the F-197 mint-time staff-path gate both already use — one consent check, three
+ * call sites, never three re-implementations of the M39 seam call. Import is safe: `consent-gate.ts`
+ * depends only on the M1 `getSeam` bootstrap registry, no cycle back through `seams/`.
+ */
+export function createSudConsentEvaluatorPortalConsentPort(): PortalConsentPort {
+  return {
+    isSudPortalDisclosureConsented(patientId: PatientId, organizationId: OrgId): Promise<boolean> {
+      return resolveSudConsentPresent({ organizationId, patientId });
     },
   };
 }

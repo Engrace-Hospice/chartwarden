@@ -116,6 +116,7 @@ export const M17_AUDIT_DENYLIST: { readonly [K in M17TableName]: readonly string
     "reschedule_reason",
     "no_show_reason",
     "evv_missing_reason",
+    "evv_missing_resolution_reason", // F-196 (#248, mig 0269)
   ],
   visit_state_history: ["reason"],
   recurring_visit: [],

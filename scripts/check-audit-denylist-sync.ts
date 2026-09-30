@@ -144,7 +144,10 @@ const MODULES: ReadonlyArray<{
   {
     mod: "M17",
     denylist: M17_AUDIT_DENYLIST,
-    migrations: ["packages/db/migrations/0045_scheduling_m17_rls_audit_triggers.sql"],
+    migrations: [
+      "packages/db/migrations/0045_scheduling_m17_rls_audit_triggers.sql",
+      "packages/db/migrations/0269_m17_evv_missing_resolution.sql",
+    ],
   },
   {
     mod: "M18",

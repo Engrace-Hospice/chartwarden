@@ -75,6 +75,12 @@ export const visit = pgTable(
     evvCheckInEventId: uuid("evv_check_in_event_id"), // M18 evv_event (app-validated; no FK)
     evvCheckOutEventId: uuid("evv_check_out_event_id"), // M18 evv_event (app-validated; no FK)
     evvMissingReason: text("evv_missing_reason"), // DENYLISTED (§3.6)
+    // F-196 (#248, mig 0269) — the `m18.evv.late_check_resolved` stamp. Informational only, does not
+    // move `status`: a late-check resolution fires once the visit is already `completed`.
+    evvMissingResolutionResolvedAt: timestamp("evv_missing_resolution_resolved_at", { withTimezone: true }),
+    evvMissingResolutionStatus: text("evv_missing_resolution_status"), // mirrors M18's own loose payload typing
+    evvMissingResolutionByMembershipId: uuid("evv_missing_resolution_by_membership_id"),
+    evvMissingResolutionReason: text("evv_missing_resolution_reason"), // DENYLISTED (§3.6)
 
     parentRecurringVisitId: uuid("parent_recurring_visit_id"), // logical to recurring_visit.id
     parentProposalId: uuid("parent_proposal_id"), // logical to visit_proposal.id
