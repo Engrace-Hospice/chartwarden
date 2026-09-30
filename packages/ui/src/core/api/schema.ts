@@ -46365,6 +46365,13 @@ export interface operations {
                                     firedAt: string;
                                 }[];
                             };
+                            externalMedicationHistory: {
+                                captured: boolean;
+                                state: ("not_pulled" | "none_available" | "available") | null;
+                                recordCount: number | null;
+                                lastPulledAt: string | null;
+                                message: string | null;
+                            };
                             orderChanges: {
                                 orderId: string;
                                 orderKind: string;

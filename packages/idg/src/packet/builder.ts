@@ -26,6 +26,7 @@ import type {
   PacketFlaggedEventDigest,
   PacketHopeTriggerDigest,
   PacketMedicationChangeDigest,
+  PacketMedicationHistory,
   PacketOrderChangeDigest,
   PacketSnapshot,
   PatientId,
@@ -104,6 +105,8 @@ export interface PacketBuildInput {
   readonly sinceLastIdg: SinceLastIdgInput;
   readonly carePlanSummary: CarePlanSummaryInput;
   readonly hopeContext: HopeContextInput | null;
+  /** F-230 — M12 external medication-history state (`null`/absent ⇒ not captured). */
+  readonly medicationHistory?: PacketMedicationHistory | null;
   readonly carryForwardActionItems: readonly PacketActionItemCarryForwardDigest[];
 }
 
@@ -277,8 +280,15 @@ function deriveDiscussionFlags(
  * is `null` (the M26 cap deny-stub ships in a later wave). The service freezes + upserts the result.
  */
 export function buildPacketSnapshot(input: PacketBuildInput): BuiltPacket {
-  const { context, cover, sinceLastIdg, carePlanSummary, hopeContext, carryForwardActionItems } =
-    input;
+  const {
+    context,
+    cover,
+    sinceLastIdg,
+    carePlanSummary,
+    hopeContext,
+    medicationHistory,
+    carryForwardActionItems,
+  } = input;
   const { sinceCursorIso, sinceContext } = resolveSinceCursor(
     context.priorIdgAdjournedAt,
     context.admissionActivatedAt,
@@ -327,6 +337,8 @@ export function buildPacketSnapshot(input: PacketBuildInput): BuiltPacket {
     sinceLastIdg: sinceLastIdgFiltered,
     carePlanSummary,
     hopeContext,
+    // Omitted (not `null`) when the caller passed nothing — a packet built before F-230 stays byte-identical.
+    ...(medicationHistory !== undefined ? { medicationHistory } : {}),
     capProjection: null,
     carryForwardActionItems,
     flagsForDiscussion: deriveDiscussionFlags(cover, sinceLastIdgFiltered, context.builtAt),

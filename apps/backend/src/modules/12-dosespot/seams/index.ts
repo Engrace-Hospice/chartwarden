@@ -26,6 +26,11 @@ export {
   createInMemoryDoseSpotSeamStore,
 } from "./store";
 export { createMedicationOrderProvider, createRefillInboxProvider } from "./providers";
+export {
+  IDG_MEDICATION_HISTORY_MAX_PATIENTS,
+  type IdgMedicationHistoryState,
+  idgMedicationHistoryForOrg,
+} from "./idg-medication-history-for-org";
 // TASK-002 — the production Drizzle-backed store (reads under the CONSUMER's ambient RLS context). The
 // comfort-kit rollup still refuses with a typed DoseSpotSeamGapError (no backing schema); the cost-basis
 // rollup (mig 0158: `acquisition_cost_cents`) answers only when every in-scope line is priced, else throws

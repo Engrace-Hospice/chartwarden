@@ -247,6 +247,41 @@ export function buildIdgPacketDoc(payload: unknown): DocModel {
     "No flagged events.",
   );
 
+  // ── External medication history (F-230; M12 §5.5 — the packet shows this state explicitly) ──
+  // `not_pulled` / not captured are NEVER rendered as "none": only a pull that ran and returned zero entries
+  // says so. The entry count is withheld under Part 2 (it can include SUD-treatment fills).
+  const medHistory =
+    snap.medicationHistory === null || snap.medicationHistory === undefined
+      ? null
+      : rec(snap.medicationHistory);
+  blocks.push({ kind: "heading", level: 1, text: "External medication history" });
+  if (medHistory === null) {
+    blocks.push({
+      kind: "paragraph",
+      muted: true,
+      text: "External medication history was not captured for this packet.",
+    });
+  } else if (medHistory.state === "none_available") {
+    blocks.push({
+      kind: "paragraph",
+      text: "No external medication history available — clinician must collect history at bedside.",
+    });
+  } else if (medHistory.state === "available") {
+    blocks.push({
+      kind: "facts",
+      rows: [
+        ["Entries on file (latest pull)", part2 ? "-" : num(medHistory.recordCount)],
+        ["Last pulled", fmtInstant(medHistory.lastPulledAt)],
+      ],
+    });
+  } else {
+    blocks.push({
+      kind: "paragraph",
+      muted: true,
+      text: "External medication history has not been pulled for this patient.",
+    });
+  }
+
   // ── HOPE ──
   blocks.push({ kind: "heading", level: 1, text: "HOPE assessment context" });
   const triggers = arr(since.j2051Triggers).filter(isRec);

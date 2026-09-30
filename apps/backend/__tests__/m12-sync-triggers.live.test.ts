@@ -250,7 +250,7 @@ describe.skipIf(!DB_URL)("M12 dosespot_sync_queue — jobs/repository + jobs/wor
     expect(after?.last_error).toBeNull();
   });
 
-  it("medhx_fetch: fails honestly at the genuinely-unbuilt DoseSpot-patient-id resolver", async () => {
+  it("medhx_fetch: fails honestly when no DoseSpot-side patient id has been recorded (F-230: the real resolver, no mapping yet)", async () => {
     const patientId = await seedPatient(ORG_A);
     const admissionId = randomUUID();
     const { row } = await enqueueAs(ORG_A, {

@@ -83,6 +83,12 @@ export function applySudRedaction(built: BuiltPacket, ctx: SudRedactionContext):
         built.snapshot.hopeContext === null
           ? null
           : { ...built.snapshot.hopeContext, openSfvCount: 0 },
+      // F-230 — the external medication-history ENTRY COUNT can include SUD-treatment fills (e.g.
+      // buprenorphine), so a caller without a release must not read it (same rule as `openSfvCount`). The
+      // STATE (never pulled / none / available) and the pull instant are non-content and stay.
+      ...(built.snapshot.medicationHistory
+        ? { medicationHistory: { ...built.snapshot.medicationHistory, recordCount: 0 } }
+        : {}),
     },
     disciplineViews,
   };
