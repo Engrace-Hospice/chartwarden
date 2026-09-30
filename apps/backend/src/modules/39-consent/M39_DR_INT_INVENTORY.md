@@ -29,7 +29,13 @@ cross-module touchpoints are all in-perimeter seams / outbox:
 | M4 Audit | write-audit triggers + the `consent` destruction-cert eraser + `m39.*` action catalog | trigger + registry | yes | 1 |
 
 No third-party API, no scheduled external feed (contrast M40's NPPES). The only background jobs are
-internal crons (§4.9: reminder / expiration / cascade-retry / partition rotation).
+internal crons (§4.9: reminder / expiration / cascade-retry / partition rotation). **Built (F-216):** the two
+hourly outbox-producing crons — `m39.consent_expiration` (active + lapsed → `expired`, emits
+`m39.consent.expired` in the same tx) and `m39.expiration_reminder` (90/30/14/7/1-day windows per the type's
+cadence floor → `consent_expiration_reminder` row + `m39.consent.expiring_soon`) — live under
+`apps/backend/src/modules/39-consent/jobs/`, fan out per active org under the allowlisted platform job id
+`m39.platform_crons`, and bound a first-run backlog (`M39_CRON_BOUNDS`). Cascade-retry, renewal-cycle-close,
+draft-auto-expire and eval-audit-partition remain unbuilt.
 
 ## 3. STRIDE highlights (§8.5)
 

@@ -59,6 +59,34 @@ export {
   createDbConsentStore,
 } from "./consent-store-db";
 export { buildM39ConsentRenderConsumer } from "./render-consumer";
+// F-216 — the §4.9 hourly `m39.consent_expiration` / `m39.expiration_reminder` crons (the producer of
+// `m39.consent.expired` / `.expiring_soon`) + the platform-tenancy registration their fan-out needs.
+export {
+  M39_CRON_BOUNDS,
+  M39_JOB_SCHEDULES,
+  M39_QUEUE_PARAMS,
+  M39_QUEUES,
+} from "./jobs/index";
+export {
+  type ExpirationRunSummary,
+  type M39ActiveOrgListPort,
+  type M39CronDeps,
+  type ReminderRunSummary,
+  M39_WORKER_SYSTEM_USER_ID,
+  planConsentExpiry,
+  planConsentReminder,
+  runConsentExpirationCron,
+  runConsentExpirationForOrg,
+  runExpirationReminderCron,
+  runExpirationReminderForOrg,
+} from "./jobs/expiration";
+export {
+  type M39WorkerDeps,
+  buildM39WorkerDeps,
+  registerM39CronWorkers,
+  scheduleM39Jobs,
+} from "./jobs/cron-workers";
+export { M39_PLATFORM_JOB_ID, wireM39Tenancy } from "./wiring";
 export {
   type ConsentTenantKeyProvider,
   createConsentInternalNotesCipher,
